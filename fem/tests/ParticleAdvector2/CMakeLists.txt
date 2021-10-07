@@ -5,6 +5,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO mesh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ParticleAdvector2)
-ADD_ELMER_LABEL(ParticleAdvector2 particle)
+ADD_ELMER_TEST(ParticleAdvector2 LABELS particle n-t)
 

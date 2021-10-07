@@ -208,7 +208,7 @@ CONTAINS
     
      Mesh % ParallelInfo % NumberOfIfDOFs =  0        
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % INTERFACE )
+     NULLIFY( Mesh % ParallelInfo % NodeInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )     
 
      i = 0
@@ -317,7 +317,7 @@ CONTAINS
      ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(Mesh % NumberOfNodes), STAT=istat )
      IF ( istat /= 0 ) &
          CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
-     ALLOCATE(Mesh % ParallelInfo % INTERFACE(Mesh % NumberOfNodes), STAT=istat )
+     ALLOCATE(Mesh % ParallelInfo % NodeInterface(Mesh % NumberOfNodes), STAT=istat )
      IF ( istat /= 0 ) &
          CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(Mesh % NumberOfNodes), STAT=istat )
@@ -1384,15 +1384,15 @@ CONTAINS
    ! Create logical table showing the interface nodes
    ALLOCATE( Intf(n1) )
    Intf = .FALSE.
-   Intf(1:n0) = Mesh % ParallelInfo % INTERFACE(1:n0)
+   Intf(1:n0) = Mesh % ParallelInfo % NodeInterface(1:n0)
    DO i=n0+1,n1
      j = Perm(i)
      IF(j > 0 ) THEN
        Intf(i) = Intf(j) 
      END IF
    END DO
-   DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
-   Mesh % ParallelInfo % Interface => Intf
+   DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
+   Mesh % ParallelInfo % NodeInterface => Intf
 
 
  END SUBROUTINE EnlargeParallelInfo
@@ -1420,12 +1420,12 @@ CONTAINS
    INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype = 0, numprocs = 0
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
-   LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
-
+   LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel, &
+       PseudoParallel, Found
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
-       NodeTags, ElementTags, LocalPerm
+       NodeTags, ElementTags, LocalPerm, PseudoParallel
 
    CALL Info('ElmerAsciiMesh','Performing step: '//TRIM(I2S(Step)),Level=8)
 
@@ -1458,6 +1458,12 @@ CONTAINS
      END IF
      Parallel = IsParallel
 
+     PseudoParallel = .FALSE.
+     IF(.NOT. Parallel ) THEN
+       PseudoParallel = ( ParEnv % PEs > 1 ) .AND. &
+           ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
+     END IF
+     
      i = LEN_TRIM(MeshNamePar)
      DO WHILE(MeshNamePar(i:i) == CHAR(0))
        i=i-1
@@ -1465,7 +1471,7 @@ CONTAINS
      BaseNameLen = i
      CALL Info('ElmerAsciiMesh','Base mesh name: '//TRIM(MeshNamePar(1:BaseNameLen)))
    END IF
-
+   
 
    SELECT CASE( Step ) 
 
@@ -1483,9 +1489,13 @@ CONTAINS
      CALL PermuteNodeNumbering()
 
    CASE(5)
-     CALL InitParallelInfo()
-     CALL ReadSharedFile()
-
+     IF( PseudoParallel ) THEN
+       CALL InitPseudoParallel()
+     ELSE
+       CALL InitParallelInfo()
+       CALL ReadSharedFile()
+     END IF
+       
    CASE(6)
      IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm ) 
      IF( ASSOCIATED( ElementTags) ) DEALLOCATE( ElementTags )
@@ -1965,8 +1975,8 @@ CONTAINS
        NULLIFY( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
      END DO
 
-     CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'InitParallelInfo')
-     Mesh % ParallelInfo % INTERFACE = .FALSE.       
+     CALL AllocateVector( Mesh % ParallelInfo % NodeInterface, n, 'InitParallelInfo')
+     Mesh % ParallelInfo % NodeInterface = .FALSE.       
 
    END SUBROUTINE InitParallelInfo
 
@@ -2008,7 +2018,7 @@ CONTAINS
        npart = ivals(2)       
 
        k = LocalPerm( tag-MinNodeTag+1 )
-       Mesh % ParallelInfo % INTERFACE(k) = .TRUE.
+       Mesh % ParallelInfo % NodeInterface(k) = .TRUE.
        CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(k) % Neighbours,npart)
 
        IF( nread < 2 + npart ) THEN
@@ -2028,6 +2038,46 @@ CONTAINS
 
    END SUBROUTINE ReadSharedFile
 
+
+   ! Initialize parallel info for pseudo parallel meshes
+   !-------------------------------------------------------
+   SUBROUTINE InitPseudoParallel()
+
+     INTEGER, POINTER :: TmpGlobalDofs(:)
+
+     ! This also for serial runs ...
+     n = ParEnv % MyPe * Mesh % NumberOfBulkElements
+
+     DO i=1,Mesh % NumberOfBulkElements
+       Mesh % Elements(i) % GElementIndex = ElementTags(i) + n
+     END DO
+
+     n = Mesh % NumberOfNodes + &
+         Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
+         Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
+         Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
+
+     ALLOCATE( TmpGlobalDOFs(n) )
+     TmpGlobalDOFs = 0
+     TmpGlobalDOFs(1:Mesh % NumberOfNodes) = &
+         Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) + n
+     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs ) 
+     Mesh % ParallelInfo % GlobalDofs => TmpGlobalDofs
+     
+     ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
+     IF (istat /= 0) CALL Fatal('InitParallelInfo', 'Unable to allocate NeighbourList array.')
+     
+     DO i=1,n
+       ALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) )
+       Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
+     END DO
+
+     CALL AllocateVector( Mesh % ParallelInfo % NodeInterface, n, 'InitParallelInfo')
+     Mesh % ParallelInfo % NodeInterface = .FALSE.       
+
+   END SUBROUTINE InitPseudoParallel
+
+   
  END SUBROUTINE ElmerAsciiMesh
 
 
@@ -4347,7 +4397,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Left, Right, Elements(:)
     LOGICAL :: ThisActive, TargetActive
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
-              EPerm(:), EPerm1(:), EPerm2(:)
+              EPerm(:), EPerm1(:), EPerm2(:), BPerm(:), BPerm1(:), BPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, SplitQuadratic, Found
 
@@ -4550,6 +4600,9 @@ CONTAINS
     CALL AllocateVector( EPerm1, Mesh % NumberOfEdges )
     CALL AllocateVector( EPerm2, Mesh % NumberOfEdges )
 
+    CALL AllocateVector( BPerm1, Mesh % NumberOfEdges )
+    CALL AllocateVector( BPerm2, Mesh % NumberOfEdges )
+
     IF( TagNormalFlip ) THEN
       ALLOCATE( BMesh1 % PeriodicFlip(n1) )
       ALLOCATE( BMesh2 % PeriodicFlip(n2) )
@@ -4563,8 +4616,8 @@ CONTAINS
 !   ---------------------------------------------
     n1 = 0
     n2 = 0
-    Perm1 = 0; EPerm1 = 0
-    Perm2 = 0; EPerm2 = 0
+    Perm1 = 0; EPerm1 = 0; BPerm1 = 0
+    Perm2 = 0; EPerm2 = 0; BPerm2 = 0
     BMesh1 % MaxElementNodes = 0
     BMesh2 % MaxElementNodes = 0
 
@@ -4632,12 +4685,12 @@ CONTAINS
         n1 = n1 + nSplit
         ind = n1
         PMesh => BMesh1
-        PPerm => Perm1; EPerm => EPerm1
+        PPerm => Perm1; EPerm => EPerm1; BPerm => BPerm1
       ELSE
         n2 = n2 + nSplit
         ind = n2
         PMesh => BMesh2
-        PPerm => Perm2; EPerm => EPerm2
+        PPerm => Perm2; EPerm => EPerm2; BPerm => BPerm2
       END IF
 
       
@@ -4742,6 +4795,18 @@ CONTAINS
         IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
           PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
           PPerm( Element % NodeIndexes(1:n) ) = 1
+
+          IF(Element % Type % ElementCode==202 .AND. isPelement(Element) ) THEN
+            Parent => Element % BoundaryInfo % Left
+            IF(.NOT. ASSOCIATED( Parent ) ) THEN
+              Parent => Element % BoundaryInfo % Right
+            END IF
+            q => Find_Edge(Mesh,Parent,Element)
+
+            Pmesh % Elements(ind) % ElementIndex = q % ElementIndex
+            BPerm(q % ElementIndex) = 1
+          END IF
+
         ELSE
           ! If we have edge dofs we want the face element be associated with the 
           ! face list since that only has properly defined edge indexes.
@@ -4773,7 +4838,7 @@ CONTAINS
         
 
     END DO
-  
+
 !   Fill in the mesh node structures with the
 !   boundary nodes:
 !   -----------------------------------------
@@ -4808,17 +4873,19 @@ CONTAINS
     CALL AllocateVector( BMesh2 % Nodes % y, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % z, BMesh2 % NumberOfNodes )
     
-    BMesh1 % NumberOfEdges = COUNT(EPerm2>0)
+    BMesh2 % NumberOfEdges = COUNT(EPerm2>0)
     ALLOCATE( BMesh2 % Edges(COUNT(EPerm2>0)) )
 
-    CALL AllocateVector( Bmesh1 % InvPerm, BMesh1 % NumberOfNodes+COUNT(Eperm1>0) )
-    CALL AllocateVector( Bmesh2 % InvPerm, BMesh2 % NumberOfNodes+COUNT(Eperm2>0) )
+    n = BMesh1 % NumberOfNodes + COUNT(Eperm1>0) + COUNT(BPerm1>0)
+    CALL AllocateVector(Bmesh1 % InvPerm, n)
+
+    n = BMesh2 % NumberOfNodes + COUNT(Eperm2>0) + COUNT(BPerm2>0)
+    CALL AllocateVector(Bmesh2 % InvPerm, n)
 
     ! Now, create the master and target meshes that only include the active elements
     !---------------------------------------------------------------------------
     k1 = 0; k2 = 0
     DO i=1,Mesh % NumberOfNodes
-
       IF ( Perm1(i) > 0 ) THEN
         k1 = k1 + 1
         Perm1(i) = k1
@@ -4840,21 +4907,36 @@ CONTAINS
       END IF
     END DO
 
+    j = Mesh % NumberOfNodes
+    k = BMesh1 % NumberOfNodes
+    l = BMesh2 % NumberOfNodes
+
     k1 = 0; k2 = 0
     DO i=1,Mesh % NumberOfEdges
-
-      IF ( EPerm1(i) > 0 ) THEN
+      IF ( EPerm1(i)>0 ) THEN
         k1 = k1 + 1
-        EPerm1(i) = k1
-        BMesh1 % InvPerm(k1+BMesh1 % NumberOfNodes) = i+Mesh % NumberOfNodes
+        BMesh1 % InvPerm(k1+k) = i+j
       END IF
 
-      IF ( EPerm2(i) > 0 ) THEN
+      IF ( EPerm2(i)>0 ) THEN
         k2 = k2 + 1
-        EPerm2(i) = k2
-        BMesh2 % InvPerm(k2+BMesh2 % NumberOfNodes) = i+Mesh % NumberOfNodes
+        BMesh2 % InvPerm(k2+l) = i+j
       END IF
     END DO
+
+    k1 = 0; k2 = 0
+    DO i=1,Mesh % NumberOfEdges
+      IF (BPerm1(i)>0) THEN
+        k1 = k1 + 1
+        BMesh1 % InvPerm(k1+k) = i+j
+      END IF
+
+      IF (BPerm2(i)>0) THEN
+        k2 = k2 + 1
+        BMesh2 % InvPerm(k2+l) = i+j
+      END IF
+    END DO
+
 
 !   Finally, Renumber the element node & edge pointers to use only boundary nodes:
 !   ------------------------------------------------------------------------------
@@ -4866,7 +4948,7 @@ CONTAINS
     DO i=1,n2
       BMesh2 % Elements(i) % NodeIndexes = Perm2(BMesh2 % Elements(i) % NodeIndexes)
     END DO
-    DEALLOCATE( Perm1, Perm2, EPerm1, EPerm2 )
+    DEALLOCATE( Perm1, Perm2, EPerm1, EPerm2, BPerm1, BPerm2 )
 
     IF( CheckForHalo ) DEALLOCATE( ActiveNode ) 
 
@@ -5197,6 +5279,30 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION Find_Edge(Mesh,Parent,Element) RESULT(ptr)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Ptr
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Parent, Element
+
+    INTEGER :: i,j,k,n
+
+    Ptr => NULL()
+    DO i=1,Parent % TYPE % NumberOfEdges
+      Ptr => Mesh % Edges(Parent % EdgeIndexes(i))
+      n=0
+      DO j=1,Ptr % TYPE % NumberOfNodes
+        DO k=1,Element % TYPE % NumberOfNodes
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
+        END DO
+      END DO
+      IF (n==Ptr % TYPE % NumberOfNodes) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION Find_Edge
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION Find_Face(Mesh,Parent,Element) RESULT(ptr)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Ptr
@@ -5223,18 +5329,18 @@ CONTAINS
   !----------------------------------------------------------------------------------------
   !> Given a temporal triangle "ElementT", calculate mass matrix contributions for projection
   !> for the slave element "Element" and master element "ElementM".
-  !> The nubmering associated to these surface meshes is InvPerm and InvPermM, respectively. 
-  !> This is lifted at an outer level in the hope that it would be called by number of
-  !> routines in the future.
+  !> The numbering associated to these surface meshes is InvPerm and InvPermM, respectively. 
+  !> This is lifted to a separate subroutine in the hope that it would be called by number of
+  !> different routines in the future.
   !----------------------------------------------------------------------------------------
   SUBROUTINE TemporalTriangleMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-      Biorthogonal, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
+      pElemBasis, Biorthogonal, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
       NodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
     TYPE(Element_t), POINTER :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
-    LOGICAL :: Biorthogonal, DualMaster, DualLCoeff
+    LOGICAL :: pElemBasis, Biorthogonal, DualMaster, DualLCoeff
     INTEGER :: NoGaussPoints
     TYPE(Matrix_t) :: Projector
     REAL(KIND=dp) :: NodeScale, SumArea
@@ -5243,18 +5349,19 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: ElementP, ElementLin
     TYPE(GaussIntegrationPoints_t) :: IPT
-    REAL(KIND=dp) :: area, xt, yt, zt = 0.0_dp, u, v, w, um, vm, wm, &
+    REAL(KIND=dp) :: area, xt, yt, zt = 0.0_dp, u, v, w, um, vm, wm, uq, vq, &
         detJ, val, val_dual, weight
     REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
-    INTEGER :: i,j,jj,n,ne,nM,neM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
+    INTEGER :: i,j,jj,n,m,ne,nM,neM,nd,ndM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
     INTEGER, POINTER :: Indexes(:),IndexesM(:)
-    LOGICAL :: Stat, AllocationsDone = .FALSE.
+    INTEGER, TARGET :: pIndexes(128),pIndexesM(128)
+    LOGICAL :: Stat, InitPhase, AllocationsDone = .FALSE.
 
     SAVE :: BasisT, Basis, BasisM, CoeffBasis, MASS
 
     IF(.NOT. AllocationsDone ) THEN
       n = CurrentModel % Mesh % MaxElementNodes
-      ALLOCATE( BasisT(3),Basis(n), BasisM(n), CoeffBasis(n), MASS(n,n), STAT = AllocStat )
+      ALLOCATE( BasisT(3),Basis(n), BasisM(n), CoeffBasis(n), MASS(n,n), STAT=AllocStat )             
       IF( AllocStat /= 0 ) CALL Fatal('TemporalTriangleMortarAssembly','Allocation error!')
       AllocationsDone = .TRUE.
     END IF
@@ -5264,90 +5371,62 @@ CONTAINS
     ne = Element % TYPE % ElementCode / 100      
     ElemCode = Element % TYPE % ElementCode 
     LinCode = 101 * ne
-    Indexes => Element % NodeIndexes
-
+    IF( pElemBasis ) THEN
+      nd = mGetElementDOFs(pIndexes,Element)
+      Indexes => pIndexes
+    ELSE
+      nd = n
+      Indexes => Element % NodeIndexes
+    END IF
+      
     nM = ElementM % TYPE % NumberOfNodes
     neM = ElementM % TYPE % ElementCode / 100      
     ElemCodeM = Element % TYPE % ElementCode 
     LinCodeM = 101 * neM
-    IndexesM => ElementM % NodeIndexes
-
+    IF( pElemBasis ) THEN
+      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      Indexes => pIndexesM
+    ELSE
+      ndM = nM
+      IndexesM => ElementM % NodeIndexes
+    END IF
+      
     IF( NoGaussPoints > 0 ) THEN
       IPT = GaussPoints( ElementT, NoGaussPoints, PreferenceElement = .FALSE. )
     ELSE
       IPT = GaussPoints( ElementT, PreferenceElement = .FALSE. )
     END IF
-
+    
     IF(BiOrthogonal) THEN
+      InitPhase = .TRUE.
       MASS  = 0
       CoeffBasis = 0
-      area = 0._dp
-      DO nip=1, IPT % n 
-        stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
-            IPT % v(nip),IPT % w(nip),detJ,BasisT)
-        IF(.NOT. Stat ) EXIT
-
-        ! We will actually only use the global coordinates and the integration weight 
-        ! from the temporal mesh. 
-
-        ! Global coordinates of the integration point
-        xt = SUM( BasisT(1:3) * NodesT % x(1:3) )
-        yt = SUM( BasisT(1:3) * NodesT % y(1:3) )
-
-        ! Integration weight for current integration point
-        Weight = DetJ * IPT % s(nip) 
-        area = area + weight
-
-        ! Integration point at the slave element
-        IF( ElemCode /= LinCode ) THEN
-          ElementLin % TYPE => GetElementType( LinCode, .FALSE. )
-          ElementLin % NodeIndexes => Element % NodeIndexes
-          ElementP => ElementLin
-          CALL GlobalToLocal( u, v, w, xt, yt, zt, ElementP, Nodes )
-        ELSE
-          CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
-        END IF
-
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-        IF(.NOT. Stat) CYCLE
-
-        DO i=1,n
-          DO j=1,n
-            MASS(i,j) = MASS(i,j) + weight * Basis(i) * Basis(j)
-          END DO
-          CoeffBasis(i) = CoeffBasis(i) + Weight * Basis(i)
-        END DO
-      END DO
-
-      ! Even if there would be multiple ip points, area is still the same...
-      IF(Area<1.d-12) RETURN
-
-      CALL InvertMatrix( MASS, n )
-
-      DO i=1,n
-        DO j=1,n
-          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
-        END DO
-      END DO
-    END IF
+    ELSE
+      InitPhase = .FALSE.
+    END IF    
+        
+1   area = 0._dp
 
     ! Integration over the temporal element using integration points of that element
-    DO nip=1, IPT % n 
+    DO nip=1, IPT % n
       stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
           IPT % v(nip),IPT % w(nip),detJ,BasisT)
-      IF(.NOT. Stat) EXIT
+      IF(.NOT. Stat ) EXIT
 
+      ! If the triangle is too small there is nothing much to integrate...
+      IF( DetJ < 1.0d-12 ) RETURN
+      
       ! We will actually only use the global coordinates and the integration weight 
       ! from the temporal mesh. 
-
+      
       ! Global coordinates of the integration point
       xt = SUM( BasisT(1:3) * NodesT % x(1:3) )
       yt = SUM( BasisT(1:3) * NodesT % y(1:3) )
-
+      
       ! Integration weight for current integration point
-      weight = DetJ * IPT % s(nip)
-      sumarea = sumarea + weight
-
+      Weight = DetJ * IPT % s(nip) 
+      area = area + weight
+      
       ! Integration point at the slave element
       IF( ElemCode /= LinCode ) THEN
         ElementLin % TYPE => GetElementType( LinCode, .FALSE. )
@@ -5357,9 +5436,38 @@ CONTAINS
       ELSE
         CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
       END IF
+      
+      ! Take into account that the reference elements are different:
+      IF( ne == 3 .AND. pElemBasis ) THEN
+        uq = u
+        vq = v
+        u = -1.0d0 + 2.0d0*uq + vq
+        v = SQRT(3.0d0)*vq
+      END IF
 
       stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
+      IF(.NOT. Stat) CYCLE
+      
+      IF(BiOrthogonal) THEN
+        IF( InitPhase ) THEN      
+          DO i=1,nd
+            DO j=1,nd
+              MASS(i,j) = MASS(i,j) + weight * Basis(i) * Basis(j)
+            END DO
+            CoeffBasis(i) = CoeffBasis(i) + Weight * Basis(i)
+          END DO
+          ! For initialization phase end the assembly early!
+          CYCLE
+        ELSE      
+          CoeffBasis = 0._dp
+          DO i=1,nd
+            DO j=1,nd
+              CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+            END DO
+          END DO
+        END IF
+      END IF
+        
       ! Integration point at the master element
       IF( ElemCodeM /= LinCodeM ) THEN
         ElementLin % TYPE => GetElementType( LinCodeM, .FALSE. )
@@ -5370,32 +5478,29 @@ CONTAINS
         CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
       END IF
 
+      IF ( neM == 3 .AND. pElemBasis ) THEN
+        uq = um
+        vq = vm
+        um = -1.0d0 + 2.0d0*uq + vq
+        vm = SQRT(3.0d0)*vq
+      END IF
+      
       stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
       IF(.NOT. Stat) CYCLE
-
-      ! Add the nodal dofs
-      IF(BiOrthogonal) THEN
-        CoeffBasis = 0._dp
-        DO i=1,n
-          DO j=1,n
-            CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
-          END DO
-        END DO
-      END IF
-
-      DO j=1,n 
+            
+      DO j=1,nd 
         jj = Indexes(j)                                    
-
+        
         nrow = NodePerm(InvPerm(jj))
         IF( nrow == 0 ) CYCLE
-
+        
         Projector % InvPerm(nrow) = InvPerm(jj)
         val = Basis(j) * weight
         IF(Biorthogonal) val_dual = CoeffBasis(j) * weight
-
-        DO i=1,n
+        
+        DO i=1,nd
           IF( ABS( val * Basis(i) ) < 1.0d-10 ) CYCLE
-
+          
           !Nslave = Nslave + 1
           CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
               InvPerm(Indexes(i)), Basis(i) * val ) 
@@ -5405,8 +5510,8 @@ CONTAINS
                 InvPerm(Indexes(i)), Basis(i) * val_dual ) 
           END IF
         END DO
-
-        DO i=1,nM
+        
+        DO i=1,ndM
           IF( ABS( val * BasisM(i) ) < 1.0d-12 ) CYCLE
 
           !Nmaster = Nmaster + 1
@@ -5426,8 +5531,224 @@ CONTAINS
       END DO
     END DO
 
+    ! For biorthogonal basis functions we perform a second loop
+    IF( InitPhase ) THEN
+      CALL InvertMatrix( MASS, nd )
+      DO i=1,nd
+        DO j=1,nd
+          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+        END DO
+      END DO
+      InitPhase = .FALSE.
+      GOTO 1
+    END IF  ! Biortogonal initialization 
+
+    sumarea = sumarea + area
+
   END SUBROUTINE TemporalTriangleMortarAssembly
 
+
+  !----------------------------------------------------------------------------------------
+  !> Given a temporal segment "ElementT", calculate mass matrix contributions for projection
+  !> for the slave element "Element" and master element "ElementM".
+  !----------------------------------------------------------------------------------------
+ SUBROUTINE TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+      sgn0, pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff, NoGaussPoints, &
+      Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, InvPerm, InvPermM, SumArea ) 
+    !----------------------------------------------------------------------------------------
+    TYPE(Element_t) :: ElementT
+    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Nodes_t) :: NodesT, Nodes, NodesM
+    INTEGER :: sgn0
+    LOGICAL :: pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff
+    INTEGER :: NoGaussPoints
+    TYPE(Matrix_t) :: Projector
+    REAL(KIND=dp) :: NodeCoeff, ArcCoeff, NodeScale, SumArea
+    INTEGER :: NodePerm(:), DualNodePerm(:)
+    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    !----------------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IPT
+    INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip
+    INTEGER, TARGET :: pIndexes(24), pIndexesM(24)    
+    INTEGER, POINTER :: Indexes(:), IndexesM(:)
+    REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, wtemp,DetJ
+    REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
+    LOGICAL :: AllocationsDone = .FALSE.
+    TYPE(Matrix_t), POINTER :: DualProjector 
+    LOGICAL :: InitPhase,Stat
+
+    SAVE :: BasisT, Basis, BasisM, MASS, CoeffBasis
+    
+    IF(.NOT. AllocationsDone ) THEN
+      n = 2 * CurrentModel % Mesh % MaxElementNodes
+      ALLOCATE(BasisT(n),Basis(n),BasisM(n),MASS(n,n),CoeffBasis(n))
+      AllocationsDone = .TRUE.
+    END IF
+       
+    n = Element % TYPE % NumberOfNodes   
+    IF( pElemBasis ) THEN    
+      nd = mGetElementDOFs(pIndexes,Element)
+      Indexes => pIndexes
+    ELSE
+      nd = n
+      Indexes => Element % NodeIndexes
+    END IF
+
+    nM = ElementM % TYPE % NumberOfNodes      
+    IF( pElemBasis ) THEN    
+      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      IndexesM => pIndexesM
+    ELSE
+      ndM = nM
+      IndexesM => ElementM % NodeIndexes
+    END IF
+    
+    IF( NoGaussPoints == 0 ) THEN
+      IPT = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
+    ELSE    
+      IPT = GaussPoints( ElementT, NoGaussPoints ) 
+    END IF
+
+    DualProjector => Projector % EMatrix
+    
+    IF(BiOrthogonal) THEN
+      MASS = 0.0_dp
+      CoeffBasis = 0.0_dp
+      InitPhase = .TRUE.
+    ELSE
+      InitPhase = .FALSE.
+    END IF
+
+    yt = 0.0_dp
+    zt = 0.0_dp
+    Basis = 0.0_dp
+    BasisM = 0.0_dp
+
+    
+1   DO nip=1, IPT % n 
+      stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
+          IPT % v(nip),IPT % w(nip),detJ,BasisT)
+      
+      ! Global coordinate of the integration point
+      xt = SUM( BasisT(1:2) * NodesT % x(1:2) )
+      
+      ! Integration weight for current integration point
+      ! Use the real arc length so that this projector weights correctly 
+      ! in rotational case when used with other projectors.
+      Wtemp = ArcCoeff * DetJ * IPT % s(nip)
+      
+      ! Integration point at the slave element
+      CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+      stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+      
+      IF( Biorthogonal ) THEN      
+        IF( InitPhase ) THEN
+          DO i=1,nd
+            DO j=1,nd
+              MASS(i,j) = MASS(i,j) + wTemp * Basis(i) * Basis(j)
+            END DO
+            CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
+          END DO
+          CYCLE
+        ELSE
+          CoeffBasis = 0._dp
+          DO i=1,nd
+            DO j=1,nd
+              CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+            END DO
+          END DO          
+        END IF
+      END IF
+            
+      sumarea = sumarea + Wtemp
+
+      ! Integration point at the master element
+      CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
+      stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
+      
+      ! Add the entries to the projector
+      DO j=1,nd
+        jj = Indexes(j)                                    
+        IF (j<=n) jj = InvPerm(jj)
+        
+        nrow = NodePerm(jj)
+        IF( nrow == 0 ) CYCLE
+
+        Projector % InvPerm(nrow) = jj
+        val = NodeCoeff * Basis(j) * Wtemp
+        IF(Biorthogonal) THEN
+          val_dual = NodeCoeff * CoeffBasis(j) * Wtemp
+        END IF
+        
+        DO i=1,nd
+          ii = Indexes(i)
+          IF(i<=n) ii=InvPerm(ii)
+          
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              ii, Basis(i) * val )
+          
+          IF(Biorthogonal) THEN
+            CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                ii, Basis(i) * val_dual )
+          END IF
+        END DO
+        
+        DO i=1,ndM
+          ii = IndexesM(i)
+          IF(i<=nM) ii=InvPermM(ii)
+          
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              ii, -sgn0 * NodeScale * BasisM(i) * val )
+          
+          IF(Biorthogonal) THEN
+            IF(DualMaster .OR. DualLCoeff) THEN
+              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                  ii, -sgn0 * NodeScale * BasisM(i) * val_dual )
+            ELSE
+              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                  ii, -sgn0 * NodeScale * BasisM(i) * val )
+            END IF
+          END IF
+        END DO
+      END DO
+
+      ! Add the entries to the dual projector 
+      IF( CreateDual ) THEN
+        DO j=1,nM 
+          jj = IndexesM(j)                                    
+          nrow = DualNodePerm(InvPermM(jj))
+          IF( nrow == 0 ) CYCLE
+          
+          DualProjector % InvPerm(nrow) = InvPermM(jj)
+          val = NodeCoeff * BasisM(j) * Wtemp
+          
+          DO i=1,nM
+            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                InvPermM(IndexesM(i)), sgn0 * BasisM(i) * val ) 
+          END DO
+          
+          DO i=1,n
+            !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
+            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                InvPerm(Indexes(i)), -NodeScale * Basis(i) * val )                   
+          END DO
+        END DO
+      END IF
+    END DO
+
+    IF(InitPhase ) THEN          
+      CALL InvertMatrix( MASS, nd )      
+      DO i=1,nd
+        DO j=1,nd
+          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+        END DO
+      END DO
+      InitPhase = .FALSE.
+      GOTO 1
+    END IF
+    
+  END SUBROUTINE TemporalSegmentMortarAssembly
+    
   
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
@@ -5454,7 +5775,7 @@ CONTAINS
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: i,n,m
-    
+        
     CALL Info('NormalProjector','Creating projector between 3D surfaces',Level=7)
     
     Parallel = ( ParEnv % PEs > 1 )
@@ -5535,8 +5856,7 @@ CONTAINS
         NodePerm(i) = n
       END IF
     END DO
-    CALL Info('NormalProjector','Initial number of slave nodes '//TRIM(I2S(n))//&
-        ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+    CALL Info('NormalProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
     
     ALLOCATE( Projector % InvPerm(n) )
     Projector % InvPerm = 0
@@ -6181,7 +6501,7 @@ CONTAINS
             END IF
             
             CALL TemporalTriangleMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-                BiorthogonalBasis, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
+                .FALSE.,BiorthogonalBasis, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
                 NodePerm, InvPerm1, InvPerm2, SumArea ) 
           END DO
                              
@@ -6810,13 +7130,13 @@ CONTAINS
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, &
-        StrongSkewEdges, StrongConformingEdges, StrongConformingNodes, pElementsUsed
+        StrongSkewEdges, StrongConformingEdges, StrongConformingNodes
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
         StrongProjector, CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
-        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
+        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance, val
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow, Naxial
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
@@ -6826,7 +7146,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
-    LOGICAL :: SecondOrder
+    LOGICAL :: SecondOrder, pElemProj, pElemBasis
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
@@ -7089,15 +7409,27 @@ CONTAINS
         'Use Piola Transform', Found)
     SecondOrder = ListGetLogical( CurrentModel % Solver % Values, &
         'Quadratic Approximation', Found)
-
+      
+    ! We assume that the 1st element may be used to determine whether the mesh is a p-element
+    ! mesh or not.
+    Element => BMesh1 % Elements(1)        
+    pElemBasis = isPElement(Element) 
+    pElemProj = pElemBasis
+    IF( pElemProj ) THEN
+      IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
+    END IF
+    IF( pElemProj ) THEN
+      CALL Info('LevelProjector','Using p-elements when creating mortar projector',Level=8)
+    END IF
+       
     ! At the 1st stage determine the maximum size of the projector
     ! If the strong projector is used then the numbering is done as we go
     ! this way we can eliminate unneeded rows. 
     ! For the weak projector there is no need to eliminate rows. 
     IF( DoNodes ) THEN      
-      ALLOCATE( NodePerm( Mesh % NumberOfNodes+Mesh% NumberOfEdges ) )
-      NodePerm = 0
-
+      ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh% NumberOfEdges ) )
+      NodePerm = 0      
+      
       ! in parallel only consider nodes that truly are part of this partition
       DO i=1,BMesh1 % NumberOfBulkElements
         Element => BMesh1 % Elements(i)        
@@ -7105,13 +7437,17 @@ CONTAINS
           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
         END IF        
         NodePerm(InvPerm1(Element % NodeIndexes)) = 1
-        IF(ASSOCIATED(Element % EdgeIndexes)) &
-          NodePerm(Element % EdgeIndexes+Mesh % NumberOfNodes) = 1
+        IF( pElemProj ) THEN
+          IF(ASSOCIATED(Element % EdgeIndexes)) THEN
+            NodePerm(Element % EdgeIndexes+Mesh % NumberOfNodes) = 1
+          ELSE IF (Element % TYPE % ElementCode==202) THEN
+            NodePerm(Element % ElementIndex+Mesh % NumberOfNodes) = 1
+          END IF
+        END IF
       END DO
 
       n = SUM( NodePerm )
-      CALL Info('LevelProjector','Initial number of slave nodes '//TRIM(I2S(n))//&
-          ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+      CALL Info('LevelProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
 
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
@@ -7123,7 +7459,7 @@ CONTAINS
         m = 0
         n = SUM(NodePerm)
         CALL Info('LevelProjector',&
-            'Number of potential nodes in projector: '//TRIM(I2S(n)),Level=10)        
+            'Number of potential dofs in projector: '//TRIM(I2S(n)),Level=10)        
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
         DO i=1, SIZE(InvPerm2)
@@ -7156,7 +7492,7 @@ CONTAINS
           m = 0
           n = SUM( DualNodePerm )
           CALL Info('LevelProjector',&
-              'Number of potential nodes in dual projector: '//TRIM(I2S(n)),Level=10)        
+              'Number of potential dofs in dual projector: '//TRIM(I2S(n)),Level=10)        
           ! Now eliminate the nodes which also occur in the other mesh
           ! These must be redundant edges
           DO i=1, SIZE(InvPerm1)
@@ -7200,7 +7536,7 @@ CONTAINS
       END IF
       
       m = 0
-      DO i=1,Mesh % NumberOfNodes + Mesh % NumberOfEdges
+      DO i=1,SIZE(NodePerm) 
         IF( NodePerm(i) > 0 ) THEN
           m = m + 1
           NodePerm(i) = m
@@ -7278,7 +7614,7 @@ CONTAINS
       END IF
 
       m = 0
-      DO i=1,Mesh % NumberOfEdges
+      DO i=1,SIZE(EdgePerm)
         IF( EdgePerm(i) > 0 ) THEN
           m = m + 1
           EdgePerm(i) = m
@@ -7390,11 +7726,26 @@ CONTAINS
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
-    CALL Info('LevelProjector','Number of rows in projector: '&
-        //TRIM(I2S(Projector % NumberOfRows)),Level=12)
-    CALL Info('LevelProjector','Number of entries in projector: '&
-        //TRIM(I2S(SIZE(Projector % Values))),Level=12)
-  
+
+    IF( InfoActive(15) ) THEN
+      val = SUM( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Sum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      val = MINVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Minimum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      val = MAXVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Maximum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      CALL Info('LevelProjector','Number of rows in projector: '&
+          //TRIM(I2S(Projector % NumberOfRows)))
+      CALL Info('LevelProjector','Number of entries in projector: '&
+          //TRIM(I2S(SIZE(Projector % Values))))
+    END IF
+      
 
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
@@ -9063,9 +9414,11 @@ CONTAINS
           EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
       CHARACTER(LEN=20) :: FileName
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
+      CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeakGeneric"
+
 
       
-      CALL Info('AddProjectorWeakGeneric','Creating weak constraints using a generic integrator',Level=8)      
+      CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
 
@@ -9087,7 +9440,7 @@ CONTAINS
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
           NodesT % x(n), NodesT % y(n), NodesT % z(n), & 
           Basis(n), BasisM(n), dBasisdx(n,3), STAT = AllocStat )
-      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 1')
+      IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 1')
 
       Nodes % x  = 0
       Nodes % y  = 0
@@ -9106,13 +9459,13 @@ CONTAINS
 
       IF(BiOrthogonalBasis) THEN
         ALLOCATE(CoeffBasis(n), MASS(n,n), STAT=AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 2')        
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 2')        
       END IF
 
       IF( EdgeBasis ) THEN 
         n = 12 ! Hard-coded size sufficient for second-order edge elements
         ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
-        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 3')
       END IF
         
       Nodes % z  = 0.0_dp
@@ -9163,7 +9516,7 @@ CONTAINS
         DO i=1,BMesh1 % NumberOfNodes
           IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterI = i
-            CALL Info('AddProjectorWeakGeneric','Found center node in slave: '&
+            CALL Info(Caller,'Found center node in slave: '&
                 //TRIM(I2S(CenterI)),Level=10)
             EXIT
           END IF
@@ -9171,7 +9524,7 @@ CONTAINS
         DO i=1,BMesh2 % NumberOfNodes
           IF( BMesh2 % Nodes % x(i)**2 + BMesh2 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterIM = i
-            CALL Info('AddProjectorWeakGeneric','Found center node in master: '&
+            CALL Info(Caller,'Found center node in master: '&
                 //TRIM(I2S(CenterI)),Level=10)
             EXIT
           END IF
@@ -9194,7 +9547,7 @@ CONTAINS
         nd = mGetElementDOFs(Indexes,Element)
 
         n = Element % TYPE % NumberOfNodes
-        IF(DoNodes .AND. .NOT.isPElement(Element)) nd = n
+        IF(DoNodes .AND. .NOT. pElemBasis) nd = n
 
         ! We use 'ne' also to indicate number of corners since for triangles and quads these are the same
         ne = Element % TYPE % NumberOfEdges  ! #(SLAVE EDGES)
@@ -9208,7 +9561,7 @@ CONTAINS
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Element % NodeIndexes(1:n))
 
-        IF (DoNodes .AND. isPelement(Element)) THEN
+        IF (DoNodes .AND. pElemBasis ) THEN
           Nodes % x(n+1:nd) = 0
           Nodes % y(n+1:nd) = 0
         END IF
@@ -9343,7 +9696,7 @@ CONTAINS
              IF(ASSOCIATED(Projector % Child)) &
                CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
-          IF(isPElement(Element)) THEN 
+          IF( pElemProj ) THEN
             DO i=n+1,nd
               j = Indexes(i)
               nrow = NodePerm(j)
@@ -9370,8 +9723,7 @@ CONTAINS
           nM  = ElementM % TYPE % NumberOfNodes
 
           ndM =  mGetElementDOFs(IndexesM,ElementM)
-
-          IF(DoNodes.AND..NOT.isPElement(ElementM)) ndM = nM
+          IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
           ElemCodeM = Element % TYPE % ElementCode 
           LinCodeM = 101 * neM
@@ -9458,7 +9810,7 @@ CONTAINS
             END IF
           END IF
 
-          IF  (isPelement(ElementM)) THEN
+          IF( pElemBasis ) THEN
             nodesM % x(nM+1:ndM) = 0
             nodesM % y(nM+1:ndM) = 0
             nodesM % z(nM+1:ndM) = 0
@@ -9796,16 +10148,10 @@ CONTAINS
               MASS  = 0
               CoeffBasis = 0
               area = 0
-              DO nip=1, IP % n 
-                IF ( ne == 3 .AND. isPElement(Element) ) THEN
-                   uq = u
-                   vq = v
-                   u = -1.0d0 + 2.0d0*uq + vq
-                   v = SQRT(3.0d0)*vq
-                END IF
-
+              DO nip=1, IP % n
+                ! ElementT is not a pelement ever?
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
-                      IP % v(nip),IP % w(nip),detJ,Basis)
+                    IP % v(nip),IP % w(nip),detJ,Basis)
                 IF(.NOT. Stat ) EXIT
 
                 ! We will actually only use the global coordinates and the integration weight 
@@ -9878,16 +10224,16 @@ CONTAINS
                 CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
               END IF
 
-
+              ! Take into account that the reference elements are different:
+              IF( ne == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
+                uq = u
+                vq = v
+                u = -1.0d0 + 2.0d0*uq + vq
+                v = SQRT(3.0d0)*vq
+              END IF
+              
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  ! Take into account that the reference elements are different:
-                  IF ( ne == 3) THEN
-                    uq = u
-                    vq = v
-                    u = -1.0d0 + 2.0d0*uq + vq
-                    v = SQRT(3.0d0)*vq
-                  END IF
                   IF (SecondOrder) THEN
                     stat = EdgeElementInfo( Element, Nodes, u, v, w, &
                         DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
@@ -9902,12 +10248,6 @@ CONTAINS
                   CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
-                IF ( ne == 3 .AND. isPelement(Element) ) THEN
-                  uq = u
-                  vq = v
-                  u = -1.0d0 + 2.0d0*uq + vq
-                  v = SQRT(3.0d0)*vq
-                END IF
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
               END IF
 
@@ -9921,16 +10261,16 @@ CONTAINS
                 CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
               END IF
 
-
+              ! Take into account that the reference elements are different:
+              IF( neM == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
+                uq = um
+                vq = vm
+                um = -1.0d0 + 2.0d0*uq + vq
+                vm = SQRT(3.0d0)*vq
+              END IF
+              
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  ! Take into account that the reference elements are different:
-                  IF ( neM == 3) THEN
-                    uq = um
-                    vq = vm
-                    um = -1.0d0 + 2.0d0*uq + vq
-                    vm = SQRT(3.0d0)*vq
-                  END IF
                   IF (SecondOrder) THEN
                     stat = EdgeElementInfo( ElementM, NodesM, um, vm, wm, &
                         DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
@@ -9945,12 +10285,6 @@ CONTAINS
                   CALL GetEdgeBasis(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
-                IF ( neM == 3 .AND. isPElement(ElementM) ) THEN
-                  uq = um
-                  vq = vm
-                  um = -1.0d0 + 2.0d0*uq + vq
-                  vm = SQRT(3.0d0)*vq
-                END IF
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
               END IF
               IF(.NOT. Stat) CYCLE
@@ -9967,13 +10301,14 @@ CONTAINS
                 END IF
 
                 DO j=1,nd
-                  IF(isPElement(Element)) THEN
+                  IF(pElemBasis) THEN
                     jj = Indexes(j)                                    
+                    IF(.NOT. pElemProj .AND. j > n ) CYCLE
                   ELSE
                     jj = Element % NodeIndexes(j)
                   END IF
                   IF (j<=n) jj=InvPerm1(jj)
-
+                  
                   nrow = NodePerm(jj)
                   IF( nrow == 0 ) CYCLE
 
@@ -9987,12 +10322,13 @@ CONTAINS
                   DO i=1,nd
                     Nslave = Nslave + 1
 
-                    IF(isPElement(Element)) THEN
-                      ii = Indexes(i)
+                    IF(pElemBasis) THEN
+                      IF(.NOT. pElemProj .AND. i > n ) CYCLE
+                      ii = Indexes(i)                      
                     ELSE
                       ii = Element % NodeIndexes(i)
                     END IF
-                    IF(i<=nM) ii=InvPerm1(ii)
+                    IF(i<=n) ii=InvPerm1(ii)
 
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                                ii, NodeCoeff * Basis(i) * val ) 
@@ -10006,7 +10342,8 @@ CONTAINS
                   DO i=1,ndM
 !                   IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
-                    IF(isPElement(ElementM)) THEN
+                    IF(pElemBasis) THEN
+                      IF(.NOT. pElemProj .AND. i > nM ) CYCLE
                       ii = IndexesM(i)
                     ELSE
                       ii = ElementM % NodeIndexes(i)
@@ -10254,58 +10591,58 @@ CONTAINS
         DEALLOCATE(CoeffBasis, MASS )
       END IF
        
-      CALL Info('AddProjectorWeakGeneric','Number of integration pair candidates: '&
+      CALL Info(Caller,'Number of integration pair candidates: '&
           //TRIM(I2S(TotCands)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of integration pairs: '&
+      CALL Info(Caller,'Number of integration pairs: '&
           //TRIM(I2S(TotHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of edge intersections: '&
+      CALL Info(Caller,'Number of edge intersections: '&
           //TRIM(I2S(EdgeHits)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of corners inside element: '&
+      CALL Info(Caller,'Number of corners inside element: '&
           //TRIM(I2S(EdgeHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of initial corners: '&
+      CALL Info(Caller,'Number of initial corners: '&
           //TRIM(I2S(InitialHits)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of active corners: '&
+      CALL Info(Caller,'Number of active corners: '&
           //TRIM(I2S(ActiveHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of most subelement corners: '&
+      CALL Info(Caller,'Number of most subelement corners: '&
           //TRIM(I2S(MaxSubTriangles)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Element of most subelement corners: '&
+      CALL Info(Caller,'Element of most subelement corners: '&
           //TRIM(I2S(MaxSubElem)),Level=10)
 
       WRITE( Message,'(A,ES12.5)') 'Total reference area:',TotRefArea
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,ES12.5)') 'Total integrated area:',TotSumArea
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES15.6)') 'Average ratio in area integration:',Err 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Maximum relative discrepancy in areas (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
-      CALL Info('AddProjectorWeakGeneric','Number of slave entries: '&
+      CALL Info(Caller,'Number of slave entries: '&
           //TRIM(I2S(Nslave)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of master entries: '&
+      CALL Info(Caller,'Number of master entries: '&
           //TRIM(I2S(Nmaster)),Level=10)
 
       IF( DebugEdge ) THEN
         CALL ListAddConstReal( CurrentModel % Simulation,'res: err',err) 
 
         WRITE( Message,'(A,ES15.6)') 'Slave entries total sum:', sums
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Master entries total sum:', summ
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Master entries total sum2:', summ2
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Maximum edge projection error:', MaxEdgeErr
-        CALL Info('AddProjectorWeakGeneric',Message,Level=6)
+        CALL Info(Caller,Message,Level=6)
 
         CALL ListAddConstReal( CurrentModel % Simulation,'res: sums',sums) 
         CALL ListAddConstReal( CurrentModel % Simulation,'res: summ',summ) 
@@ -10340,24 +10677,25 @@ CONTAINS
 
     
     !----------------------------------------------------------------------
-    ! Create weak projector for the nodes in 1D mesh.
+    ! Create weak projector for the nodes and p:2 elements in 1D mesh.
+    ! Accurate integration is used. For the purpose a intermediate mesh
+    ! consisting of several element segments is used. 
     !----------------------------------------------------------------------
     SUBROUTINE AddProjectorWeak1D()
 
       INTEGER, TARGET :: IndexesT(3)
-      INTEGER, POINTER :: Indexes(:), IndexesM(:)
-      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,inds(10),nM,iM,i2,i2M
+      INTEGER, ALLOCATABLE :: Indexes(:), IndexesM(:)
+      INTEGER :: sgn0,n,nd,nM,ndM,ind,indM 
       INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep, AntiPeriodicHits
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT 
       TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
-      REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
-          xminm,yminm,DetJ,Wtemp,q,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual,dx,dxcut, &
+      REAL(KIND=dp) :: xt,xmax,xmin,dx,dxcut,xmaxm,ymaxm,u,v,w, &
+          xminm,yminm,DetJ, SumArea, RefArea, MaxErr,MinErr,Err, &
           zmin,zmax, zminm, zmaxm
       REAL(KIND=dp) :: TotRefArea, TotSumArea
-      REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:)
       LOGICAL :: LeftCircle, Stat
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
@@ -10366,10 +10704,14 @@ CONTAINS
       INTEGER :: SaveInd
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
+      INTEGER :: allocstat
+      
+!      REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
+      CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeak1D"
 
-      REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
-
-      CALL Info('AddProjectorWeak1D','Creating weak constraints using a 1D integrator',Level=8)      
+      
+      
+      CALL Info(Caller,'Creating weak constraints using a 1D integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
 
@@ -10377,13 +10719,14 @@ CONTAINS
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
  
-      n = Mesh % MaxElementNodes
-      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-      ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
-      ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
-      ALLOCATE( Basis(n), BasisM(n) )
-
-      IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
+      n = Mesh % MaxElementDOFs
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
+          NodesM % x(n), NodesM % y(n), NodesM % z(n), &
+          NodesT % x(n), NodesT % y(n), NodesT % z(n), &
+          Basis(n), Indexes(n), IndexesM(n), STAT = allocstat )
+      IF( allocstat /= 0 ) CALL Fatal(Caller,'Error in allocation')
+      
+ !     IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
@@ -10391,14 +10734,11 @@ CONTAINS
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
       NodesT % z = 0.0_dp
-      yt = 0.0_dp
-      zt = 0.0_dp
 
       MaxErr = 0.0_dp
       MinErr = HUGE( MinErr )
       MaxErrInd = 0
       MinErrInd = 0
-      zt = 0.0_dp
       LeftCircle = .FALSE.
      
       ! The temporal element segment used in the numerical integration
@@ -10410,7 +10750,7 @@ CONTAINS
       AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
-
+      
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -10418,10 +10758,14 @@ CONTAINS
         SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
-        Indexes => Element % NodeIndexes
         
+        nd = mGetElementDOFs(Indexes,Element)
+        n = Element % TYPE % NumberOfNodes
+        IF(.NOT. pElemBasis) nd = n
+
         n = Element % TYPE % NumberOfNodes        
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
+        IF(pElemBasis) Nodes % x(n+1:) = 0._dp
 
         ! There is a discontinuity of angle at 180 degs
         ! If we are working on left-hand-side then add 360 degs to the negative angles
@@ -10470,7 +10814,17 @@ CONTAINS
           nrow = NodePerm(j)
           IF( nrow == 0 ) CYCLE
           CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
+
         END DO
+
+        IF(pElemProj) THEN 
+          DO i=n+1,nd
+            j = Indexes(i)
+            nrow = NodePerm(j)
+            IF( nrow == 0 ) CYCLE
+            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
+          END DO
+        END IF
 
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
@@ -10478,12 +10832,13 @@ CONTAINS
         DO indM=1,BMesh2 % NumberOfBulkElements
           
           ElementM => BMesh2 % Elements(indM)        
-          IndexesM => ElementM % NodeIndexes
+          ndM = mGetElementDOFs(IndexesM,ElementM)
 
           nM = ElementM % TYPE % NumberOfNodes
-
- 
+          IF(.NOT.pElemBasis) ndM = nM
+        
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
+          IF(pElemBasis) NodesM % x(nM+1:) = 0._dp
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
@@ -10567,140 +10922,14 @@ CONTAINS
             END DO
             CLOSE( 10 )           
           END IF
-                   
-          ! Use somewhat higher integration rules than the default
-          IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
+
+          ! In order to reuse the innermost assembly loop it has been
+          ! restructured into a separate routine. 
+          CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+              sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
+              Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
+              InvPerm1, InvPerm2, SumArea )
           
-          IF(BiOrthogonalBasis) THEN
-            MASS  = 0
-            CoeffBasis = 0
-            DO nip=1, IP % n 
-              stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
-                  IP % v(nip),IP % w(nip),detJ,Basis)
-
-              ! Global coordinate of the integration point
-              xt = SUM( Basis(1:2) * NodesT % x(1:2) )
-            
-              ! Integration weight for current integration point
-              Wtemp = DetJ * ArcCoeff * IP % s(nip)
-            
-              ! Integration point at the slave element
-              CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
-              stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
-              DO i=1,n
-                DO j=1,n
-                  MASS(i,j) = MASS(i,j) + wTemp * Basis(i) * Basis(j)
-                END DO
-                CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
-              END DO
-            END DO
-
-            CALL InvertMatrix( MASS, n )
-
-            DO i=1,n
-              DO j=1,n
-                MASS(i,j) = MASS(i,j) * CoeffBasis(i)
-              END DO
-            END DO
-          END IF
-
-
-          DO nip=1, IP % n 
-            stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
-                IP % v(nip),IP % w(nip),detJ,Basis)
-            
-            ! We will actually only use the global coordinates and the integration weight 
-            ! from the temporal mesh. 
-            
-            ! Global coordinate of the integration point
-            xt = SUM( Basis(1:2) * NodesT % x(1:2) )
-            
-            ! Integration weight for current integration point
-            ! Use the real arc length so that this projector weights correctly 
-            ! in rotational case when used with other projectors.
-            Wtemp = ArcCoeff * DetJ * IP % s(nip)
-            sumarea = sumarea + Wtemp
-
-            ! Integration point at the slave element
-            CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
-            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
-            ! Integration point at the master element
-            CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
-            stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
-            
-            IF(BiOrthogonalBasis) THEN
-              CoeffBasis = 0._dp
-              DO i=1,n
-                DO j=1,n
-                  CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
-                END DO
-              END DO
-            END IF
-
-            ! Add the entries to the projector
-            DO j=1,n 
-              jj = Indexes(j)                                    
-              nrow = NodePerm(InvPerm1(jj))
-              IF( nrow == 0 ) CYCLE
-              
-              Projector % InvPerm(nrow) = InvPerm1(jj)
-              val = Basis(j) * Wtemp
-              IF(BiorthogonalBasis) THEN
-                val_dual = CoeffBasis(j) * Wtemp
-              END IF
-
-              DO i=1,n
-                CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val )
-
-                IF(BiorthogonalBasis ) THEN
-                  CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                        InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val_dual )
-                END IF
-              END DO
-              
-              DO i=1,nM
-                CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
-
-                IF(BiorthogonalBasis) THEN
-                  IF(DualMaster .OR. DualLCoeff) THEN
-                    CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual )
-                  ELSE
-                    CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
-                  END IF
-                END IF
-              END DO
-            END DO
-
-            ! Add the entries to the dual projector 
-            IF( CreateDual ) THEN
-              DO j=1,nM 
-                jj = IndexesM(j)                                    
-                nrow = DualNodePerm(InvPerm2(jj))
-                IF( nrow == 0 ) CYCLE
-                
-                DualProjector % InvPerm(nrow) = InvPerm2(jj)
-                val = BasisM(j) * Wtemp
-
-                DO i=1,nM
-                  CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), sgn0 * NodeCoeff * BasisM(i) * val ) 
-                END DO
-
-                DO i=1,n
-                  !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
-                  CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                      InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val )                   
-                END DO
-              END DO
-            END IF
-          END DO
-
 100       IF( Repeating ) THEN
             IF( NRange2 /= 0 ) THEN
               xminm = xminm + Nrange2 * XRange
@@ -10713,7 +10942,7 @@ CONTAINS
           END IF
 
         END DO
-
+        
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
           OPEN( 10,FILE=Filename)
@@ -10739,30 +10968,30 @@ CONTAINS
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
       DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
-      DEALLOCATE( Basis, BasisM )
+      DEALLOCATE( Basis )
 
-      CALL Info('AddProjectorWeak1D','Number of integration pairs: '&
+      CALL Info(Caller,'Number of integration pairs: '&
           //TRIM(I2S(TotHits)),Level=10)
       IF( AntiPeriodicHits > 0 ) THEN
-        CALL Info('AddProjectorWeak1D','Number of antiperiodic pairs: '&
+        CALL Info(Caller,'Number of antiperiodic pairs: '&
           //TRIM(I2S(AntiPeriodicHits)),Level=10)
       END IF
 
       WRITE( Message,'(A,ES12.5)') 'Total reference length:',TotRefArea / ArcCoeff
-      CALL Info('AddProjectorWeak1D',Message,Level=8) 
+      CALL Info(Caller,Message,Level=8) 
       WRITE( Message,'(A,ES12.5)') 'Total integrated length:',TotSumArea / ArcCoeff
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES12.3)') 'Average ratio in length integration:',Err 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Maximum relative discrepancy in length (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
 
     END SUBROUTINE AddProjectorWeak1D
@@ -11821,11 +12050,18 @@ CONTAINS
     DO k=1,2
 
       ! Potentially the projector may be set to rotate by just adding an offset 
-      ! to the angle. This may depende on time etc. 
+      ! to the angle. This may depende on time etc.
+      ! Note that user may say in Simulation section if she prefers radians instead of degrees.
+      ! This routine uses radians!
       IF( k == 1 ) THEN
         DegOffset = ListGetCReal(BParams,'Rotational Projector Angle Offset',SetDegOffset ) 
         IF(.NOT. SetDegOffset ) THEN
           DegOffset = ListGetCReal(BParams,'Mesh Rotate 3',SetDegOffset )          
+        END IF
+        IF( SetDegOffset ) THEN
+          IF( ListGetLogical( CurrentModel % Simulation,'Rotate in Radians',Found ) ) THEN
+            DegOffset = DegOffset * 180.0_dp / PI
+          END IF
         END IF
       ELSE
         SetDegOffset = .FALSE.
@@ -12008,6 +12244,9 @@ CONTAINS
     err1 = ( x1r_max(3) - x1r_min(3) ) / Radius
     err2 = ( x2r_max(3) - x2r_min(3) ) / Radius
 
+    WRITE(Message,'(A,ES12.3)') 'Radius of the rotational interface:',Radius
+    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+ 
     WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err1
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
 
@@ -12018,6 +12257,10 @@ CONTAINS
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
     END IF
 
+    ! Add "Rotor Radius" to the simulation section in case it should be usefull elsewhere...
+    CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
+    
+    
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
     ! Or perhaps we don't remove to allow more intelligent projector building 
@@ -12076,7 +12319,8 @@ CONTAINS
         END IF
         CALL Fatal('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
       END IF
-      CALL ListAddInteger(BParams,'Rotational Projector Periods', NINT( Nsymmetry ) ) 
+      i = NINT( Nsymmetry ) 
+      CALL ListAddInteger(BParams,'Rotational Projector Periods', i) 
     ELSE
       WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
@@ -12085,6 +12329,13 @@ CONTAINS
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
     END IF
 
+    ! We benefit of knowing the rotor periods also elsewhere in electrical machine
+    ! computation. This is the most reliable place where it was computed so let's
+    ! add it here. 
+    IF( i /= 1 ) THEN
+      CALL ListAddInteger(CurrentModel % Simulation,'Rotor Periods',i)
+    END IF
+    
   END SUBROUTINE RotationalInterfaceMeshes
 !------------------------------------------------------------------------------
 
@@ -12698,6 +12949,7 @@ CONTAINS
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
     INTEGER, POINTER :: GlobalDofs(:)
+    CHARACTER(*), PARAMETER :: Caller = "SaveProjector"
     
     IF(.NOT.ASSOCIATED(Projector)) RETURN
     
@@ -12722,7 +12974,7 @@ CONTAINS
         GlobalDofs => CurrentModel % Solver % Matrix % ParallelInfo % GlobalDofs
       END IF
       IF(.NOT. ASSOCIATED( GlobalDofs ) ) THEN
-        CALL Info('SaveProjector','Cannot find GlobalDofs for Solver matrix')
+        CALL Info(Caller,'Cannot find GlobalDofs for Solver matrix')
         GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
       END IF
     END IF
@@ -12817,6 +13069,33 @@ CONTAINS
       CLOSE(1)     
     END IF
 
+    IF( ASSOCIATED(projector % rhs) ) THEN
+      IF(ParEnv % PEs == 1 ) THEN
+        FileName = TRIM(Prefix)//'_rhs.dat'
+      ELSE
+        FileName = TRIM(Prefix)//'_rhs_part'//&
+            TRIM(I2S(ParEnv % MyPe))//'.dat'
+      END IF
+      
+      OPEN(1,FILE=FileName,STATUS='Unknown')
+      DO i=1,projector % numberofrows
+        IF( ASSOCIATED( IntInvPerm ) ) THEN
+          ii = intinvperm(i)
+          IF( ii == 0 ) CYCLE
+        ELSE
+          ii = i
+        END IF
+
+        IF( GlobalInds ) THEN
+          ii = GlobalDofs(ii)
+          WRITE(1,*) ii, i, ParEnv % MyPe, projector % rhs(i)
+        ELSE
+          WRITE(1,*) ii, i, projector % rhs(i)
+        END IF
+      END DO
+      CLOSE(1)     
+    END IF
+
   END SUBROUTINE SaveProjector
 
 
@@ -12841,7 +13120,170 @@ CONTAINS
 
   END SUBROUTINE SetProjectorRowsum
 
+  
+  ! This creates a projector that integrates over the BCs on the boundary such that
+  ! an integral constraint may be applied on it. For example, we could set the
+  ! incoming flow without actually setting the profile.
+  !--------------------------------------------------------------------------------------
+  FUNCTION IntegralProjector(Model, Mesh, BCInd ) RESULT ( Projector )
 
+    TYPE(Model_t) :: Model  
+    TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER :: BCInd    
+    TYPE(Matrix_t), POINTER :: Projector
+        
+    REAL(KIND=dp) :: area
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found
+    INTEGER :: n
+    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="IntegralProjector"
+
+    
+    BC => Model % BCs(BCInd) % Values
+    NULLIFY(Projector)
+    
+    IF( .NOT. ListGetLogical( BC,'Integral BC', Found ) ) RETURN
+
+    CALL Info(Caller,'Creating integral constraint matrix for boundary: '//TRIM(I2S(BCind)),Level=6)
+    
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+    Projector % ProjectorType = PROJECTOR_TYPE_INTEGRAL
+    
+    CALL CreateIntegralProjector()
+    
+    CALL List_toCRSMatrix(Projector)
+    area = SUM( Projector % Values )
+    n = SIZE( Projector % Values ) 
+    
+    WRITE( Message,'(A,ES12.4)') 'Total area of boundary integral:',area  
+    CALL Info(Caller, Message, Level=6 )
+
+    CALL SetInvPermIndex()
+    
+    IF( InfoActive(20) ) THEN
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix entries: ',SUM(Projector%Values)
+       CALL Info(Caller,Message)
+       CALL Info(Caller,'Constraint matrix cols min:'//TRIM(I2S(MINVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix cols max:'//TRIM(I2S(MAXVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Projector%Rows))))
+       CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Projector%Rows))))
+     END IF
+            
+  CONTAINS
+    
+    SUBROUTINE CreateIntegralProjector()
+    
+      INTEGER :: i,j,n,t,p
+      REAL(KIND=dp) :: u,v,w,weight,x,detJ,val
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+      TYPE(Nodes_t) :: Nodes
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: Indexes(:)  
+      TYPE(GaussIntegrationPoints_t) :: IP
+      LOGICAL :: AxisSym, Stat, Visited = .FALSE.
+
+      SAVE Visited, Nodes, Basis
+
+      IF(.NOT. Visited ) THEN
+        n = Mesh % MaxElementNodes
+        ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+        Visited = .TRUE.
+      END IF
+
+      AxisSym = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric ) 
+
+      DO t = 1, Mesh % NumberOfBoundaryElements
+
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+
+        IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
+
+        n = Element % TYPE % NumberOfNodes        
+        Indexes => Element % NodeIndexes      
+        IP = GaussPoints( Element )
+
+        Nodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+        Nodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+        Nodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+
+        DO j=1,IP % n
+          u = IP % u(j)
+          v = IP % v(j)
+          w = IP % w(j)
+
+          Stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis)
+
+          weight = detJ * IP % s(j)
+          IF( AxisSym ) THEN
+            x = SUM( Basis(1:n) * Nodes % x(1:n) )
+            weight = weight * x
+          END IF
+          
+          DO p=1,n
+            val = weight * Basis(p)
+            CALL List_AddToMatrixElement(Projector % ListMatrix, 1, Indexes(p), val ) 
+          END DO
+          
+        END DO
+      END DO
+
+    END SUBROUTINE CreateIntegralProjector    
+
+
+    ! Let us associate the inverso permutation to some degree of freedom that is unique and not
+    ! set by some other BCs. This unique index is needed in the future. 
+    !------------------------------------------------------------------------------------------
+    SUBROUTINE SetInvPermIndex()
+    
+      INTEGER :: i,j,t,n,maxind
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: Indexes(:)  
+      LOGICAL, ALLOCATABLE :: SomeOtherBC(:)
+      
+      IF(.NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
+        ALLOCATE( Projector % InvPerm(1) ) 
+        Projector % InvPerm = 0
+      END IF
+
+      n = Mesh % NumberOfNodes
+      ALLOCATE( SomeOtherBC(n) )
+      SomeOtherBC = .FALSE.
+      maxind = 0
+      
+      DO t = 1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) CYCLE
+        Indexes => Element % NodeIndexes      
+        SomeOtherBC(Indexes) = .TRUE.
+      END DO
+
+      DO t = 1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) THEN
+          Indexes => Element % NodeIndexes      
+          n = Element % TYPE % NumberOfNodes        
+          DO i=1,n
+            j = Indexes(i)
+            IF( SomeOtherBC(j) ) CYCLE
+            maxind = MAX(maxind,j)
+          END DO
+        END IF
+      END DO
+      
+      IF( maxind == 0 ) THEN
+        CALL Fatal(Caller,'Could not determine maxiumum unset index!')
+      ELSE
+        CALL Info(Caller,'Setting the representative node to: '//TRIM(I2S(maxind)),Level=8)
+        Projector % InvPerm(1) = maxind
+      END IF        
+    END SUBROUTINE SetInvPermIndex
+    
+  END FUNCTION IntegralProjector
+
+
+  
 !------------------------------------------------------------------------------
 !> Create a projector between Master and Target boundaries.
 !> The projector may be a nodal projector x=Px or a weigted 
@@ -13371,6 +13813,7 @@ CONTAINS
       END IF
     END DO
 
+    
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
@@ -13635,7 +14078,7 @@ CONTAINS
       IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
-      ALLOCATE(PI_out % INTERFACE(nnodes))
+      ALLOCATE(PI_out % NodeInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
@@ -13733,7 +14176,7 @@ CONTAINS
         ActiveCoord(cnt) = CurrCoord
 
         IF (isParallel) THEN
-          PI_out % INTERFACE(cnt) = PI_in % INTERFACE(j)
+          PI_out % NodeInterface(cnt) = PI_in % NodeInterface(j)
 
           ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(&
                SIZE(PI_in % NeighbourList(j) % Neighbours)))
@@ -14969,7 +15412,7 @@ CONTAINS
 
     INTEGER, POINTER :: FaceMap(:,:)
     INTEGER, TARGET  :: TetraFaceMap(4,6), BrickFaceMap(6,9), &
-         WedgeFaceMap(5,8), PyramidFaceMap(5,8)
+         WedgeFaceMap(5,8), PyramidFaceMap(5,8), TriFaceMap(1,3), QuadFaceMap(1,4)
     
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
@@ -14977,6 +15420,9 @@ CONTAINS
     CALL Info('FindMeshFaces3D','Finding mesh faces in 3D mesh',Level=12)
 
     Masked = PRESENT(BulkMask)
+
+    TriFaceMap(1,:)  = [1,2,3]
+    QuadFaceMap(1,:) = [1,2,3,4]
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15148,6 +15594,30 @@ CONTAINS
 
 
              SELECT CASE( Element % TYPE % ElementCode / 100 )
+             CASE(3)
+               !
+               !               linear tri
+               !               -----------
+               SELECT CASE( Degree ) 
+               CASE(1)
+                 n1 = 3
+               CASE DEFAULT
+               END SELECT
+
+               Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
+
+             CASE(4)
+               !
+               !               linear quad
+               !               -----------
+               SELECT CASE( Degree ) 
+               CASE(1)
+                 n1 = 4
+               CASE DEFAULT
+               END SELECT
+
+               Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
+
              CASE(5)
                !
                !               for tetras:
@@ -15220,7 +15690,7 @@ CONTAINS
              Faces(Face) % NDOFs  = 0
              IF (Element % NDOFs /= 0) Faces(Face) % NDOFs = &
                  Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                 Faces(Face) % TYPE % NumberOfNodes
+                      Faces(Face) % Type % NumberOfNodes
              Faces(Face) % BDOFs  = 0
              Faces(Face) % DGDOFs = 0
              Faces(Face) % EdgeIndexes => NULL()
@@ -15317,7 +15787,6 @@ CONTAINS
     QuadEdgeMap(2,:) = [2,3,6]
     QuadEdgeMap(3,:) = [3,4,7]
     QuadEdgeMap(4,:) = [4,1,8]
-
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15489,7 +15958,7 @@ CONTAINS
                 Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces).AND.ASSOCIATED(FaceEdgeMap) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
                  Face => Mesh % Faces(Element % FaceIndexes(ii))
                  IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
@@ -15500,14 +15969,20 @@ CONTAINS
                     IF (FaceEdgeMap(ii,jj) == k) THEN
                        Face % EdgeIndexes(jj) = Edge
                        IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                          Edges(Edge) % BoundaryInfo % Left => Face
+                         Edges(Edge) % BoundaryInfo % Left => Face
                        ELSE
-                          Edges(Edge) % BoundaryInfo % Right => Face
+                         Edges(Edge) % BoundaryInfo % Right => Face
                        END IF
                        EXIT
                     END IF
                  END DO
                END DO
+             ELSE
+               IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
+                 Edges(Edge) % BoundaryInfo % Left  => Element
+               ELSE
+                 Edges(Edge) % BoundaryInfo % Right => Element
+               END IF
              END IF
           ELSE
 
@@ -15525,7 +16000,7 @@ CONTAINS
              Edges(Edge) % NDOFs  = 0
              IF (Element % NDOFs /= 0) Edges(Edge) % NDOFs = &
                  Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                 Edges(Edge) % TYPE % NumberOfNodes
+                     Edges(Edge) % TYPE % NumberOfNodes
              Edges(Edge) % BDOFs  = 0
              Edges(Edge) % DGDOFs = 0
              Edges(Edge) % EdgeIndexes => NULL()
@@ -15556,24 +16031,30 @@ CONTAINS
                 NULLIFY( Edges(Edge) % PDefs )
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
-                 Face => Mesh % Faces( Element % FaceIndexes(ii) )
-                 IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
-                    ALLOCATE( Face % EdgeIndexes( Face % TYPE % NumberOfEdges ) )
+                 Face => Mesh % Faces(Element % FaceIndexes(ii))
+                 IF (.NOT.ASSOCIATED(Face % EdgeIndexes)) THEN
+                    ALLOCATE(Face % EdgeIndexes(Face % TYPE % NumberOfEdges))
                     Face % EdgeIndexes = 0
                  END IF
                  DO jj=1,Face % TYPE % NumberOfEdges
-                    IF ( FaceEdgeMap(ii,jj) == k ) THEN
+                    IF (FaceEdgeMap(ii,jj) == k) THEN
                        Face % EdgeIndexes(jj) = Edge
                        IF (.NOT.ASSOCIATED( Edges(Edge) % BoundaryInfo % Left)) THEN
-                          Edges(Edge) % BoundaryInfo % Left => Face
+                         Edges(Edge) % BoundaryInfo % Left => Face
                        ELSE
-                          Edges(Edge) % BoundaryInfo % Right => Face
+                         Edges(Edge) % BoundaryInfo % Right => Face
                        END IF
                     END IF
                  END DO
                END DO
+             ELSE
+               IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
+                 Edges(Edge) % BoundaryInfo % Left  => Element
+               ELSE
+                 Edges(Edge) % BoundaryInfo % Right => Element
+               END IF
              END IF
 
 !            Update the hash table:
@@ -17501,7 +17982,7 @@ CONTAINS
        ALLOCATE( NewMesh % ParallelInfo % NeighbourList(n), stat=istat )
        IF ( istat /= 0 ) &
          CALL Fatal( 'UpdateParallelMesh', 'Allocate error.' )
-       CALL AllocateVector( NewMesh % ParallelInfo % INTERFACE,n  )
+       CALL AllocateVector( NewMesh % ParallelInfo % NodeInterface,n  )
        CALL AllocateVector( NewMesh % ParallelInfo % GlobalDOFs,n )
 
        DO i=1,n
@@ -17509,8 +17990,8 @@ CONTAINS
        END DO
 
        n = Mesh % NumberOfNodes
-       NewMesh % ParallelInfo % INTERFACE = .FALSE.
-       NewMesh % ParallelInfo % INTERFACE(1:n) = Mesh % ParallelInfo % INTERFACE
+       NewMesh % ParallelInfo % NodeInterface = .FALSE.
+       NewMesh % ParallelInfo % NodeInterface(1:n) = Mesh % ParallelInfo % NodeInterface
 
        NewMesh % ParallelInfo % GlobalDOFs = 0
        NewMesh % ParallelInfo % GlobalDOFs(1:n) = &
@@ -17534,7 +18015,7 @@ CONTAINS
           !-----------------------
           p = 0 
           DO i = 1, Mesh % NumberOfNodes
-             IF( Mesh % ParallelInfo % INTERFACE(i) ) p = p+1
+             IF( Mesh % ParallelInfo % NodeInterface(i) ) p = p+1
           END DO
 !         WRITE(*,'(A,I4,A,I6,A)')'SplitMeshEqual: PE:', &
 !              Parenv % MyPE+1, ' Found',p,' interface nodes'
@@ -17547,7 +18028,7 @@ CONTAINS
              Edge => Mesh % Edges(i)
              IF( ASSOCIATED(Edge % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Edge % BoundaryInfo % Right) ) CYCLE
-             IF( .NOT.ALL( Mesh % ParallelInfo % INTERFACE( Edge % NodeIndexes ) )) CYCLE
+             IF( .NOT.ALL( Mesh % ParallelInfo % NodeInterface( Edge % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
           !
@@ -17595,11 +18076,11 @@ CONTAINS
              
              ! This is just for the edge count:
              !---------------------------------
-             IF( NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + i) ) CYCLE
+             IF( NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + i) ) CYCLE
              
              ! Mark interface nodes and count edges:
              !--------------------------------------
-             NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + i) = .TRUE.
+             NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + i) = .TRUE.
              p = p+1
 
           END DO
@@ -17617,7 +18098,7 @@ CONTAINS
           !-----------------------
           p = 0 
           DO i = 1, Mesh % NumberOfNodes
-             IF( Mesh % ParallelInfo % INTERFACE(i) ) p = p+1
+             IF( Mesh % ParallelInfo % NodeInterface(i) ) p = p+1
           END DO
 !         WRITE(*,'(A,I4,A,I6,A)')'SplitMeshEqual: PE:', &
 !              Parenv % MyPE+1, ' Found',p,' interface nodes'
@@ -17630,7 +18111,7 @@ CONTAINS
              Face => Mesh % Faces(i)
              IF( ASSOCIATED(Face % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Face % BoundaryInfo % Right) ) CYCLE
-             IF( .NOT.ALL( Mesh % ParallelInfo % INTERFACE( Face % NodeIndexes ) )) CYCLE
+             IF( .NOT.ALL( Mesh % ParallelInfo % NodeInterface( Face % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
           
@@ -17693,11 +18174,11 @@ CONTAINS
                 
                 ! This is just for the edge count:
                 !---------------------------------
-                IF( NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + k) ) CYCLE
+                IF( NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + k) ) CYCLE
                 
                 ! Mark interface nodes and count edges:
                 !--------------------------------------
-                NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + k) = .TRUE.
+                NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + k) = .TRUE.
                 p = p+1
              END DO
           END DO
@@ -17720,8 +18201,8 @@ CONTAINS
        DO i = 1,Mesh % NumberOfFaces
           Face => Mesh % Faces(i) 
           IF( Face % TYPE % NumberOfNodes == 4 ) THEN
-             IF ( ALL( Mesh % ParallelInfo % INTERFACE( Face % NodeIndexes ) ) ) THEN
-                NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes &
+             IF ( ALL( Mesh % ParallelInfo % NodeInterface( Face % NodeIndexes ) ) ) THEN
+                NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes &
                      + Mesh % NumberOfEdges + i ) = .TRUE.
                 j = j + 1
                 k = k + Face % TYPE % NumberOfNodes
@@ -17747,7 +18228,7 @@ CONTAINS
 !      of the interface nodes:
 !      ----------------------------------------
        DO i=Mesh % NumberOfNodes+1, NewMesh % NumberOfNodes
-          IF ( .NOT. NewMesh % ParallelInfo % INTERFACE(i) ) THEN
+          IF ( .NOT. NewMesh % ParallelInfo % NodeInterface(i) ) THEN
             CALL AllocateVector( NewMesh % ParallelInfo % NeighbourList(i) % Neighbours,1 )
             NewMesh % ParallelInfo % NeighbourList(i) %  Neighbours(1) = ParEnv % MyPE
           END IF
@@ -17767,7 +18248,7 @@ CONTAINS
 !         Found = .NOT.( ASSOCIATED(edge % boundaryinfo % left) &
 !              .AND.  ASSOCIATED(edge % boundaryinfo % right) )
 !         
-!         IF ( ALL(Mesh % ParallelInfo % INTERFACE(Edge % NodeIndexes)) .AND. Found ) THEN
+!         IF ( ALL(Mesh % ParallelInfo % NodeInterface(Edge % NodeIndexes)) .AND. Found ) THEN
 !            j = j + 1
 !            IntCnts(j) = Edge % TYPE % NumberOfNodes
 !            IntArray( k+1:k+IntCnts(j) ) = &
@@ -17782,7 +18263,7 @@ CONTAINS
 !      DO i = 1,Mesh % NumberOfFaces
 !         Face => Mesh % Faces(i)
 !         IF( Face % TYPE % NumberOfNodes == 4 ) THEN
-!            IF ( ALL( Mesh % ParallelInfo % INTERFACE(Face % NodeIndexes) ) ) THEN
+!            IF ( ALL( Mesh % ParallelInfo % NodeInterface(Face % NodeIndexes) ) ) THEN
 !               j = j + 1
 !               IntCnts(j) = Face % TYPE % NumberOfNodes
 !               IntArray(k+1:k+IntCnts(j)) = &
@@ -17861,8 +18342,8 @@ CONTAINS
          DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
        END IF
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
+       IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
+           DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
      END IF
 
      Mesh % Nodes => NULL()
@@ -18575,14 +19056,14 @@ CONTAINS
         ineigh(k) = nn
       END DO
 
-      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % Interface)
+      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % NodeInterface)
       ALLOCATE( s_e(n, nn ), r_e(n) )
 
       CALL CheckBuffer( nn*3*n )
 
       ii = 0
       DO i=1, Mesh % NumberOfNodes
-        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k == ParEnv % MyPE ) CYCLE
@@ -20386,6 +20867,9 @@ CONTAINS
 
     dim = Mesh % MeshDim
     Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
+    IF(.NOT. GotIt) THEN
+      Parray => ListGetConstRealArray( Params,'Partitioning Normal Vector',GotIt )
+    END IF
     IF( GotIt ) THEN
       Normal = Parray(1:3,1)
     ELSE
@@ -21204,7 +21688,7 @@ CONTAINS
       ! Mark all interface nodes as forbidden nodes
       !-----------------------------------------------
       IF( ParEnv % PEs > 1 ) THEN
-        ig => Mesh % ParallelInfo % INTERFACE
+        ig => Mesh % ParallelInfo % NodeInterface
         ForbiddenNodes = ig(1:Mesh % NumberOfNodes)
       END IF
 
@@ -22561,7 +23045,7 @@ CONTAINS
 
        cnt = 0
        DO i=1,Mesh % NumberOfNodes
-         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(.NOT.Mesh % ParallelInfo % NodeInterface(i)) CYCLE
          IF(BodyCount(i) <= 0 ) CYCLE
 
          DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
@@ -22576,7 +23060,7 @@ CONTAINS
 
        cnt = 0
        DO i=1,Mesh % NumberOfNodes
-         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(.NOT.Mesh % ParallelInfo % NodeInterface(i)) CYCLE
          IF(BodyCount(i) <= 0 ) CYCLE
 
          DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
@@ -23024,7 +23508,7 @@ CONTAINS
    OPEN(1,FILE=dumpfile, STATUS='Unknown')  
    DO i=1,n
      j = ParInfo % GlobalDOFs(i)
-     IF( ParInfo % INTERFACE(i) ) THEN
+     IF( ParInfo % NodeInterface(i) ) THEN
        k = 1
      ELSE
        k = 0

@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  V0.0a ELMER/FEM Viewfactor computation
+! * ELMER/FEM Viewfactor computation
 ! *
 ! ******************************************************************************
 ! *
@@ -92,6 +92,7 @@
      INTEGER :: divide, nprob
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      REAL(KIND=dp) :: at0, rt0
+     CHARACTER(*), PARAMETER :: Caller = 'ViewFactors'
 
      INTERFACE
         ! void viewfactors3d
@@ -122,7 +123,8 @@
             REAL(KIND=C_DOUBLE) :: crd(*), vf(*)
             INTEGER :: idiv, fast 
         END SUBROUTINE viewfactorsaxis
-     END INTERFACE
+
+      END INTERFACE
 
      INTEGER, POINTER :: Timesteps(:)
      INTEGER :: TimeIntervals,interval,timestep,combineInt
@@ -136,14 +138,15 @@
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
      LOGICAL :: RadiationOpen, Combine
      INTEGER, PARAMETER :: VFUnit = 10
-
+     INTEGER :: iostat, NoArgs
+     
      EXTERNAL MatvecViewFact,DiagPrecViewFact
 
 
-     CALL Info( 'ViewFactors', ' ', Level=3 )
-     CALL Info( 'ViewFactors', '==================================================', Level=3 )
-     CALL Info( 'ViewFactors', ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
-     CALL Info( 'ViewFactors', '==================================================', Level=3 )
+     CALL Info( Caller, ' ', Level=3 )
+     CALL Info( Caller, '==================================================', Level=3 )
+     CALL Info( Caller, ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
+     CALL Info( Caller, '==================================================', Level=3 )
 
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
@@ -152,21 +155,22 @@
 !------------------------------------------------------------------------------
 !    Read Model from Elmer Data Base
 !------------------------------------------------------------------------------
-     CALL Info( 'ViewFactors', ' ', Level=3 )
-     CALL Info( 'ViewFactors', ' ', Level=3 )
-     CALL Info( 'ViewFactors', 'Reading Model... ', Level=3 )
+     CALL Info( Caller, ' ', Level=3 )
+     CALL Info( Caller, ' ', Level=3 )
+     CALL Info( Caller, 'Reading Model... ', Level=3 )
 
 !------------------------------------------------------------------------------
-     OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
-     GOTO 20
-
-
-10   CONTINUE
-     CALL Fatal( 'ElmerSolver', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
-
-20   CONTINUE
+     NoArgs = COMMAND_ARGUMENT_COUNT()
+     IF ( NoArgs > 0 ) THEN
+       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+     ELSE
+       OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal( Caller, 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
+       END IF
        READ(1,'(a)') ModelName
-     CLOSE(1)
+       CLOSE(1)
+     END IF
 
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
@@ -185,7 +189,7 @@
      END DO
      
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
-       CALL Fatal('ViewFactors','No heat equation definition. Cannot compute factors.')
+       CALL Fatal(Caller,'No heat equation definition. Cannot compute factors.')
      END IF
 
      Params => GetSolverParams()
@@ -214,7 +218,7 @@
 
          IF(.NOT. Found ) CYCLE
 
-         CALL Info('ViewFactors','Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
          
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
@@ -222,7 +226,7 @@
 
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( 'ViewFactors','Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
+     CALL Info( Caller,'Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -236,10 +240,10 @@
      CASE('cylindric symmetric')
        Coordinates = CylindricSymmetric
      CASE DEFAULT
-       CALL Error( 'ViewFactors', &
+       CALL Error( Caller, &
          'Unknown Global Coordinate System for Viewfactor computation ')
-       CALL Error( 'ViewFactors', TRIM(eq) )
-       CALL Fatal( 'ViewFactors', &
+       CALL Error( Caller, TRIM(eq) )
+       CALL Fatal( Caller, &
          'Only Cartesian 3D or Axi/Cylindrical Symmetric coordinates allowed. Aborting' )
      END SELECT
 
@@ -276,10 +280,10 @@
      MinFactor = ListGetConstReal(Params,'Minimum View Factor',GotIt)
      IF(.NOT. GotIt) MinFactor = 1.0d-20
 
-     CALL AllocateVector( RadElements, Mesh % NumberOfBoundaryElements, 'ViewFactors' )
+     CALL AllocateVector( RadElements, Mesh % NumberOfBoundaryElements, Caller )
 
      IF( Mesh % NumberOfBoundaryElements == 0) THEN
-       CALL Warn('ViewFactors','There are no boundary elements at all!')
+       CALL Warn(Caller,'There are no boundary elements at all!')
        STOP
      END IF
 
@@ -302,14 +306,14 @@
      END DO
 
      IF( Mesh % NumberOfBoundaryElements == 0) THEN
-       CALL Warn('ViewFactors','There are no radiation boundary elements!')
+       CALL Warn(Caller,'There are no radiation boundary elements!')
        STOP
      END IF
 
      RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
        WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
-       CALL Info('ViewFactors',LMessage,Level=3)
+       CALL Info(Caller,LMessage,Level=3)
     
 !------------------------------------------------------------------------------
 !    Here we start...
@@ -354,7 +358,7 @@
          END IF
        END IF
        
-       CALL Info('ViewFactors','Number of surfaces participating in radiation: '//TRIM(I2S(N)))
+       CALL Info(Caller,'Number of surfaces participating in radiation: '//TRIM(I2S(N)))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -400,10 +404,10 @@
 	   IF( LeftBody > 0 ) THEN 
              MatId = GetInteger( Model % Bodies(LeftBody) % Values,'Material', GotIt)
 	     IF( MatId == 0 ) THEN
-               CALL Warn('ViewFactors','Invalid material index in body, perhaps none')
+               CALL Warn(Caller,'Invalid material index in body, perhaps none')
              END IF 
            ELSE
-             CALL Warn('ViewFactors','LeftBody not associated')
+             CALL Warn(Caller,'LeftBody not associated')
            END IF
            LeftEmis = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
          END IF
@@ -441,12 +445,12 @@
 	   ! If emissivity given in either side then make the radiation target body to be the other.
            !----------------------------------------------------------------------------------------
            IF( RightEmis .AND. LeftEmis ) THEN
-             CALL Warn('ViewFactors','Emissivity defined on both sides!')
+             CALL Warn(Caller,'Emissivity defined on both sides!')
              WRITE(Message,'(A,I3,I3,A,I3,A,I5)') 'Bodies:',RightBody,LeftBody,' BC:', &
                             GetBCId( Element ),' Ind:',t
-             CALL Info('ViewFactors',Message)
+             CALL Info(Caller,Message)
              IF( ASSOCIATED(Element % BoundaryInfo % Left, Element % BoundaryInfo % Right)) THEN
-              CALL Warn('ViewFactors','Parents of the boundary element are the same')
+              CALL Warn(Caller,'Parents of the boundary element are the same')
               RadBody = LeftBody
              END IF
            ELSE IF( RightEmis ) THEN
@@ -459,9 +463,9 @@
          IF ( RadBody < 0 ) RadBody = 0
          
          IF ( RadBody>0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
-           CALL Error( 'ViewFactors', 'Inconsistent direction information (Radiation Target Body)' )
+           CALL Error( Caller, 'Inconsistent direction information (Radiation Target Body)' )
            WRITE( LMessage, * ) 'Radiation Target: ', RadBody, ' Left, Right: ', LeftBody, RightBody
-           CALL Fatal( 'ViewFactors', LMessage )
+           CALL Fatal( Caller, LMessage )
          END IF
          
          IF ( LeftNode <= 0 .OR. (RadBody>0 .AND. RadBody==RightBody) ) &
@@ -503,7 +507,7 @@
          END IF
        END DO
 
-       CALL Info( 'ViewFactors', 'Computing viewfactors...', Level=4 )
+       CALL Info( Caller, 'Computing viewfactors...', Level=4 )
 
        at0 = CPUTime(); rt0 = RealTime()
        
@@ -536,7 +540,7 @@
        END IF
        
        WRITE (Message,'(A,F8.2,F8.2)') 'View factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
-       CALL Info( 'ViewFactors',Message, Level=3 )
+       CALL Info( Caller,Message, Level=3 )
 
        IF(SYMMETRY_NOW) THEN
          DO l=6,1,-1
@@ -560,7 +564,7 @@
            END SELECT
            IF(.NOT.Found) CYCLE
 
-           CALL Info('ViewFactors','Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
            
            k = 0
            DO i=1,n/2
@@ -609,23 +613,23 @@
          END IF
        END DO       
        
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       CALL info( 'ViewFactors', 'Viewfactors before manipulation: ', Level=3 )
+       CALL Info( Caller, ' ', Level=3 )
+       CALL info( Caller, 'Viewfactors before manipulation: ', Level=3 )
        WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', Message )
+       CALL Info( Caller, Message )
        WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
-       CALL Info( 'ViewFactors', Message )
-       IF(nprob>0) CALL info( 'ViewFactors', 'Number of rowsums below 0.5 is: '&
+       CALL Info( Caller, Message )
+       IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
            //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
        
        at0 = CPUTime()
 
        IF( RadiationOpen ) THEN
-         CALL Info( 'ViewFactors','Symmetrizing Factors... ')
+         CALL Info( Caller,'Symmetrizing Factors... ')
        ELSE
-         CALL Info( 'ViewFactors','Normalizaing Factors...')
+         CALL Info( Caller,'Normalizaing Factors...')
          IF( Fmin < EPSILON( Fmin ) ) THEN
-           CALL Fatal('ViewFactors','Invalied view factors for normalization, check your geometry!')
+           CALL Fatal(Caller,'Invalied view factors for normalization, check your geometry!')
          END IF       
        END IF
 
@@ -645,19 +649,19 @@
        END DO
        
        WRITE (Message,'(A,F8.2)') 'View factors manipulated in time (s):',CPUTime()-at0
-       CALL Info( 'ViewFactors',Message, Level=3 )
+       CALL Info( Caller,Message, Level=3 )
        
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       CALL info( 'ViewFactors', 'Viewfactors after manipulation: ')
+       CALL Info( Caller, ' ', Level=3 )
+       CALL info( Caller, 'Viewfactors after manipulation: ')
        WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', Message )
+       CALL Info( Caller, Message )
        WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
-       CALL Info( 'ViewFactors', Message )
+       CALL Info( Caller, Message )
        IF( FMax > 1.001 ) THEN
-         CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
+         CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
        END IF
        IF( FMin < 0.999 ) THEN
-         CALL Warn('ViewFactors','Rowsum of view factors should not be smaller than one!')
+         CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
        END IF
 
 
@@ -688,7 +692,7 @@
          SaveMask = ( Factors > MinFactor )
 
          IF( BinaryMode ) THEN
-           CALL Info('ViewFactors','Saving view factors in binary mode',Level=5)
+           CALL Info(Caller,'Saving view factors in binary mode',Level=5)
 
            OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
                ACCESS = 'stream', STATUS='replace', ACTION='write' )
@@ -705,7 +709,7 @@
              END DO
            END DO           
          ELSE
-           CALL Info('ViewFactors','Saving view factors in ascii mode',Level=5)
+           CALL Info(Caller,'Saving view factors in ascii mode',Level=5)
 
            OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown' )
            
@@ -734,7 +738,7 @@
        
      END DO  ! Of radiation RadiationBody
 
-     CALL Info( 'ViewFactors', '*** ALL DONE ***' )
+     CALL Info( Caller, '*** ALL DONE ***' )
      CALL FLUSH(6)
 
    CONTAINS
@@ -761,8 +765,7 @@
         
         ALLOCATE( Areas(n),STAT=istat )
         IF ( istat /= 0 ) THEN
-          CALL Fatal( 'Viewfactors', &
-              'Memory allocation error 1 in NormalizeFactors.Aborting.' )
+          CALL Fatal(Caller,'Memory allocation error 1 in NormalizeFactors.' )
         END IF
 
 !------------------------------------------------------------------------------
@@ -805,8 +808,7 @@
           
           ALLOCATE( RHS(n),SOL(n),PSOL(n),Jdiag(n),Jacobian(n,n),STAT=istat )
           IF ( istat /= 0 ) THEN
-            CALL Fatal( 'Viewfactors', &
-                'Memory allocation error 2 in NormalizeFactors.Aborting.' )
+            CALL Fatal( Caller,'Memory allocation error 2 in NormalizeFactors.' )
           END IF
 
           SOL = 1.0_dp
@@ -824,8 +826,9 @@
             
             cum = SUM( RHS*RHS/Areas ) / n
             
-            WRITE (Message,'(A,I2,A,ES12.3)') 'Normalization iteration',it,': ',cum
-            CALL Info( 'ViewFactors',Message, Level=3 )
+            WRITE (Message,'(A,ES12.3)') &
+                'Normalization iteration '//TRIM(I2S(it))//': ',cum
+            CALL Info( Caller,Message, Level=3 )
             
             IF ( cum <= eps ) EXIT
             

@@ -1,0 +1,51 @@
+This is comparison of two test cases: mgdyn_harmonic_wire + mgdyn_harmonic_wire_impedanceBC2
+
+
+Data from 3D wire model (mgdyn_harmonic_wire + f=1.0e6):
+
+Variables in columns of matrix: ./s.dat
+   1: boundary int: current density im e 3 over bc 3
+   2: boundary int: current density re e 3 over bc 3
+   3: boundary mean: av re over bc 3
+   4: boundary mean: av im over bc 3
+   5: res: eddy current power
+   6: res: electromagnetic field energy
+
+   1.644427986500E-002  -8.871722206343E-004   5.542000000000E-005  -3.541809650383E-027   4.903526786027E-008   4.557897127464E-013
+
+Data from impedance boundary layer model
+
+Variables in columns of matrix: ./g.dat
+   1: boundary int mean: surface current re 3 over bc 1
+   2: boundary int mean: surface current im 3 over bc 1
+   3: res: eddy current power
+   4: res: electromagnetic field energy
+   5: res: surface current power
+
+Three densities with Element Divisions 1(3) = 8, 16, 24
+
+ -2.733644555514E+000   2.478774650999E+000   0.000000000000E+000   4.304331957857E-013   4.445897435804E-008
+ -2.720890739035E+000   2.425768289278E+000   0.000000000000E+000   4.306177181125E-013   4.338292942813E-008
+ -2.654393876621E+000   2.505441808254E+000   0.000000000000E+000   4.318517226198E-013   4.349864525289E-008
+
+
+Power dissipation:
+s(5)/g(5) = 0.90667
+
+Imaginary current (R=0.001):
+s(1)/(2*pi*R*g(2)) = 1.0558
+
+Real current:
+s(2)/(2*pi*R*g(1)) = 0.051652
+
+
+Conclusions:
+1) Imaginary current difference ~5%
+2) Power dissipation difference ~10% (quadratic)
+3) Results are robust with mesh resolution
+4) There is something fishy with the real current densities...
+
+
+
+
+ 

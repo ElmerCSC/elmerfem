@@ -1,0 +1,17 @@
+! ----- names for bodies -----
+$ core = 1
+$ air = 2
+$ A1 = 3
+! ----- names for boundaries -----
+$ xy0 = 1
+$ A1_alpha0 = 2
+$ A1_alpha1 = 3
+$ A1_gamma1 = 4
+$ A1_gamma0 = 5
+$ coreface_xy = 6
+$ A1_beta1 = 7
+$ cylinder_lateral_surface = 8
+$ A1_beta0 = 9
+$ infinity_xz1 = 10
+$ infinity_xz0 = 11
+$ bnry15 = 12

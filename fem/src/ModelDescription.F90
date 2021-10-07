@@ -58,7 +58,7 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000, MAX_MESHES = 32
 
 CONTAINS
 
@@ -130,7 +130,8 @@ CONTAINS
     INTEGER, POINTER :: OutputMask(:)
     INTEGER :: i
     LOGICAL :: GotIt
-    
+    CHARACTER(LEN=1024) :: InfoFileName 
+   
 
     MinOutputLevel = ListGetInteger( OutputList, &
         'Min Output Level', GotIt )
@@ -164,6 +165,7 @@ CONTAINS
 
     ! By default only on partition is used to show the results
     ! For debugging it may be useful to show several.
+    MinOutputPE = 0
     MaxOutputPE = ListGetInteger( OutputList, &
         'Max Output Partition', GotIt )    
     IF( GotIt ) THEN
@@ -180,6 +182,22 @@ CONTAINS
       END IF
     END IF
 
+    IF( .NOT. InfoToFile ) THEN 
+      IF( ListGetLogical( OutputList,'Output To File', GotIt ) ) THEN
+        InfoToFile = .TRUE.
+      END IF
+      IF( InfoToFile ) THEN
+        IF( MinOutputPE == MaxOutputPE ) THEN
+          InfoFileName = 'InfoFile.txt'
+        ELSE
+          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+        END IF
+        InfoOutUnit = InfoToFileUnit
+        OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
+      END IF
+    END IF
+
+    
   END SUBROUTINE InitializeOutputLevel
 
 
@@ -1009,7 +1027,7 @@ CONTAINS
       IF ( .NOT. ScanOnly .AND. ArrayN == 0 ) CYCLE
 
       CALL SectionContents( Model, List, CheckAbort, FreeNames, &
-          Section, InFileUnit, ScanOnly, Echo )
+           Section, InFileUnit, ScanOnly, Echo )
       
 !------------------------------------------------------------------------------
     END DO
@@ -1562,12 +1580,13 @@ CONTAINS
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
+      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
           Cubic, AllInt, Monotone, Stat
 
       INTEGER(KIND=AddrInt) :: Proc
+
       INTEGER :: i,j,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, iostat
 
@@ -1677,9 +1696,10 @@ CONTAINS
    
                   CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+
                     IF ( SizeGiven ) THEN
                       CALL ListAddDepRealArray( List,Name,Depname,1,ATt, &
-                            N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
+                          N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
                     ELSE
                       CALL ListAddDepReal( List,Name,Depname,1,ATt,ATx, &
                                   Proc, str(str_beg+5:) )
@@ -1702,8 +1722,7 @@ CONTAINS
                      CALL ListAddConstRealArray( List, Name, N1, N2, &
                          ATx(1:N1,1:N2,1), Proc, str(str_beg+4:) )
                    ELSE
-                     CALL ListAddConstReal(List, Name, Val, Proc, &
-                         str(str_beg+4:))
+                     CALL ListAddConstReal(List, Name, Val, Proc, str(str_beg+4:))
                    END IF
 
                  CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -1719,13 +1738,15 @@ CONTAINS
                      lua_fname => lua_popstring(LuaState, fname_len)
                      !$OMP END CRITICAL
                      !$OMP END PARALLEL
+
                      IF ( SizeGiven ) THEN 
                        CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
-                           N1, N2, Atx(1:N1, 1:N2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                           n1, n2, Atx(1:n1, 1:n2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
                      ELSE
                        CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
                            Proc, lua_fname(1:fname_len) // c_null_char)
                      END IF
+
                      v_ptr => ListFind(list, name)
                      v_ptr % LuaFun = .TRUE.
                    END BLOCK
@@ -1773,8 +1794,7 @@ CONTAINS
  
 11                IF ( .NOT. ScanOnly ) THEN
                     IF ( SizeGiven ) THEN
-                      CALL ListAddConstRealArray( List,Name,N1,N2, &
-                          ATx(1:N1,1:N2,1) )
+                      CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
                     ELSE
                       CALL ListAddConstReal( List,Name,ATx(1,1,1) )
                     END IF
@@ -1865,7 +1885,7 @@ CONTAINS
                    
                    IF ( SizeGiven ) THEN
                      CALL ListAddDepRealArray( List,Name,Depname,n,ATt(1:n), &
-                              N1,N2,ATx(1:N1,1:N2,1:n) )
+                              n1,n2,ATx(1:n1,1:n2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
                          ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
@@ -1981,6 +2001,7 @@ CONTAINS
               IF ( str(k:k) /= ' ' ) EXIT 
             END DO
 
+            n = 1
             Depname = str(str_beg:k)
 
             TYPE = LIST_TYPE_VARIABLE_SCALAR
@@ -2308,6 +2329,10 @@ CONTAINS
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
     LOGICAL :: Parallel
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES)
+    INTEGER :: MeshCount, MeshI
+    LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
 !------------------------------------------------------------------------------
 
     ALLOCATE( Model )
@@ -2405,7 +2430,11 @@ CONTAINS
 
     Def_Dofs = -1; Def_Dofs(:,1)=1
 
+    ALLOCATE(MeshSolvers(MAX_MESHES, Model % NumberOfSolvers))
+    MeshSolvers = .FALSE.
+
     i = 1
+    MeshCount = 0
     DO WHILE(i<=Model % NumberOFSolvers)
 
       Solver => Model % Solvers(i)
@@ -2423,7 +2452,24 @@ CONTAINS
         END IF
       END IF
 
-      GotMesh = ListCheckPresent(Solver % Values, 'Mesh')
+      Name = ListGetString(Solver % Values, 'Mesh',GotMesh)
+      IF(GotMesh) THEN
+        DO j=1,MeshCount
+          IF(Name==MeshNames(j)) THEN
+            GotMesh = .FALSE.
+            EXIT
+          END IF
+        END DO
+        
+        IF ( GotMesh ) THEN
+          MeshCount = MeshCount + 1
+          MeshNames(MeshCount) = Name
+          MeshSolvers(MeshCount, i) = .TRUE.
+        ELSE
+          MeshSolvers(j, i) = .TRUE.
+        END IF
+
+      END IF
 
       !
       ! Allocate Def_Dofs array in the Solver structure for handling information
@@ -2494,7 +2540,7 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs, .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -2573,9 +2619,10 @@ CONTAINS
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
           CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
-          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
-            DEALLOCATE( SerialMesh % RePartition ) 
-          END IF
+     
+          !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+          !  DEALLOCATE( SerialMesh % RePartition ) 
+          !END IF
           Model % Meshes => SerialMesh
         END IF
 
@@ -2703,8 +2750,14 @@ CONTAINS
       END DO
     END IF
 
+    MeshCount = 0
     DO s=1,Model % NumberOfSolvers
       Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+
+      DO MeshI=1,MeshCount
+        IF(Name==MeshNames(MeshI)) EXIT
+      END DO
+
       IF(PRESENT(MeshIndex)) THEN
         IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
       END IF
@@ -2712,6 +2765,7 @@ CONTAINS
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
         CALL Info('LoadModel',Message,Level=7)
+
 
         single=.FALSE.
       
@@ -2806,13 +2860,17 @@ CONTAINS
             CYCLE
           END IF
         END IF
-          
-        DO i=1,6
-          DO j=1,10
-            Def_Dofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
-          END DO
-        END DO
 
+        Def_Dofs = -1
+        DO k=1,Model % NumberOfSolvers
+          IF(MeshSolvers(MeshI,k)) THEN
+            DO i=1,6
+              DO j=1,10
+                Def_Dofs(j,i) = MAX(Def_Dofs(j,i),MAXVAL(Model % Solvers(k) % Def_Dofs(j,:,i)))
+              END DO
+            END DO
+          END IF
+        END DO
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
@@ -3053,7 +3111,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
-    LOGICAL :: Found, Flag
+    LOGICAL :: Found, Flag, DoIt, DoItB
     CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
     REAL(KIND=dp) :: Tol = 1.0e-8
     INTEGER, POINTER :: TmpInts(:)
@@ -3171,12 +3229,22 @@ CONTAINS
     ! This hack is of course prone to errors if the underlaying assumptions change. 
     DO i=1,Model % NumberOfSolvers
       List => Model % Solvers(i) % Values
-      IF( ListGetLogical( List,'Automated Structure-Structure Coupling',Found) ) THEN
-        ! Ok, we need to set automated coupling
-        CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
-        CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+            
+      DoIt =  ListGetLogical( List,'Automated Structure-Structure Coupling',Found) 
+      DoItB =  ListGetLogical( List,'Automated Fluid-Structure Coupling',Found) 
 
-        CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+      IF( DoIt .OR. DoItB ) THEN
+        ! Ok, we need to set automated coupling
+        IF( DoIt ) THEN
+          CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
+          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+        ELSE
+          CALL Info('CompleteModelKeywords','Setting automated fsi coupling!')
+          CALL Info('CompleteModelKeywords','Fluid solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Fluid-Structure Coupling',.TRUE.)
+        END IF
+          
         CALL ListAddLogical( List,'Linear System Block Mode',.TRUE.) 
         CALL ListAddNewLogical( List,'Block Monolithic',.TRUE.)
         Flag = .FALSE.
@@ -3190,8 +3258,10 @@ CONTAINS
           IF( Flag ) EXIT
         END DO
         
-        IF(.NOT. Flag) THEN
-          CALL Fatal('CompleteModelKeywords','Cannot find the other structure solver!')
+        IF(Flag) THEN
+          CALL ListAddNewInteger( List,'Structure Solver Index',j)
+        ELSE
+          CALL Fatal('CompleteModelKeywords','Cannot find the structure solver!')
         END IF
         CALL Info('CompleteModelKeywords','Slave structure solver has index: '//TRIM(I2S(j)),Level=6)
 
@@ -3204,12 +3274,86 @@ CONTAINS
         CALL ListAddInteger(List,'Pre Solvers',j)
         CALL ListAddString(ListB,'Exec Solver','never')
         CALL ListAddLogical(ListB,'Linear System Solver Disabled',.TRUE.)                
+
+        ! Make allocations for eigen analysis follow the primary solver
+        Flag = ListGetLogical(List,'Eigen Analysis',Found )
+        IF( Found ) CALL ListAddLogical(ListB,'Eigen Analysis',Flag)
+        j = ListGetInteger(List,'Eigen System Values',Found )
+        IF( Found ) CALL ListAddInteger(ListB,'Eigen System Values',j)
+        
         EXIT
       END IF
     END DO
+
+
+    ! Enable the use of "master bodies name" and "master boundaries name" for components.
+    ! This makes it possible to have circuits without reference to entity numbering.
+    BLOCK
+      LOGICAL :: BcMode
+      INTEGER, POINTER :: MasterIndexes(:)
+      INTEGER :: phase
       
+      DO i=1,Model % NumberOfComponents
+        List => Model % Components(i) % Values
+
+        BcMode = .FALSE.
+        Name = ListGetString( List,'Master Bodies Name',Found )     
+        IF( .NOT. Found ) THEN
+          Name = ListGetString( List,'Master Boundaries Name',Found ) 
+          BcMode = .TRUE.
+        END IF
+        IF(.NOT. Found) CYCLE
+
+        IF( BCMode ) THEN
+          n = Model % NumberOfBCs
+        ELSE
+          n = Model % NumberOfBodies
+        END IF
+
+        DO phase=0,1
+          j = 0
+          DO k=1,n
+            IF( BcMode ) THEN
+              NameB = ListGetString( Model % BCs(k) % Values,'Name',Found )
+            ELSE            
+              NameB = ListGetString( Model % Bodies(k) % Values,'Name',Found )
+            END IF
+            IF(.NOT. Found) CYCLE
+            IF(Name == NameB) THEN
+              j = j + 1
+              IF(phase==1) MasterIndexes(j) = k
+            END IF
+          END DO
+          IF(j==0) EXIT
+          IF(phase==0) THEN
+            NULLIFY( MasterIndexes )
+            ALLOCATE( MasterIndexes(j) )
+            MasterIndexes = 0
+          END IF
+        END DO
+
+        IF(j>0) THEN
+          IF( BCMode ) THEN
+            CALL ListAddIntegerArray( List,'Master Boundaries',j,MasterIndexes)
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          ELSE
+            CALL ListAddIntegerArray( List,'Master Bodies',j,MasterIndexes)         
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Bodies" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          END IF
+        ELSE
+          IF( BCMode ) THEN
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Boundaries" with name: '//TRIM(Name))
+          ELSE
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Bodies" with name: '//TRIM(Name))
+          END IF
+        END IF
+      END DO
+    END BLOCK
       
-    
 
   END SUBROUTINE CompleteModelKeywords
   
@@ -5579,7 +5723,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % INTERFACE) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))
@@ -5986,6 +6130,7 @@ END SUBROUTINE GetNodalElementSize
    ! They may be predefined or set by some optimization method. 
    !-------------------------------------------------------------------
    IF( OptimalStart .AND. piter == 1 ) THEN
+     CALL Info(Caller,'Trying to read previous optimal values from a file!')     
      CALL GetSavedOptimum()  
    ELSE IF( OptimalFinish .AND. piter == NoValues ) THEN
      CALL Info(Caller,'Performing the last step with the best so far')
@@ -6145,8 +6290,11 @@ END SUBROUTINE GetNodalElementSize
      INTEGER :: IOUnit
 
      Name = ListGetString(Params,'Parameter Restart File',GotIt )
-     IF(.NOT. GotIt) RETURN
-     
+     IF(.NOT. GotIt) THEN
+       Name = 'optimize-best.dat'
+       CALL Info(Caller,'Using default value for optimal parameters: '//TRIM(Name),Level=6)
+     END IF
+       
      INQUIRE (FILE=Name, EXIST=fileis)
 
      IF(.NOT. fileis ) THEN
@@ -6165,7 +6313,9 @@ END SUBROUTINE GetNodalElementSize
      n = MIN( n, SIZE( param) )
      param(1:n) = guessparam(1:n)
 
-   END SUBROUTINE GetSavedOptimum
+     CALL Info(Caller,'Number of parameters initialized from file: '//TRIM(I2S(n)),Level=6)
+
+     END SUBROUTINE GetSavedOptimum
       
  END SUBROUTINE ControlParameters
 

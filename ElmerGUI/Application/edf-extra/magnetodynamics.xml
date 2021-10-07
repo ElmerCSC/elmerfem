@@ -392,6 +392,11 @@
 	   <Type> Logical </Type>
 	   <Whatis> Use tree gauge to eliminate redundant lines in the linear system. </Whatis>
          </Parameter>
+	 <Parameter Widget="CheckBox" >
+	   <Name> Helmholtz Projection </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use Helmholtz projection of potentials to make them fulfil Coulomb gauge. </Whatis>
+         </Parameter>
       </Solver>
 
       <BoundaryCondition>

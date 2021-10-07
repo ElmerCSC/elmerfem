@@ -2099,9 +2099,10 @@ CONTAINS
       ELSE 
         DO k = 1, SIZE( pVar % PrevValues, 2 )
           Component => pVar % PrevValues(:,k)
-          str = TRIM( pVar % Name ) //' PrevValues'//TRIM(I2S(k))          
+          str = TRIM( pVar % Name ) !//' PrevValues'//TRIM(I2S(k))          
           CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pvar % Type )
+              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., &
+              VarType = pvar % TYPE, VarSuffix = 'PrevValues'//TRIM(I2S(k)))
         END DO
       END IF
     END IF
@@ -3274,8 +3275,8 @@ CONTAINS
 
          IF ( ALL(DoneThis) ) EXIT
       END DO
-
-      IF( TestConvergence ) THEN
+      
+      IF( TestConvergence .AND. CoupledMaxIter > 1 ) THEN
         IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
           CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(MIN(i,CoupledMaxIter))),Level=4)
           CoupledAbort = ListGetLogical( Model % Simulation,  &
@@ -5197,7 +5198,7 @@ CONTAINS
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( Parallel .AND. MeActive ) THEN
-         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % INTERFACE) ) THEN
+         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 

@@ -324,9 +324,9 @@ CONTAINS
  
          IF (ido == -1 .OR. ido == 1) THEN
 
-           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
-           CALL Info( Caller, Message, Level=6 )
-!            CALL Info( Caller, '.', .TRUE., Level=5 )
+!           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
+!           CALL Info( Caller, Message, Level=20 )
+            CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 
 !---------------------------------------------------------------------
@@ -949,7 +949,7 @@ END SUBROUTINE CheckResiduals
 
          IF( ido==-1 .OR. ido==1 ) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=5 )
+!           CALL Info( Caller, Message, Level=20 )
             CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
          END IF
@@ -1355,7 +1355,7 @@ END SUBROUTINE CheckResiduals
 
          IF (ido == -1 .OR. ido == 1) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info(Caller, Message, Level=5 )
+!           CALL Info(Caller, Message, Level=20 )
             CALL Info(Caller, '.', .TRUE., Level=5 )
             Iter = Iter + 1
 !---------------------------------------------------------------------
@@ -1887,7 +1887,7 @@ END SUBROUTINE CheckResidualsComplex
             ! ido =-1 inv(A)*z:
             !--------------------------
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=5 )
+!           CALL Info( Caller, Message, Level=20 )
             CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 

@@ -96,7 +96,7 @@ Body Force 1
      Real MATC "1.0e-1 * 1.0e+9 * cos(2.0*tx(0))"
 End
 
-Equation 1 :: Active Solvers(1) = 1
+Equation 1 :: Active Solvers(2) = 1 2
 
 Solver 1
   Equation = "Shell equation"
@@ -115,6 +115,17 @@ Solver 1
   Linear System GCR Restart = 100
   Linear System Abort Not Converged = False
   Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+
+! Save an axial profile of the p-solution:
+  Polyline Coordinates(2,2) = 0.0 0.0 0.0 1.0
+  Polyline Divisions(1) = 400
+
+  Filename = g.dat
 End
 
 ! Symmetry at y2 = 0:

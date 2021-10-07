@@ -531,9 +531,9 @@ CONTAINS
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
-     TYPE(Element_t),  POINTER :: Element
+     TYPE(Element_t),  POINTER :: Element, Parent
 
-     INTEGER :: i, j, k, n
+     INTEGER :: i, j, k, n, lr
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
@@ -564,7 +564,13 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
+     ! Some variables do not really follow the numbering
+     ! nodes + faces + edges etc. of the standard solver.
+     ! For example, if we want to request DG values from a variable
+     ! that is not called by a DG solver we have to treat the DG variable
+     ! separately. As is the case for Gauss variables.
      ! If variable is defined on gauss points return that instead
+     !-------------------------------------------------------------
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        j = Element % ElementIndex
        n = Variable % Perm(j+1) - Variable % Perm(j)
@@ -573,17 +579,37 @@ CONTAINS
        END DO
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
-       Indexes => Element % DGIndexes
-       n = Element % Type % NumberOfNodes
-       DO i=1,n
-         j = Variable % Perm(Indexes(i))
-         IF(j==0) CYCLE
-         x(i) = Values(j)
-       END DO
+       n = Element % TYPE % NumberOfNodes
+       Indexes => Element % DGIndexes       
+       IF(ASSOCIATED( Indexes ) ) THEN
+         DO i=1,n
+           j = Variable % Perm(Indexes(i))
+           IF(j>0) x(i) = Values(j)
+         END DO
+       ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         DO lr=1,2
+           IF(lr==1) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+           DO i=1,n
+             DO j=1,Parent % TYPE % NumberOfNodes
+               IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                 k = Variable % Perm( Parent % DGIndexes(j) )
+                 IF(k>0) x(i) = Values(k)
+                 EXIT
+               END IF
+             END DO
+           END DO
+           EXIT
+         END DO
+       END IF
        RETURN       
      END IF
 
-     
      Indexes => GetIndexStore()
      IF ( ASSOCIATED(Variable % Solver) ) THEN
        n = GetElementDOFs( Indexes, Element, Variable % Solver )
@@ -636,9 +662,9 @@ CONTAINS
 
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
-     TYPE(Element_t),  POINTER :: Element
+     TYPE(Element_t),  POINTER :: Element, Parent
 
-     INTEGER :: i, j, k, l, n
+     INTEGER :: i, j, k, l, lr, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
 
@@ -676,9 +702,9 @@ CONTAINS
        ASSOCIATE(dofs => variable % dofs)
          j = Element % ElementIndex
          n = Variable % Perm(j+1) - Variable % Perm(j)
-         IF (size(x,1) < dofs .or. size(x,2) < n) THEN
-           write (message,*) 'Attempting to get IP solution to a too small array of size', &
-               shape(x), '. Required size:', dofs, n
+         IF (SIZE(x,1) < dofs .OR. SIZE(x,2) < n) THEN
+           WRITE (message,*) 'Attempting to get IP solution to a too small array of size', &
+               SHAPE(x), '. Required size:', dofs, n
            CALL Fatal('GetVectorLocalSolution', message)
          END IF
          DO i=1,n
@@ -691,18 +717,48 @@ CONTAINS
          RETURN
        END ASSOCIATE
      ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
-       Indexes => Element % DGIndexes
        n = Element % TYPE % NumberOfNodes
-       ASSOCIATE(dofs => variable % dofs)
-         DO i=1,n
-           j = variable % perm(indexes(i))
-           IF( j==0 ) CYCLE
-           DO k=1,dofs
-             x(k, i) = Values((j-1)*dofs + k)
+       Indexes => Element % DGIndexes
+       IF(ASSOCIATED( Indexes ) ) THEN
+         ASSOCIATE(dofs => variable % dofs)
+           DO i=1,n
+             j = variable % perm(indexes(i))
+             IF( j==0 ) CYCLE
+             DO k=1,dofs
+               x(k,i) = Values((j-1)*dofs + k)
+             END DO
            END DO
+           RETURN
+         END ASSOCIATE
+       ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         DO lr=1,2
+           IF(lr==1) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+
+           ASSOCIATE(dofs => variable % dofs)
+             DO i=1,n
+               DO j=1,Parent % TYPE % NumberOfNodes
+                 IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                   l = Variable % Perm( Parent % DGIndexes(j) )
+                   IF(l>0) THEN
+                     DO k=1,dofs
+                       x(k,i) = Values((l-1)*dofs + k )
+                     END DO
+                   END IF
+                   EXIT
+                 END IF
+               END DO
+             END DO
+           END ASSOCIATE
+           EXIT
          END DO
-         RETURN
-       END ASSOCIATE       
+       END IF
+       RETURN       
      END IF
 
      
@@ -3182,11 +3238,7 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Params,'Equation')),Level=10)
-     
-     IF( ListGetLogical( Params,'Store Cyclic System', Found ) ) THEN
-       CALL StoreCyclicSolution( Solver ) 
-     END IF
-     
+          
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3627,6 +3679,43 @@ CONTAINS
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
+  
+  SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )     
+    TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    REAL(KIND=dp) :: G(:,:), f(:)
+    LOGICAL, OPTIONAL :: VecAssembly
+
+    TYPE(Matrix_t), POINTER   :: A
+    REAL(KIND=dp), POINTER :: pvalues(:), prhs(:)
+    
+    IF ( PRESENT( USolver ) ) THEN
+      A => USolver % Matrix
+    ELSE
+      A => CurrentModel % Solver % Matrix
+    END IF
+    
+    IF(.NOT. ASSOCIATED( A % Values_im ) ) THEN
+      ALLOCATE( A % Values_im(SIZE( A % Values ) ) )
+      A % Values_im = 0.0_dp
+    END IF
+    pvalues => A % Values
+    A % Values => A % Values_im    
+    
+    IF(.NOT. ASSOCIATED( A % rhs_im ) ) THEN
+      ALLOCATE( A % rhs_im(SIZE( A % rhs ) ) )
+      A % rhs_im = 0.0_dp
+    END IF
+    prhs => A % Rhs
+    A % rhs => A % rhs_im    
+    
+    CALL DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly )     
+    
+    A % Values => pValues
+    A % rhs => prhs
+    
+  END SUBROUTINE DefaultUpdateEquationsIm
+  
 
 !------------------------------------------------------------------------------
  SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)
@@ -4524,6 +4613,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateBulkR( B, F, UElement, USolver ) 
 !------------------------------------------------------------------------------
@@ -4776,7 +4866,7 @@ CONTAINS
      REAL(KIND=dp), ALLOCATABLE :: Work(:), STIFF(:,:)
      REAL(KIND=dp), POINTER :: b(:)
      REAL(KIND=dp), POINTER :: DiagScaling(:)
-     REAL(KIND=dp) :: xx, s, dval
+     REAL(KIND=dp) :: xx, s, dval, Cond
      REAL(KIND=dp) :: DefaultDOFs(4)
 
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
@@ -5114,7 +5204,7 @@ CONTAINS
         IF (x % DOFs>1) name=ComponentName(name,DOF)
         
         IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {e}') .AND. &
-            .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
+             .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
 
         CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
 
@@ -5126,6 +5216,9 @@ CONTAINS
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
+
+           Cond = SUM(GetReal(BC,GetVarName(Solver % Variable)//' Condition',Found))/n
+           IF(Cond>0) CYCLE
 
            ! Get parent element:
            ! -------------------
@@ -5574,9 +5667,9 @@ CONTAINS
     Load(1:n) = GetReal( BC, Name, Lstat, Element )
 
     i = LEN_TRIM(Name)
-    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
-    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
-    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
+    VLoad(1,1:n) = GetReal(BC,Name(1:i)//' 1',Lstat,element)
+    VLoad(2,1:n) = GetReal(BC,Name(1:i)//' 2',Lstat,element)
+    VLoad(3,1:n) = GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
     e(1) = PNodes % x(k) - PNodes % x(j)
     e(2) = PNodes % y(k) - PNodes % y(j)
@@ -5772,7 +5865,7 @@ CONTAINS
     LOGICAL :: SecondKindBasis, stat, ElementCopyCreated
     INTEGER :: TetraFaceMap(4,3), BrickFaceMap(6,4), ActiveFaceMap(4)
     INTEGER :: DOFs, i, j, p
-    REAL(KIND=dp) :: VLoad(3,n), VL(3), Normal(3), Basis(n), DetJ, s
+    REAL(KIND=dp) :: VLoad(3,n), LOAD(n), VL(3), L, Normal(3), Basis(n), DetJ, s
     REAL(KIND=dp) :: f(3), u, v
     REAL(KIND=dp) :: Mass(4,4), rhs(4)
 !------------------------------------------------------------------------------
@@ -5833,6 +5926,8 @@ CONTAINS
       END IF
       CALL GetElementNodes(Nodes, ElementCopy)
 
+      Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
+
       i = LEN_TRIM(Name)
       VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
       VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
@@ -5853,6 +5948,8 @@ CONTAINS
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
         VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        L  = SUM(Load(1:n)*Basis(1:n)) + SUM(VL*Normal)
+
         s = IP % s(p) * DetJ
 
         IF (SecondKindBasis) THEN
@@ -5866,10 +5963,10 @@ CONTAINS
           f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
 
           DO i=1,DOFs
-            Integral(i) = Integral(i) + SUM(VL(1:3) * Normal(1:3)) * f(i) * s
+            Integral(i) = Integral(i) + L * f(i) * s
           END DO
         ELSE
-          Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
+          Integral(1) = Integral(1) + L * s
         END IF
       END DO
 
@@ -5905,6 +6002,8 @@ CONTAINS
 
       CALL GetElementNodes(Nodes, ElementCopy)
 
+      Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
+
       i = LEN_TRIM(Name)
       VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
       VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
@@ -5928,6 +6027,7 @@ CONTAINS
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
         VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        L  = SUM(Load(1:n)*Basis(1:n)) + SUM(VL*Normal)
         s = IP % s(p) * DetJ
 
         DO i=1,DOFs
@@ -5935,7 +6035,7 @@ CONTAINS
             ! Note: here a non-existent DetJ is not a mistake
             Mass(i,j) = Mass(i,j) + Basis(i) * Basis(j) * IP % s(p)
           END DO
-          rhs(i) = rhs(i) + SUM(VL(1:3) * Normal(1:3)) * Basis(i) * s
+          rhs(i) = rhs(i) + L * Basis(i) * s
         END DO
       END DO
 

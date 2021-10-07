@@ -139,14 +139,16 @@ CONTAINS
 
     CHARACTER(MAX_NAME_LEN) :: GroupName
     INTEGER :: i,j,NameOrder(3),PEs
-    LOGICAL :: LegacyMode, ParallelBaseName
+    LOGICAL :: LegacyMode, ParallelBaseName, NoFileindex, Found 
 
     
     NameOrder = [1,2,3]
     LegacyMode = .FALSE.
     ParallelBaseName = .FALSE.
     IF( PRESENT( ParallelBase ) ) ParallelBaseName = ParallelBase
-    
+
+    NoFileindex = ListGetLogical( CurrentModel % Solver % Values,'No Fileindex',Found )  
+
     
     VtuFile = BaseFile
 
@@ -205,7 +207,7 @@ CONTAINS
           
       CASE( 3 )         
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
-        IF( FileIndex > 0 ) THEN
+        IF( FileIndex > 0 .AND. .NOT. NoFileindex ) THEN
           IF( FileIndex < 10000 ) THEN        
             WRITE(VtuFile,'(A,A,I4.4)') TRIM((VtuFile)),"_t",FileIndex
           ELSE

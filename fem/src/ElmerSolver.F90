@@ -77,7 +77,8 @@
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
          steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),&
-         sSweep(:),sPar(:),sFinish(:),sProduce(:)
+         sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),&
+         sSliceWeight(:), sAngle(:), sAngleVelo(:)
 
      LOGICAL :: GotIt,Transient,Scanning, LastSaved, MeshMode = .FALSE.
 
@@ -474,6 +475,12 @@ END INTERFACE
        IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
 
 !------------------------------------------------------------------------------
+!      Initialize the random seeds so that all simulation depending on that
+!      give consistent results.
+!------------------------------------------------------------------------------      
+       IF( FirstLoad ) CALL InitializeRandomSeed()
+       
+!------------------------------------------------------------------------------
 !      Get Output File Options
 !------------------------------------------------------------------------------
 
@@ -589,6 +596,29 @@ END INTERFACE
    CONTAINS 
 
 
+     SUBROUTINE InitializeRandomSeed()
+       INTEGER :: i,n
+       INTEGER, ALLOCATABLE :: seeds(:)
+       
+       CALL RANDOM_SEED() ! initialize with system generated seed
+
+       i = ListGetInteger( CurrentModel % Simulation,'Random Number Seed',Found ) 
+       IF( .NOT. Found ) i = 314159265
+
+       CALL RANDOM_SEED(size=j) ! find out size of seed
+       ALLOCATE(seeds(j))
+       !CALL RANDOM_SEED(get=seeds) ! get system generated seed
+       !WRITE(*,*) seeds            ! writes system generated seed
+       seeds = i
+       CALL RANDOM_SEED(put=seeds) ! set current seed
+       !CALL RANDOM_SEED(get=seeds) ! get current seed
+       !WRITE(*,*) seeds            ! writes 314159265
+       DEALLOCATE(seeds)           
+       
+       CALL Info('ElmerSolver','Random seed initialized to: '//TRIM(I2S(i)),Level=10)
+     END SUBROUTINE InitializeRandomSeed
+
+     
      ! Optionally create extruded mesh on-the-fly.
      !--------------------------------------------------------------------
      SUBROUTINE CreateExtrudedMesh()
@@ -649,6 +679,7 @@ END INTERFACE
                'defined for transient and scanning simulations' )
          END IF
 
+#if 0
          IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN
            DO i=1,SIZE(Timesteps,1)
              IF( MODULO( Timesteps(i), ParEnv % PEs ) /= 0 ) THEN
@@ -658,6 +689,7 @@ END INTERFACE
            END DO
            CALL Info('ElmerSolver','Divided timestep intervals equally for each partition!',Level=4)
          END IF
+#endif
          
          TimestepSizes => ListGetConstRealArray( CurrentModel % Simulation, &
              'Timestep Sizes', GotIt )
@@ -714,7 +746,9 @@ END INTERFACE
        IF ( FirstLoad ) &
            ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
            steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
-           sPar(1), sScan(1), sSweep(1), sFinish(1), sProduce(1) )
+           sPar(1), sScan(1), sSweep(1), sFinish(1), sProduce(1),&
+           sSlice(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
+           sAngleVelo(1) )
        
        dt = 0._dp       
        sTime = 0._dp
@@ -729,6 +763,11 @@ END INTERFACE
        sPar = 0
        sFinish = -1.0_dp
        sProduce = -1.0_dp
+       sSlice = 0._dp
+       sSliceRatio = 0._dp
+       sSliceWeight = 1.0_dp
+       sAngle = 0.0_dp
+       sAngleVelo = 0.0_dp
        
      END SUBROUTINE InitializeIntervals
        
@@ -1211,7 +1250,7 @@ END INTERFACE
   SUBROUTINE AddMeshCoordinatesAndTime()
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: DtVar
-
+     
      CALL Info('AddMeshCoordinatesAndTime','Setting mesh coordinates and time',Level=10)
 
      NULLIFY( Solver )
@@ -1248,7 +1287,12 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Finish',DOFs=1, Values=sFinish )
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Produce',DOFs=1, Values=sProduce )         
        END IF
-      
+
+       IF( ListCheckPresent( CurrentModel % Simulation,'Rotor Angle') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor angle',DOFs=1, Values=sAngle )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
+       END IF
+       
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
@@ -1261,17 +1305,25 @@ END INTERFACE
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
 
+       IF( ListCheckPresent( CurrentModel % Simulation,'Parallel Slices') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='slice', DOFs=1, Values=sSlice )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='slice ratio', DOFs=1, Values=sSliceRatio )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='slice weight', DOFs=1, Values=sSliceWeight )
+       END IF
+       
+       
        ! Add partition as a elemental field in case we have just one partition
        ! and have asked still for partitioning into many.
        IF( ParEnv % PEs == 1 .AND. ASSOCIATED( Mesh % Repartition ) ) THEN
          BLOCK
            REAL(KIND=dp), POINTER :: PartField(:)
            INTEGER, POINTER :: PartPerm(:)
-           INTEGER :: i, n
-
+           INTEGER :: i,n
+           
            CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
            
-           n = Mesh % NumberOfBulkElements
+           n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
            NULLIFY( PartField, PartPerm )
            ALLOCATE( PartField(n), PartPerm(n) )
            DO i=1,n
@@ -2156,8 +2208,8 @@ END INTERFACE
      TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)     
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
      INTEGER, SAVE :: PrevMeshI = 0
-     INTEGER :: nPeriodic
-     LOGICAL :: ParallelTime
+     INTEGER :: nPeriodic, nSlices, nTimes, iSlice, iTime
+     LOGICAL :: ParallelTime, ParallelSlices
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -2198,22 +2250,94 @@ END INTERFACE
      cum_Timestep = 0
      ddt = -1.0_dp
 
-
+     ! For parallel timestepping we need to divide the periodic timesteps for each partition. 
      ParallelTime = ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping', GotIt ) &
          .AND. ( ParEnv % PEs > 1 ) 
+
+     ! For parallel slices we need to introduce the slices
+     ParallelSlices = ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) &
+         .AND. ( ParEnv % PEs > 1 )
+
+     IF( ParallelTime .OR. ParallelSlices ) THEN
+       IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Single Mesh',GotIt ) ) THEN
+         CALL Fatal('ExecSimulation','Parallel time and slices only available with "Single Mesh"')
+       END IF
+     END IF
+
+     
+     nSlices = 1
+     nTimes = 1
+     iTime = 0
+     iSlice = 0 
+     
+     IF( ParallelTime .AND. ParallelSlices ) THEN
+       nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
+       IF(GotIt) THEN
+         IF( nSlices > ParEnv % PEs ) THEN
+           CALL Fatal('ExecSimulation','"Number Of Slices" cannot be be larger than #np')
+         END IF
+       ELSE
+         IF( ParEnv % PEs == 1 ) THEN
+           CALL ListAddInteger( CurrentModel % Simulation,'Number Of Slices',nSlices)
+         ELSE
+           CALL Fatal('ExecSimulation','We need "Number Of Slices" with parallel timestepping')
+         END IF
+       END IF
+       IF( MODULO( ParEnv % PEs, nSlices ) /= 0 ) THEN
+         CALL Fatal('ExecSimulation','For hybrid parallellism #np must be divisible with "Number of Slices"')
+       END IF
+       nTimes = ParEnv % PEs / nSlices 
+       CALL ListAddInteger( CurrentModel % Simulation,'Number Of Times',nTimes )
+       iSlice = MODULO( ParEnv % MyPe, nSlices ) 
+       iTime = ParEnv % MyPe / nSlices
+     ELSE IF( ParallelTime ) THEN
+       nTimes = ParEnv % PEs
+       iTime = ParEnv % MyPe
+       CALL ListAddInteger( CurrentModel % Simulation,'Number Of Times',nTimes )
+       CALL ListAddInteger( CurrentModel % Simulation,'Number Of Slices',nSlices )
+       CALL Info('ExecSimulation','Setting one time sector for each partition!')
+     ELSE IF( ParallelSlices ) THEN
+       nSlices = ParEnv % PEs
+       iSlice = ParEnv % MyPe
+       CALL ListAddInteger( CurrentModel % Simulation,'Number Of Times',nTimes )
+       CALL ListAddInteger( CurrentModel % Simulation,'Number Of Slices',nSlices )
+       CALL Info('ExecSimulation','Setting one slice for each partition!')
+     END IF
+
+     IF( nTimes > 1 ) THEN
+       DO i=1,SIZE(Timesteps,1)
+         IF( MODULO( Timesteps(i), nTimes ) /= 0 ) THEN
+           CALL Fatal('ExecSimulation','"Timestep Intervals" should be divisible by nTimes: '//TRIM(I2S(nTimes)))
+         END IF
+         Timesteps(i) = Timesteps(i) / nTimes
+       END DO
+       CALL Info('ExecSimulation','Divided timestep intervals equally for each partition!',Level=4)
+     END IF
+
+
+     
      nPeriodic = ListGetInteger( CurrentModel % Simulation,'Periodic Timesteps',GotIt )
      IF( ParallelTime ) THEN
-       IF( MODULO( nPeriodic, ParEnv % PEs ) /= 0 ) THEN
-         CALL Fatal('ExecSimulation','For parallel timestepping "Periodic Timesteps" must be divisible by #np')
-       END IF
-       nPeriodic = nPeriodic / ParEnv % PEs
-     END IF
-     IF( ParallelTime ) THEN
-       IF( nPeriodic == 0 ) THEN
+       IF( nPeriodic <= 0 ) THEN
          CALL Fatal('ExecSimulation','Parallel timestepping requires "Periodic Timesteps"')
        END IF
+       IF( MODULO( nPeriodic, nTimes ) /= 0 ) THEN
+         CALL Fatal('ExecSimulation','For parallel timestepping "Periodic Timesteps" must be divisible by #np')
+       END IF
+       nPeriodic = nPeriodic / nTimes
      END IF
-       
+     
+     IF( ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) ) THEN
+       IF( nSlices <= 1 ) THEN
+         sSlice = 0.0_dp
+         sSliceRatio = 0.0_dp
+         sSliceWeight = 1.0_dp
+       ELSE
+         sSlice = 1.0_dp * iSlice
+         sSliceRatio = ( iSlice + 0.5_dp ) / nSlices - 0.5_dp
+         sSliceWeight = 1.0_dp / nSlices 
+       END IF
+     END IF
      
      DO interval = 1,TimeIntervals
        
@@ -2353,22 +2477,24 @@ END INTERFACE
          sTime(1) = sTime(1) + dt
 
          IF( nPeriodic > 0 ) THEN
-           timePeriod = ParEnv % PEs * nPeriodic * dt           
            IF( ParallelTime ) THEN
+             timePeriod = nTimes * nPeriodic * dt                        
              IF( cum_Timestep == 1 ) THEN
-               sTime(1) = sTime(1) + ParEnv % MyPe * nPeriodic * dt
+               sTime(1) = sTime(1) + iTime * nPeriodic * dt
              ELSE IF( MODULO( cum_Timestep, nPeriodic ) == 1 ) THEN
                CALL Info('ExecSimulation','Making jump in time-parallel scheme!')
-               sTime(1) = sTime(1) + nPeriodic * (ParEnv % PEs - 1) * dt
+               sTime(1) = sTime(1) + nPeriodic * (nTimes - 1) * dt
              END IF
+           ELSE
+             timePeriod = nPeriodic * dt           
            END IF
          END IF
                   
-         sPeriodic(1) = sTime(1)
+         sPeriodic(1) = sTime(1)         
          DO WHILE(sPeriodic(1) > timePeriod)
            sPeriodic(1) = sPeriodic(1) - timePeriod 
          END DO
-
+         
          ! Move the old timesteps one step down the ladder
          IF(timestep > 1 .OR. interval > 1) THEN
            DO i = SIZE(sPrevSizes,2),2,-1
@@ -2381,6 +2507,21 @@ END INTERFACE
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
 
+
+!-----------------------------------------------------------------------------
+         IF( ListCheckPresent( CurrentModel % Simulation,'Rotor Angle') ) THEN
+           BLOCK
+             REAL(KIND=dp) :: PrevAngle
+             PrevAngle = sAngle(1)
+             sAngle(1) = ListGetCReal( CurrentModel % Simulation,'Rotor Angle')
+             sAngleVelo(1) = (sAngle(1)-PrevAngle)/dt
+             WRITE(Message,'(A,ES12.3)') '"Rotor Angle" set to value: ',sAngle(1)
+             CALL Info('ExecSimulation',Message,Level=6)
+             WRITE(Message,'(A,ES12.3)') '"Rotor Velo" set to value: ',sAngleVelo(1)
+             CALL Info('ExecSimulation',Message,Level=6)
+           END BLOCK
+         END IF       
+         
 !------------------------------------------------------------------------------
 
          BLOCK
@@ -2389,10 +2530,6 @@ END INTERFACE
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
-!            IF( Transient ) THEN
-!              CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
-!            END IF
-             
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
              ! variables. 
              Mesh => CurrentModel % Meshes             

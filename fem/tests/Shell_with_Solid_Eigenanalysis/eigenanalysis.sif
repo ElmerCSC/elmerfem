@@ -124,6 +124,8 @@ Solver 1
 ! We don't want to displace the mesh in this test since only the solid would
 ! be displaced, not the shell. 
   Displace Mesh = False
+
+  Damped Eigen System = Logical False
 End
 
 Solver 2

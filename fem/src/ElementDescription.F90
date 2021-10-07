@@ -1903,19 +1903,20 @@ CONTAINS
 !>  p-element, the values of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w)
+   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w, USolver)
 !------------------------------------------------------------------------------
      INTEGER :: n                 !< The number of (background) element nodes
      REAL(KIND=dp) :: Basis(:)    !< The values of reference element basis
      TYPE(Element_t) :: element   !< The element structure
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 
      dim = Element % TYPE % DIMENSION
 
-     IF ( isActivePElement(Element) ) THEN
+     IF ( isActivePElement(Element, USolver) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalBasisFunctions1D( Basis, element, u )
@@ -1977,19 +1978,20 @@ CONTAINS
 !>  of p-element, the gradients of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
+   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w, USolver )
 !------------------------------------------------------------------------------
      INTEGER :: n                    !< The number of (background) element nodes
      REAL(KIND=dp) :: dLBasisdx(:,:) !< The gradient of reference element basis functions
      TYPE(Element_t) :: element      !< The element structure
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
 
-     IF ( IsActivePElement(Element) ) THEN
+     IF ( IsActivePElement(Element, USolver ) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
@@ -2570,16 +2572,16 @@ CONTAINS
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element) ) THEN
+     IF ( isActivePElement(element,USolver) ) THEN
 
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
@@ -4448,7 +4450,7 @@ END BLOCK
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        !--------------------------------------------------------------------
        ! Check whether BDM or dual basis functions should be created and 
@@ -5218,7 +5220,7 @@ SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -5446,7 +5448,7 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -5762,7 +5764,7 @@ END SUBROUTINE PickActiveFace
 !----------------------------------------------------------------------------------------------------------
 
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        stat = .TRUE.
        Basis = 0.0d0
@@ -9963,7 +9965,7 @@ END SUBROUTINE PickActiveFace
 !---------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1       
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        SignVec = 1.0d0
        Ind => Element % Nodeindexes
@@ -10125,7 +10127,7 @@ END SUBROUTINE PickActiveFace
      INTEGER, POINTER :: EdgeMap(:,:)
 !------------------------------------------------------------------------
      Mesh => CurrentModel % Solver % Mesh
-     Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
      IF (Element % TYPE % BasisFunctionDegree>1) THEN
        CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
@@ -11850,7 +11852,7 @@ END SUBROUTINE PickActiveFace
 
     INTEGER :: LMat,RMat,n,k
 
-    REAL(KIND=dp) :: x1,y1,z1
+    REAL(KIND=dp) :: u,v,w,dCoord(3)
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
     LOGICAL :: LPassive
 !------------------------------------------------------------------------------
@@ -11905,35 +11907,36 @@ END SUBROUTINE PickActiveFace
     SELECT CASE( Element % TYPE % ElementCode / 100 )
 
     CASE(2,4,8)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 0.0d0 )
+      u = 0.0_dp
+      v = 0.0_dp
+      w = 0.0_dp
     CASE(3)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE(5)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      u = 1.0d0/4
+      v = 1.0d0/4
+      w = 1.0d0/4
     CASE(6)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 1.0d0/3 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 1.0d0/3 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 1.0d0/3 )
+      u = 0.0
+      v = 0.0
+      w = 1.0d0/3
     CASE(7)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE DEFAULT
-       CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
-
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
+      
     END SELECT
-    x1 = x1 - x
-    y1 = y1 - y
-    z1 = z1 - z
 
+    dCoord(1) = InterpolateInElement( Element, nx, u, v, w ) - x
+    dCoord(2) = InterpolateInElement( Element, ny, u, v, w ) - y
+    dCoord(3) = InterpolateInElement( Element, nz, u, v, w ) - z
+  
     IF ( PRESENT(turn) ) turn = .FALSE.
-    IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
+    IF ( SUM( dCoord * Normal ) > 0 ) THEN
        IF ( Element % BodyId /= k ) THEN
           Normal = -Normal
           IF ( PRESENT(turn) ) turn = .TRUE.

@@ -300,7 +300,7 @@ MainWindow::MainWindow() {
   loadDefinitions();
 
   // initialization ready:
-  synchronizeMenuToState();
+//  synchronizeMenuToState(); Commented out as this will be called from loadSettings() later
   setWindowTitle(tr("ElmerGUI"));
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
   finalizeSplash();
@@ -431,7 +431,21 @@ void MainWindow::createActions() {
   recentProject4Act = new QAction("", this);
   connect(recentProject4Act, SIGNAL(triggered()), this,
           SLOT(loadRecentProject4Slot()));
-
+  recentProject5Act = new QAction("", this);
+  connect(recentProject5Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject5Slot()));
+  recentProject6Act = new QAction("", this);
+  connect(recentProject6Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject6Slot()));
+  recentProject7Act = new QAction("", this);
+  connect(recentProject7Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject7Slot()));
+  recentProject8Act = new QAction("", this);
+  connect(recentProject8Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject8Slot()));
+  recentProject9Act = new QAction("", this);
+  connect(recentProject9Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject9Slot()));
   // File -> Definitions...
   editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"),
                                    tr("&Definitions..."), this);
@@ -749,6 +763,12 @@ void MainWindow::createActions() {
   connect(chooseSharpEdgeColorAct, SIGNAL(triggered()), this,
           SLOT(sharpEdgeColorSlot()));
 
+  // View -> Colors -> Selection
+  chooseSelectionColorAct = new QAction(QIcon(), tr("Selection..."), this);
+  chooseSelectionColorAct->setStatusTip(tr("Set selection color"));
+  connect(chooseSelectionColorAct, SIGNAL(triggered()), this,
+          SLOT(selectionColorSlot()));
+
   // View -> Colors -> Boundaries
   showBoundaryColorAct = new QAction(QIcon(), tr("Boundaries"), this);
   showBoundaryColorAct->setStatusTip(
@@ -1050,6 +1070,8 @@ void MainWindow::createMenus() {
   colorizeMenu->addAction(chooseSurfaceMeshColorAct);
   colorizeMenu->addAction(chooseSharpEdgeColorAct);
   colorizeMenu->addSeparator();
+  colorizeMenu->addAction(chooseSelectionColorAct);  
+  colorizeMenu->addSeparator();  
   colorizeMenu->addAction(showBoundaryColorAct);
   colorizeMenu->addAction(showBodyColorAct);
   viewMenu->addSeparator();
@@ -4232,6 +4254,7 @@ void MainWindow::modelClearSlot() {
 void MainWindow::viewFullScreenSlot() {
   if (!isFullScreen()) {
     cout << "Switching to full screen mode" << endl;
+    cout << "Press 'Esc' to leave full screen mode" << endl;
     menuBar()->hide();
     statusBar()->hide();
     fileToolBar->hide();
@@ -4267,8 +4290,13 @@ void MainWindow::viewNormalModeSlot() {
 // Context menu event (usually mouse has been right clicked)...
 //-----------------------------------------------------------------------------
 void MainWindow::contextMenuEvent(QContextMenuEvent *event) {
-  // if(isFullScreen())
-  contextMenu->popup(event->globalPos());
+  if(event->reason() != QContextMenuEvent::Mouse){
+    contextMenu->popup(event->globalPos());
+  }
+}
+
+void MainWindow::showContextMenu(QPoint globalPos){
+  contextMenu->popup(globalPos);
 }
 
 // View -> Surface mesh
@@ -4948,6 +4976,19 @@ void MainWindow::sharpEdgeColorSlot() {
 
   QColor newColor = QColorDialog::getColor(glWidget->sharpEdgeColor, this);
   glWidget->sharpEdgeColor = newColor;
+  glWidget->rebuildLists();
+}
+
+// View -> Colors -> Selection
+//-----------------------------------------------------------------------------
+void MainWindow::selectionColorSlot() {
+  if (!glWidget->hasMesh()) {
+    logMessage("Unable to change sharp edge colors when the mesh is empty");
+    return;
+  }
+
+  QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  glWidget->selectionColor = newColor;
   glWidget->rebuildLists();
 }
 
@@ -7158,7 +7199,8 @@ void MainWindow::showaboutSlot() {
 
   QMessageBox msgBox(this);
   msgBox.setTextFormat(Qt::RichText);
-  msgBox.setIconPixmap( windowIcon().pixmap(32));
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
   msgBox.setWindowTitle(tr("Information about ElmerGUI"));
   msgBox.setText(
       tr("ElmerGUI is a preprocessor for two and "
@@ -7647,7 +7689,7 @@ void MainWindow::loadSettings() {
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
-  char num[] = "01234";
+  char num[] = "0123456789";
   QString path;
   for (int i = n - 1; i >= 0; i--) {
     path = settings_value(key + num[i], "$").toString();
@@ -7667,6 +7709,17 @@ void MainWindow::loadSettings() {
     case 1: selectVtkPostSlot(); break;
     case 2: selectParaViewSlot(); break;
   }
+  
+  saveDirName = settings_value("defaultDir/project", "").toString();
+  // Color settings
+  glWidget->backgroundColor = settings_value("color/background", glWidget->backgroundColor).value<QColor>();
+  glWidget->surfaceColor = settings_value("color/surface", glWidget->surfaceColor).value<QColor>();
+  glWidget->edgeColor = settings_value("color/edge", glWidget->edgeColor).value<QColor>();
+  glWidget->surfaceMeshColor = settings_value("color/surfaceMesh", glWidget->surfaceMeshColor).value<QColor>();
+  glWidget->sharpEdgeColor = settings_value("color/sharpEdge", glWidget->sharpEdgeColor).value<QColor>();
+  glWidget->selectionColor = settings_value("color/selection", glWidget->selectionColor).value<QColor>();
+  
+  synchronizeMenuToState();  
 }
 
 // Save settings
@@ -7703,6 +7756,19 @@ void MainWindow::saveSettings() {
   }else if(selectParaViewAct->isChecked()){
     settings_setValue("postProcessor/i", 2);
   }
+
+  settings_setValue("defaultDir/project", saveDirName);
+  
+  // Commented aout as restoring defaultEdfDir is not so useful
+  // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());  
+
+  // Color settings
+  settings_setValue("color/background", glWidget->backgroundColor);
+  settings_setValue("color/surface", glWidget->surfaceColor);
+  settings_setValue("color/edge", glWidget->edgeColor);
+  settings_setValue("color/surfaceMesh", glWidget->surfaceMeshColor);
+  settings_setValue("color/sharpEdge", glWidget->sharpEdgeColor);
+  settings_setValue("color/selection", glWidget->selectionColor);
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
@@ -7718,41 +7784,71 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
   recentProjectsMenu->removeAction(recentProject2Act);
   recentProjectsMenu->removeAction(recentProject3Act);
   recentProjectsMenu->removeAction(recentProject4Act);
+  recentProjectsMenu->removeAction(recentProject5Act);
+  recentProjectsMenu->removeAction(recentProject6Act);
+  recentProjectsMenu->removeAction(recentProject7Act);
+  recentProjectsMenu->removeAction(recentProject8Act);
+  recentProjectsMenu->removeAction(recentProject9Act);
   recentProjectsMenu->clear(); // just in case
 
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject0Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject0Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject1Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject1Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject2Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject2Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject3Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject3Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject4Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject4Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject5Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject5Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject6Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject6Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject7Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject7Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject8Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject8Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject9Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject9Act);
   }
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
 
   if (bSaveToIni) {
     int n = recentProject.size();
-    if (n > 5)
-      n = 5;
+    if (n > 10)
+      n = 10;
     settings_setValue("recentProject/n", n);
     QString key = "recentProject/";
-    char num[] = "01234";
+    char num[] = "0123456789";
     for (int i = 0; i < n; i++) {
       settings_setValue(key + num[i], recentProject.at(i));
     }
@@ -7768,6 +7864,16 @@ void MainWindow::loadRecentProject2Slot() { loadProject(recentProject.at(2)); }
 void MainWindow::loadRecentProject3Slot() { loadProject(recentProject.at(3)); }
 
 void MainWindow::loadRecentProject4Slot() { loadProject(recentProject.at(4)); }
+
+void MainWindow::loadRecentProject5Slot() { loadProject(recentProject.at(5)); }
+
+void MainWindow::loadRecentProject6Slot() { loadProject(recentProject.at(6)); }
+
+void MainWindow::loadRecentProject7Slot() { loadProject(recentProject.at(7)); }
+
+void MainWindow::loadRecentProject8Slot() { loadProject(recentProject.at(8)); }
+
+void MainWindow::loadRecentProject9Slot() { loadProject(recentProject.at(9)); }
 
 bool MainWindow::loadExtraSolver(QString solverName) {
 

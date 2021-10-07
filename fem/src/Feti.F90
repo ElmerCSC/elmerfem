@@ -361,7 +361,7 @@ CONTAINS
 
     nrows = A % NumberOfRows
     gtags => A % ParallelInfo % GlobalDofs
-    ig => A % ParallelInfo % Interface
+    ig => A % ParallelInfo % NodeInterface
     nb => A % ParallelInfo % NeighbourList
 
     IF ( InitializeLC .OR. .NOT. ALLOCATED(toSend)) THEN
@@ -656,7 +656,7 @@ CONTAINS
 
     nrows = A % NumberOfRows
     gtags => A % ParallelInfo % GlobalDofs
-    ig => A % ParallelInfo % Interface
+    ig => A % ParallelInfo % NodeInterface
     nb => A % ParallelInfo % NeighbourList
 
     IF (InitializeIf .OR. .NOT. ALLOCATED(toSend) ) THEN
@@ -1815,7 +1815,7 @@ END SUBROUTINE FetiProject
     TYPE(NeighbourList_t), POINTER :: nb(:)
 
     gtags => A % ParallelInfo % GlobalDofs
-    ig => A % ParallelInfo % Interface
+    ig => A % ParallelInfo % NodeInterface
     nb => A % ParallelInfo % NeighbourList
 
     OPEN(4,FILE='b'//I2S(Parenv % MyPE))

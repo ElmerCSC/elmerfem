@@ -168,7 +168,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       MinCurr(3),MaxCurr(3),TmpCurr(3)
   INTEGER, ALLOCATABLE :: CoilIndex(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: CondName
-
+  LOGICAL :: OneCut
   
 
  !------------------------------------------------------------------------------
@@ -205,7 +205,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal('CoilSolver','> Wall Distance < not associated!')
      END IF
   END IF
-
+  
+  
   CoilClosed = GetLogical( Params,'Coil Closed', Found )
   IF( CoilClosed ) THEN
     CoilParts = 2
@@ -221,6 +222,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CoilParts = 1
   END IF
 
+  OneCut = GetLogical( Params,'Single Coil Cut',Found )
+  
   NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
   
   CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
@@ -327,17 +330,21 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
     ! Choose nodes where the Dirichlet values are set. 
     IF( CoilClosed ) THEN
+      Set => SetA
       IF( NarrowInterface ) THEN
-        Set => SetA
         CALL ChooseFixedBulkNodesNarrow(Set,1,SelectNodes)
-        Set => SetB
+      ELSE
+        CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
+      END IF
+      IF( OneCut ) CALL ChooseCoilCut(Set,SelectNodes)
+
+      Set => SetB
+      IF( NarrowInterface ) THEN
         CALL ChooseFixedBulkNodesNarrow(Set,2,SelectNodes)
       ELSE
-        Set => SetA
-        CALL ChooseFixedBulkNodes(Set,1,SelectNodes)
-        Set => SetB
         CALL ChooseFixedBulkNodes(Set,2,SelectNodes)
       END IF
+      IF( OneCut ) CALL ChooseCoilCut(Set,SelectNodes)
     ELSE
       Set => SetA
       CALL ChooseFixedEndNodes(Set)
@@ -897,17 +904,6 @@ CONTAINS
         
     CALL TangentDirections(CoilNormal, CoilTangent1, CoilTangent2)
 
-    ! The old way. 
-    !CoilTangent1 = EigVec(:,1)
-    !CoilTangent2 = EigVec(:,2)
-
-    !IF( -MINVAL( CoilTangent1 ) > MAXVAL( CoilTangent1 ) ) THEN
-    !  CoilTangent1 = -CoilTangent1 
-    !END IF
-    !IF( -MINVAL( CoilTangent2 ) > MAXVAL( CoilTangent2 ) ) THEN
-    !  CoilTangent2 = -CoilTangent2 
-    !END IF
-
     WRITE( Message,'(A,3ES12.4)') 'Coil axis normal:',CoilNormal
     CALL Info('CoilSolver',Message,Level=7)
     WRITE( Message,'(A,3ES12.4)') 'Coil tangent1:',CoilTangent1
@@ -917,7 +913,7 @@ CONTAINS
     
   END SUBROUTINE DefineCoilParameters
 
-
+  
 
   ! Chooses bulk nodes which are used to set the artificial boundary conditions
   ! in the middle of the coil.
@@ -1140,8 +1136,128 @@ CONTAINS
   END SUBROUTINE ChooseFixedBulkNodesNarrow
 
 
-  
 
+  ! Choose only one cut of the many.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE ChooseCoilCut(Set, SelectNodes )
+    INTEGER, POINTER :: Set(:)
+    LOGICAL :: SelectNodes
+
+    LOGICAL :: Ready
+    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('CoilSolver','ChooseCoilCut implemented only for serial meshes!')
+    END IF
+    
+    ALLOCATE( MeshPiece( Mesh % NumberOfNodes ) ) 
+    MeshPiece = 0
+    
+    ! Only set the piece for the nodes that are used by some element
+    ! For others the marker will remain zero. 
+    DO t = 1, Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)        
+      Indexes => Element % NodeIndexes
+      
+      ! Study the elements belonging to the coil under study
+      IF( ANY( Perm(Indexes) == 0 ) ) CYCLE
+      IF( SelectNodes ) THEN
+        IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
+      END IF
+      n = Element % TYPE % NumberOfNodes
+      DO i=1,n
+        IF( Set(Perm(Indexes(i))) /= 0 ) MeshPiece(Indexes(i)) = 1
+      END DO
+    END DO
+    j = 0
+    DO i = 1, Mesh % NumberOfNodes
+      IF( MeshPiece(i) > 0 ) THEN
+        j = j + 1
+        MeshPiece(i) = j
+      END IF
+    END DO
+    
+    CALL Info('CoilSolver',&
+        'Number of candidante nodes in coil '//TRIM(I2S(j)),Level=12)
+    
+    ! We go through the elements and set all the piece indexes to minimimum index
+    ! until the mesh is unchanged.
+    Ready = .FALSE.
+    Loop = 0
+    DO WHILE(.NOT. Ready) 
+      Ready = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)        
+        Indexes => Element % NodeIndexes
+        
+        IF( ANY( Perm(Indexes) == 0 ) ) CYCLE
+        IF( SelectNodes ) THEN
+          IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
+        END IF
+        IF( ALL( Set(Perm(Indexes)) == 0 ) ) CYCLE
+
+        n = Element % TYPE % NumberOfNodes
+        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+        MinIndex = MaxIndex
+        DO i=1,n
+          j = MeshPiece(Indexes(i))
+          IF(j>0) MinIndex = MIN(MinIndex,j)
+        END DO
+        
+        IF( MaxIndex > MinIndex ) THEN
+          WHERE( MeshPiece(Indexes) > 0 ) 
+            MeshPiece( Indexes ) = MinIndex
+          END WHERE
+          Ready = .FALSE.
+        END IF
+      END DO
+      Loop = Loop + 1
+    END DO
+    CALL Info('CoilSolver','Coil cut coloring loops: '//TRIM(I2S(Loop)),Level=12)
+
+    ! Compute the true number of different pieces
+    MaxIndex = MAXVAL(MeshPiece)
+    IF( MaxIndex == 1 ) RETURN
+    
+    ALLOCATE( PiecePerm( MaxIndex ) ) 
+    PiecePerm = 0
+    NoPieces = 0
+    DO i = 1, Mesh % NumberOfNodes
+      j = MeshPiece(i) 
+      IF( j == 0 ) CYCLE
+      IF( PiecePerm(j) == 0 ) THEN
+        NoPieces = NoPieces + 1
+        PiecePerm(j) = NoPieces 
+      END IF
+    END DO
+    CALL Info('CoilSolver',&
+        'Number of separate cuts in mesh is '//TRIM(I2S(NoPieces)),Level=12)
+
+    DO i = 1, Mesh % NumberOfNodes
+      j = MeshPiece(i)
+      IF( j == 0 ) CYCLE
+      MeshPiece(i) = PiecePerm(j)
+    END DO
+
+    DO i=1,MaxIndex
+      PRINT *,'Cuts in coil:',i,COUNT(MeshPiece == i)
+    END DO
+
+    ! Ok, here we just choose the first cut, we could choose some else too
+    DO i=1,Mesh % NumberOfNodes      
+      j = Perm(i)
+      IF( j==0 ) CYCLE
+      IF( MeshPiece(i) > 1 ) Set(j) = 0
+    END DO
+
+    CALL Info('CoilSolver','Saving mesh piece field to: mesh piece',Level=5)
+  
+  END SUBROUTINE ChooseCoilCut
+
+  
   ! Choose end nodes as assigned by "Coil Start" and "Coil End" flags.
   ! The result of this imitate the previous routine in order to be able
   ! to use the same way to computed the resulting currents.

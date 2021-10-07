@@ -1605,7 +1605,6 @@ CONTAINS
 
       ! Define P(n,s) and kappa
 #if 1
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(P)
 #else
       ! this is alternative generation of initial basis vectors
@@ -2464,7 +2463,6 @@ CONTAINS
       IF ( Converged .OR. Diverged ) RETURN
 
       ! Define P and kappa 
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(Pr)
       CALL RANDOM_NUMBER(Pi)
       P = Pr + (0.,1.)*Pi
