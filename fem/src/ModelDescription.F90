@@ -4371,7 +4371,7 @@ CONTAINS
          EXIT
       END IF
 
-      IF(.NOT. ListGetLogical( ResList,'Restart Time Zero',Found ) ) THEN
+      IF(.NOT. ListGetLogical( ResList,'Restart Time Ignore',Found ) ) THEN
         TimeVar  => VariableGet( Mesh % Variables, 'Time' )
         tStepVar => VariableGet( Mesh % Variables, 'Timestep' )        
         IF ( ASSOCIATED( TimeVar ) )  TimeVar % Values(1)  = Time

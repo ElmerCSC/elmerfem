@@ -39,7 +39,7 @@ Simulation
   Target Variable 1 = String "TempB"
   Restart Variable 2 = TempA Flux 1
   Target Variable 2 = String "TestField"
-  Restart Time Zero = Logical True
+  Restart Time Ignore = Logical True
 End
 
 Constants

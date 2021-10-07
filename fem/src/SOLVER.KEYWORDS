@@ -24,6 +24,7 @@ $ for(i=1:nexp) "Solver:String: 'Vector Field " i2str(i) "'"
 $ for(i=1:nexp) for(j=1:ndim) "Solver:String: 'Vector Field " i2str(i) " Component " i2str(j) "'"
 $ for(i=1:nout) "Simulation:String:  'Output Variable " i2str(i) "'"
 $ for(i=1:nout) "Simulation:String:  'Restart Variable " i2str(i) "'"
+$ for(i=1:nout) "Simulation:String:  'Target Variable " i2str(i) "'"
 $ for(i=1:nout) "Component:String: 'Variable " i2str(i) "'"
 $ for(i=1:nout) "Component:String: 'Operator " i2str(i) "'"
 BC:Integer:         'Body Id'
@@ -819,6 +820,7 @@ Simulation:Real:    'Newmark Beta'
 Simulation:Real:    'Potential Difference'
 Simulation:Real:    'Real Time Max'
 Simulation:Real:    'Restart Time'
+simulation:logical: 'restart time ignore'
 Simulation:Real:    'Time Period'
 Simulation:Real:    'Timestep Function'
 Simulation:Real:    'Timestep Size'
