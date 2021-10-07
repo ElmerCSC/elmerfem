@@ -11,7 +11,7 @@
 This solver computes the volumetric heat produced by ice flow deformation.
 
 ## SIF contents
-This solver produces the volumetric heat source due to ice deformation (strain heating). This can be directly used within the TemperateIceSolver using the body-force keyword Temp Volume Source (provided your temperature variable is called Temp. Important: Do not use that as a Heat Source for the regular HeatSolve (it would need a specific heat source).
+The output of the solver - the volumetric heat source due to ice deformation - can be directly used within the TemperateIceSolver using the body-force keyword *Temp Volume Source* (provided your temperature variable is called *Temp*). Important: Do not use that as a Heat Source for the regular HeatSolve (it would need a specific heat source).
 
 The required keywords in the SIF file for this solver are:
 
