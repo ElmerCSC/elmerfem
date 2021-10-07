@@ -4734,7 +4734,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE VectorValuesRange(x,n,str,AlwaysSerial)
 !------------------------------------------------------------------------------    
-    REAL(KIND=dp), POINTER :: x(:)
+    REAL(KIND=dp) :: x(:)
     INTEGER :: n
     CHARACTER(LEN=*) :: str
     LOGICAL, OPTIONAL :: AlwaysSerial
@@ -4742,7 +4742,7 @@ CONTAINS
     REAL(KIND=dp) :: s(3)
     LOGICAL :: Parallel, Found
     
-    IF(.NOT. ASSOCIATED(x) ) RETURN
+    !IF(.NOT. ASSOCIATED(x) ) RETURN
     
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) THEN
@@ -16231,6 +16231,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionVector = 0.0_dp
   CollectionSolution = 0.0_dp
 
+
+  ComplexSystem = StiffMatrix % COMPLEX
+  ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
+           'Linear System Complex', Found )
+  
 !------------------------------------------------------------------------------
 ! If multiplier should be exported,  allocate memory and export the variable.
 !------------------------------------------------------------------------------
@@ -16242,9 +16247,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF ( ExportMultiplier ) THEN
      MultiplierName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
      IF ( .NOT. Found ) THEN
-        CALL Info( Caller, &
-              'Lagrange Multiplier Name set to LagrangeMultiplier', Level=6 )
-        MultiplierName = "LagrangeMultiplier"
+       IF( ComplexSystem ) THEN
+         MultiplierName = 'LagrangeMultiplier[LagrangeMultiplier Re:1 LagrangeMultiplier Im:1]'
+       ELSE
+         MultiplierName = 'LagrangeMultiplier'
+       END IF       
+       CALL Info( Caller, &
+           'Lagrange Multiplier Name set to: '//TRIM(MultiplierName), Level=6 )
+     ELSE
+       CALL Info( Caller, &
+           'Lagrange Multiplier Name given to: '//TRIM(MultiplierName), Level=6 )       
      END IF
 
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
@@ -16258,8 +16270,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error.')
 
        MultiplierValues = 0.0_dp
-       CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
-                  MultiplierName, 1, MultiplierValues)      
+       IF( ComplexSystem ) THEN
+         CALL VariableAddVector(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
+             MultiplierName, 2, MultiplierValues)               
+       ELSE
+         CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
+             MultiplierName, 1, MultiplierValues)      
+       END IF
        MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
      END IF
           
@@ -16295,10 +16312,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   EnforceDirichlet = ListGetLogical( Solver % Values, 'Enforce Exact Dirichlet BCs',Found)
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
-
-  ComplexSystem = StiffMatrix % COMPLEX
-  ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
-           'Linear System Complex', Found )
 
   UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
 
@@ -20131,7 +20144,6 @@ CONTAINS
      CHARACTER(*), PARAMETER :: Caller = 'GenerateProjectors'
      TYPE(Solver_t), POINTER :: PSolver
      TYPE(Matrix_t), POINTER :: Proj
-     CHARACTER(LEN=MAX_NAME_LEN) :: MultName
 
 
      ApplyIntegral = ListGetLogical( Solver % Values,'Apply Integral BCs',Found)
@@ -21401,8 +21413,8 @@ CONTAINS
      IF ( ListGetLogical( Solver % Values,'Apply Contact BCs', Found ) .AND. &
          ALLOCATED( PrevInvPerm ) ) THEN
        MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
-       IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
-
+       IF ( .NOT. Found ) MultName = 'LagrangeMultiplier'
+         
        Var => VariableGet(Solver % Mesh % Variables, MultName)
        IF( ASSOCIATED( Var ) ) THEN
          ALLOCATE( PrevValues( SIZE( Var % Values ) ) )
@@ -22038,7 +22050,7 @@ CONTAINS
        
      IF ( ExportMult ) THEN
        MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
-       IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
+       IF ( .NOT. Found ) MultName = 'LagrangeMultiplier'
        Var => VariableGet(Solver % Mesh % Variables, MultName)
        ExportMult = ASSOCIATED( Var ) 
        IF( ExportMult ) THEN

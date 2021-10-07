@@ -110,28 +110,44 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL, SAVE :: First=.TRUE.
+  LOGICAL :: First=.TRUE.
   TYPE(Solver_t), POINTER :: Asolver => Null()
-  INTEGER :: p, n, istat, max_element_dofs
+  INTEGER :: p, n, istat, max_element_dofs, i, j
   TYPE(Mesh_t), POINTER :: Mesh  
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)  
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: Crt(:)     
+  REAL(KIND=dp), ALLOCATABLE :: Crt(:)     
   TYPE(Variable_t), POINTER :: LagrangeVar
-  INTEGER, SAVE :: Tstep=-1
-  LOGICAL, SAVE :: Parallel
+  INTEGER :: Tstep=-1
+  LOGICAL :: Parallel
   REAL(KIND=dp), POINTER :: px(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: MultName
   LOGICAL :: Found
+  CHARACTER(LEN=MAX_NAME_LEN) :: sname
+  CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamics'
+
+  SAVE First, Tstep, Parallel, Crt, MultName
+  
 !------------------------------------------------------------------------------
   
   IF (First) THEN
+    IF( TransientSimulation ) THEN
+      CALL Info(Caller,'Initializing electric circuits for transient simulation',Level=6)
+    ELSE
+      CALL Info(Caller,'Initializing electric circuits for steady state simulation',Level=6)
+    END IF
+    
     First = .FALSE.
     
     Parallel = ( ParEnv % PEs > 1 )
     IF( Parallel ) THEN
       IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+    END IF
+    IF(Parallel) THEN
+      CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
+    ELSE
+      CALL Info(Caller,'Assuming serial electric circuits',Level=12)
     END IF
       
     Model % HarmonicCircuits = .FALSE.
@@ -139,17 +155,36 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamics', 'Memory allocation error.' )
+      CALL Fatal(Caller, 'Memory allocation error.' )
     END IF
 
     n_Circuits => Model%n_Circuits
     Model%Circuit_tot_n = 0
-  
-    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
-    ASolver => Model % ASolver
-    
+
+    ! Look for the real valued solver we attach the circuit equations to:
+    ! -------------------------------------------------------------------
+    Asolver => NULL()
+    DO i=1,Model % NumberOfSolvers      
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX( sname,'MagnetoDynamics2D')
+      IF(j>0) THEN
+        IF( INDEX( sname,'MagnetoDynamics2DHarmonic') > 0 ) CYCLE
+      END IF
+      IF(j==0) j = INDEX( sname,'WhitneyAVSolver')
+      IF( j > 0 ) THEN
+        ASolver => Model % Solvers(i) 
+        EXIT
+      END IF
+    END DO
+    IF(.NOT. ASSOCIATED(ASolver) ) THEN
+      ASolver => FindSolverWithKey('Export Lagrange Multiplier')
+    END IF
+    CALL Info(Caller,'Circuit equations associated with solver index: '&
+        //TRIM(I2S(ASolver % SolverId)),Level=6)
+    Model % ASolver => ASolver 
+       
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
-    Circuits => Model%Circuits
+    Circuits => Model % Circuits
 
     CALL SetBoundaryAreasToValueLists() 
 
@@ -178,6 +213,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
     ALLOCATE(Crt(Model % Circuit_tot_n))
+
+    MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
+    IF ( .NOT. Found ) THEN
+      MultName = 'LagrangeMultiplier'
+      CALL Info(Caller,'Defaulting name of Lagrange multiplier to: '//TRIM(MultName),Level=8)
+    END IF      
   END IF
   
   ! If we have angle given explicitely, do not compute it 
@@ -191,27 +232,21 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! -----------------------------------------------
     Crt = 0._dp
 
-    MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
-    IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
-
     LagrangeVar => VariableGet( Solver % Mesh % Variables, MultName )
 
     IF(ASSOCIATED(LagrangeVar)) THEN
       ! We want to associate the variable of this solver to the LagrangeVar so that the library routines take
       ! care of the evolution of LagrangeVar for PrevValues and for parallel timestepping.
       IF(.NOT. ASSOCIATED( LagrangeVar, Solver % Variable ) ) THEN
-        CALL Info('CircuitsAndDynamics','Associating circuit variable to Lagrange values!',Level=8)
+        CALL Info(Caller,'Associating circuit variable to Lagrange values!',Level=8)
         Solver % Variable => LagrangeVar
         n = SIZE( LagrangeVar % Values )        
         IF( n < Model % Circuit_tot_n ) THEN
-          CALL Fatal('CircuitsAndDynamics','Lagrange multiplier is too small for ciruits!')
+          CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
         END IF
         IF( .NOT. ASSOCIATED( LagrangeVar % PrevValues ) ) THEN
-          CALL Info('CircuitsAndDynanamics','Add PrevValues to Lagrange multiplier!',Level=8)
+          CALL Info(Caller,'Add PrevValues to Lagrange multiplier!',Level=8)
           ALLOCATE( LagrangeVar % PrevValues(n,1) )
-
-          ! First time doing this the InitializeTimestep has not done this!
-          LagrangeVar % PrevValues(:,1) = LagrangeVar % Values 
         END IF        
       END IF
 
@@ -219,8 +254,11 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       LagrangeVar % PrevValues(:,1) = LagrangeVar % Values 
         
       Crt = LagrangeVar % PrevValues(1:Model%Circuit_tot_n,1)
-      !PRINT *,'Lagrange In:',SIZE(LagrangeVar % Values),MINVAL(Crt),&
-      !    MAXVAL(Crt), SUM(Crt),Model%Circuit_tot_n
+
+      ! Debugging stuff activated only when "Max Output Level" >= 20
+      IF( InfoActive( 20 ) ) THEN
+        CALL VectorValuesRange(Crt,Model%Circuit_tot_n,'Crt')       
+      END IF
     END IF
   END IF
 
@@ -268,7 +306,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CALL FreeMatrix(CM)
     Asolver % Matrix % AddMatrix => NULL()
   END IF
-      
+
+  CALL Info(Caller,'Finished assembly of circuit matrix',Level=12)
+  
 CONTAINS
 
     
@@ -1099,44 +1139,72 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL,SAVE :: First=.TRUE.
+  LOGICAL :: First=.TRUE.
   TYPE(Solver_t), POINTER :: Asolver => Null()
-  INTEGER :: p, n, istat, max_element_dofs
+  INTEGER :: p, n, istat, max_element_dofs, i, j
   TYPE(Mesh_t), POINTER :: Mesh  
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
-  TYPE(Circuit_t), POINTER :: Circuits(:)
+  TYPE(Circuit_t), POINTER :: Circuits(:)  
   LOGICAL :: Parallel, Found
+  CHARACTER(LEN=MAX_NAME_LEN) :: sname
+  CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamicsHarmonic'
+  
+  SAVE First, Parallel
   
 !------------------------------------------------------------------------------
 
-  Parallel = (ParEnv % PEs > 1 )
-  IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
-  END IF
-    
+
   CALL DefaultStart()
 
   IF (First) THEN
+    CALL Info(Caller,'Initializing electric circuits for harmonic simulation',Level=6)
+
     First = .FALSE.
+
+    Parallel = (ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+    END IF        
+    IF(Parallel) THEN
+      CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
+    ELSE
+      CALL Info(Caller,'Assuming serial electric circuits',Level=12)
+    END IF
     
     Model % HarmonicCircuits = .TRUE.
-    
     CALL AddComponentsToBodyLists()
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
+      CALL Fatal( Caller, 'Memory allocation error.' )
     END IF
 
     n_Circuits => Model%n_Circuits
     Model%Circuit_tot_n = 0
-  
-    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
-    ASolver => Model % ASolver
+
+
+    ! Look for the solver we attach the circuit equations to:
+    ! -------------------------------------------------------
+    Asolver => NULL()
+    DO i=1,Model % NumberOfSolvers      
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX( sname,'MagnetoDynamics2DHarmonic')
+      IF(j==0) j = INDEX( sname,'WhitneyAVHarmonicSolver')
+      IF( j > 0 ) THEN
+        ASolver => Model % Solvers(i) 
+        EXIT
+      END IF
+    END DO
+    IF(.NOT. ASSOCIATED(ASolver) ) THEN
+      ASolver => FindSolverWithKey('Export Lagrange Multiplier')
+    END IF
+    CALL Info(Caller,'Circuit equations associated with solver index: '&
+        //TRIM(I2S(ASolver % SolverId)),Level=6)
+    Model % ASolver => ASolver 
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
-    Circuits => Model%Circuits
+    Circuits => Model % Circuits
 
     CALL SetBoundaryAreasToValueLists() 
     
@@ -1200,6 +1268,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
 
+  CALL Info(Caller,'Finished assembly of circuit matrix',Level=12)
+
+  
   CONTAINS
 
 !------------------------------------------------------------------------------

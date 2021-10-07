@@ -250,22 +250,23 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION FindSolverWithKey(key, char_len) RESULT (Solver)
+  FUNCTION FindSolverWithKey(key) RESULT (Solver)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     
+    CHARACTER(*) :: key
+
     LOGICAL :: Found
-    INTEGER :: i, char_len
+    INTEGER :: i
     TYPE(Solver_t), POINTER :: Solver
-    CHARACTER(char_len) :: key
     
     ! Look for the solver we attach the circuit equations to:
     ! -------------------------------------------------------
-    Found = .False.
+    Found = .FALSE.
     DO i=1, CurrentModel % NumberOfSolvers
       Solver => CurrentModel % Solvers(i)
       IF(ListCheckPresent(Solver % Values, key)) THEN 
-        Found = .True. 
+        Found = .TRUE. 
         EXIT
       END IF
     END DO
@@ -301,10 +302,20 @@ CONTAINS
     CALL Matc( cmd, name, slen )
     READ(name(1:slen), *) n_Circuits
     
-    CurrentModel%n_Circuits = n_Circuits
-    
-    ALLOCATE( CurrentModel%Circuits(n_Circuits) )
+    CurrentModel % n_Circuits = n_Circuits
 
+    IF( ASSOCIATED( CurrentModel % Circuits ) ) THEN
+      IF( SIZE( CurrentModel % Circuits ) == n_Circuits ) THEN
+        CALL Info('AllocateCircuitList','Circuit list already allocated!')
+      ELSE
+        CALL Warn('AllocateCircuitList','Circuit of wrong size already allocated, deallocating this!')
+      END IF
+    END IF
+
+    IF(.NOT. ASSOCIATED(CurrentModel % Circuits ) ) THEN
+      ALLOCATE( CurrentModel % Circuits(n_Circuits) )
+    END IF
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateCircuitsList
 !------------------------------------------------------------------------------
@@ -318,7 +329,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
     TYPE(Circuit_t), POINTER :: Circuit
     
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
     nofc = 0
     
@@ -347,7 +358,7 @@ CONTAINS
     nofc = 0
     ComponentIDs = -1
     
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
    
     DO i=1,Circuit % n
@@ -465,7 +476,7 @@ END FUNCTION isComponentName
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
     cmd = 'C.'//TRIM(i2s(CId))//'.variables'
     slen = LEN_TRIM(cmd)
@@ -488,7 +499,7 @@ END FUNCTION isComponentName
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
     n = Circuit % n
     
@@ -571,7 +582,7 @@ END FUNCTION isComponentName
     TYPE(Valuelist_t), POINTER :: CompParams
     LOGICAL :: Found
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
     Circuit % CvarDofs = 0
     DO CompInd=1,Circuit % n_comp
@@ -805,7 +816,7 @@ END FUNCTION isComponentName
     INTEGER :: Owner=-1, k
     INTEGER, POINTER :: circuit_tot_n => Null()
     
-    Circuit_tot_n => CurrentModel%Circuit_tot_n
+    Circuit_tot_n => CurrentModel % Circuit_tot_n
     
     IF(k==1) THEN
       IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
@@ -851,7 +862,7 @@ END FUNCTION isComponentName
     TYPE(Valuelist_t), POINTER :: CompParams
     INTEGER :: CId, CompInd
     
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     
     DO CompInd=1,Circuit % n_comp
  
@@ -880,7 +891,7 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t), POINTER :: CVar
     INTEGER :: CId, i
     
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     ! add variables that are not associated to components
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
@@ -899,7 +910,7 @@ END FUNCTION isComponentName
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     ! Read in the coefficient matrices for the circuit equations:
@@ -929,7 +940,7 @@ END FUNCTION isComponentName
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
@@ -955,7 +966,7 @@ END FUNCTION isComponentName
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
 
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
     DO i=1,n
       ! Names of the source functions, these functions should be found
@@ -980,7 +991,7 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t), POINTER :: Cvar
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
   
-    Circuit => CurrentModel%Circuits(CId)
+    Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
@@ -1171,11 +1182,11 @@ CONTAINS
                cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
                RowId, nn, l, k, n_Circuits
     
-    CM => CurrentModel%CircuitMatrix
+    CM => CurrentModel % CircuitMatrix
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfo','ASolver not found!')
     nm = ASolver % Matrix % NumberOfRows
-    Circuit_tot_n = CurrentModel%Circuit_tot_n
+    Circuit_tot_n = CurrentModel % Circuit_tot_n
     Circuits => CurrentModel % Circuits
     n_Circuits = CurrentModel % n_Circuits
     
@@ -1821,7 +1832,7 @@ CONTAINS
     
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
-    Circuit_tot_n = CurrentModel%Circuit_tot_n
+    Circuit_tot_n = CurrentModel % Circuit_tot_n
     
     ! Initialize Circuit matrix:
     ! -----------------------------
@@ -1829,7 +1840,7 @@ CONTAINS
     nm =  Asolver % Matrix % NumberOfRows
 
     CM => AllocateMatrix()
-    CurrentModel%CircuitMatrix=>CM
+    CurrentModel % CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
     Asolver % Matrix % AddMatrix => CM
@@ -1865,7 +1876,7 @@ CONTAINS
       CM % NUmberOfRows = 0
       DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null()
       Asolver %  Matrix % AddMatrix => CM
-      CurrentModel%CircuitMatrix=>CM
+      CurrentModel % CircuitMatrix=>CM
       RETURN 
     END IF
 

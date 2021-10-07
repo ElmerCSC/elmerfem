@@ -3838,7 +3838,7 @@ CONTAINS
     INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
+    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,NewName,FullName,PosName
     CHARACTER(LEN=:), ALLOCATABLE :: Row
     CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
@@ -4022,7 +4022,7 @@ CONTAINS
     ! Components are:
     ! FieldSize, PermSize, Load?, SolverId
     IF(ALLOCATED( FileVariableInfo) ) DEALLOCATE( FileVariableInfo)
-    ALLOCATE( FileVariableInfo(TotalDofs,3) )
+    ALLOCATE( FileVariableInfo(TotalDofs,4) )
     FileVariableInfo = 0
        
     ! Find the start of dof definition part
@@ -4200,14 +4200,25 @@ CONTAINS
           END IF
         END DO        
         IF(.NOT. LoadThis ) CYCLE
+
+        NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
+        IF( Found ) THEN
+          CALL Info(Caller,'Renaming variable "'//TRIM(VarName)//'" when reading to: '//TRIM(NewName))
+          FileVariableInfo(DofCount,4) = j 
+          FullName = NewName
+        ELSE
+          NewName = VarName 
+        END IF
+      ELSE
+        NewName = VarName
       END IF
         
       ! Check whether a variable exists or not. If it does not exist then 
       ! create the variable so that it can be filled with the data.
       !------------------------------------------------------------------
-      Var => VariableGet( Mesh % Variables, VarName,.TRUE. )                  
+      Var => VariableGet( Mesh % Variables, NewName,.TRUE. )                  
       IF ( ASSOCIATED(Var) ) THEN
-        CALL Info(Caller,'Using existing variable: '//TRIM(VarName),Level=12)
+        CALL Info(Caller,'Using existing variable: '//TRIM(NewName),Level=12)
 
         IF( Dofs /= Var % Dofs ) THEN
           CALL Fatal(Caller,'Fields have different number of components ('&
@@ -4233,7 +4244,7 @@ CONTAINS
               //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
         END IF
       ELSE IF( CreateVariables ) THEN
-        CALL Info(Caller,'Creating variable: '//TRIM(VarName),Level=6)
+        CALL Info(Caller,'Creating variable: '//TRIM(NewName),Level=6)
 
         ALLOCATE( Var )
           
@@ -4245,7 +4256,7 @@ CONTAINS
           Var % Perm = 0
         END IF
 
-        IF ( SEQL(VarName, 'flow solution ') ) THEN
+        IF ( SEQL(NewName, 'flow solution ') ) THEN
 !------------------------------------------------------------------------------
 !         First add components to the variable list separately...
 !         (must be done this way for the output routines to work properly...)
@@ -4360,12 +4371,13 @@ CONTAINS
          EXIT
       END IF
 
-      TimeVar  => VariableGet( Mesh % Variables, 'Time' )
-      tStepVar => VariableGet( Mesh % Variables, 'Timestep' )
-
-      IF ( ASSOCIATED( TimeVar ) )  TimeVar % Values(1)  = Time
-      IF ( ASSOCIATED( tStepVar ) ) tStepVar % Values(1) = Timestep
-
+      IF(.NOT. ListGetLogical( ResList,'Restart Time Zero',Found ) ) THEN
+        TimeVar  => VariableGet( Mesh % Variables, 'Time' )
+        tStepVar => VariableGet( Mesh % Variables, 'Timestep' )        
+        IF ( ASSOCIATED( TimeVar ) )  TimeVar % Values(1)  = Time
+        IF ( ASSOCIATED( tStepVar ) ) tStepVar % Values(1) = Timestep
+      END IF
+        
       WRITE( Message,'(A,ES12.3)') 'Reading time sequence: ',Time
       CALL Info( Caller,Message, Level=4)
 
@@ -4421,9 +4433,18 @@ CONTAINS
           END IF
           CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
 
-          Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
+          ! If we are renaming the variable also then do it
+          j = FileVariableInfo(i,4) 
+          IF( j > 0 ) THEN
+            NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
+          ELSE
+            NewName = Row
+          END IF
+          
+          Var => VariableGet( Mesh % Variables,Newname, ThisOnly=.TRUE. )
+          
           IF ( .NOT. ASSOCIATED(Var) ) THEN
-            CALL Fatal(Caller,'Variable is not present for reading: '//TRIM(Row))
+            CALL Fatal(Caller,'Variable is not present for reading: '//TRIM(NewName))
           END IF
 
           FieldSize2 = SIZE( Var % Values )
@@ -4443,7 +4464,7 @@ CONTAINS
           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
           IF( ASSOCIATED( Var % Solver ) ) THEN
             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
-              CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+              CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(NewName),Level=6)
               Var % Solver % DoneTime = Var % Solver % Order
             END IF
           END IF
@@ -4468,11 +4489,10 @@ CONTAINS
           END DO
 
           IF( InfoActive( 20 ) ) THEN
-            PRINT *,'LoadRestartFile range:',TRIM(VarName), &
-                ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+            CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(NewName))
           END IF
-
-          CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
+          
+          CALL InvalidateVariable( CurrentModel % Meshes, Mesh, NewName )
         ELSE
           ! Just cycle the values, do not even try to be smart
           DO j=1, FieldSize
