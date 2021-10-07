@@ -223,7 +223,7 @@ Solver 1
   Variable = Az[Az re:1 Az im:1]
   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
   Linear System Solver = Direct
-  Linear System Direct Method = MUMPS
+  Linear System Direct Method = umfpack
 
   ! Needed for strong coupling with circuits
   Export Lagrange Multiplier = True
