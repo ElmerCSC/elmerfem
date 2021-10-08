@@ -1,5 +1,5 @@
 
-# Solver/User Function {Name of Solver/USF}
+# Pointwise - inverse distance interolation (legacy solver!)
 ## General Information
 - **Solver/User Function Fortran File:** pointwise.F90
 - **Solver/User Function Name:** InterpolatePointValue
