@@ -1,8 +1,8 @@
 
 # Pointwise - inverse distance interolation (legacy solver!)
 ## General Information
-- **Solver/User Function Fortran File:** pointwise.F90
-- **Solver/User Function Name:** InterpolatePointValue
+- **Solver Fortran File:** pointwise.F90
+- **Solver Name:** InterpolatePointValue
 - **Required Output Variable(s):** main variable is a dummy - output into chosen variables from list
 - **Solver Keywords:** 
   - ``Variable N`` (String) Name1 [name of variable, ``N``={1,2,3,...}]
@@ -17,7 +17,7 @@
   - ``Variable N Directions(2)``  (Integer) 2 1 [permutation of directions for interpolation]
   
 ## General Description
-``pointwise.f90`` was written as a way of interpolating scattered data on to the Elmer mesh based on the inverse distance method. It is included and reported by **legacy reason, only**. Do not start using it from scratch, rather stick to [Grid2DInterpolator](./Grid2DInterpolator.md)! 
+``pointwise.F90`` was written as a way of interpolating scattered data on to the Elmer mesh based on the inverse distance method. It is included and documented due to **legacy reason, only**. Do not start using it from scratch, rather stick to [Grid2DInterpolator](./Grid2DInterpolator.md)! 
 
 
 ### Mulitple solutions in one SIF
