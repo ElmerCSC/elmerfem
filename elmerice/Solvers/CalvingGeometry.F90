@@ -7333,6 +7333,7 @@ CONTAINS
     IF(PauseSolvers) THEN
       CALL ListAddConstReal( Model % Simulation, 'Timestep Size', PseudoSSdt)
       CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', 1)
+      CALL ListAddInteger( Model % Simulation, 'Timestep Intervals', TimeIntervals + 1)
     ELSE
       CALL ListAddConstReal( Model % Simulation, 'Timestep Size', SaveDt)
       CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', SaveSSiter)
