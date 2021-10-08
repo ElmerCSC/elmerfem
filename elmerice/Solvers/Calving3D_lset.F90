@@ -70,9 +70,7 @@
          WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
          EdgeLineNodes(:), NodePositions(:)
    REAL(KIND=dp) :: FrontOrientation(3), &
-        RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
-        MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
-        CrevasseThreshold, MinCalvingSize, PauseVolumeThresh, &
+        RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
         buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
@@ -87,12 +85,10 @@
    REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:), Polygon(:,:), PathPoly(:,:), &
         EdgeX(:), EdgeY(:), EdgePoly(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
-        filename_root, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
-        PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
-        MoveMeshDir
+        PC_EqName, Iso_EqName, VTUSolverName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside, Complete,&
+        SaveParallelActive, LeftToRight, inside, Complete,&
         LatCalvMargins
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
@@ -101,8 +97,7 @@
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
 
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
-        DistVarName, PC_EqName, Iso_EqName, &
-        MinCalvingSize, PauseVolumeThresh, MoveMesh,LeftConstraint, &
+        DistVarName, PC_EqName, Iso_EqName, LeftConstraint, &
         RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
         LeftMaskName, RightMaskName, FrontMaskName, InflowMaskName
 
@@ -133,16 +128,6 @@
       PC_EqName = ListGetString(Params,"Project Calving Equation Name",Found, UnfoundFatal=.TRUE.)
       Iso_EqName = ListGetString(Params,"Isosurface Equation Name",Found, UnfoundFatal=.TRUE.)
 
-      MinCalvingSize = ListGetConstReal(Params, "Minimum Calving Event Size", Found)
-      IF(.NOT. Found) THEN
-         MinCalvingSize = 0.0_dp
-         CALL Warn(SolverName,"No 'Minimum Calving Event Size' given, simulation may run slowly&
-              & due to remeshing after tiny events!")
-      END IF
-
-      PauseVolumeThresh = ListGetConstReal(Params, "Pause Solvers Minimum Iceberg Volume", Found)
-      IF(.NOT. Found) PauseVolumeThresh = 0.0_dp
-
       !Get the boundary constraint of the left, right & front boundaries
       LeftConstraint = 0; RightConstraint = 0; FrontConstraint = 0
       DO i=1,Model % NumberOfBCs
@@ -162,16 +147,7 @@
    ! on the lateral boundaries
    LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", Default=.TRUE.)
 
-   !TODO - these 4 are defunct
-   MeshEdgeMinLC = ListGetConstReal(Params, "Calving Mesh Min LC",Found, UnfoundFatal=.TRUE.)
-   MeshEdgeMaxLC = ListGetConstReal(Params, "Calving Mesh Max LC",Found, UnfoundFatal=.TRUE.)
-   MeshLCMinDist = ListGetConstReal(Params, "Calving Mesh LC Min Dist",Found, UnfoundFatal=.TRUE.)
-   MeshLCMaxDist = ListGetConstReal(Params, "Calving Mesh LC Max Dist",Found, UnfoundFatal=.TRUE.)
-
-
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
-   CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, &
-        UnfoundFatal=.TRUE.)
 
    DistVar => VariableGet(Model % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
    DistValues => DistVar % Values
@@ -220,15 +196,6 @@
             boundary have a lower distance.")
       END IF
    END DO
-
-   NameSuffix = ListGetString(Params, "Calving Append Name", Found, UnfoundFatal=.TRUE.)
-   MoveMeshDir = ListGetString(Params, "Calving Move Mesh Dir", Found)
-   IF(Found) THEN
-     CALL Info(SolverName, "Moving temporary mesh files after done")
-     MoveMesh = .TRUE.
-   END IF
-
-   WRITE(filename_root,'(A,A)') "Calving_temp",TRIM(NameSuffix)
 
    rt = RealTime() - rt0
    IF(ParEnv % MyPE == 0) &
@@ -1467,24 +1434,6 @@
          PRINT *, 'Time taken up to finish up: ', rt
     rt0 = RealTime()
 
-    !Output some information
-    !CALL CalvingStats(MaxBergVolume)
-    ! IF(MaxBergVolume > PauseVolumeThresh) THEN
-    !   PauseSolvers = .TRUE.
-    ! ELSE
-    !   PauseSolvers = .FALSE.
-    ! END IF
-
-    PRINT *,'not calculating maxbergvolume now, depends on columns!'
-
-    CALL SParIterAllReduceOR(PauseSolvers) !Really this should just be Boss sending to all
-    CALL ListAddLogical( Model % Simulation, 'Calving Pause Solvers', PauseSolvers )
-    IF(Debug) PRINT *,ParEnv % MyPE, ' Calving3D, pause solvers: ', PauseSolvers
-
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken up to output calving stats: ', rt
-    rt0 = RealTime()
     !-----------------------------------------------------------
     ! Tidy up and deallocate
     !-----------------------------------------------------------
