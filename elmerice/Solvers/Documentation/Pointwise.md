@@ -5,11 +5,11 @@
 - **Solver Name:** InterpolatePointValue
 - **Required Output Variable(s):** main variable is a dummy - output into chosen variables from list
 - **Solver Keywords:** 
-  - ``Variable N`` (String) Name1 [name of variable, ``N``={1,2,3,...}]
-  - ``Variable Data N`` (String) FileName1 [filename where to read xy data from]
+  - ``Variable N`` (String) NameN [name of variable, ``N``={1,2,3,...}]
+  - ``Variable Data N`` (String) FileNameN [filename where to read xy data from]
   - ``Variable Data End N`` (String) xy [suffix where to read xy data from]
   - ``Variable DataI N`` (Integer) {0,1,2} [see meanings of switches in SIF example below]
-  - ``Variable Data Offset N`` (Integer)
+  - ``Variable Data Offset N`` (Integer) 2020 [offset]
   - ``Variable N Supporting Points``  (Integer) 3 [minimum of data points to be used for interpolation]
   - ``Variable N Dimensions`` (Integer) 2 [dimension of variable. Here, 2, needs a file with two columns]
   - ``Variable N Exponent`` [Real] 3.0 [inverse distance weighting exponent (has to be positive) - default 2.0]
