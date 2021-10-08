@@ -1,5 +1,5 @@
 
-# Pointwise - inverse distance interolation (legacy solver!)
+# Pointwise - inverse distance interpolation (legacy solver!)
 ## General Information
 - **Solver Fortran File:** pointwise.F90
 - **Solver Name:** InterpolatePointValue
