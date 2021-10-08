@@ -85,7 +85,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
        Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, &
-       newdist, Quality
+       newdist, Quality, PauseVolumeThresh
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:), Ptest_dist(:), Gtest_dist(:), hminarray(:), hausdarray(:)
   REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
@@ -94,7 +94,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success,&
-       SaveMMGMeshes, SaveMMGSols
+       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
@@ -177,6 +177,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IF(SaveMMGSols) THEN
     premmgls_solfile = ListGetString(SolverParams, "Pre MMGLS Sol Name", UnfoundFatal = .TRUE.)
     mmgls_solfile = ListGetString(SolverParams, "MMGLS Output Sol Name", UnfoundFatal = .TRUE.)
+  END IF
+  PauseAfterCalving = ListGetLogical(SolverParams, "Pause After Calving Event", Found)
+  IF(.NOT. Found) THEN
+     CALL Info(SolverName, "Can't find 'Pause After Calving Event' logical in Solver section, &
+          & assuming True")
+     PauseAfterCalving = .TRUE.
   END IF
 
   IF(ParEnv % MyPE == 0) THEN
@@ -350,6 +356,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   ELSE
     ! only used if cboss has non calving nodes
     nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
+    my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
     ImBoss = .FALSE.
   END IF
 
@@ -1104,5 +1111,22 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    !remove mesh update
    CALL ResetMeshUpdate(Model, Solver)
+
+   !pause solvers?
+   IF(PauseAfterCalving) THEN
+    IF(ImBoss) THEN
+        PauseVolumeThresh = ListGetConstReal(SolverParams, "Pause Solvers Minimum Iceberg Volume", Found)
+        IF(.NOT. Found) THEN
+          CALL WARN(SolverName, "'Pause Solvers Minimum Iceberg Volume' not provided do assuming is 0")
+          PauseVolumeThresh = 0.0_dp
+        END IF
+
+        PauseSolvers = CalveVolume > PauseVolumeThresh .AND. RSuccess
+    END IF
+
+    CALL MPI_BCAST(PauseSolvers, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+
+    CALL PauseCalvingSolvers(Model, SolverParams, PauseSolvers)
+  END IF
 
 END SUBROUTINE CalvingRemeshMMG

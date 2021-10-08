@@ -7238,5 +7238,132 @@ CONTAINS
 
   END FUNCTION ClosestPointOfLineSegment
 
+  SUBROUTINE PauseCalvingSolvers(Model, Params, PauseSolvers)
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
+    TYPE(Valuelist_t), POINTER :: Params
+    LOGICAL :: PauseSolvers
+    !---------------------------------------------
+    TYPE(Variable_t), POINTER :: Var, RefVar
+    REAL(kind=dp) :: PseudoSSdt, SaveDt, LastRemeshTime
+    REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
+    LOGICAL :: CalvingOccurs, Found
+    INTEGER :: i,j,Num, PauseTimeMax, PauseTimeCount, SaveSSiter, TimeIntervals, &
+        NewTInterval
+    CHARACTER(MAX_NAME_LEN) :: VarName, EqName, FuncName = "PauseCalvingSolvers"
+
+    SAVE :: SaveDt, SaveSSiter, PseudoSSdt, PauseTimeCount
+
+    !Need this for temporarily stopping simulation clock when calving occurs,
+    ! to recheck for multiple calving events triggered in the same timestep
+    TimestepSizes => ListGetConstRealArray( CurrentModel % Simulation, &
+         'Timestep Sizes', Found, UnfoundFatal=.TRUE.)
+    IF(SIZE(TimestepSizes,1) > 1) CALL Fatal(FuncName,&
+         "Calving solver requires a single constant 'Timestep Sizes'")
+
+    SaveDt = TimestepSizes(1,1)
+
+    SaveSSiter = ListGetInteger(Model % Simulation, "Steady State Max Iterations", Found)
+    IF(.NOT. Found) SaveSSiter = 1
+
+    ! since "Calving solver requires a single constant 'Timestep Sizes'"
+    TimeIntervals = ListGetInteger(Model % Simulation, "Timestep Intervals", UnfoundFatal = .TRUE.)
+
+    PseudoSSdt = ListGetConstReal( Params, 'Pseudo SS dt', Found)
+    IF(.NOT. Found) THEN
+       CALL Warn(FuncName,"No value specified for 'Pseudo SS dt', taking 1.0e-10")
+       PseudoSSdt = 1.0e-10
+    END IF
+
+    PauseTimeMax = ListGetInteger(Params, "Calving Pause Max Steps", Found)
+    IF(.NOT. Found) THEN
+      CALL Warn(FuncName,"No value specified for 'Calving Pause Max Steps', using 15")
+      PauseTimeMax = 15
+    END IF
+
+    IF(PauseSolvers) THEN
+      PauseTimeCount = PauseTimeCount + 1
+      IF(PauseTimeCount > PauseTimeMax) THEN
+        PauseSolvers = .FALSE.
+        PauseTimeCount = 0
+        CALL Info(FuncName,"Calving paused steps exceeded given threshold, moving on...")
+      END IF
+    ELSE
+      PauseTimeCount = 0
+    END IF
+
+    DO Num = 1,999
+      WRITE(Message,'(A,I0)') 'Mesh Update Variable ',Num
+      VarName = ListGetString( Params, Message, Found)
+      IF( .NOT. Found) EXIT
+
+      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
+      IF(.NOT. ASSOCIATED(Var)) THEN
+         WRITE(Message,'(A,A)') "Listed mesh update variable but can not find: ",VarName
+         CALL Fatal(FuncName, Message)
+      END IF
+
+      CALL SwitchSolverExec(Var % Solver, (PauseSolvers))
+   END DO
+
+    !Turn off free surface solvers for next timestep
+    DO Num = 1,999
+      WRITE(Message,'(A,I0)') 'FreeSurface Variable ',Num
+      VarName = ListGetString( Params, Message, Found)
+      IF( .NOT. Found) EXIT
+
+      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
+      IF(.NOT. ASSOCIATED(Var)) THEN
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",VarName
+        CALL Fatal(FuncName, Message)
+      END IF
+
+      RefVar => VariableGet( Model % Mesh % Variables, "Reference "//TRIM(VarName), .TRUE. )
+      IF(.NOT. ASSOCIATED(RefVar)) THEN
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",&
+              "Reference "//TRIM(VarName)
+        CALL Fatal(FuncName, Message)
+      END IF
+
+      !Turn off (or on) the solver
+      !If CalvingOccurs, (switch) off = .true.
+      CALL SwitchSolverExec(Var % Solver, (PauseSolvers))
+    END DO
+
+    IF(PauseSolvers) THEN
+      CALL ListAddConstReal( Model % Simulation, 'Timestep Size', PseudoSSdt)
+      CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', 1)
+    ELSE
+      CALL ListAddConstReal( Model % Simulation, 'Timestep Size', SaveDt)
+      CALL ListAddInteger( Model % Simulation, 'Steady State Max Iterations', SaveSSiter)
+    END IF
+
+    DO Num = 1,999
+      WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
+      EqName = ListGetString( Params, Message, Found)
+      IF( .NOT. Found) EXIT
+
+      Found = .FALSE.
+      DO j=1,Model % NumberOfSolvers
+        IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+          Found = .TRUE.
+          !Turn off (or on) the solver
+          !If CalvingOccurs, (switch) off = .true.
+          CALL SwitchSolverExec(Model % Solvers(j), (PauseSolvers))
+          EXIT
+        END IF
+      END DO
+
+      IF(.NOT. Found) THEN
+        WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+            " to switch off after calving."
+        CALL Fatal(FuncName,Message)
+      END IF
+    END DO
+
+    IF(PauseSolvers) PRINT*, 'Solvers Paused!'
+
+  END SUBROUTINE PauseCalvingSolvers
+
 END MODULE CalvingGeometry
 
