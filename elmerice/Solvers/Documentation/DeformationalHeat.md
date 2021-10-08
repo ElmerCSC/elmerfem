@@ -3,7 +3,7 @@
 - **Solver Fortran File:** DeformationalHeat.f90
 - **Solver Name:** DeformationalHeatSolver
 - **Required Output Variable(s):** W (User Defined)
-- **Required Input Variable(s):** Default Flow Solution (else in Flow Solver Name)
+- **Required Input Variable(s):** Default Flow Solution (else declared in *Flow Solver Name*)
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
