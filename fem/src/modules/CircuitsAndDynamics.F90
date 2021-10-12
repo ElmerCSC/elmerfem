@@ -260,6 +260,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         CALL VectorValuesRange(Crt,Model%Circuit_tot_n,'Crt')       
       END IF
     END IF
+    
+    CALL Circuits_ToMeshVariable(Solver,crt)
+    
   END IF
 
   max_element_dofs = Model % Mesh % MaxElementDOFs
@@ -2100,6 +2103,7 @@ END SUBROUTINE CircuitsAndDynamicsHarmonic
 SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE DefUtils
+   USE CircuitUtils
    USE CircuitsMod
    IMPLICIT NONE
 !------------------------------------------------------------------------------   
@@ -2340,7 +2344,10 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
        END DO  
    END DO
 
+   CALL Circuits_ToMeshVariable(Solver,crt)
+   
    CALL DefaultFinish()
+
 
 CONTAINS
 

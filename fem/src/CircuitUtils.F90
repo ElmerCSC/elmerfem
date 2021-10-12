@@ -278,6 +278,10 @@ CONTAINS
   END FUNCTION FindSolverWithKey
 !------------------------------------------------------------------------------
 
+
+
+
+  
 END MODULE CircuitUtils
 
 
@@ -1160,6 +1164,126 @@ END FUNCTION isComponentName
    END FUNCTION HasSupport
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Create a standard variable associated to the mesh that may be use for dependencies.
+!------------------------------------------------------------------------------
+  SUBROUTINE Circuits_ToMeshVariable(Solver,crt)
+    
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: Crt(:)
+
+    TYPE(Circuit_t), POINTER :: Circuit
+    TYPE(CircuitVariable_t), POINTER :: CVar
+    TYPE(Variable_t), POINTER :: Var, VarIm
+    INTEGER :: p,i,n,nv,ni,m,iv,nsize
+    CHARACTER(LEN=MAX_NAME_LEN) :: CrtName,VarName,VarnameIm
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: Found 
+    
+    IF( .NOT. ListGetLogical( Solver % Values,'Export Circuit Variables',Found ) ) RETURN
+    
+
+    CALL Info('Circuit_ToMeshVariable','Adding circuit variables to be mesh variables')
+    
+    Mesh => Solver % Mesh
+            
+    DO p=1,CurrentModel % n_Circuits
+      CALL Info('Circuit_ToMeshVariable','Adding circuit: '//TRIM(I2S(p)),Level=12)
+
+      Circuit => CurrentModel % Circuits(p)
+
+      n = Circuit % n
+      
+      IF( CurrentModel % n_Circuits == 1) THEN
+        crtName = 'crt'
+      ELSE
+        crtName = 'crt '//TRIM(I2S(p))
+      END IF
+    
+      ! Count the v and i variables of the circuit.
+      nv = 0; ni = 0
+      DO i=1,n
+        Cvar => Circuit % CircuitVariables(i)
+        IF(Cvar % isIvar ) nv = nv + 1
+        IF(Cvar % isVvar) ni = ni + 1
+      END DO
+      
+      IF( nv + ni == 0 ) THEN
+        CALL Warn('Circuits_ToMeshVariable','No voltage or current variables exists!')
+        CYCLE
+      END IF
+      
+
+      ! Go first through currents and then through voltages    
+      DO iv=1,2      
+        IF( Circuit % Harmonic ) THEN
+          IF(iv==1) THEN
+            varname =  TRIM(crtname)//' i re'
+            varnameim =  TRIM(crtname)//' i im'
+          ELSE
+            varname = TRIM(crtname)//' v re'
+            varnameim = TRIM(crtname)//' v im'
+          END IF
+        ELSE
+          IF(iv==1) THEN
+            varname =  TRIM(crtname)//' i'
+          ELSE
+            varname = TRIM(crtname)//' v'
+          END IF
+        END IF
+        
+        IF(iv==1) THEN
+          nsize = ni
+        ELSE
+          nsize = nv
+        END IF
+                
+        ! Get variable, if variable does not exist then we create here on-the-fly
+        Var => VariableGet( Mesh % Variables,varname)
+        IF(.NOT. ASSOCIATED( Var ) ) THEN
+          CALL Info('Circuits_ToMeshVariable','Creating variable: '//TRIM(varname))
+          CALL VariableAddVector( Mesh % Variables, Mesh, Solver,&
+              varname,dofs=nsize,global=.TRUE.)
+          Var => VariableGet( Mesh % Variables,varname)
+        END IF
+        CALL Info('Circuts_toMeshVariable','Filling variable: '//TRIM(VarName),Level=20)
+
+        IF( Circuit % Harmonic ) THEN
+          VarIm => VariableGet( Mesh % Variables,varnameim)
+          IF(.NOT. ASSOCIATED( VarIm ) ) THEN
+            CALL Info('Circuits_ToMeshVariable','Creating variable: '//TRIM(varnameim))
+            CALL VariableAddVector( Mesh % Variables, Mesh, Solver,&
+                varnameim,dofs=nsize,global=.TRUE.)
+            VarIm => VariableGet( Mesh % Variables,varnameim)
+          END IF
+          CALL Info('Circuts_toMeshVariable','Filling variable: '//TRIM(VarNameim),Level=20)
+       END IF
+          
+        
+        ! Fill the currents or voltages
+        m = 0
+        DO i=1,n
+          Cvar => Circuit % CircuitVariables(i)
+          
+          IF(iv==1 .AND. .NOT. CVar % isIvar ) CYCLE          
+          IF(iv==2 .AND. .NOT. Cvar % isVvar) CYCLE
+          
+          CALL Info('Circuts_toMeshVariable','Inserting variable '//TRIM(I2S(CVar % ValueId))//': '&
+              //TRIM(Circuit % names(i)),Level=20)
+                    
+          m = m + 1
+          Var % Values(m) = crt(Cvar % ValueId)          
+          IF(Circuit % Harmonic) THEN
+            VarIm % Values(m) = crt(Cvar % ImValueId)
+          END IF
+        END DO
+      END DO
+    END DO
+          
+  END SUBROUTINE Circuits_ToMeshVariable
+
+   
 END MODULE CircuitsMod
 
 MODULE CircMatInitMod
@@ -1917,6 +2041,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
+
+      
 END MODULE CircMatInitMod
 
 
