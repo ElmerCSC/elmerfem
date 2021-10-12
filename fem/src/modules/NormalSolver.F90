@@ -186,7 +186,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   ! Optionally use the solver to project a vector field to normal direction
   BLOCK
     TYPE(Variable_t), POINTER :: Var1,Var2,Var3
-    REAL(KIND=dp) :: nvec(3),dvec(3)
+    REAL(KIND=dp) :: nvec(3),dvec(3),dvec0(3)
     INTEGER :: id,in      
     LOGICAL :: ScaleDt
     
@@ -214,6 +214,11 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
         Var3 => VariableGet( Mesh % Variables,TRIM(Vname)//' 3')
         IF(.NOT. ASSOCIATED(Var3) ) CALL Fatal(Caller,'Vector field component 3 does not exist: '//TRIM(Vname))
       END IF
+
+      dvec0(1) = ListGetCReal( SolverParams,'Vector Field Offset 1',GotIt)
+      dvec0(2) = ListGetCReal( SolverParams,'Vector Field Offset 2',GotIt)
+      dvec0(3) = ListGetCReal( SolverParams,'Vector Field Offset 3',GotIt)
+
       
       nvec = 0.0_dp; dvec = 0.0_dp
       DO i=1, Mesh % NumberOfNodes
@@ -231,6 +236,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
         dvec(2) = Var2 % Values(id)
         IF(dim==3) dvec(3) = Var3 % Values(id)
 
+        dvec = dvec - dvec0
         dvec = SUM(dvec*nvec)*nvec
         
         DO j=1,dim
