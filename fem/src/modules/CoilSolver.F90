@@ -86,7 +86,8 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         'CoilFix')
   END IF
     
-  IF( GetLogical( Params,'Coil Closed', Found ) ) THEN
+  IF( GetLogical( Params,'Coil Closed', Found ) .OR. &
+      ListGetLogicalAnyComponent( Model,'Coil Closed') ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
         'CoilPotB')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
@@ -207,7 +208,9 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   END IF
   
   
-  CoilClosed = GetLogical( Params,'Coil Closed', Found )
+  CoilClosed = GetLogical( Params,'Coil Closed', Found ) .OR. &
+      ListGetLogicalAnyComponent( Model,'Coil Closed') 
+ 
   IF( CoilClosed ) THEN
     CoilParts = 2
   ELSE
