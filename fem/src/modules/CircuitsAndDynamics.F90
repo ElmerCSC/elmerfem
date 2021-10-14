@@ -235,19 +235,21 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     LagrangeVar => VariableGet( Solver % Mesh % Variables, MultName )
 
     IF(ASSOCIATED(LagrangeVar)) THEN
+      n = SIZE( LagrangeVar % Values )        
+      IF( n < Model % Circuit_tot_n ) THEN
+        CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
+      END IF
+      
       ! We want to associate the variable of this solver to the LagrangeVar so that the library routines take
       ! care of the evolution of LagrangeVar for PrevValues and for parallel timestepping.
       IF(.NOT. ASSOCIATED( LagrangeVar, Solver % Variable ) ) THEN
         CALL Info(Caller,'Associating circuit variable to Lagrange values!',Level=8)
         Solver % Variable => LagrangeVar
-        n = SIZE( LagrangeVar % Values )        
-        IF( n < Model % Circuit_tot_n ) THEN
-          CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
-        END IF
-        IF( .NOT. ASSOCIATED( LagrangeVar % PrevValues ) ) THEN
-          CALL Info(Caller,'Add PrevValues to Lagrange multiplier!',Level=8)
-          ALLOCATE( LagrangeVar % PrevValues(n,1) )
-        END IF        
+      END IF
+        
+      IF( .NOT. ASSOCIATED( LagrangeVar % PrevValues ) ) THEN
+        CALL Info(Caller,'Add PrevValues to Lagrange multiplier!',Level=8)
+        ALLOCATE( LagrangeVar % PrevValues(n,1) )
       END IF
 
       ! Rotate solution here, as InitializeTimestep() doesn't do anything,  with 'no matrix' solvers...
@@ -353,6 +355,8 @@ CONTAINS
         vphi = GetCReal(BF, Circuit % Source(i), Found)
       END IF
       IF (Found) Cvar % SourceRe(i) = vphi
+
+      !IF(Found) PRINT *,'vphi',i,vphi,TRIM(Circuit % Source(i))
       
       Cvar % SourceRe(i) = vphi
       CM % RHS(RowId) = Cvar % SourceRe(i)
@@ -366,7 +370,7 @@ CONTAINS
           !--------------------------------------------
           IF(Cvar % A(j) /= 0._dp) THEN
             CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
-            CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*Crt(ColId-nm)/dt
+            CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j) * Crt(ColId-nm) / dt
           END IF
         END IF  
         ! B x:
@@ -1312,13 +1316,17 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" re", Found)
       END IF
       IF (Found) Cvar % SourceRe(i) = vphi
-      
+
+      !IF(Found) PRINT *,'vphi re',Found,i,vphi,TRIM(Circuit % Source(i))
+       
       vphi = GetCReal(Params, TRIM(Circuit % Source(i))//" im", Found)
       IF ( .NOT.Found.AND.ASSOCIATED(BF) ) THEN
         vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" im", Found)
       END IF
       IF (Found) Cvar % SourceIm(i) = vphi
       
+      !IF(Found) PRINT *,'vphi im',i,vphi,TRIM(Circuit % Source(i))
+
       CM % RHS(RowId) = Cvar % SourceRe(i)
       CM % RHS(RowId+1) = Cvar % SourceIm(i)
         
@@ -1596,7 +1604,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
       ELSE
         CALL GetWPotential(WBase)
-        !print *, "W Potential", Wbase
       END IF
 
     END IF
@@ -1632,8 +1639,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ELSE
           w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
         END IF
-
-        !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 
       localC = SUM(Tcoef(3,3,1:nn) * Basis(1:nn))
@@ -1954,7 +1959,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! R = (1/sigma * js,js):
         ! ----------------------
         localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
-        print *, "localR",localR,"C(3,3)",C(3,3)
 
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
