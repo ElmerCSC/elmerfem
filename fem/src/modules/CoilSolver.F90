@@ -163,8 +163,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      NormalizeCurrent, FitCoil, SelectNodes, CalcCurr, NarrowInterface
-  LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:)
+      FitCoil, SelectNodes, CalcCurr, NarrowInterface
+  LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
   INTEGER, ALLOCATABLE :: CoilIndex(:)
@@ -232,12 +232,6 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
   IF( .NOT. Found ) CalcCurr = .TRUE.
 
-  NormalizeCurrent = ListGetLogical( Params,'Normalize Coil Current',Found ) 
-  IF( NormalizeCurrent ) THEN
-    CALL Info('CoilSolver','Normalizing current density (as for stranded coil)',Level=5)
-  END IF
-
-  
   IF( FixConductivity ) THEN
     IF( CoilAnisotropic ) THEN
       MaxNonlinIter = 3
@@ -293,10 +287,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   
   MaxNoCoils = MAX( 1, Model % NumberOfComponents ) 
   ALLOCATE( DesiredCoilCurrent( MaxNoCoils ), DesiredCurrentDensity(MaxNoCoils), &
-      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils) )
+      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils), NormalizeCoil(MaxNoCoils) )
   DesiredCoilCurrent = 0.0_dp
   GotCurr = .FALSE.
   GotDens = .FALSE.
+  NormalizeCoil = .FALSE.
 
 
   ! These are different for different coils, would there be many
@@ -361,7 +356,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     IF(.NOT. Found ) DesiredCurrentDensity(NoCoils) = 1.0_dp
     GotDens(NoCoils) = Found
 
-
+    NormalizeCoil(NoCoils) = ListGetLogical( CoilList,'Normalize Coil Current',Found )
+    IF(.NOT. Found ) THEN
+      IF( ListGetLogical( Params,'Normalize Coil Current',Found ) ) NormalizeCoil(NoCoils) = .TRUE.
+    END IF
+    
     ! If we know the coil cross section we can relate the wishes in total 
     ! current through cross section and current density. 
     CoilCrossSection = ListGetCReal( CoilList,'Coil Cross Section',Found ) 
@@ -552,9 +551,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CALL Info('CoilSolver',Message,Level=7)
     END DO
 
-    IF( NormalizeCurrent ) THEN
-      CALL NormalizeCurrentDensity() 
-    END IF
+    CALL NormalizeCurrentDensity() 
+
     CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
   END IF
 
@@ -1920,11 +1918,16 @@ CONTAINS
     INTEGER :: i,elem,t,Coil
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-
+    
     SAVE Nodes
 !------------------------------------------------------------------------------
+    
+    IF( .NOT. ANY(NormalizeCoil ) ) THEN
+      CALL Info('CoilSolver','No normalization of current requested!',Level=20)
+      RETURN
+    END IF
 
-    CALL Info('CoilSolver','Normalizing current density to a constant value')
+    CALL Info('CoilSolver','Normalizing current density (as for stranded coil)',Level=5)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n), NodalCurr(3,n) )
@@ -1939,6 +1942,8 @@ CONTAINS
 
     DO Coil = 1, NoCoils 
 
+      IF( .NOT. NormalizeCoil(Coil) ) CYCLE
+      
       ! Current is already scaled, but we don't know the desired current density
       ! Let's assume that the average current density is a good candidate
       !--------------------------------------------------------------------------
