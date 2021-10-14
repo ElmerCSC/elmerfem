@@ -232,7 +232,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
          n  = GetElementNOFNodes( Element )
          nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixBC(Element, n, nd)
+         CALL LocalMatrixInfinityBC(Element, n, nd)
       ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
          n  = GetElementNOFNodes( Element )
          nd = GetElementNOFDOFs( Element )
@@ -262,7 +262,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   ! For cylindrical symmetry the model lumping has not been implemented
   IF( .NOT. CSymmetry ) THEN
-    CALL CalculateLumped()
+    CALL CalculateLumpedTransient()
   END IF
 
   CALL DriveHysteresis(model, solver)
@@ -355,7 +355,7 @@ CONTAINS
 ! It is assumed that inertial moment is computed the 1st time only and it
 ! stays constant.
 !------------------------------------------------------------------------------
- SUBROUTINE CalculateLumped()
+ SUBROUTINE CalculateLumpedTransient()
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &
        rinner,router,rmean,rdiff,ctorq,detJ,Weight,&
@@ -415,7 +415,7 @@ CONTAINS
    
    nbf = Model % NumberOfBodyForces
    IF(.NOT. Visited ) THEN
-     n = Model % Mesh % MaxElementNodes
+     n = Model % Mesh % MaxElementDofs
      ALLOCATE( a(nbf), u(nbf), POT(n), dPOT(n), pPot(n), Density(n), &
          Basis(n), dBasisdx(n,3) )
    END IF
@@ -556,8 +556,8 @@ CONTAINS
        END IF
 
        ! Coordinates of the intergration point
-       x = SUM(Nodes % x(1:nd)*Basis(1:nd))
-       y = SUM(Nodes % y(1:nd)*Basis(1:nd))
+       x = SUM(Nodes % x(1:n)*Basis(1:n))
+       y = SUM(Nodes % y(1:n)*Basis(1:n))
        r = SQRT(x**2+y**2)
        
        IF(ThisPot ) THEN
@@ -566,8 +566,8 @@ CONTAINS
        END IF
        
        IF( ThisTorque ) THEN                      
-         Bx =  SUM(POT(1:n)*dBasisdx(1:n,2))
-         By = -SUM(POT(1:n)*dBasisdx(1:n,1))
+         Bx =  SUM(POT(1:nd)*dBasisdx(1:nd,2))
+         By = -SUM(POT(1:nd)*dBasisdx(1:nd,1))
          Br =  x/r*Bx + y/r*By
          Bp = -y/r*Bx + x/r*By
          Torq = Torq + Weight * r*Br*Bp / (PI*4.0d-7*rdiff)
@@ -691,7 +691,7 @@ CONTAINS
    Visited = .TRUE.
    
 !------------------------------------------------------------------------------
- END SUBROUTINE CalculateLumped
+ END SUBROUTINE CalculateLumpedTransient
 !------------------------------------------------------------------------------
 
 
@@ -780,8 +780,8 @@ CONTAINS
 
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
-      IF (.NOT. ASSOCIATED(Bval) ) CALL Fatal ('mgdyn2D','bval not associated')
-      IF (.NOT. ASSOCIATED(Hval) ) CALL Fatal ('mgdyn2D','hval not associated')
+      IF (.NOT. ASSOCIATED(Bval) ) CALL Fatal (Caller,'Bval not associated')
+      IF (.NOT. ASSOCIATED(Hval) ) CALL Fatal (Caller,'Hval not associated')
     ELSE
       CALL GetReluctivity(Material,R,n,Element)
     END IF
@@ -848,7 +848,7 @@ CONTAINS
       IF(Zirka .OR. HBCUrve) THEN
         Agrad = 0.0_dp
         Agrad = MATMUL( POT,dBasisdx )
-        Alocal = SUM( POT(1:n) * Basis(1:n) )
+        Alocal = SUM( POT(1:nd) * Basis(1:nd) )
         ! Sign? This convention: \vec A = A u_z
         ! -----
         B_ip(1) = Agrad(2) 
@@ -893,11 +893,11 @@ CONTAINS
 
       ! Is the sign correct?
       !---------------------
-      Bt(:,1) =  dbasisdx(:,2)
-      Bt(:,2) = -dbasisdx(:,1)
+      Bt(1:nd,1) =  dbasisdx(1:nd,2)
+      Bt(1:nd,2) = -dbasisdx(1:nd,1)
       IF ( CSymmetry ) THEN
-        Bt(:,1:2) = -Bt(:,1:2)
-        Bt(:,2) = Bt(:,2) + Basis(:)/x
+        Bt(1:nd,1:2) = -Bt(1:nd,1:2)
+        Bt(1:nd,2) = Bt(1:nd,2) + Basis(1:nd)/x
       END IF
 
       DO p = 1,nd
@@ -905,7 +905,7 @@ CONTAINS
       END DO
 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             MATMUL(Ht, TRANSPOSE(Bt))
+             MATMUL(Ht(1:nd,:), TRANSPOSE(Bt(1:nd,:)))
 
       ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
@@ -918,7 +918,7 @@ CONTAINS
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(B_ip(:)*Bt(q,:))*SUM(B_ip*Bt(p,:))
+              muder/babs*SUM(B_ip*Bt(q,:))*SUM(B_ip*Bt(p,:))
           END DO
         END DO
       END IF
@@ -1085,8 +1085,8 @@ CONTAINS
       ! diffusion term (D*grad(u),grad(v)):
       ! -----------------------------------
       IF( HBCurve ) THEN
-        Agrad(1:2) = MATMUL( POT(1:n),dBasisdx(1:n,1:2) )
-        Alocal = SUM( POT(1:n) * Basis(1:n) )
+        Agrad(1:2) = MATMUL( POT(1:nd),dBasisdx(1:nd,1:2) )
+        Alocal = SUM( POT(1:nd) * Basis(1:nd) )
 
         B_ip(1) = Agrad(2) 
         B_ip(2) = -Agrad(1)         
@@ -1129,7 +1129,7 @@ CONTAINS
             
       ! diffusive term: STIFF=STIFF+(a*grad(u),grad(v))   
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
-          MATMUL(Ht, TRANSPOSE(Bt))
+          MATMUL(Ht(1:nd,:), TRANSPOSE(Bt(1:nd,:)))
 
       IF( MassAsm ) THEN
         CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found )
@@ -1215,7 +1215,7 @@ END SUBROUTINE ! }}}
 !-------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, n, nd )
+  SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -1277,7 +1277,7 @@ END SUBROUTINE ! }}}
     END DO
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixBC
+  END SUBROUTINE LocalMatrixInfinityBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1347,8 +1347,8 @@ END SUBROUTINE ! }}}
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementNodes), &
-                      By(Solver % Mesh % MaxElementNodes)
+    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
+        By(Solver % Mesh % MaxElementDofs)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 
@@ -1583,7 +1583,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
-        CALL LocalMatrixBC(  Element, n, nd )
+        CALL LocalMatrixInfinityBC(  Element, n, nd )
       ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
         n  = GetElementNOFNodes( Element )
         nd = GetElementNOFDOFs( Element )
@@ -1602,7 +1602,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   END DO
   
   IF(.NOT. CSymmetry ) THEN
-    CALL CalculateLumped(Model % NumberOfBodyForces)
+    IF( ListGetLogical(Solver% Values,'Old Model Lumping',Found ) ) THEN
+      CALL CalculateLumpedOld(Model % NumberOfBodyForces)      
+    ELSE
+      CALL CalculateLumpedHarmonic()
+    END IF
   END IF
 
 
@@ -1645,7 +1649,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
 CONTAINS
 
 !------------------------------------------------------------------------------
- SUBROUTINE CalculateLumped(nbf)
+ SUBROUTINE CalculateLumpedOld(nbf)
 !------------------------------------------------------------------------------
    INTEGER::nbf
 !------------------------------------------------------------------------------
@@ -1724,7 +1728,7 @@ CONTAINS
    WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
    CALL Info(Caller,Message,Level=7)
 !------------------------------------------------------------------------------
- END SUBROUTINE CalculateLumped
+ END SUBROUTINE CalculateLumpedOld
 !------------------------------------------------------------------------------
 
 
@@ -1756,8 +1760,8 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis )
 
-      x = SUM(Nodes % x(1:nd)*Basis(1:nd))
-      y = SUM(Nodes % y(1:nd)*Basis(1:nd))
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
       r = SQRT(x**2+y**2)
       A = A + IP % s(t)*detJ
       U = U + IP % s(t)*detJ*R*SUM(Density(1:n)*Basis(1:n))
@@ -1807,8 +1811,8 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis, dBasisdx )
 
-      x = SUM(Nodes % x(1:nd)*Basis(1:nd))
-      y = SUM(Nodes % y(1:nd)*Basis(1:nd))
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
       r = SQRT(x**2+y**2)
 
       Bx =  SUM(POTC*dBasisdx(:,2))
@@ -1825,7 +1829,7 @@ CONTAINS
   END SUBROUTINE Torque
 !------------------------------------------------------------------------------
 
-
+ 
 !------------------------------------------------------------------------------
   SUBROUTINE Potential( U, A, Element,n,nd)
 !------------------------------------------------------------------------------
@@ -1863,6 +1867,345 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! This is monolithic lumping routine that has been optimized for speed.
+! This way we need to evaluate the Basis functions only once for each element.
+! This is modified version of the transient solver, this solver did not really
+! need the minor optimizations.
+!------------------------------------------------------------------------------
+ SUBROUTINE CalculateLumpedHarmonic()
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, xRe,xIm, Omega, &
+       rinner,router,rmean,rdiff,ctorq,detJ,Weight,x,y,r,rho
+   REAL(KIND=dp), ALLOCATABLE :: a(:),POT(:,:),Density(:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: POTC(:),U(:)
+   REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+   LOGICAL, ALLOCATABLE :: TorqueElem(:)
+   INTEGER :: i,bfid,n,nd,nbf,NoSlices,PrevComm
+   LOGICAL :: Found, Stat
+   TYPE(ValueList_t),POINTER::Params
+   TYPE(GaussIntegrationPoints_t) :: IP
+   TYPE(Nodes_t) :: Nodes
+   LOGICAL :: CalcTorque, Calcpot, CalcInert
+   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange, SliceAverage
+   LOGICAL :: Visited = .FALSE.
+   
+   SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, POTC, Density, Ctorq, TorqueElem
+   
+!------------------------------------------------------------------------------
+
+   CALL Info(Caller,'Calculating lumped parameters',Level=8)
+
+   ! Define whether we have something to compute
+   rinner = ListGetCRealAnyBody( Model,'r inner',CalcTorque )
+   IF( CalcTorque ) THEN
+     router = ListGetCRealAnyBody( Model,'r outer')
+     rmean = (rinner+router)/2
+     rdiff = (router-rinner)
+     HaveRange = .TRUE.     
+   ELSE
+     rmean = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',CalcTorque)
+     rmean = ParallelReduction( rmean, 2 )
+     IF(.NOT. CalcTorque .AND. rmean > EPSILON(rmean) ) THEN
+       CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',rmean)
+       CalcTorque = .TRUE.
+     END IF
+     rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
+     IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
+     HaveRange = .FALSE.
+   END IF
+   
+   CalcPot = ListGetLogicalAnyBodyForce( Model,'Calculate Potential' )
+   CalcInert = CalcTorque .AND. .NOT. Visited 
+   
+   IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
+
+   Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
+
+   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) 
+   IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
+     CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
+     PrevComm = ParEnv % ActiveComm
+     ParEnv % ActiveComm = ParallelSlicesComm() 
+   END IF
+   
+   
+   nbf = Model % NumberOfBodyForces
+   IF(.NOT. Visited ) THEN
+     n = Model % Mesh % MaxElementDofs
+     ALLOCATE( a(nbf), u(nbf), POT(2,n), POTC(n), Density(n), &
+         Basis(n), dBasisdx(n,3) )
+   END IF
+
+   IF( CalcTorque ) THEN
+     torq = 0._dp
+     TorqArea = 0._dp
+   END IF
+   IF( CalcInert ) THEN
+     IMoment = 0._dp
+     IA = 0.0_dp
+   END IF
+   IF( CalcPot ) THEN   
+     U=0._dp
+     a=0._dp
+   END IF
+
+
+   IF(.NOT. Visited .AND. CalcTorque ) THEN
+     ALLOCATE( TorqueElem( GetNOFActive() ) )
+     TorqueElem = .FALSE.
+     
+     DO i=1,GetNOFActive()
+       Element => GetActiveElement(i)
+     
+       ThisTorque = .FALSE.
+       
+       n  = GetElementNOFNodes(Element)     
+       CALL GetElementNodes( Nodes, Element )
+
+       IF( HaveRange ) THEN       
+         ! We are given range in classical Arkkio style. 
+         ! Check how the center lies with respect to the range.
+         x = SUM(Nodes % x(1:n))/n
+         y = SUM(Nodes % y(1:n))/n
+         r = SQRT(x**2+y**2)
+         IF (r >= rinner .AND. r <= router) THEN
+           TorqueElem(i) = .TRUE.
+         END IF
+       ELSE
+         ! We are not given a range. Just take any element
+         ! which has even one node at the given radius. 
+         DO j=1,n
+           x = Nodes % x(j)
+           y = Nodes % y(j)
+           r = SQRT(x**2+y**2)
+           IF( ABS(r-rmean) < rdiff / 2 ) THEN
+             TorqueElem(i) = .TRUE.
+             EXIT
+           END IF
+         END DO
+       END IF
+     END DO
+              
+     i = COUNT( TorqueElem )
+     CALL Info(Caller,'Number of elements to compute torque: '//TRIM(I2S(i)))
+   END IF
+
+   
+   DO i=1,GetNOFActive()
+     Element => GetActiveElement(i)
+
+     nd = GetElementNOFDOFs(Element)
+     n  = GetElementNOFNodes(Element)     
+    
+     ThisTorque = .FALSE.
+     ThisPot = .FALSE.
+     ThisInert = .FALSE.
+     
+     IF( CalcPot ) THEN
+       Params => GetBodyForce(Element)
+       IF(ASSOCIATED(Params)) THEN         
+         ThisPot = GetLogical(Params,'Calculate Potential',Found)
+         IF( ThisPot ) THEN
+           bfid = GetBodyForceId(Element)           
+         END IF
+       END IF
+     END IF
+     
+     IF( CalcInert ) THEN
+       Params=>GetBodyParams(Element)
+       IF(ASSOCIATED(Params)) THEN
+         ThisInert = GetLogical(Params,'Calculate Inertial Moment',Found)
+       END IF
+       Density(1:n) = GetReal(GetMaterial(),'Density',Found,Element)
+     END IF
+     
+     IF( CalcTorque ) ThisTorque = TorqueElem(i)
+
+     ! Only treat the element if we have something to compute
+     IF( .NOT. (ThisPot .OR. ThisInert .OR. ThisTorque ) ) CYCLE
+     
+     IF( ThisTorque .OR. ThisPot ) THEN
+       CALL GetLocalSolution(POT, UElement=Element)
+       POTC(1:nd) = POT(1,1:nd)+im*POT(2,1:nd)
+     END IF
+            
+     CALL GetElementNodes( Nodes, Element )
+     
+     ! Numerical integration:
+     !-----------------------
+     IP = GaussPoints(Element)
+     
+     DO t=1,IP % n
+       
+       ! Basis function values & derivatives at the integration point:
+       !--------------------------------------------------------------
+       IF( ThisTorque ) THEN
+         ! Only torque needs the derivatives of basis function
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx )
+         weight = IP % s(t) * detJ
+       ELSE
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis )
+         weight = IP % s(t) * detJ
+       END IF
+
+       ! Coordinates of the intergration point
+       x = SUM(Nodes % x(1:n)*Basis(1:n))
+       y = SUM(Nodes % y(1:n)*Basis(1:n))
+       r = SQRT(x**2+y**2)
+       
+       IF(ThisPot ) THEN
+         Omega = GetAngularFrequency(UElement=Element)
+         A(bfid) = A(bfid) + Weight
+         U(bfid) = U(bfid) + Weight * im * Omega * SUM(POTC(1:nd)*Basis(1:nd))
+       END IF
+       
+       IF( ThisTorque ) THEN                      
+         BLOCK
+           REAL(KIND=dp) :: BrRe,BpRe,BrIm,BpIm
+           COMPLEX(KIND=dp) :: Bp,Br,Bx,By
+           
+           Bx =  SUM(POTC(1:nd)*dBasisdx(1:nd,2))
+           By = -SUM(POTC(1:nd)*dBasisdx(1:nd,1))
+           Br =  x/r*Bx + y/r*By
+           Bp = -y/r*Bx + x/r*By
+           
+           BrRe = REAL( Br ); BrIm = AIMAG( Br )
+           BpRe = REAL( Bp ); BpIm = AIMAG( Bp )
+
+           Torq = Torq + weight * r * (BrRe*BpRe+BrIm*BpIm)/(2*PI*4.0d-7*rdiff)
+           TorqArea = TorqArea + Weight
+         END BLOCK
+       END IF
+       
+       IF( ThisInert ) THEN
+         IF( r < rmean ) THEN
+           rho = SUM( density(1:n) * Basis(1:n) ) 
+           IF( rho > EPSILON( rho ) ) THEN
+             IA = IA + Weight
+             U = U + Weight * r * rho
+           END IF
+         END IF
+       END IF
+     END DO
+   END DO
+     
+
+   ! Finally perform parallel reduction if needed, and
+   ! store the results for saving by SaveScalars.
+   !-------------------------------------------------------------------------   
+   IF( CalcPot ) THEN
+     IF( Parallel ) THEN
+       DO i=1,nbf
+         a(i) = ParallelReduction(a(i))
+         xRe = REAL( u(i) ); xIm = AIMAG( u(i) )
+         xRe = ParallelReduction(xRe)
+         xIm = ParallelReduction(xIm)
+         u(i) = CMPLX( xRe, xIm )
+       END DO
+     END IF     
+     DO i=1,nbf
+       IF(a(i)>0) THEN
+         CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
+             //TRIM(i2s(i)),REAL(u(i))/a(i))
+         CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
+             //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+         CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
+             //TRIM(i2s(i)),a(i)) 
+       END IF
+     END DO
+   END IF
+   
+   IF( CalcTorque ) THEN   
+     IF( Parallel ) THEN
+       Torq = ParallelReduction(Torq)
+       TorqArea = ParallelReduction(TorqArea)
+     END IF
+
+     ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
+     ! This may not the case, so the 1st time we make a geometric correction. 
+     IF(.NOT. Visited ) THEN
+       WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
+       CALL Info(Caller,Message,Level=6)
+
+       IF (TorqArea /= 0) THEN
+         Ctorq = 2 * PI * rmean * rdiff / TorqArea
+
+         WRITE(Message,'(A,F8.4)') 'Air gap correction initial:', cTorq
+         CALL Info(Caller,Message,Level=4)
+         
+         ! The correction factor also corrects for the number of periods.
+         ! We don't want that - so let us take back that and the torque
+         ! can be compared to inertial moment of the sector still. 
+         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
+         i = NINT( ParallelReduction( 1.0_dp * i, 2 ) )
+         IF( i > 1 ) THEN
+           WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
+           CALL Info(Caller,Message,Level=4)
+           Ctorq = Ctorq / i 
+         END IF         
+       ELSE
+         Ctorq = 1.0_dp
+       END IF
+       
+       WRITE(Message,'(A,F8.4)') 'Air gap correction:', cTorq
+       CALL Info(Caller,Message,Level=4)
+       !CALL ListAddConstReal(Model % Simulation,'res: air gap correction', cTorq)
+     END IF
+       
+     Torq = Ctorq * Torq
+
+     IF( SliceAverage ) THEN
+       ! Save slice torque even for one slice since then the output for scalars is the same
+       ! for any number of slices.       
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//TRIM(I2S(ParEnv % MyPe))//':', Torq
+       CALL Info(Caller,Message,Level=5)
+       CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
+
+       ! But the averaging makes sense only for more than one slice
+       IF( NoSlices > 1 ) THEN
+         Torq = ParallelReduction(Torq) / NoSlices
+       END IF
+     END IF
+       
+     WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
+     CALL Info(Caller,Message,Level=5)
+     CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
+   END IF
+   
+   IF( CalcInert ) THEN
+     IF( Parallel ) THEN
+       IMoment = ParallelReduction(IMoment)
+       IA = ParallelReduction(IA)
+     END IF
+
+     WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
+     CALL Info(Caller,Message,Level=7)
+
+     WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
+     CALL Info(Caller,Message,Level=7)
+       
+     CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
+     CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
+   END IF
+
+   IF( SliceAverage ) THEN
+     IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
+       CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
+       ParEnv % ActiveComm = PrevComm
+     END IF
+   END IF
+     
+   Visited = .TRUE.
+   
+!------------------------------------------------------------------------------
+ END SUBROUTINE CalculateLumpedHarmonic
+!------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(  Element, n, nd)
 !------------------------------------------------------------------------------
@@ -2106,7 +2449,7 @@ CONTAINS
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
              MATMUL(Ht, TRANSPOSE(Bt))
 
-      IF (HBcurve.AND.NewtonRaphson) THEN
+      IF (HBcurve .AND. NewtonRaphson) THEN
 !        DO p=1,nd
 !          DO q=1,nd
 !            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
@@ -2168,7 +2511,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(Element, n, nd )
+  SUBROUTINE LocalMatrixInfinityBC(Element, n, nd )
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -2177,15 +2520,10 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
-
-    REAL(KIND=dp) :: R_ip, &
-            Inf_ip,Coord(3),Normal(3),mu,u,v
-    
+    REAL(KIND=dp) :: R_ip, Inf_ip,Coord(3),Normal(3),mu,u,v
     COMPLEX(KIND=dp) :: R(2,2,n)       
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-
     TYPE(ValueList_t), POINTER :: Material
-
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
@@ -2234,7 +2572,7 @@ CONTAINS
     END DO
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixBC
+  END SUBROUTINE LocalMatrixInfinityBC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -2248,9 +2586,8 @@ CONTAINS
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    REAL(KIND=dp) :: R(n), R_ip, &
-            Coord(3),Normal(3),mu,u,v, AirGapLength(nd), &
-            AirGapMu(nd), AirGapL
+    REAL(KIND=dp) :: R(n), R_ip, Coord(3),Normal(3),mu,u,v,&
+        AirGapLength(nd), AirGapMu(nd), AirGapL
 
     TYPE(ValueList_t), POINTER :: Material
     TYPE(ValueList_t), POINTER :: BC
@@ -2306,10 +2643,10 @@ CONTAINS
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementNodes), &
-                      Bxim(Solver % Mesh % MaxElementNodes), &
-                      By(Solver % Mesh % MaxElementNodes), &
-                      Byim(Solver % Mesh % MaxElementNodes)
+    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
+                      Bxim(Solver % Mesh % MaxElementDofs), &
+                      By(Solver % Mesh % MaxElementDofs), &
+                      Byim(Solver % Mesh % MaxElementDofs)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 

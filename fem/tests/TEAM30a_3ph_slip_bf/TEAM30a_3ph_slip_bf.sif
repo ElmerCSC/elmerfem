@@ -239,6 +239,8 @@ Solver 1
   ! Needed for strong coupling with circuits
   Export Lagrange Multiplier = True
   Apply Mortar BCs = Logical True
+
+!  Old Model LUmping = Logical True
 End 
 
 Solver 2
@@ -318,5 +320,5 @@ End
 
 
 Solver 1 :: Reference Norm = 1.00955005E+04
-Solver 4 :: Reference Norm = 2.08264117E+00
+Solver 4 :: Reference Norm = 1.98821798E+00
 
