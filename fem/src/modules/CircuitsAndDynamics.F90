@@ -263,8 +263,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
     
-    CALL Circuits_ToMeshVariable(Solver,crt)
-    
+    CALL Circuits_ToMeshVariable(Solver,crt) 
   END IF
 
   max_element_dofs = Model % Mesh % MaxElementDOFs
@@ -1121,7 +1120,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation
   
   Params => Solver % Values
 
-  CALL ListAddLogical( Params,'No Matrix',.TRUE.)
+  ! This is only created if no variable present!
+  CALL ListAddNewString( Params,'Variable','-global cmplxckt')
+  CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
+  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
 
   Solver % Values => Params
     
@@ -1154,6 +1156,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)  
   LOGICAL :: Parallel, Found
+  REAL(KIND=dp), POINTER :: px(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamicsHarmonic'
   
@@ -1188,8 +1191,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     END IF
 
     n_Circuits => Model%n_Circuits
-    Model%Circuit_tot_n = 0
-
+    Model % Circuit_tot_n = 0
 
     ! Look for the solver we attach the circuit equations to:
     ! -------------------------------------------------------
@@ -1243,9 +1245,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
   
   max_element_dofs = Model % Mesh % MaxElementDOFs
-  Circuits => Model%Circuits
-  n_Circuits => Model%n_Circuits
-  CM=>Model%CircuitMatrix
+  Circuits => Model % Circuits
+  n_Circuits => Model % n_Circuits
+  CM => Model % CircuitMatrix
   
   ! Initialize Circuit matrix:
   ! -----------------------------
@@ -1261,7 +1263,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL AddBasicCircuitEquations(p)
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
   END DO
-  Asolver %  Matrix % AddMatrix => CM
+  Asolver % Matrix % AddMatrix => CM
 
   IF(ASSOCIATED(CM)) THEN
     IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
@@ -1273,6 +1275,18 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
      ASolver % Matrix % AddMatrix => Null()
   END IF
 
+  IF( InfoActive(20) ) THEN
+    px => CM % Values
+    CALL VectorValuesRange(px,SIZE(px),'CircuitMatrix',.TRUE.)
+    px => CM % rhs
+    CALL VectorValuesRange(px,SIZE(px),'CircuitRhs',.TRUE.)
+  END IF
+
+  IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
+    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
+    CALL SaveLinearSystem( Solver, CM )
+  END IF
+    
   CALL DefaultFinish()
 
   CALL Info(Caller,'Finished assembly of circuit matrix',Level=12)
@@ -1296,10 +1310,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     Circuit => CurrentModel % Circuits(p)
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
-    Omega = GetAngularFrequency()
     BF => CurrentModel % BodyForces(1) % Values
     CM => CurrentModel%CircuitMatrix
 
+    Omega = GetAngularFrequency()
+    WRITE(Message,'(A,ES12.3)') 'Angular frequency for circuit equations: ',Omega)
+    CALL Info(Caller, Message, Level=6) 
+    
     Params => GetSolverParams()
     
     DO i=1,Circuit % n
@@ -1339,6 +1356,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF(Cvar % A(j) /= 0._dp) THEN
           CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, Omega * Cvar % A(j))
         END IF
+
         ! B x:
         ! ------
         IF(Cvar % B(j) /= 0._dp) THEN
@@ -1371,7 +1389,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(CircuitVariable_t), POINTER :: Cvar
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: Omega
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
     INTEGER :: VvarId, IvarId, q, j, astat
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
@@ -1386,7 +1403,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     Circuit => CurrentModel % Circuits(p)
     nm = Asolver % Matrix % NumberOfRows
-    Omega = GetAngularFrequency()
     CM => CurrentModel%CircuitMatrix
 
     DO CompInd = 1, Circuit % n_comp
