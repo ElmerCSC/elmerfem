@@ -2840,19 +2840,19 @@ CONTAINS
         !
         ! Make sure that all entries are initiated even with p-elements
         !
-        !GElement % Type % NodeU(4:10) = (/ 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, 1.0d0/3.0d0, &
-        !    0.0d0, 0.0d0, 1.0d0/3.0d0 /)
-        !GElement % Type % NodeV(4:10) = (/ 0.0d0, 0.0d0, 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, &
-        !    1.0d0/3.0d0, 1.0d0/3.0d0 /)
+        GElement % Type % NodeU(4:10) = (/ 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, 1.0d0/3.0d0, &
+            0.0d0, 0.0d0, 1.0d0/3.0d0 /)
+        GElement % Type % NodeV(4:10) = (/ 0.0d0, 0.0d0, 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, &
+            1.0d0/3.0d0, 1.0d0/3.0d0 /)
       CASE(4)
         GElement % Type => GetElementType(416,.FALSE.)
         !
         ! Make sure that all entries are initiated even with p-elements
         !
-        !GElement % Type % NodeU(5:16) = (/ -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, 1.0d0/3.0d0, &
-        !    -1.0d0/3.0d0, -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0, -1.0d0/3.0d0 /)
-        !GElement % Type % NodeV(5:16) = (/ -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, &
-        !    1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0 /)
+        GElement % Type % NodeU(5:16) = (/ -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, 1.0d0/3.0d0, &
+            -1.0d0/3.0d0, -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0, -1.0d0/3.0d0 /)
+        GElement % Type % NodeV(5:16) = (/ -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, &
+            1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0 /)
       END SELECT
     END IF
 
