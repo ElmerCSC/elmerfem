@@ -1314,7 +1314,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CM => CurrentModel%CircuitMatrix
 
     Omega = GetAngularFrequency()
-    WRITE(Message,'(A,ES12.3)') 'Angular frequency for circuit equations: ',Omega)
+    WRITE(Message,'(A,ES12.3)') 'Angular frequency for circuit equations: ',Omega
     CALL Info(Caller, Message, Level=6) 
     
     Params => GetSolverParams()
