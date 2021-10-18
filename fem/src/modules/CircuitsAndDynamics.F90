@@ -59,10 +59,9 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
   Params => Solver % Values
 
   ! This is only created if no variable present!
-  CALL ListAddNewString( Params,'Variable','ckt')
+  CALL ListAddNewString( Params,'Variable','-global ckt')
 
   ! The circuit variable is no ordinary variable!
-  CALL ListAddNewLogical( Params,'Variable Global',.TRUE.)
   CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
   CALL ListAddNewInteger( Params,'Time Derivative Order',1)
   CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
@@ -1068,18 +1067,23 @@ CONTAINS
       CALL Info('SetRotation','Using computed torque to set rotation!',Level=6)
       tStep = GetTimestep()
 
+      imom = GetConstReal( Simulation,'Imom',Found) ! interatial moment of the motor      
+      IF(.NOT. Found ) THEN
+        CALL Info('SetDynamicAngle','Moment of inertia "Imom" not giving, skipping dynamics!',Level=7)
+        RETURN
+      END IF
+      
+      IF(imom < EPSILON(imom) ) THEN
+        CALL Info('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping dynamics!',Level=7)
+        RETURN
+      END IF
+      
       ! We initiate these at the start of the timestep when they still present the previous
       ! computed values. 
       IF( tStep /= tStepPrev ) THEN
         ang0 = AngVar % Values(1)
         velo0 = VeloVar % Values(1)
-        imom = GetConstReal( Simulation,'Imom') ! interatial moment of the motor      
         tStepPrev = tStep
-      END IF
-
-      IF(imom < EPSILON(imom) ) THEN
-        CALL Warn('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping rotations...')
-        RETURN
       END IF
 
       torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
