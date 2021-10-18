@@ -4234,8 +4234,7 @@ CONTAINS
             PrevField(2) * BWork(2,1:DOFs)
 
         ! The nonlinear part of strain component 11 for the current iterate:
-        StrainVec(1) = StrainVec(1) + 0.5d0 * SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A1**2 + &
-            0.5d0 * PrevField(1)**2 / A2**2 + 0.5d0 * PrevField(2)**2
+        StrainVec(1) = 0.5_dp * SUM(NonlinBM(1,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! Strain component 22:
@@ -4256,8 +4255,7 @@ CONTAINS
             PrevField(4) * BWork(4,1:DOFs)
 
         ! The nonlinear part of strain component 22 for the current iterate:
-        StrainVec(2) = StrainVec(2) + 0.5d0 * SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A2**2 + &
-            0.5d0 * PrevField(3)**2 / A1**2 + 0.5d0 * PrevField(4)**2
+        StrainVec(2) = 0.5_dp * SUM(NonlinBM(2,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! Strain component 12:
@@ -4269,9 +4267,7 @@ CONTAINS
             BWork(2,1:DOFs) * PrevField(4) + PrevField(2) * BWork(4,1:DOFs) 
 
         ! The nonlinear part of strain component 12 for the current iterate:
-        StrainVec(3) = StrainVec(3) + SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(3) / A1**2 + &
-            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(1) / A2**2 + &
-            PrevField(2) * PrevField(4)
+        StrainVec(3) = 0.5_dp * SUM(NonlinBM(3,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! A strain-like variable e such that the normal stress T33 = DW/De
@@ -4287,9 +4283,7 @@ CONTAINS
             BWork(6,1:DOFs) * PrevField(6) / A2**2 +  BWork(7,1:DOFs) * PrevField(7)
 
         ! The nonlinear part of e for the current iterate: 
-        StrainVec(4) = StrainVec(4) + nu/(1.0d0-nu) * StrainVec(1) / A1**2 + &
-            nu/(1.0d0-nu) * StrainVec(2) / A2**2 + 0.5d0 * PrevField(5)**2 / A1**2 + &
-            0.5d0 * PrevField(6)**2 / A2**2 + 0.5d0 * PrevField(7)**2
+        StrainVec(4) = 0.5_dp * SUM(NonlinBM(4,1:DOFs) * PrevSolVec(1:DOFs))
       END IF
 
       
@@ -4432,8 +4426,7 @@ CONTAINS
             BWork(2,1:DOFs) * PrevField(7) - PrevField(2) * BWork(7,1:DOFs) 
 
         ! The nonlinear part of strain component 13 for the current iterate:
-        StrainVec(5) = StrainVec(5) - SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(5) / A1**2 - &
-            PrevField(1) * PrevField(6) / A2**2 - PrevField(2) * PrevField(7)
+        StrainVec(5) = 0.5_dp * SUM(NonlinBS(1,1:DOFs) * PrevSolVec(1:DOFs))
         ! ---------------------------------------------------------------------------------------
         ! Strain component 23:
         ! ---------------------------------------------------------------------------------------
@@ -4444,9 +4437,7 @@ CONTAINS
             BWork(4,1:DOFs) * PrevField(7) - PrevField(4) * BWork(7,1:DOFs) 
 
         ! The nonlinear part of strain component 23 for the current iterate:
-        StrainVec(6) = StrainVec(6) - PrevField(3) * PrevField(5) / A1**2 - &
-            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
-
+        StrainVec(6) = 0.5_dp * SUM(NonlinBS(2,1:DOFs) * PrevSolVec(1:DOFs))
       END IF
 
       CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, KappaS*Weight)
@@ -7218,40 +7209,40 @@ CONTAINS
       !----------------------------------------------------------------------------------------
       ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
       ! It appears that considering the linear part may not be meaningful without having a cubic
-      ! displacement approximation in the thickness coordinate.
+      ! displacement approximation in the thickness coordinate. On the other hand, this seems
+      ! to be essential in obtaining right results with the 6-field model when nonlinear effects
+      ! are strong.
       !----------------------------------------------------------------------------------------
-!      IF (TransverseBendingStretch) THEN
-      IF (.TRUE.) THEN
-        Weight = h**2/12.0d0 * Weight
-        DO p=1,nd
-          BS(3:4,(p-1)*m+4) = Q(3,1) * dBasis(p,1:2)
-          BS(3:4,(p-1)*m+5) = Q(3,2) * dBasis(p,1:2)
-          BS(3:4,(p-1)*m+6) = Q(3,3) * dBasis(p,1:2)
+      Weight = h**2/12.0d0 * Weight
+      DO p=1,nd
+        BS(3:4,(p-1)*m+4) = Q(3,1) * dBasis(p,1:2)
+        BS(3:4,(p-1)*m+5) = Q(3,2) * dBasis(p,1:2)
+        BS(3:4,(p-1)*m+6) = Q(3,3) * dBasis(p,1:2)
 
-          BS(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(3,1:3) * dBasis(p,1)
-          BS(4,(p-1)*m+1:(p-1)*m+3) = -K2 * Q(3,1:3) * dBasis(p,2)
+        BS(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(3,1:3) * dBasis(p,1)
+        BS(4,(p-1)*m+1:(p-1)*m+3) = -K2 * Q(3,1:3) * dBasis(p,2)
 
-          IF (m > 6) THEN
-            BS(3,(p-1)*m+7:(p-1)*m+9) = Q(1,1:3) * Basis(p)
-            BS(4,(p-1)*m+7:(p-1)*m+9) = Q(2,1:3) * Basis(p)
-          END IF
-        END DO
-        StrainVec(1:2) = MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
-
-        IF (.NOT. GeneralMaterial) THEN
-          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
-              MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(GMat(1:2,1:2),BS(3:4,1:DOFs)))
-          StressVec(1:2) = MATMUL(GMat(1:2,1:2), StrainVec(1:2))
-        ELSE
-          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
-              MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(HMat(5:6,5:6),BS(3:4,1:DOFs)))
-          StressVec(1:2) = MATMUL(HMat(5:6,5:6), StrainVec(1:2))
+        IF (m > 6) THEN
+          BS(3,(p-1)*m+7:(p-1)*m+9) = Q(1,1:3) * Basis(p)
+          BS(4,(p-1)*m+7:(p-1)*m+9) = Q(2,1:3) * Basis(p)
         END IF
-        !
-        ! Residual terms for RHS:
-        Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BS(3:4,1:DOFs) ), &
-            StressVec(1:2) ) * Weight
+      END DO
+      StrainVec(1:2) = MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+
+      IF (.NOT. GeneralMaterial) THEN
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(GMat(1:2,1:2),BS(3:4,1:DOFs)))
+        StressVec(1:2) = MATMUL(GMat(1:2,1:2), StrainVec(1:2))
+      ELSE
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(HMat(5:6,5:6),BS(3:4,1:DOFs)))
+        StressVec(1:2) = MATMUL(HMat(5:6,5:6), StrainVec(1:2))
       END IF
+      !
+      ! Residual terms for RHS:
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BS(3:4,1:DOFs) ), &
+          StressVec(1:2) ) * Weight
+
 
       !---------------------------------------------------------------
       ! THE PART CORRESPONDING TO THE BENDING STRAINS:
