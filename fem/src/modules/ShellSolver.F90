@@ -214,6 +214,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: SolidShellCoupling
   LOGICAL :: DrillingDOFs, RotateDOFs
   LOGICAL :: CartesianFormulation
+  LOGICAL :: NonlinearBending
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -262,6 +263,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     CALL Warn('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION OVER A 2-D DOMAIN')
     CALL Warn('ShellSolver', 'ONLY SPECIAL GEOMETRIES CAN BE HANDLED AT THE MOMENT')
     CALL Warn('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING')
+
+    NonlinearBending = GetLogical(SolverPars, 'Nonlinear Bending Strains', Found)
   END IF
 
   Parallel = ParEnv % PEs > 1
@@ -525,7 +528,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       IF (CartesianFormulation) THEN
         CALL ShellLocalMatrixCartesian(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
-            LargeDeflection, MassAssembly, HarmonicAssembly, LocalRHSForce, &
+            LargeDeflection, NonlinearBending, MassAssembly, HarmonicAssembly, LocalRHSForce, &
             BenchmarkProblem = GetLogical(SolverPars, 'Benchmark Problem', Found))
       ELSE
         CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
@@ -6834,7 +6837,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      MassAssembly, HarmonicAssembly, RHSForce, BenchmarkProblem)
+      NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
@@ -6845,6 +6848,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
     LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: NonlinearBending            ! The full nonlinearity of bending and transverse shear strains
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
@@ -6867,7 +6871,7 @@ CONTAINS
     REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Force(m*nd)
     REAL(KIND=dp) :: Damp(m*nd,m*nd)
     REAL(KIND=dp) :: BM(4,m*nd), BS(4,m*nd), BB(4,m*nd)
-    REAL(KIND=dp) :: NonlinBM(4,m*nd), NonlinBS(4,m*nd)
+    REAL(KIND=dp) :: NonlinBM(4,m*nd), NonlinBS(4,m*nd), NonlinBB(4,m*nd)
     REAL(KIND=dp) :: Basis(nd), dBasis(nd,3)
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd)
@@ -6885,8 +6889,8 @@ CONTAINS
     REAL(KIND=dp) :: DetJ, Weight, Norm
     REAL(KIND=dp) :: CovariantBasis(3,3), K1, K2
     REAL(KIND=dp) :: Q(3,3)
-    REAL(KIND=dp) :: PrevGrad(3,2), PrevGradB(3,2), PrevB(3)
-    REAL(KIND=dp) :: c1, c2
+    REAL(KIND=dp) :: PrevGrad(3,2), PrevGradB(3,2), PrevB(3), PrevPsi(3)
+    REAL(KIND=dp) :: c1, c2, c3, c4
 
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -6962,6 +6966,7 @@ CONTAINS
 
       NonlinBM = 0.0d0
       NonlinBS = 0.0d0
+      NonlinBB = 0.0d0
 
       stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
       sq = IP % s(t)
@@ -7071,18 +7076,13 @@ CONTAINS
           NonlinBM(4,(p-1)*m+4:(p-1)*m+6) = PrevB(1:3) * Basis(p)
         END DO
 
-        ! The nonlinear parts of strain components 11, 22 and 12 for the current iterate:
-        StrainVec(1) = 0.5_dp * SUM(NonlinBM(1,1:DOFs) * PrevSolVec(1:DOFs))
-        StrainVec(2) = 0.5_dp * SUM(NonlinBM(2,1:DOFs) * PrevSolVec(1:DOFs))
-        StrainVec(3) = 0.5_dp * SUM(NonlinBM(3,1:DOFs) * PrevSolVec(1:DOFs))
-
         IF (.NOT. GeneralMaterial) THEN
           NonlinBM(4,1:DOFs) = NonlinBM(4,1:DOFs) + nu/((1.0d0-nu)*a11) * NonlinBM(1,1:DOFs) + &
             nu/((1.0d0-nu)*a22) * NonlinBM(2,1:DOFs)
         END IF
 
-        ! The nonlinear part of the strain related to the transverse normal stretch: 
-        StrainVec(4) = 0.5_dp * SUM(NonlinBM(4,1:DOFs) * PrevSolVec(1:DOFs))
+        ! The nonlinear parts of membrane strain components:
+        StrainVec(1:4) = 0.5_dp * MATMUL(NonlinBM(1:4,1:DOFs), PrevSolVec(1:DOFs))
       END IF NONLINEAR_MEMBRANE_STRAINS
 
       ! Add the linear part of strain for the current iterate:
@@ -7104,34 +7104,31 @@ CONTAINS
       !
       NONLINEAR_MEMBRANE_EFFECTS: IF (LargeDeflection) THEN
         IF (.NOT. GeneralMaterial) THEN
-          c1 = StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)
-          c2 = StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)
+          c1 = (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          c2 = (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
         ELSE
-          c1 = StressVec(1)
-          c2 = StressVec(2)
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
         END IF
+        c3 = StressVec(3) * Weight
+        c4 = StressVec(4) * Weight
 
         DO p=1,nd
-          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) * Weight
-          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) * Weight
-          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) * Weight
-
-          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + c2 * dbasis(p,2) * dbasis(1:nd,2) * Weight
-          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + c2 * dbasis(p,2) * dbasis(1:nd,2) * Weight
-          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + c2 * dbasis(p,2) * dbasis(1:nd,2) * Weight
-
-          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + StressVec(3) * (dbasis(p,1) * dbasis(1:nd,2) + &
-              dbasis(p,2) * dbasis(1:nd,1)) * Weight
-          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + StressVec(3) * (dbasis(p,1) * dbasis(1:nd,2) + &
-              dbasis(p,2) * dbasis(1:nd,1)) * Weight
-          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + StressVec(3) * (dbasis(p,1) * dbasis(1:nd,2) + &
-              dbasis(p,2) * dBasis(1:nd,1)) * Weight
+          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
         END DO
 
         DO p=1,nd
-          Stiff((p-1)*m+4,4:DOFs:m) = Stiff((p-1)*m+4,4:DOFs:m) + StressVec(4) * Basis(p) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+5,5:DOFs:m) = Stiff((p-1)*m+5,5:DOFs:m) + StressVec(4) * Basis(p) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+6,6:DOFs:m) = Stiff((p-1)*m+6,6:DOFs:m) + StressVec(4) * Basis(p) * Basis(1:nd) * Weight
+          Stiff((p-1)*m+4,4:DOFs:m) = Stiff((p-1)*m+4,4:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
+          Stiff((p-1)*m+5,5:DOFs:m) = Stiff((p-1)*m+5,5:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
+          Stiff((p-1)*m+6,6:DOFs:m) = Stiff((p-1)*m+6,6:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
         END DO
       END IF NONLINEAR_MEMBRANE_EFFECTS
 
@@ -7160,13 +7157,12 @@ CONTAINS
         ! U.
         ! ---------------------------------------------------------------------------------------
         DO p=1,nd
-          NonlinBS(1,(p-1)*m+1:(p-1)*m+3) =  -PrevB(1:3) * dBasis(p,1)
-          NonlinBS(1,(p-1)*m+4:(p-1)*m+6) =  -PrevGrad(1:3,1) * Basis(p)
+          NonlinBS(1,(p-1)*m+1:(p-1)*m+3) = -PrevB(1:3) * dBasis(p,1)
+          NonlinBS(1,(p-1)*m+4:(p-1)*m+6) = -PrevGrad(1:3,1) * Basis(p)
           NonlinBS(2,(p-1)*m+1:(p-1)*m+3) = -PrevB(1:3) * dBasis(p,2)
           NonlinBS(2,(p-1)*m+4:(p-1)*m+6) = -PrevGrad(1:3,2) * Basis(p)
         END DO
-        StrainVec(5) = 0.5_dp * SUM(NonlinBS(1,1:DOFs) * PrevSolVec(1:DOFs))
-        StrainVec(6) = 0.5_dp * SUM(NonlinBS(2,1:DOFs) * PrevSolVec(1:DOFs))
+        StrainVec(5:6) = 0.5_dp * MATMUL(NonlinBS(1:2,1:DOFs), PrevSolVec(1:DOFs))
       END IF NONLINEAR_SHEAR_STRAINS
 
       ! Add the linear part of shear strain for the current iterate:
@@ -7187,22 +7183,22 @@ CONTAINS
       ! The remaining terms for the complete Newton iteration:
       !
       NONLINEAR_SHEAR_EFFECTS: IF (LargeDeflection) THEN
+        c1 = StressVec(5) * Weight
+        c2 = StressVec(6) * Weight
         DO p=1,nd
-          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - StressVec(5) * dbasis(p,1) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - StressVec(5) * dbasis(p,1) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - StressVec(5) * dbasis(p,1) * Basis(1:nd) * Weight
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
 
-          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - StressVec(5) * Basis(p) * dbasis(1:nd,1) * Weight
-          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - StressVec(5) * Basis(p) * dbasis(1:nd,1) * Weight
-          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - StressVec(5) * Basis(p) * dbasis(1:nd,1) * Weight
-
-          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - StressVec(6) * dbasis(p,2) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - StressVec(6) * dbasis(p,2) * Basis(1:nd) * Weight
-          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - StressVec(6) * dbasis(p,2) * Basis(1:nd) * Weight
-
-          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - StressVec(6) * Basis(p) * dbasis(1:nd,2) * Weight
-          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - StressVec(6) * Basis(p) * dbasis(1:nd,2) * Weight
-          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - StressVec(6) * Basis(p) * dbasis(1:nd,2) * Weight
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
         END DO
       END IF NONLINEAR_SHEAR_EFFECTS
 
@@ -7210,7 +7206,7 @@ CONTAINS
       ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
       ! It appears that considering the linear part may not be meaningful without having a cubic
       ! displacement approximation in the thickness coordinate. On the other hand, this seems
-      ! to be essential in obtaining right results with the 6-field model when nonlinear effects
+      ! to be have a strong impact on the solution of the 6-field model when nonlinear effects
       ! are strong.
       !----------------------------------------------------------------------------------------
       Weight = h**2/12.0d0 * Weight
@@ -7222,27 +7218,104 @@ CONTAINS
         BS(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(3,1:3) * dBasis(p,1)
         BS(4,(p-1)*m+1:(p-1)*m+3) = -K2 * Q(3,1:3) * dBasis(p,2)
 
-        IF (m > 6) THEN
+        IF (TransverseBendingStretch) THEN
           BS(3,(p-1)*m+7:(p-1)*m+9) = Q(1,1:3) * Basis(p)
           BS(4,(p-1)*m+7:(p-1)*m+9) = Q(2,1:3) * Basis(p)
         END IF
       END DO
-      StrainVec(1:2) = MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+
+      StrainVec(1:2) = 0.0d0
+      NONLINEAR_SHEAR_OVER_THICKNESS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        PrevGradB(1:3,1:2) = MATMUL(LocalSol(4:6,1:nd), dBasis(1:nd,1:2))
+        DO p=1,nd
+          NonlinBS(3,(p-1)*m+4:(p-1)*m+6) = -PrevB(1:3) * dBasis(p,1) - PrevGradB(1:3,1) * Basis(p)
+          NonlinBS(4,(p-1)*m+4:(p-1)*m+6) = -PrevB(1:3) * dBasis(p,2) - PrevGradB(1:3,2) * Basis(p)        
+        END DO
+        NonlinBS(3,:) = NonlinBS(3,:) - K1 * NonlinBS(1,:)
+        NonlinBS(4,:) = NonlinBS(4,:) - K2 * NonlinBS(2,:)
+        IF (TransverseBendingStretch) THEN
+          PrevPsi(1:3) = MATMUL(LocalSol(7:9,1:nd), Basis(1:nd))
+          DO p=1,nd
+            NonlinBS(3,(p-1)*m+1:(p-1)*m+3) = PrevPsi(1:3) * dBasis(p,1)
+            NonlinBS(3,(p-1)*m+7:(p-1)*m+9) = PrevGrad(1:3,1) * Basis(p)
+            NonlinBS(4,(p-1)*m+1:(p-1)*m+3) = PrevPsi(1:3) * dBasis(p,2)
+            NonlinBS(4,(p-1)*m+7:(p-1)*m+9) = PrevGrad(1:3,2) * Basis(p)
+          END DO
+        END IF
+        StrainVec(1:2) = 0.5_dp * MATMUL(NonlinBS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_SHEAR_OVER_THICKNESS
+
+      StrainVec(1:2) = StrainVec(1:2) + MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
 
       IF (.NOT. GeneralMaterial) THEN
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
-            MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(GMat(1:2,1:2),BS(3:4,1:DOFs)))
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            MATMUL(GMat(1:2,1:2), BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)))
         StressVec(1:2) = MATMUL(GMat(1:2,1:2), StrainVec(1:2))
       ELSE
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
-            MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(HMat(5:6,5:6),BS(3:4,1:DOFs)))
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            MATMUL(HMat(5:6,5:6),BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)))
         StressVec(1:2) = MATMUL(HMat(5:6,5:6), StrainVec(1:2))
       END IF
       !
       ! Residual terms for RHS:
-      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BS(3:4,1:DOFs) ), &
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
           StressVec(1:2) ) * Weight
 
+      ! The remaining terms for the complete Newton iteration:
+      !
+      SHEAR_EFFECTS_OVER_THICKNESS:  IF (LargeDeflection .AND. NonlinearBending) THEN
+        v1 = -K1 * StressVec(1) * Weight
+        v2 = -K2 * StressVec(2) * Weight
+        c1 = StressVec(1) * Weight
+        c2 = StressVec(2) * Weight
+        DO p=1,nd
+          Stiff((p-1)*m+4,4:DOFs:m) = Stiff((p-1)*m+4,4:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+          Stiff((p-1)*m+5,5:DOFs:m) = Stiff((p-1)*m+5,5:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+          Stiff((p-1)*m+6,6:DOFs:m) = Stiff((p-1)*m+6,6:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+        END DO
+
+        IF (TransverseBendingStretch) THEN
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
+          DO p=1,nd
+            Stiff((p-1)*m+7,1:DOFs:m) = Stiff((p-1)*m+7,1:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+            Stiff((p-1)*m+8,2:DOFs:m) = Stiff((p-1)*m+8,2:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+            Stiff((p-1)*m+9,3:DOFs:m) = Stiff((p-1)*m+9,3:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+
+            Stiff((p-1)*m+1,7:DOFs:m) = Stiff((p-1)*m+1,7:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+            Stiff((p-1)*m+2,8:DOFs:m) = Stiff((p-1)*m+2,8:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+            Stiff((p-1)*m+3,9:DOFs:m) = Stiff((p-1)*m+3,9:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+          END DO
+        END IF
+      END IF SHEAR_EFFECTS_OVER_THICKNESS
 
       !---------------------------------------------------------------
       ! THE PART CORRESPONDING TO THE BENDING STRAINS:
@@ -7254,32 +7327,123 @@ CONTAINS
         BB(3,(p-1)*m+4:(p-1)*m+6) = Q(2,1:3) * dBasis(p,1) + Q(1,1:3) * dBasis(p,2)
         BB(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(2,1:3) * dBasis(p,1) - &
             K2 * Q(1,1:3) * dBasis(p,2)
-
-        IF (TransverseBendingStretch) THEN
-          BB(4,(p-1)*m+7:(p-1)*m+9) = Q(3,1:3) * Basis(p)
-        END IF
       END DO
       BB(1,:) = BB(1,:) - K1 * BM(1,:)
       BB(2,:) = BB(2,:) - K2 * BM(2,:)
 
-      IF (TransverseBendingStretch .AND. .NOT. GeneralMaterial) THEN
-        BB(4,:) = BB(4,:) + nu/((1.0d0-nu)*a11) * BB(1,:) + &
-            nu/((1.0d0-nu)*a22) * BB(2,:)
+      IF (TransverseBendingStretch) THEN
+        DO p=1,nd
+          BB(4,(p-1)*m+7:(p-1)*m+9) = Q(3,1:3) * Basis(p)
+        END DO
+        IF (.NOT. GeneralMaterial) THEN
+          BB(4,:) = BB(4,:) + nu/((1.0d0-nu)*a11) * BB(1,:) + &
+              nu/((1.0d0-nu)*a22) * BB(2,:)
+        END IF
       END IF
 
-      StrainVec(1:bsize) = MATMUL(BB(1:bsize,1:DOFs), PrevSolVec(1:DOFs))
+      StrainVec(1:bsize) = 0.0d0
+      NONLINEAR_BENDING_STRAINS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        PrevGradB(1:3,1:2) = MATMUL(LocalSol(4:6,1:nd), dBasis(1:nd,1:2))
+        DO p=1,nd
+          NonlinBB(1,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,1) * dBasis(p,1)
+          NonlinBB(1,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,1) * dBasis(p,1)
+          NonlinBB(2,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,2) * dBasis(p,2)
+          NonlinBB(2,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,2) * dBasis(p,2)
+          NonlinBB(3,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,2) * dBasis(p,1) + PrevGradB(1:3,1) * dBasis(p,2)
+          NonlinBB(3,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,2) * dBasis(p,1) + PrevGrad(1:3,1) * dBasis(p,2)
+        END DO
+        NonlinBB(1:3,:) = NonlinBB(1:3,:) - (K1 + K2) * NonlinBM(1:3,:)
+
+        IF (TransverseBendingStretch) THEN
+          PrevPsi(1:3) = MATMUL(LocalSol(7:9,1:nd), Basis(1:nd))
+          DO p=1,nd
+            NonlinBB(4,(p-1)*m+7:(p-1)*m+9) = -PrevB(1:3) * Basis(p)
+            NonlinBB(4,(p-1)*m+4:(p-1)*m+6) = -PrevPsi(1:3) * Basis(p)
+          END DO
+          IF (.NOT. GeneralMaterial) THEN
+            NonlinBB(4,1:DOFs) = NonlinBB(4,1:DOFs) + nu/((1.0d0-nu)*a11) * NonlinBB(1,1:DOFs) + &
+                nu/((1.0d0-nu)*a22) * NonlinBB(2,1:DOFs)
+          END IF
+        END IF
+        StrainVec(1:bsize) = 0.5_dp * MATMUL(NonlinBB(1:bsize,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_BENDING_STRAINS
+
+      StrainVec(1:bsize) = StrainVec(1:bsize) + MATMUL(BB(1:bsize,1:DOFs), PrevSolVec(1:DOFs))
 
       IF (.NOT. GeneralMaterial) THEN
-        CALL StrainEnergyDensity(Stiff, CMat, BB, bsize, DOFs, Weight)
+        CALL StrainEnergyDensity(Stiff, CMat, BB + NonlinBB, bsize, DOFs, Weight)
         StressVec(1:bsize) = MATMUL(CMat(1:bsize,1:bsize), StrainVec(1:bsize))
       ELSE
-        CALL StrainEnergyDensity(Stiff, HMat, BB, bsize, DOFs, Weight)
+        CALL StrainEnergyDensity(Stiff, HMat, BB + NonlinBB, bsize, DOFs, Weight)
         StressVec(1:bsize) = MATMUL(HMat(1:bsize,1:bsize), StrainVec(1:bsize))
       END IF
 
       ! Residual terms for RHS:
-      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BB(1:bsize,1:DOFs) ), &
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BB(1:bsize,1:DOFs) + NonlinBB(1:bsize,1:DOFs)), &
           StressVec(1:bsize) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      !
+      NONLINEAR_BENDING_EFFECTS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        IF (.NOT. GeneralMaterial) THEN
+          c1 = (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          c2 = (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
+          v1 = -(K1 + K2) * (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          v2 = -(K1 + K2) * (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
+        ELSE
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
+          v1 = -(K1 + K2) * StressVec(1) * Weight
+          v2 = -(K1 + K2) * StressVec(2) * Weight
+        END IF
+        c3 = StressVec(3) * Weight
+        v3 = -(K1 + K2) * StressVec(3) * Weight
+        c4 = StressVec(4) * Weight
+
+        DO p=1,nd
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+
+          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+        END DO
+
+        IF (TransverseBendingStretch) THEN
+          DO p=1,nd
+            Stiff((p-1)*m+4,7:DOFs:m) = Stiff((p-1)*m+4,7:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+5,8:DOFs:m) = Stiff((p-1)*m+5,8:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+6,9:DOFs:m) = Stiff((p-1)*m+6,9:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+
+            Stiff((p-1)*m+7,4:DOFs:m) = Stiff((p-1)*m+7,4:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+8,5:DOFs:m) = Stiff((p-1)*m+8,5:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+9,6:DOFs:m) = Stiff((p-1)*m+9,6:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+          END DO
+        END IF
+      END IF NONLINEAR_BENDING_EFFECTS
 
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
