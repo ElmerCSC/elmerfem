@@ -159,6 +159,10 @@ Solver 3
    Exported Variable 1 = -dofs 1 "Zs"
    Exported Variable 2 = -dofs 1 "Zb"
    Exported Variable 3 = -dofs 1 "bedrock"
+
+   ! Compute Zs and Zb rate of change (optionnal) 
+   Zs Calculate Velocity = Logical True
+   Zb Calculate Velocity = Logical True
 End
 
 Solver 4

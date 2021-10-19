@@ -2,26 +2,36 @@
 ## General Information
 - **Solver Fortran File:** Flotation.F90
 - **Solver Name:** Flotation
-- **Required Output Variable(s):** Zb (or Variable name prescribed by Bottom Surface Name), Zs (or Variable name prescribed by Top Surface Name)
-- **Required Input Variable(s):** H (or Variable name prescribed by Thickness Variable Name)
-- **Optional Output Variable(s):** GroundedMask, bedrock, DZbDt, DZsDt
-- **Optional Input Variable(s):** None
+- **Required Output Variable(s):** 
+	- Zb (or Variable name prescribed by *Bottom Surface Name*)
+	- Zs (or Variable name prescribed by *Top Surface Name*)
+- **Required Input Variable(s):** H (or Variable name prescribed by *Thickness Variable Name*)
+- **Optional Output Variable(s):** GroundedMask
+- **Optional Input Variable(s):** bedrock
 
 ## General Description
 The aim of this solver is to apply the flotation criterion to compute the top and bottom surface elevation, knowing the ice thickness. In general it will be used with the [SSA Solver](./SSA.md) and [Thickness Solver](./ThicknessSolver.md)
 
-The bottom surface elevation z_b is computed as:
+- The bottom surface elevation $z_b$ is computed as:
 
-*z_b=z_sea - H rho_i / rho_w* where *H* is the ice thickness, *z_sea* is the (sea) water level elevation, *rho_i* is the mean ice density and *rho_w* is the (sea) water density.
+  $z_b=z_{sea} - H \rho_i / \rho_w$  
+  where  
+  - $H$ is the ice thickness,   
+  - $z_{sea}$ is the (sea) water level elevation,   
+  - $\rho_i$ is the mean ice density   
+  - $\rho_w$ is the (sea) water density.
 
-- If the bedrock variable is present, *z_b=max(z_b,bedrock)*
-- If the GroundedMask variable is present:
-  - GroundedMask=1 where *z_b=bedrock* (grounded ice)
-  - GroundedMask=-1 where *z_b>bedrock* (floating ice)
-  - GroundedMask=0 at the grounding line (list of nodes where *z_b=bedrock* but the nodes belong to at least one grounded (all nodes grounded) and one floating (at leat one node floating) element
-The top surface elevation *z_s* is then simply given as *z_s = z_b + H*
+- If the bedrock variable is present, $z_b=max(z_b,bedrock)$  
 
-If the variable DZbDt and/or DZsDt are present then the elevation change is given as *dz/dt={Delta z} / {Delta t}*
+- The top surface elevation $z_s$ is then simply given as $z_s = z_b + H$
+
+- If the GroundedMask variable is present:  
+  - GroundedMask=1 where $z_b=bedrock$ (grounded ice)
+  - GroundedMask=-1 where $z_b>bedrock$ (floating ice)
+  - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at leat one node floating) element  
+
+
+*Remark:* It might be interesting to compute the top and bottom surface elevation rate of change; this can be done using internal Elmer functionality with the keyword,e.g. *Zs Calculate Velocity = Logical True* in the solver where *Zs* is created as an exported variable.
 
 ## SIF contents
 ```
@@ -39,9 +49,19 @@ Solver 3
    Procedure = "ElmerIceSolvers" "Flotation"
    Variable =  "GroundedMask"
 
+  ![OPTIONAL :] 
+  Bottom Surface Name = String "zb" ![Default: Zb]  
+  Top Surface Name = String "zs" ![Default: Zs]  
+  Thickness Variable Name = String "H" ![Default: H] 
+
    Exported Variable 1 = -dofs 1 "Zs"
    Exported Variable 2 = -dofs 1 "Zb"
    Exported Variable 3 = -dofs 1 "bedrock"
+
+  ![OPTIONAL :] rates of changes of Zs and zb can be computed with 
+  ! (in the solver where they are created as Exported Variables):
+  ! Zs Calculate Velocity = Logical True
+  ! Zb Calculate Velocity = Logical True
 End
 ```
 
