@@ -5,4 +5,4 @@ CONFIGURE_FILE( cavity.sif cavity.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO sinus0.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SinusFlowTunedVelo LABELS control)
+ADD_ELMER_TEST(SinusFlowTunedVelo LABELS control n-t)

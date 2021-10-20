@@ -152,7 +152,7 @@ CONTAINS
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
-       DEALLOCATE(Matrix % ParallelInfo % INTERFACE)
+       DEALLOCATE(Matrix % ParallelInfo % NodeInterface)
        DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
        END DO

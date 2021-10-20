@@ -165,6 +165,7 @@ GLWidget::GLWidget(QWidget *parent)
   edgeColor = Qt::green;
   surfaceMeshColor = Qt::black;
   sharpEdgeColor = Qt::black;
+  selectionColor = Qt::red;
 
   stateOrtho = false;
   stateFlatShade = true;
@@ -670,15 +671,23 @@ void GLWidget::keyReleaseEvent(QKeyEvent *event)
 
 
 
-// Mouse button clicked...
+// Mouse button pressed...
 //-----------------------------------------------------------------------------
 void GLWidget::mousePressEvent(QMouseEvent *event)
 {
   lastPos = event->pos();
+  lastPressPos = event->pos();
   setFocus();  // for tracing keyboard events
 }
 
-
+// Mouse button released...
+//-----------------------------------------------------------------------------
+void GLWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+  if(event->button() == Qt::RightButton & event->pos() == lastPressPos){
+    ((MainWindow*)parent())->showContextMenu(event->globalPos());
+  }
+}
 
 // Mouse wheel rotates...
 //-----------------------------------------------------------------------------
@@ -705,15 +714,18 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
 
   dy = -dy;
   
-  if (((event->buttons() & Qt::LeftButton) && 
-       (event->buttons() & Qt::MidButton)) ) {
+  if (
+  ((event->buttons() & Qt::LeftButton) && (event->buttons() & Qt::MidButton))
+        ||
+    event->buttons() == Qt::RightButton  // added for easy scalng
+       ) {
 
     // Scale:
     double s = exp(dy*0.01);
     glScaled(s, s, s);
     updateGL();
 
-  } else if (event->buttons() & Qt::LeftButton) {
+  } else if (event->buttons() == Qt::LeftButton) {
     
     // Rotation:
     double ax = -(double)dy;
@@ -727,7 +739,11 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
     glRotated(s, bx, by, bz);
     updateGL();
 
-  } else if (event->buttons() & Qt::MidButton) {
+  } else if (
+  (event->buttons() == Qt::MidButton)
+  ||
+  (event->buttons() ==  (Qt::LeftButton | Qt::RightButton)) // added for 2 button mouse
+    ){
 
     // Translation:
     double s = 2.0/(double)(viewport[3]+1);
@@ -872,7 +888,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     // Highlight current selection:
     if(l->getType() == SURFACELIST) {
       if(l->isSelected()) {
-	l->setObject(generateSurfaceList(l->getIndex(), Qt::red)); // red
+	l->setObject(generateSurfaceList(l->getIndex(), selectionColor)); // red
       } else {
 	l->setObject(generateSurfaceList(l->getIndex(), surfaceColor)); // cyan
       }
@@ -884,7 +900,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 
     } else if(l->getType() == EDGELIST) {
       if(l->isSelected()) {
-	l->setObject(generateEdgeList(l->getIndex(), Qt::red)); // red
+	l->setObject(generateEdgeList(l->getIndex(), selectionColor)); // red
       } else {
 	l->setObject(generateEdgeList(l->getIndex(), edgeColor)); // green
       }
@@ -1059,7 +1075,7 @@ void GLWidget::rebuildSurfaceLists()
      {
        glDeleteLists( l->getObject(), 1 );
        if(l->isSelected()) {
- 	 l->setObject(generateSurfaceList(l->getIndex(), Qt::red)); // red
+ 	 l->setObject(generateSurfaceList(l->getIndex(), selectionColor)); // red
        } else {
  	 l->setObject(generateSurfaceList(l->getIndex(), surfaceColor)); // cyan
        }
@@ -1078,7 +1094,7 @@ void GLWidget::rebuildEdgeLists()
      {
        glDeleteLists( l->getObject(), 1 );
        if(l->isSelected()) {
- 	 l->setObject(generateEdgeList(l->getIndex(), Qt::red)); // red
+ 	 l->setObject(generateEdgeList(l->getIndex(), selectionColor)); // red
        } else {
  	 l->setObject(generateEdgeList(l->getIndex(), edgeColor)); // green
        }

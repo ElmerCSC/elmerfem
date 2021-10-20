@@ -1,6 +1,10 @@
-! 
-! A modified sif file to test a surface impedance BC
-! 
+! A sif file to test a surface impedance BC
+! This differs from the base test in that no inner wire is generated at all.
+! Except for frequency the setup is same as in "mgdyn_harmonic_wire" to enable comparison
+! of outgoing currents and other fields. Just set the frequency there to 1e6 as well.
+!
+! P.R. 20.8.2021
+
 
 Check Keywords "Warn"
 
@@ -23,7 +27,6 @@ End
 
 Body 1
   Name = "Wire"
-  Equation = 1
   Material = 1
 End
 
@@ -33,14 +36,12 @@ Body 2
   Material = 2
 End
 
+
 Material 1
   Name = "Cu"
   Permittivity = 0
-!  Relative Permittivity = 1
   Relative Permeability = 1
   Electric Conductivity = 0.0
-!  Electric Conductivity = Real 58e6
-!  Skin Electric Conductivity = Real 58e6
 End
 
 Material 2
@@ -73,7 +74,7 @@ Solver 1
   Linear System Convergence Tolerance = 1.0e-8
   BicgStabl Polynomial Degree = 4
 End
-
+ 
 
 Solver 2
   Equation = "MGDynamicsCalc"
@@ -89,6 +90,9 @@ Solver 2
   Calculate Magnetic Field Strength = Logical True
   Calculate Joule Heating = True
 
+  Calculate Nodal Heating = True
+  Calculate Nodal Current = Logical True
+
   Steady State Convergence Tolerance = 0
   Linear System Solver = "Iterative"
   Linear System Preconditioning = None
@@ -102,7 +106,7 @@ Solver 2
   Impose Body Force Current = Logical True
 
   Discontinuous Bodies = True
-  calculate harmonic peak power = logical False
+  calculate harmonic peak power = logical True
 End
 
 
@@ -116,32 +120,23 @@ Solver 3
   Save Geometry IDs = Logical True
 End
 
+
 Solver 4
-  Exec Solver = Never
-  Equation = "SaveLine"
-  Procedure = "SaveData" "SaveLine"
+  Exec Solver = after all
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
 
-  FileName = f.dat
-  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
-  Polyline Divisions(1) = 200 
+  Filename = g.dat
+  Show Norm Index = 5
 
-! The Joule heating 
-  Show Norm Index = Integer 31
+  Variable 1 = Surface Current re 3
+  Operator 1 = "boundary int mean"
+  Variable 2 = Surface Current im 3
+  Operator 2 = "boundary int mean"
 End
 
 
 Boundary Condition 1
-  !
-  ! No surface currents, given scalar potential
-  !
-  Name = "WireStart"
-  Target Boundaries(1) = 1 
-
-  AV re = Real 0.0
-  AV im = Real 0.0
-End
-
-Boundary Condition 2
   !
   ! Impedance BC
   !
@@ -149,20 +144,12 @@ Boundary Condition 2
   Target Boundaries(1) = 2
   Layer Electric Conductivity = Real 58e6
   Layer Relative Permeability = Real 1
+
+  Save Scalars = Logical True
 End
 
-Boundary Condition 3
-  !
-  ! No surface currents, given scalar potential
-  !
-  Name = "WireEnd"
-  Target Boundaries(1) = 3
 
-  AV re = Real 0.01
-  AV im = Real 0.0
-End
-
-Boundary Condition 4
+Boundary Condition 2
   Name = "AirStart"
   Target Boundaries(1) = 4
 
@@ -174,10 +161,14 @@ Boundary Condition 4
   AV im {e} 2 = Real 0.0
   AV im {e} 3 = Real 0.0
 
+! As there is no wire ends we need to use the air ends to set the
+! electric scalar potential. 
+  AV re = Real 0.0
+  AV im = Real 0.0
 End
 
 
-Boundary Condition 5
+Boundary Condition 3
   Name = "AirSurface"
   Target Boundaries(1) = 5
 
@@ -191,7 +182,7 @@ Boundary Condition 5
 
 End
 
-Boundary Condition 6
+Boundary Condition 4
   Name = "AirEnd"
   Target Boundaries(1) = 6 
 
@@ -202,8 +193,13 @@ Boundary Condition 6
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
   AV im {e} 3 = Real 0.0
+
+  AV re = Real 5.542e-5
+  AV im = Real 0.0
 End
 
 
-Solver 1 :: Reference Norm = 4.76856984E-04
-Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 1 :: Reference Norm = 3.54044845E-06
+Solver 1 :: Reference Norm Tolerance = 1e-5
+Solver 4 :: Reference Norm = 4.445897435804E-008
+Solver 4 :: Reference Norm Tolerance = 1e-3

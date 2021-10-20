@@ -517,9 +517,6 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       
     CALL SetParticlePreliminaries( Particles, dim, TimeOrder )
 
-    i = GetInteger( Params,'Random Seed',Found ) 
-    IF( Found ) CALL RANDOM_SEED(i)
-
     ParticleToField = GetLogical( Params,'Particle To Field',Found)
     CollisionInteraction = GetLogical( Params,'Particle Particle Collision',Found)
     ContactInteraction = GetLogical( Params,'Particle Particle Contact',Found)

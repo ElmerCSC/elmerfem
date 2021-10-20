@@ -107,13 +107,11 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   TYPE(Solver_t),POINTER :: PSolver
   TYPE(Variable_t),POINTER :: Var
   TYPE(Variable_t),POINTER :: ZbVar=>NULL(),ZsVar=>NULL()
-  TYPE(Variable_t),POINTER :: DZbDt=>NULL(),DZsDt=>NULL()
   TYPE(Variable_t),POINTER :: HVar=>NULL(),BedVar=>NULL()
   TYPE(Variable_t),POINTER :: GLMask=>NULL()
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t),POINTER :: BodyForce,Material, Params
 
-  REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: ZbPrev,ZsPrev
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: Density
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: GL
   REAL(KIND=dp) :: zsea,rhow,rhoi
@@ -154,7 +152,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   HVar => VariableGet( Model % Mesh % Variables, HName, UnFoundFatal=.TRUE.)
 
 !!
-!! get optional variables GLMAsk,DZbDt,DZsDt,bedrock
+!! get optional variables GLMAsk,bedrock
   GLMAsk => VariableGet( Model % Mesh % Variables, 'GroundedMask')
   IF (.NOT.ASSOCIATED(GLMAsk)) THEN
     Message='GroundedMask not found'
@@ -167,18 +165,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   IF (.NOT.ASSOCIATED(BedVar)) THEN
      Message='bedrock not found'
      CALL INFO(SolverName,Message,level=5)
-  END IF
-  IF (Transient) THEN
-    DzbDt => VariableGet( Model % Mesh % Variables, 'DZbDt')
-    IF (.NOT.ASSOCIATED(DzbDt)) THEN
-       Message='Transient simulation but DZbDt  not found'
-       CALL INFO(SolverName,Message,level=5)
-    END IF
-    DzsDt => VariableGet( Model % Mesh % Variables, 'DZsDt')
-    IF (.NOT.ASSOCIATED(DzsDt)) THEN
-       Message='Transient simulation but DZsDt  not found'
-       CALL INFO(SolverName,Message,level=5)
-    END IF
   END IF
 
 !!! Do some initialisation/allocation
@@ -194,11 +180,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
                                 TopNodePointer = TopPointer, UpNodePointer = UpPointer)
     END IF
 
-    IF (Initialized) deallocate(ZbPrev,ZsPrev,Density,GL)
+    IF (Initialized) deallocate(Density,GL)
     
     N=Model % MaxElementNodes
-    allocate(ZbPrev(size(ZbVar%Values)),ZsPrev(size(ZsVar%Values)),&
-             Density(N),GL(N))
+    allocate(Density(N),GL(N))
 
     Initialized = .TRUE.
   END IF
@@ -207,14 +192,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
  zsea = ListGetCReal( Model % Constants, 'Sea Level', UnFoundFatal=.TRUE. )
  rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
 
- IF (ASSOCIATED(DZbDt)) ZbPrev=ZbVar%Values
- IF (ASSOCIATED(DZsDt)) ZsPrev=ZsVar%Values
-
  IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
-
-! Active = GetNOFActive()
-! Do t=1,Active
-    !Element => GetActiveElement(t)
 
    IF (BoundarySolver) THEN
      Active = GetNOFBoundaryElements()
@@ -258,12 +236,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
        zs=zb+H
        ZbVar%Values(ZbVar%Perm(NodeIndexes(i)))=zb
        ZsVar%Values(ZsVar%Perm(NodeIndexes(i)))=zs
-
-       ! compute DzDt if required
-       IF (ASSOCIATED(DZbDt).AND.(dt.GT.tiny(dt))) &
-          DZbDt%Values(DZbDt%Perm(NodeIndexes(i)))=(zb-ZbPrev(ZbVar%Perm(NodeIndexes(i))))/dt
-       IF (ASSOCIATED(DZsDt).AND.(dt.GT.tiny(dt))) &
-          DZsDt%Values(DZsDt%Perm(NodeIndexes(i)))=(zs-ZsPrev(ZsVar%Perm(NodeIndexes(i))))/dt
 
        ! Export Zs on top surface if required
        IF (ExtrudedMesh) THEN

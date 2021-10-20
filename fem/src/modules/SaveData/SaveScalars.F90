@@ -171,7 +171,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
-
+  LOGICAL :: SlicesReduce, TimesReduce, DoIt
+  INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
+  
   SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
@@ -259,16 +261,45 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   WriteCore = .TRUE.
   ParallelWrite = .FALSE.
   ParallelReduce = .FALSE.
-
-  IF( ParEnv % PEs > 1 ) THEN
+  SlicesReduce = .FALSE.
+  TimesReduce = .FALSE.
+  PrevComm = 0
+  CommRank = 0
+  CommSize = ParEnv % PEs
+  
+  IF( CommSize > 1 ) THEN
     IsParallel = .TRUE.
     ParallelReduce = GetLogical( Params,'Parallel Reduce',GotIt)
-    ParallelWrite = .NOT. ParallelReduce
-    IF( ParEnv % MyPe > 0 .AND. ParallelReduce ) THEN
-      EchoValues = .FALSE.
-      WriteCore = .FALSE. 
+    
+    SlicesReduce = GetLogical( Params,'Slices Reduce',GotIt)
+    TimesReduce = GetLogical( Params,'Times Reduce',GotIt)
+
+    nSlices = 0
+    nTimes = 0
+    IF( SlicesReduce .OR. TimesReduce ) THEN
+      ParallelReduce = .TRUE.
+      nSlices = ListGetInteger( Model % Simulation,'Number Of Slices',GotIt)
+      nTimes = ListGetInteger( Model % Simulation,'Number Of Times',GotIt)
+      IF( nSlices > 1 .AND. nTimes > 1 ) THEN
+        PrevComm = ParEnv % ActiveComm 
+        IF( SlicesReduce ) ParEnv % ActiveComm = ParallelSlicesComm()
+        IF( TimesReduce ) ParEnv % ActiveComm = ParallelTimesComm()
+      END IF
+      CommRank = ParallelPieceRank(ParEnv % ActiveComm)
+      CommSize = ParallelPieceSize(ParEnv % ActiveComm)
+    ELSE
+      CommRank = ParEnv % MyPe 
     END IF
-    !OutputPE = ParEnv % MYPe
+
+    !PRINT *,'ParallelStuff:',ParEnv % MyPe, CommRank, CommSize, nSlices,nTimes
+    IF( CommRank > 0 ) EchoValues = .FALSE.
+    
+    IF( ParallelReduce ) THEN
+      WriteCore = ( CommRank == 0 )
+      ParallelWrite = ( CommSize < ParEnv % PEs )
+    ELSE
+      ParallelWrite = .TRUE.      
+    END IF
   END IF
 
   NoLines = 0
@@ -488,7 +519,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CYCLE
     END IF
 
-    
+    Oper = ""
     BodyOper = .FALSE.
     BodyForceOper = .FALSE.      
     MaterialOper = .FALSE.
@@ -503,7 +534,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaterialOper = .TRUE.
       Oper = Oper0(10:nlen)
     ELSE
-      Oper = Oper0
+      Oper = Oper0(1:nlen)
     END IF
     MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
     IF( MaskOper ) THEN
@@ -866,6 +897,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     
     l = 0
     DO i = 1, Model % NumberOfSolvers       
+
+      ! When we have strong coupling then two solvers will have exactly same eigenvalues.
+      ! Let's skip the one which is passive.
+      IF( ListGetLogical( Model % Solvers(i) % Values,'Linear System Solver Disabled',GotIt ) ) CYCLE
+
       IF ( Model % Solvers(i) % NOFEigenValues > 0 ) THEN
         DO k = 1, Model % Solvers(i) % NOFEigenValues
           
@@ -1168,8 +1204,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Add results in Components
   !------------------------------------------------------------------------------
-  IF( ListGetLogical( Params,'Save Component Results',GotIt ) ) THEN
-    CALL Info('SaveScalars','Saving results from component',Level=10)
+  DoIt = ListGetLogical( Params,'Save Component Results',GotIt )
+  IF(.NOT. GotIt) DoIt = (Model % NumberOfComponents > 0)
+  IF(DoIt) THEN
+    CALL Info('SaveScalars','Saving results from component - if any',Level=10)
     l = 0
     DO i = 1, Model % NumberOfComponents
       Lst => ListHead( Model % Components(i) % Values )
@@ -1280,9 +1318,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     WRITE( Message,'(A)' ) 'Saving values to file: '// TRIM(ScalarsFile)
     CALL Info( 'SaveScalars', Message, Level=4 )
     
-    IF ( ParallelWrite ) THEN
-      WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPE
-      
+    IF ( ParallelWrite ) THEN      
+      IF(WriteCore) WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPe      
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
         OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,POSITION='APPEND')
       ELSE 
@@ -1502,6 +1539,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   n = NINT( ParallelReduction(1.0_dp*n) )
 
   PrevRunInd = RunInd
+
+
+  IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
+
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
@@ -1518,7 +1559,6 @@ CONTAINS
 
     ParOper = 'NONE'
     IF(.NOT. ParallelReduce ) RETURN
-
 
     SELECT CASE(LocalOper)
       
@@ -1641,33 +1681,33 @@ CONTAINS
         ParOper = ListGetString(Params,TRIM(Str),GotParOper)
       END IF
 
+      ! Note: the parallel operators for ParallelReduction have different numbering
+      ! conventions that MPI_MIN, MPI_MAX, etc. 
+      
       IF( GotParOper ) THEN
         SELECT CASE( ParOper )
-          
-        CASE('max' )
-          MPIOper = MPI_MAX
-        CASE('min' )
-          MPIOper = MPI_MIN
+         
         CASE('sum' )
-          MPIOper = MPI_SUM
-
+          MPIOper = 0 
+        CASE('min' )
+          MPIOper = 1 
+        CASE('max' )
+          MPIOper = 2 
+        CASE('mean' )
+          MPIOper = 3
+        CASE('none' )
+          MPIOper = -1
+          
         CASE DEFAULT
-          MPIOper = 0
+          CALL Warn('SaveScalars','Unknown parallel operator: '//TRIM(ParOper))
+          MPIOper = -1
           
         END SELECT
-
         
-        IF( MPIOper > 0 ) THEN
-          CALL MPI_ALLREDUCE(Val,ParVal,1,&
-              MPI_DOUBLE_PRECISION,MPIOper,ELMER_COMM_WORLD,ierr)
+        IF( MPIOper >= 0 ) THEN
+          ParVal = ParallelReduction( Val, MPIOper )
           Values(n) = ParVal
-          IF( MPIOper == MPI_MIN ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
-          ELSE IF( MPIOper == MPI_MAX ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_max'
-          ELSE IF( MPIOper == MPI_SUM ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_sum'
-          END IF
+          WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_'//TRIM(ParOper)
         END IF
         
       END IF

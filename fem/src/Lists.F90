@@ -817,6 +817,10 @@ use spariterglobals
          CYCLE
        END SELECT
 
+       IF( InfoActive(30) ) THEN
+         CALL Info('ReleaseVariableList','Trying to release variable: '//TRIM(Var % Name))
+       END IF
+       
 	IF( Var % Secondary ) THEN
           Var => Var % Next
           CYCLE
@@ -1036,7 +1040,7 @@ use spariterglobals
 !> Also allocates the field values if not given in the parameter list. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints)
+      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints,varsuffix)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
@@ -1051,6 +1055,7 @@ use spariterglobals
       LOGICAL, OPTIONAL :: Global
       REAL(KIND=dp), OPTIONAL :: InitValue
       LOGICAL, OPTIONAL :: IpPoints
+      CHARACTER(LEN=*), OPTIONAL :: VarSuffix
 !------------------------------------------------------------------------------
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
@@ -1105,7 +1110,9 @@ use spariterglobals
         
         NULLIFY(TmpValues)
         ALLOCATE(TmpValues(ndofs*nsize))
-        TmpValues = 0.0_dp         
+        IF(.NOT. PRESENT(InitValue) ) THEN
+          TmpValues = 0.0_dp
+        END IF
       END IF
 
       IF( PRESENT( InitValue ) ) THEN
@@ -1115,14 +1122,20 @@ use spariterglobals
       IF( nDOFs > 1 ) THEN
         DO i=1,nDOFs
           tmpname = ComponentName(Name,i)
+          IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
               Perm,Output,Secondary,VarType)
         END DO
       END IF
 
-      CALL VariableAdd( Variables,Mesh,Solver,Name,nDOFs,TmpValues,&
-            Perm,Output,Secondary,VarType)
+      tmpname = TRIM(Name)
+      IF(PRESENT(VarSuffix)) THEN
+        tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
+      END IF
+        
+      CALL VariableAdd( Variables,Mesh,Solver,tmpname,nDOFs,TmpValues,&
+          Perm,Output,Secondary,VarType)
 
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAddVector
@@ -1148,8 +1161,8 @@ use spariterglobals
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
-           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
-           LOGICAL, OPTIONAL :: KeepUnfoundNodes  !< Do not disregard unfound nodes from projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:) 
+           LOGICAL, OPTIONAL :: KeepUnfoundNodes 
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 
@@ -1911,8 +1924,6 @@ use spariterglobals
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
-       !ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
-       !CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
      END IF
 #endif
      
@@ -3845,19 +3856,96 @@ use spariterglobals
      
    END SUBROUTINE VarsToValuesOnNodes
  !------------------------------------------------------------------------------
-    
 
+   
+ !------------------------------------------------------------------------------
+ !> Some variable may be given on the IP points of the bullk only. In that case
+ !> we need to solve a small linear system in each element to map the values to
+ !> the nodes, and further to the integration point defined by Basis.  
+ !------------------------------------------------------------------------------
+   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var ) RESULT ( T ) 
+ !------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: Element
+     REAL(KIND=dp) :: Basis(:)
+     TYPE(Variable_t), POINTER :: Var
+     REAL(KIND=dp) :: T
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: Parent
+     INTEGER :: ipar, npar, i, j, n, np, nip
+     REAL(KIND=dp), ALLOCATABLE :: fip(:),fdg(:)
+
+     ! We have to provide interface for this as otherwise we would create a
+     ! cyclic dependence.
+     INTERFACE 
+       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+         USE Types
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Parent
+         INTEGER :: nip, np
+         REAL(KIND=dp) :: fip(:), fdg(:)
+       END SUBROUTINE Ip2DgFieldInElement
+     END INTERFACE
+
+     T = 0.0_dp
+     n = Element % TYPE % NumberOfNodes     
+     npar = 0.0_dp
+
+     ! Go throug both potential parents. If we find the information in both then
+     ! take on average. Otherwise use one-side interpolation. 
+     DO ipar = 1,2 
+       IF( ipar == 1 ) THEN
+         Parent => Element % BoundaryInfo % Left
+       ELSE
+         Parent => Element % BoundaryInfo % Right
+       END IF
+       IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+       
+       i = Parent % ElementIndex
+       j = Var % Perm(i)
+       nip = Var % Perm(i+1) - j
+       IF( nip == 0 ) CYCLE
+       np = Parent % TYPE % NumberOfNodes       
+
+       ALLOCATE( fip(nip), fdg(np) )
+       
+       fip(1:nip) = Var % Values(j+1:j+nip)
+       fdg(1:np) = 0.0_dp
+          
+       CALL Ip2DgFieldInElement( CurrentModel % Mesh, Parent, nip, fip, np, fdg )
+       npar = npar + 1
+
+       ! Use basis functions of the boundary to map stuff from nodes to IP points. 
+       DO i=1,n
+         DO j=1,np
+           IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+             T = T + Basis(i) * fdg(j)
+             EXIT
+           END IF
+         END DO
+       END DO
+       
+       DEALLOCATE( fip, fdg )
+     END DO
+
+     ! Now take the average, if needed. 
+     IF( npar == 2 ) T = T / 2
+     
+   END FUNCTION InterpolateIPVariableToBoundary
+!------------------------------------------------------------------------------
+
+   
 !-------------------------------------------------------------------------------------
 !> Given a table of variables return the variable values on the gauss point.
 !> This only deals with the gauss point variables, all other are already treated. 
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, ind, T, count )
+  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
-     INTEGER :: ind
      INTEGER :: count
      REAL(KIND=dp) :: T(:)
+     INTEGER, OPTIONAL :: ind
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,varsize,vari
@@ -3881,12 +3969,33 @@ use spariterglobals
        k1 = 0
        IF ( Var % TYPE == Variable_on_gauss_points ) THEN         
          Element => CurrentModel % CurrentElement
-         IF ( ASSOCIATED(Element) ) THEN
-           k1 = Var % Perm( Element % ElementIndex ) + ind
+         i = Element % ElementIndex
+         n = Var % Perm(i+1) - Var % Perm(i)
+
+         IF( n > 0 ) THEN           
+           CALL Fatal('VarsToValuesOnIPs','Ip field '//TRIM(Var % Name)//' given but no ip point given as parameter!')
+           IF( n < ind ) THEN
+             CALL Warn('VarsToValuesOnIPs','Too few integration points ('&
+                 //TRIM(I2S(n))//' vs. '//TRIM(I2S(ind))//') tabulated!')
+           ELSE
+             k1 = Var % Perm(i) + ind
+           END IF
+         ELSE
+           IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+             IF( Var % Dofs > 1 ) THEN
+               CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
+             END IF
+             IF(.NOT. PRESENT(Basis) ) THEN
+               CALL Fatal('VarsToValuesOnIps','We need the "Basis" paremeter to map stuff to boundaries!')
+             END IF             
+             T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
+           ELSE
+             CALL Warn('VarsToValuesOnIPs','Could not find dependent IP variable: '//TRIM(Var % Name))
+           END IF
          END IF
        END IF
          
-       IF ( k1 > 0 .AND. k1 <= VarSize ) THEN
+       IF ( k1 > 0 ) THEN
          DO l=1,Var % DOFs
            count = count + 1
            T(count) = Var % Values(Var % Dofs*(k1-1)+l)
@@ -5428,10 +5537,10 @@ use spariterglobals
          
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
-           IF( .NOT. PRESENT( GaussPoint ) ) THEN
-             CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
-           END IF
-           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, GaussPoint, T, j )
+           !IF( .NOT. PRESENT( GaussPoint ) ) THEN
+           !  CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
+           !END IF
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis )
          END IF         
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
@@ -5457,10 +5566,10 @@ use spariterglobals
          
          ! This one only deals with the variables on IPs, nodal ones have been fecthed already
          IF( Handle % SomeVarAtIp ) THEN
-           IF( .NOT. PRESENT( GaussPoint ) ) THEN
-             CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
-           END IF
-           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, GaussPoint, T, j )
+           !IF( .NOT. PRESENT( GaussPoint ) ) THEN
+           !  CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
+           !END IF
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis )
          END IF
                           
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
@@ -6276,7 +6385,7 @@ use spariterglobals
 
            ! This one only deals with the variables on IPs, nodal ones have been fecthed already
            IF( Handle % SomeVarAtIp ) THEN
-             CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, gp, T, j )
+             CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, gp, BasisVec(gp,1:n) )
            END IF
 
 #ifdef HAVE_LUA
@@ -8546,34 +8655,48 @@ END SUBROUTINE
    !------------------------------------------------------------------------------
    SUBROUTINE ReportListCounters( Model ) 
      TYPE(Model_t) :: Model
-     CHARACTER(LEN=MAX_NAME_LEN) :: dirname
+     CHARACTER(LEN=MAX_NAME_LEN) :: dirname,filename
 
-     INTEGER :: i, totcount, nelem     
-     LOGICAL :: Unused
+     INTEGER :: i, totcount, nelem, ReportUnit     
+     LOGICAL :: Unused, GotFile
      
      CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
-     ! OPEN(10,FILE="listcounter.dat")
-     OPEN( 10,File='../listcounter.dat',&
-         STATUS='UNKNOWN',POSITION='APPEND' )
+     filename = ListGetString( Model % Simulation,'List Counter File',GotFile )     
+     IF(.NOT. GotFile ) filename = '../listcounter.dat'
 
+     ! We may toggle this to enable is disable automatic writing to file
+     ! For example, when we want to collect data automatically from tests. 
+     !GotFile = .TRUE.
+       
+     IF( GotFile ) THEN
+       ReportUnit = 10
+       !IF( ParEnv % PEs > 1 ) THEN
+       !  filename = TRIM(filename)//'.'//TRIM(I2S(ParEnv % MyPe))
+       !END IF         
+       OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
+       CALL GETCWD(dirname)
+
+       ! These are only for reference if writing lot of data to same file
+       WRITE( ReportUnit,'(A)') 'Working directory: '//TRIM(dirname)
+       nelem = Model % Mesh % NumberOfBulkElements       
+       WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
+       WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))       
+     ELSE
+       IF( .NOT. InfoActive(12) ) RETURN
+       ! IF( ParEnv % MyPe /= 0) RETURN 
+       ReportUnit = 6
+     END IF
+              
      totcount = 0
-
      
-     CALL GETCWD(dirname)
-     WRITE( 10,'(A)') 'Working directory: '//TRIM(dirname)
-        
-     ! These are only for reference
-     nelem = Model % Mesh % NumberOfBulkElements
-
-     WRITE( 10,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
-     WRITE( 10,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))
-         
+     ! In the first round write the unused keywords
+     ! On the 2nd round write the keywords that 
      Unused = .TRUE.
 100  IF( Unused ) THEN
-       WRITE( 10,'(T4,A)') 'Unused keywords:'       
+       WRITE( ReportUnit,'(T4,A)') 'Unused keywords:'       
      ELSE
-       WRITE( 10,'(T4,A)') 'Used keywords:'              
+       WRITE( ReportUnit,'(T4,A)') 'Used keywords:'              
      END IF
                
      CALL ReportList('Simulation', Model % Simulation, Unused )
@@ -8608,8 +8731,7 @@ END SUBROUTINE
        GOTO 100
      END IF
 
-     CLOSE(10)
-
+     IF( GotFile ) CLOSE(ReportUnit)
          
      CALL Info('ReportListCounters','List operations total count:'//TRIM(I2S(totcount)))     
 
@@ -8635,9 +8757,9 @@ END SUBROUTINE
          m = ptr % Counter 
 
          IF( Unused .AND. m == 0 ) THEN
-           WRITE( 10,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
+           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
          ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
-           WRITE( 10,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
+           WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
            totcount = totcount + m
          END IF
          ptr => ptr % Next

@@ -138,7 +138,7 @@
        cnt = 0
        DO i=1,A % NumberOfRows
          DO j=Rows(i),Rows(i+1)-1
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
                IF ( m==ParEnv % myPE ) CYCLE
@@ -312,8 +312,9 @@
         END IF
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
-        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
 
+
+        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
       END IF
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
@@ -410,7 +411,7 @@
 
      nm = A % NumberOfRows - A % ExtraDOFs
      n  = A % ParallelDOFs
-     
+
      m = SIZE(A % Values)
      ALLOCATE(TotValues(m))
 
@@ -425,7 +426,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1
@@ -445,7 +446,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1

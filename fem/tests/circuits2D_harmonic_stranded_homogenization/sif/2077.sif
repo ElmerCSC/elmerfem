@@ -10,7 +10,7 @@ Header 1
    Mesh DB "." "2077"
 End
 Simulation 1
-   Max Output Level = 3
+   Max Output Level = 5
 !   Coordinate System = Axi symmetric
    Coordinate System = Cartesian
    Simulation Type = Steady
@@ -43,7 +43,7 @@ Solver 2
    Linear System Abort not Converged = False
    Linear System ILUT Tolerance=1e-8
    BicgStabL Polynomial Degree = 4
-   Steady State Convergence Tolerance = 1e-06
+!   Steady State Convergence Tolerance = 1e-06
 End
 Solver 3
    Equation = CompB
@@ -159,7 +159,5 @@ Boundary Condition 2
    Infinity BC = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 1.22351164E-04
-Solver 2 :: Reference Norm Tolerance = Real 1E-03
-Solver 3 :: Reference Norm = Real 8.36768008E-09
-Solver 3 :: Reference Norm Tolerance = Real 1E-03
+Solver 2 :: Reference Norm = 1.22351164E-04
+Solver 3 :: Reference Norm = 7.71655218E+05

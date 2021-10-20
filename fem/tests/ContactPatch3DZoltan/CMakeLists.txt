@@ -6,5 +6,5 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cubes.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ContactPatch3DZoltan NPROCS 4 LABELS zoltan) 
+ADD_ELMER_TEST(ContactPatch3DZoltan NPROCS 4 LABELS zoltan partition n-t) 
 ENDIF()

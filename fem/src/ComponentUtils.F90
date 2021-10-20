@@ -83,8 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode 
-
+     LOGICAL :: BcMode, IsParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -98,6 +97,12 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
+     IsParallel = ( ParEnv % PEs > 1 )
+     IF( IsParallel ) THEN
+       IF( Mesh % SingleMesh ) isParallel = .FALSE.
+     END IF
+
+     
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
      IF( .NOT. Found ) THEN
@@ -198,7 +203,7 @@ MODULE ComponentUtils
          globalnode = NodeIndexes(i)
 
          ! Only compute the parallel reduction once
-         IF( ParEnv % PEs > 1 ) THEN
+         IF( isParallel ) THEN
            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
          END IF
 
@@ -236,22 +241,24 @@ MODULE ComponentUtils
        END DO
      END DO
 
-     IF( PRESENT( Force ) ) THEN
-       DO i=1,3
-         Force(i) = ParallelReduction(Force(i))
-       END DO
+     IF( isParallel ) THEN
+       IF( PRESENT( Force ) ) THEN
+         DO i=1,3
+           Force(i) = ParallelReduction(Force(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Moment ) ) THEN
+         DO i=1,3
+           Moment(i) = ParallelReduction(Moment(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Torque ) ) THEN
+         Torque = ParallelReduction(Torque)
+       END IF
      END IF
-
-     IF( PRESENT( Moment ) ) THEN
-       DO i=1,3
-         Moment(i) = ParallelReduction(Moment(i))
-       END DO
-     END IF
-
-     IF( PRESENT( Torque ) ) THEN
-       Torque = ParallelReduction(Torque)
-     END IF
-
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE ComponentNodalForceReduction
 !------------------------------------------------------------------------------

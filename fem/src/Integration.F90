@@ -2781,6 +2781,48 @@ CONTAINS
    END FUNCTION EdgeElementGaussPoints
 !------------------------------------------------------------------------------
 
+   SUBROUTINE ConvertToPReference(ElementCode,u,v,w,s)
+     INTEGER :: ElementCode
+     REAL(KIND=dp) :: u,v,w
+     REAL(KIND=dp), OPTIONAL :: s
+          
+     
+     SELECT CASE( ElementCode / 100 )
+
+     CASE(1,2,4,8)
+       ! Nothing to do, reference element is the same
+       
+     CASE(3)
+       ! triangle
+       u = 2*u + v - 1
+       v = SQRT(3.0_dp)*v
+       IF( PRESENT(s) ) s = SQRT(3.0_dp)*2*s
+        
+     CASE(5)
+       ! tetrahedron
+       u = 2*u + v + w - 1
+       v = SQRT(3._dp)*v + 1/SQRT(3._dp)*w
+       w = 2*SQRT(2/3._dp)*w
+       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s       
+
+     CASE(6) 
+       ! pyramid
+       w = SQRT(2._dp)*w
+       ! scaling of s??
+       
+     CASE(7)
+       ! wedge / prism
+       u = 2*u + v - 1
+       v = SQRT(3._dp)*v
+       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s       
+
+     CASE DEFAULT
+       CALL Fatal('Integration::ConvertToPReference','Unsupported element type')
+     END SELECT
+            
+     
+   END SUBROUTINE ConvertToPReference
+   
 
 !---------------------------------------------------------------------------
 END MODULE Integration

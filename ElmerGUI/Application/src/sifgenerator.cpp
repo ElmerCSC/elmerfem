@@ -177,15 +177,18 @@ void SifGenerator::makeSimulationBlock()
 	     ui.simulationTypeCombo->currentText().trimmed());
   addSifLine("  Steady State Max Iterations = ",
 	     ui.steadyStateMaxIterEdit->text().trimmed());
-  addSifLine("  Output Intervals = ",
-	     ui.outputIntervalsEdit->text().trimmed());
+  //Modify Output intervals size according to the number of values entered
+  QString qs = ui.outputIntervalsEdit->text().simplified();
+  addSifLine("  Output Intervals(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
 
   if( ui.simulationTypeCombo->currentText().trimmed() != "Steady state") {
-    addSifLine("  Timestep intervals = ",
-	       ui.timeStepIntervalsEdit->text().trimmed());
+    //Modify Timestep intervals size according to the number of values entered
+    qs = ui.timeStepIntervalsEdit->text().simplified();
+    addSifLine("  Timestep intervals(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
     if( ui.simulationTypeCombo->currentText().trimmed() == "Transient") {
-      addSifLine("  Timestep Sizes = ",
-		 ui.timestepSizesEdit->text().trimmed());
+      //Modify Timestep Sizes size according to the number of values entered
+      qs = ui.timestepSizesEdit->text().simplified();
+      addSifLine("  Timestep Sizes(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
       addSifLine("  Timestepping Method = ",
 		 ui.timesteppingMethodCombo->currentText().trimmed());
       addSifLine("  BDF Order = ",
@@ -203,7 +206,7 @@ void SifGenerator::makeSimulationBlock()
   addSifLine("  Post File = ", 
 	     ui.postFileEdit->text().trimmed());
 
-  QString qs = ui.simulationFreeTextEdit->toPlainText();
+  qs = ui.simulationFreeTextEdit->toPlainText();
 
   if(!qs.isEmpty())
     te->append(qs);

@@ -377,6 +377,118 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Check whether matrix has a symmetric topology
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_CheckSymmetricTopo( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,k2,ns
+    INTEGER, POINTER :: Cols(:),Rows(:)
+    LOGICAL :: Hit
+!------------------------------------------------------------------------------
+    Rows   => A % Rows
+    Cols   => A % Cols
+
+    ns = 0
+    
+    DO i=1,A % NumberOfRows
+      DO k=Rows(i),Rows(i+1)-1
+        j=Cols(k)
+        Hit = .FALSE.
+        DO k2=Rows(j),Rows(j+1)-1
+          IF(Cols(k2)==i) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          ns = ns + 1
+          !PRINT *,'Not symmetric: ',i,j
+        END IF
+      END DO
+    END DO
+    
+    CALL Info('CSR_CheckSymmetricTopo','Number of symmetry misses:'//TRIM(I2S(ns)))
+    
+  END SUBROUTINE CRS_CheckSymmetricTopo
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Check whether matrix has a symmetric topology
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_CheckComplexTopo( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,i2,j2,k2,nc,nr
+    LOGICAL :: ImRow,ImCol
+    INTEGER, POINTER :: Cols(:),Rows(:)
+    LOGICAL :: Hit
+!------------------------------------------------------------------------------
+    Rows   => A % Rows
+    Cols   => A % Cols
+
+    nr = 0
+    nc = 0
+    
+    DO i=1,A % NumberOfRows
+      ImRow = (MODULO(i,2)==0)
+      IF(ImRow) THEN
+        i2=i-1
+      ELSE
+        i2=i+1
+      END IF
+
+      DO k=Rows(i),Rows(i+1)-1
+        j=Cols(k)
+        ImCol = (MODULO(j,2)==0) 
+        IF(ImCol) THEN
+          j2=j-1
+        ELSE
+          j2=j+1
+        END IF
+
+        ! We should find complementary entry on each row
+        Hit = .FALSE.
+        DO k2=Rows(i),Rows(i+1)-1
+          IF(Cols(k2)==j2) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          nr = nr + 1          
+          !PRINT *,'No complement on row: ',i,j,j2,ImRow,ImCol
+        END IF
+
+        ! We should find complementary entry on each column
+        Hit = .FALSE.        
+        DO k2=Rows(i2),Rows(i2+1)-1
+          IF(Cols(k2)==j) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          nc = nc + 1          
+          !PRINT *,'No complement on column: ',i,j,i2,ImRow,ImCol
+        END IF
+        
+      END DO
+    END DO
+    
+    CALL Info('CSR_CheckComplexTopo','Number of row misses:'//TRIM(I2S(nr)))
+    CALL Info('CSR_CheckComplexTopo','Number of col misses:'//TRIM(I2S(nc)))
+    
+  END SUBROUTINE CRS_CheckComplexTopo
+!------------------------------------------------------------------------------
+
+
+
+  
 
 !------------------------------------------------------------------------------
 !>    Set a given value to an element of a  CRS format matrix.

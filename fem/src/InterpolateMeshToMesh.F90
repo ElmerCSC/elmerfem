@@ -532,7 +532,7 @@ CONTAINS
 
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % INTERFACE )
+     NULLIFY( Mesh % ParallelInfo % NodeInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
          
   END FUNCTION AllocateMesh
@@ -1576,3 +1576,84 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION WeightedProjector
 !------------------------------------------------------------------------------
+
+
+  !------------------------------------------------------------------------------
+  !> When we have a field defined on IP points we may temporarily swap it to be a field
+  !> defined on DG points. This is done by solving small linear system for each element.
+  !------------------------------------------------------------------------------------
+  SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
+    !------------------------------------------------------------------------------
+    USE Types
+    USE Integration
+    USE ElementDescription
+    IMPLICIT NONE
+    
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: nip, ndg
+    REAL(KIND=dp) :: fip(:), fdg(:)
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Weight, DetJ
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
+    INTEGER :: i,t,p,q,n
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
+    CHARACTER(*), PARAMETER :: Caller = 'Ip2DgFieldInElement'
+    TYPE(Element_t), POINTER :: PrevElement => NULL()
+
+    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, PrevElement, AllocationsDone
+    !------------------------------------------------------------------------------
+
+    IF( .NOT. AllocationsDone ) THEN
+      n = Mesh % MaxElementNodes
+      ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+      AllocationsDone = .TRUE.
+    END IF
+
+    n = Element % TYPE % NumberOfNodes 
+    IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
+
+    ! We could probably do more to utilize the previous visit to save resources...
+    IF(.NOT. ASSOCIATED( Element, PrevElement ) ) THEN
+      Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+      Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+      Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+      PrevElement => Element
+    END IF
+
+    MASS  = 0._dp
+    LOAD = 0._dp
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints( Element, nip )
+
+    DO t=1,IP % n
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+      Weight = IP % s(t) * DetJ
+
+      IF( CSymmetry ) THEN
+        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+      END IF
+
+      DO p=1,n
+        LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
+        DO q=1,n
+          MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
+        END DO
+      END DO
+    END DO
+
+    CALL LuSolve(n,MASS,LOAD) 
+
+    fdg(1:n) = LOAD(1:n)
+
+  END SUBROUTINE Ip2DgFieldInElement
+!------------------------------------------------------------------------------
+
+  

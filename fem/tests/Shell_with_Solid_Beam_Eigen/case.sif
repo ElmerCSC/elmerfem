@@ -16,7 +16,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 15
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -112,6 +112,8 @@ Solver 1
 !  Eigen System Shift = Real 1.0e3
 !  Eigen System Normalize To Unity = Logical True
 !  Save EigenValues = Logical True
+
+!Save EigenValues = Logical True
 End
  
 
@@ -151,8 +153,8 @@ Solver 3
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
   
-  Filename = f.dat
-  File Append = Logical True
+!  Filename = f.dat
+!  File Append = Logical True
   Parallel Reduce = Logical True
 
   Variable 1 = Displacement
@@ -162,6 +164,11 @@ Solver 3
   Operator 4 = norm
   Operator 5 = min
   Operator 6 = max
+
+  Show Norm = True
+  Show Norm Index = 1
+
+  Save EigenValues = Logical True
 End 
 
 

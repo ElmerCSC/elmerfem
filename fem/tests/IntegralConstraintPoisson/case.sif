@@ -1,0 +1,98 @@
+! This is a test case for setting integral constraint over a boundary.
+! Here the integral over temperature should be exactly one. 
+! The constraint allows setting the temperature without actually
+! defining the profile. The user may plot the temperature over line
+! to deduce that it is averaging at one but is has a physical profile.
+!
+! P.R. 15.6.2021
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Nonlinear System Max Iterations = 1
+
+  Apply Integral BCs = Logical True
+
+!  Optimize Bandwidth = False
+End
+
+
+Solver 2
+  Exec Solver = never
+
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+
+  Filename = f.dat
+  Variable 1 = Tempeture
+  Operator 1 = "boundary int"
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+
+Boundary Condition 1
+  Name = "Natural"
+  Target Boundaries(1) = 1 
+End
+
+Boundary Condition 2
+  Name = "Fixed"
+  Target Boundaries(1) = 2 
+  Temperature = 0
+End
+
+Boundary Condition 3
+  Name = "Constraint"
+  Target Boundaries(1) = 3 
+
+  Integral BC = Logical True
+  Integral BC Temperature = Real 1
+
+! This would set constant value of one.
+! Temperature = 1
+End
+
+Solver 1 :: Reference Norm = 5.78097868E-01
+ 

@@ -90,6 +90,9 @@ Solver 2
   Calculate Magnetic Field Strength = Logical True
   Calculate Joule Heating = True
 
+  Calculate Nodal Heating = True
+  Calculate Nodal Current = Logical True
+
   Steady State Convergence Tolerance = 0
   Linear System Solver = "Iterative"
   Linear System Preconditioning = None
@@ -125,9 +128,15 @@ Solver 4
   FileName = f.dat
   Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
   Polyline Divisions(1) = 200 
+End
 
-! The Joule heating 
-  Show Norm Index = Integer 31
+Solver 5
+  Exec Solver = after all
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = g.dat
+  Show Norm Index = 3
 End
 
 
@@ -209,3 +218,5 @@ End
 
 Solver 1 :: Reference Norm = 4.76856984E-04
 Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 5 :: Reference Norm = 7.22540817E-04
+Solver 5 :: Reference Norm Tolerance = 1e-4
