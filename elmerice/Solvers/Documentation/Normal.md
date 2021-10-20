@@ -8,7 +8,9 @@
 - **Optional Input Variable(s):** None
 
 ## General Description
-Solver for computing nodal normal vectors on boundaries based on an averaged value of the adjacent elements. Bear in mind that in parallel computations this requires halo-elements, such that cross-partition information is available.
+Solver for computing nodal normal vectors on boundaries based on an averaged value of the adjacent elements.
+
+Bear in mind that in parallel computations this requires halo-elements, such that cross-partition information is available.
 
 ## SIF contents
 The required keywords in the SIF file for this solver are:
