@@ -60,11 +60,12 @@ Solver 1
   Equation = "Shell equation"
 
   Variable = "U"
-  Variable DOFs = 6
+  Variable DOFs = 9
   Procedure = "ShellSolver" "ShellSolver"
 
   Element = "p:8"
   Cartesian Formulation = Logical True
+  Nonlinear Bending Strains = Logical True
   Benchmark Problem = Logical True
 
   Large Deflection = True
@@ -100,6 +101,7 @@ Boundary Condition 1
   Target Boundaries(1) = 1
   U 2 = Real 0
   U 5 = Real 0
+  U 8 = Real 0
 End
 
 ! Symmetry at y1 = pi/2:
@@ -108,6 +110,7 @@ Boundary Condition 2
   Target Boundaries(1) = 2
   U 3 = Real 0
   U 6 = Real 0
+  U 9 = Real 0
 End
 
 ! Free end at y2 = L:
@@ -128,7 +131,8 @@ Boundary Condition 4
   Target Boundaries(1) = 4
   U 1 = Real 0
   U 4 = Real 0
+  U 7 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 1.91349896E-07
+Solver 1 :: Reference Norm = Real 0.20573871E-06
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

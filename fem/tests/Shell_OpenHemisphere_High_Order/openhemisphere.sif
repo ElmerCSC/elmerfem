@@ -23,6 +23,7 @@ Simulation
   Simulation Type = Scanning
   Timestep Sizes = 1
   Timestep Intervals = 1
+!  Timestep Intervals = 20
 !  Output Intervals = 1
   Steady State Max Iterations = 1
 !  Post File = "hemisphere.vtu"
@@ -36,6 +37,7 @@ Body 1
 End
 
 Material 1
+ 3D Material Law = Logical False
  Poisson Ratio = Real 0.3
  Youngs Modulus = Real 6.825e+7
  Shell Thickness = Real 4.0e-2
@@ -52,9 +54,10 @@ Solver 1
   Procedure = "ShellSolver" "ShellSolver"
 
   Variable = "U"
-  Variable DOFs = 6
+  Variable DOFs = 9
   
   Cartesian Formulation = Logical True
+  Nonlinear Bending Strains = Logical True
   Element = "p:8"
 
   Large Deflection = True
@@ -100,6 +103,7 @@ Boundary Condition 2
   Target Boundaries(1) = 4
   U 2 = Real 0
   U 5 = Real 0
+  U 7 = Real 0
 End
 
 Boundary Condition 3
@@ -121,5 +125,5 @@ Boundary Condition 5
   U 3 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 3.95286664E-02
+Solver 1 :: Reference Norm = Real 3.21250689E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
