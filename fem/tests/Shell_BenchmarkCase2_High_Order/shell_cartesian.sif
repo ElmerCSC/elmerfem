@@ -60,7 +60,7 @@ Solver 1
   Equation = "Shell equation"
 
   Variable = "U"
-  Variable DOFs = 9
+  Variable DOFs = 6
   Procedure = "ShellSolver" "ShellSolver"
 
   Element = "p:8"
@@ -134,5 +134,5 @@ Boundary Condition 4
   U 7 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.20573871E-06
+Solver 1 :: Reference Norm = Real 1.91349896E-07
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

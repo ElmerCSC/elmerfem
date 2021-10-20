@@ -51,7 +51,7 @@ Solver 1
   Procedure = "ShellSolver" "ShellSolver"
 
   Variable = "U"
-  Variable DOFs = 9
+  Variable DOFs = 6
 
   Large Deflection = True
   Displace Mesh = False
@@ -118,5 +118,5 @@ End
 
 ! The test norm for the case p=4 and the total load F=4
 !
-Solver 1 :: Reference Norm = Real 5.41557755E-01
+Solver 1 :: Reference Norm = Real 6.63270053E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
