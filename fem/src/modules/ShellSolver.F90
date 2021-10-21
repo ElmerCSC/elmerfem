@@ -85,7 +85,7 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
 
-  CALL ListAddInteger(SolverPars, 'Variable DOFs', 6)
+  CALL ListAddNewInteger(SolverPars, 'Variable DOFs', 6)
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
   CALL ListAddLogical(SolverPars, 'Initialize Dirichlet Conditions', .FALSE.)
 
@@ -213,6 +213,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
   LOGICAL :: DrillingDOFs, RotateDOFs
+  LOGICAL :: CartesianFormulation
+  LOGICAL :: NonlinearBending
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -256,6 +258,15 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
 
+  CartesianFormulation = GetLogical(SolverPars, 'Cartesian Formulation', Found)
+  IF (CartesianFormulation) THEN
+    CALL Warn('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION OVER A 2-D DOMAIN')
+    CALL Warn('ShellSolver', 'ONLY SPECIAL GEOMETRIES CAN BE HANDLED AT THE MOMENT')
+    CALL Warn('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING')
+
+    NonlinearBending = GetLogical(SolverPars, 'Nonlinear Bending Strains', Found)
+  END IF
+
   Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
@@ -266,7 +277,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! ---------------------------------------------------------------------------------
   ! The number of unknown fields in the shell model:
   ! ---------------------------------------------------------------------------------
-  ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
+  ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=9)
 
   ! ---------------------------------------------------------------------------------
   ! The choice of strain reduction method. Now only the automated default is active.
@@ -354,50 +365,53 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
          ShellModelPar, .FALSE., 3)      
     END IF
   END IF
-    
-  ! ---------------------------------------------------------------------------------
-  ! PART I: 
-  ! Get the director data at the nodes as a field variable 'Director' or
-  ! read the director data at the nodes from mesh.director file and check the
-  ! the integrity of the surface model. An elementwise property 'director' 
-  ! corresponding to the data is created, if not already available
-  ! via reading the director data from the file mesh.elements.data. 
-  !----------------------------------------------------------------------------------
-  Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
-  CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director, &
-      Solver % ActiveElements)
-  CALL CheckSurfaceOrientation()
   
-  ! --------------------------------------------------------------------------------
-  ! PART II:
-  ! Generate the descriptions of curved element edges for improved geometry 
-  ! approximation. The implementation may not be memory efficient as data is 
-  ! duplicated for shared element edges with the same director data. Here the
-  ! variable CurveDataOutput can be used to output edge data into a file.
-  ! With the macro element option we may create additional space curves
-  ! corresponding to subtriangulations of quadrilateral elements.
-  ! ---------------------------------------------------------------------------------
-  CurveDataOutput = GetLogical(SolverPars, 'Edge Curves Output', Found)
-  !MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
-  MacroElements = .FALSE.
-  CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
+  ComputeShellArea = .FALSE.
+  SKIP_BLENDING: IF (.NOT. CartesianFormulation) THEN
+    ! ---------------------------------------------------------------------------------
+    ! PART I: 
+    ! Get the director data at the nodes as a field variable 'Director' or
+    ! read the director data at the nodes from mesh.director file and check the
+    ! the integrity of the surface model. An elementwise property 'director' 
+    ! corresponding to the data is created, if not already available
+    ! via reading the director data from the file mesh.elements.data. 
+    !----------------------------------------------------------------------------------
+    Director => VariableGet(Mesh % Variables, 'Director', .TRUE.)
+    CALL ReadSurfaceDirector(Mesh % Name, Mesh % NumberOfNodes, SolverPars, Director, &
+        Solver % ActiveElements)
+    CALL CheckSurfaceOrientation()
+
+    ! --------------------------------------------------------------------------------
+    ! PART II:
+    ! Generate the descriptions of curved element edges for improved geometry 
+    ! approximation. The implementation may not be memory efficient as data is 
+    ! duplicated for shared element edges with the same director data. Here the
+    ! variable CurveDataOutput can be used to output edge data into a file.
+    ! With the macro element option we may create additional space curves
+    ! corresponding to subtriangulations of quadrilateral elements.
+    ! ---------------------------------------------------------------------------------
+    CurveDataOutput = GetLogical(SolverPars, 'Edge Curves Output', Found)
+    !MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
+    MacroElements = .FALSE.
+    CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
 
 
-  ! ---------------------------------------------------------------------------------
-  ! PART III:
-  ! Utilize the parametrized edge curves to obtain improved geometry approximation 
-  ! via using the finite element blending technique, perform a reparametrization 
-  ! to obtain lines of curvature coordinates and assemble the discrete shell 
-  ! equations. 
-  ! ---------------------------------------------------------------------------------
+    ! ---------------------------------------------------------------------------------
+    ! PART III:
+    ! Utilize the parametrized edge curves to obtain improved geometry approximation 
+    ! via using the finite element blending technique, perform a reparametrization 
+    ! to obtain lines of curvature coordinates and assemble the discrete shell 
+    ! equations. 
+    ! ---------------------------------------------------------------------------------
 
-  ! ---------------------------------------------------------------------------------
-  ! Check whether the area of shell surface should be computed (here this is done
-  ! in several ways to check the model integrity):
-  ! ---------------------------------------------------------------------------------
-  ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area', Found)
-  BlendingSurfaceArea = 0.0d0
-  MappedMeshArea = 0.0d0
+    ! ---------------------------------------------------------------------------------
+    ! Check whether the area of shell surface should be computed (here this is done
+    ! in several ways to check the model integrity):
+    ! ---------------------------------------------------------------------------------
+    ComputeShellArea = GetLogical(SolverPars, 'Compute Shell Area', Found)
+    BlendingSurfaceArea = 0.0d0
+    MappedMeshArea = 0.0d0
+  END IF SKIP_BLENDING
   
   ! For verification purposes we may solve a case for which the reference strain 
   ! energy is known:
@@ -472,7 +486,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! properties and can thus be retrieved by calling the function
       ! GetElementProperty
       !----------------------------------------------------------------------
-      REPARAMETRIZATION: IF (NonlinIter==1) THEN
+      REPARAMETRIZATION: IF (NonlinIter==1 .AND. .NOT. CartesianFormulation) THEN
         !----------------------------------------------------------------------
         ! Get the elementwise average of director data for orientation purposes
         ! (check also for body flatness):
@@ -512,11 +526,17 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! ------------------------------------------------------------------------------
       ! Generate the tangential stiffness matrix and assemble the local contribution:
       ! -----------------------------------------------------------------------------
-      CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
-          LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ShearAlpha, MembraneAlpha, StretchAlpha, ApplyBubbles, DrillingDOFs, DrillingPar, &
-          RotateDOFs, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, TotalErr, &
-          BenchmarkProblem=SolveBenchmarkCase)
+      IF (CartesianFormulation) THEN
+        CALL ShellLocalMatrixCartesian(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
+            LargeDeflection, NonlinearBending, MassAssembly, HarmonicAssembly, LocalRHSForce, &
+            BenchmarkProblem = GetLogical(SolverPars, 'Benchmark Problem', Found))
+      ELSE
+        CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
+            LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
+            ShearAlpha, MembraneAlpha, StretchAlpha, ApplyBubbles, DrillingDOFs, DrillingPar, &
+            RotateDOFs, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, TotalErr, &
+            BenchmarkProblem=SolveBenchmarkCase)
+      END IF
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -791,6 +811,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
+!  CYLINDRICAL_BENCHMARK: IF (.TRUE.) THEN
+!    Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
+!    PRINT *, 'Energy representation coefficient = ', Work/(12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * (1.0d-2)**3)
+!  END IF CYLINDRICAL_BENCHMARK
   IF (SolveBenchmarkCase .AND. .NOT.Parallel) THEN
     
     CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
@@ -2816,8 +2840,22 @@ CONTAINS
       SELECT CASE (Family)
       CASE(3)
         GElement % Type => GetElementType(310,.FALSE.)
+        !
+        ! Make sure that all entries are initiated even with p-elements
+        !
+        GElement % Type % NodeU(4:10) = (/ 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, 1.0d0/3.0d0, &
+            0.0d0, 0.0d0, 1.0d0/3.0d0 /)
+        GElement % Type % NodeV(4:10) = (/ 0.0d0, 0.0d0, 1.0d0/3.0d0, 2.0d0/3.0d0, 2.0d0/3.0d0, &
+            1.0d0/3.0d0, 1.0d0/3.0d0 /)
       CASE(4)
         GElement % Type => GetElementType(416,.FALSE.)
+        !
+        ! Make sure that all entries are initiated even with p-elements
+        !
+        GElement % Type % NodeU(5:16) = (/ -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, 1.0d0/3.0d0, &
+            -1.0d0/3.0d0, -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0, -1.0d0/3.0d0 /)
+        GElement % Type % NodeV(5:16) = (/ -1.0d0, -1.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0, 1.0d0, &
+            1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, -1.0d0/3.0d0, 1.0d0/3.0d0, 1.0d0/3.0d0 /)
       END SELECT
     END IF
 
@@ -4199,8 +4237,7 @@ CONTAINS
             PrevField(2) * BWork(2,1:DOFs)
 
         ! The nonlinear part of strain component 11 for the current iterate:
-        StrainVec(1) = StrainVec(1) + 0.5d0 * SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A1**2 + &
-            0.5d0 * PrevField(1)**2 / A2**2 + 0.5d0 * PrevField(2)**2
+        StrainVec(1) = 0.5_dp * SUM(NonlinBM(1,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! Strain component 22:
@@ -4221,8 +4258,7 @@ CONTAINS
             PrevField(4) * BWork(4,1:DOFs)
 
         ! The nonlinear part of strain component 22 for the current iterate:
-        StrainVec(2) = StrainVec(2) + 0.5d0 * SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) )**2 / A2**2 + &
-            0.5d0 * PrevField(3)**2 / A1**2 + 0.5d0 * PrevField(4)**2
+        StrainVec(2) = 0.5_dp * SUM(NonlinBM(2,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! Strain component 12:
@@ -4234,9 +4270,7 @@ CONTAINS
             BWork(2,1:DOFs) * PrevField(4) + PrevField(2) * BWork(4,1:DOFs) 
 
         ! The nonlinear part of strain component 12 for the current iterate:
-        StrainVec(3) = StrainVec(3) + SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(3) / A1**2 + &
-            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(1) / A2**2 + &
-            PrevField(2) * PrevField(4)
+        StrainVec(3) = 0.5_dp * SUM(NonlinBM(3,1:DOFs) * PrevSolVec(1:DOFs))
 
         ! ---------------------------------------------------------------------------------------
         ! A strain-like variable e such that the normal stress T33 = DW/De
@@ -4252,9 +4286,7 @@ CONTAINS
             BWork(6,1:DOFs) * PrevField(6) / A2**2 +  BWork(7,1:DOFs) * PrevField(7)
 
         ! The nonlinear part of e for the current iterate: 
-        StrainVec(4) = StrainVec(4) + nu/(1.0d0-nu) * StrainVec(1) / A1**2 + &
-            nu/(1.0d0-nu) * StrainVec(2) / A2**2 + 0.5d0 * PrevField(5)**2 / A1**2 + &
-            0.5d0 * PrevField(6)**2 / A2**2 + 0.5d0 * PrevField(7)**2
+        StrainVec(4) = 0.5_dp * SUM(NonlinBM(4,1:DOFs) * PrevSolVec(1:DOFs))
       END IF
 
       
@@ -4397,8 +4429,7 @@ CONTAINS
             BWork(2,1:DOFs) * PrevField(7) - PrevField(2) * BWork(7,1:DOFs) 
 
         ! The nonlinear part of strain component 13 for the current iterate:
-        StrainVec(5) = StrainVec(5) - SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(5) / A1**2 - &
-            PrevField(1) * PrevField(6) / A2**2 - PrevField(2) * PrevField(7)
+        StrainVec(5) = 0.5_dp * SUM(NonlinBS(1,1:DOFs) * PrevSolVec(1:DOFs))
         ! ---------------------------------------------------------------------------------------
         ! Strain component 23:
         ! ---------------------------------------------------------------------------------------
@@ -4409,9 +4440,7 @@ CONTAINS
             BWork(4,1:DOFs) * PrevField(7) - PrevField(4) * BWork(7,1:DOFs) 
 
         ! The nonlinear part of strain component 23 for the current iterate:
-        StrainVec(6) = StrainVec(6) - PrevField(3) * PrevField(5) / A1**2 - &
-            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
-
+        StrainVec(6) = 0.5_dp * SUM(NonlinBS(2,1:DOFs) * PrevSolVec(1:DOFs))
       END IF
 
       CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, KappaS*Weight)
@@ -6680,6 +6709,829 @@ CONTAINS
 !-----------------------------------------------------------------------
   END FUNCTION EdgeMidNode
 !-----------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! The matrix representation of the 3D elasticity tensor with respect an orthogonal
+! basis. The case A1 = A2 = 1 corresponds to an orthonormal basis.
+!------------------------------------------------------------------------------
+  SUBROUTINE MaterialLaw3D(CMat, A1, A2, E, nu)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(OUT) :: CMat(6,6)
+    REAL(KIND=dp), INTENT(IN) :: A1, A2, E, nu
+!------------------------------------------------------------------------------
+    INTEGER :: i
+    REAL(KIND=dp) :: Lambda, G
+!------------------------------------------------------------------------------
+    Lambda = E * nu / ( (1.0_dp + nu) * (1.0_dp - 2.0_dp*nu) )
+    G = E / (2.0_dp*(1.0_dp + nu))
+
+    ! We use unusual ordering to conform with the earlier implementation:
+    ! 11, 22, 12, 33, 13, 23
+    
+    CMat = 0.0_dp
+    CMat(1:2,1:2) = Lambda
+    CMat(1:2,4) = Lambda
+    CMat(4,1:2) = Lambda
+    CMat(4,4) = Lambda
+
+    DO i=1,2
+      CMat(i,i) = CMat(i,i) + 2.0_dp * G
+      CMat(i+4,i+4) = G
+    END DO
+    CMat(4,4) = CMat(4,4) + 2.0_dp * G
+    CMat(3,3) = G
+
+    CMat(1,1) = CMat(1,1)/A1**4
+    CMat(1,2) = CMat(1,2)/(A1**2 * A2**2)
+    CMat(1,4) = CMat(1,4)/(A1**2)
+
+    CMat(2,1) = CMat(2,1)/(A2**2 * A1**2)
+    CMat(2,2) = CMat(2,2)/A2**4   
+    CMat(2,4) = CMat(2,4)/(A2**2)
+
+    CMat(4,1) = CMat(4,1)/(A1**2)
+    CMat(4,2) = CMat(4,2)/(A2**2)
+    CMat(3,3) = CMat(3,3)/(A1**2 * A2**2)
+
+    CMat(5,5) = CMat(5,5)/(A1**2)
+    CMat(6,6) = CMat(6,6)/(A2**2)
+!------------------------------------------------------------------------------
+  END SUBROUTINE MaterialLaw3D
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE SurfaceBasis(y1, y2, A, K1, K2, Spherical, Cylindrical)
+!------------------------------------------------------------------------------
+! Returns the surface basis vectors in the case of some example geometries.
+! The kth basis vector is represented as the column vector A(:,k).
+!------------------------------------------------------------------------------    
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: y1, y2  ! Curvilinear coordinates on a surface
+    REAL(KIND=dp), INTENT(OUT) :: A(3,3) 
+    REAL(KIND=dp), INTENT(OUT) :: K1, K2 ! The principal curvatures Ki = b_ii/a_ii
+    LOGICAL, INTENT(IN) :: Spherical
+    LOGICAL, INTENT(IN) :: Cylindrical
+
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: R
+!------------------------------------------------------------------------------
+    A = 0.0_dp
+
+    IF (Spherical) THEN
+      !
+      ! Using spherical coordinates
+      !
+      R = 10.0_dp  ! The radius
+
+      A(1,1) = -R*cos(y2)*sin(y1)
+      A(2,1) = R*cos(y2)*cos(y1)
+
+      A(1,2) = -R*sin(y2)*cos(y1)
+      A(2,2) = -R*sin(y2)*sin(y1)
+      A(3,2) = R*cos(y2)
+
+      A(1,3) = cos(y2)*cos(y1)
+      A(2,3) = cos(y2)*sin(y1)
+      A(3,3) = sin(y2)
+
+      K1 = -1.0_dp/R
+      K2 = -1.0_dp/R
+
+    ELSE IF (Cylindrical) THEN
+      !
+      ! A straight cylinder:
+      !
+      R = 1.0_dp
+
+      A(1,1) = cos(y1/R)
+      A(3,1) = sin(y1/R)
+
+      A(2,2) = 1.0_dp 
+
+      A(1,3) = -sin(y1/R)
+      A(3,3) =  cos(y1/R)
+
+      K1 = 1.0_dp/R
+      K2 = 0.0_dp
+
+    ELSE
+      !
+      ! Planar body:
+      !
+      A = 0.0_dp
+      A(1,1) = 1.0_dp
+      A(2,2) = 1.0_dp
+      A(3,3) = 1.0_dp
+      
+      K1 = 0.0_dp
+      K2 = 0.0_dp
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE SurfaceBasis
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
+      NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, BenchmarkProblem)
+!------------------------------------------------------------------------------
+    USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
+    INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
+    INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component (after
+                                                       ! static condensation if bubbles are used)
+    INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+    REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
+    LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: NonlinearBending            ! The full nonlinearity of bending and transverse shear strains
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
+    LOGICAL, INTENT(IN), OPTIONAL :: BenchmarkProblem  ! To create a load for a benchmark problem 
+!------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: BodyForce, Material, BodyParams
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Stat, Found
+    LOGICAL :: TransverseBendingStretch, Spherical, Cylindrical
+    LOGICAL :: GeneralMaterial
+
+    INTEGER :: DOFs, i, j, k, p, t, csize, bsize
+
+    REAL(KIND=dp), PARAMETER :: i1(3) = (/ 1.0_dp, 0.0_dp, 0.0_dp /)
+    REAL(KIND=dp), PARAMETER :: i2(3) = (/ 0.0_dp, 1.0_dp, 0.0_dp /)
+    REAL(KIND=dp), PARAMETER :: i3(3) = (/ 0.0_dp, 0.0_dp, 1.0_dp /)
+
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Force(m*nd)
+    REAL(KIND=dp) :: Damp(m*nd,m*nd)
+    REAL(KIND=dp) :: BM(4,m*nd), BS(4,m*nd), BB(4,m*nd)
+    REAL(KIND=dp) :: NonlinBM(4,m*nd), NonlinBS(4,m*nd), NonlinBB(4,m*nd)
+    REAL(KIND=dp) :: Basis(nd), dBasis(nd,3)
+    REAL(KIND=dp) :: StrainVec(6), StressVec(6)
+    REAL(KIND=dp) :: PrevSolVec(m*nd)
+    REAL(KIND=dp) :: CMat(4,4), GMat(2,2), HMat(6,6)
+    REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
+    REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
+    REAL(KIND=dp) :: abasis1(3), abasis2(3), abasis3(3)
+    REAL(KIND=dp) :: abasis1New(3), abasis2New(3), abasis3New(3), NewDetA
+    REAL(KIND=dp) :: dual1(3), dual2(3)
+    REAL(KIND=dp) :: y1, y2, v1, v2, v3
+    REAL(KIND=dp) :: sq
+    REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
+    REAL(KIND=dp) :: Damping(n), DampCoef
+    REAL(KIND=dp) :: nu, E, h, NormalTraction
+    REAL(KIND=dp) :: DetJ, Weight, Norm
+    REAL(KIND=dp) :: CovariantBasis(3,3), K1, K2
+    REAL(KIND=dp) :: Q(3,3)
+    REAL(KIND=dp) :: PrevGrad(3,2), PrevGradB(3,2), PrevB(3), PrevPsi(3)
+    REAL(KIND=dp) :: c1, c2, c3, c4
+
+    SAVE Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes)
+
+    Material => GetMaterial()
+    GeneralMaterial = GetLogical(Material, '3D Material Law', Found)
+!    IF (GeneralMaterial) print *, 'APPLYING 3D MATERIAL LAW'
+
+    BodyParams => GetBodyParams(BGElement)
+    Spherical = GetLogical(BodyParams, 'Spherical Body', Found)
+    Cylindrical = GetLogical(BodyParams, 'Cylindrical Body', Found)
+
+    ! ------------------------------------------------------------------------------
+    ! The size of the constitutive matrix for 2D shell equations
+    ! ------------------------------------------------------------------------------
+    TransverseBendingStretch = m == 9
+    IF (GeneralMaterial .AND. .NOT. TransverseBendingStretch) &
+        CALL Fatal('ShellSolver', '3D material law needs 9-field model') 
+
+    IF (TransverseBendingStretch) THEN
+      bsize = 4
+    ELSE
+      IF (m /= 6) CALL Fatal('ShellLocalMatrixCartesian', &
+          '6 or 9 Variable DOFs expected')
+      bsize = 3
+    END IF
+    csize = 4
+
+    DOFs = m*nd ! The local stiffness matrix size after static condensation
+
+    ! --------------------------------------------------------------------------
+    ! Body forces, material parameters and the shell thickness:
+    ! --------------------------------------------------------------------------
+    PoissonRatio(1:n) = GetReal(Material, 'Poisson Ratio')
+    YoungsMod(1:n) = GetReal(Material, 'Youngs Modulus')
+    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness')
+
+    BodyForce => GetBodyForce()
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+    ELSE
+      Load(1:n) = 0.0d0
+    END IF
+    IF ( MassAssembly ) THEN
+      rho(1:n) = GetReal(Material, 'Density')
+      Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
+    END IF
+
+    ! ------------------------------------------------------------------------
+    ! Vectorize the previous solution
+    ! ------------------------------------------------------------------------
+    DO k=1,m
+      PrevSolVec(k:DOFs:m) = LocalSol(k,1:nd)
+    END DO
+
+    ! ------------------------------------------------------------------------
+    ! Finally, integrate local element matrices:
+    ! ------------------------------------------------------------------------
+    Mass = 0.0d0
+    Damp = 0.0d0
+    Stiff = 0.0d0
+    Force = 0.0d0
+    RHSForce = 0.0d0
+
+    IP = GaussPoints( BGElement )
+
+    QUADRATURELOOP: DO t=1,IP % n
+
+      BM = 0.0d0
+      BB = 0.0d0
+      BS = 0.0d0
+
+      NonlinBM = 0.0d0
+      NonlinBS = 0.0d0
+      NonlinBB = 0.0d0
+
+      stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
+      sq = IP % s(t)
+
+      ! ------------------------------------------------
+      ! Data interpolation:
+      ! ------------------------------------------------
+      y1 = SUM( Nodes % x(1:n) * Basis(1:n) )
+      y2 = SUM( Nodes % y(1:n) * Basis(1:n) )
+
+      h = SUM( ShellThickness(1:n) * Basis(1:n) )
+      nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
+      E = SUM( YoungsMod(1:n) * Basis(1:n) )
+      NormalTraction = SUM( Load(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) THEN
+        rho0 = SUM( rho(1:n) * Basis(1:n) )
+        DampCoef = SUM( Damping(1:n) * Basis(1:n) )
+      END IF
+
+      IF (Cylindrical .AND. BenchmarkProblem) THEN
+        ! In the case of benchmark cases
+        ! use a hard-coded load to avoid errors from representing the load: 
+        !
+        NormalTraction = h**3 * 1.0d5 * cos(2.0d0*y1)
+      END IF
+      !
+      ! TO DO: A suitable surface parametrization should be generated from
+      !        a given mesh. This gives the parametrization for special cases.
+      !
+      CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+
+      abasis1(:) = CovariantBasis(:,1)
+      abasis2(:) = CovariantBasis(:,2)
+      abasis3(:) = CovariantBasis(:,3)
+      a11 = DOT_PRODUCT(abasis1,abasis1)
+      a22 = DOT_PRODUCT(abasis2,abasis2)
+      !dual1 = abasis1
+      !dual2 = abasis2
+      b11 = K1 * a11
+      b22 = K2 * a22
+      SqrtDetA = SQRT(a11*a22)
+
+      ! The geometric Lame parameters:
+      ! ------------------------------
+      A1 = SQRT(a11)
+      A2 = SQRT(a22)
+
+      Q(1,1) = DOT_PRODUCT(abasis1,i1)
+      Q(1,2) = DOT_PRODUCT(abasis1,i2)
+      Q(1,3) = DOT_PRODUCT(abasis1,i3)
+      Q(2,1) = DOT_PRODUCT(abasis2,i1)
+      Q(2,2) = DOT_PRODUCT(abasis2,i2)
+      Q(2,3) = DOT_PRODUCT(abasis2,i3)
+      Q(3,1) = DOT_PRODUCT(abasis3,i1)
+      Q(3,2) = DOT_PRODUCT(abasis3,i2)
+      Q(3,3) = DOT_PRODUCT(abasis3,i3)
+
+      ! The matrix description of the elasticity tensor: Two versions
+      ! differ on how the transverse normal stress part is formulated,
+      ! but the result should be the same.
+      !
+      IF (GeneralMaterial) THEN
+        CALL MaterialLaw3D(HMat, A1, A2, E, nu)
+      ELSE
+        CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
+      END IF
+
+      !-----------------------------------------------------------------------------------
+      ! THE PART CORRESPONDING TO THE MEMBRANE STRAINS:
+      !-----------------------------------------------------------------------------------
+      ! Create first the representation of the differential DE_0(U)[V] of the linearized 
+      ! membrane strain E_0(U) in the matrix form as DE_0(U)[V] = E_0(V) = BM * V (here 
+      ! DE_0(U)[V] = E_0(V) holds for all U since E_0(U) is linear with respect to U).
+      !------------------------------------------------------------------------------------
+      Weight = h * SqrtDetA * detJ * sq
+      DO p=1,nd
+        BM(1,(p-1)*m+1:(p-1)*m+3) = Q(1,1:3) * dBasis(p,1)
+        BM(2,(p-1)*m+1:(p-1)*m+3) = Q(2,1:3) * dBasis(p,2)
+        BM(3,(p-1)*m+1:(p-1)*m+3) = Q(2,1:3) * dBasis(p,1) + Q(1,1:3) * dBasis(p,2)
+        BM(4,(p-1)*m+4:(p-1)*m+6) = -Q(3,1:3) * Basis(p)
+      END DO
+
+      IF (.NOT. GeneralMaterial) THEN
+        !
+        ! Use a formulation which enforces vanishing normal stress by penalization;
+        ! otherwise the basic 3D formulation is employed.
+        !
+        BM(4,:) = BM(4,:) + nu/((1.0d0-nu)*a11) * BM(1,:) + &
+            nu/((1.0d0-nu)*a22) * BM(2,:)
+      END IF
+
+      StrainVec = 0.0d0
+      NONLINEAR_MEMBRANE_STRAINS: IF (LargeDeflection) THEN
+        ! ---------------------------------------------------------------------------------------
+        ! The differential DE(U)[V] of the membrane strain E(U) is by definition linear with 
+        ! respect to V and thus have a matrix representation DE(U)[V] ~ BM * V + NonlinBM(U) * V.
+        ! The matrix BM is already created and here we create the matrix NonlinBM(U), which
+        ! depends on the current solution iterate U.
+        ! ---------------------------------------------------------------------------------------
+        PrevGrad(1:3,1:2) = MATMUL(LocalSol(1:3,1:nd), dBasis(1:nd,1:2))
+        PrevB(1:3) = MATMUL(LocalSol(4:6,1:nd), Basis(1:nd))
+
+        DO p=1,nd
+          NonlinBM(1,(p-1)*m+1:(p-1)*m+3) = PrevGrad(1:3,1) * dBasis(p,1)
+          NonlinBM(2,(p-1)*m+1:(p-1)*m+3) = PrevGrad(1:3,2) * dBasis(p,2)
+          NonlinBM(3,(p-1)*m+1:(p-1)*m+3) = PrevGrad(1:3,2) * dBasis(p,1) + PrevGrad(1:3,1) * dBasis(p,2)
+          NonlinBM(4,(p-1)*m+4:(p-1)*m+6) = PrevB(1:3) * Basis(p)
+        END DO
+
+        IF (.NOT. GeneralMaterial) THEN
+          NonlinBM(4,1:DOFs) = NonlinBM(4,1:DOFs) + nu/((1.0d0-nu)*a11) * NonlinBM(1,1:DOFs) + &
+            nu/((1.0d0-nu)*a22) * NonlinBM(2,1:DOFs)
+        END IF
+
+        ! The nonlinear parts of membrane strain components:
+        StrainVec(1:4) = 0.5_dp * MATMUL(NonlinBM(1:4,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_MEMBRANE_STRAINS
+
+      ! Add the linear part of strain for the current iterate:
+      StrainVec(1:csize) = StrainVec(1:csize) + MATMUL( BM(1:csize,1:DOFs), PrevSolVec(1:DOFs) )
+      
+      IF (.NOT. GeneralMaterial) THEN
+        CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, Weight)
+        StressVec(1:csize) = MATMUL(CMat(1:csize,1:csize), StrainVec(1:csize))
+      ELSE
+        CALL StrainEnergyDensity(Stiff, HMat, BM + NonlinBM, csize, DOFs, Weight)
+        StressVec(1:csize) = MATMUL(HMat(1:csize,1:csize), StrainVec(1:csize))        
+      END IF
+
+      ! Residual terms for RHS:
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE(BM(1:csize,1:DOFs) + NonlinBM(1:csize,1:DOFs)), &
+         StressVec(1:csize) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      !
+      NONLINEAR_MEMBRANE_EFFECTS: IF (LargeDeflection) THEN
+        IF (.NOT. GeneralMaterial) THEN
+          c1 = (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          c2 = (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
+        ELSE
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
+        END IF
+        c3 = StressVec(3) * Weight
+        c4 = StressVec(4) * Weight
+
+        DO p=1,nd
+          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+        END DO
+
+        DO p=1,nd
+          Stiff((p-1)*m+4,4:DOFs:m) = Stiff((p-1)*m+4,4:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
+          Stiff((p-1)*m+5,5:DOFs:m) = Stiff((p-1)*m+5,5:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
+          Stiff((p-1)*m+6,6:DOFs:m) = Stiff((p-1)*m+6,6:DOFs:m) + c4 * Basis(p) * Basis(1:nd)
+        END DO
+      END IF NONLINEAR_MEMBRANE_EFFECTS
+
+      !-----------------------------------------------------------------------------------
+      ! THE PART CORRESPONDING TO THE TRANSVERSE SHEAR STRAINS:
+      !-----------------------------------------------------------------------------------
+      ! Create first the representation of the differential DE_0(U)[V] of the linearized 
+      ! transverse shear strain E_0(U) in the matrix form as DE_0(U)[V] = E_0(V) = BS * V
+      ! (here DE_0(U)[V] = E_0(V) holds since E_0(U) is linear with respect to U).
+      !------------------------------------------------------------------------------------
+      DO p=1,nd
+        BS(1:2,(p-1)*m+4) = -Q(1:2,1) * Basis(p)
+        BS(1:2,(p-1)*m+5) = -Q(1:2,2) * Basis(p)
+        BS(1:2,(p-1)*m+6) = -Q(1:2,3) * Basis(p)
+
+        BS(1:2,(p-1)*m+1) = Q(3,1) * dBasis(p,1:2)
+        BS(1:2,(p-1)*m+2) = Q(3,2) * dBasis(p,1:2)
+        BS(1:2,(p-1)*m+3) = Q(3,3) * dBasis(p,1:2)
+      END DO
+
+      NONLINEAR_SHEAR_STRAINS: IF (LargeDeflection) THEN
+        ! ---------------------------------------------------------------------------------------
+        ! The representation of the differential DE(U)[V] of the transverse shear strain E(U) in 
+        ! the matrix form as DE(U)[V] ~ BS * V + NonlinBS(U) * V. The matrix BS is already created 
+        ! and here we compute the matrix NonlinBS(U), which depends on the current solution iterate 
+        ! U.
+        ! ---------------------------------------------------------------------------------------
+        DO p=1,nd
+          NonlinBS(1,(p-1)*m+1:(p-1)*m+3) = -PrevB(1:3) * dBasis(p,1)
+          NonlinBS(1,(p-1)*m+4:(p-1)*m+6) = -PrevGrad(1:3,1) * Basis(p)
+          NonlinBS(2,(p-1)*m+1:(p-1)*m+3) = -PrevB(1:3) * dBasis(p,2)
+          NonlinBS(2,(p-1)*m+4:(p-1)*m+6) = -PrevGrad(1:3,2) * Basis(p)
+        END DO
+        StrainVec(5:6) = 0.5_dp * MATMUL(NonlinBS(1:2,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_SHEAR_STRAINS
+
+      ! Add the linear part of shear strain for the current iterate:
+      StrainVec(5:6) = StrainVec(5:6) + MATMUL(BS(1:2,1:DOFs), PrevSolVec(1:DOFs))
+
+      IF (.NOT. GeneralMaterial) THEN
+        CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs, Weight)
+        StressVec(5:6) = MATMUL(GMat(1:2,1:2), StrainVec(5:6))
+      ELSE
+        CALL StrainEnergyDensity(Stiff, HMat(5:6,5:6), BS + NonlinBS, 2, DOFs, Weight)
+        StressVec(5:6) = MATMUL(HMat(5:6,5:6), StrainVec(5:6))       
+      END IF
+
+      ! Residual terms for RHS:
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE(BS(1:2,1:DOFs) + NonlinBS(1:2,1:DOFs)), &
+          StressVec(5:6) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      !
+      NONLINEAR_SHEAR_EFFECTS: IF (LargeDeflection) THEN
+        c1 = StressVec(5) * Weight
+        c2 = StressVec(6) * Weight
+        DO p=1,nd
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - c1 * dbasis(p,1) * Basis(1:nd) - &
+              c2 * dbasis(p,2) * Basis(1:nd)
+
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - c1 * Basis(p) * dbasis(1:nd,1) - &
+              c2 * Basis(p) * dbasis(1:nd,2)
+        END DO
+      END IF NONLINEAR_SHEAR_EFFECTS
+
+      !----------------------------------------------------------------------------------------
+      ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
+      ! It appears that considering the linear part may not be meaningful without having a cubic
+      ! displacement approximation in the thickness coordinate. On the other hand, this seems
+      ! to be have a strong impact on the solution of the 6-field model when nonlinear effects
+      ! are strong.
+      !----------------------------------------------------------------------------------------
+      Weight = h**2/12.0d0 * Weight
+      DO p=1,nd
+        BS(3:4,(p-1)*m+4) = Q(3,1) * dBasis(p,1:2)
+        BS(3:4,(p-1)*m+5) = Q(3,2) * dBasis(p,1:2)
+        BS(3:4,(p-1)*m+6) = Q(3,3) * dBasis(p,1:2)
+
+        BS(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(3,1:3) * dBasis(p,1)
+        BS(4,(p-1)*m+1:(p-1)*m+3) = -K2 * Q(3,1:3) * dBasis(p,2)
+
+        IF (TransverseBendingStretch) THEN
+          BS(3,(p-1)*m+7:(p-1)*m+9) = Q(1,1:3) * Basis(p)
+          BS(4,(p-1)*m+7:(p-1)*m+9) = Q(2,1:3) * Basis(p)
+        END IF
+      END DO
+
+      StrainVec(1:2) = 0.0d0
+      NONLINEAR_SHEAR_OVER_THICKNESS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        PrevGradB(1:3,1:2) = MATMUL(LocalSol(4:6,1:nd), dBasis(1:nd,1:2))
+        DO p=1,nd
+          NonlinBS(3,(p-1)*m+4:(p-1)*m+6) = -PrevB(1:3) * dBasis(p,1) - PrevGradB(1:3,1) * Basis(p)
+          NonlinBS(4,(p-1)*m+4:(p-1)*m+6) = -PrevB(1:3) * dBasis(p,2) - PrevGradB(1:3,2) * Basis(p)        
+        END DO
+        NonlinBS(3,:) = NonlinBS(3,:) - K1 * NonlinBS(1,:)
+        NonlinBS(4,:) = NonlinBS(4,:) - K2 * NonlinBS(2,:)
+        IF (TransverseBendingStretch) THEN
+          PrevPsi(1:3) = MATMUL(LocalSol(7:9,1:nd), Basis(1:nd))
+          DO p=1,nd
+            NonlinBS(3,(p-1)*m+1:(p-1)*m+3) = PrevPsi(1:3) * dBasis(p,1)
+            NonlinBS(3,(p-1)*m+7:(p-1)*m+9) = PrevGrad(1:3,1) * Basis(p)
+            NonlinBS(4,(p-1)*m+1:(p-1)*m+3) = PrevPsi(1:3) * dBasis(p,2)
+            NonlinBS(4,(p-1)*m+7:(p-1)*m+9) = PrevGrad(1:3,2) * Basis(p)
+          END DO
+        END IF
+        StrainVec(1:2) = 0.5_dp * MATMUL(NonlinBS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_SHEAR_OVER_THICKNESS
+
+      StrainVec(1:2) = StrainVec(1:2) + MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+
+      IF (.NOT. GeneralMaterial) THEN
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            MATMUL(GMat(1:2,1:2), BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)))
+        StressVec(1:2) = MATMUL(GMat(1:2,1:2), StrainVec(1:2))
+      ELSE
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            MATMUL(HMat(5:6,5:6),BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)))
+        StressVec(1:2) = MATMUL(HMat(5:6,5:6), StrainVec(1:2))
+      END IF
+      !
+      ! Residual terms for RHS:
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+          StressVec(1:2) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      !
+      SHEAR_EFFECTS_OVER_THICKNESS:  IF (LargeDeflection .AND. NonlinearBending) THEN
+        v1 = -K1 * StressVec(1) * Weight
+        v2 = -K2 * StressVec(2) * Weight
+        c1 = StressVec(1) * Weight
+        c2 = StressVec(2) * Weight
+        DO p=1,nd
+          Stiff((p-1)*m+4,4:DOFs:m) = Stiff((p-1)*m+4,4:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+          Stiff((p-1)*m+5,5:DOFs:m) = Stiff((p-1)*m+5,5:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+          Stiff((p-1)*m+6,6:DOFs:m) = Stiff((p-1)*m+6,6:DOFs:m) - c1 * ( basis(p) * dbasis(1:nd,1) + &
+              dbasis(p,1) * basis(1:nd) ) - c2 * ( basis(p) * dbasis(1:nd,2) + &
+              dbasis(p,2) * basis(1:nd) )
+
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) - v1 * dbasis(p,1) * Basis(1:nd) - &
+              v2 * dbasis(p,2) * Basis(1:nd)
+
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) - v1 * Basis(p) * dbasis(1:nd,1) - &
+              v2 * Basis(p) * dbasis(1:nd,2)
+        END DO
+
+        IF (TransverseBendingStretch) THEN
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
+          DO p=1,nd
+            Stiff((p-1)*m+7,1:DOFs:m) = Stiff((p-1)*m+7,1:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+            Stiff((p-1)*m+8,2:DOFs:m) = Stiff((p-1)*m+8,2:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+            Stiff((p-1)*m+9,3:DOFs:m) = Stiff((p-1)*m+9,3:DOFs:m) + c1 * Basis(p) * dBasis(1:nd,1) + &
+                c2 * Basis(p) * dBasis(1:nd,2)
+
+            Stiff((p-1)*m+1,7:DOFs:m) = Stiff((p-1)*m+1,7:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+            Stiff((p-1)*m+2,8:DOFs:m) = Stiff((p-1)*m+2,8:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+            Stiff((p-1)*m+3,9:DOFs:m) = Stiff((p-1)*m+3,9:DOFs:m) + c1 * Basis(1:nd) * dBasis(p,1) + &
+                c2 * Basis(1:nd) * dBasis(p,2)
+          END DO
+        END IF
+      END IF SHEAR_EFFECTS_OVER_THICKNESS
+
+      !---------------------------------------------------------------
+      ! THE PART CORRESPONDING TO THE BENDING STRAINS:
+      !---------------------------------------------------------------      
+      Weight = h**3/12.0d0 * SqrtDetA * detJ * sq
+      DO p=1,nd
+        BB(1,(p-1)*m+4:(p-1)*m+6) = Q(1,1:3) * dBasis(p,1)
+        BB(2,(p-1)*m+4:(p-1)*m+6) = Q(2,1:3) * dBasis(p,2)
+        BB(3,(p-1)*m+4:(p-1)*m+6) = Q(2,1:3) * dBasis(p,1) + Q(1,1:3) * dBasis(p,2)
+        BB(3,(p-1)*m+1:(p-1)*m+3) = -K1 * Q(2,1:3) * dBasis(p,1) - &
+            K2 * Q(1,1:3) * dBasis(p,2)
+      END DO
+      BB(1,:) = BB(1,:) - K1 * BM(1,:)
+      BB(2,:) = BB(2,:) - K2 * BM(2,:)
+
+      IF (TransverseBendingStretch) THEN
+        DO p=1,nd
+          BB(4,(p-1)*m+7:(p-1)*m+9) = Q(3,1:3) * Basis(p)
+        END DO
+        IF (.NOT. GeneralMaterial) THEN
+          BB(4,:) = BB(4,:) + nu/((1.0d0-nu)*a11) * BB(1,:) + &
+              nu/((1.0d0-nu)*a22) * BB(2,:)
+        END IF
+      END IF
+
+      StrainVec(1:bsize) = 0.0d0
+      NONLINEAR_BENDING_STRAINS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        PrevGradB(1:3,1:2) = MATMUL(LocalSol(4:6,1:nd), dBasis(1:nd,1:2))
+        DO p=1,nd
+          NonlinBB(1,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,1) * dBasis(p,1)
+          NonlinBB(1,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,1) * dBasis(p,1)
+          NonlinBB(2,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,2) * dBasis(p,2)
+          NonlinBB(2,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,2) * dBasis(p,2)
+          NonlinBB(3,(p-1)*m+1:(p-1)*m+3) = PrevGradB(1:3,2) * dBasis(p,1) + PrevGradB(1:3,1) * dBasis(p,2)
+          NonlinBB(3,(p-1)*m+4:(p-1)*m+6) = PrevGrad(1:3,2) * dBasis(p,1) + PrevGrad(1:3,1) * dBasis(p,2)
+        END DO
+        NonlinBB(1:3,:) = NonlinBB(1:3,:) - (K1 + K2) * NonlinBM(1:3,:)
+
+        IF (TransverseBendingStretch) THEN
+          PrevPsi(1:3) = MATMUL(LocalSol(7:9,1:nd), Basis(1:nd))
+          DO p=1,nd
+            NonlinBB(4,(p-1)*m+7:(p-1)*m+9) = -PrevB(1:3) * Basis(p)
+            NonlinBB(4,(p-1)*m+4:(p-1)*m+6) = -PrevPsi(1:3) * Basis(p)
+          END DO
+          IF (.NOT. GeneralMaterial) THEN
+            NonlinBB(4,1:DOFs) = NonlinBB(4,1:DOFs) + nu/((1.0d0-nu)*a11) * NonlinBB(1,1:DOFs) + &
+                nu/((1.0d0-nu)*a22) * NonlinBB(2,1:DOFs)
+          END IF
+        END IF
+        StrainVec(1:bsize) = 0.5_dp * MATMUL(NonlinBB(1:bsize,1:DOFs), PrevSolVec(1:DOFs))
+      END IF NONLINEAR_BENDING_STRAINS
+
+      StrainVec(1:bsize) = StrainVec(1:bsize) + MATMUL(BB(1:bsize,1:DOFs), PrevSolVec(1:DOFs))
+
+      IF (.NOT. GeneralMaterial) THEN
+        CALL StrainEnergyDensity(Stiff, CMat, BB + NonlinBB, bsize, DOFs, Weight)
+        StressVec(1:bsize) = MATMUL(CMat(1:bsize,1:bsize), StrainVec(1:bsize))
+      ELSE
+        CALL StrainEnergyDensity(Stiff, HMat, BB + NonlinBB, bsize, DOFs, Weight)
+        StressVec(1:bsize) = MATMUL(HMat(1:bsize,1:bsize), StrainVec(1:bsize))
+      END IF
+
+      ! Residual terms for RHS:
+      Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BB(1:bsize,1:DOFs) + NonlinBB(1:bsize,1:DOFs)), &
+          StressVec(1:bsize) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      !
+      NONLINEAR_BENDING_EFFECTS: IF (LargeDeflection .AND. NonlinearBending) THEN
+        IF (.NOT. GeneralMaterial) THEN
+          c1 = (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          c2 = (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
+          v1 = -(K1 + K2) * (StressVec(1) + nu/((1.0d0-nu)*a11) * StressVec(4)) * Weight
+          v2 = -(K1 + K2) * (StressVec(2) + nu/((1.0d0-nu)*a22) * StressVec(4)) * Weight
+        ELSE
+          c1 = StressVec(1) * Weight
+          c2 = StressVec(2) * Weight
+          v1 = -(K1 + K2) * StressVec(1) * Weight
+          v2 = -(K1 + K2) * StressVec(2) * Weight
+        END IF
+        c3 = StressVec(3) * Weight
+        v3 = -(K1 + K2) * StressVec(3) * Weight
+        c4 = StressVec(4) * Weight
+
+        DO p=1,nd
+          Stiff((p-1)*m+1,4:DOFs:m) = Stiff((p-1)*m+1,4:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,5:DOFs:m) = Stiff((p-1)*m+2,5:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,6:DOFs:m) = Stiff((p-1)*m+3,6:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+
+          Stiff((p-1)*m+4,1:DOFs:m) = Stiff((p-1)*m+4,1:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+5,2:DOFs:m) = Stiff((p-1)*m+5,2:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+6,3:DOFs:m) = Stiff((p-1)*m+6,3:DOFs:m) + c1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              c2 * dbasis(p,2) * dbasis(1:nd,2) + c3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+
+          Stiff((p-1)*m+1,1:DOFs:m) = Stiff((p-1)*m+1,1:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+2,2:DOFs:m) = Stiff((p-1)*m+2,2:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dbasis(1:nd,1))
+          Stiff((p-1)*m+3,3:DOFs:m) = Stiff((p-1)*m+3,3:DOFs:m) + v1 * dbasis(p,1) * dbasis(1:nd,1) + &
+              v2 * dbasis(p,2) * dbasis(1:nd,2) + v3 * (dbasis(p,1) * dbasis(1:nd,2) + &
+              dbasis(p,2) * dBasis(1:nd,1))
+        END DO
+
+        IF (TransverseBendingStretch) THEN
+          DO p=1,nd
+            Stiff((p-1)*m+4,7:DOFs:m) = Stiff((p-1)*m+4,7:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+5,8:DOFs:m) = Stiff((p-1)*m+5,8:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+6,9:DOFs:m) = Stiff((p-1)*m+6,9:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+
+            Stiff((p-1)*m+7,4:DOFs:m) = Stiff((p-1)*m+7,4:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+8,5:DOFs:m) = Stiff((p-1)*m+8,5:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+            Stiff((p-1)*m+9,6:DOFs:m) = Stiff((p-1)*m+9,6:DOFs:m) - c4 * Basis(p) * Basis(1:nd)
+          END DO
+        END IF
+      END IF NONLINEAR_BENDING_EFFECTS
+
+      !----------------------------------------------------------------
+      ! Mass matrix without bubbles taken into account:
+      !----------------------------------------------------------------     
+      IF ( MassAssembly ) THEN
+        DO k=1,3
+          SELECT CASE(k)
+          CASE(1)
+            Weight = 1/a11 * h * rho0 * SqrtDetA * detJ * sq
+          CASE(2)
+            Weight = 1/a22 * h * rho0 * SqrtDetA * detJ * sq
+          CASE(3)
+            Weight = h * rho0 * SqrtDetA * detJ * sq
+          END SELECT
+          DO i=1,nd
+            DO j=1,nd
+              Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
+                  Basis(i) * Basis(j) * Weight
+              Damp((i-1)*m+k,(j-1)*m+k) = Damp((i-1)*m+k,(j-1)*m+k) + &
+                  DampCoef * Basis(i) * Basis(j) * Weight              
+
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  h**2/12.0d0 * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
+      !----------------------------------------------------------------
+      ! RHS vector:
+      ! TO DO: Revise the effect of area change in the case of large deflection 
+      !----------------------------------------------------------------
+      IF (.FALSE.) THEN
+!      IF (LargeDeflection) THEN
+        !----------------------------------------------------------------
+        ! Compute the normal vector n to the deformed mid-surface using
+        ! the current iterate and apply the normal traction p * n, with
+        ! the effect of area change being taken into account. 
+        !----------------------------------------------------------------
+        v1 = SUM(Basis(1:nd) * PrevSolVec(1:DOFs:m))
+        v2 = SUM(Basis(1:nd) * PrevSolVec(2:DOFs:m))
+        v3 = SUM(Basis(1:nd) * PrevSolVec(3:DOFs:m))
+        abasis1New(1:3) = abasis1(1:3) + (SUM(dBasis(1:nd,1) * PrevSolVec(1:DOFs:m)) - &
+            C111 * v1 - C112 * v2 - B11 * v3) * dual1(1:3) + &
+            (SUM(dBasis(1:nd,1) * PrevSolVec(2:DOFs:m)) - C211 * v1 - C212 * v2) * dual2(1:3) + &
+            (SUM(dBasis(1:nd,1) * PrevSolVec(3:DOFs:m)) + B11/A11 * v1) * abasis3(1:3)
+        abasis2New(1:3) = abasis2(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(1:DOFs:m)) - &
+            C211 * v1 - C212 * v2) * dual1(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(2:DOFs:m)) - &
+            C221 * v1 - C222 * v2 - B22 * v3) * dual2(1:3) + &
+            (SUM(dBasis(1:nd,2) * PrevSolVec(3:DOFs:m)) + B22/A22 * v2) * abasis3(1:3)
+        NewDetA = DOT_PRODUCT(abasis1New,abasis1New) * DOT_PRODUCT(abasis2New,abasis2New) - &
+            DOT_PRODUCT(abasis1New,abasis2New)**2
+        abasis3New(1:3) = CrossProduct(abasis1New,abasis2New)
+        Norm = SQRT(SUM(abasis3New(:)**2))
+        abasis3New(1:3) = abasis3New(1:3)/Norm
+
+        Weight = SQRT(NewDetA) * detJ * sq
+
+        RHSForce(1:DOFs:m) = RHSForce(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        RHSForce(2:DOFs:m) = RHSForce(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        RHSForce(3:DOFs:m) = RHSForce(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
+        Force(1:DOFs:m) = Force(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
+        Force(2:DOFs:m) = Force(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
+        Force(3:DOFs:m) = Force(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
+        ! TO DO: Add terms related to the first-order terms in the normal coordinate
+      ELSE
+        Weight = SqrtDetA * detJ * sq
+        DO p=1,nd
+          i = m*(p-1)
+          Force(i+1:i+3) = Force(i+1:i+3) + NormalTraction * Q(3,1:3) * Basis(p) * Weight
+        END DO
+      END IF
+    END DO QUADRATURELOOP
+
+    IF ( MassAssembly ) THEN
+      IF ( TransientSimulation ) THEN
+        CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
+      ELSE IF ( HarmonicAssembly ) THEN
+        CALL DefaultUpdateMass( MASS )
+        CALL DefaultUpdateDamp( DAMP )
+      END IF
+    END IF
+
+    CALL DefaultUpdateEquations(STIFF,FORCE)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ShellLocalMatrixCartesian
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

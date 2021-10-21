@@ -75,10 +75,6 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,Transient ) ! {{{
       CALL Warn(Caller,'Handle assembly not yet available for Zirka material!')
       HandleAsm = .FALSE.
     END IF
-    IF( ListCheckPresentAnyComponent(Model, 'Coil Type') ) THEN
-      CALL Warn(Caller,'Handle assembly not yet available for Coil types!')
-      HandleAsm = .FALSE.
-    END IF
     IF( ListCheckPresentAnyBodyForce(Model, 'Lorentz velocity') ) THEN
       CALL Warn(Caller,'Handle assembly not yet available for "Lorentz velocity"!')
       HandleAsm = .FALSE.
@@ -817,7 +813,7 @@ CONTAINS
           CoilBody = .TRUE.
         CASE ('foil winding')
           CoilBody = .TRUE.
-          !         CALL GetElementRotM(Element, RotM, n)
+!          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
           CALL Fatal ('MagnetoDynamics2D', 'Non existent Coil Type Chosen!')
         END SELECT
@@ -1005,8 +1001,11 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    LOGICAL :: StrandedCoil
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, &
+        CoilType_h
     
     SAVE HBCurve, Nu0, PrevMaterial
 !------------------------------------------------------------------------------
@@ -1026,6 +1025,7 @@ CONTAINS
       END IF
       IF( .NOT. Found ) Nu0 = PI * 4.0d-7
       InitHandles = .FALSE.
+      CALL ListInitElementKeyword( CoilType_h,'Component','Coil Type')
     END IF
 
     ! Allocate storage if needed
@@ -1053,6 +1053,17 @@ CONTAINS
       END IF      
     END IF
 
+
+    StrandedCoil = .FALSE.
+    CoilType = ListGetElementString(CoilType_h, Element, Found ) 
+    IF( Found ) THEN
+      IF( CoilType == 'stranded' ) THEN
+        StrandedCoil = .TRUE.
+      ELSE
+        CALL Fatal(Caller,'Implemented only for stranded coils for now!')
+      END IF
+    END IF
+        
     ! Initialize
     MASS  = 0.0_dp
     STIFF = 0.0_dp
@@ -1131,7 +1142,7 @@ CONTAINS
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
           MATMUL(Ht(1:nd,:), TRANSPOSE(Bt(1:nd,:)))
 
-      IF( MassAsm ) THEN
+      IF( MassAsm .AND. .NOT. StrandedCoil ) THEN
         CondAtIp = ListGetElementReal( CondCoeff_h, Basis, Element, Found )
         IF( Found ) THEN
           DO p=1,nd

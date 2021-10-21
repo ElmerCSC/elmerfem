@@ -791,7 +791,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
-   CALL Info('MagnetoDynamicsCalcFields','Number of components to compute: '//TRIM(I2S(DOFs)))
+   CALL Info('MagnetoDynamicsCalcFields',&
+       'Number of components to compute: '//TRIM(I2S(DOFs)),Level=8)
          
    NodalFields = &
        ASSOCIATED(MFD) .OR. &

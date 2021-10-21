@@ -12276,11 +12276,11 @@ CONTAINS
     err2 = ( x2r_max(2) - x2r_min(2) ) / Radius
     
     IF( err1 < eps_rad .AND. err2 < eps_rad ) THEN
-      CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 1D')
+      CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 1D',Level=8)
       Bmesh1 % Nodes % y = 0.0_dp
       Bmesh2 % Nodes % y = 0.0_dp
     ELSE
-      CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 2D')
+      CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 2D',Level=8)
     END IF
 
     ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps

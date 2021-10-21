@@ -86,11 +86,11 @@
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
 
      INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:) => NULL(), ActiveSolvers(:)
-     REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:)
+     REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:),TimestepRatios(:,:)
 
      INTEGER(KIND=AddrInt) :: ControlProcedure
 
-     LOGICAL :: InitDirichlet, ExecThis
+     LOGICAL :: InitDirichlet, ExecThis, GotTimestepRatios = .FALSE.
 
      TYPE(ElementType_t),POINTER :: elmt
 
@@ -666,6 +666,46 @@ END INTERFACE
      END SUBROUTINE CreateExtrudedMesh
      
 
+     ! Given geometric ratio of timesteps redistribute them so that the ratio
+     ! is met as closely as possible, maintaining total time and sacrificing
+     ! number of timesteps. 
+     !----------------------------------------------------------------------
+     SUBROUTINE GeometricTimesteps(m,n0,dt0,r)
+       INTEGER :: m
+       INTEGER :: n0(:)
+       REAL(KIND=dp) :: dt0(:),r(:)
+
+       INTEGER :: i,n
+       REAL(KIND=dp) :: q
+       LOGICAL :: Visited = .FALSE.
+
+       ! Only do this once since it tampers stuff in lists.
+       IF(Visited) RETURN
+       Visited = .TRUE.
+
+       CALL Info('ElmerSolver','Creating geometric timestepping strategy',Level=6)
+       
+       DO i=1,m
+         ! Some users may give zero ratio, assume that they mean one.
+         IF(ABS(r(i)) < EPSILON(q) ) r(i) = 1.0_dp
+         ! Ratio one means even distribution.
+         IF(ABS(r(i)-1.0) < EPSILON(q) ) CYCLE
+
+         q = 1 + (r(i)-1)/n0(i)
+         n = NINT( LOG(1+(q-1)*n0(i)) / LOG(q) )
+         dt = n0(i)*dt0(i)*(1-q)/(1-q**n)
+         
+         !PRINT *,'ratio:',i,n0(i),dt0(i),r(i),n,dt,q
+
+         ! Replace the new distribution
+         r(i) = q
+         dt0(i) = dt
+         n0(i) = n
+       END DO
+       
+     END SUBROUTINE GeometricTimesteps
+
+     
      ! Initialize intervals for steady state, transient and scanning types.
      !----------------------------------------------------------------------
      SUBROUTINE InitializeIntervals()
@@ -678,18 +718,6 @@ END INTERFACE
            CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
                'defined for transient and scanning simulations' )
          END IF
-
-#if 0
-         IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN
-           DO i=1,SIZE(Timesteps,1)
-             IF( MODULO( Timesteps(i), ParEnv % PEs ) /= 0 ) THEN
-               CALL Fatal('ElmerSolver','"Timestep Intervals" should be divisible by #np')
-             END IF
-             Timesteps(i) = Timesteps(i) / ParEnv % PEs
-           END DO
-           CALL Info('ElmerSolver','Divided timestep intervals equally for each partition!',Level=4)
-         END IF
-#endif
          
          TimestepSizes => ListGetConstRealArray( CurrentModel % Simulation, &
              'Timestep Sizes', GotIt )
@@ -702,12 +730,22 @@ END INTERFACE
                  'defined for time dependent simulations' )
            END IF
          END IF
-
+         
          CoupledMaxIter = ListGetInteger( CurrentModel % Simulation, &
              'Steady State Max Iterations', GotIt, minv=1 )
          IF ( .NOT. GotIt ) CoupledMaxIter = 1
          
          TimeIntervals = SIZE(Timesteps)
+
+         TimestepRatios => ListGetConstRealArray( CurrentModel % Simulation, &
+             'Timestep Ratios', GotTimestepRatios )
+
+         
+         IF ( GotTimestepRatios ) THEN           
+           CALL GeometricTimesteps(TimeIntervals,Timesteps,TimestepSizes(:,1),TimestepRatios(:,1))
+         END IF
+         
+
        ELSE
          ! Steady state
          !------------------------------------------------------------------------------
@@ -2420,8 +2458,16 @@ END INTERFACE
                WRITE(Message,'(A,ES12.3)') 'Timestep smaller than epsilon: ',dt
                CALL Fatal('ExecSimulation', Message)
              END IF             
-           ELSE
+           ELSE 
              dt = TimestepSizes(interval,1)
+             IF( GotTimestepRatios ) THEN
+               BLOCK 
+                 REAL(KIND=dp) :: q
+                 q = TimestepRatios(interval,1)
+                 IF( ABS(1-q) > EPSILON(q) ) dt = dt * q**(timestep-1)
+               END BLOCK
+             END IF
+             
            END IF
          END IF
 

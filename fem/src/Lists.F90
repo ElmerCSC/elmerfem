@@ -4814,6 +4814,10 @@ use spariterglobals
          IF( i > Model % NumberOfEquations ) EXIT
          List => Model % Equations(i) % Values
 
+       CASE( SECTION_TYPE_COMPONENT )
+         IF( i > Model % NumberOfComponents ) EXIT
+         List => Model % Components(i) % Values
+
        CASE( SECTION_TYPE_BC )
          IF( i > Model % NumberOfBCs ) EXIT        
          List => Model % BCs(i) % Values
@@ -5048,6 +5052,11 @@ use spariterglobals
        id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Material', ListFound )         
        IF(ListFound) List => CurrentModel % Materials(id) % Values
+
+     CASE( SECTION_TYPE_COMPONENT ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Component', ListFound )         
+       IF(ListFound) List => CurrentModel % Components(id) % Values
 
      CASE( SECTION_TYPE_EQUATION ) 
        id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &

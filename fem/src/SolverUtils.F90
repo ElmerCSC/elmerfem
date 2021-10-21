@@ -7538,7 +7538,7 @@ END SUBROUTINE SetNodalSources
         NodeIndexes => ListGetIntegerArray( ValueList,'Target Nodes')
         n = SIZE(NodeIndexes)
 
-        PRINT *,'ParEnv:',ParEnv % MyPe, NodeIndexes
+!        PRINT *,'ParEnv:',ParEnv % MyPe, NodeIndexes
         IF(ANY(NodeIndexes>0)) THEN
           CALL SetPointLoads(n)
         END IF
@@ -16862,7 +16862,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         SIZE(CollectionVector),'CollectionVector')           
   END IF
   
-  CALL Info( Caller, 'CollectionMatrix done', Level=5 )
+  CALL Info( Caller, 'CollectionMatrix done', Level=10 )
 
 !------------------------------------------------------------------------------
 ! Assign values to CollectionVector
@@ -16890,7 +16890,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
             StiffMatrix % NumberOfRows,0)
     
-  CALL Info( Caller, 'CollectionVector done', Level=5 )
+  CALL Info( Caller, 'CollectionVector done', Level=10 )
 
 !------------------------------------------------------------------------------
 ! Solve the Collection-system 
