@@ -123,11 +123,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   ForceVector => Solver % Matrix % RHS
 
 
-  LinearTol = GetConstReal( SolverParams, &
-       'Linear System Convergence Tolerance',    Found )
-  IF ( .NOT.Found ) THEN
-     CALL Fatal(SolverName, 'No >Linear System Convergence Tolerance< found')
-  END IF
   NonlinearTol  = GetConstReal( SolverParams, &
        'Nonlinear System Convergence Tolerance',    Found )
   IF ( .NOT.Found ) NonlinearTol = 1.0e-6
@@ -153,6 +148,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      ELSE
         CALL Info(SolverName, 'No limitation of solution',Level=6 )
      END IF
+  END IF
+
+  LinearTol = GetConstReal( SolverParams, &
+       'Linear System Convergence Tolerance',    Found )
+  IF (( .NOT.Found ).AND.ApplyDirichlet) THEN
+     CALL Fatal(SolverName, 'No >Linear System Convergence Tolerance< found')
   END IF
 
   ALEFormulation = GetLogical( SolverParams, &
@@ -260,9 +261,11 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Get variables for the residual
   !------------------------------------------------------------------------------
-  VarThickResidual => VariableGet( Model % Mesh % Variables, TRIM(VariableName) // ' Residual',UnFoundFatal=UnFoundFatal)
+  IF (ApplyDirichlet) THEN
+    VarThickResidual => VariableGet( Model % Mesh % Variables, TRIM(VariableName) // ' Residual',UnFoundFatal=UnFoundFatal)
 
-  PointerToResidualVector => VarThickResidual % Values
+    PointerToResidualVector => VarThickResidual % Values
+  END IF
 
   !------------------------------------------------------------------------------
   !    Get Flow solution

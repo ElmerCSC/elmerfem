@@ -10,6 +10,9 @@
 - **Optional Input Variable(s):** bedrock
 
 ## General Description
+
+### Description 
+
 The aim of this solver is to apply the flotation criterion to compute the top and bottom surface elevation, knowing the ice thickness. In general it will be used with the [SSA Solver](./SSA.md) and [Thickness Solver](./ThicknessSolver.md)
 
 - The bottom surface elevation $z_b$ is computed as:
@@ -31,7 +34,9 @@ The aim of this solver is to apply the flotation criterion to compute the top an
   - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at leat one node floating) element  
 
 
-*Remark:* It might be interesting to compute the top and bottom surface elevation rate of change; this can be done using internal Elmer functionality with the keyword,e.g. *Zs Calculate Velocity = Logical True* in the solver where *Zs* is created as an exported variable.
+### Remarks  
+
+- It might be interesting to compute the top and bottom surface elevation rate of change; this can be done using internal Elmer functionality with the keyword,e.g. *Zs Calculate Velocity = Logical True* in the solver where *Zs* is created as an exported variable. See [ElmerSolver Manual](http://www.nic.funet.fi/pub/sci/physics/elmer/doc/ElmerSolverManual.pdf), section **13.4 Exported and derived variables**
 
 ## SIF contents
 ```
