@@ -47,7 +47,8 @@
 ! *  are not yet fully utilized. Note the current restrictions:
 ! *        -- Strain reduction operators have been worked out for 
 ! *           the lowest-order finite elements only.
-! *        -- p-element discretization is not properly supported (and probably never so)
+! *        -- p-element discretization is possible with special special geometries only
+! *           (the problem is then posed on a mathematical domain of two dimensions)  
 ! *        -- Parallel file formats for mesh.director and mesh.elements.data are missing,
 ! *           so for parallel execution the director should be defined as an ordinary 
 ! *           solver variable
@@ -263,9 +264,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     CALL Warn('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION OVER A 2-D DOMAIN')
     CALL Warn('ShellSolver', 'ONLY SPECIAL GEOMETRIES CAN BE HANDLED AT THE MOMENT')
     CALL Warn('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING')
-
-    NonlinearBending = GetLogical(SolverPars, 'Nonlinear Bending Strains', Found)
   END IF
+
+  NonlinearBending = GetLogical(SolverPars, 'Nonlinear Bending Strains', Found)
+  IF (.NOT. Found) NonlinearBending = .TRUE.
 
   Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
@@ -532,7 +534,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
             BenchmarkProblem = GetLogical(SolverPars, 'Benchmark Problem', Found))
       ELSE
         CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
-            LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
+            LargeDeflection, NonlinearBending, StrainReductionMethod, MembraneStrainReductionMethod, &
             ShearAlpha, MembraneAlpha, StretchAlpha, ApplyBubbles, DrillingDOFs, DrillingPar, &
             RotateDOFs, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, TotalErr, &
             BenchmarkProblem=SolveBenchmarkCase)
@@ -811,26 +813,25 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! -------------------------------------------------------------------------------------
   ! SOME VERIFICATION OUTPUT if a benchmark case of straight cylindrical shell is solved
   !-----------------------------------------------------------------------------------
-!  CYLINDRICAL_BENCHMARK: IF (.TRUE.) THEN
-!    Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
-!    PRINT *, 'Energy representation coefficient = ', Work/(12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * (1.0d-2)**3)
-!  END IF CYLINDRICAL_BENCHMARK
   IF (SolveBenchmarkCase .AND. .NOT.Parallel) THEN
-    
-    CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
-    Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
-    !Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
+    Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
+    PRINT *, 'Energy representation coefficient = ', Work/(12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * (1.0d-2)**3)
+    i = ListGetInteger(SolverPars, 'Benchmark Case', Found, minv=1,maxv=2)
+    IF (Found) THEN
+      !CALL MatrixVectorMultiply(Solver % Matrix, Solver % Variable % Values, TotalSol)
+      !Work = 8.0d0 * SUM( Solver % Variable % Values(:) * TotalSol(:) )
+      !Work = 8.0d0*SUM(Solver % Variable % Values(:) * Solver % Matrix % RHS(:))
 
-    RefWork = 0.0d0
-    SELECT CASE(ListGetInteger(SolverPars, 'Benchmark Case', Found, minv=0,maxv=2))
-    CASE(1)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
-      !RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 1.828629366566552 * 1.0d-1 ! t=0.1
-    CASE(2)
-      RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
-    END SELECT
-    PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
-    PRINT *, 'Total number of DOFS = ', SIZE(Solver % Variable % Values) 
+      SELECT CASE(i)
+      CASE(1)
+        RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 2.688287959059254d0 * 1.0d-2 ! t=0.01
+        !RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d9)**2/7.0d10 * 1.828629366566552 * 1.0d-1 ! t=0.1
+      CASE(2)
+        RefWork = 12.0d0*(1.0d0-(1.0d0/3.0d0)**2)*(1.0d5)**2/7.0d10 * 0.704331198817278d0 * (1.0d-2)**3 ! t=0.01
+      END SELECT
+      PRINT *, 'Relative energy error = ', SQRT(ABS(RefWork-Work)/RefWork)
+      PRINT *, 'Total number of DOFS = ', SIZE(Solver % Variable % Values) 
+    END IF
 
     IF (ComputeShellArea) THEN
       RefArea = 0.5d0 * PI 
@@ -3554,7 +3555,7 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, ShearAlpha, &
+      NonlinearBending, StrainReductionMethod, MembraneStrainReductionMethod, ShearAlpha, &
       MembraneAlpha, StretchAlpha, Bubbles, DrillingDOFs, DrillingPar, RotateDOFs, &
       MassAssembly, HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
@@ -3567,6 +3568,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
     LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: NonlinearBending            ! The full nonlinearity of bending and transverse shear strains    
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     REAL(KIND=dp), INTENT(IN) :: ShearAlpha            ! A parameter for shear relaxation (correction) 
@@ -3611,12 +3613,12 @@ CONTAINS
     REAL(KIND=dp) :: Stiff(m*nd+m,m*nd+m), Mass(m*nd+m,m*nd+m), Force(m*nd+m)
     REAL(KIND=dp) :: Damp(m*nd+m,m*nd+m)
     REAL(KIND=dp) :: BM(4,m*nd+m), BS(4,m*nd+m), BB(3,m*nd+m)
-    REAL(KIND=dp) :: NonlinBM(4,m*nd+m), NonlinBS(4,m*nd+m), BWork(7,m*nd+m)
+    REAL(KIND=dp) :: NonlinBM(4,m*nd+m), NonlinBS(4,m*nd+m), NonlinBB(3,m*nd+m), BWork(13,m*nd+m)
     REAL(KIND=dp) :: Basis(nd+1), dBasis(nd+1,3)
     REAL(KIND=dp) :: ReductionDOFsArray(4,2*nd+2) ! Large enough for p=1 with one bubble
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
-    REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(7)
+    REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(13)
     REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd), RotMat(3,3)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
@@ -3897,6 +3899,7 @@ CONTAINS
 
       NonlinBM = 0.0d0
       NonlinBS = 0.0d0
+      NonlinBB = 0.0d0
 
       IF ( PVersion .OR. SecondOrder) THEN
 
@@ -4472,28 +4475,9 @@ CONTAINS
             MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(7:7,1:DOFs)) + &
             MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(4:4,1:DOFs)) ) * StressVec(6) * KappaS * Weight
       END IF
-
-      !----------------------------------------------------------------------------------------
-      ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
-      !----------------------------------------------------------------------------------------
-      IF (.NOT. DrillingDOFs .AND. .NOT. BenchmarkProblem) THEN
-        BS(3,6:DOFs:m) = dBasis(1:nd,1)
-        BS(4,6:DOFs:m) = dBasis(1:nd,2)
-        Weight = h**2/12.0d0 * Weight
-
-        ! The expression of the strain energy density:
-        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
-             MATMUL(TRANSPOSE(BS(3:4,1:DOFs)),MATMUL(GMat(1:2,1:2),BS(3:4,1:DOFs)))
-
-        ! Residual terms for RHS:
-        StrainVec(1:2) = MATMUL( BS(3:4,1:DOFs), PrevSolVec(1:DOFs) )
-        Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE( BS(3:4,1:DOFs) ), &
-            MATMUL( GMat(1:2,1:2), StrainVec(1:2) ) ) * Weight
-      END IF
-
+        
       !---------------------------------------------------------------
-      ! THE PART CORRESPONDING TO THE BENDING STRAINS (terms depending
-      ! on the membrane strains dropped at the moment):
+      ! THE PART CORRESPONDING TO THE BENDING STRAINS
       !---------------------------------------------------------------      
       Weight = h**3/12.0d0 * SqrtDetA * detJ * sq
       DO p=1,nd
@@ -4516,6 +4500,13 @@ CONTAINS
         END IF
       END DO
 
+      IF (.NOT. DrillingDOFs) THEN
+        DO p=1,nd
+          BB(1,(p-1)*m+6) = -B11 * Basis(p)         
+          BB(2,(p-1)*m+6) = -B22 * Basis(p)
+        END DO
+      END IF
+
       IF (UseBubbles) THEN
         ! With rotation bubbles:
         BB(1,DOFs+1) = dBasis(nd+1,1) - C111 * Basis(nd+1)
@@ -4526,13 +4517,217 @@ CONTAINS
         BB(3,DOFs+2) = dBasis(nd+1,1) - 2.0d0 * C212 * Basis(nd+1)
       END IF
 
-      CALL StrainEnergyDensity(Stiff, CMat, BB, 3, DOFs+BubbleDOFs, Weight)
+      IF (LargeDeflection .AND. NonlinearBending) THEN
+        ! Save the parts beta_{1|1} - B11 beta_3 and beta_{2|2} - B22 beta_3:
+        BWork(8,:) = BB(1,:)
+        BWork(12,:) = BB(2,:)
+        PrevField(8) = SUM( BWork(8,1:DOFs) * PrevSolVec(1:DOFs) )
+        PrevField(12) = SUM( BWork(12,1:DOFs) * PrevSolVec(1:DOFs) )
+      END IF
+      BB(1,:) = BB(1,:) - B11/a11 * BM(1,:)
+      BB(2,:) = BB(2,:) - B22/a22 * BM(2,:)
+
+      StrainVec(1:3) = 0.0d0
+      IF (LargeDeflection .AND. NonlinearBending) THEN
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 11:
+        ! ---------------------------------------------------------------------------------------
+
+        ! The part depending on the covariant derivative beta_{2|1}:
+        BWork(9,4:DOFs:m) = -C211 * Basis(1:nd)
+        BWork(9,5:DOFs:m) = dBasis(1:nd,1) - C212 * Basis(1:nd)
+        PrevField(9) = SUM( BWork(9,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        ! The part depending on beta_{3|1} + B11/A11 beta_1:
+        BWork(10,4:DOFs:m) = B11/A11 * Basis(1:nd)
+        BWork(10,6:DOFs:m) = dBasis(1:nd,1)
+        PrevField(10) = SUM( BWork(10,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        NonlinBB(1,1:DOFs) = BM(1,1:DOFs) * PrevField(8) / A1**2 + &
+            SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) / A1**2 * BWork(8,1:DOFs) + &
+            BWork(1,1:DOFs) * PrevField(9) / A2**2 + &
+            PrevField(1) / A2**2 * BWork(9,1:DOFs) + &
+            BWork(2,1:DOFs) * PrevField(10) + PrevField(2) * BWork(10,1:DOFs)
+
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 22:
+        ! ---------------------------------------------------------------------------------------
+
+        ! The part depending on the covariant derivative beta_{1|2}:
+        BWork(11,4:DOFs:m) = dBasis(1:nd,2) - C211 * Basis(1:nd)
+        BWork(11,5:DOFs:m) = -C212 * Basis(1:nd)
+        PrevField(11) = SUM( BWork(11,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        ! The part depending on beta_{3|2} + B22/A22 beta_2:
+        BWork(13,5:DOFs:m) = B22/A22 * Basis(1:nd)
+        BWork(13,6:DOFs:m) = dBasis(1:nd,2)
+        PrevField(13) = SUM( BWork(13,1:DOFs) * PrevSolVec(1:DOFs) )
+
+        NonlinBB(2,1:DOFs) = BWork(3,1:DOFs) * PrevField(11) / A1**2 + &
+            PrevField(3) / A1**2 * BWork(11,1:DOFs) + &
+            BM(2,1:DOFs) * PrevField(12) / A2**2 + &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) / A2**2 * BWork(12,1:DOFs) + &
+            BWork(4,1:DOFs) * PrevField(13) + PrevField(4) * BWork(13,1:DOFs)
+
+        ! ---------------------------------------------------------------------------------------
+        ! Strain component 12:
+        ! ---------------------------------------------------------------------------------------
+        NonlinBB(3,1:DOFs) = BM(1,1:DOFs) * PrevField(11) / A1**2 + &
+            SUM( BM(1,1:DOFs) * PrevSolVec(1:DOFs) ) / A1**2 * BWork(11,1:DOFs) + &
+            BWork(8,1:DOFs) * PrevField(3) / A1**2 + PrevField(8) / A1**2 * BWork(3,1:DOFs) + &
+            BWork(1,1:DOFs) * PrevField(12) / A2**2 + PrevField(1) / A2**2 * BWork(12,1:DOFs) + &
+            BM(2,1:DOFs) * PrevField(9) / A2**2 + &
+            SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) / A2**2 * BWork(9,1:DOFs) + &
+            BWork(2,1:DOFs) * PrevField(13) + PrevField(2) * BWork(13,1:DOFs) + &
+            BWork(10,1:DOFs) * PrevField(4) + PrevField(10) * BWork(4,1:DOFs)
+
+        NonlinBB(1:3,:) = NonlinBB(1:3,:) - (B11/A11 + B22/A22) * NonlinBM(1:3,:)
+
+        StrainVec(1:3) = 0.5_dp * MATMUL(NonlinBB(1:3,1:DOFs), PrevSolVec(1:DOFs))
+      END IF
+
+      StrainVec(1:3) = StrainVec(1:3) + MATMUL( BB(1:3,1:DOFs), PrevSolVec(1:DOFs) )
+
+      CALL StrainEnergyDensity(Stiff, CMat, BB + NonlinBB, 3, DOFs+BubbleDOFs, Weight)
+      StressVec(1:3) = MATMUL( CMat(1:3,1:3), StrainVec(1:3) )
 
       ! Residual terms for RHS:
-      StrainVec(1:3) = MATMUL( BB(1:3,1:DOFs), PrevSolVec(1:DOFs) )
       Force(1:DOFs+BubbleDOFs) = Force(1:DOFs+BubbleDOFs) - &
-          MATMUL( TRANSPOSE( BB(1:3,1:DOFs+BubbleDOFs) ), &
-          MATMUL( CMat(1:3,1:3), StrainVec(1:3) ) ) * Weight
+          MATMUL( TRANSPOSE(BB(1:3,1:DOFs+BubbleDOFs) + NonlinBB(1:3,1:DOFs+BubbleDOFs)), &
+          StressVec(1:3) ) * Weight
+
+      ! The remaining terms for the complete Newton iteration:
+      IF (LargeDeflection .AND. NonlinearBending) THEN
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + ( &
+            MATMUL(TRANSPOSE(BWork(8:8,1:DOFs)), BM(1:1,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BM(1:1,1:DOFs)), BWork(8:8,1:DOFs))) * StressVec(1) / A1**2 * Weight + ( &
+            MATMUL(TRANSPOSE(BWork(9:9,1:DOFs)), BWork(1:1,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(1:1,1:DOFs)), BWork(9:9,1:DOFs))) * StressVec(1) / A2**2 * Weight + ( &
+            MATMUL(TRANSPOSE(BWork(10:10,1:DOFs)), BWork(2:2,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(2:2,1:DOFs)), BWork(10:10,1:DOFs))) * StressVec(1) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + ( &
+            MATMUL(TRANSPOSE(BWork(11:11,1:DOFs)), BWork(3:3,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(3:3,1:DOFs)), BWork(11:11,1:DOFs))) * StressVec(2) / A1**2 * Weight + ( &
+            MATMUL(TRANSPOSE(BWork(12:12,1:DOFs)), BM(2:2,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BM(2:2,1:DOFs)), BWork(12:12,1:DOFs))) * StressVec(2) / A2**2 * Weight + ( &
+            MATMUL(TRANSPOSE(BWork(13:13,1:DOFs)), BWork(4:4,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(4:4,1:DOFs)), BWork(13:13,1:DOFs))) * StressVec(2) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + ( &
+            MATMUL(TRANSPOSE(BWork(11:11,1:DOFs)), BM(1:1,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BM(1:1,1:DOFs)), BWork(11:11,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(3:3,1:DOFs)), BWork(8:8,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(8:8,1:DOFs)), BWork(3:3,1:DOFs))) * StressVec(3) / A1**2 * Weight + ( &
+            MATMUL(TRANSPOSE(BWork(12:12,1:DOFs)), BWork(1:1,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(1:1,1:DOFs)), BWork(12:12,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BM(2:2,1:DOFs)), BWork(9:9,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(9:9,1:DOFs)), BM(2:2,1:DOFs)) ) * StressVec(3) / A2**2 * Weight + ( &
+
+            MATMUL(TRANSPOSE(BWork(13:13,1:DOFs)), BWork(2:2,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(2:2,1:DOFs)), BWork(13:13,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(4:4,1:DOFs)), BWork(10:10,1:DOFs)) + &
+            MATMUL(TRANSPOSE(BWork(10:10,1:DOFs)), BWork(4:4,1:DOFs))) * StressVec(3) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BM(1:1,1:DOFs))/A1**2 + &
+            MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(1:1,1:DOFs))/A2**2 + &
+            MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(2:2,1:DOFs)) ) * &
+            (B11/A11 + B22/A22) * StressVec(1) * Weight
+ 
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BM(2:2,1:DOFs))/A2**2 + &
+            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(3:3,1:DOFs))/A1**2 + &
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(4:4,1:DOFs)) ) * &
+            (B11/A11 + B22/A22) * StressVec(2) * Weight
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - (B11/A11 + B22/A22) * StressVec(3) * Weight * ( &
+            (MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BM(1:1,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(3:3,1:DOFs))) * 1.0d0/A1**2 + &
+            (MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BM(2:2,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(1:1,1:DOFs))) * 1.0d0/A2**2 + &
+            MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(4:4,1:DOFs)) + &
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(2:2,1:DOFs)) )
+      END IF
+
+      !----------------------------------------------------------------------------------------
+      ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
+      !----------------------------------------------------------------------------------------
+      IF (.NOT. DrillingDOFs .AND. .NOT. BenchmarkProblem) THEN
+        BS(3,6:DOFs:m) = dBasis(1:nd,1)
+        BS(4,6:DOFs:m) = dBasis(1:nd,2)
+
+        !--------------------------------------------------------------------------------------
+        ! The nonlinear part of transverse shear strains which depend linearly on the thickness 
+        ! coordinate: 
+        !--------------------------------------------------------------------------------------
+        StrainVec(1:2) = 0.0d0
+        IF (LargeDeflection .AND. NonlinearBending) THEN
+          NonlinBS(3,1:DOFs) = -BWork(5,1:DOFs) * PrevField(8) / A1**2 - &
+              BWork(8,1:DOFs) * PrevField(5) / A1**2 - &
+              BWork(6,1:DOFs) * PrevField(9) / A2**2 - BWork(9,1:DOFs) * PrevField(6) / A2**2 - &
+              BWork(7,1:DOFs) * PrevField(10) - BWork(10,1:DOFs) * PrevField(7)
+
+          NonlinBS(4,1:DOFs) = -BWork(5,1:DOFs) * PrevField(11) / A1**2 - &
+              BWork(11,1:DOFs) * PrevField(5) / A1**2 - &
+              BWork(6,1:DOFs) * PrevField(12) / A2**2 - BWork(12,1:DOFs) * PrevField(6) / A2**2 - &
+              BWork(7,1:DOFs) * PrevField(13) - BWork(13,1:DOFs) * PrevField(7)
+
+          NonlinBS(3,:) = NonlinBS(3,:) - B11/A11 * NonlinBS(1,:)
+          NonlinBS(4,:) = NonlinBS(4,:) - B22/A22 * NonlinBS(2,:)
+
+          StrainVec(1:2) = 0.5_dp * MATMUL(NonlinBS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+        END IF
+
+        StrainVec(1:2) = StrainVec(1:2) + MATMUL(BS(3:4,1:DOFs), PrevSolVec(1:DOFs))
+
+        Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + Weight * &
+            MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            MATMUL(GMat(1:2,1:2), BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)))
+        StressVec(1:2) = MATMUL(GMat(1:2,1:2), StrainVec(1:2))
+
+        ! Residual terms for RHS:
+        !
+        Force(1:DOFs) = Force(1:DOFs) - MATMUL(TRANSPOSE(BS(3:4,1:DOFs) + NonlinBS(3:4,1:DOFs)), &
+            StressVec(1:2) ) * Weight
+
+        ! The remaining terms for the complete Newton iteration:
+        !
+        IF (LargeDeflection .AND. NonlinearBending) THEN
+          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - StressVec(1) * Weight * ( &
+              (MATMUL(TRANSPOSE(BWork(8:8,1:DOFs)), BWork(5:5,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(5:5,1:DOFs)), BWork(8:8,1:DOFs))) * 1.0d0/A1**2 - &
+              (MATMUL(TRANSPOSE(BWork(9:9,1:DOFs)), BWork(6:6,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(6:6,1:DOFs)), BWork(9:9,1:DOFs))) * 1.0d0/A2**2 - &
+              MATMUL(TRANSPOSE(BWork(10:10,1:DOFs)), BWork(7:7,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(7:7,1:DOFs)), BWork(10:10,1:DOFs)) )
+
+          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - StressVec(2) * Weight * ( &
+              (MATMUL(TRANSPOSE(BWork(11:11,1:DOFs)), BWork(5:5,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(5:5,1:DOFs)), BWork(11:11,1:DOFs))) * 1.0d0/A1**2 - &
+              (MATMUL(TRANSPOSE(BWork(12:12,1:DOFs)), BWork(6:6,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(6:6,1:DOFs)), BWork(12:12,1:DOFs))) * 1.0d0/A2**2 - &
+              MATMUL(TRANSPOSE(BWork(13:13,1:DOFs)), BWork(7:7,1:DOFs)) + &
+              MATMUL(TRANSPOSE(BWork(7:7,1:DOFs)), BWork(13:13,1:DOFs)) )
+          
+          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + B11/A11 * StressVec(1) * Weight * ( &
+              (MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BM(1:1,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(5:5,1:DOFs)) ) * 1.0d0/A1**2 + &
+              (MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(6:6,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BWork(1:1,1:DOFs)) ) * 1.0d0/A2**2 + &
+              MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(7:7,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(2:2,1:DOFs)) )
+
+          Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + B22/A22 * StressVec(2) * Weight * ( &
+              (MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BWork(3:3,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(5:5,1:DOFs)) ) * 1.0d0/A1**2 + &
+              (MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(6:6,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BM(2:2,1:DOFs)) ) * 1.0d0/A2**2 + &
+              MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(7:7,1:DOFs)) + &
+              MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(4:4,1:DOFs)) ) 
+        END IF
+      END IF
+
 
       !----------------------------------------------------------------
       ! Mass matrix without bubbles taken into account:
