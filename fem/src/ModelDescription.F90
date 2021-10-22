@@ -1728,23 +1728,25 @@ CONTAINS
                  CASE( LIST_TYPE_VARIABLE_SCALAR )
                    BLOCK
                      TYPE(ValueListEntry_t), POINTER :: v_ptr
-                     CHARACTER(len=:, kind=c_char), pointer :: lua_fname
+                     CHARACTER(len=:, kind=c_char), allocatable :: lua_fname
                      INTEGER :: fname_len, lstat
+
                      !$OMP PARALLEL default(shared)
                      !$OMP CRITICAL
                      lstat = lua_dostring(LuaState, &
-                         'return create_new_fun("'//trim(name)//'", "' // &
+                       'return create_new_fun("'//trim(name)//'", "' // &
                          TRIM(str(str_beg+4:)) // '")'// c_null_char, 1)
-                     lua_fname => lua_popstring(LuaState, fname_len)
+                       lua_fname = lua_popstring(LuaState, fname_len)
                      !$OMP END CRITICAL
                      !$OMP END PARALLEL
 
+
                      IF ( SizeGiven ) THEN 
                        CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
-                           n1, n2, Atx(1:n1, 1:n2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                           n1, n2, Atx(1:n1, 1:n2, 1:n), proc, lua_fname(1:fname_len) // c_null_char )
                      ELSE
                        CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
-                           Proc, lua_fname(1:fname_len) // c_null_char)
+                           Proc, lua_fname(1:fname_len) // c_null_char )
                      END IF
 
                      v_ptr => ListFind(list, name)
