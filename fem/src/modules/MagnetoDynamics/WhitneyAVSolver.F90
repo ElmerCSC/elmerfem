@@ -569,7 +569,7 @@ CONTAINS
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError, LinTol, RelTol, BaseTol
    LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
-   LOGICAL :: AdaptiveTols, FoundAny
+   LOGICAL :: AdaptiveTols, FoundAny, ConstraintActive
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -658,7 +658,9 @@ CONTAINS
      CompParams => GetComponentParams( Element )
      CoilType = ''
      RotM = 0._dp
+     ConstraintActive = .TRUE.
      IF (ASSOCIATED(CompParams)) THEN
+
        CoilType = GetString(CompParams, 'Coil Type', Found)
        IF (Found) THEN
          SELECT CASE (CoilType)
@@ -672,6 +674,8 @@ CONTAINS
          CASE DEFAULT
             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
          END SELECT
+         ConstraintActive = GetLogical(CompParams, 'Activate Constraint', Found )
+         IF (.NOT. Found .AND. CoilType/='stranded') ConstraintActive = .TRUE.
        END IF
      END IF
 
@@ -725,7 +729,7 @@ CONTAINS
      !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
-         LamThick, LamCond, CoilBody, CoilType, RotM, &
+         LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
        
      ! Update global matrix and rhs vector from local matrix & vector:
@@ -1546,14 +1550,14 @@ END SUBROUTINE LocalConstraintMatrix
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
-            LamThick, LamCond, CoilBody, CoilType, RotM, &
+            LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
-    LOGICAL :: LaminateStack, CoilBody
+    LOGICAL :: LaminateStack, CoilBody, ConstraintActive
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
     REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
@@ -1760,7 +1764,7 @@ END SUBROUTINE LocalConstraintMatrix
        ! Compute element stiffness matrix and force vector.
        ! If we calculate a coil, the nodal degrees of freedom are not used.
        ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
+       IF ( ConstraintActive ) THEN
          ! --------------------------------------------------------
          ! The constraint equation involving the scalar potential:
          !     -div(C*(dA/dt+grad(V)))=0
