@@ -25,7 +25,7 @@ Solver 1
   Equation = "Poisson"
 
   Variable = "Potential"
-  Procedure = "Poisson" "PoissonSolver"
+  Procedure = "./Poisson" "PoissonSolver"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = UMFPack
