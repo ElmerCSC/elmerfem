@@ -41,8 +41,8 @@ End
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
   Potential = Real 0
-  Mesh Update 1 = Real Procedure "Poisson" "Circx"
-  Mesh Update 2 = Real Procedure "Poisson" "Circy"
+  Mesh Update 1 = Real Procedure "./Poisson" "Circx"
+  Mesh Update 2 = Real Procedure "./Poisson" "Circy"
 End
 
 
