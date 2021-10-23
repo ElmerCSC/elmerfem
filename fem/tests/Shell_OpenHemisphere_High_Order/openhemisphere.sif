@@ -57,7 +57,6 @@ Solver 1
   Variable DOFs = 6
   
   Cartesian Formulation = Logical True
-  Nonlinear Bending Strains = Logical True
   Element = "p:8"
 
   Large Deflection = True

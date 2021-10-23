@@ -59,7 +59,6 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1e-7
 
   Cartesian Formulation = Logical True
-  Nonlinear Bending Strains = Logical True
   Element = "p:4"
 
 !  Linear System Solver = "Iterative"

@@ -65,7 +65,6 @@ Solver 1
 
   Element = "p:8"
   Cartesian Formulation = Logical True
-  Nonlinear Bending Strains = Logical True
   Benchmark Problem = Logical True
 
   Large Deflection = True
