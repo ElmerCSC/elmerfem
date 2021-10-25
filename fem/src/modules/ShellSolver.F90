@@ -7053,7 +7053,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BodyForce, Material, BodyParams
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, ApplyNormalPressure
     LOGICAL :: TransverseBendingStretch, Spherical, Cylindrical
     LOGICAL :: GeneralMaterial
 
@@ -7071,11 +7071,9 @@ CONTAINS
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2), HMat(6,6)
-    REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
-    REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
+    REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2
     REAL(KIND=dp) :: abasis1(3), abasis2(3), abasis3(3)
     REAL(KIND=dp) :: abasis1New(3), abasis2New(3), abasis3New(3), NewDetA
-    REAL(KIND=dp) :: dual1(3), dual2(3)
     REAL(KIND=dp) :: y1, y2, v1, v2, v3
     REAL(KIND=dp) :: sq
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
@@ -7126,9 +7124,10 @@ CONTAINS
 
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN
-      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
+      Load(1:n) = GetReal(BodyForce, 'Normal Pressure', ApplyNormalPressure)
     ELSE
       Load(1:n) = 0.0d0
+      ApplyNormalPressure = .FALSE.
     END IF
     IF ( MassAssembly ) THEN
       rho(1:n) = GetReal(Material, 'Density')
@@ -7175,7 +7174,7 @@ CONTAINS
       h = SUM( ShellThickness(1:n) * Basis(1:n) )
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
-      NormalTraction = SUM( Load(1:n) * Basis(1:n) )
+      IF (ApplyNormalPressure) NormalTraction = SUM( Load(1:n) * Basis(1:n) )
       IF ( MassAssembly ) THEN
         rho0 = SUM( rho(1:n) * Basis(1:n) )
         DampCoef = SUM( Damping(1:n) * Basis(1:n) )
@@ -7186,6 +7185,7 @@ CONTAINS
         ! use a hard-coded load to avoid errors from representing the load: 
         !
         NormalTraction = h**3 * 1.0d5 * cos(2.0d0*y1)
+        ApplyNormalPressure = .TRUE.
       END IF
       !
       ! TO DO: A suitable surface parametrization should be generated from
@@ -7198,10 +7198,6 @@ CONTAINS
       abasis3(:) = CovariantBasis(:,3)
       a11 = DOT_PRODUCT(abasis1,abasis1)
       a22 = DOT_PRODUCT(abasis2,abasis2)
-      !dual1 = abasis1
-      !dual2 = abasis2
-      b11 = K1 * a11
-      b22 = K2 * a22
       SqrtDetA = SQRT(a11*a22)
 
       ! The geometric Lame parameters:
@@ -7669,47 +7665,39 @@ CONTAINS
 
       !----------------------------------------------------------------
       ! RHS vector:
-      ! TO DO: Revise the effect of area change in the case of large deflection 
       !----------------------------------------------------------------
-      IF (.FALSE.) THEN
-!      IF (LargeDeflection) THEN
-        !----------------------------------------------------------------
-        ! Compute the normal vector n to the deformed mid-surface using
-        ! the current iterate and apply the normal traction p * n, with
-        ! the effect of area change being taken into account. 
-        !----------------------------------------------------------------
-        v1 = SUM(Basis(1:nd) * PrevSolVec(1:DOFs:m))
-        v2 = SUM(Basis(1:nd) * PrevSolVec(2:DOFs:m))
-        v3 = SUM(Basis(1:nd) * PrevSolVec(3:DOFs:m))
-        abasis1New(1:3) = abasis1(1:3) + (SUM(dBasis(1:nd,1) * PrevSolVec(1:DOFs:m)) - &
-            C111 * v1 - C112 * v2 - B11 * v3) * dual1(1:3) + &
-            (SUM(dBasis(1:nd,1) * PrevSolVec(2:DOFs:m)) - C211 * v1 - C212 * v2) * dual2(1:3) + &
-            (SUM(dBasis(1:nd,1) * PrevSolVec(3:DOFs:m)) + B11/A11 * v1) * abasis3(1:3)
-        abasis2New(1:3) = abasis2(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(1:DOFs:m)) - &
-            C211 * v1 - C212 * v2) * dual1(1:3) + (SUM(dBasis(1:nd,2) * PrevSolVec(2:DOFs:m)) - &
-            C221 * v1 - C222 * v2 - B22 * v3) * dual2(1:3) + &
-            (SUM(dBasis(1:nd,2) * PrevSolVec(3:DOFs:m)) + B22/A22 * v2) * abasis3(1:3)
-        NewDetA = DOT_PRODUCT(abasis1New,abasis1New) * DOT_PRODUCT(abasis2New,abasis2New) - &
-            DOT_PRODUCT(abasis1New,abasis2New)**2
-        abasis3New(1:3) = CrossProduct(abasis1New,abasis2New)
-        Norm = SQRT(SUM(abasis3New(:)**2))
-        abasis3New(1:3) = abasis3New(1:3)/Norm
+      IF (ApplyNormalPressure) THEN
+        IF (LargeDeflection) THEN
+          !----------------------------------------------------------------
+          ! Compute the normal vector n to the deformed mid-surface using
+          ! the current iterate and apply the normal traction p * n, with
+          ! the effect of area change being taken into account. 
+          !----------------------------------------------------------------
+          v1 = SUM(Basis(1:nd) * PrevSolVec(1:DOFs:m))
+          v2 = SUM(Basis(1:nd) * PrevSolVec(2:DOFs:m))
+          v3 = SUM(Basis(1:nd) * PrevSolVec(3:DOFs:m))
+          abasis1New(1:3) = abasis1(1:3) + PrevGrad(1:3,1)
+          abasis2New(1:3) = abasis2(1:3) + PrevGrad(1:3,2)
+          NewDetA = DOT_PRODUCT(abasis1New,abasis1New) * DOT_PRODUCT(abasis2New,abasis2New) - &
+              DOT_PRODUCT(abasis1New,abasis2New)**2
+          abasis3New(1:3) = CrossProduct(abasis1New,abasis2New)
+          Norm = SQRT(SUM(abasis3New(:)**2))
+          abasis3New(1:3) = abasis3New(1:3)/Norm
 
-        Weight = SQRT(NewDetA) * detJ * sq
+          Weight = SQRT(NewDetA) * detJ * sq
 
-        RHSForce(1:DOFs:m) = RHSForce(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
-        RHSForce(2:DOFs:m) = RHSForce(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
-        RHSForce(3:DOFs:m) = RHSForce(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
-        Force(1:DOFs:m) = Force(1:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual1) * Basis(1:nd) * Weight       
-        Force(2:DOFs:m) = Force(2:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,dual2) * Basis(1:nd) * Weight       
-        Force(3:DOFs:m) = Force(3:DOFs:m) + NormalTraction * DOT_PRODUCT(abasis3New,abasis3) * Basis(1:nd) * Weight
-        ! TO DO: Add terms related to the first-order terms in the normal coordinate
-      ELSE
-        Weight = SqrtDetA * detJ * sq
-        DO p=1,nd
-          i = m*(p-1)
-          Force(i+1:i+3) = Force(i+1:i+3) + NormalTraction * Q(3,1:3) * Basis(p) * Weight
-        END DO
+          DO i=1,3
+            RHSForce(i:DOFs:m) = RHSForce(i:DOFs:m) + NormalTraction * abasis3New(i) * Basis(1:nd) * Weight
+            Force(i:DOFs:m) = Force(i:DOFs:m) + NormalTraction * abasis3New(i) * Basis(1:nd) * Weight
+            ! TO DO: Add terms related to the first-order terms in the normal coordinate
+          END DO
+        ELSE
+          Weight = SqrtDetA * detJ * sq
+          DO p=1,nd
+            i = m*(p-1)
+            Force(i+1:i+3) = Force(i+1:i+3) + NormalTraction * Q(3,1:3) * Basis(p) * Weight
+          END DO
+        END IF
       END IF
     END DO QUADRATURELOOP
 
