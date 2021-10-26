@@ -481,6 +481,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   END IF
 
   Do i=1,NActiveNodes
+     IF (BetaPerm(ActiveNodes(i))==0) CALL FATAL(SolverName,'Optimized Variable is not defined on this node')
+     IF (GradPerm(ActiveNodes(i))==0) CALL FATAL(SolverName,'Gradient Variable is not defined on this node')
      Do j=1,VarDOFs
           x(VarDOFs*(i-1)+j)=BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)
           g(VarDOFs*(i-1)+j)=GradValues(VarDOFs*(GradPerm(ActiveNodes(i))-1)+j)
