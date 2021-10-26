@@ -661,7 +661,18 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         END IF
 
         CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
-            MassAssembly, HarmonicAssembly, LocalSol)
+            MassAssembly, HarmonicAssembly, LocalSol, LocalRHSForce)
+
+        IF (LargeDeflection .AND. NonlinIter == 1) THEN
+          ! ---------------------------------------------------------------------------
+          ! Assemble the RHS vector which contains just the contribution of external loads
+          ! for the purpose of nonlinear error estimation:
+          ! ---------------------------------------------------------------------------
+          ValuesSaved => Solver % Matrix % RHS
+          Solver % Matrix % RHS => Solver % Matrix % BulkRHS
+          CALL DefaultUpdateForce(LocalRHSForce)
+          Solver % Matrix % RHS => ValuesSaved
+        END IF
       END IF
     END DO BOUNDARY_ASSEMBLY
 
@@ -717,7 +728,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         IF (NoTractions) THEN
           ! This appears to be a purely BC-loaded case, switch to using a different criterion
           ! (use absolute norm, this can be hard ...):
-          CALL Info('ShellSolver', 'No pressure load ... ', Level=4)
+          CALL Info('ShellSolver', 'No distributed loads ... ', Level=4)
           CALL Info('ShellSolver', &
               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
           CALL Info('ShellSolver', &
@@ -4854,7 +4865,7 @@ CONTAINS
 ! boundary.
 !------------------------------------------------------------------------------
   SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
-      MassAssembly, HarmonicAssembly, LocalSol)
+      MassAssembly, HarmonicAssembly, LocalSol, RHSForce)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
@@ -4865,6 +4876,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
@@ -4884,6 +4896,8 @@ CONTAINS
 
     SAVE Nodes
 !------------------------------------------------------------------------------
+    RHSForce = 0.0d0
+
     BC => GetBC()
     IF (.NOT.ASSOCIATED(BC)) RETURN
 
@@ -4961,6 +4975,8 @@ CONTAINS
       END IF
 
     END DO
+
+    RHSForce(1:m*nd) = Force(1:m*nd)
 
     IF (LargeDeflection .AND. AssembleSprings) THEN
       Force(1:m*nd) = Force(1:m*nd) - MATMUL(Stiff(1:m*nd,1:m*nd), PrevSolVec(1:m*nd)) 
