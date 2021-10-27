@@ -769,6 +769,23 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   if(getLists() == 0) 
     return;
 
+
+
+  /*
+  To avoid segmentation fault, compass, surface mesh, etc. are hidden. These
+  will be restored at the end of this function. Do not return before the restration.
+  */
+  bool prevStateDrawCoordinates = stateDrawCoordinates;
+  bool prevStateDrawSurfaceMesh = stateDrawSurfaceMesh;
+  bool prevStateDrawVolumeMesh  = stateDrawVolumeMesh;
+  bool prevStateDrawSharpEdges  = stateDrawSharpEdges;
+  stateDrawCoordinates= false;
+  stateDrawSurfaceMesh = false;
+  stateDrawVolumeMesh = false;
+  stateDrawSharpEdges = false;
+
+  
+
   static list_t dummylist;
   static GLuint buffer[1024];
   const int bufferSize = sizeof(buffer)/sizeof(GLuint);
@@ -779,7 +796,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   GLint hits;
   GLint i, j;
 
-  updateGL();
+////  updateGL(); // Maybe unneccesary
   
   glSelectBuffer(bufferSize, buffer);
   glRenderMode(GL_SELECT);
@@ -847,8 +864,18 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     list_t *l = getList(nearest);
 
     // skip sharp edge lists
-    if(l->getType() == SHARPEDGELIST) 
-      return;
+    if(l->getType() == SHARPEDGELIST) {
+	  /* 
+	  Restoration of view setting. These are adjusted to avoid segmentation fault at
+	  the begining of this function.
+	  */
+	  stateDrawCoordinates = prevStateDrawCoordinates;
+	  stateDrawSurfaceMesh = prevStateDrawSurfaceMesh;
+	  stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
+	  stateDrawSharpEdges  = prevStateDrawSharpEdges;
+      //// updateGL();  // Maybe unneccesary
+	  return;
+	}
     
     // substitute surfacemeshlist with the parent surfacelist:
     if(l->getType() == SURFACEMESHLIST)
@@ -1024,7 +1051,18 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 
   }
 
-  updateGL();
+
+  /* 
+  Restoration of view setting. These are adjusted to avoid segmentation fault at
+  the begining of this function.
+  */
+  
+  stateDrawCoordinates = prevStateDrawCoordinates;
+  stateDrawSurfaceMesh = prevStateDrawSurfaceMesh;
+  stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
+  stateDrawSharpEdges  = prevStateDrawSharpEdges;
+
+////  updateGL(); // Maybe unneccesary
 }
 
 
