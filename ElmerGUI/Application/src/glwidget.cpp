@@ -796,7 +796,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   GLint hits;
   GLint i, j;
 
-////  updateGL(); // Maybe unneccesary
+  //updateGL(); This is maybe unneccesary. I tried to comment this out to suppress blinking of mesh. 
   
   glSelectBuffer(bufferSize, buffer);
   glRenderMode(GL_SELECT);
@@ -873,7 +873,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 	  stateDrawSurfaceMesh = prevStateDrawSurfaceMesh;
 	  stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
 	  stateDrawSharpEdges  = prevStateDrawSharpEdges;
-      //// updateGL();  // Maybe unneccesary
+      updateGL();
 	  return;
 	}
     
@@ -1062,7 +1062,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
   stateDrawSharpEdges  = prevStateDrawSharpEdges;
 
-////  updateGL(); // Maybe unneccesary
+  updateGL();
 }
 
 
