@@ -193,7 +193,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 ! Local variables:
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t), POINTER :: Element, BGElement
+  TYPE(Element_t), POINTER :: Element, BGElement, Parent
   TYPE(ElementType_t), POINTER :: ShellElement => NULL()
   TYPE(Nodes_t) :: Nodes
   TYPE(ValueList_t), POINTER :: SolverPars
@@ -219,7 +219,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
-  INTEGER :: e, i, i0, j, k, m, n, nb, nd, t 
+  INTEGER :: e, i, i0, j, k, m, n, nb, nd, nd_parent, t 
   INTEGER :: Family, Active
   INTEGER :: ShellModelPar, StrainReductionMethod, MembraneStrainReductionMethod
   INTEGER :: NonlinIter, MaxNonlinIters
@@ -656,12 +656,20 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
         IF (LargeDeflection) THEN
           CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+          
+          Parent => GetBulkElementAtBoundary(BGElement)
+          IF (ASSOCIATED(Parent)) THEN 
+            nd_parent = GetElementNOFDOFs(Parent)
+          ELSE
+            nd_parent = 0
+          END IF
         ELSE
           LocalSol = 0.0d0
         END IF
 
         CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
-            MassAssembly, HarmonicAssembly, LocalSol, LocalRHSForce)
+            MassAssembly, HarmonicAssembly, LocalSol, LocalRHSForce, Parent, nd_parent, &
+            CartesianFormulation)
 
         IF (LargeDeflection .AND. NonlinIter == 1) THEN
           ! ---------------------------------------------------------------------------
@@ -4865,7 +4873,8 @@ CONTAINS
 ! boundary.
 !------------------------------------------------------------------------------
   SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
-      MassAssembly, HarmonicAssembly, LocalSol, RHSForce)
+      MassAssembly, HarmonicAssembly, LocalSol, RHSForce, Parent, nd_parent, &
+      CartesianFormulation)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
@@ -4877,24 +4886,32 @@ CONTAINS
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
+    TYPE(Element_t), POINTER, INTENT(IN) :: Parent     ! The parent of the boundary element
+    INTEGER, INTENT(IN) :: nd_parent                   ! The number of parent DOFs per component   
+    LOGICAL, INTENT(IN) :: CartesianFormulation        ! Defines the way how the surface basis is obtained
 !------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: BC, BodyParams
+    TYPE(Nodes_t) :: Nodes, ParentNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, AssemblyNeeded, AssembleSprings, AssembleMass, Stat
+    LOGICAL :: LiveLoads, Spherical, Cylindrical
 
     INTEGER :: i, i0, j, k, t
     REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Damp(m*nd,m*nd)
-    REAL(KIND=dp) :: Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: Force(m*nd), Basis(nd), ParentBasis(nd_parent), dParentBasis(nd_parent,3)
     REAL(KIND=dp) :: PrevSolVec(m*nd)
     REAL(KIND=dp) :: NodalForce(3,n), NodalCouple(3,n)
     REAL(KIND=dp) :: NodalSprings(6,n), NodalMass(6,n)
     REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
     REAL(KIND=dp) :: Spring(6), MassVals(6)
     REAL(KIND=dp) :: detJ, Weight
+    REAL(KIND=dp) :: ParentSol(m,nd_parent)
+    REAL(KIND=dp) :: u, v, w, detF, y1, y2, K1, K2
+    REAL(KIND=dp) :: Norm, CovariantBasis(3,3), NewCovariantBasis(3,3) 
+    REAL(KIND=dp) :: PrevGrad(3,2)
 
-    SAVE Nodes
+    SAVE Nodes, ParentNodes
 !------------------------------------------------------------------------------
     RHSForce = 0.0d0
 
@@ -4914,7 +4931,24 @@ CONTAINS
     END IF
     IF (.NOT. AssemblyNeeded) RETURN
 
+    ! The loads are treated as dead loads by default. The Cartesian components formulation
+    ! can also handle "live" resultant force/couple loads which depend on the deformation.
+    ! TO DO: Enable live loads for the low-order shell elements.
+    !
+    LiveLoads = .NOT. GetLogical(BC, 'Dead Loads', Found)
+    IF (.NOT. Found) LiveLoads = .FALSE.
+    LiveLoads = LiveLoads .AND. LargeDeflection .AND. ASSOCIATED(Parent)
+
     CALL GetElementNodes(Nodes)
+
+    IF (LiveLoads) THEN
+      CALL GetElementNodes(ParentNodes, Parent)
+      CALL GetVectorLocalSolution(ParentSol, UElement=Parent)
+      BodyParams => GetBodyParams(Parent)
+      Spherical = GetLogical(BodyParams, 'Spherical Body', Found)
+      Cylindrical = GetLogical(BodyParams, 'Cylindrical Body', Found)
+    END IF
+
     Force = 0.0d0
     Stiff = 0.0d0
     Mass = 0.0d0
@@ -4940,6 +4974,35 @@ CONTAINS
       ResultantForce(1:3) = MATMUL(NodalForce(1:3,1:n), Basis(1:n))
       ResultantCouple(1:3) = MATMUL(NodalCouple(1:3,1:n), Basis(1:n))
       Weight = IP % s(t) * DetJ
+
+      IF (LiveLoads .AND. CartesianFormulation) THEN
+        !
+        ! Create live loads whose orientations depend on the deformation. 
+        ! First, find basis functions for the parent elements:
+        !
+        CALL GetParentUVW(BGElement, n, Parent, Parent % Type % NumberOfNodes, u, &
+            v, w, Basis)
+        stat = ElementInfo(Parent, ParentNodes, u, v, w, detF, ParentBasis, dParentBasis)
+
+        y1 = SUM( ParentNodes % x(1:n) * ParentBasis(1:n) )
+        y2 = SUM( ParentNodes % y(1:n) * ParentBasis(1:n) )
+
+        CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+
+        PrevGrad(1:3,1:2) = MATMUL(ParentSol(1:3,1:nd_parent), dParentBasis(1:nd_parent,1:2))
+
+        NewCovariantBasis(1:3,1) = CovariantBasis(1:3,1) + PrevGrad(1:3,1)
+        NewCovariantBasis(1:3,2) = CovariantBasis(1:3,2) + PrevGrad(1:3,2)
+        NewCovariantBasis(1:3,3) = CrossProduct(NewCovariantBasis(1:3,1), NewCovariantBasis(1:3,2))
+        DO i=1,3
+          Norm = SQRT(SUM(NewCovariantBasis(1:3,i)**2))
+          NewCovariantBasis(1:3,i) = NewCovariantBasis(1:3,i)/Norm
+        END DO
+
+        ResultantForce(1:3) = MATMUL(NewCovariantBasis(1:3,1:3), ResultantForce(1:3))
+        ResultantCouple(1:3) = MATMUL(NewCovariantBasis(1:3,1:3), ResultantCouple(1:3))
+      END IF
+
       DO i=1,nd
         i0 = (i-1)*m
         Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
