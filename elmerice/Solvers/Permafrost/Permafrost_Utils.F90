@@ -625,7 +625,7 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
   WriteIPVar(4)=ListGetLogical(SolverParams,"Export KGTT", Found)
   WriteIPVar(5)=ListGetLogical(SolverParams,"Export XikG0hy",Found)
-  !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(6)=ListGetLogical(SolverParams,"Export CgwTT",Found)
   !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
 
   IF(WriteIPVar(1)) THEN 
@@ -699,6 +699,12 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
     END IF
     WRITE (Message,*) 'Added XikG0hy as variable with ',XikG0hyDOFs,' DOFs'
     CALL INFO(SolverName,Message,Level=5)
+  END IF
+  IF(WriteIPVar(6)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-IP -dofs 1 CgwTT")
+    CALL INFO(SolverName,'Added CgwTT as variable',Level=5)
   END IF
 END SUBROUTINE PermafrostIPOutput_init
 SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
@@ -786,7 +792,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
   WriteIPVar(4)=ListGetLogical(SolverParams,"Export KGTT",Found)
   WriteIPVar(5)=ListGetLogical(SolverParams,"Export XikG0hy",Found)
-  !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(6)=ListGetLogical(SolverParams,"Export CgwTT",Found)
   
   Active = GetNOFActive()
     DO t=1,Active
@@ -848,7 +854,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: ElementWiseRockMaterial, WriteIPVar(6)
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP!,KGTTAtIP(3,3)   ! needed in equation
+    REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CGTpAtIP ,CGTycAtIP! CgwTTAtIP,KGTTAtIP(3,3)   ! needed in equation
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
          ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
@@ -873,11 +879,12 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostIPOutput(SetIPValues)'
-    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar, XikG0hyAtIPVar,KGTTAtIPVar
+    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar, &
+         XikG0hyAtIPVar,KGTTAtIPVar,CgwTTAtIPVar
     INTEGER, POINTER :: XiAtIPPerm(:),GWfluxPerm(:),rhogwAtIPPerm(:),&
-         mugwAtIPPerm(:), kGpeAtIPPerm(:), XikG0hyAtIPPerm(:),KGTTAtIPPerm(:)
+         mugwAtIPPerm(:), kGpeAtIPPerm(:), XikG0hyAtIPPerm(:),KGTTAtIPPerm(:),CgwTTAtIPPerm(:)
     REAL(KIND=dp), POINTER :: XiAtIP(:), FluxAtElem(:), rhogwAtIP(:),&
-         mugwATIP(:), kGpeAtIP(:), XikG0hyAtIP(:), KGTTAtIP(:)
+         mugwATIP(:), kGpeAtIP(:), XikG0hyAtIP(:), KGTTAtIP(:), CgwTTAtIP(:)
 
     !------------------------------------------------------------------------------
     SAVE Nodes, ConstantsRead, ConstVal,DIM, GasConstant, N0,DeltaT, T0, p0, eps, Gravity
@@ -950,6 +957,15 @@ CONTAINS
       END IF
       XikG0hyAtIPPerm => XikG0hyAtIPVar % Perm
       XikG0hyAtIP => XikG0hyAtIPVar % Values
+    END IF
+    IF (WriteIPVar(6)) THEN
+      CgwTTAtIPVar => VariableGet( Solver % Mesh % Variables, 'CgwTT')
+      IF (.NOT.ASSOCIATED(CgwTTAtIPVar)) THEN
+        WRITE(Message,*) 'Variable "CgwTT" is not associated'
+        CALL FATAL(SolverName,Message)
+      END IF
+      CgwTTAtIPPerm => CgwTTAtIPVar % Perm
+      CgwTTAtIP => CgwTTAtIPVar % Values
     END IF
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
@@ -1103,6 +1119,16 @@ CONTAINS
                  auxtensor(I,J)
           END DO
         END DO
+      END IF
+      IF (WriteIPVar(6)) THEN
+        rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
+        rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
+        cwAtIP = cw(CurrentSolventMaterial,&
+           T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
+        ccAtIP = cc(CurrentSoluteMaterial,&
+           T0,TemperatureAtIP,SalinityAtIP,ConstVal)       
+        CgwTTAtIP(CgwTTATIPPerm(ElementID) +t) = &
+             GetCgwTT(rhowAtIP,rhocAtIP,cwAtIP,ccAtIP,XiAtIP(IPPerm),SalinityAtIP)
       END IF
     END DO ! end loop over IP points
   END SUBROUTINE SetIPValues
