@@ -675,7 +675,8 @@ CONTAINS
             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
          END SELECT
          ConstraintActive = GetLogical(CompParams, 'Activate Constraint', Found )
-         IF (.NOT. Found .AND. CoilType/='stranded') ConstraintActive = .TRUE.
+!        IF (.NOT. Found .AND. CoilType/='stranded') ConstraintActive = .TRUE.
+         IF (.NOT. Found ) ConstraintActive = .FALSE.
        END IF
      END IF
 

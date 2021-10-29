@@ -432,7 +432,8 @@ CONTAINS
            END SELECT
          END IF
          ConstraintActive = GetLogical( CompParams, 'Activate Constraint', Found)
-         IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
+!        IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
+         IF(.NOT.Found ) ConstraintActive = .FALSE.
        END IF
 
        LaminateStack = .FALSE.
