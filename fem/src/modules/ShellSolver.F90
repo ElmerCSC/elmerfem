@@ -655,6 +655,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       IF (ActiveBoundaryElement() .AND. Family <= 2) THEN
         n  = GetElementNOFNodes(BGElement)
         nd = GetElementNOFDOFs(BGElement)
+        nd_parent = 0
 
         IF (LargeDeflection) THEN
           CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
@@ -662,8 +663,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
           Parent => GetBulkElementAtBoundary(BGElement)
           IF (ASSOCIATED(Parent)) THEN 
             nd_parent = GetElementNOFDOFs(Parent)
-          ELSE
-            nd_parent = 0
           END IF
         ELSE
           LocalSol = 0.0d0
