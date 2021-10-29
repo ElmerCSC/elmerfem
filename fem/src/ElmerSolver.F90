@@ -76,8 +76,8 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-         steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),&
-         sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),&
+         steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodicTime(:),sPeriodicCycle(:),&
+         sScan(:),sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),&
          sSliceWeight(:), sAngle(:), sAngleVelo(:)
 
      LOGICAL :: GotIt,Transient,Scanning, LastSaved, MeshMode = .FALSE.
@@ -783,15 +783,16 @@ END INTERFACE
 
        IF ( FirstLoad ) &
            ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-           steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
-           sPar(1), sScan(1), sSweep(1), sFinish(1), sProduce(1),&
-           sSlice(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
+           steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodicTime(1), &
+           sPeriodicCycle(1), sPar(1), sScan(1), sSweep(1), sFinish(1), &
+           sProduce(1),sSlice(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
            sAngleVelo(1) )
        
        dt = 0._dp       
        sTime = 0._dp
        sStep = 0
-       sPeriodic = 0._dp
+       sPeriodicTime = 0._dp
+       sPeriodicCycle = 0._dp
        sScan = 0._dp       
        sSize = dt
        sPrevSizes = 0_dp       
@@ -1330,7 +1331,6 @@ END INTERFACE
              Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
-       CALL VariableAdd( Mesh % Variables, Mesh, Name='Periodic Time',DOFs=1, Values=sPeriodic )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep size', DOFs=1, Values=sSize )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep interval', DOFs=1, Values=sInterval )
@@ -1344,9 +1344,14 @@ END INTERFACE
        CALL VariableAdd( Mesh % Variables, Mesh, &
                Name='coupled iter', DOFs=1, Values=steadyIt )
 
-       ! For periodic systems we may do several cycles.
-       ! After convergence is reached we may start producing the results.
-       IF( ListCheckPresent( CurrentModel % Simulation,'Periodic Timesteps') ) THEN
+
+       IF( ListCheckPrefix( CurrentModel % Simulation,'Periodic Time') .OR. &
+           ListCheckPresent( CurrentModel % Simulation,'Time Period') ) THEN
+         ! For periodic systems we may do several cycles.
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='Periodic Time',DOFs=1, Values=sPeriodicTime )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='Periodic Cycle',DOFs=1, Values=sPeriodicCycle )      
+         
+         ! After convergence is reached we may start producing the results.         
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Finish',DOFs=1, Values=sFinish )
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Produce',DOFs=1, Values=sProduce )         
        END IF
@@ -2272,7 +2277,7 @@ END INTERFACE
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
      INTEGER, SAVE :: PrevMeshI = 0
      INTEGER :: nPeriodic, nSlices, nTimes, iSlice, iTime
-     LOGICAL :: ParallelTime, ParallelSlices
+     LOGICAL :: ParallelTime, ParallelSlices, IsPeriodic
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -2377,7 +2382,8 @@ END INTERFACE
        CALL Info('ExecSimulation','Divided timestep intervals equally for each partition!',Level=4)
      END IF
 
-
+     IsPeriodic = ListCheckPrefix( CurrentModel % Simulation,'Periodic Time') .OR. &
+         ListCheckPresent( CurrentModel % Simulation,'Time Period' )
      
      nPeriodic = ListGetInteger( CurrentModel % Simulation,'Periodic Timesteps',GotIt )
      IF( ParallelTime ) THEN
@@ -2560,12 +2566,12 @@ END INTERFACE
              timePeriod = nPeriodic * dt           
            END IF
          END IF
-                  
-         sPeriodic(1) = sTime(1)         
-         DO WHILE(sPeriodic(1) > timePeriod)
-           sPeriodic(1) = sPeriodic(1) - timePeriod 
-         END DO
-         
+
+         IF( isPeriodic ) THEN
+           sPeriodicCycle(1) = sTime(1) / timePeriod 
+           sPeriodicTime(1) = MODULO( sTime(1), timePeriod )
+         END IF
+           
          ! Move the old timesteps one step down the ladder
          IF(timestep > 1 .OR. interval > 1) THEN
            DO i = SIZE(sPrevSizes,2),2,-1
@@ -2577,7 +2583,6 @@ END INTERFACE
 
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
-
 
 !-----------------------------------------------------------------------------
          IF( ListCheckPresent( CurrentModel % Simulation,'Rotor Angle') ) THEN
