@@ -98,16 +98,15 @@ SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
   Eigenanalysis = GetLogical(SolverPars, 'Eigen Analysis', Found)
   IF (Eigenanalysis) THEN
     CALL ListAddLogical(SolverPars, 'Large Deflection', .FALSE.)
-    CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 1)
   ELSE
     CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
     CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+    CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
     IF (Transient) THEN
       CALL ListAddInteger(SolverPars, 'Time derivative order', 2)
       CALL ListAddString(SolverPars, 'Timestepping Method', 'Bossak')
     END IF
   END IF
-  CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)
 
   !----------------------------------------------------------------------------
@@ -207,7 +206,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: MacroElements, QuadraticApproximation = .FALSE.
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
-  LOGICAL :: LargeDeflection, MeshDisplacementActive
+  LOGICAL :: LargeDeflection, MeshDisplacementActive, Relax
   LOGICAL :: NoTractions
   LOGICAL :: SolveBenchmarkCase
   LOGICAL :: MassAssembly, HarmonicAssembly
@@ -235,7 +234,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: c, Norm, u, v
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
-  REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
+  REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0, Relaxation
   REAL(KIND=dp) :: DrillingPar
   REAL(KIND=dp) :: ShearAlpha, MembraneAlpha, StretchAlpha
 
@@ -423,10 +422,11 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! Read parameters that control the nonlinear solution:
   ! ---------------------------------------------------------------------------------
   LargeDeflection = GetLogical(SolverPars, 'Large Deflection')
-  MaxNonlinIters = ListGetInteger(SolverPars, 'Nonlinear System Max Iterations')
-  NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
-
   IF (LargeDeflection) THEN
+    MaxNonlinIters = ListGetInteger(SolverPars, 'Nonlinear System Max Iterations')
+    NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
+    Relaxation = ListGetCReal(SolverPars, 'Nonlinear System Relaxation Factor', Relax)
+    Relax = Relax .AND. (ABS(Relaxation - 1.0_dp) > EPSILON(Relaxation))
     IF (DrillingDOFs) CALL Fatal('ShellSolver', &
         'Drilling DOFs cannot yet be combined with Large Deflection')
     SolveBenchmarkCase = .FALSE.
@@ -434,15 +434,17 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
     Solver % Matrix % BulkRHS = 0.0d0
   ELSE
-    MaxNonlinIters = 1
+    MaxNonlinIters = 0
   END IF
 
-  NONLINEARLOOP: DO NonlinIter=1,MaxNonlinIters
+  NONLINEARLOOP: DO NonlinIter=1,MaxNonlinIters+1
 
-    CALL Info('ShellSolver','--------------------------------------------------------', Level=4)
-    WRITE( Message,'(A,I4)') 'Nonlinear iteration:', NonlinIter
-    CALL Info('ShellSolver', Message, Level=4)
-    CALL Info('ShellSolver','--------------------------------------------------------', Level=4)    
+    IF (NonlinIter < (MaxNonlinIters+1)) THEN
+      CALL Info('ShellSolver','--------------------------------------------------------', Level=4)
+      WRITE( Message,'(A,I4)') 'Nonlinear iteration:', NonlinIter
+      CALL Info('ShellSolver', Message, Level=4)
+      CALL Info('ShellSolver','--------------------------------------------------------', Level=4)    
+    END IF
 
     TotalSol(:) = Solver % Variable % Values(:)
 
@@ -776,6 +778,13 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         WRITE(Message,'(a)') 'Nonlinear iteration is terminated succesfully'
         CALL Info('ShellSolver', Message, Level=3)          
         EXIT
+      ELSE IF (NonlinIter > MaxNonlinIters) THEN
+        IF (GetLogical(SolverPars, 'Nonlinear System Abort Not Converged', Found)) THEN
+          CALL Fatal('ShellSolver', 'Nonlinear iteration did not converge to tolerance')
+        ELSE
+          CALL Info('ShellSolver', 'Nonlinear iteration did not converge to tolerance', Level=6)
+          EXIT
+        END IF
       END IF
     END IF
 
@@ -787,9 +796,13 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     Norm = DefaultSolve()
 
-    IF (LargeDeflection) &
+    IF (LargeDeflection) THEN
+      IF (Relax) THEN
+        Solver % Variable % Values(:) = TotalSol(:) + Relaxation * Solver % Variable % Values(:)
+      ELSE
         Solver % Variable % Values(:) = TotalSol(:) + Solver % Variable % Values(:)
-
+      END IF
+    END IF
   END DO NONLINEARLOOP
 
   ! -------------------------------------------------------------------------------
@@ -5560,7 +5573,7 @@ CONTAINS
 
     ! --------------------------------------------------------------------------
     ! Create a node variable suitable for defining the isoparametric element 
-    ! map, i.e. use as many nodes as DOFs in the spartial discretization. 
+    ! map, i.e. use as many nodes as DOFs in the spatial discretization. 
     ! --------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Nodes % x ) ) THEN
       ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) ) 
