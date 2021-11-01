@@ -140,14 +140,16 @@ MODULE Types
 
   TYPE BlockMatrix_t
     INTEGER :: NoVar = 0, MaxSize, TotSize
-    INTEGER, POINTER :: Offset(:)
-    TYPE(Solver_t), POINTER :: Solver
+    INTEGER, POINTER :: Offset(:) => NULL()
+    INTEGER, POINTER :: BlockPerm(:) => NULL()
+    INTEGER, POINTER :: ParBlockPerm(:) => NULL()
+    TYPE(Solver_t), POINTER :: Solver => NULL()
     REAL(KIND=dp) :: rnorm, bnorm, xnorm
     TYPE(SubMatrix_t), ALLOCATABLE :: SubMatrix(:,:)
     LOGICAL, ALLOCATABLE :: SubMatrixActive(:,:)
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
-    INTEGER, POINTER :: BlockStruct(:)
-    INTEGER, POINTER :: InvBlockStruct(:)
+    INTEGER, POINTER :: BlockStruct(:) => NULL()
+    INTEGER, POINTER :: InvBlockStruct(:) => NULL()
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t

@@ -641,7 +641,8 @@ CONTAINS
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, cumn
+        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, &
+        cumn, iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
@@ -685,19 +686,13 @@ CONTAINS
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
 
-    ! This is a hack to ensure that the streamed saving will cover the whole file
-    !----------------------------------------------------------------------------
-    IF(.TRUE.) THEN
-      OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'formatted', STATUS='unknown' )
-      WRITE( VtuUnit,'(A)') ' '
-      CLOSE( VtuUnit ) 
-    END IF
-
-
     ! This format works both for ascii and binary output
     !-------------------------------------------------------------------------
-    OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='unknown' )
-
+    OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='replace', IOStat=iostat)
+    IF( iostat /= 0 ) THEN
+      CALL Fatal('WriteVtuFile','Opening of file failed: '//TRIM(VtuFile))
+    END IF
+        
     Solver => Model % Solver
 
     ! VTU seemingly only works with 3D cases, so enforce it
@@ -1786,7 +1781,7 @@ CONTAINS
     INTEGER :: nTime, RecLen = 0
     TYPE(Model_t) :: Model     
     INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: n, nLine = 0
+    INTEGER :: n, nLine = 0, iostat
     REAL(KIND=dp) :: time
     CHARACTER :: lf
     CHARACTER(LEN=MAX_NAME_LEN) :: Str
@@ -1817,8 +1812,11 @@ CONTAINS
       RecLen = ((n/4)+5)*4
       
       OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='REPLACE', &
-          ACCESS='DIRECT', ACTION='WRITE', RECL=RecLen)
-
+          ACCESS='DIRECT', ACTION='WRITE', RECL=RecLen, IOSTAT=iostat)
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
+      END IF
+          
       IF ( LittleEndian() ) THEN
         WRITE( VtuUnit,'(A)',REC=1) '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian"><Collection>'
       ELSE
@@ -1827,7 +1825,10 @@ CONTAINS
       nLine = 1
     ELSE
       OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='OLD', &
-          ACCESS='DIRECT', ACTION='READWRITE', RECL=RecLen)     
+          ACCESS='DIRECT', ACTION='READWRITE', RECL=RecLen, IOSTAT=iostat)     
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
+      END IF
     END IF
 
     nLine = nLine + 1
@@ -1848,7 +1849,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 
     INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs
+    INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs,iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FullName
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, &
@@ -1896,7 +1897,11 @@ CONTAINS
     IF( Part > 0 ) RETURN
     CALL Info('WritePvtuFile','List of active partitions was composed',Level=12)
 
-    OPEN( UNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='UNKNOWN' )
+    OPEN( UNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='REPLACE', IOSTAT=iostat)
+    IF( iostat /= 0 ) THEN
+      CALL Fatal('WritePvtuFile','Opening of file failed: '//TRIM(PvtuFile))
+    END IF
+        
     dim = 3
 
     IF ( LittleEndian() ) THEN

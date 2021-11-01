@@ -1309,7 +1309,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar,pcondlsubr )
+         CALL C_lpcond( T1, r, ipar, pcondlsubr )
          CALL C_matvec( T1, T2, ipar, matvecsubr )
 
          !--------------------------------------------------------------
@@ -1403,17 +1403,19 @@ CONTAINS
          ! the iterated residual:
          !-----------------------------------------------------------------
          IF (Converged ) THEN
-            CALL C_matvec( x, trueres, ipar, matvecsubr )
-            trueres(1:n) = b(1:n) - trueres(1:n)
-            TrueResNorm = normfun(n, trueres, 1)
-            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
-            IF ( NormErr > 1.0d-1 ) THEN
-               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
-               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
-               CALL Info('WARNING', Message, Level=2)
-               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
-               CALL Info('WARNING', Message, Level=2)   
-            END IF
+           WRITE( Message,'(A,I0,A,ES12.3)') 'Iterated residual norm after ',k,' iters:', rnorm
+           CALL Info('IterMethod_GCR', Message, Level=8)
+           
+           CALL C_matvec( x, trueres, ipar, matvecsubr )
+           trueres(1:n) = b(1:n) - trueres(1:n)
+           TrueResNorm = normfun(n, trueres, 1)
+           NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
+           
+           WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
+           CALL Info('IterMethod_GCR', Message, Level=8)            
+           IF ( NormErr > 1.0d-1 ) THEN
+             CALL Warn('IterMethod_GCR','Iterated GCR solution may not be accurate')
+           END IF
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
