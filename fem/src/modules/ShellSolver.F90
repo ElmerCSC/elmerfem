@@ -47,8 +47,8 @@
 ! *  are not yet fully utilized. Note the current restrictions:
 ! *        -- Strain reduction operators have been worked out for 
 ! *           the lowest-order finite elements only.
-! *        -- p-element discretization is possible with special special geometries only
-! *           (the problem is then posed on a mathematical domain of two dimensions)  
+! *        -- Only a plain p-element discretization without applying strain reduction
+! *           operators is possible 
 ! *        -- Parallel file formats for mesh.director and mesh.elements.data are missing,
 ! *           so for parallel execution the director should be defined as an ordinary 
 ! *           solver variable
@@ -885,21 +885,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
  
 CONTAINS
-
-
-  FUNCTION UsePElement( Element ) RESULT ( Pver )
-    TYPE(Element_t) :: Element
-    LOGICAL :: Pver
-    LOGICAL :: IsPver, Visited = .FALSE. 
-    SAVE IsPver, Visited
-    
-    IF( .NOT. Visited ) THEN      
-      IsPVer = IsPElement(BGElement) .AND. &
-          MAXVAL( Solver % Variable % Perm ) > Solver % Mesh % NumberOfNodes
-      Visited = .TRUE.
-    END IF
-    Pver = IsPVer
-  END FUNCTION UsePElement
 
 
 
@@ -3735,7 +3720,7 @@ CONTAINS
     !   * Element: the Lagrange interpolation element corresponding to the "Element" keyword 
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
-    Pversion = UsePElement(BGElement)
+    Pversion = IsActivePElement(BGElement)
 
     SELECT CASE(Family)
     CASE(3)
@@ -5368,7 +5353,7 @@ CONTAINS
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = UsePElement(BGElement) 
+    PVersion = IsActivePElement(BGElement) 
 
     SecondOrder = .FALSE.
     IF (.NOT. PVersion) THEN
@@ -5516,7 +5501,7 @@ CONTAINS
     INTEGER :: Family
 !------------------------------------------------------------------------------
     Family = GetElementFamily(BGElement)
-    PVersion = UsePElement(BGElement)
+    PVersion = IsActivePElement(BGElement)
 
     ! --------------------------------------------------------------------------
     ! Create the element structure corresponding to the surface reconstruction:
@@ -5629,7 +5614,7 @@ CONTAINS
     REAL(KIND=dp) :: PBasis(Element % Type % NumberOfNodes)
     REAL(KIND=dp) :: Basis(Element % Type % NumberOfNodes)
 !------------------------------------------------------------------------------
-    PVersion = UsePElement(BGElement)
+    PVersion = IsActivePElement(BGElement)
 
     n = BGElement % Type % NumberOfNodes
     NodesCount = Element % Type % NumberOfNodes
@@ -6149,7 +6134,7 @@ CONTAINS
 
     SELECT CASE(Family)
     CASE(3)
-      PRefElement = UsePElement(Element)
+      PRefElement = IsActivePElement(Element)
       SELECT CASE(ReductionMethod)
       CASE(CurlKernel)
         ! Method: the kernel of RT
@@ -6613,7 +6598,7 @@ CONTAINS
     IP = GaussPoints(Element)
     DO t=1,IP % n
 
-      PRefElement = UsePElement(Element)
+      PRefElement = IsActivePElement(Element)
       
       IF (Family == 3 .AND. .NOT.PRefElement) THEN
         ! Switch to the p-reference element:
@@ -7904,7 +7889,7 @@ CONTAINS
     REAL(KIND=dp) :: Stiff(nd, nd)
     REAL(KIND=dp) :: Force(nd)
 !------------------------------------------------------------------------------
-    PVersion = UsePElement(Element)
+    PVersion = IsActivePElement(Element)
     n = GetElementFamily(Element)
     GElementNodes = GElement % Type % NumberOfNodes
 
