@@ -213,7 +213,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
   LOGICAL :: DrillingDOFs, RotateDOFs
-  LOGICAL :: CartesianFormulation
+  LOGICAL :: CartesianFormulation, SkipBlending
   LOGICAL :: NonlinearBending
 
   INTEGER, POINTER :: Indices(:) => NULL()
@@ -257,28 +257,63 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ! ---------------------------------------------------------------------------------
   Mesh => GetMesh()
   SolverPars => GetSolverParams()
+  Parallel = ParEnv % PEs > 1
 
   CartesianFormulation = GetLogical(SolverPars, 'Cartesian Formulation', Found)
   IF (CartesianFormulation) THEN
-    CALL Warn('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION OVER A 2-D DOMAIN')
-    CALL Warn('ShellSolver', 'ONLY SPECIAL GEOMETRIES CAN BE HANDLED AT THE MOMENT')
-    CALL Warn('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING')
+    CALL Info('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION', Level=3)
+    CALL Info('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING', Level=3)
+    ! ---------------------------------------------------------------------------------
+    ! The number of unknown fields in the shell model:
+    ! ---------------------------------------------------------------------------------
+    ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=9)
+  ELSE
+    ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
   END IF
 
+  SkipBlending = GetLogical(SolverPars, 'Skip Surface Reconstruction', Found)
+  IF (.NOT. Found) SkipBlending = CartesianFormulation
+
+  DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
+  IF (DrillingDOFs) CALL Warn('ShellSolver', &
+      'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
+  IF (DrillingDOFs) THEN
+    DrillingPar = GetConstReal(SolverPars, 'Drilling Stabilization Parameter', Found)
+    IF (.NOT. Found) DrillingPar = 1.0d0
+  ELSE
+    DrillingPar = 1.0d0
+  END IF
+
+  ! For verification purposes we may solve a case for which the reference strain 
+  ! energy is known:
+  SolveBenchmarkCase = GetLogical(SolverPars, 'Benchmark Problem', Found)
+
+  ! ---------------------------------------------------------------------------------
+  ! Read parameters that control the nonlinear solution:
+  ! ---------------------------------------------------------------------------------
+  LargeDeflection = GetLogical(SolverPars, 'Large Deflection')
+  IF (LargeDeflection) THEN
+    MaxNonlinIters = ListGetInteger(SolverPars, 'Nonlinear System Max Iterations')
+    NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
+    Relaxation = ListGetCReal(SolverPars, 'Nonlinear System Relaxation Factor', Relax)
+    Relax = Relax .AND. (ABS(Relaxation - 1.0_dp) > EPSILON(Relaxation))
+    IF (DrillingDOFs) CALL Fatal('ShellSolver', &
+        'Drilling DOFs cannot yet be combined with Large Deflection')
+    SolveBenchmarkCase = .FALSE.
+    IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
+        ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
+    Solver % Matrix % BulkRHS = 0.0d0
+  ELSE
+    MaxNonlinIters = 0
+  END IF
   NonlinearBending = GetLogical(SolverPars, 'Nonlinear Bending Strains', Found)
   IF (.NOT. Found) NonlinearBending = .TRUE.
 
-  Parallel = ParEnv % PEs > 1
   MeshDisplacementActive = GetLogical(SolverPars, 'Displace Mesh', Found)  
   
   HarmonicAssembly = EigenOrHarmonicAnalysis(Solver) .OR. GetLogical(SolverPars, &
       'Harmonic Mode', Found) .OR. GetLogical(SolverPars, 'Harmonic Analysis', Found)
   MassAssembly =  TransientSimulation .OR. HarmonicAssembly 
-
-  ! ---------------------------------------------------------------------------------
-  ! The number of unknown fields in the shell model:
-  ! ---------------------------------------------------------------------------------
-  ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=9)
 
   ! ---------------------------------------------------------------------------------
   ! The choice of strain reduction method. Now only the automated default is active.
@@ -307,17 +342,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   IF (.NOT. Found) StretchAlpha = 0.0d0
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
-
-  DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
-  IF (DrillingDOFs) CALL Warn('ShellSolver', &
-      'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
-  IF (DrillingDOFs) THEN
-    DrillingPar = GetConstReal(SolverPars, 'Drilling Stabilization Parameter', Found)
-    IF (.NOT. Found) DrillingPar = 1.0d0
-  ELSE
-    DrillingPar = 1.0d0
-  END IF
-
   RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
 
   !-----------------------------------------------------------------------------------
@@ -368,7 +392,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   END IF
   
   ComputeShellArea = .FALSE.
-  SKIP_BLENDING: IF (.NOT. CartesianFormulation) THEN
+  SKIP_BLENDING: IF (.NOT. SkipBlending) THEN
     ! ---------------------------------------------------------------------------------
     ! PART I: 
     ! Get the director data at the nodes as a field variable 'Director' or
@@ -396,15 +420,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     MacroElements = .FALSE.
     CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
 
-
-    ! ---------------------------------------------------------------------------------
-    ! PART III:
-    ! Utilize the parametrized edge curves to obtain improved geometry approximation 
-    ! via using the finite element blending technique, perform a reparametrization 
-    ! to obtain lines of curvature coordinates and assemble the discrete shell 
-    ! equations. 
-    ! ---------------------------------------------------------------------------------
-
     ! ---------------------------------------------------------------------------------
     ! Check whether the area of shell surface should be computed (here this is done
     ! in several ways to check the model integrity):
@@ -413,29 +428,14 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     BlendingSurfaceArea = 0.0d0
     MappedMeshArea = 0.0d0
   END IF SKIP_BLENDING
-  
-  ! For verification purposes we may solve a case for which the reference strain 
-  ! energy is known:
-  SolveBenchmarkCase = GetLogical(SolverPars, 'Benchmark Problem', Found)
 
   ! ---------------------------------------------------------------------------------
-  ! Read parameters that control the nonlinear solution:
+  ! PART III:
+  ! Utilize the parametrized edge curves to obtain improved geometry approximation 
+  ! via using the finite element blending technique, perform a reparametrization 
+  ! to obtain lines of curvature coordinates and assemble the discrete shell 
+  ! equations. 
   ! ---------------------------------------------------------------------------------
-  LargeDeflection = GetLogical(SolverPars, 'Large Deflection')
-  IF (LargeDeflection) THEN
-    MaxNonlinIters = ListGetInteger(SolverPars, 'Nonlinear System Max Iterations')
-    NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
-    Relaxation = ListGetCReal(SolverPars, 'Nonlinear System Relaxation Factor', Relax)
-    Relax = Relax .AND. (ABS(Relaxation - 1.0_dp) > EPSILON(Relaxation))
-    IF (DrillingDOFs) CALL Fatal('ShellSolver', &
-        'Drilling DOFs cannot yet be combined with Large Deflection')
-    SolveBenchmarkCase = .FALSE.
-    IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
-        ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
-    Solver % Matrix % BulkRHS = 0.0d0
-  ELSE
-    MaxNonlinIters = 0
-  END IF
 
   NONLINEARLOOP: DO NonlinIter=1,MaxNonlinIters+1
 
@@ -468,7 +468,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       n  = GetElementNOFNodes()
       nd = GetElementDOFs(Indices)
       nb = GetElementNOFBDOFs()
-
       
       IF (LargeDeflection) THEN
         CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
@@ -482,7 +481,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ApplyBubbles = Bubbles .AND. (nd == Family)
       IF (nb > 0) CALL Fatal('ShellSolver', &
           'Static condensation for p-bubbles is not supported')
-
       
       !----------------------------------------------------------------------
       ! Create elementwise geometry data related to the reference configuration. 
@@ -490,7 +488,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! properties and can thus be retrieved by calling the function
       ! GetElementProperty
       !----------------------------------------------------------------------
-      REPARAMETRIZATION: IF (NonlinIter==1 .AND. .NOT. CartesianFormulation) THEN
+      REPARAMETRIZATION: IF (NonlinIter==1 .AND. .NOT. SkipBlending) THEN
         !----------------------------------------------------------------------
         ! Get the elementwise average of director data for orientation purposes
         ! (check also for body flatness):
@@ -533,6 +531,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       IF (CartesianFormulation) THEN
         CALL ShellLocalMatrixCartesian(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
             LargeDeflection, NonlinearBending, MassAssembly, HarmonicAssembly, LocalRHSForce, &
+            SkipBlending, &
             BenchmarkProblem = GetLogical(SolverPars, 'Benchmark Problem', Found))
       ELSE
         CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
@@ -3921,7 +3920,7 @@ CONTAINS
 
     IP = GaussPoints( BGElement )
 
-    
+
     QUADRATURELOOP: DO t=1,IP % n
 
       BM = 0.0d0
@@ -5622,7 +5621,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: Stat, PVersion
-    INTEGER :: j, k, t, NodesCount, GElementNodes, Family
+    INTEGER :: j, k, t, n, NodesCount, GElementNodes, Family
     REAL(KIND=dp) :: u, v, yk, up, vp, sp
     REAL(KIND=dp) :: GBasis(GElement % Type % NumberOfNodes)
     REAL(KIND=dp) :: Stiff(Element % Type % NumberOfNodes, Element % Type % NumberOfNodes)
@@ -7123,7 +7122,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, BenchmarkProblem)
+      NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, SkipBlending, &
+      BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
@@ -7138,8 +7138,10 @@ CONTAINS
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
+    LOGICAL, INTENT(IN) :: SkipBlending                ! Informs whether surface reconstruction has been done
     LOGICAL, INTENT(IN), OPTIONAL :: BenchmarkProblem  ! To create a load for a benchmark problem 
 !------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: GElement => NULL()
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: BodyForce, Material, BodyParams
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -7147,12 +7149,18 @@ CONTAINS
     LOGICAL :: Stat, Found, ApplyNormalPressure
     LOGICAL :: TransverseBendingStretch, Spherical, Cylindrical
     LOGICAL :: GeneralMaterial
+    LOGICAL :: PlateBody                   ! To indicate that the surface is flat
+    LOGICAL :: SphericalSurface            ! To indicate that the surface is considered to spherical
 
     INTEGER :: DOFs, i, j, k, p, t, csize, bsize
+    INTEGER :: Family
 
     REAL(KIND=dp), PARAMETER :: i1(3) = (/ 1.0_dp, 0.0_dp, 0.0_dp /)
     REAL(KIND=dp), PARAMETER :: i2(3) = (/ 0.0_dp, 1.0_dp, 0.0_dp /)
     REAL(KIND=dp), PARAMETER :: i3(3) = (/ 0.0_dp, 0.0_dp, 1.0_dp /)
+
+    REAL(KIND=dp), POINTER :: TaylorParams(:), PatchData(:), FrameData(:)
+    REAL(KIND=dp), POINTER :: PlanarPointFlag(:), UmbilicalPointFlag(:)
 
     REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Force(m*nd)
     REAL(KIND=dp) :: Damp(m*nd,m*nd)
@@ -7163,6 +7171,8 @@ CONTAINS
     REAL(KIND=dp) :: PrevSolVec(m*nd)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2), HMat(6,6)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2
+    REAL(KIND=dp) :: B11, B22   
+    REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
     REAL(KIND=dp) :: abasis1(3), abasis2(3), abasis3(3)
     REAL(KIND=dp) :: abasis1New(3), abasis2New(3), abasis3New(3), NewDetA
     REAL(KIND=dp) :: y1, y2, v1, v2, v3
@@ -7175,10 +7185,56 @@ CONTAINS
     REAL(KIND=dp) :: Q(3,3)
     REAL(KIND=dp) :: PrevGrad(3,2), PrevGradB(3,2), PrevB(3), PrevPsi(3)
     REAL(KIND=dp) :: c1, c2, c3, c4
+    REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3)         ! The basis of the local frame
+    REAL(KIND=dp) :: o(3)                        ! The origin of the local frame
 
-    SAVE Nodes
+    SAVE Nodes, GElement
 !------------------------------------------------------------------------------
-    CALL GetElementNodes(Nodes)
+    CALL GetElementNodes(Nodes, BGElement)
+
+    IF (.NOT. SkipBlending) THEN
+      ! ------------------------------------------------------------------------------
+      ! When the surface reconstruction has been done, retrieve the surface data which 
+      ! have been saved as elementwise properties:
+      ! ------------------------------------------------------------------------------
+      TaylorParams => GetElementProperty('taylor parameters', BGElement)
+
+      PatchData => GetElementProperty('patch nodes', BGElement) 
+      PatchNodes(1:MaxPatchNodes,1) = PatchData(1:MaxPatchNodes)
+      PatchNodes(1:MaxPatchNodes,2) = PatchData(MaxPatchNodes+1:2*MaxPatchNodes)
+ 
+      FrameData => GetElementProperty('element frame', BGElement) 
+      e1 = FrameData(FrameBasis1)
+      e2 = FrameData(FrameBasis2)
+      e3 = FrameData(FrameBasis3)
+      o = FrameData(FrameOrigin)
+
+      PlanarPointFlag => GetElementProperty('planar point', BGElement)
+      UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
+      PlateBody = PlanarPointFlag(1) > 0.0d0
+      SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
+      
+      ! --------------------------------------------------------------------------
+      ! Create the element structure corresponding to the surface reconstruction:
+      ! --------------------------------------------------------------------------
+      IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
+      Family = GetElementFamily(BGElement)
+      SELECT CASE(Family)
+      CASE(3)
+        GElement % Type => GetElementType(310, .FALSE.)
+      CASE(4)
+        GElement % Type => GetElementType(416, .FALSE.)
+      CASE DEFAULT
+        CALL Fatal('ShellLocalMatrixCartesian', 'Unsupported (geometry model) element type')
+      END SELECT
+
+      ! --------------------------------------------------------------------------
+      ! Overwrite the coordinate arrays of the structure Nodes so that it represents 
+      ! the domain of the principal curvature coordinates:
+      ! --------------------------------------------------------------------------
+      CALL SolveNodesVariables(BGElement, Nodes, nd, GElement, PatchNodes)
+    END IF
 
     Material => GetMaterial()
     GeneralMaterial = GetLogical(Material, '3D Material Law', Found)
@@ -7259,9 +7315,6 @@ CONTAINS
       ! ------------------------------------------------
       ! Data interpolation:
       ! ------------------------------------------------
-      y1 = SUM( Nodes % x(1:n) * Basis(1:n) )
-      y2 = SUM( Nodes % y(1:n) * Basis(1:n) )
-
       h = SUM( ShellThickness(1:n) * Basis(1:n) )
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
@@ -7271,25 +7324,47 @@ CONTAINS
         DampCoef = SUM( Damping(1:n) * Basis(1:n) )
       END IF
 
-      IF (Cylindrical .AND. BenchmarkProblem) THEN
-        ! In the case of benchmark cases
-        ! use a hard-coded load to avoid errors from representing the load: 
+      IF (SkipBlending) THEN
         !
-        NormalTraction = h**3 * 1.0d5 * cos(2.0d0*y1)
-        ApplyNormalPressure = .TRUE.
-      END IF
-      !
-      ! TO DO: A suitable surface parametrization should be generated from
-      !        a given mesh. This gives the parametrization for special cases.
-      !
-      CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+        ! This uses a surface parametrization over a 2D domain in special cases.
+        !
+        y1 = SUM( Nodes % x(1:n) * Basis(1:n) )
+        y2 = SUM( Nodes % y(1:n) * Basis(1:n) )
 
-      abasis1(:) = CovariantBasis(:,1)
-      abasis2(:) = CovariantBasis(:,2)
-      abasis3(:) = CovariantBasis(:,3)
-      a11 = DOT_PRODUCT(abasis1,abasis1)
-      a22 = DOT_PRODUCT(abasis2,abasis2)
-      SqrtDetA = SQRT(a11*a22)
+        CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+
+        abasis1(:) = CovariantBasis(:,1)
+        abasis2(:) = CovariantBasis(:,2)
+        abasis3(:) = CovariantBasis(:,3)
+        a11 = DOT_PRODUCT(abasis1,abasis1)
+        a22 = DOT_PRODUCT(abasis2,abasis2)
+        SqrtDetA = SQRT(a11*a22)
+
+        IF (Cylindrical .AND. BenchmarkProblem) THEN
+          ! In the case of benchmark cases
+          ! use a hard-coded load to avoid errors from representing the load: 
+          !
+          NormalTraction = h**3 * 1.0d5 * cos(2.0d0*y1)
+          ApplyNormalPressure = .TRUE.
+        END IF
+      ELSE
+        !
+        ! Here we combine the Cartesian formulation and surface reconstruction
+        !
+        y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
+        y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
+
+        ! ------------------------------------------------------------------------------
+        ! The fundamental forms at the point (y1,y2) of the principal coordinate patch.
+        ! The Christoffel symbols Cijk are also returned, but here they will have no use.   
+        ! ------------------------------------------------------------------------------
+        CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
+            abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
+            C211, C212, PlanarPoint=PlateBody, Umbilical=SphericalSurface)
+
+        K1 = B11/A11
+        K2 = B22/A22
+      END IF
 
       ! The geometric Lame parameters:
       ! ------------------------------
@@ -7805,6 +7880,103 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellLocalMatrixCartesian
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
+!------------------------------------------------------------------------------
+! Create the element mapping corresponding to the principal curvature coordinates
+! in terms of the basis which is used in the shell analysis.
+! TO DO: Merge with the subroutine WriteElementNodesVariables (?)
+! -----------------------------------------------------------------------------
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
+    TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! The nodes data structure to be updated
+    INTEGER, INTENT(IN) :: nd                         ! The number of coordinate entries written
+    TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element used in surface reconstruction
+    REAL(KIND=dp), INTENT(IN) :: PatchNodes(:,:)      ! The nodes data compatible with GElement
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: Stat, PVersion
+    INTEGER :: j, k, n, t, GElementNodes
+    REAL(KIND=dp) :: u, v, yk, up, vp, DetJ
+    REAL(KIND=dp) :: GBasis(GElement % Type % NumberOfNodes)
+    REAL(KIND=dp) :: PBasis(nd)
+    REAL(KIND=dp) :: Stiff(nd, nd)
+    REAL(KIND=dp) :: Force(nd)
+!------------------------------------------------------------------------------
+    PVersion = UsePElement(Element)
+    n = GetElementFamily(Element)
+    GElementNodes = GElement % Type % NumberOfNodes
+
+    Nodes % x(:) = 0.0d0
+    Nodes % y(:) = 0.0d0
+    Nodes % z(:) = 0.0d0
+
+    ! -----------------------------------------------
+    ! The corner values can be written immediately:
+    ! -----------------------------------------------
+    Nodes % x(1:n) = PatchNodes(1:n,1)
+    Nodes % y(1:n) = PatchNodes(1:n,2)
+
+    IF (nd > n) THEN
+      ! ------------------------------------------------------
+      ! Solve a local matrix equation in the case of higher p
+      ! TO DO: 1) Solve for entries i > n only, and possibly
+      !        2) truncate calculation in the case of p > 3
+      ! ------------------------------------------------------
+      DO k=1,2
+        STIFF = 0.0d0
+        FORCE = 0.0d0
+
+        IP = GaussPoints(Element)
+        DO t=1,IP % n
+          up = IP % U(t)
+          vp = IP % V(t)
+          ! ------------------------------------------------------------------
+          ! First, evaluate the basis functions used in the shell analysis.
+          ! Note that here Nodes and detJ are needed as dummies, but the basis 
+          ! evaluation does not depend on their values.
+          ! ------------------------------------------------------------------
+          stat = ElementInfo(Element, Nodes, up, vp, 0.0d0, detJ, PBasis)
+          ! ------------------------------------------------------------------
+          ! Map the p-point to the point on the standard reference element:
+          ! ------------------------------------------------------------------
+          IF (Family==3 .AND. PVersion) THEN
+            u = 0.5d0 * (1.0d0 + up - 1.0d0/sqrt(3.0d0) * vp)
+            v = 1.0d0/sqrt(3.0d0) * vp
+          ELSE
+            u = up
+            v = vp
+          END IF
+
+          CALL NodalBasisFunctions2D(GBasis, GElement, u, v)
+
+          DO i=1,nd
+            DO j=1,nd
+              STIFF(i,j) = STIFF(i,j) + IP % s(t) * PBasis(i) * PBasis(j)
+            END DO
+          END DO
+
+          SELECT CASE(k)
+          CASE(1)
+            yk = SUM(PatchNodes(1:GElementNodes,1) * GBasis(1:GElementNodes))
+          CASE(2)
+            yk = SUM(PatchNodes(1:GElementNodes,2) * GBasis(1:GElementNodes))
+          END SELECT
+          FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * yk * PBasis(1:nd)
+        END DO
+
+        CALL LUSolve(nd, Stiff, Force)
+        SELECT CASE(k)
+        CASE(1)
+          Nodes % x(1:nd) = Force(1:nd)
+        CASE(2)
+          Nodes % y(1:nd) = Force(1:nd) 
+        END SELECT
+      END DO
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE SolveNodesVariables
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

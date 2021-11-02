@@ -9,9 +9,9 @@
 ! problem is treated as nonlinear, but the shell is subject to a small load 
 ! so that nonlinear effects are not yet significant.
 !
-! Here the problem is solved by using a high-order discretization which is 
-! currently possible with special surface geometries only. This option needs
-! a special command "Cartesian Formulation = Logical True".
+! Here the problem is solved by using a high-order discretization over a 2-D
+! domain. This option needs a special command "Cartesian Formulation = 
+! Logical True".
 !
 ! ------------------------------------------------------------------------------
 
