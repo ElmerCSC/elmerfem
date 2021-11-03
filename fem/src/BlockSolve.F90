@@ -2513,6 +2513,10 @@ CONTAINS
     INTEGER, POINTER :: offset(:)
     
     CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Fatal('CreateBlockMatrixScaling','This is not really properly implemented in parallel!')
+    END IF
     
     NoVar = TotMatrix % NoVar
     
@@ -2627,11 +2631,7 @@ CONTAINS
         CALL ParallelSumVector(A, Diag)
       END IF
       
-      nrm = MAXVAL( Diag(1:n) ) 
-
-      IF( ParEnv % PEs > 1 ) THEN
-        nrm = ParallelReduction(nrm,2)
-      END IF
+      nrm = CompNorm( Diag, n )
       
       ! Define the actual scaling vector (for real component)
       DO i=1,n,m
@@ -2849,8 +2849,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
     REAL(KIND=dp) :: nrm
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DoDiagScaling, ThisScaling, &
-        UsePrecMat, Trans, Isolated
+        IsComplex, BlockScaling, DoDiagScaling, UsePrecMat, Trans, Isolated
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
@@ -2896,10 +2895,6 @@ CONTAINS
     mat_save => Solver % Matrix
     rhs_save => Solver % Matrix % RHS
 
-    ! Always treat the inner iterations as truly complex if they are
-    CALL ListAddLogical( Params,'Linear System Skip Complex',.FALSE.) 
-    CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
-
     BlockScaling = ListGetLogical( Params,'Block Scaling',Found )
 
     DoDiagScaling = .FALSE.
@@ -2911,6 +2906,14 @@ CONTAINS
       CALL Warn('BlockMatrixPrec','It is not recommended to use two different scalings at same time')
     END IF
 
+    IF( DoDiagScaling .OR. BlockScaling ) THEN
+      CALL Info('BlockMatrixPrec','Only using outer level scaling, skipping scaling on block level!')
+      CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
+    END IF
+      
+    ! Always treat the inner iterations as truly complex if they are
+    CALL ListAddLogical( Params,'Linear System Skip Complex',.FALSE.) 
+    
     IF (isParallel) THEN
       ALLOCATE( x(TotMatrix % MaxSize), b(TotMatrix % MaxSize) )
     END IF
@@ -3035,10 +3038,6 @@ CONTAINS
       ELSE
         nc = 1
       END IF
-
-      !ScaleSystem = ListGetLogical( Params,'block: Linear System Scaling', Found )
-      !IF(.NOT. Found) ScaleSystem = .TRUE.
-      !IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
       
       CALL SolveLinearSystem( A, btmp, x, nrm, nc, ASolver )
 
@@ -3048,14 +3047,7 @@ CONTAINS
         CALL Info('BlockMatrixPrec',Message)
       END IF
         
-      !IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
-
       IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b,UsePrecMat)
-
-      IF( ThisScaling .AND. UsePrecMat ) THEN
-        x(1:n) = x(1:n) / diagtmp(1:n)
-        DEALLOCATE( diagtmp, btmp )
-      END IF                    
 
       IF (isParallel) THEN
         x(1:offset(i+1)-offset(i)) = x(ParPerm) 
@@ -3120,6 +3112,9 @@ CONTAINS
               ELSE
                 CALL CRS_TransposeMatrixVectorMultiply( Aij, x, rtmp )
               END IF
+
+              ParPerm => TotMatrix % Submatrix(i,i) % ParPerm
+
 #if 0
               rtmp(1:offset(i+1)-offset(i)) = rtmp(ParPerm)
 #else
@@ -3128,6 +3123,7 @@ CONTAINS
                 IF (Parenv % MyPE /= A % ParallelInfo % NeighbourList(kk) % Neighbours(1)) CYCLE
                 ll = ll+1
                 rtmp(ll) = rtmp(kk)
+                IF(parperm(ll) /= kk) PRINT *,'Problem:',ll,kk,parperm(ll)
               END DO
 #endif
               
@@ -3178,6 +3174,7 @@ CONTAINS
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.FALSE.)
     CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
+    CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
 
       
     Solver => Solver_save
@@ -3234,11 +3231,6 @@ CONTAINS
     LinTol = ListGetConstReal( Params,'Linear System Convergence Tolerance',GotIt)
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
     
-    !mat_Save => Solver % Matrix
-    !Solver % Matrix => A
-    !rhs_save => Solver % Matrix % RHS
-    !Solver % Matrix % RHS => b
-
     CALL ListPushNamespace('block:')
 
     ! We don't want compute change externally
@@ -3320,14 +3312,10 @@ CONTAINS
         !ScaleSystem = ListGetLogical( Solver % Values,'block: Linear System Scaling', Found )
         !IF(.NOT. Found) ScaleSystem = .TRUE.
 
-        !IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A, b, dx )
         
         CALL SolveLinearSystem( A, b, dx, Var % Norm, Var % DOFs, Solver )
 
         IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b)
-
-        
-        !IF( ScaleSystem ) CALL BackScaleLinearSystem(Solver, A, b, dx)       
 
         CALL ListPopNamespace()
 
@@ -3370,9 +3358,6 @@ CONTAINS
       
     END DO
     CALL ListPopNamespace('block:')
-
-    !Solver % Matrix % RHS => rhs_save
-    !Solver % Matrix => mat_save
 
     CALL ListAddLogical( Params,'No Precondition Recompute',.FALSE.)
         
