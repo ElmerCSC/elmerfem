@@ -2055,7 +2055,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: GotRhs, Trans
     
-    CALL Info('BlockUpdateRhs','Computing block r.h.s',Level=5)
+    CALL Info('BlockUpdateRhs','Computing block r.h.s',Level=8)
 
     NoVar = BlockMatrix % NoVar
     
@@ -3256,7 +3256,7 @@ CONTAINS
         WRITE( Message,'(A,I0)') 'Block Jacobi iteration: ',iter
         CALL BlockUpdateRhs(TotMatrix)
       END IF
-      CALL Info('BlockStandardIter',Message,Level=6)
+      CALL Info('BlockStandardIter',Message,Level=5)
       MaxChange = 0.0_dp
       TotNorm = 0.0_dp
       
@@ -3297,7 +3297,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          CALL Info('BlockStandardIter','Using preconditioning block: '//TRIM(I2S(i)))
+          CALL Info('BlockStandardIter','Using preconditioning block: '//TRIM(I2S(i)),Level=8)
         END IF
         
         !Solver % Matrix => A
@@ -3340,29 +3340,34 @@ CONTAINS
         ELSE
           Var % Values = Var % Values + dx
         END IF
-          
-        dxnorm = SQRT( SUM(dx**2) )
-        xnorm = SQRT( SUM( Var % Values**2 ) )
+
+        dxnorm = CompNorm(dx,A % NumberOfRows, A=A)
+        xnorm = CompNorm(Var % Values, A % NumberOfRows, A=A)
 
         Var % Norm = xnorm
         Var % NonlinChange = dxnorm / xnorm
+
+        WRITE(Message,'(A,2ES12.3)') 'Block '//TRIM(I2S(RowVar))//' norms: ',xnorm, dxnorm / xnorm
+        CALL Info('BlockStandardIter',Message,Level=5)
         
-        IF( InfoActive( 15 ) ) THEN
+        IF( InfoActive( 20 ) ) THEN
           PRINT *,'dx'//TRIM(I2S(i))//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx ), SUM( ABS( dx ) )
         END IF
       
         DEALLOCATE( dx )
           
         TotNorm = TotNorm + Var % Norm
-        MaxChange = MAX( MaxChange, Var % NonlinChange )
+        MaxChange = MAX( MaxChange, Var % NonlinChange )        
       END DO
 
-      IF( InfoActive( 15 ) ) THEN
-        PRINT *,'GS Norm:',iter, MaxChange, TotNorm
+      WRITE(Message,'(A,2ES12.3)') 'Sum of norms: ',TotNorm, MaxChange
+      CALL Info('BlockStandardIter',Message,Level=4)
+
+      IF( MaxChange < LinTol .AND. iter >= MinIter ) THEN
+        CALL Info('BlockStandardIter','Converged after iterations: '//TRIM(I2S(iter)),Level=5)
+        EXIT
       END IF
-
-      IF( MaxChange < LinTol .AND. iter >= MinIter ) EXIT
-
+      
     END DO
     CALL ListPopNamespace('block:')
 
