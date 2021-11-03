@@ -876,7 +876,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     if(l->getType() == SHARPEDGELIST) {
 
 	  /* 
-	  Restoration of view settings. These are adjusted at the begining of this function.
+	  Restoration of view settings. These were adjusted at the begining of this function.
 	  */
 	  stateDrawCoordinates = prevStateDrawCoordinates;
 	  stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;
@@ -884,6 +884,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 	  stateDrawNodeNumbers = prevStateDrawNodeNumbers;
 	  stateDrawBoundaryIndex = prevStateDrawBoundaryIndex;
 	  stateDrawBodyIndex = prevStateDrawBodyIndex;  
+	  
 
       updateGL();
 	  return;
@@ -1064,7 +1065,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   }
 
   /* 
-  Restoration of view settings. These are adjusted at the begining of this function.
+  Restoration of view settings. These were adjusted at the begining of this function.
   */
   stateDrawCoordinates = prevStateDrawCoordinates;
   stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;
@@ -1072,6 +1073,8 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   stateDrawNodeNumbers = prevStateDrawNodeNumbers;
   stateDrawBoundaryIndex = prevStateDrawBoundaryIndex;
   stateDrawBodyIndex = prevStateDrawBodyIndex;  
+  
+  
   updateGL();
 }
 
@@ -2007,6 +2010,10 @@ void GLWidget::indexColors(int *c, int i)
 
 
 void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolumeMesh, bool stateDrawSharpEdges){
+/*
+  This function is used in mouseDoubleClickEvent(mouseEvent event) to avoid segmentation fault observed Linux
+  emvironment with old hardware.
+*/
 
   mesh_t *mesh = getMesh();
   int lists = getLists();
@@ -2018,7 +2025,8 @@ void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolume
 
   for (int i = 0; i < lists; i++) {
     list_t *l = getList(i);
-    if (l->getType() == SURFACEMESHLIST) {
+	int type = l->getType();
+    if (type == SURFACEMESHLIST) {
       l->setVisible(stateDrawSurfaceMesh);
 
       // do not set visible if the parent surface list is hidden
@@ -2028,13 +2036,10 @@ void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolume
         if (!lp->isVisible())
           l->setVisible(false);
       }
-    }
-
-    if (l->getType() == VOLUMEMESHLIST)
+    }else if (type == VOLUMEMESHLIST) {
       l->setVisible(stateDrawVolumeMesh);
-
-    if (l->getType() == SHARPEDGELIST)
+	}else if (type == SHARPEDGELIST) {
       l->setVisible(stateDrawSharpEdges);
-
+	}
   }
 }
