@@ -237,6 +237,8 @@ private:
   void drawBgImage();
 
   void changeNormalDirection(double*, double*);
+ 
+  void setMeshVisibility(bool, bool, bool);
 };
 
 #endif

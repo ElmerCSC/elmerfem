@@ -768,24 +768,25 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
   if(getLists() == 0) 
     return;
-
-
-
+  
   /*
-  To avoid segmentation fault, compass, surface mesh, etc. are hidden. These
-  will be restored at the end of this function. Do not return before the restration.
+  To avoid segmentation fault in MSYS2 emvironment, compass, numbers and indexes are hidden. 
+  These will be restored at the end of this function. Do not return before restoring these.
   */
   bool prevStateDrawCoordinates = stateDrawCoordinates;
-  bool prevStateDrawSurfaceMesh = stateDrawSurfaceMesh;
-  bool prevStateDrawVolumeMesh  = stateDrawVolumeMesh;
-  bool prevStateDrawSharpEdges  = stateDrawSharpEdges;
-  stateDrawCoordinates= false;
-  stateDrawSurfaceMesh = false;
-  stateDrawVolumeMesh = false;
-  stateDrawSharpEdges = false;
-
+  bool prevStateDrawSurfaceNumbers = stateDrawSurfaceNumbers;
+  bool prevStateDrawEdgeNumbers = stateDrawEdgeNumbers;
+  bool prevStateDrawNodeNumbers = stateDrawNodeNumbers;
+  bool prevStateDrawBoundaryIndex = stateDrawBoundaryIndex;
+  bool prevStateDrawBodyIndex = stateDrawBodyIndex;  
+  stateDrawCoordinates = false;
+  stateDrawSurfaceNumbers = false;
+  stateDrawEdgeNumbers = false;
+  stateDrawNodeNumbers = false;
+  stateDrawBoundaryIndex = false;
+  stateDrawBodyIndex = false;
   
-
+  
   static list_t dummylist;
   static GLuint buffer[1024];
   const int bufferSize = sizeof(buffer)/sizeof(GLuint);
@@ -796,7 +797,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   GLint hits;
   GLint i, j;
 
-  //updateGL(); This is maybe unneccesary. I tried to comment this out to suppress blinking of mesh. 
+  updateGL();
   
   glSelectBuffer(bufferSize, buffer);
   glRenderMode(GL_SELECT);
@@ -819,8 +820,16 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   
   glMatrixMode(GL_MODELVIEW);
 
+
+
+  /*This is to avoid segmentation fault in Linux with old hardware*/
+  setMeshVisibility(false, false, false);
+  
   updateGL();
   // paintGL();
+
+  /*Again, this is to avoid segmentation fault in Linux with old hardware and to suppress blinking*/
+  setMeshVisibility(stateDrawSurfaceMesh, stateDrawVolumeMesh, stateDrawSharpEdges); 
 
   hits = glRenderMode(GL_RENDER);
   
@@ -865,14 +874,17 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 
     // skip sharp edge lists
     if(l->getType() == SHARPEDGELIST) {
+
 	  /* 
-	  Restoration of view setting. These are adjusted to avoid segmentation fault at
-	  the begining of this function.
+	  Restoration of view settings. These are adjusted at the begining of this function.
 	  */
 	  stateDrawCoordinates = prevStateDrawCoordinates;
-	  stateDrawSurfaceMesh = prevStateDrawSurfaceMesh;
-	  stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
-	  stateDrawSharpEdges  = prevStateDrawSharpEdges;
+	  stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;
+	  stateDrawEdgeNumbers = prevStateDrawEdgeNumbers;
+	  stateDrawNodeNumbers = prevStateDrawNodeNumbers;
+	  stateDrawBoundaryIndex = prevStateDrawBoundaryIndex;
+	  stateDrawBodyIndex = prevStateDrawBodyIndex;  
+
       updateGL();
 	  return;
 	}
@@ -1051,17 +1063,15 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 
   }
 
-
   /* 
-  Restoration of view setting. These are adjusted to avoid segmentation fault at
-  the begining of this function.
+  Restoration of view settings. These are adjusted at the begining of this function.
   */
-  
   stateDrawCoordinates = prevStateDrawCoordinates;
-  stateDrawSurfaceMesh = prevStateDrawSurfaceMesh;
-  stateDrawVolumeMesh  = prevStateDrawVolumeMesh;
-  stateDrawSharpEdges  = prevStateDrawSharpEdges;
-
+  stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;
+  stateDrawEdgeNumbers = prevStateDrawEdgeNumbers;
+  stateDrawNodeNumbers = prevStateDrawNodeNumbers;
+  stateDrawBoundaryIndex = prevStateDrawBoundaryIndex;
+  stateDrawBodyIndex = prevStateDrawBodyIndex;  
   updateGL();
 }
 
@@ -1993,4 +2003,38 @@ void GLWidget::indexColors(int *c, int i)
 
   indexColors(tmp, i);
   for (int j = 0; j < 3; j++) c[j] = int(tmp[j]*255 + 0.5);
+}
+
+
+void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolumeMesh, bool stateDrawSharpEdges){
+
+  mesh_t *mesh = getMesh();
+  int lists = getLists();
+
+  if (mesh == NULL) {
+    return;
+  }
+
+
+  for (int i = 0; i < lists; i++) {
+    list_t *l = getList(i);
+    if (l->getType() == SURFACEMESHLIST) {
+      l->setVisible(stateDrawSurfaceMesh);
+
+      // do not set visible if the parent surface list is hidden
+      int p = l->getParent();
+      if (p >= 0) {
+        list_t *lp = getList(p);
+        if (!lp->isVisible())
+          l->setVisible(false);
+      }
+    }
+
+    if (l->getType() == VOLUMEMESHLIST)
+      l->setVisible(stateDrawVolumeMesh);
+
+    if (l->getType() == SHARPEDGELIST)
+      l->setVisible(stateDrawSharpEdges);
+
+  }
 }
