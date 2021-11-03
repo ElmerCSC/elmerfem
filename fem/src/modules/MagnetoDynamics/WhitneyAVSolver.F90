@@ -656,6 +656,7 @@ CONTAINS
 
      CoilBody = .FALSE.
      CompParams => GetComponentParams( Element )
+
      CoilType = ''
      RotM = 0._dp
      ConstraintActive = .TRUE.
@@ -890,6 +891,60 @@ CONTAINS
     ! temporary fix to some scaling problem (to be resolved)...
     CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
   END IF
+
+
+BLOCK
+! Automatic BC for massive,foil coils outer boundaries, when "Activate Constraint" on!!
+
+    TYPE(Element_t), POINTER :: Parent
+    LOGICAL :: AutomaticBC
+    INTEGER, POINTER :: Electrodes(:)
+
+    Active = GetNOFBoundaryElements()
+    DO t = 1, Active
+      Element => GetBoundaryElement(t)
+
+      Parent => Element % BoundaryInfo % Right
+      IF(ASSOCIATED(Parent)) CYCLE
+
+      IF(ParEnv % PEs>1) THEN
+        ! Assuming here that this is an internal boundary, if all elements nodes are
+        ! interface nodes. Not foolproof i guess, but quite safe (?)
+        IF (ALL(Solver % Mesh % ParallelInfo % NodeInterface(Element % NodeIndexes))) CYCLE
+      END IF
+ 
+      Parent => Element % BoundaryInfo % Left
+      IF(.NOT.ASSOCIATED(Parent)) CYCLE
+
+      CompParams => GetComponentParams(Parent)
+      IF (.NOT. ASSOCIATED(CompParams)) CYCLE
+
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF(CoilType/='massive' .AND. CoilType/='foil winding') CYCLE
+
+      ConstraintActive = GetLogical(CompParams,'Activate Constraint',Found )
+      IF( .NOT. ConstraintActive ) CYCLE
+
+      AutomaticBC = GetLogical( CompParams, 'Automatic electrode BC', Found )
+      IF(.NOT.Found) AutomaticBC = .TRUE.
+
+      IF(.NOT.AutomaticBC) CYCLE
+
+      Electrodes =>  ListGetIntegerArray( CompParams, &
+             'Electode Boundaries', Found )
+
+      IF(ASSOCIATED(Electrodes)) THEN
+        IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
+      END IF
+
+      DO i=1,Element % Type % NumberOfNodes
+        j = Solver % Variable % Perm(Element % NodeIndexes(i))
+        CALL ZeroRow(Solver % Matrix, j)
+        Solver % Matrix % RHS(j) = 0._dp
+        CALL SetMatrixElement(Solver % Matrix,j,j,1._dp)
+      END DO
+    END DO
+END BLOCK
 
   CALL DefaultDirichletBCs()
 
