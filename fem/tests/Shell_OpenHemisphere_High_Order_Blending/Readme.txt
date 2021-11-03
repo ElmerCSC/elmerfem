@@ -14,7 +14,7 @@ obtained for different element definitions:
     2.523397056307E-003  p:1
     1.822842204650E-001  p:2
     1.823444430702E-001  p:2 b:1
-*)  3.830376099169E-005  p:3
+    1.848458106450E-001  p:3
     1.848616269838E-001  p:3 b:1
     1.849254876339E-001  p:3 b:4
     1.849362922672E-001  p:4
@@ -22,11 +22,7 @@ obtained for different element definitions:
    -2.524376505111E-003  p:1
    -1.863177044741E-001  p:2
    -1.863777270085E-001  p:2 b:1
-*) -5.439399198911E-005  p:3
+   -1.889294940331E-001  p:3
    -1.889448030200E-001  p:3 b:1
    -1.890109374895E-001  p:3 b:4
    -1.890220598746E-001  p:4
-
-Except for the definition "Element = p:3" the results are reasonable. This
-anomaly for one element definition looks like a bug somewhere which still needs
-to be addressed.

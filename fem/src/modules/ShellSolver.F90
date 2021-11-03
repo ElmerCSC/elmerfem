@@ -5651,11 +5651,11 @@ CONTAINS
       ! Solve a local matrix equation in the case of higher p:
       ! ------------------------------------------------------
       IF (NodesCount > n) THEN
+        IP = GaussPoints( BGElement )
         DO k=1,2
           STIFF = 0.0d0
           FORCE = 0.0d0
 
-          IP = GaussPoints( BGElement )
           DO t=1,IP % n
             up = IP % U(t)
             vp = IP % V(t)
@@ -7909,11 +7909,11 @@ CONTAINS
       ! TO DO: 1) Solve for entries i > n only, and possibly
       !        2) truncate calculation in the case of p > 3
       ! ------------------------------------------------------
+      IP = GaussPoints(Element)
       DO k=1,2
         STIFF = 0.0d0
         FORCE = 0.0d0
 
-        IP = GaussPoints(Element)
         DO t=1,IP % n
           up = IP % U(t)
           vp = IP % V(t)
