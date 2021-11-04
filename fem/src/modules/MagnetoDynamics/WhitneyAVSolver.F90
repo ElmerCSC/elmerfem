@@ -900,9 +900,22 @@ BLOCK
     LOGICAL :: AutomaticBC
     INTEGER, POINTER :: Electrodes(:)
 
+    A => GetMatrix()
+
+    IF (.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+
+    IF(.NOT.ALLOCATED(A % DValues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+
     Active = GetNOFBoundaryElements()
     DO t = 1, Active
       Element => GetBoundaryElement(t)
+      IF(.NOT.ActiveBoundaryElement()) CYCLE
 
       Parent => Element % BoundaryInfo % Right
       IF(ASSOCIATED(Parent)) CYCLE
@@ -937,11 +950,10 @@ BLOCK
         IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
       END IF
 
+
       DO i=1,Element % Type % NumberOfNodes
         j = Solver % Variable % Perm(Element % NodeIndexes(i))
-        CALL ZeroRow(Solver % Matrix, j)
-        Solver % Matrix % RHS(j) = 0._dp
-        CALL SetMatrixElement(Solver % Matrix,j,j,1._dp)
+        A % ConstrainedDOF(j) = .TRUE.
       END DO
     END DO
 END BLOCK
