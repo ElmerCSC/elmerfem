@@ -13988,7 +13988,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( Parallel ) THEN
-      CALL Info('SolveLinearSystem','Assuming parallel linear system',Level=6)
+      CALL Info('SolveLinearSystem','Assuming parallel linear system',Level=8)
     ELSE
       CALL Info('SolveLinearSystem','Assuming serial linear system',Level=8)
     END IF  
