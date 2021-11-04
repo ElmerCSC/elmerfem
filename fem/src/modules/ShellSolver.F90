@@ -680,7 +680,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
         CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
             MassAssembly, HarmonicAssembly, LocalSol, LocalRHSForce, Parent, nd_parent, &
-            CartesianFormulation)
+            CartesianFormulation, SkipBlending)
 
         IF (LargeDeflection .AND. NonlinIter == 1) THEN
           ! ---------------------------------------------------------------------------
@@ -4849,7 +4849,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
       MassAssembly, HarmonicAssembly, LocalSol, RHSForce, Parent, nd_parent, &
-      CartesianFormulation)
+      CartesianFormulation, SkipBlending)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
@@ -4864,6 +4864,7 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: Parent     ! The parent of the boundary element
     INTEGER, INTENT(IN) :: nd_parent                   ! The number of parent DOFs per component   
     LOGICAL, INTENT(IN) :: CartesianFormulation        ! Defines the way how the surface basis is obtained
+    LOGICAL, INTENT(IN) :: SkipBlending                ! Informs whether surface reconstruction has been done
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC, BodyParams
     TYPE(Nodes_t) :: Nodes, ParentNodes
@@ -4908,11 +4909,11 @@ CONTAINS
 
     ! The loads are treated as dead loads by default. The Cartesian components formulation
     ! can also handle "live" resultant force/couple loads which depend on the deformation.
-    ! TO DO: Enable live loads for the low-order shell elements.
+    ! TO DO: Enable live loads when a physical surface model is used 
     !
     LiveLoads = .NOT. GetLogical(BC, 'Dead Loads', Found)
     IF (.NOT. Found) LiveLoads = .FALSE.
-    LiveLoads = LiveLoads .AND. LargeDeflection .AND. ASSOCIATED(Parent)
+    LiveLoads = LiveLoads .AND. LargeDeflection .AND. ASSOCIATED(Parent) .AND. SkipBlending
 
     CALL GetElementNodes(Nodes)
 
