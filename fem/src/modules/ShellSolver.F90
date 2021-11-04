@@ -238,7 +238,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: DrillingPar
   REAL(KIND=dp) :: ShearAlpha, MembraneAlpha, StretchAlpha
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, ElementDef
 
   ! Variables for development version: 
   REAL(KIND=dp) :: TotalErr
@@ -260,6 +260,20 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   Parallel = ParEnv % PEs > 1
 
   CartesianFormulation = GetLogical(SolverPars, 'Cartesian Formulation', Found)
+  IF (.NOT. Found) THEN
+    !
+    ! Having a p-element definition switches to the Cartesian components formulation
+    !
+    ElementDef = ListGetString(SolverPars, 'Element', Found)
+    IF (Found) THEN
+      i = INDEX(ElementDef,'p:')
+      IF (i > 0) THEN
+        CartesianFormulation = .TRUE.
+      END IF
+    END IF
+  END IF
+  SkipBlending = GetLogical(SolverPars, 'Skip Surface Reconstruction', Found)
+
   IF (CartesianFormulation) THEN
     CALL Info('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION', Level=3)
     CALL Info('ShellSolver', 'USE HIGH-ORDER BASIS FUNCTIONS TO HANDLE LOCKING', Level=3)
@@ -271,8 +285,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
   END IF
 
-  SkipBlending = GetLogical(SolverPars, 'Skip Surface Reconstruction', Found)
-  IF (.NOT. Found) SkipBlending = CartesianFormulation
+
 
   DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
   IF (DrillingDOFs) CALL Warn('ShellSolver', &

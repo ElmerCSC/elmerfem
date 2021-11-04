@@ -6,8 +6,8 @@
 !
 ! Here the problem is solved by combining a high-order discretization and 
 ! improved surface reconstruction done over a standard surface mesh embedded in
-! 3-D space. This option needs a special command "Cartesian Formulation = 
-! Logical True" and "Skip Surface Reconstruction = Logical False".
+! 3-D space. Having a p-element definition automatically switches to a special 
+! formulation (sets "Cartesian Formulation = Logical True").  
 !
 
 Check Keywords "Warn"
@@ -61,8 +61,6 @@ Solver 1
   Nonlinear System Max Iterations = 100
   Nonlinear System Convergence Tolerance = 1e-6
 
-  Cartesian Formulation = Logical True
-  Skip Surface Reconstruction = Logical False
   Element = "p:2 b:1"
 
   Linear System Solver = Direct !"Iterative"
