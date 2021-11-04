@@ -892,7 +892,7 @@ CONTAINS
 !
 !  FUNCTION VALUE:
 !    LOGICAL :: retVal
-!       .TRUE. if given element is a p triangle, .FALSE. otherwise
+!       .TRUE. if given element is a p element, .FALSE. otherwise
 !    
 !------------------------------------------------------------------------------
       IMPLICIT NONE

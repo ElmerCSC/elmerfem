@@ -285,8 +285,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ShellModelPar = ListGetInteger(SolverPars, 'Variable DOFs', minv=6, maxv=6)
   END IF
 
-
-
   DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
   IF (DrillingDOFs) CALL Warn('ShellSolver', &
       'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
@@ -899,8 +897,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
  
 CONTAINS
 
-
-
 ! ---------------------------------------------------------------------------------
 ! This subroutine uses an ordinary field variable or mesh.director file arranged as
 !
@@ -1140,7 +1136,6 @@ CONTAINS
 !-------------------------------------------------------------------------------    
   END FUNCTION GetElementalDirector
 !-------------------------------------------------------------------------------
-
   
 ! ---------------------------------------------------------------------------
 !> Perform an additional check that the director data defines a properly 
@@ -1451,7 +1446,6 @@ CONTAINS
   END SUBROUTINE CreateCurvedEdges
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 ! Create an orthonormal basis (ex,ey,ez) for a local coordinate 
 ! system (x,y,z) associated with a given edge. The base vectors and the origin 
@@ -1557,7 +1551,6 @@ CONTAINS
   END SUBROUTINE EdgeFrame
 !---------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 ! Compute data which can be used to represent a space curve in the standard 
 ! Hermite form. The curve tangent vectors expressed with respect to the global 
@@ -1624,7 +1617,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE HermiteForm
 !------------------------------------------------------------------------------
-
 
 !----------------------------------------------------------------------------
 ! This function produces the covariant basis {a_i}, the first and second
@@ -2306,7 +2298,6 @@ CONTAINS
   END FUNCTION BlendingSurfaceInfo
 !-----------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 ! This subroutine gives the referential description B(f(p)) of the Hermite basis 
 ! functions B(x), with f being the mapping of the reference element [-1,1] to
@@ -2510,7 +2501,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE FindBubbleNodesQuad
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 ! This subroutine creates an orthonormal basis which gives the orientation of 
@@ -3370,7 +3360,6 @@ CONTAINS
   END SUBROUTINE LinesOfCurvaturePatch
 !-----------------------------------------------------------------------------------
 
-
 !----------------------------------------------------------------------------------
 ! Obtain the covariant surface basis vectors ai when the coordinates of the principal 
 ! coordinate patch x and y are given. The components of the two fundamental forms and 
@@ -3564,7 +3553,6 @@ CONTAINS
   END SUBROUTINE SurfaceBasisVectors
 !-----------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 ! The elementwise contribution to the system of discrete shell equations.
 ! This subroutine creates the tangential stiffness matrix for the computation
@@ -3580,7 +3568,10 @@ CONTAINS
 ! IMPORTANT REMARK: Currently strain reduction operators have been worked out
 ! only for the lowest-order Lagrange interpolation elements. Detecting a 
 ! p-element switches to the standard weak formulation which can give highly
-! inaccurate results for thin shells (with low p)! 
+! inaccurate results for thin shells! This subroutine does not attempt to
+! handle p-elements with p > 1. Higher-order cases are now handled by the
+! the alternate subroutine ShellLocalMatrixCartesian activated by having
+! Cartesian Formulation = True.
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       NonlinearBending, StrainReductionMethod, MembraneStrainReductionMethod, ShearAlpha, &
@@ -3620,7 +3611,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Stat, Found
-    LOGICAL :: SuperParametric, SecondOrder, PVersion
+    LOGICAL :: SecondOrder, PVersion
     LOGICAL :: UseShearCorrection, UseBubbles
     LOGICAL :: PlateBody                   ! To indicate that the surface is flat
     LOGICAL :: SphericalSurface            ! To indicate that the surface is considered to spherical
@@ -3673,6 +3664,9 @@ CONTAINS
     SAVE Element, GElement, Nodes, PNodes, PRefNodes
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
+    Pversion = IsActivePElement(BGElement)
+    IF (PVersion .AND. BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
+        'Set Cartesian Formulation = True to use p-elements with p > 1')
     Family = GetElementFamily(BGElement)
 
     ! ------------------------------------------------------------------------------
@@ -3733,8 +3727,6 @@ CONTAINS
     !   * Element: the Lagrange interpolation element corresponding to the "Element" keyword 
     !   * GElement: an element structure corresponding to the surface reconstruction
     ! ------------------------------------------------------------------------------
-    Pversion = IsActivePElement(BGElement)
-
     SELECT CASE(Family)
     CASE(3)
       SecondOrder = BGElement % Type % NumberOfNodes == 6
@@ -3742,7 +3734,6 @@ CONTAINS
       SecondOrder = BGElement % Type % NumberOfNodes == 9
     END SELECT
 
-    SuperParametric = .FALSE. ! This relates to an experimental version which is not active 
     ! ------------------------------------------------------------------------------
     ! Allocate a Lagrange interpolation element structure corresponding to the
     ! "Element" keyword. A node variable suitable for defining the isoparametric 
@@ -3839,8 +3830,8 @@ CONTAINS
     DO j=1,nd
       ! ------------------------------------------------------------------------
       ! The following transformation is designed for the Lagrange element DOFs.
-      ! This is obscure and most likely inconsistent for the p-element DOFs, p>1,
-      ! although this may not break the p-approximation definitely.
+      ! This would be obscure and most likely inconsistent for the p-element DOFs
+      ! with p>1.
       ! ------------------------------------------------------------------------
       y1 = Nodes % x(j)
       y2 = Nodes % y(j)
@@ -3918,7 +3909,6 @@ CONTAINS
 
     IP = GaussPoints( BGElement )
 
-
     QUADRATURELOOP: DO t=1,IP % n
 
       BM = 0.0d0
@@ -3930,19 +3920,6 @@ CONTAINS
       NonlinBB = 0.0d0
 
       IF ( PVersion .OR. SecondOrder) THEN
-
-        !  IF (SuperParametric) THEN
-        !    ! Get p-basis on the reference element ...
-        !    stat = ElementInfo( BGElement, PRefNodes, IP % U(t), IP % V(t), &
-        !              IP % W(t), detJ, Basis, dBasis )
-        !    ! ... and get the derivatives with respect to lines of curvature coordinates by just transforming the 
-        !    ! derivatives of basis functions taken with respect to the reference element coordinates:
-        !    stat = SuperParametricElementInfo( BGElement, GElement, GBasis, PatchNodes(1:16,1), &
-        !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis, ReadyBasis = .TRUE.)
-        !    y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
-        !    y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )            
-        !
- 
         IF (PVersion) THEN
           stat = ElementInfo(BGElement, PNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis, dBasis)
           y1 = SUM( PNodes % x(1:nd) * Basis(1:nd) )
@@ -3954,16 +3931,7 @@ CONTAINS
         END IF
         sq = IP % S(t)
       ELSE
-
-        !        IF (SuperParametric) THEN
-        !          stat = SuperParametricElementInfo( Element, GElement, GBasis, PatchNodes(1:16,1), &
-        !              PatchNodes(1:16,2), IP % U(t), IP % V(t), detJ, Basis, dBasis )
-        !          y1 = SUM( PatchNodes(1:16,1) * GBasis(1:16) )
-        !          y2 = SUM( PatchNodes(1:16,2) * GBasis(1:16) )  
-        !        ELSE ...
-
         ! ---------------------------------------------------------------------------------
-        ! Use isoparametric element map:
         ! ReductionOperatorInfo should give all necessary basis functions without the
         ! standard ElementInfo call as
         !
@@ -4004,7 +3972,6 @@ CONTAINS
 
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
-
       END IF
 
       ! ------------------------------------------------------------------------------
@@ -4035,7 +4002,6 @@ CONTAINS
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, DrillingPar)
-
 
       ! Shear correction factor:
       IF ( UseShearCorrection ) THEN
@@ -5493,7 +5459,6 @@ CONTAINS
   END SUBROUTINE SetStrainReductionParameters
 !------------------------------------------------------------------------------
 
-
 ! --------------------------------------------------------------------------
 ! Allocate a Lagrange interpolation element structure corresponding to the
 ! "Element" keyword. A corresponding nodes data structure is also created.
@@ -5598,7 +5563,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE CreateLagrangeElementStructures
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 ! This subroutine updates the coordinate arrays of Nodes argument such that they
@@ -5713,30 +5677,10 @@ CONTAINS
           END SELECT
         END DO
       END IF
-
-      ! ------------------------------------------------------------------------
-      ! An additional node variable needed for superparametric case:
-      ! ------------------------------------------------------------------------
-      !IF (SuperParametric) THEN
-      !  IF ( .NOT. ASSOCIATED( PRefNodes % x ) ) THEN
-      !    ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) )
-      !  ELSE
-      !    IF (n > SIZE(PRefNodes % x)) THEN
-      !      DEALLOCATE(PRefNodes % x, PRefNodes % y, PRefNodes % z)
-      !      ALLOCATE( PRefNodes % x(n), PRefNodes % y(n), PRefNodes % z(n) ) 
-      !    END IF
-      !  END IF
-      !  PRefNodes % NumberOfNodes = n
-      !  PrefNodes % x(1:n) = BGElement % Type % NodeU(1:n)
-      !  PrefNodes % y(1:n) = BGElement % Type % NodeV(1:n)
-      !  PrefNodes % z(1:n) = BGElement % Type % NodeW(1:n)
-      !END IF
-
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE WriteElementNodesVariables
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 ! The matrix representation of the elasticity tensor with respect an orthogonal
@@ -5797,9 +5741,6 @@ CONTAINS
   END SUBROUTINE ElasticityMatrix
 !------------------------------------------------------------------------------    
 
-
-
-
 !------------------------------------------------------------------------------
 ! Return basis functions which give a basis for the range X(K) of a (strain) 
 ! reduction operator R_K: L2(K) -> X(K). By construction these basis functions 
@@ -5837,7 +5778,8 @@ CONTAINS
                                                            !< is done with respect to physical coordinates x
     REAL(KIND=dp), INTENT(OUT), OPTIONAL :: DOFWeigths(:,:)!< Auxiliary div-conforming functions needed in the evaluation of DOFs
     LOGICAL, INTENT(IN), OPTIONAL :: Bubbles               !< Indicate whether a bubble function is requested
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection         !< Preferred direction for edge DOFs when 
+                                                           !< ReductionMethod=CurlKernelWithEdgeDOFs
     LOGICAL :: Stat                                        !< Currently a dummy return value
 !---------------------------------------------------------------------------------
     LOGICAL :: PerformPiolaTransform, CreateBubbles
@@ -6075,7 +6017,6 @@ CONTAINS
   END FUNCTION ReductionOperatorInfo
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 !  Compute a matrix which can be used to evaluate DOFs for the interpolating
 !  function R_K(u) in the strain reduction space X(K) when applied to a H1-
@@ -6106,7 +6047,8 @@ CONTAINS
     INTEGER, INTENT(IN) :: ReductionMethod                  !< The method chosen
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: ModelPars(2,2,n) !< To include the effect of additional model parameters
     LOGICAL, OPTIONAL :: GradientField                      !< To return [d_k(grad(N1).e1) d_k(grad(N1).e2) ... ]
-    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when ReductionMethod=CurlKernelWithEdgeDOFs
+    INTEGER, INTENT(IN), OPTIONAL :: EdgeDirection          !< Preferred direction for edge DOFs when 
+                                                            !< ReductionMethod=CurlKernelWithEdgeDOFs
 !---------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -6665,113 +6607,6 @@ CONTAINS
   END SUBROUTINE ReductionOperatorBubbleDofs
 !------------------------------------------------------------------------------
 
-
-!------------------------------------------------------------------------------
-! This function returns a description of superparametric element 
-! (an experimental feature) 
-!------------------------------------------------------------------------------
-  FUNCTION SuperParametricElementInfo( Element, GElement, GBasis, GNodesX, &
-      GNodesY, u, v, detF, Basis, dBasis, dGBasis, ReadyBasis ) RESULT(stat)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-
-    TYPE(Element_t), TARGET :: Element             !< Element structure
-    TYPE(Element_t), TARGET :: GElement            !< Geometry element structure
-    REAL(KIND=dp) :: GBasis(:)                     !< Geometry element basis function values at p=(u,v)
-    REAL(KIND=dp) :: GNodesX(:)                    !< the X-coordinates of GElement nodes
-    REAL(KIND=dp) :: GNodesY(:)                    !< the Y-coordinates of GElement nodes    
-    REAL(KIND=dp) :: u                             !< 1st local coordinate at which to calculate the basis functions
-    REAL(KIND=dp) :: v                             !< 2nd local coordinate
-    REAL(KIND=dp) :: detF                          !< Metric term for integration
-    REAL(KIND=dp) :: Basis(:)                      !< Basis function values at p=(u,v)
-    REAL(KIND=dp) :: dBasis(:,:)                   !< Global first derivatives of basis functions at p
-    REAL(KIND=dp), OPTIONAL :: dGBasis(:,:)        !< Global first derivatives of geometry basis functions at p
-    LOGICAL, OPTIONAL :: ReadyBasis                !< Transform the given derivatives of the reference element basis
-    LOGICAL :: Stat                                !< A dummy variable at the moment
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-    LOGICAL :: TransformDerivatives
-    INTEGER :: n, dim, cdim, i, j, k
-    
-    REAL(KIND=dp) :: dRefBasis(SIZE(GNodesX),3)
-    REAL(KIND=dp) :: F(2,2), G(2,2)
-    REAL(KIND=dp) :: w 
-!------------------------------------------------------------------------------
-    TransformDerivatives = .FALSE.
-    IF ( PRESENT(ReadyBasis) ) TransformDerivatives = ReadyBasis
-
-    w = 0.0d0
-
-    n  = SIZE(GNodesX)
-    dim  = GElement % TYPE % DIMENSION
-    cdim = dim
-    ! cdim = CoordinateSystemDimension()
-
-    GBasis = 0.0d0
-    CALL NodalBasisFunctions(n, GBasis, GElement, u, v, w)
-
-    dRefBasis = 0.0d0
-    CALL NodalFirstDerivatives(n, dRefBasis, GElement, u, v, w)
-
-    !------------------------------------------------------------------------------
-    ! The gradient of the element mapping K = f(k), with k the reference element
-    !------------------------------------------------------------------------------
-    F = 0.0d0
-    DO i=1,dim
-      F(1,i) = SUM( GNodesX(1:n) * dRefBasis(1:n,i) )
-      F(2,i) = SUM( GNodesY(1:n) * dRefBasis(1:n,i) )
-    END DO
-    DetF = F(1,1)*F(2,2) - F(1,2)*F(2,1)
-
-    ! --------------------------------
-    ! The global first derivatives:
-    ! --------------------------------
-    G(1,1) = 1.0d0/detF * F(2,2)
-    G(1,2) = -1.0d0/detF * F(1,2)
-    G(2,1) = -1.0d0/detF * F(2,1)
-    G(2,2) = 1.0d0/detF * F(1,1)
-    G(1:dim,1:dim) = TRANSPOSE( G(1:dim,1:dim) )
-
-    IF (PRESENT( dGBasis )) THEN
-      dGBasis = 0.0d0
-      DO i=1,n
-        DO j=1,cdim
-          DO k=1,dim
-            dGBasis(i,j) = dGBasis(i,j) + dRefBasis(i,k)*G(j,k)
-          END DO
-        END DO
-      END DO
-    END IF
-
-    IF (TransformDerivatives) THEN
-      n = SIZE(Basis)
-      dRefBasis(1:n,1:dim) = dBasis(1:n,1:dim)    
-    ELSE
-      n = Element % Type % NumberOfNodes
-      Basis = 0.0d0
-      CALL NodalBasisFunctions(n, Basis, Element, u, v, w) 
-
-      dRefBasis = 0.0d0
-      CALL NodalFirstDerivatives(n, dRefBasis, Element, u, v, w)    
-    END IF
-
-    dBasis = 0.0d0
-    DO i=1,n
-      DO j=1,cdim
-        DO k=1,dim
-          dBasis(i,j) = dBasis(i,j) + dRefBasis(i,k)*G(j,k)
-        END DO
-      END DO
-    END DO
-
-    DetF = ABS(DetF)
-    stat = .TRUE.
-!------------------------------------------------------------------------------
-  END FUNCTION SuperParametricElementInfo
-!------------------------------------------------------------------------------
-
-
 !------------------------------------------------------------------------------
 ! Compute the average of the nodal director data saved as elementwise property
 ! 'director' over n-node element. Optionally check whether the surface is
@@ -6826,7 +6661,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION AverageDirector
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 ! Compute the area of an element of the mapped background mesh and add to the 
@@ -7043,14 +6877,13 @@ CONTAINS
   END SUBROUTINE MaterialLaw3D
 !------------------------------------------------------------------------------
 
-
-
-
 !------------------------------------------------------------------------------
   SUBROUTINE SurfaceBasis(y1, y2, A, K1, K2, Spherical, Cylindrical)
 !------------------------------------------------------------------------------
-! Returns the surface basis vectors in the case of some example geometries.
-! The kth basis vector is represented as the column vector A(:,k).
+! Returns the surface basis vectors in the case of some example geometries
+! (a part of a sphere, cylinder or plate). The kth basis vector is represented 
+! as the column vector A(:,k). This subroutine could be generalized to other
+! cases which admit a parametrization by lines of curvature coordinates.
 !------------------------------------------------------------------------------    
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: y1, y2  ! Curvilinear coordinates on a surface
@@ -7117,7 +6950,20 @@ CONTAINS
   END SUBROUTINE SurfaceBasis
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
+! This subroutine for elementwise assembly is based on a Cartesian components
+! formulation which does not use the traditional evaluation of covariant
+! derivatives. The full quadratic expansions in powers of the thickness coordinate
+! may also be employed in the approximation of displacement when 9 DOFs are used, 
+! but the 6-DOF alternative is also available. In addition, approximation with
+! p-elements is supported. The surface model can be based on a physical surface
+! mesh for which an improved surface reconstruction has been done. An alternative
+! is to employ the classical approach where a chart is given as initial data.
+! Then the discretization is performed over a mathematical domain of two
+! dimensions; see the subroutine SurfaceBasis which defines the chart.
+!
+! TO DO: Consider moving the subroutine SurfaceBasis elsewhere so that it can be
+!        replaced easily by a user-supplied subroutine wihout modifying this file. 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, SkipBlending, &
@@ -7881,11 +7727,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
-!------------------------------------------------------------------------------
 ! Create the element mapping corresponding to the principal curvature coordinates
 ! in terms of the basis which is used in the shell analysis.
 ! TO DO: Merge with the subroutine WriteElementNodesVariables (?)
+!------------------------------------------------------------------------------
+  SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
 ! -----------------------------------------------------------------------------
     TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! The nodes data structure to be updated
