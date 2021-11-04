@@ -226,7 +226,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=max_name_len) :: VarName, str
     LOGICAL :: UseSolverMatrix, IsComplex
-    
+    CHARACTER(*), PARAMETER :: Caller = 'BlockInitMatrix'
+
             
     Params => Solver % Values
 
@@ -234,11 +235,11 @@ CONTAINS
 
     BlockMatrix => Solver % BlockMatrix
     IF (ASSOCIATED(BlockMatrix)) THEN
-      CALL Info('BlockInitMatrix','Using existing block matrix',Level=10)
+      CALL Info(Caller,'Using existing block matrix',Level=10)
       RETURN
     END IF
 
-    CALL Info('BlockInitMatrix','Initializing block matrix',Level=10)
+    CALL Info(Caller,'Initializing block matrix',Level=10)
     
     ALLOCATE(Solver % BlockMatrix)
     BlockMatrix => Solver % BlockMatrix
@@ -248,10 +249,10 @@ CONTAINS
     
     IF( GotBlockStruct ) THEN
       IF( SIZE( BlockStruct ) /= BlockDofs ) THEN
-        CALL Fatal('BlockInitMatrix','Incompatible size of > Block Structure < given!')
+        CALL Fatal(Caller,'Incompatible size of > Block Structure < given!')
       END IF
       IF( MINVAL( BlockStruct ) < 1 .OR. MAXVAL( BlockStruct ) > BlockDofs ) THEN
-        CALL Fatal('BlockInitMatrix','Incompatible values in > Block Structure < given!')          
+        CALL Fatal(Caller,'Incompatible values in > Block Structure < given!')          
       END IF
       NoVar = MAXVAL( BlockStruct )
       BlockMatrix % BlockStruct => BlockStruct
@@ -273,12 +274,12 @@ CONTAINS
 
 
     IF( BlockMatrix % NoVar == NoVar ) THEN
-      CALL Info('BlockInitMatrix','Reusing existing blockmatrix',Level=6)
+      CALL Info(Caller,'Reusing existing blockmatrix',Level=6)
       RETURN
     ELSE IF( BlockMatrix % Novar /= 0 ) THEN
-      CALL Fatal('BlockInitMatrix','Previous blockmatrix was of different size?')
+      CALL Fatal(Caller,'Previous blockmatrix was of different size?')
     ELSE
-      CALL Info('BlockInitMatrix','Block matrix will be of size '//TRIM(I2S(NoVar)),Level=6)
+      CALL Info(Caller,'Block matrix will be of size '//TRIM(I2S(NoVar)),Level=6)
     END IF
     
     BlockMatrix % Solver => Solver
@@ -334,8 +335,8 @@ CONTAINS
     ! For example, when we have a projector of a scalar field our block size is (2,2)
     ! but we can only create the (1,1) from the initial matrix system. 
     IF( PRESENT( FieldDofs ) ) THEN
-      CALL Info('BlockInitMatrix','Number of field components: '//TRIM(I2S(FieldDofs)))
-      IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks ('&
+      CALL Info(Caller,'Number of field components: '//TRIM(I2S(FieldDofs)))
+      IF( Novar /= FieldDofs ) CALL Info(Caller,'Number of fields and blocks ('&
           //TRIM(I2S(NoVar))//') differ!')
       IF(.NOT. GotBlockStruct ) NoVar = FieldDofs
     END IF
@@ -368,7 +369,7 @@ CONTAINS
       IF( GotSlaveSolvers ) THEN
         j = SlaveSolvers(i)
 
-        CALL Info('BlockInitMatrix','Associating block '//TRIM(I2S(i))//' with solver: '//TRIM(I2S(j)),Level=10)
+        CALL Info(Caller,'Associating block '//TRIM(I2S(i))//' with solver: '//TRIM(I2S(j)),Level=10)
 
         PSolver => CurrentModel % Solvers(j)
         Var => PSolver % Variable 
@@ -399,14 +400,14 @@ CONTAINS
       ! pointers to the components of the full vector.
       !-----------------------------------------------------------------------------------
       IF(ASSOCIATED( Var ) ) THEN
-        CALL Info('BlockInitMatrix','Using existing variable > '//TRIM(VarName)//' <')		
+        CALL Info(Caller,'Using existing variable > '//TRIM(VarName)//' <')		
       ELSE		
-        CALL Info('BlockInitMatrix','Variable > '//TRIM(VarName)//' < does not exist, creating')
+        CALL Info(Caller,'Variable > '//TRIM(VarName)//' < does not exist, creating')
         PSolver => Solver
         IF( BlockMatrix % GotBlockStruct ) THEN
           j = COUNT( BlockMatrix % BlockStruct == i ) 
           IF( j == 0 ) THEN
-            CALL Fatal('BlockInitMatrix','Invalid > Block Structure < given!')
+            CALL Fatal(Caller,'Invalid > Block Structure < given!')
           END IF
           Var => CreateBlockVariable(PSolver, i, VarName, j, Solver % Variable % Perm )
         ELSE
@@ -423,7 +424,7 @@ CONTAINS
     
     BlockMatrix % TotSize = BlockMatrix % Offset( NoVar + 1 )
 
-    CALL Info('BlockInitMatrix','All done',Level=12)
+    CALL Info(Caller,'All done',Level=12)
       
   END SUBROUTINE BlockInitMatrix
     
@@ -1241,7 +1242,7 @@ CONTAINS
       END DO
     END DO
 
-    PRINT *,'Cartesian dofs:',ndir(1:NoVar)
+    !PRINT *,'Cartesian dofs:',ndir(1:NoVar)
 
     i = n - SUM( ndir ) 
     IF( i > 0 ) THEN      
@@ -1762,6 +1763,7 @@ CONTAINS
     INTEGER, POINTER :: ConstituentSolvers(:)
     LOGICAL :: Found
     LOGICAL :: IsPlate, IsShell, IsNs, IsPres
+    CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingBlocks'
     
     Params => Solver % Values
     ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', Found)
@@ -1799,13 +1801,13 @@ CONTAINS
         END IF
       END DO
       IF (.NOT. Found) THEN
-        CALL Fatal('FsiCouplingBlocks', &
+        CALL Fatal(Caller, &
             'Structure/Plate/Shell Solver Index is not an entry in the Block Solvers array')
       ELSE
         i = k
       END IF
     END IF
-    IF (i > 2) CALL Fatal('FsiCouplingBlocks', &
+    IF (i > 2) CALL Fatal(Caller, &
         'Use the first two entries of Block Solvers to define FSI coupling')
       
     j = ListGetInteger( Params,'Fluid Solver Index',Found)
@@ -1825,13 +1827,13 @@ CONTAINS
         END IF
       END DO
       IF (.NOT. Found) THEN
-        CALL Fatal('FsiCouplingBlocks', &
+        CALL Fatal(Caller, &
             'Fluid/NS/Pressure Solver Index is not an entry in the Block Solvers array')
       ELSE
         j = k
       END IF
     END IF
-    IF (j > 2) CALL Fatal('FsiCouplingBlocks', &
+    IF (j > 2) CALL Fatal(Caller, &
         'Use the first two entries of Block Solvers to define FSI coupling')
 
     IF( j == 0 ) THEN
@@ -1842,22 +1844,22 @@ CONTAINS
     END IF      
     
     IF(i<=0 .OR. j<=0) THEN
-      IF( i > 0 ) CALL Warn('FsiCouplingBlocks','Structure solver given but not fluid!')
-      IF( j > 0 ) CALL Warn('FsiCouplingBlocks','Fluid solver given but not structure!')
+      IF( i > 0 ) CALL Warn(Caller,'Structure solver given but not fluid!')
+      IF( j > 0 ) CALL Warn(Caller,'Fluid solver given but not structure!')
       RETURN
     END IF
     
 !    IF (i > TotMatrix % NoVar .OR. j > TotMatrix % NoVar) &
-!        CALL Fatal('FsiCouplingBlocks','Use solver sections 1 and 2 to define FSI coupling') 
+!        CALL Fatal(Caller,'Use solver sections 1 and 2 to define FSI coupling') 
   
     A_fs => TotMatrix % Submatrix(j,i) % Mat
     A_sf => TotMatrix % Submatrix(i,j) % Mat
     
     IF(.NOT. ASSOCIATED( A_fs ) ) THEN
-      CALL Fatal('FsiCouplingBlocks','Fluid-structure coupling matrix not allocated!')
+      CALL Fatal(Caller,'Fluid-structure coupling matrix not allocated!')
     END IF
     IF(.NOT. ASSOCIATED( A_sf ) ) THEN
-      CALL Fatal('FsiCouplingBlocks','Structure-fluid coupling matrix not allocated!')
+      CALL Fatal(Caller,'Structure-fluid coupling matrix not allocated!')
     END IF
        
     SVar => TotMatrix % Subvector(i) % Var
@@ -1867,10 +1869,10 @@ CONTAINS
     A_f => TotMatrix % Submatrix(j,j) % Mat
     
     IF(.NOT. ASSOCIATED( FVar ) ) THEN
-      CALL Fatal('FsiCouplingBlocks','Fluid variable not present!')
+      CALL Fatal(Caller,'Fluid variable not present!')
     END IF
     IF(.NOT. ASSOCIATED( FVar ) ) THEN
-      CALL Fatal('FsiCouplingBlocks','Structure variable not present!')
+      CALL Fatal(Caller,'Structure variable not present!')
     END IF
 
     IF(.NOT. (IsNs .OR. IsPres ) ) THEN
@@ -1910,11 +1912,13 @@ CONTAINS
     LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
     LOGICAL :: DrillingDOFs, GotCoupling
     TYPE(Solver_t), POINTER :: PSol
+    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingBlocks'
 
+    
     Params => Solver % Values
     ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', GotBlockSolvers)
     IF(.NOT. GotBlockSolvers ) THEN
-      CALL Fatal('StructureCouplingBlocks','We need "Block Solvers" defined!')
+      CALL Fatal(Caller,'We need "Block Solvers" defined!')
     END IF
 
     ! Currently we simply assume the master solver to be listed as the first entry in
@@ -1941,17 +1945,17 @@ CONTAINS
       IF(j==1) CYCLE
       
       IF (GotBlockSolvers) THEN
-        IF (j > size(ConstituentSolvers)) CALL Fatal('StructureCouplingBlocks', &
+        IF (j > size(ConstituentSolvers)) CALL Fatal(Caller, &
             'Solid/Plate/Shell/Beam Solver Index larger than Block Solvers array')
         ind1 = ConstituentSolvers(i)
         ind2 = ConstituentSolvers(j)
-        CALL Info('StructureCouplingBlocks','Generating coupling between solvers '&
+        CALL Info(Caller,'Generating coupling between solvers '&
             //TRIM(I2S(ind1))//' and '//TRIM(I2S(ind2)))
       ELSE
-        IF (j > Solver % BlockMatrix % NoVar) CALL Fatal('StructureCouplingBlocks', &
+        IF (j > Solver % BlockMatrix % NoVar) CALL Fatal(Caller, &
             'Solid/Plate/Shell/Beam Solver Index exceeds block matrix dimensions')
             
-        CALL Info('StructureCouplingBlocks','Generating coupling between solvers '&
+        CALL Info(Caller,'Generating coupling between solvers '&
             //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
       END IF
 
@@ -1967,10 +1971,10 @@ CONTAINS
       A_f => TotMatrix % Submatrix(j,j) % Mat
       
       IF(.NOT. ASSOCIATED( SVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
+        CALL Fatal(Caller,'Master structure variable not present!')
       END IF
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
+        CALL Fatal(Caller,'Slave structure variable not present!')
       END IF
 
       IF (IsShell) THEN
@@ -1996,12 +2000,14 @@ CONTAINS
     END DO
 
     IF(.NOT. GotCoupling ) THEN
-      CALL Fatal('StructureCouplingBlocks','Could not determine coupling blocks!')
+      CALL Fatal(Caller,'Could not determine coupling blocks!')
     END IF
     
   END SUBROUTINE StructureCouplingBlocks
   
-  
+
+  ! This is tailored L2 norm for the many use types of the block solver.
+  !---------------------------------------------------------------------
   FUNCTION CompNorm( x, n, npar, A) RESULT ( nrm ) 
     REAL(KIND=dp) :: x(:)
     INTEGER :: n
@@ -2515,7 +2521,7 @@ CONTAINS
     CALL Info('CreateBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL Fatal('CreateBlockMatrixScaling','This is not really properly implemented in parallel!')
+      CALL Fatal('CreateBlockMatrixScaling','"Block Scaling" is not properly implemented in parallel!')
     END IF
     
     NoVar = TotMatrix % NoVar
@@ -2903,12 +2909,14 @@ CONTAINS
     END IF
       
     IF( DoDiagScaling .AND. BlockScaling ) THEN
-      CALL Warn('BlockMatrixPrec','It is not recommended to use two different scalings at same time')
+      CALL Warn('BlockMatrixPrec','It is not recommended to use two outer scalings at same time')
     END IF
 
     IF( DoDiagScaling .OR. BlockScaling ) THEN
-      CALL Info('BlockMatrixPrec','Only using outer level scaling, skipping scaling on block level!')
-      CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
+      ! This turned out to be a bad idea...
+      !CALL Info('BlockMatrixPrec',&
+      !    'Only using outer level scaling, skipping scaling on block level!',Level=10)
+      !CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
     END IF
       
     ! Always treat the inner iterations as truly complex if they are
@@ -3174,7 +3182,7 @@ CONTAINS
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.FALSE.)
     CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
-    CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
+    !CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
 
       
     Solver => Solver_save
@@ -3390,8 +3398,10 @@ CONTAINS
     INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:),ParPerm(:)
     INTEGER :: i,j,k,l,ia,ib,istat
     LOGICAL :: LS, BlockAV,Found, UseMono
-
-    CALL Info('BlockKrylovIter','Starting block system iteration',Level=8)
+    CHARACTER(*), PARAMETER :: Caller = 'BlockKrylovIter'
+ 
+    
+    CALL Info(Caller,'Starting block system iteration',Level=8)
     
     !CALL ListPushNameSpace('outer:')
     Params => Solver % Values
@@ -3411,23 +3421,23 @@ CONTAINS
     ! Just do some error checks
     DO i=1,NoVar
       IF( .NOT. ASSOCIATED( TotMatrix % Subvector(i) % Var ) ) THEN
-        CALL Fatal('BlockKrylovIter','Subvector '//TRIM(I2S(i))//' not associated!')
+        CALL Fatal(Caller,'Subvector '//TRIM(I2S(i))//' not associated!')
       END IF
       A => TotMatrix % SubMatrix(i,i) % Mat
       IF( .NOT. ASSOCIATED( A ) ) THEN
-        CALL Fatal('BlockKrylovIter','Submatrix '//TRIM(I2S(11*i))//' not associated!')
+        CALL Fatal(Caller,'Submatrix '//TRIM(I2S(11*i))//' not associated!')
       END IF
       IF( .NOT. ASSOCIATED( A % Rhs ) ) THEN
-        CALL Warn('BlockKrylovIter','Submatrix rhs '//TRIM(I2S(11*i))//' not associated!')
+        CALL Warn(Caller,'Submatrix rhs '//TRIM(I2S(11*i))//' not associated!')
       END IF
     END DO
           
-    CALL Info('BlockKrylovIter','Allocating temporal vectors for block system of size: '&
+    CALL Info(Caller,'Allocating temporal vectors for block system of size: '&
         //TRIM(I2S(ndim)),Level=10)
 
     ALLOCATE(x(ndim), b(ndim),r(ndim),STAT=istat)
     IF( istat /= 0 ) THEN
-      CALL Fatal('BlockKrylovIter','Cannot allocate temporal vectors of size: '//TRIM(I2S(ndim)))
+      CALL Fatal(Caller,'Cannot allocate temporal vectors of size: '//TRIM(I2S(ndim)))
     END IF
     
     x = 0.0_dp
@@ -3435,7 +3445,7 @@ CONTAINS
     r = 0.0_dp
     
     IF (isParallel) THEN
-      CALL Info('BlockKrylovIter','Performing parallel initializations!',Level=18)
+      CALL Info(Caller,'Performing parallel initializations!',Level=18)
       DO i=1,NoVar
         DO j=1,NoVar
           A => TotMatrix % SubMatrix(i,j) % Mat          
@@ -3458,7 +3468,7 @@ CONTAINS
       END IF
     END IF
       
-    CALL Info('BlockKrylovIter','Initializing monolithic system vectors',Level=18)
+    CALL Info(Caller,'Initializing monolithic system vectors',Level=18)
     
     DO i=1,NoVar
       A => TotMatrix % SubMatrix(i,i) % Mat
@@ -3503,13 +3513,13 @@ CONTAINS
       
     prevXnorm = CompNorm(b,ndim)
     WRITE( Message,'(A,ES12.5)') 'Rhs norm at start: ',PrevXnorm
-    CALL Info('BlockKrylovIter',Message,Level=10)
+    CALL Info(Caller,Message,Level=10)
 
     prevXnorm = CompNorm(x,ndim)
     WRITE( Message,'(A,ES12.5)') 'Solution norm at start: ',PrevXnorm
-    CALL Info('BlockKrylovIter',Message,Level=10)
+    CALL Info(Caller,Message,Level=10)
 
-    CALL Info('BlockKrylovIter','Start of blocks system iteration',Level=18)
+    CALL Info(Caller,'Start of blocks system iteration',Level=18)
 
     ! Always treat the block system as a real valued system and complex
     ! arithmetics only at the inner level.
@@ -3540,7 +3550,7 @@ CONTAINS
           SolverMatrix % ParMatrix % SplittedMatrix % TmpXvec = x(1:poffset(NoVar+1))
           CALL ParallelUpdateResult(SolverMatrix,x,r)
         ELSE
-          CALL Fatal('BlockKrylovIter','No matrix to apply.')
+          CALL Fatal(Caller,'No matrix to apply.')
         END IF
       ELSE
         DO i=1,NoVar
@@ -3565,7 +3575,7 @@ CONTAINS
             Solver,ndim=ndim,MatvecF=mvProc,PrecF=precProc) 
       END IF
     END IF
-    CALL info('BlockKrylovIter','Finished block system iteration',Level=18)
+    CALL info(Caller,'Finished block system iteration',Level=18)
     
     CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
     CALL ListAddLogical(Params,'Linear System Free Factorization',.TRUE.)
@@ -3574,13 +3584,13 @@ CONTAINS
     
     Xnorm = CompNorm(x,ndim)
     WRITE( Message,'(A,ES12.5)') 'Solution norm: ',Xnorm
-    CALL Info('BlockKrylovIter',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     MaxChange = 2*ABS(Xnorm-PrevXnorm)/(Xnorm+PrevXnorm)
     PrevXNorm = Xnorm
 
     WRITE( Message,'(A,ES12.5)') 'Relative change: ',MaxChange
-    CALL Info('BlockKrylovIter',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
     
     DO i=1,NoVar
       TotMatrix % SubVector(i) % Var % Values(1:offset(i+1)-offset(i)) = & 
@@ -3597,7 +3607,7 @@ CONTAINS
       SolverVar % Values = x
     END IF
 
-    CALL Info('BlockKrylovIter','Finished block krylov iteration',Level=20)
+    CALL Info(Caller,'Finished block krylov iteration',Level=20)
    
   END SUBROUTINE blockKrylovIter
 
