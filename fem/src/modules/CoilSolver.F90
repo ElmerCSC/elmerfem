@@ -65,10 +65,11 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params 
-  INTEGER :: dim
+  TYPE(ValueList_t), POINTER :: Params, BC 
+  INTEGER :: dim, i
   LOGICAL :: Found, CalcCurr, CalculateElemental, CalculateNodal
-
+  INTEGER, POINTER :: ElBCs(:)
+  
   dim = CoordinateSystemDimension()
   Params => GetSolverParams()
 
@@ -126,9 +127,32 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         NextFreeKeyword('Exported Variable',Params),&
         '-dofs '//TRIM(I2S(dim))//' CoilCurrent')
   END IF
-      
+
 ! Loads are needed to compute the induced currents in a numerically optimal way
   CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
+
+  DO i=1,Model % NumberOfComponents 
+    Params => Model % Components(i) % Values
+
+    ElBCs => ListGetIntegerArray(Params, 'Electrode Boundaries', Found)
+    IF(.NOT. Found) CYCLE
+
+    IF(SIZE(ElBCs) /= 2) THEN
+      CALL Warn('CoilSolver_init','For CoilSolver the size of "Electrode Boundaries must be two!')
+      CYCLE
+    END IF
+    
+    BC => CurrentModel % BCs(ElBCs(1)) % Values
+    IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('CoilSolver_init', 'Boundary not found!')    
+    CALL ListAddLogical( BC,'Coil End',.TRUE.)
+
+    BC => CurrentModel % BCs(ElBCs(2)) % Values
+    IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('CoilSolver_init', 'Boundary not found!')    
+    CALL ListAddLogical( BC,'Coil Start',.TRUE.)
+    
+    CALL Info('CoilSolver_init','"Coil Start" and "Coil End" set to "Electrode Boundaries"',Level=5)
+  END DO
+     
 
 END SUBROUTINE CoilSolver_init
 
@@ -212,22 +236,18 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       ListGetLogicalAnyComponent( Model,'Coil Closed') 
  
   IF( CoilClosed ) THEN
+    CALL Info('CoilSolver','Assuming that all coils are closed!',Level=5)
     CoilParts = 2
   ELSE
+    CALL Info('CoilSolver','Assuming that all coils are open!',Level=5)
     IF( .NOT. ListGetLogicalAnyBC( Model,'Coil Start') ) THEN
-      CALL Info('CoilSolver','Assuming coil that is not closed',Level=5)
       CALL Fatal('CoilSolver','> Coil Start < must be defined on some BC')
     END IF
     IF( .NOT. ListGetLogicalAnyBC( Model,'Coil End') ) THEN
-      CALL Info('CoilSolver','Assuming coil that is not closed',Level=5)
       CALL Fatal('CoilSolver','> Coil End < must be defined on some BC')
     END IF
     CoilParts = 1
   END IF
-
-  OneCut = GetLogical( Params,'Single Coil Cut',Found )
-  
-  NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
   
   CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
   IF( .NOT. Found ) CalcCurr = .TRUE.
@@ -250,6 +270,9 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CALL Fatal('CoilSolver','CoilPot not associated!')
   END IF
   IF( CoilParts == 2 ) THEN
+    OneCut = GetLogical( Params,'Single Coil Cut',Found )
+    NarrowInterface = GetLogical( Params,'Narrow Interface',Found )
+
     ALLOCATE( SetB(nsize) )
     SetB = 0 
 
@@ -314,16 +337,20 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CoilIndex = 0
       END IF
       NoCoils = NoCoils + 1
-      SelectNodes = .TRUE.
-      CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
-      CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, &
-          CoilList, TargetBodies )
+      IF( CoilClosed ) THEN
+        SelectNodes = .TRUE.      
+        CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
+        CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, &
+            CoilList, TargetBodies )
+      END IF
     ELSE
       IF( NoCoils > 0 ) EXIT
       NoCoils = 1
       CoilList => Params
-      CALL DefineCoilCenter( CoilCenter, Params )
-      CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, Params )
+      IF( CoilClosed ) THEN
+        CALL DefineCoilCenter( CoilCenter, Params )
+        CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, Params )
+      END IF
     END IF
 
     ! Choose nodes where the Dirichlet values are set. 
