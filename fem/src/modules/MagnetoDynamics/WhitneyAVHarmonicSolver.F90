@@ -674,7 +674,7 @@ BLOCK
       IF(.NOT.AutomaticBC) CYCLE
 
       Electrodes =>  ListGetIntegerArray( CompParams, &
-             'Electode Boundaries', Found )
+             'Electrode Boundaries', Found )
 
       IF(ASSOCIATED(Electrodes)) THEN
         IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
