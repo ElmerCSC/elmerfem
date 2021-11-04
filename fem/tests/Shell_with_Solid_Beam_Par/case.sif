@@ -14,6 +14,7 @@
 !   - modified to allow a comparison with the simple beam theory 
 !     by M.M. June, 2020.
 !   - tested to work with the drilling rotation formulation (Oct 6, 2020)
+!   - Modified for parallel operation 2.11.2021
 !------------------------------------------------------------
 
 Header
@@ -23,7 +24,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -33,6 +34,16 @@ Simulation
   vtu: Vector Field 1 = String "displacement"
   vtu: Vector Field 1 Complement = String "u"
   vtu: Vector Field 2 = String "dnu"
+
+! These are the internal partitioning commands
+  Partition Mesh = Logical True
+  Partitioning Method = String "Zoltan"
+  Partition Equation Balance = Logical True 
+  Partition Equation Interface = Logical True
+  Partition Mesh Extend Layers = Integer 4
+
+!  Max OUtput Partition = 3
+!  Output To File = Logical True
 End
 
 Body 1
@@ -89,7 +100,7 @@ Solver 1
 !  Linear System Solver = direct
 !  Linear System Direct Method = MUMPS
   Linear System Scaling = False
-  Optimize Bandwidth = True
+  Optimize Bandwidth = False
   Linear System Residual Output = 20
 
 ! Request for a linear system that couples two structural models:
@@ -108,6 +119,8 @@ Solver 1
 ! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
 
+!  Block Mv monolithic = Logical False
+
 ! Call the assembly for the 2nd solver using the slave solver slot:
   Pre Solvers(1) = 2
   
@@ -117,18 +130,23 @@ Solver 1
 
   Outer: Linear System Solver = string "Iterative"
   Outer: Linear System Convergence Tolerance = real 1e-6
-  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System Iterative Method = "gcr"
   Outer: Linear System GCR Restart = Integer 100
   Outer: Linear System Residual Output = integer 1
   Outer: Linear System Max Iterations = integer 50
   Outer: Linear System Min Iterations = integer 3
   Outer: Linear System Abort Not Converged = false
-  Outer: Linear System Scaling = true
+  Outer: Linear System Scaling = False
+
+
+  Block 11: Linear System Solver = string "direct"
+  Block 11: Linear System Direct Method = MUMPS
+  Block 22: Linear System Solver = string "direct"
+  Block 22: Linear System Direct Method = MUMPS
 
 ! We don't want to displace the mesh in this test since only the solid would
 ! be displaced, not the shell. 
   Displace Mesh = False
-
 End
 
 
@@ -137,26 +155,24 @@ Solver 2
   Procedure = "ShellSolver" "ShellSolver"
 
   Large Deflection = False
-  Drilling DOFs = False
+  Drilling DOFs = True
 
-!  Linear System Solver = "Direct"
-!  Linear System Direct Method = MUMPS
+  Linear System Solver = "Direct"
+  Linear System Direct Method = MUMPS
 
-  Linear System Solver = Iterative
-  Linear System Iterative Method = idrs 
-  Linear System GCR Restart = 400
-  Linear System Preconditioning = Ilu2
-  Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-6
-  Linear System Residual Output = 20
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = idrs 
+!  Linear System GCR Restart = 400
+!  Linear System Preconditioning = Ilu2
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1e-6
+!  Linear System Residual Output = 20
 
-  Steady State Convergence Tolerance = 1e-09
-  Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 1
 
 ! The defaults are True for the following 2 keywords:
-  Linear System Scaling = True
-  Optimize Bandwidth = True
+  Linear System Scaling = False
+  Optimize Bandwidth = False
 
   Exec Solver = never
   Linear System Solver Disabled = Logical True  

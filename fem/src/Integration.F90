@@ -384,6 +384,9 @@ MODULE Integration
           0.183673469387755d0, 0.183673469387755d0 /)
 !------------------------------------------------------------------------------
 ! Quadrilateral - 12-point rule for complete polynomials of order p<=7
+! NOTE: It seems that this rule may give somehow faulty results at least
+!       for some serendipity polynomials of degree 3. Therefore
+!       we never use it. 
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(12), PRIVATE :: UPQuad12 = &
        (/ 0.925820099772551d0, -0.925820099772551d0,  0.000000000000000d0, &
@@ -2639,7 +2642,13 @@ CONTAINS
          ! An explicit bubble augmentation with lower-order methods switches to
          ! the standard rule:
          IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
-         IntegStuff = GaussPointsQuad(n, Economic)
+         ! The economic 12-point rule appears to be somehow faulty, so we 
+         ! shall never call it
+         IF (Economic .AND. n==12) THEN
+           IntegStuff = GaussPointsQuad(16)
+         ELSE
+           IntegStuff = GaussPointsQuad(n, Economic)
+         END IF
        ELSE
          IntegStuff = GaussPointsQuad(n)
        END IF

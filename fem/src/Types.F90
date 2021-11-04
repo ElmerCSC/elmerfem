@@ -136,13 +136,18 @@ MODULE Types
   TYPE SubMatrix_t
     TYPE(Matrix_t), POINTER :: Mat
     TYPE(Matrix_t), POINTER :: PrecMat
+    LOGICAL :: ParallelSquareMatrix = .TRUE.
+    LOGICAL :: ParallelIsolatedMatrix = .FALSE.
+    INTEGER, POINTER :: ParPerm(:) => NULL()
   END TYPE SubMatrix_t
 
   TYPE BlockMatrix_t
     INTEGER :: NoVar = 0, MaxSize, TotSize
     INTEGER, POINTER :: Offset(:) => NULL()
+    INTEGER, POINTER :: ParOffset(:) => NULL()
     INTEGER, POINTER :: BlockPerm(:) => NULL()
     INTEGER, POINTER :: ParBlockPerm(:) => NULL()
+    INTEGER, POINTER :: ParPerm(:) => NULL()
     TYPE(Solver_t), POINTER :: Solver => NULL()
     REAL(KIND=dp) :: rnorm, bnorm, xnorm
     TYPE(SubMatrix_t), ALLOCATABLE :: SubMatrix(:,:)
@@ -150,6 +155,7 @@ MODULE Types
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:) => NULL()
     INTEGER, POINTER :: InvBlockStruct(:) => NULL()
+    TYPE(Matrix_t), POINTER :: ParentMatrix => NULL()
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t

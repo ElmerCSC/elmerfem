@@ -17810,6 +17810,16 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
+
+    n = COUNT( FPerm>0 .AND. SPerm>0 ) 
+    IF( n == 0 ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+      CALL Info(Caller,'No shared nodes between fluid and structure! Nothing to do!',Level=6)
+      RETURN
+    END IF
+
+    
     IF( IsPlate ) THEN
       CALL Info(Caller,'Assuming structure to be plate',Level=8)
     ELSE IF( IsShell ) THEN
@@ -18555,6 +18565,14 @@ CONTAINS
     CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
 
+    n = COUNT( FPerm>0 .AND. SPerm>0 ) 
+    IF( n == 0 ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+      CALL Info(Caller,'No shared nodes between two structures! Nothing to do!',Level=6)
+      RETURN
+    END IF
+    
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
       ! Add the largest entry that allocates the whole list matrix structure
       CALL AddToMatrixElement(A_fs,nf,ns,0.0_dp)
@@ -18565,14 +18583,6 @@ CONTAINS
       A_sf % Values = 0.0_dp      
     END IF
 
-    n = COUNT( FPerm>0 .AND. SPerm>0 ) 
-    IF( n == 0 ) THEN
-      CALL List_toCRSMatrix(A_fs)
-      CALL List_toCRSMatrix(A_sf)
-      CALL Info(Caller,'No shared nodes between two structures! Nothing to do!',Level=6)
-      RETURN
-    END IF
-    
     DoMass = .FALSE.
     IF( ASSOCIATED( A_f % MassValues ) ) THEN
       IF( ASSOCIATED( A_s % MassValues ) ) THEN
