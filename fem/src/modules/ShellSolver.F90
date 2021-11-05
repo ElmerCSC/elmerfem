@@ -1093,6 +1093,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
 !-------------------------------------------------------------------------------    
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -1143,6 +1144,7 @@ CONTAINS
 !----------------------------------------------------------------------------
   SUBROUTINE CheckSurfaceOrientation()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: n, i, j, k, i0, Active, Family
@@ -3620,8 +3622,7 @@ CONTAINS
     INTEGER :: ShearReductionMethod, StretchReductionMethod
     INTEGER :: DOFs, BubbleDOFs, i, j, k, p, t, i0, j0, csize, GElementNodes 
 
-    REAL(KIND=dp), POINTER :: TaylorParams(:), FrameData(:), PatchData(:)
-    REAL(KIND=dp), POINTER :: PlanarPointFlag(:), UmbilicalPointFlag(:)
+    REAL(KIND=dp), POINTER :: TaylorParams(:)
 
     REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
     REAL(KIND=dp) :: e1(3), e2(3), e3(3)         ! The basis of the local frame
@@ -3672,22 +3673,9 @@ CONTAINS
     ! ------------------------------------------------------------------------------
     ! Retrieve the data which have been saved as elementwise properties:
     ! ------------------------------------------------------------------------------
-    TaylorParams => GetElementProperty('taylor parameters', BGElement)
+    CALL RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
+        o, PlateBody, SphericalSurface, GElement)
 
-    PatchData => GetElementProperty('patch nodes', BGElement) 
-    PatchNodes(1:MaxPatchNodes,1) = PatchData(1:MaxPatchNodes)
-    PatchNodes(1:MaxPatchNodes,2) = PatchData(MaxPatchNodes+1:2*MaxPatchNodes)
- 
-    FrameData => GetElementProperty('element frame', BGElement) 
-    e1 = FrameData(FrameBasis1)
-    e2 = FrameData(FrameBasis2)
-    e3 = FrameData(FrameBasis3)
-    o = FrameData(FrameOrigin)
-
-    PlanarPointFlag => GetElementProperty('planar point', BGElement)
-    UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
-    PlateBody = PlanarPointFlag(1) > 0.0d0
-    SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
     ! ------------------------------------------------------------------------------
     ! Decide what strain reduction strategy is applied and set parameters that
     ! control the selection of variational crimes.
@@ -4866,14 +4854,17 @@ CONTAINS
     LOGICAL, INTENT(IN) :: CartesianFormulation        ! Defines the way how the surface basis is obtained
     LOGICAL, INTENT(IN) :: SkipBlending                ! Informs whether surface reconstruction has been done
 !------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: GElement
     TYPE(ValueList_t), POINTER :: BC, BodyParams
     TYPE(Nodes_t) :: Nodes, ParentNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, AssemblyNeeded, AssembleSprings, AssembleMass, Stat
-    LOGICAL :: LiveLoads, Spherical, Cylindrical
+    LOGICAL :: LiveLoads, Spherical, Cylindrical, PlateBody
 
     INTEGER :: i, i0, j, k, t
+
+    REAL(KIND=dp), POINTER :: TaylorParams(:)
     REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Damp(m*nd,m*nd)
     REAL(KIND=dp) :: Force(m*nd), Basis(nd), ParentBasis(nd_parent), dParentBasis(nd_parent,3)
     REAL(KIND=dp) :: PrevSolVec(m*nd)
@@ -4886,8 +4877,15 @@ CONTAINS
     REAL(KIND=dp) :: u, v, w, detF, y1, y2, K1, K2
     REAL(KIND=dp) :: Norm, CovariantBasis(3,3), NewCovariantBasis(3,3) 
     REAL(KIND=dp) :: PrevGrad(3,2)
+    REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2)
+    REAL(KIND=dp) :: e1(3), e2(3), e3(3)
+    REAL(KIND=dp) :: o(3)
+    REAL(KIND=dp) :: abasis1(3), abasis2(3), abasis3(3)
+    REAL(KIND=dp) :: A11, A22, SqrtDetA
+    REAL(KIND=dp) :: B11, B22   
+    REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
 
-    SAVE Nodes, ParentNodes
+    SAVE Nodes, ParentNodes, GElement
 !------------------------------------------------------------------------------
     RHSForce = 0.0d0
 
@@ -4907,22 +4905,36 @@ CONTAINS
     END IF
     IF (.NOT. AssemblyNeeded) RETURN
 
-    ! The loads are treated as dead loads by default. The Cartesian components formulation
-    ! can also handle "live" resultant force/couple loads which depend on the deformation.
-    ! TO DO: Enable live loads when a physical surface model is used 
+    ! The loads are treated as dead loads by default. Alternatively one can
+    ! define "live" resultant force/couple loads which depend on the deformation.
     !
     LiveLoads = .NOT. GetLogical(BC, 'Dead Loads', Found)
     IF (.NOT. Found) LiveLoads = .FALSE.
-    LiveLoads = LiveLoads .AND. LargeDeflection .AND. ASSOCIATED(Parent) .AND. SkipBlending
+    LiveLoads = LiveLoads .AND. LargeDeflection .AND. ASSOCIATED(Parent)
 
     CALL GetElementNodes(Nodes)
 
     IF (LiveLoads) THEN
       CALL GetElementNodes(ParentNodes, Parent)
       CALL GetVectorLocalSolution(ParentSol, UElement=Parent)
-      BodyParams => GetBodyParams(Parent)
-      Spherical = GetLogical(BodyParams, 'Spherical Body', Found)
-      Cylindrical = GetLogical(BodyParams, 'Cylindrical Body', Found)
+
+      IF (SkipBlending) THEN
+        BodyParams => GetBodyParams(Parent)
+        Spherical = GetLogical(BodyParams, 'Spherical Body', Found)
+        Cylindrical = GetLogical(BodyParams, 'Cylindrical Body', Found)
+      ELSE
+        ! ------------------------------------------------------------------------------
+        ! Retrieve the data which have been saved as elementwise properties:
+        ! ------------------------------------------------------------------------------
+        CALL RetrieveLocalFrame(Parent, TaylorParams, PatchNodes, e1, e2, e3, &
+            o, PlateBody, Spherical, GElement)
+
+        ! --------------------------------------------------------------------------
+        ! Overwrite the coordinate arrays of the structure ParentNodes so that it 
+        ! represents the domain of the principal curvature coordinates:
+        ! --------------------------------------------------------------------------
+        CALL SolveNodesVariables(Parent, ParentNodes, nd_parent, GElement, PatchNodes)
+      END IF
     END IF
 
     Force = 0.0d0
@@ -4943,15 +4955,17 @@ CONTAINS
     ! the effect of the improved surface reconstruction is not taken into
     ! account. The weight would contain some small correction terms
     ! if the effect of metric tensor would be considered precisely.
+    !
     IP = GaussPoints(BGElement)
     DO t=1,IP % n
       stat = ElementInfo(BGElement, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis)
+
       ResultantForce(1:3) = MATMUL(NodalForce(1:3,1:n), Basis(1:n))
       ResultantCouple(1:3) = MATMUL(NodalCouple(1:3,1:n), Basis(1:n))
       Weight = IP % s(t) * DetJ
 
-      IF (LiveLoads .AND. CartesianFormulation) THEN
+      IF (LiveLoads) THEN
         !
         ! Create live loads whose orientations depend on the deformation. 
         ! First, find basis functions for the parent elements:
@@ -4960,16 +4974,32 @@ CONTAINS
             v, w, Basis)
         stat = ElementInfo(Parent, ParentNodes, u, v, w, detF, ParentBasis, dParentBasis)
 
-        y1 = SUM( ParentNodes % x(1:n) * ParentBasis(1:n) )
-        y2 = SUM( ParentNodes % y(1:n) * ParentBasis(1:n) )
+        y1 = SUM( ParentNodes % x(1:nd_parent) * ParentBasis(1:nd_parent) )
+        y2 = SUM( ParentNodes % y(1:nd_parent) * ParentBasis(1:nd_parent) )
 
-        CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+        IF (SkipBlending) THEN
+          !
+          ! This uses a surface parametrization over a 2D domain in special cases.
+          !
+          CALL SurfaceBasis(y1, y2, CovariantBasis, K1, K2, Spherical, Cylindrical)
+
+          abasis1(:) = CovariantBasis(:,1)
+          abasis2(:) = CovariantBasis(:,2)
+          abasis3(:) = CovariantBasis(:,3)
+        ELSE
+          !
+          ! Here we utilize the surface reconstruction
+          !
+          CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
+            abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
+            C211, C212, PlanarPoint=PlateBody, Umbilical=Spherical)
+        END IF
 
         PrevGrad(1:3,1:2) = MATMUL(ParentSol(1:3,1:nd_parent), dParentBasis(1:nd_parent,1:2))
 
-        NewCovariantBasis(1:3,1) = CovariantBasis(1:3,1) + PrevGrad(1:3,1)
-        NewCovariantBasis(1:3,2) = CovariantBasis(1:3,2) + PrevGrad(1:3,2)
-        NewCovariantBasis(1:3,3) = CrossProduct(NewCovariantBasis(1:3,1), NewCovariantBasis(1:3,2))
+        NewCovariantBasis(1:3,1) = abasis1(1:3) + PrevGrad(1:3,1)
+        NewCovariantBasis(1:3,2) = abasis2(1:3) + PrevGrad(1:3,2)
+        NewCovariantBasis(1:3,3) = CrossProduct(abasis1, abasis2)
         DO i=1,3
           Norm = SQRT(SUM(NewCovariantBasis(1:3,i)**2))
           NewCovariantBasis(1:3,i) = NewCovariantBasis(1:3,i)/Norm
@@ -5313,6 +5343,62 @@ CONTAINS
 ! ---------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+! This subroutine retrieves the surface data which have been saved as elementwise 
+! properties:
+!------------------------------------------------------------------------------
+SUBROUTINE RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
+    o, PlateBody, SphericalSurface, GElement)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: BGElement         ! The target element for retrieval
+    REAL(KIND=dp), POINTER, INTENT(OUT) :: TaylorParams(:)    ! The coefficients of the Taylor polynomial
+    REAL(KIND=dp), INTENT(OUT) :: PatchNodes(MaxPatchNodes,2) ! The nodes of principal coordinate patch
+    REAL(KIND=dp), INTENT(OUT) :: e1(3), e2(3), e3(3)         ! The basis of the local frame
+    REAL(KIND=dp), INTENT(OUT) :: o(3)                        ! The origin of the local frame
+    LOGICAL, INTENT(OUT) :: PlateBody                         ! Indicates a planar part
+    LOGICAL, INTENT(OUT) :: SphericalSurface                  ! Indicates a spherical part
+    TYPE(Element_t), POINTER, INTENT(INOUT) :: GElement       ! The element structure corresponding to 
+                                                              ! the surface reconstruction
+!------------------------------------------------------------------------------
+    INTEGER :: Family
+    REAL(KIND=dp), POINTER :: PatchData(:), FrameData(:)
+    REAL(KIND=dp), POINTER :: PlanarPointFlag(:), UmbilicalPointFlag(:)
+!------------------------------------------------------------------------------
+    TaylorParams => GetElementProperty('taylor parameters', BGElement)
+
+    PatchData => GetElementProperty('patch nodes', BGElement) 
+    PatchNodes(1:MaxPatchNodes,1) = PatchData(1:MaxPatchNodes)
+    PatchNodes(1:MaxPatchNodes,2) = PatchData(MaxPatchNodes+1:2*MaxPatchNodes)
+ 
+    FrameData => GetElementProperty('element frame', BGElement) 
+    e1 = FrameData(FrameBasis1)
+    e2 = FrameData(FrameBasis2)
+    e3 = FrameData(FrameBasis3)
+    o = FrameData(FrameOrigin)
+
+    PlanarPointFlag => GetElementProperty('planar point', BGElement)
+    UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
+    PlateBody = PlanarPointFlag(1) > 0.0d0
+    SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
+
+    ! --------------------------------------------------------------------------
+    ! Create the element structure corresponding to the surface reconstruction:
+    ! --------------------------------------------------------------------------
+    IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
+    Family = GetElementFamily(BGElement)
+    SELECT CASE(Family)
+    CASE(3)
+      GElement % Type => GetElementType(310, .FALSE.)
+    CASE(4)
+      GElement % Type => GetElementType(416, .FALSE.)
+    CASE DEFAULT
+      CALL Fatal('RetrieveLocalFrame', 'Unsupported (geometry model) element type')
+    END SELECT
+!------------------------------------------------------------------------------
+END SUBROUTINE RetrieveLocalFrame
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 ! Define what strain reduction strategy is applied and set parameters that
 ! control the selection of variational crimes.
 !------------------------------------------------------------------------------
@@ -5320,6 +5406,7 @@ CONTAINS
       ReducedStrainDim, UseBubbles, UseShearCorrection, DOFsTransform, &
       MembraneStrains)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     INTEGER, INTENT(INOUT) :: ReductionMethod         ! A desired method, the true choice may be different
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
@@ -5469,6 +5556,7 @@ CONTAINS
   SUBROUTINE CreateLagrangeElementStructures(BGElement, nd, Element, Nodes, &
       PNodes, GElement)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs (per component)
     TYPE(Element_t), POINTER, INTENT(OUT) :: Element   ! A Lagrange element data structure
@@ -5575,6 +5663,7 @@ CONTAINS
   SUBROUTINE WriteElementNodesVariables(BGElement, GElement, Element, Nodes, &
       PNodes, PatchNodes)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement ! An element of background mesh
     TYPE(Element_t), POINTER, INTENT(IN) :: GElement  ! A Lagrange element for surface reconstruction
     TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
@@ -6760,6 +6849,7 @@ CONTAINS
 !-------------------------------------------------------------------------------------
   FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: e     ! Edge identifier 
     REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
@@ -6998,14 +7088,12 @@ CONTAINS
     LOGICAL :: SphericalSurface            ! To indicate that the surface is considered to spherical
 
     INTEGER :: DOFs, i, j, k, p, t, csize, bsize
-    INTEGER :: Family
 
     REAL(KIND=dp), PARAMETER :: i1(3) = (/ 1.0_dp, 0.0_dp, 0.0_dp /)
     REAL(KIND=dp), PARAMETER :: i2(3) = (/ 0.0_dp, 1.0_dp, 0.0_dp /)
     REAL(KIND=dp), PARAMETER :: i3(3) = (/ 0.0_dp, 0.0_dp, 1.0_dp /)
 
-    REAL(KIND=dp), POINTER :: TaylorParams(:), PatchData(:), FrameData(:)
-    REAL(KIND=dp), POINTER :: PlanarPointFlag(:), UmbilicalPointFlag(:)
+    REAL(KIND=dp), POINTER :: TaylorParams(:)
 
     REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Force(m*nd)
     REAL(KIND=dp) :: Damp(m*nd,m*nd)
@@ -7043,36 +7131,8 @@ CONTAINS
       ! When the surface reconstruction has been done, retrieve the surface data which 
       ! have been saved as elementwise properties:
       ! ------------------------------------------------------------------------------
-      TaylorParams => GetElementProperty('taylor parameters', BGElement)
-
-      PatchData => GetElementProperty('patch nodes', BGElement) 
-      PatchNodes(1:MaxPatchNodes,1) = PatchData(1:MaxPatchNodes)
-      PatchNodes(1:MaxPatchNodes,2) = PatchData(MaxPatchNodes+1:2*MaxPatchNodes)
- 
-      FrameData => GetElementProperty('element frame', BGElement) 
-      e1 = FrameData(FrameBasis1)
-      e2 = FrameData(FrameBasis2)
-      e3 = FrameData(FrameBasis3)
-      o = FrameData(FrameOrigin)
-
-      PlanarPointFlag => GetElementProperty('planar point', BGElement)
-      UmbilicalPointFlag => GetElementProperty('umbilical point', BGElement)
-      PlateBody = PlanarPointFlag(1) > 0.0d0
-      SphericalSurface = UmbilicalPointFlag(1) > 0.0d0
-      
-      ! --------------------------------------------------------------------------
-      ! Create the element structure corresponding to the surface reconstruction:
-      ! --------------------------------------------------------------------------
-      IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
-      Family = GetElementFamily(BGElement)
-      SELECT CASE(Family)
-      CASE(3)
-        GElement % Type => GetElementType(310, .FALSE.)
-      CASE(4)
-        GElement % Type => GetElementType(416, .FALSE.)
-      CASE DEFAULT
-        CALL Fatal('ShellLocalMatrixCartesian', 'Unsupported (geometry model) element type')
-      END SELECT
+      CALL RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
+          o, PlateBody, SphericalSurface, GElement)
 
       ! --------------------------------------------------------------------------
       ! Overwrite the coordinate arrays of the structure Nodes so that it represents 
@@ -7734,6 +7794,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
 ! -----------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element   ! The element type for which nodes are written
     TYPE(Nodes_t), INTENT(INOUT) :: Nodes             ! The nodes data structure to be updated
     INTEGER, INTENT(IN) :: nd                         ! The number of coordinate entries written

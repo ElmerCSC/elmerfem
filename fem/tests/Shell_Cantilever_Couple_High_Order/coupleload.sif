@@ -7,9 +7,7 @@
 ! Here the problem is solved by using a high-order discretization which switches
 ! to a special formulation (sets automatically "Cartesian Formulation = 
 ! Logical True"). The command "Dead Loads = Logical False" is essential so that
-! the load is defined to depend on the current deformation. Such live loads
-! do not yet work in the case of a general surface model, so we need to set
-! Skip Surface Reconstruction = True.
+! the load is defined to depend on the current deformation.
 !
 
 Check Keywords "Warn"
@@ -61,7 +59,6 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1e-5
 
   Element = "p:4"
-  Skip Surface Reconstruction = True
 
 !  Linear System Solver = "Iterative"
   Linear System Solver = Direct
