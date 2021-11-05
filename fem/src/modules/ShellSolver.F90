@@ -4999,12 +4999,19 @@ CONTAINS
 
         NewCovariantBasis(1:3,1) = abasis1(1:3) + PrevGrad(1:3,1)
         NewCovariantBasis(1:3,2) = abasis2(1:3) + PrevGrad(1:3,2)
-        NewCovariantBasis(1:3,3) = CrossProduct(abasis1, abasis2)
+        NewCovariantBasis(1:3,3) = CrossProduct(NewCovariantBasis(1:3,1), NewCovariantBasis(1:3,2))
         DO i=1,3
           Norm = SQRT(SUM(NewCovariantBasis(1:3,i)**2))
           NewCovariantBasis(1:3,i) = NewCovariantBasis(1:3,i)/Norm
         END DO
-
+        !
+        ! The meaning of load components is now rather implicit as
+        ! they follow the deformation of lines of curvature, with the first
+        ! component along the direction of the smallest curvature in the undeformed. 
+        ! configuration. In the case of ambiguity, the element mapping defines the orientation. 
+        ! This is far from user-friendly. 
+        ! TO DO: Improve by implementing normal-tangential components?
+        !
         ResultantForce(1:3) = MATMUL(NewCovariantBasis(1:3,1:3), ResultantForce(1:3))
         ResultantCouple(1:3) = MATMUL(NewCovariantBasis(1:3,1:3), ResultantCouple(1:3))
       END IF
