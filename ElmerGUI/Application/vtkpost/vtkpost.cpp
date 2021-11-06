@@ -171,7 +171,11 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
   QVTKWidget* qvtkWidget = vtkPost->GetQVTKWidget();
 #endif
 
+#if VTK_MAJOR_VERSION >= 9
+  vtkAbstractPicker* picker = qvtkWidget->interactor()->GetPicker();
+#else
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
+#endif
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
 
   vtkActor* actor = propPicker->GetActor();
@@ -382,14 +386,22 @@ VtkPost::VtkPost(QWidget *parent)
   // Create a cell picker and set the callback & observer:
   //------------------------------------------------------
   vtkPropPicker* propPicker = vtkPropPicker::New();
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->interactor()->SetPicker(propPicker);
+#else
   qvtkWidget->GetInteractor()->SetPicker(propPicker);
+#endif
   propPicker->Delete();
 
   vtkCallbackCommand* cbcPick = vtkCallbackCommand::New();
   cbcPick->SetClientData(this);
   cbcPick->SetCallback(pEventHandler);
 
+#if VTK_MAJOR_VERSION >= 9
+  vtkAbstractPicker* picker = qvtkWidget->interactor()->GetPicker();
+#else
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
+#endif
   picker->AddObserver(vtkCommand::EndPickEvent, cbcPick);
   cbcPick->Delete();
 
@@ -402,7 +414,11 @@ VtkPost::VtkPost(QWidget *parent)
   cbcPlane->SetCallback(iEventHandler);
 
   planeWidget = vtkImplicitPlaneWidget::New();
+#if VTK_MAJOR_VERSION >= 9
+  planeWidget->SetInteractor(qvtkWidget->interactor());
+#else
   planeWidget->SetInteractor(qvtkWidget->GetInteractor());
+#endif
   planeWidget->AddObserver(vtkCommand::InteractionEvent, cbcPlane);
   cbcPlane->Delete();
 
