@@ -380,7 +380,11 @@ VtkPost::VtkPost(QWidget *parent)
   //------------------
   renderer = vtkRenderer::New();
   renderer->SetBackground(1, 1, 1);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->AddRenderer(renderer);
+#else
   qvtkWidget->GetRenderWindow()->AddRenderer(renderer);
+#endif
   renderer->GetRenderWindow()->Render();
 
   // Create a cell picker and set the callback & observer:
@@ -2216,7 +2220,11 @@ void VtkPost::redrawSlot()
   drawAxesSlot();
   drawTextSlot();
 
+#if VTK_MAJOR_VERSION >= 9
+  vtkRenderWindow *renderWindow = qvtkWidget->renderWindow();
+#else
   vtkRenderWindow *renderWindow = qvtkWidget->GetRenderWindow();
+#endif
   renderWindow->Render();
 
   // Check if the "Stop" button of time stepping loop has been pressed:
@@ -2234,7 +2242,11 @@ void VtkPost::redrawSlot()
 void VtkPost::showColorBarDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawColorBarAct->isChecked()) {
     colorBar->show();
@@ -2257,7 +2269,11 @@ void VtkPost::drawColorBarSlot()
   if(!drawColorBarAct->isChecked()) return;
   colorBar->draw(this);
   renderer->AddActor(colorBarActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw mesh points:
@@ -2269,7 +2285,11 @@ void VtkPost::drawMeshPointSlot()
   if(!drawMeshPointAct->isChecked()) return;
   meshPoint->draw(this, preferences);
   renderer->AddActor(meshPointActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw mesh edges:
@@ -2281,7 +2301,11 @@ void VtkPost::drawMeshEdgeSlot()
   if(!drawMeshEdgeAct->isChecked()) return;
   meshEdge->draw(this, preferences);
   renderer->AddActor(meshEdgeActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw feature edges:
@@ -2293,7 +2317,11 @@ void VtkPost::drawFeatureEdgesSlot()
   if(!drawFeatureEdgesAct->isChecked()) return;
   featureEdge->draw(this, preferences);
   renderer->AddActor(featureEdgeActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw stream lines:
@@ -2301,7 +2329,11 @@ void VtkPost::drawFeatureEdgesSlot()
 void VtkPost::showStreamLineDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
   
   if(drawStreamLineAct->isChecked()) {
     streamLine->show();
@@ -2325,7 +2357,11 @@ void VtkPost::drawStreamLineSlot()
   streamLine->draw(this, timeStep);
   renderer->AddActor(streamLineActor);
   drawColorBarSlot();
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw vectors:
@@ -2333,7 +2369,11 @@ void VtkPost::drawStreamLineSlot()
 void VtkPost::showVectorDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawVectorAct->isChecked()) {
     vector->show();
@@ -2357,7 +2397,11 @@ void VtkPost::drawVectorSlot()
   vector->draw(this, timeStep);
   renderer->AddActor(vectorActor);
   drawColorBarSlot();
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw surfaces:
@@ -2365,7 +2409,11 @@ void VtkPost::drawVectorSlot()
 void VtkPost::showSurfaceDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawSurfaceAct->isChecked()) {
     surface->show();
@@ -2389,7 +2437,11 @@ void VtkPost::drawSurfaceSlot()
   surface->draw(this, timeStep);
   renderer->AddActor(surfaceActor);
   drawColorBarSlot();
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw iso contours (2D):
@@ -2397,7 +2449,11 @@ void VtkPost::drawSurfaceSlot()
 void VtkPost::showIsoContourDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawIsoContourAct->isChecked()) {
     isoContour->show();
@@ -2421,7 +2477,11 @@ void VtkPost::drawIsoContourSlot()
   isoContour->draw(this, timeStep);
   renderer->AddActor(isoContourActor);
   drawColorBarSlot();  
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw isosurfaces (3D):
@@ -2429,7 +2489,11 @@ void VtkPost::drawIsoContourSlot()
 void VtkPost::showIsoSurfaceDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawIsoSurfaceAct->isChecked()) {
     isoSurface->show();
@@ -2453,7 +2517,11 @@ void VtkPost::drawIsoSurfaceSlot()
   isoSurface->draw(this, timeStep);
   renderer->AddActor(isoSurfaceActor);
   drawColorBarSlot();
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw axes:
@@ -2471,7 +2539,11 @@ void VtkPost::drawAxesSlot()
   renderer->AddActor(axesXTextActor);
   renderer->AddActor(axesYTextActor);
   renderer->AddActor(axesZTextActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 // Draw text:
@@ -2479,7 +2551,11 @@ void VtkPost::drawAxesSlot()
 void VtkPost::showTextDialogSlot()
 {
   if(!postFileRead) return;
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 
   if(drawTextAct->isChecked()) {
     text->show();
@@ -2502,7 +2578,11 @@ void VtkPost::drawTextSlot()
   if(!drawTextAct->isChecked()) return;
   text->draw(this);
   renderer->AddActor2D(textActor);
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 
@@ -2865,7 +2945,11 @@ void VtkPost::SetPostFileEnd(int n)
 //------------------------------------------------------------
 void VtkPost::Render()
 {
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
 }
 
 void VtkPost::Redraw()
@@ -3354,7 +3438,11 @@ bool VtkPost::SavePngFile(QString fileName)
 
   vtkWindowToImageFilter* image = vtkWindowToImageFilter::New();
 
+#if VTK_MAJOR_VERSION >= 9
+  image->SetInput(qvtkWidget->renderWindow());
+#else
   image->SetInput(qvtkWidget->GetRenderWindow());
+#endif
   image->Update();
 
   vtkPNGWriter* writer = vtkPNGWriter::New();
@@ -3366,7 +3454,11 @@ bool VtkPost::SavePngFile(QString fileName)
 #else
   writer->SetFileName(fileName.toAscii().data());
 #endif
+#if VTK_MAJOR_VERSION >= 9
+  qvtkWidget->renderWindow()->Render();
+#else
   qvtkWidget->GetRenderWindow()->Render();
+#endif
   writer->Write();
 
   writer->Delete();

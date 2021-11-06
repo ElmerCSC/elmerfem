@@ -150,7 +150,11 @@ CadView::CadView(QWidget *parent) : QMainWindow(parent) {
 
   renderer = vtkRenderer::New();
   renderer->SetBackground(1, 1, 1);
+#if VTK_MAJOR_VERSION >=9
+  qVTKWidget->renderWindow()->AddRenderer(renderer);
+#else
   qVTKWidget->GetRenderWindow()->AddRenderer(renderer);
+#endif
   renderer->GetRenderWindow()->Render();
 
   vtkPropPicker *propPicker = vtkPropPicker::New();
@@ -502,7 +506,11 @@ bool CadView::readFile(QString fileName) {
   // Draw:
   //------
   renderer->ResetCamera();  
+#if VTK_MAJOR_VERSION >= 9
+  qVTKWidget->renderWindow()->Render();
+#else
   qVTKWidget->GetRenderWindow()->Render();
+#endif
 
   QCoreApplication::processEvents();
 
