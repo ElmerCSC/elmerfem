@@ -104,7 +104,11 @@ static void pickEventHandler(vtkObject* caller, unsigned long eid,
   QVTKWidget* qvtkWidget = cadView->GetQVTKWidget();
 #endif
 
+#if VTK_MAJOR_VERSION >= 9
+  vtkAbstractPicker* picker = qvtkWidget->interactor()->GetPicker();
+#else
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
+#endif
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
   vtkActor* actor = propPicker->GetActor();
 
@@ -146,16 +150,28 @@ CadView::CadView(QWidget *parent) : QMainWindow(parent) {
 
   renderer = vtkRenderer::New();
   renderer->SetBackground(1, 1, 1);
+#if VTK_MAJOR_VERSION >=9
+  qVTKWidget->renderWindow()->AddRenderer(renderer);
+#else
   qVTKWidget->GetRenderWindow()->AddRenderer(renderer);
+#endif
   renderer->GetRenderWindow()->Render();
 
   vtkPropPicker *propPicker = vtkPropPicker::New();
   vtkCallbackCommand *cbcPick = vtkCallbackCommand::New();
+#if VTK_MAJOR_VERSION >= 9
+  qVTKWidget->interactor()->SetPicker(propPicker);
+  cbcPick->SetClientData(this);
+  cbcPick->SetCallback(pickEventHandler);
+  qVTKWidget->interactor()->GetPicker()->AddObserver(vtkCommand::PickEvent,
+                                                        cbcPick);
+#else
   qVTKWidget->GetInteractor()->SetPicker(propPicker);
   cbcPick->SetClientData(this);
   cbcPick->SetCallback(pickEventHandler);
   qVTKWidget->GetInteractor()->GetPicker()->AddObserver(vtkCommand::PickEvent,
                                                         cbcPick);
+#endif
   propPicker->Delete();
   cbcPick->Delete();
 
@@ -490,7 +506,11 @@ bool CadView::readFile(QString fileName) {
   // Draw:
   //------
   renderer->ResetCamera();  
+#if VTK_MAJOR_VERSION >= 9
+  qVTKWidget->renderWindow()->Render();
+#else
   qVTKWidget->GetRenderWindow()->Render();
+#endif
 
   QCoreApplication::processEvents();
 
