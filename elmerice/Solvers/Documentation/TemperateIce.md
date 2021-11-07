@@ -12,7 +12,7 @@
   - ``Temp Lower Limit`` (Real) 0.0 [in corresponding ``Material`` section]
   - ``Temp Volume Source`` (Real) DeformationalHeat  [in corresponding ``Body Force`` section]
 ## General Description
-This solver treats the heat transfer problem with respect to an upper limit of the temperature (usually with ice the pressure-melting point, <img src="https://latex.codecogs.com/svg.latex?\Large&space;T \le T_{\text{pm}}" title="Temperature below pressure melting" />). Optionally, such a limit (and furthermore also a lower limit, e.g., T > 0 K) is introduced by solving the consequent variational inequality problem using an algorithm that - in comparison to the free surface problem - can be interpreted as a contact problem solver. In case of temperature, it basically introduces additional heat sinks/sources in order to comply with the constraints.
+This solver treats the heat transfer problem with respect to an upper limit of the temperature (usually with ice the pressure-melting point, <img src="https://render.githubusercontent.com/render/math?math=T\le\,T_{\text{pm}}" title="Temperature below pressure melting">). Optionally, such a limit (and furthermore also a lower limit, e.g., T > 0 K) is introduced by solving the consequent variational inequality problem using an algorithm that - in comparison to the free surface problem - can be interpreted as a contact problem solver. In case of temperature, it basically introduces additional heat sinks/sources in order to comply with the constraints.
 
 The volumetric heat source term can be estimated from the ice flow deformational heat using the [DeformationalHeat](./DeformationalHeat.md) Solver.
 
