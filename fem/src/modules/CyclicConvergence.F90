@@ -75,13 +75,13 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
       meanVal, meanDev, errDev, errVal, tolDev, tolVal
   TYPE(Variable_t), POINTER :: perCycleVar, pVar
   INTEGER :: nCycle, iCycle=0, convCycle, minCycle, prevCycle, &
-      ProdCycles, n
-  REAL(KIND=dp), ALLOCATABLE :: valTable(:)
+      ProdCycles, n, tsize = 500
+  REAL(KIND=dp), POINTER :: valTable(:), tmpTable(:)
   LOGICAL :: Visited = .FALSE., Converged = .FALSE.
   CHARACTER(MAX_NAME_LEN) :: valstr
   CHARACTER(*), PARAMETER :: Caller = 'CyclicConvergence'
-
-  SAVE Visited, valTable, prevCycle, prevVal, prevDev, iCycle, &
+  
+  SAVE Visited, valTable, tsize, prevCycle, prevVal, prevDev, iCycle, &
       ConvCycle, Converged
     
   CALL Info(Caller,'Checking for convergence of cyclic system')
@@ -99,12 +99,11 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
 
   IF(.NOT. Visited) THEN
     prevCycle = nCycle
-    ALLOCATE( valTable(1000) )
+    ALLOCATE( valTable(tsize) )
     valTable = 0.0_dp
+    Visited = .TRUE.
   END IF
-
-  Visited = .TRUE.
-  
+    
   val = ListGetCReal( Params,'Convergence Value',Found )
   IF(.NOT. Found ) THEN
     valstr = ListGetString( Params,'Convergence Value Name',Found )
@@ -124,6 +123,18 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
    
   ! Tabulate values
   iCycle = iCycle + 1
+
+  IF( iCycle > tsize ) THEN
+    CALL Info(Caller,'Increasing size of valTable to '//TRIM(I2S(2*tsize)),Level=6)
+    ALLOCATE(tmpTable(2*tsize))
+    tmpTable(1:tsize) = valTable
+    tmpTable(tsize+1:2*tsize) = 0.0_dp
+    tsize = 2*tsize
+    DEALLOCATE(valTable)
+    valTable => tmpTable
+    NULLIFY(tmpTable)
+  END IF
+  
   valTable(iCycle) = val
 
   WRITE(Message,'(A,ES12.3)') 'Entry '//TRIM(I2S(iCycle))//' for convergence criterion: ',val
@@ -132,16 +143,21 @@ SUBROUTINE CyclicConvergence( Model,Solver,dt,Transient)
   ! Same cycle, nothing to do!
   IF( nCycle == prevCycle ) RETURN
 
-  ! Compute mean errors over the cycle
+  ! Compute mean errors over the cycle  
   n = iCycle
+
+  ! We assume here that thet value that we follow has been communicate in parallel as intended so there
+  ! is no need to communicate things again. 
   meanVal = SUM(valTable(1:n)) / n
-  meanDev = SQRT(SUM((valTable(1:n)-meanVal)**2))
+  meanDev = SQRT(SUM((valTable(1:n)-meanVal)**2) / n) 
   
   errVal = 2*ABS(meanVal-prevVal)/(ABS(meanVal)+ABS(prevVal))
   errDev = 2*ABS(meanDev-prevDev)/(ABS(meanDev)+ABS(prevDev))  
 
-  errVal = ParallelReduction(errVal,3)
-  errDev = ParallelReduction(errDev,3)
+  ! Take the max norm in parallel to be on the safe side.  
+  ! Otherwise some partition might start production earlier than others. 
+  errVal = ParallelReduction(errVal,2)
+  errDev = ParallelReduction(errDev,2)
   
   CALL WriteConvergenceData()
   
