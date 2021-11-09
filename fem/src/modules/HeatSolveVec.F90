@@ -770,7 +770,6 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
         RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h 
-    TYPE(Element_t), POINTER :: Parent
 
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h)
@@ -803,10 +802,13 @@ CONTAINS
     RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )    
     RadDiffuse = ListCompareElementString( RadFlag_h,'diffuse gray',Element, Found )
 
+    IF( DG ) THEN
+      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
+    END IF
+    
     ! This routine does not do diffuse gray radiation.
     ! Pass on the information to the routine that does. 
     DiffuseGray = RadDiffuse
-    Parent => NULL()
     
     ! Numerical integration:
     !-----------------------
@@ -855,18 +857,18 @@ CONTAINS
         END IF
 
         ! Basis not treated right yet        
-        ! Emis = ListGetElementRealParent( EmisMat_h, Basis, Element, Found ) RESULT( RValue ) 
         Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
         IF(.NOT. Found ) THEN
-          CALL Fatal(Caller,'Emissivity should be available for radiating BC: '&
+          CALL Warn(Caller,'Emissivity should be available for radiating BC: '&
               //TRIM(ListGetString(BC,'name')))
+          CYCLE
         END IF
         
         IF( DG ) THEN
-          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % DGIndexes(1:n))))
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Indexes(1:n))))
         ELSE
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
         END IF
@@ -898,7 +900,6 @@ CONTAINS
     END IF
 
     IF( DG ) THEN
-      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
           Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
     ELSE    
