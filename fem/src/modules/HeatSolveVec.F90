@@ -87,11 +87,13 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
-  CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found )
-  IF( Found .AND. .NOT. DG ) THEN
-    CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
+  IF(.NOT. ( DG .OR. DB ) ) THEN
+    CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found)
+    IF( Found ) THEN
+      CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
+    END IF
   END IF
-   
+    
 END SUBROUTINE HeatSolver_Init
 
 
@@ -859,7 +861,8 @@ CONTAINS
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
         IF(.NOT. Found ) THEN
-          CALL Fatal(Caller,'Emissivity should be available for radiating BCs!')
+          CALL Fatal(Caller,'Emissivity should be available for radiating BC: '&
+              //TRIM(ListGetString(BC,'name')))
         END IF
         
         IF( DG ) THEN
