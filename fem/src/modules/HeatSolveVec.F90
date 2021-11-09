@@ -707,10 +707,13 @@ CONTAINS
           
           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
               'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF(.NOT. Found ) THEN
+            CALL Fatal(Caller,'Body '//TRIM(I2S(Parent % BodyId))//' has no Material associated!')
+          END IF          
           IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
-          
+            
           IF( i==2) THEN
-            CALL Fatal('HeatSolveVec','DG boundary parents should have emissivity!')
+            CALL Fatal(Caller,'DG boundary parents should have emissivity!')
           END IF
         END DO
       ELSE
@@ -725,7 +728,7 @@ CONTAINS
     ELSE IF(ASSOCIATED(Right)) THEN
       Parent => Right
     ELSE
-      CALL Fatal('HeatSolveVec','DG boundary should have parents!')
+      CALL Fatal(Caller,'DG boundary should have parents!')
     END IF
 
     n1 = Parent % TYPE % NumberOfNodes
@@ -855,7 +858,10 @@ CONTAINS
         IF( .NOT. Found ) THEN
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
-
+        IF(.NOT. Found ) THEN
+          CALL Fatal(Caller,'Emissivity should be available for radiating BCs!')
+        END IF
+        
         IF( DG ) THEN
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % DGIndexes(1:n))))
         ELSE
@@ -1003,7 +1009,7 @@ CONTAINS
     n = Element % TYPE % NumberOfNodes
     
     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
-      CALL Fatal('HeatSolverVec','Gebhardt factors not calculated for boundary!')
+      CALL Fatal(Caller,'Gebhardt factors not calculated for boundary!')
     END IF
     
     Fact => Element % BoundaryInfo % GebhardtFactors % Factors
