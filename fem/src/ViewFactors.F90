@@ -682,8 +682,9 @@
        BLOCK
          LOGICAL :: BinaryMode
          LOGICAL, ALLOCATABLE :: SaveMask(:)
-         ALLOCATE( SaveMask(SIZE(Factors)))
-                  
+         ALLOCATE( SaveMask(SIZE(Factors)), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for SaveMask.')
+         
          ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
          MinFactor = MinFactor / 10.0
          
@@ -765,7 +766,7 @@
         
         ALLOCATE( Areas(n),STAT=istat )
         IF ( istat /= 0 ) THEN
-          CALL Fatal(Caller,'Memory allocation error 1 in NormalizeFactors.' )
+          CALL Fatal(Caller,'Memory allocation error in NormalizeFactors for Areas.' )
         END IF
 
 !------------------------------------------------------------------------------
@@ -808,7 +809,7 @@
           
           ALLOCATE( RHS(n),SOL(n),PSOL(n),Jdiag(n),Jacobian(n,n),STAT=istat )
           IF ( istat /= 0 ) THEN
-            CALL Fatal( Caller,'Memory allocation error 2 in NormalizeFactors.' )
+            CALL Fatal( Caller,'Memory allocation error in NormalizeFactors for RHS etc.' )
           END IF
 
           SOL = 1.0_dp
@@ -900,8 +901,10 @@
       HUTI_DBUGLVL  = 0
       HUTI_MAXIT    = 100
  
-      ALLOCATE( work(N, wsize) )
+      ALLOCATE( work(N, wsize), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for IterSolv work.')
 
+      
       work = 0D0
       HUTI_TOLERANCE = 1.0D-12
       HUTI_MAXTOLERANCE = 1.0d20
@@ -938,8 +941,10 @@
        ox => Mesh % Nodes % x
        oy => Mesh % Nodes % y
        oz => Mesh % Nodes % z
-       ALLOCATE(Mesh % Nodes % x(2*nd), Mesh % Nodes % y(2*nd), Mesh % Nodes % z(2*nd) )
+       ALLOCATE(Mesh % Nodes % x(2*nd), Mesh % Nodes % y(2*nd), Mesh % Nodes % z(2*nd), STAT=istat )
+       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh nodes.')
 
+       
        DO i=1,nd
          Mesh % Nodes % x(i) = ox(i)
          Mesh % Nodes % y(i) = oy(i)
@@ -961,12 +966,16 @@
        END DO
 
        el => Mesh % Elements
-       ALLOCATE(Mesh % Elements(2*ne))
+       ALLOCATE(Mesh % Elements(2*ne), STAT=istat)
+       IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh elements.')
+       
        DO i=1,nv
          Mesh % Elements(i)    = el(i)
          Mesh % Elements(i+nv) = el(i)
          nn = el(i) % Type % NumberOfNodes
-         ALLOCATE(Mesh % Elements(i+nv) % NodeIndexes(nn))
+         ALLOCATE(Mesh % Elements(i+nv) % NodeIndexes(nn),STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh node indexes.')
+         
          Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
          Mesh % Elements(i+nv) % ElementIndex = i+nv
        END DO
@@ -975,8 +984,10 @@
          j = i+nv
          Mesh % Elements(j)    = el(i)
          Mesh % Elements(j+nb) = el(i)
-         nn = el(i) % Type % NumberOfNodes
-         ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn))
+         nn = el(i) % TYPE % NumberOfNodes
+         
+         ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn),STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation for MirroMesh NodeIndexes.')         
          Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
 
          ALLOCATE(Mesh % Elements(j) % BoundaryInfo)
@@ -987,12 +998,12 @@
 
          IF(ASSOCIATED(Mesh % Elements(j) % BoundaryInfo % Left)) THEN
            Mesh % Elements(j+nb) % BoundaryInfo % Left => &
-             Mesh % Elements(el(i) % BoundaryInfo % Left % ElementIndex+nv)
+               Mesh % Elements(el(i) % BoundaryInfo % Left % ElementIndex+nv)
          END IF
 
          IF(ASSOCIATED(Mesh % Elements(j) % BoundaryInfo % Right)) THEN
            Mesh % Elements(j+nb) % BoundaryInfo % Right => &
-             Mesh % Elements(el(i) % BoundaryInfo % Right % ElementIndex+nv)
+               Mesh % Elements(el(i) % BoundaryInfo % Right % ElementIndex+nv)
          END IF
        END DO
 

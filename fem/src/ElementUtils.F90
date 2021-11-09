@@ -373,7 +373,8 @@ CONTAINS
 
         IF( DGIndirect ) THEN
           CALL Info(Caller,'Creating also indirect connections!',Level=12)
-          ALLOCATE( IndirectPairs( LocalNodes ) )
+          ALLOCATE( IndirectPairs( LocalNodes ), STAT=istat )
+          IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for IndirectPairs work.')
           IndirectPairs = 0
         END IF
                         
@@ -626,7 +627,9 @@ CONTAINS
         INTEGER :: cnt, maxnodes
 
         n = Mesh % MaxElementNodes
-        ALLOCATE( ElemInds(n), ElemInds2(n) )
+        ALLOCATE( ElemInds(n), ElemInds2(n), STAT=istat )
+        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for ElemInds.')
+        
         ElemInds = 0
         ElemInds2 = 0
 
@@ -673,11 +676,12 @@ CONTAINS
             END IF
                         
             IF (.NOT.ALLOCATED(inds)) THEN
-              ALLOCATE(inds(maxnodes*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors),STAT=istat)
             ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
               DEALLOCATE(inds)
-              ALLOCATE(inds(maxnodes*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors),STAT=istat)
             END IF
+            IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error fo inds.')
 
             cnt = 0
             DO n=1,NumberOfFactors
@@ -736,9 +740,7 @@ CONTAINS
             IndexSize = n
             IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
             ALLOCATE( Indexes(n), STAT=istat )
-            IF( istat /= 0 ) THEN
-              CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
-            END IF
+            IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
          END IF
 
          n = 0
@@ -879,7 +881,9 @@ CONTAINS
     IF( PRESENT( CalcNonZeros ) ) DoNonZeros = CalcNonZeros
     
     IF( DoNonZeros ) THEN
-      ALLOCATE( InvPerm(LocalNodes) )
+      ALLOCATE( InvPerm(LocalNodes), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for InvPerm.')
+      
       InvPerm = 0
       k = 0
       DO i=1,SIZE(Reorder)
@@ -1050,9 +1054,7 @@ CONTAINS
     IF ( DGSolver ) THEN
        IndexSize = 128
        ALLOCATE( Indexes(IndexSize), STAT=istat )
-       IF( istat /= 0 ) THEN
-         CALL Fatal(Caller,'Allocation error for Indexes')
-       END IF
+       IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes')
 
        ! TODO: Add multithreading
        DO t=1,Mesh % NumberOfEdges
@@ -1197,11 +1199,9 @@ CONTAINS
                
                IndexSize = MAX(MAX(128, IndexSize*2), n)
                ALLOCATE(Indexes(IndexSize), &
-                    IndexReord(IndexSize), &
-                    IPerm(IndexSize), STAT=istat )
-               IF( istat /= 0 ) THEN
-                  CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
-               END IF
+                   IndexReord(IndexSize), &
+                   IPerm(IndexSize), STAT=istat )
+               IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
             END IF
             
             n = 0
@@ -1570,7 +1570,8 @@ CONTAINS
      INTEGER :: nthr
      LOGICAL :: UseThreads
      LOGICAL, ALLOCATABLE :: ConstrainedNode(:)
-     
+     CHARACTER(*), PARAMETER :: Caller = 'CreateMatrix'
+   
 !------------------------------------------------------------------------------
 
      NULLIFY( Matrix )
@@ -1583,11 +1584,11 @@ CONTAINS
        
      IF( OptimizeBW ) THEN
        IF( ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) ) THEN
-         CALL Info('CreateMatrix','Suppressing bandwidth optimization for discontinuous bodies',Level=8)
+         CALL Info(Caller,'Suppressing bandwidth optimization for discontinuous bodies',Level=8)
          OptimizeBW = .FALSE.
        END IF
        IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
-         CALL Info('CreateMatrix','Suppressing bandwidth optimization for conforming bcs',Level=8)
+         CALL Info(Caller,'Suppressing bandwidth optimization for conforming bcs',Level=8)
          OptimizeBW = .FALSE.
        END IF
      END IF
@@ -1681,7 +1682,7 @@ CONTAINS
 
      IF( ParEnv % PEs > 1 .AND. &
          ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
-       CALL Info('CreateMatrix','Skipping pure halo nodes',Level=14)
+       CALL Info(Caller,'Skipping pure halo nodes',Level=14)
        j = 0
        DO i=1,Mesh % NumberOfNodes 
          ! These are pure halo nodes that need not be communicated. They are created only 
@@ -1700,10 +1701,10 @@ CONTAINS
 
      
      IF( OptimizeBW ) THEN
-       CALL Info('CreateMatrix','Creating inverse of initial order of size: '//TRIM(I2S(k)),Level=14)
+       CALL Info(Caller,'Creating inverse of initial order of size: '//TRIM(I2S(k)),Level=14)
        ALLOCATE( InvInitialReorder(k), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for InvInitialReorder of size: '//TRIM(I2S(k)))
+         CALL Fatal(Caller,'Allocation error for InvInitialReorder of size: '//TRIM(I2S(k)))
        END IF
 
        ! We need to keep the initial numbering only in case we optimize the bandwidth!
@@ -1714,7 +1715,7 @@ CONTAINS
      END IF
      
      UseOptimized = ListGetLogical( Solver % Values, &
-       'Optimize Bandwidth Use Always', GotIt )
+         'Optimize Bandwidth Use Always', GotIt )
           
      Matrix => NULL()
 
@@ -1726,17 +1727,6 @@ CONTAINS
      END IF
 
      !------------------------------------------------------------------------------
-     ! Note that Model % RowNonZeros is not used anymore!!!!
-     ! For this to be ok the "SetRows" flag must be set .FALSE.
-     ! The reason behind the change is that using that was not flexible enough with
-     ! DB fields. 
-     !------------------------------------------------------------------------------
-     !     ALLOCATE( Model % RowNonZeros(k), STAT=istat )
-     !     IF( istat /= 0 ) THEN
-     !       CALL Fatal('CreateMatrix','Allocation error for RowNonZeros of size: '//TRIM(I2S(k)))
-     !     END IF
-     !     Model % RowNonzeros=0
-
      IF (UseThreads) THEN
        CALL Info('CreateMatrix','Creating threaded list matrix array for equation',Level=14)
        IF ( PRESENT(Equation) ) THEN
@@ -1811,7 +1801,7 @@ CONTAINS
        CASE( MATRIX_SBAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.TRUE.,.TRUE. )
        END SELECT
-       CALL Info('CreateMatrix','Matrix created',Level=14)
+       CALL Info(Caller,'Matrix created',Level=14)
 
        CALL List_FreeMatrix( k, ListMatrix )
      END IF
