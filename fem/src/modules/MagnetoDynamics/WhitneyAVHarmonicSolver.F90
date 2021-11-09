@@ -421,7 +421,7 @@ CONTAINS
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              CALL GetElementRotM(Element, RotM, n)
+              !CALL GetElementRotM(Element, RotM, n)
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
