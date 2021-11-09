@@ -505,7 +505,7 @@ CONTAINS
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
-            CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt,CompParams)
           CASE ('foil winding')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
@@ -715,13 +715,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
-    REAL(KIND=dp) :: Tcoef(3,3,nn),dt
     TYPE(Component_t) :: Comp
-
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: Tcoef(3,3,nn),dt
+    TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
@@ -733,10 +733,13 @@ CONTAINS
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: ncdofs,q
+    INTEGER :: ncdofs, q
 
     SAVE CSymmetry, dim, First
 
@@ -768,7 +771,21 @@ CONTAINS
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        ! when W Potential solver is used, 'w' is not enough.
+        CALL GetWPotential(WBase)
+      END IF
+
       ncdofs=nd-nn
     END IF
 
