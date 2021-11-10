@@ -213,7 +213,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
   LOGICAL :: DrillingDOFs, RotateDOFs
-  LOGICAL :: CartesianFormulation, SkipBlending
+  LOGICAL :: CartesianFormulation, SkipBlending, ReparametrizeMesh, PVersion
   LOGICAL :: NonlinearBending
 
   INTEGER, POINTER :: Indices(:) => NULL()
@@ -259,6 +259,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   SolverPars => GetSolverParams()
   Parallel = ParEnv % PEs > 1
 
+  PVersion = .FALSE.
   CartesianFormulation = GetLogical(SolverPars, 'Cartesian Formulation', Found)
   IF (.NOT. Found) THEN
     !
@@ -269,10 +270,18 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       i = INDEX(ElementDef,'p:')
       IF (i > 0) THEN
         CartesianFormulation = .TRUE.
+        PVersion = .TRUE.
       END IF
     END IF
   END IF
   SkipBlending = GetLogical(SolverPars, 'Skip Surface Reconstruction', Found)
+
+  ReparametrizeMesh = GetLogical(SolverPars, 'Mesh Reparametrization', Found)
+  IF (ReparametrizeMesh) THEN
+    SkipBlending = .TRUE.
+    CartesianFormulation = .TRUE.
+    IF (PVersion) CALL Fatal('ShellSolver', 'Mesh Reparametrization incompatible with p-elements')
+  END IF
 
   IF (CartesianFormulation) THEN
     CALL Info('ShellSolver', 'APPLYING CARTESIAN COMPONENTS FORMULATION', Level=3)
@@ -442,10 +451,10 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
   ! ---------------------------------------------------------------------------------
   ! PART III:
-  ! Utilize the parametrized edge curves to obtain improved geometry approximation 
-  ! via using the finite element blending technique, perform a reparametrization 
-  ! to obtain lines of curvature coordinates and assemble the discrete shell 
-  ! equations. 
+  ! Perform a reparametrization to obtain lines of curvature coordinates and assemble 
+  ! the discrete shell equations. It is also possible to utilize the parametrized edge 
+  ! curves to obtain improved geometry approximation via using the finite element 
+  ! blending technique. 
   ! ---------------------------------------------------------------------------------
 
   NONLINEARLOOP: DO NonlinIter=1,MaxNonlinIters+1
@@ -459,12 +468,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     TotalSol(:) = Solver % Variable % Values(:)
 
-    ! ------------------------------------------------------------------------------
-    ! Finally, this is the assembly loop for generating discrete shell equations.
-    ! During the first assembly step, several elementwise properties of geometric nature 
-    ! (principal directions, elementwise coordinate systems, etc.) are computed and are
-    ! saved as elementwise properties to avoid a later recomputation.
-    ! ------------------------------------------------------------------------------
     CALL DefaultInitialize()
     ShellModelArea = 0.0d0
     TotalErr = 0.0d0         ! Just for verification purposes (remove when final)
@@ -492,31 +495,44 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ApplyBubbles = Bubbles .AND. (nd == Family)
       IF (nb > 0) CALL Fatal('ShellSolver', &
           'Static condensation for p-bubbles is not supported')
-      
-      !----------------------------------------------------------------------
-      ! Create elementwise geometry data related to the reference configuration. 
-      ! This is computed only once since the data is saved as elementwise 
-      ! properties and can thus be retrieved by calling the function
-      ! GetElementProperty
-      !----------------------------------------------------------------------
-      REPARAMETRIZATION: IF (NonlinIter==1 .AND. .NOT. SkipBlending) THEN
-        !----------------------------------------------------------------------
-        ! Get the elementwise average of director data for orientation purposes
-        ! (check also for body flatness):
-        !----------------------------------------------------------------------
-        d = AverageDirector(BGElement, n, PlateBody)
-        !-------------------------------------------------------------------------
-        ! Create an improved geometry approximation by using the finite element 
-        ! blending technique and create a local coordinate frame whose orientation
-        ! corresponds to the orientation of lines of curvatures at the element 
-        ! center. Compute also the coefficients of the Taylor polynomial for 
-        ! creating the improved lines of curvature parameterization:
-        !-------------------------------------------------------------------------
-        CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
-            LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
-            PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
-            MacroElement=MacroElements, SaveProperties=.TRUE.) 
 
+      REPARAMETRIZATION: IF (NonlinIter==1 .AND. (.NOT. SkipBlending .OR. ReparametrizeMesh)) THEN
+        !----------------------------------------------------------------------
+        ! Create elementwise geometry data related to the reference configuration 
+        ! in order to reparametrize. This is computed only once since the data is 
+        ! saved as elementwise properties and can thus be retrieved by calling 
+        ! the function GetElementProperty.
+        !----------------------------------------------------------------------
+        IF (ReparametrizeMesh) THEN
+          ! ----------------------------------------------------------------------
+          ! In this case we just reparametrize the element of a given higher-order
+          ! nodal mesh to obtain an orthogonal parametrization
+          ! ----------------------------------------------------------------------
+          ! Create a local coordinate frame whose orientation corresponds to 
+          ! the orientation of lines of curvatures at the element center. Compute 
+          ! also the coefficients of the Taylor polynomial for creating the improved 
+          ! lines of curvature parameterization:
+          !-------------------------------------------------------------------------
+          CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
+              LagrangeNodes=LocalFrameNodes, PlanarPoint=PlanarPoint, &
+              UmbilicalPoint=UmbilicalPoint, SaveProperties=.TRUE., &
+              ReparametrizeMesh=.TRUE.)
+        ELSE
+          !----------------------------------------------------------------------
+          ! Here we apply the finite element blending technique to obtain
+          ! an improved geometry approximation and then reparametrize
+          !----------------------------------------------------------------------
+          ! Get the elementwise average of director data for orientation purposes
+          ! (check also for body flatness):
+          !----------------------------------------------------------------------
+          d = AverageDirector(BGElement, n, PlateBody)
+
+          CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
+              LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
+              PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
+              MacroElement=MacroElements, SaveProperties=.TRUE.) 
+        END IF
+        
         TaylorParams => GetElementProperty('taylor parameters', BGElement)
 
         !--------------------------------------------------------------------------
@@ -533,7 +549,6 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
         !LocalFrameNodes(:,3) = ZNodes(:)
         !IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
-
       END IF REPARAMETRIZATION
 
       ! ------------------------------------------------------------------------------
@@ -542,7 +557,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       IF (CartesianFormulation) THEN
         CALL ShellLocalMatrixCartesian(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
             LargeDeflection, NonlinearBending, MassAssembly, HarmonicAssembly, LocalRHSForce, &
-            SkipBlending, &
+            SkipBlending, ReparametrizeMesh, &
             BenchmarkProblem = GetLogical(SolverPars, 'Benchmark Problem', Found))
       ELSE
         CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
@@ -1632,14 +1647,14 @@ CONTAINS
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
   FUNCTION BlendingSurfaceInfo( Element, Nodes, u, v, &
-      deta, a1, a2, a3, A, B, x, MacroElement, BubbleDOFs ) RESULT(stat)
+      deta, a1, a2, a3, A, B, x, MacroElement, BubbleDOFs, UseMeshOnly ) RESULT(stat)
 !----------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element  !< Element structure
     TYPE(Nodes_t), INTENT(IN) :: Nodes               !< Data corresponding to the element nodes
-    REAL(KIND=dp), INTENT(IN) :: u                   !< 1st reference element coordinate
-    REAL(KIND=dp), INTENT(IN) :: v                   !< 2nd coordinate
+    REAL(KIND=dp), INTENT(IN) :: u                   !< The 1st coordinate of the reference p-element
+    REAL(KIND=dp), INTENT(IN) :: v                   !< The 2nd coordinate of the reference p-element
     REAL(KIND=dp), INTENT(OUT) :: deta               !< The determinant of the surface metric tensor
     REAL(KIND=dp), INTENT(OUT) :: a1(3), a2(3)       !< The covariant surface basis vectors
     REAL(KIND=dp), INTENT(OUT) :: a3(3)              !< The base vector normal to the surface
@@ -1648,13 +1663,15 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: x(3)               !< Blending surface point corresponding to (u,v): x=x(u,v)
     LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< This should be .FALSE. to avoid troubles
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: BubbleDOFs(4,3)  !< Coefficients for bubble basis functions
+    LOGICAL, OPTIONAL, INTENT(IN) :: UseMeshOnly     ! Instead of blending use the original mesh in the calculation
     LOGICAL :: Stat                                  !< A dummy status variable at the moment
 !----------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: GElement => NULL()
-    LOGICAL :: QuadraticGeometryData, Subtriangulation
+    LOGICAL :: QuadraticGeometryData, Subtriangulation, ComputeFromMesh
     INTEGER :: i, j, e, n, q, i0, cn, EdgesParametrized, CurveDataSize, Family
     REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:), BubbleValues(:)
     REAL(KIND=dp) :: Basis(MaxPatchNodes), dBasis(MaxPatchNodes,2), ddBasis(4,2,2)
+    REAL(KIND=dp) :: xi, eta, ddr(3,2,2)
     REAL(KIND=dp) :: BubbleCoeff(4,3)
     REAL(KIND=dp) :: ex(3), ey(3), ez(3), X0(3)
     REAL(KIND=dp) :: d(CurveDataSize2)
@@ -1672,7 +1689,58 @@ CONTAINS
 !----------------------------------------------------------------------------
 
     Family = GetElementFamily(Element)
-    
+
+    IF (PRESENT(UseMeshOnly)) THEN
+      ComputeFromMesh = UseMeshOnly
+    ELSE
+      ComputeFromMesh = .FALSE.
+    END IF
+
+    n = Element % TYPE % NumberOfNodes
+    Basis = 0.0d0      
+    dBasis = 0.0d0
+
+    IF (ComputeFromMesh) THEN
+      !
+      ! Compute the fundamental forms simply by using the mesh data and return
+      !
+      IF (n > MaxPatchNodes) CALL Fatal('BlendingSurfaceInfo', &
+          'Nodal basis supported only up to degree 4')
+
+      IF (Family == 3) THEN
+        ! Map the p-element coordinates to those of the traditional reference element: 
+        xi = 0.5d0 * (1.0d0 + u - 1.0d0/SQRT(3.0d0)*v)
+        eta = 1.0d0/SQRT(3.0d0)*v
+      ELSE
+        xi = u
+        eta = v
+      END IF
+
+      CALL NodalBasisFunctions2D(Basis, Element, xi, eta)
+      CALL NodalFirstDerivatives2D(dBasis, Element, xi, eta)
+
+      ddr(1,1:2,1:2) = SecondDerivatives2D(Element, Nodes % x, xi, eta)
+      ddr(2,1:2,1:2) = SecondDerivatives2D(Element, Nodes % y, xi, eta)
+      ddr(3,1:2,1:2) = SecondDerivatives2D(Element, Nodes % z, xi, eta)
+
+      X(1) = SUM( Nodes % x(1:n) * Basis(1:n) )
+      X(2) = SUM( Nodes % y(1:n) * Basis(1:n) )
+      X(3) = SUM( Nodes % z(1:n) * Basis(1:n) )
+
+      a1(1) = SUM( dBasis(1:n,1) * Nodes % x(1:n) )
+      a1(2) = SUM( dBasis(1:n,1) * Nodes % y(1:n) )
+      a1(3) = SUM( dBasis(1:n,1) * Nodes % z(1:n) )
+      a2(1) = SUM( dBasis(1:n,2) * Nodes % x(1:n) )
+      a2(2) = SUM( dBasis(1:n,2) * Nodes % y(1:n) )
+      a2(3) = SUM( dBasis(1:n,2) * Nodes % z(1:n) )
+
+      d1a1(1:3) = ddr(1:3,1,1)
+      d2a2(1:3) = ddr(1:3,2,2)
+      d2a1(1:3) = ddr(1:3,1,2)      
+
+      GOTO 101
+    END IF
+
     ! Set some default values:
     Subtriangulation = .FALSE.
     EdgesParametrized = Family
@@ -2273,6 +2341,7 @@ CONTAINS
       END DO
     END IF
 
+    101 CONTINUE
     !--------------------------------------------------------------------
     ! The metric surface tensor and its determinant
     !--------------------------------------------------------------------
@@ -2506,9 +2575,12 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! This subroutine creates an orthonormal basis which gives the orientation of 
-! lines of curvature at a point that is the image of the reference element 
+! lines of curvature at a point that is the image of the reference p-element 
 ! point (xi1,xi2) under the FE blending map. If the point is not specified,
-! the point is taken to be the element centre.
+! the point is taken to be the element centre. With ReparametrizeMesh=.true.
+! the blending is not applied and all computations are performed by using
+! the original mesh (a mesh consisting of higher-order nodal elements should
+! then be used, since second-order partial derivatives must be evaluated). 
 !   The basis vectors may be returned via the arguments e1, e2 and e3, 
 ! while the coordinates of the surface point may be returned via o.
 ! When this subroutine is called at the element centre, it can be used to 
@@ -2533,7 +2605,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LinesOfCurvatureFrame(Element, xi1, xi2, e1, e2, e3, o, TaylorApproximation, &
       LagrangeNodes, d, PlanarSurface, PlanarPoint, UmbilicalPoint, &
-      MacroElement, SaveProperties, SizeRadiusRatio)
+      MacroElement, SaveProperties, SizeRadiusRatio, ReparametrizeMesh)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -2549,6 +2621,7 @@ CONTAINS
     LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement
     LOGICAL, OPTIONAL, INTENT(IN) :: SaveProperties  
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: SizeRadiusRatio
+    LOGICAL, OPTIONAL, INTENT(IN) :: ReparametrizeMesh
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: GElement => NULL()
@@ -2556,6 +2629,7 @@ CONTAINS
     LOGICAL :: Converged, ComputeTaylorPolynomial
     LOGICAL :: ApproximatePlaneDomain, CheckOrientation, WriteElementProperties
     LOGICAL :: Subtriangulation, Planar, Umbilical
+    LOGICAL :: UseMeshOnly
     INTEGER :: Family, n, m, e, i, j, k, GridPoint
 
     REAL(KIND=dp) :: TaylorParams(6), PlanarFlag(1), UmbilicalFlag(1) 
@@ -2575,6 +2649,12 @@ CONTAINS
     SAVE Nodes, GElement
 !------------------------------------------------------------------------------
     Family = GetElementFamily(Element)
+
+    IF (PRESENT(ReparametrizeMesh)) THEN
+      UseMeshOnly = ReparametrizeMesh
+    ELSE
+      UseMeshOnly = .FALSE.
+    END IF
 
     IF (PRESENT(xi1) .AND. PRESENT(xi2)) THEN
       u = xi1
@@ -2674,7 +2754,8 @@ CONTAINS
       !err = sqrt(sum(BubbleNodesDelta(4,:)**2))
       !IF (err > 1.0d-10)  print *, 'diff4 = ', err
     ELSE
-      stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, X0)      
+      stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, X0, &
+          UseMeshOnly=UseMeshOnly)      
     END IF
 
     !---------------------------------------------------------------------------
@@ -2882,7 +2963,7 @@ CONTAINS
 
     IF (ApproximatePlaneDomain) THEN
       DO j=1,GElement % Type % NumberOfNodes
-        IF (j > Family) THEN
+        IF (j > Family .AND. GElement % Type % NumberOfNodes /= Element % Type % NumberOfNodes) THEN
           ! First we may need to map the Lagrange element coordinates to the ones of
           ! the p-element:
           IF (Family==3) THEN
@@ -2898,7 +2979,7 @@ CONTAINS
                 a1, a2, a3, a, b, p, BubbleDOFs=BubbleNodesDelta)
           ELSE
             stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
-                a1, a2, a3, a, b, p)         
+                a1, a2, a3, a, b, p, UseMeshOnly=UseMeshOnly)         
           END IF
         ELSE
           p(1) = Nodes % x(j)
@@ -3007,7 +3088,7 @@ CONTAINS
                   deta, a1, a2, a3, a, b, pk, BubbleDOFs=BubbleNodesDelta)
             ELSE
               stat = BlendingSurfaceInfo( Element, Nodes, uk, vk, &
-                  deta, a1, a2, a3, a, b, pk)             
+                  deta, a1, a2, a3, a, b, pk, UseMeshOnly=UseMeshOnly)             
             END IF
             r(1) = p0(1) + ptarget(1) - DOT_PRODUCT(pk,GlobPDir1)
             r(2) = p0(2) + ptarget(2) - DOT_PRODUCT(pk,GlobPDir2)
@@ -7065,7 +7146,7 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, SkipBlending, &
-      BenchmarkProblem)
+      ReparametrizeMesh, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
@@ -7081,6 +7162,7 @@ END SUBROUTINE RetrieveLocalFrame
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
     LOGICAL, INTENT(IN) :: SkipBlending                ! Informs whether surface reconstruction has been done
+    LOGICAL, INTENT(IN) :: ReparametrizeMesh           ! To use an orthogonal parametrization created without blending
     LOGICAL, INTENT(IN), OPTIONAL :: BenchmarkProblem  ! To create a load for a benchmark problem 
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: GElement => NULL()
@@ -7133,10 +7215,10 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
     CALL GetElementNodes(Nodes, BGElement)
 
-    IF (.NOT. SkipBlending) THEN
+    IF (.NOT. SkipBlending .OR. ReparametrizeMesh) THEN
       ! ------------------------------------------------------------------------------
-      ! When the surface reconstruction has been done, retrieve the surface data which 
-      ! have been saved as elementwise properties:
+      ! When the elementwise reparametrization has been done, retrieve the surface data
+      ! which have been saved as elementwise properties:
       ! ------------------------------------------------------------------------------
       CALL RetrieveLocalFrame(BGElement, TaylorParams, PatchNodes, e1, e2, e3, &
           o, PlateBody, SphericalSurface, GElement)
@@ -7236,7 +7318,7 @@ END SUBROUTINE RetrieveLocalFrame
         DampCoef = SUM( Damping(1:n) * Basis(1:n) )
       END IF
 
-      IF (SkipBlending) THEN
+      IF (SkipBlending .AND. .NOT. ReparametrizeMesh) THEN
         !
         ! This uses a surface parametrization over a 2D domain in special cases.
         !
@@ -7261,7 +7343,7 @@ END SUBROUTINE RetrieveLocalFrame
         END IF
       ELSE
         !
-        ! Here we combine the Cartesian formulation and surface reconstruction
+        ! Here we combine the Cartesian formulation and surface reparametrization
         !
         y1 = SUM( Nodes % x(1:nd) * Basis(1:nd) )
         y2 = SUM( Nodes % y(1:nd) * Basis(1:nd) )
@@ -7797,7 +7879,6 @@ END SUBROUTINE RetrieveLocalFrame
 !------------------------------------------------------------------------------
 ! Create the element mapping corresponding to the principal curvature coordinates
 ! in terms of the basis which is used in the shell analysis.
-! TO DO: Merge with the subroutine WriteElementNodesVariables (?)
 !------------------------------------------------------------------------------
   SUBROUTINE SolveNodesVariables(Element, Nodes, nd, GElement, PatchNodes)
 ! -----------------------------------------------------------------------------
@@ -7817,14 +7898,20 @@ END SUBROUTINE RetrieveLocalFrame
     REAL(KIND=dp) :: Stiff(nd, nd)
     REAL(KIND=dp) :: Force(nd)
 !------------------------------------------------------------------------------
-    PVersion = IsActivePElement(Element)
-    n = GetElementFamily(Element)
     GElementNodes = GElement % Type % NumberOfNodes
 
     Nodes % x(:) = 0.0d0
     Nodes % y(:) = 0.0d0
     Nodes % z(:) = 0.0d0
 
+    IF (GElement % Type % NumberOfNodes == Element % Type % NumberOfNodes) THEN
+      Nodes % x(1:GElementNodes) = PatchNodes(1:GElementNodes,1)
+      Nodes % y(1:GElementNodes) = PatchNodes(1:GElementNodes,2)
+      RETURN
+    END IF
+
+    PVersion = IsActivePElement(Element)
+    n = GetElementFamily(Element)
     ! -----------------------------------------------
     ! The corner values can be written immediately:
     ! -----------------------------------------------

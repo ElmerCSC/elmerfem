@@ -1074,7 +1074,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Element_t) :: element        !< element structure
       REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
       REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1121,7 +1121,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1213,17 +1213,16 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the second partial derivatives with
-!>   respect to local coordinates of a quantity x given at element nodes at local
-!>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   Given an element structure return the second partial derivatives of 
+!>   a quantity x given at the element nodes with respect to the local coordinates
+!>   u,v of the element. The element basis functions are used to compute the value. 
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
-     TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
-     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< value of the quantity ddx = @^2x(u,v)/@v^2
+     TYPE(Element_t) :: element        !< Element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivatives
+     REAL(KIND=dp), DIMENSION(:) :: x  !< The nodal values of the quantity to differentiate
+     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< The second partial derivatives of x
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1299,7 +1298,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
