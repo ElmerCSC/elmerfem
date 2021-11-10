@@ -4356,28 +4356,38 @@ END BLOCK
 
      SELECT CASE ( family )
        
-       CASE ( 1 )
+       CASE ( 1 ) ! node
          DetJ = 1.0_dp
          RETURN
 
-       CASE ( 2 )
+       CASE ( 2 ) ! line
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 3 )
+       CASE ( 3 ) ! tri
          u = 0.5_dp
          v = 0.5_dp
          
-       CASE ( 4 )
+       CASE ( 4 ) ! quad
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 5 )
+       CASE ( 5 ) ! tet
          u = 0.5_dp
          v = 0.5_dp
          w = 0.5_dp
 
-       CASE ( 8 ) 
+       CASE ( 6 ) ! pyramid
+         u = 0.0_dp
+         v = 0.0_dp
+         w = 0.0_dp
+
+       CASE ( 7 ) ! wedge
+         u = 0.5_dp
+         v = 0.5_dp
+         w = 0.0_dp
+
+       CASE ( 8 ) ! hex
          u = 0.0_dp
          v = 0.0_dp
          w = 0.0_dp
