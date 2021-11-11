@@ -552,11 +552,12 @@ CONTAINS
 
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
-               CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
+               CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
     TYPE(VariableHandle_t), SAVE :: Wvec_h
     
     SAVE CSymmetry, dim, First, InitHandle
@@ -566,39 +567,6 @@ CONTAINS
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
-
-      ! There has been somewhat different philosophies in how to create the scalar and vector fields
-      ! that span the current densities. This is an effort to enable the components to all use
-      ! the current density computed by the CoilSolver without writing any additional keywords to the
-      ! component sections. The idea is that the the circuit then only has current densities defined
-      ! by the CoilSolver. If this is not desired then also no such keywords should be used in the Solver
-      ! section of this module. 
-      !------------------------------------------------------------------------------------------------
-      CoilUseWvec0 = GetLogical(CurrentModel % Solver % Values, 'Coil Use W Vector', Found2 ) 
-      DO i=1,Model % NumberOfComponents
-        CoilType = ListGetString(CurrentModel % Components(i) % Values, 'Coil Type',Found)
-        IF(.NOT. Found) CYCLE
-        IF(CoilType == 'stranded') THEN  ! massive, foil winding
-          CoilWVecVarName = GetString(CurrentModel % Components(i) % Values,'W Vector Variable Name', Found)
-          IF(Found) EXIT
-        END IF
-      END DO
-      IF(.NOT. Found) THEN
-        CoilWVecVarName = GetString(CurrentModel % Solver % Values,'W Vector Variable Name', Found)
-        IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Nodal CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent'
-        END IF
-         IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Elemental CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent e'
-        END IF
-        IF(Found) CALL Info('Add_stranded','Setting coil current to: '//TRIM(CoilWVecVarname),Level=6)
-        ! If we did not find w vector named in any component it is fair to assume that it is globally used!
-        IF(.NOT. Found2) CoilUseWvec0 = Found 
-      END IF
-      IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
-      CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -625,9 +593,16 @@ CONTAINS
     IF (dim == 3) THEN
 
       CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
-      IF (.NOT. Found) CoilUseWvec = CoilUseWvec0
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
     
-      IF (.NOT. CoilUseWvec) THEN
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
         !CALL GetLocalSolution(Wbase, 'w')
         ! when W Potential solver is used, 'w' is not enough.
         CALL GetWPotential(WBase)
@@ -718,10 +693,11 @@ CONTAINS
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Component_t) :: Comp
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
+    TYPE(Component_t) :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
+
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
@@ -733,20 +709,22 @@ CONTAINS
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
-               CoilUseWvec=.FALSE., Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
-    TYPE(VariableHandle_t), SAVE :: Wvec_h
+    LOGICAL :: CSymmetry, First=.TRUE.
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
-    INTEGER :: ncdofs, q
+    INTEGER :: ncdofs,q
+
+    LOGICAL :: CoilUseWvec, InitHandle  = .TRUE.
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
 
     SAVE CSymmetry, dim, First
 
     IF (First) THEN
-      First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
+      First = .FALSE.
       dim = CoordinateSystemDimension()
     END IF
 
@@ -773,6 +751,7 @@ CONTAINS
     IF (dim == 3) THEN
       CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
       IF (.NOT. Found) CoilUseWvec = .FALSE.
+    
       IF (CoilUseWvec) THEN
         IF( InitHandle ) THEN
           CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
@@ -813,7 +792,12 @@ CONTAINS
         grads_coeff = grads_coeff/circ_eq_coeff
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+
+        IF (CoilUseWvec) THEN
+          gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          gradv = MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
       END SELECT
 
 
@@ -839,8 +823,6 @@ CONTAINS
         IF ( TransientSimulation ) THEN 
           IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
           IF(dim==3) value = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
-  !        localL = value
-  !        Comp % Inductance = Comp % Inductance + localL
           CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
           CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
         END IF
@@ -850,6 +832,27 @@ CONTAINS
         value = value * Comp % VoltageFactor
         CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, value)
       END DO
+
+
+!     IF ( TransientSimulation ) THEN
+!       DO i=1,nn
+!       DO j=1,ncdofs
+!         ! computing the mass term (sigma d/dt a, grad si):
+!         ! ---------------------------------------------------------
+!         q=j+nn
+!         value = IP % s(t)*detJ*localC*SUM(dBasisdx(i,:)*Wbasis(q,:))/dt
+!
+!         CALL AddToMatrixElement(CM, PS(Indexes(i)), PS(Indexes(q)), tscl * value)
+!         CM % RHS(PS(Indexes(i))) = CM % RHS(PS(Indexes(i))) + pPOT(q) * value
+!       END DO
+!       END DO
+!
+!       DO j=1,nn
+!         value = IP % s(t)*detJ*localC*SUM(gradv*dBasisdx(j,:))
+!         value = value * Comp % VoltageFactor
+!         CALL AddToMatrixElement(CM, PS(indexes(j)), vvarId, value)
+!       END DO
+!     END IF
     END DO
 
 !------------------------------------------------------------------------------
@@ -1622,45 +1625,21 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    LOGICAL :: InitHandle = .TRUE.
     
-    LOGICAL :: CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
+    LOGICAL :: CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
 
     TYPE(VariableHandle_t), SAVE :: Wvec_h
 
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, First, InitHandle
 
     IF (First) THEN
       First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
-
-      CoilUseWvec0 = GetLogical(CurrentModel % Solver % Values, 'Coil Use W Vector', Found2 ) 
-      DO i=1,Model % NumberOfComponents
-        CoilType = ListGetString(CurrentModel % Components(i) % Values, 'Coil Type',Found)
-        IF(.NOT. Found) CYCLE
-        IF(CoilType == 'stranded') THEN  ! massive, foil winding
-          CoilWVecVarName = GetString(CurrentModel % Components(i) % Values,'W Vector Variable Name', Found)
-          IF(Found) EXIT
-        END IF
-      END DO
-      IF(.NOT. Found) THEN
-        CoilWVecVarName = GetString(CurrentModel % Solver % Values,'W Vector Variable Name', Found)
-        IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Nodal CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent'
-        END IF
-         IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Elemental CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent e'
-        END IF
-        IF(Found) CALL Info('Add_stranded','Setting coil current to: '//TRIM(CoilWVecVarname),Level=6)
-        ! If we did not find w vector named in any component it is fair to assume that it is globally used!
-        IF(.NOT. Found2) CoilUseWvec0 = Found 
-      END IF
-      IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
-      CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -1679,11 +1658,19 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ncdofs=nd-nn
 
       CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
-      IF(.NOT. Found) CoilUseWvec = CoilUseWvec0 
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
 
-      IF (.NOT. CoilUseWvec) THEN
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
         CALL GetWPotential(WBase)
       END IF
+
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1914,10 +1901,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
-               CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
+               CoilUseWvec=.FALSE., Found
     LOGICAL :: InitJHandle=.TRUE., FoilUseJvec=.FALSE.
     REAL(KIND=dp) :: localR
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
     CHARACTER(LEN=MAX_NAME_LEN) :: FoilJVecVarname
     TYPE(VariableHandle_t), SAVE :: Wvec_h
     TYPE(VariableHandle_t), SAVE :: Jvec_h
@@ -1929,37 +1916,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     SAVE CSymmetry, dim, First, InitHandle, InitJHandle
 
-    IF( First ) THEN
+    IF (First) THEN
       First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
       dim = CoordinateSystemDimension()
-      
-      CoilUseWvec0 = GetLogical(CurrentModel % Solver % Values, 'Coil Use W Vector', Found2 ) 
-      DO i=1,Model % NumberOfComponents
-        CoilType = ListGetString(CurrentModel % Components(i) % Values, 'Coil Type',Found)
-        IF(.NOT. Found) CYCLE
-        IF(CoilType == 'foil winding') THEN  ! stranded, massive
-          CoilWVecVarName = GetString(CurrentModel % Components(i) % Values,'W Vector Variable Name', Found)
-          IF(Found) EXIT
-        END IF
-      END DO
-      IF(.NOT. Found) THEN
-        CoilWVecVarName = GetString(CurrentModel % Solver % Values,'W Vector Variable Name', Found)
-        IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Nodal CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent'
-        END IF
-        IF(.NOT. Found) THEN
-          IF( GetLogical(CurrentModel % Solver % Values,'Use Elemental CoilCurrent',Found ) ) &
-              CoilWVecVarname = 'CoilCurrent e'
-        END IF
-        IF(Found) CALL Info('Add_foil_winding','Setting coil current to: '//TRIM(CoilWVecVarname),Level=6)
-        ! If we did not find w vector named in any component it is fair to assume that it is globally used!
-        IF(.NOT. Found2) CoilUseWvec0 = Found 
-      END IF
-      IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
-      CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
     END IF
 
     ASolver => CurrentModel % Asolver
@@ -1977,11 +1938,17 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     ncdofs=nd
     IF (dim == 3) THEN
 
-      ! If we do not have a local flag then use the one from the solver section
       CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
-      IF (.NOT. Found) CoilUseWvec = CoilUseWvec0
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
 
-      IF (.NOT. CoilUseWvec) THEN
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
         !CALL GetLocalSolution(Wbase, 'w')
         CALL GetWPotential(WBase)
       END IF
