@@ -87,11 +87,13 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
-  CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found )
-  IF( Found .AND. .NOT. DG ) THEN
-    CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
+  IF(.NOT. ( DG .OR. DB ) ) THEN
+    CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found)
+    IF( Found ) THEN
+      CALL Fatal(Caller,'Keyword supported only with DG active: "Heat Gap"')
+    END IF
   END IF
-   
+    
 END SUBROUTINE HeatSolver_Init
 
 
@@ -707,10 +709,13 @@ CONTAINS
           
           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
               'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF(.NOT. Found ) THEN
+            CALL Fatal(Caller,'Body '//TRIM(I2S(Parent % BodyId))//' has no Material associated!')
+          END IF          
           IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
-          
+            
           IF( i==2) THEN
-            CALL Fatal('HeatSolveVec','DG boundary parents should have emissivity!')
+            CALL Fatal(Caller,'DG boundary parents should have emissivity!')
           END IF
         END DO
       ELSE
@@ -725,7 +730,7 @@ CONTAINS
     ELSE IF(ASSOCIATED(Right)) THEN
       Parent => Right
     ELSE
-      CALL Fatal('HeatSolveVec','DG boundary should have parents!')
+      CALL Fatal(Caller,'DG boundary should have parents!')
     END IF
 
     n1 = Parent % TYPE % NumberOfNodes
@@ -765,7 +770,6 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
         RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h 
-    TYPE(Element_t), POINTER :: Parent
 
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h)
@@ -798,10 +802,13 @@ CONTAINS
     RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )    
     RadDiffuse = ListCompareElementString( RadFlag_h,'diffuse gray',Element, Found )
 
+    IF( DG ) THEN
+      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
+    END IF
+    
     ! This routine does not do diffuse gray radiation.
     ! Pass on the information to the routine that does. 
     DiffuseGray = RadDiffuse
-    Parent => NULL()
     
     ! Numerical integration:
     !-----------------------
@@ -850,14 +857,18 @@ CONTAINS
         END IF
 
         ! Basis not treated right yet        
-        ! Emis = ListGetElementRealParent( EmisMat_h, Basis, Element, Found ) RESULT( RValue ) 
         Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
-
+        IF(.NOT. Found ) THEN
+          CALL Warn(Caller,'Emissivity should be available for radiating BC: '&
+              //TRIM(ListGetString(BC,'name')))
+          CYCLE
+        END IF
+        
         IF( DG ) THEN
-          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % DGIndexes(1:n))))
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Indexes(1:n))))
         ELSE
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
         END IF
@@ -889,7 +900,6 @@ CONTAINS
     END IF
 
     IF( DG ) THEN
-      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
           Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
     ELSE    
@@ -1003,7 +1013,7 @@ CONTAINS
     n = Element % TYPE % NumberOfNodes
     
     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
-      CALL Fatal('HeatSolverVec','Gebhardt factors not calculated for boundary!')
+      CALL Fatal(Caller,'Gebhardt factors not calculated for boundary!')
     END IF
     
     Fact => Element % BoundaryInfo % GebhardtFactors % Factors

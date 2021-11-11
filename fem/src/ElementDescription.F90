@@ -1074,7 +1074,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Element_t) :: element        !< element structure
       REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
       REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1121,7 +1121,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1213,17 +1213,16 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the second partial derivatives with
-!>   respect to local coordinates of a quantity x given at element nodes at local
-!>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   Given an element structure return the second partial derivatives of 
+!>   a quantity x given at the element nodes with respect to the local coordinates
+!>   u,v of the element. The element basis functions are used to compute the value. 
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
-     TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
-     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< value of the quantity ddx = @^2x(u,v)/@v^2
+     TYPE(Element_t) :: element        !< Element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivatives
+     REAL(KIND=dp), DIMENSION(:) :: x  !< The nodal values of the quantity to differentiate
+     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< The second partial derivatives of x
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1299,7 +1298,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
@@ -4356,28 +4355,38 @@ END BLOCK
 
      SELECT CASE ( family )
        
-       CASE ( 1 )
+       CASE ( 1 ) ! node
          DetJ = 1.0_dp
          RETURN
 
-       CASE ( 2 )
+       CASE ( 2 ) ! line
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 3 )
+       CASE ( 3 ) ! tri
          u = 0.5_dp
          v = 0.5_dp
          
-       CASE ( 4 )
+       CASE ( 4 ) ! quad
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 5 )
+       CASE ( 5 ) ! tet
          u = 0.5_dp
          v = 0.5_dp
          w = 0.5_dp
 
-       CASE ( 8 ) 
+       CASE ( 6 ) ! pyramid
+         u = 0.0_dp
+         v = 0.0_dp
+         w = 0.0_dp
+
+       CASE ( 7 ) ! wedge
+         u = 0.5_dp
+         v = 0.5_dp
+         w = 0.0_dp
+
+       CASE ( 8 ) ! hex
          u = 0.0_dp
          v = 0.0_dp
          w = 0.0_dp

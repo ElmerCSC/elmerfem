@@ -587,14 +587,15 @@
            
          IF(FirstTime) THEN
            ViewFactors(i) % NumberOfFactors = n
-           ALLOCATE( ViewFactors(i) % Elements(n) )
-           ALLOCATE( ViewFactors(i) % Factors(n) )
+           ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n), STAT=istat )
+           IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 6.')
          ELSE 
 	   n2 = SIZE( ViewFactors(i) % Factors) 
 	   IF(n /=  n2 ) THEN
              IF(ASSOCIATED(ViewFactors(i) % Elements)) DEALLOCATE( ViewFactors(i) % Elements )
 	     IF(ASSOCIATED(ViewFactors(i) % Factors))  DEALLOCATE( ViewFactors(i) % Factors )
-             ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n) )
+             ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n), STAT=istat )
+             IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 7.')
            END IF
            ViewFactors(i) % NumberOfFactors = n
          END IF
@@ -637,14 +638,14 @@
 
      ALLOCATE( RHS(RadiationSurfaces), SOL(RadiationSurfaces),&
          Fac(RadiationSurfaces), FacPerm(RadiationSurfaces), STAT=istat )
-     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 6.')
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 8.')
 
      ! The coefficient matrix 
      CALL Info('RadiationFactors','Computing factors...',Level=5)
 
      IF(FullMatrix) THEN
        ALLOCATE(GFactorFull(RadiationSurfaces,RadiationSurfaces),STAT=istat)
-       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 7.')
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 9.')
        GFactorFull = 0.0_dp
      ELSE 
        ! Assembly the matrix form
@@ -677,7 +678,9 @@
      MatrixEntries = 0
      ImplicitEntries = 0
 
-     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces))
+     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
+  
      Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
      IF(.NOT. GotIt) Emissivity = 0.5_dp
      Reflectivity = 1-Emissivity
@@ -704,7 +707,10 @@
      END IF
 
 
-     ALLOCATE(Diag(RadiationSurfaces)); Diag=0
+     ALLOCATE(Diag(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 11.')
+
+     Diag = 0
 
      ! Fill the matrix for gebhardt factors
      ! Scale by (1-Emissivity) to get a symmetric system, if all emissivities are not equal to unity anywhere
@@ -767,7 +773,9 @@
      RHS = 0.0D0
      SOL = 1.0D-4
 
-     ALLOCATE(RowSums(RadiationSurfaces))
+     ALLOCATE(RowSums(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 12.')
+ 
      RowSums=0
           
      st = RealTime()
@@ -898,7 +906,8 @@
        IF(FirstTime) THEN
          GebhardtFactors % NumberOfFactors = n
          GebhardtFactors % NumberOfImplicitFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 13.')
        ELSE IF(ImplicitLimitIs) THEN 
          IF( TopologyFixed ) THEN
            CALL Warn('RadiationFactors','Matrix topology cannot be fixed with implicit Gebhardt factors')
@@ -907,13 +916,16 @@
          TopologyTest = .FALSE.
          DEALLOCATE( GebhardtFactors % Elements, GebhardtFactors % Factors )
          GebhardtFactors % NumberOfFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 14.')
          GebhardtFactors % NumberOfImplicitFactors = 0
        ELSE IF(GebhardtFactors % NumberOfFactors /= n .AND. .NOT. TopologyFixed) THEN         
          TopologyTest = .FALSE.
          DEALLOCATE( GebhardtFactors % Elements, GebhardtFactors % Factors )
-         GebhardtFactors % NumberOfFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         GebhardtFactors % NumberOfFactors = n         
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 15.')
+
          GebhardtFactors % NumberOfImplicitFactors = n
        END IF
        
@@ -1070,7 +1082,9 @@
        CALL Info('RadiationFactors','Creating new matrix topology')
 
        IF ( OptimizeBW ) THEN
-         ALLOCATE( NewPerm( SIZE(Tsolver % Variable % Perm)) )
+         ALLOCATE( NewPerm( SIZE(Tsolver % Variable % Perm)), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 15.')
+         
          TempPerm => Tsolver % Variable % Perm         
        ELSE
          NewPerm => Tsolver % Variable % Perm
@@ -1107,12 +1121,15 @@
        AMatrix % Symmetric = ListGetLogical( Params, 'Linear System Symmetric', GotIt )       
        
        n = AMatrix % NumberOFRows
-       ALLOCATE( AMatrix % RHS(n) )
+       ALLOCATE( AMatrix % RHS(n), STAT=istat)
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 16.')
+
 
        ! Transient case additional allocations:
        ! --------------------------------------
        IF ( ListGetString( CurrentModel % Simulation,'Simulation Type' ) == 'transient' ) THEN
-         ALLOCATE( Amatrix % Force(n, TSolver % TimeOrder+1) )
+         ALLOCATE( Amatrix % Force(n, TSolver % TimeOrder+1), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 17.')         
          Amatrix % Force = 0.0d0
        END IF
 
@@ -1162,7 +1179,9 @@
                 'Linear System Max Iterations', Found )
        IF(.NOT.Found) HUTI_MAXIT = 100
        
-       ALLOCATE( work(wsize,n) )
+       ALLOCATE( work(wsize,n), STAT=istat )
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 17.')
+
        
        IF ( ALL(x == 0.0) ) THEN
          HUTI_INITIALX = HUTI_RANDOMX
