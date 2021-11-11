@@ -684,6 +684,7 @@ CONTAINS
     END SUBROUTINE ParallelInitSolve
 !-------------------------------------------------------------------------------
 
+! Compute parallel sum (or optional min=1 or max=2)     
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelSumVector( Matrix, x, Op )
 !-------------------------------------------------------------------------------
@@ -698,6 +699,23 @@ CONTAINS
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelSumVector
+!-------------------------------------------------------------------------------
+
+! As the previous except for integer valued vectors.
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelSumVectorInt( Matrix, x, Op )
+!-------------------------------------------------------------------------------
+       TYPE(Matrix_t) :: Matrix
+       INTEGER, OPTIONAL :: op
+       INTEGER CONTIG :: x(:)
+!-------------------------------------------------------------------------------
+       ParEnv = Matrix % ParMatrix % ParEnv
+       ParEnv % ActiveComm = Matrix % Comm
+
+       CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
+              Matrix % ParallelInfo, x, op )
+!-------------------------------------------------------------------------------
+     END SUBROUTINE ParallelSumVectorInt
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -1203,6 +1221,35 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelReductionInt(i,oper_arg) RESULT(isum)
+!-------------------------------------------------------------------------------
+      INTEGER :: i, isum
+      INTEGER, OPTIONAL :: oper_arg
+!-------------------------------------------------------------------------------
+      INTEGER :: oper
+!-------------------------------------------------------------------------------
+      isum = i
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs>1) THEN
+        oper = 0
+        IF (PRESENT(oper_arg)) THEN
+          oper=oper_arg
+        ELSE
+          oper = 0
+        END IF
+
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
+            CALL ParallelActive(.TRUE.)
+        CALL SparActiveSUMInt(isum,oper)
+      END IF
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelReductionInt
+!-------------------------------------------------------------------------------
+
+    
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelBarrier
 !-------------------------------------------------------------------------------

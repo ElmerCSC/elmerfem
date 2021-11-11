@@ -1172,17 +1172,18 @@ CONTAINS
     INTEGER, POINTER :: Set(:)
     LOGICAL :: SelectNodes
 
-    LOGICAL :: Ready
-    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
-    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
+    LOGICAL :: Ready, Parallel
+    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces,jmax,m
+    INTEGER, ALLOCATABLE :: MeshPiece(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: Indexes(:)
+    INTEGER :: pIndexes(20)
 
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('CoilSolver','ChooseCoilCut implemented only for serial meshes!')
-    END IF
     
-    ALLOCATE( MeshPiece( Mesh % NumberOfNodes ) ) 
+    Parallel = ( ParEnv % PEs > 1 )
+
+    m = Solver % Matrix % NumberOfRows
+    ALLOCATE( MeshPiece(m) ) 
     MeshPiece = 0
     
     ! Only set the piece for the nodes that are used by some element
@@ -1190,56 +1191,69 @@ CONTAINS
     DO t = 1, Mesh % NumberOfBulkElements
       Element => Mesh % Elements(t)        
       Indexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+
+      pIndexes(1:n) = Perm(Indexes)
       
       ! Study the elements belonging to the coil under study
-      IF( ANY( Perm(Indexes) == 0 ) ) CYCLE
+      IF( ANY( pIndexes == 0 ) ) CYCLE
       IF( SelectNodes ) THEN
         IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
       END IF
-      n = Element % TYPE % NumberOfNodes
       DO i=1,n
-        IF( Set(Perm(Indexes(i))) /= 0 ) MeshPiece(Indexes(i)) = 1
+        IF( Set(pIndexes(i)) /= 0 ) MeshPiece(pIndexes(i)) = 1
       END DO
     END DO
     j = 0
-    DO i = 1, Mesh % NumberOfNodes
+
+    DO i = 1, m
       IF( MeshPiece(i) > 0 ) THEN
         j = j + 1
         MeshPiece(i) = j
       END IF
     END DO
-    
-    CALL Info('CoilSolver',&
-        'Number of candidante nodes in coil '//TRIM(I2S(j)),Level=12)
-    
+
+    IF( Parallel ) THEN
+      jmax = ParallelReductionInt(j,2)
+      MeshPiece = MeshPiece + ParEnv % MyPe * jmax
+      CALL Info('CoilSolver',&
+          'Maximum number of candidante nodes in coil '//TRIM(I2S(jmax)),Level=12)
+    ELSE          
+      CALL Info('CoilSolver',&
+          'Number of candidante nodes in coil '//TRIM(I2S(j)),Level=12)
+    END IF
+      
     ! We go through the elements and set all the piece indexes to minimimum index
     ! until the mesh is unchanged.
     Ready = .FALSE.
     Loop = 0
-    DO WHILE(.NOT. Ready) 
+100 DO WHILE(.NOT. Ready) 
       Ready = .TRUE.
       DO t = 1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)        
         Indexes => Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
+        pIndexes(1:n) = Perm(Indexes)
         
-        IF( ANY( Perm(Indexes) == 0 ) ) CYCLE
+        IF( ANY( pIndexes(1:n) == 0 ) ) CYCLE
+
         IF( SelectNodes ) THEN
           IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
         END IF
         IF( ALL( Set(Perm(Indexes)) == 0 ) ) CYCLE
 
-        n = Element % TYPE % NumberOfNodes
-        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+        MaxIndex = MAXVAL( MeshPiece( pIndexes(1:n) ) )
         MinIndex = MaxIndex
         DO i=1,n
-          j = MeshPiece(Indexes(i))
+          j = MeshPiece(pIndexes(i))
           IF(j>0) MinIndex = MIN(MinIndex,j)
         END DO
         
         IF( MaxIndex > MinIndex ) THEN
-          WHERE( MeshPiece(Indexes) > 0 ) 
-            MeshPiece( Indexes ) = MinIndex
+          WHERE( MeshPiece(pIndexes(1:n)) > 0 ) 
+            MeshPiece( pIndexes(1:n) ) = MaxIndex
           END WHERE
+          ! We found a connection where the cellular automate still continues so we cannot stop this cycle
           Ready = .FALSE.
         END IF
       END DO
@@ -1247,40 +1261,49 @@ CONTAINS
     END DO
     CALL Info('CoilSolver','Coil cut coloring loops: '//TRIM(I2S(Loop)),Level=12)
 
+    IF( Parallel ) THEN
+      i = SUM(MeshPiece)
+
+      ! Take parallel maximum at the interfaces
+      CALL ParallelSumVectorInt(Solver % Matrix,MeshPiece,2)
+
+      ! Was there any need to communicate? 
+      j = SUM(MeshPiece)-i
+      j = ParallelReductionInt(j)
+      IF(j > 0 ) THEN
+        CALL Info('CoilSolver','Continuing after parallel reduction!',Level=6)
+        GOTO 100
+      END IF
+    END IF
+    
+    
     ! Compute the true number of different pieces
     MaxIndex = MAXVAL(MeshPiece)
-    IF( MaxIndex == 1 ) RETURN
-    
-    ALLOCATE( PiecePerm( MaxIndex ) ) 
-    PiecePerm = 0
     NoPieces = 0
-    DO i = 1, Mesh % NumberOfNodes
-      j = MeshPiece(i) 
-      IF( j == 0 ) CYCLE
-      IF( PiecePerm(j) == 0 ) THEN
-        NoPieces = NoPieces + 1
-        PiecePerm(j) = NoPieces 
+    IF( MaxIndex > 0 ) THEN
+      NoPieces = 1      
+      k = MaxIndex
+200   j = 0
+      DO i=1,m
+        IF(MeshPiece(i)>j .AND. MeshPiece(i)<k) j=MeshPiece(i)
+      END DO
+      IF( j>0 ) THEN
+        NoPieces = NoPieces + 1        
+        k = j
+        GOTO 200 
       END IF
-    END DO
+    END IF
+    NoPieces = ParallelReductionInt(NoPieces)
     CALL Info('CoilSolver',&
         'Number of separate cuts in mesh is '//TRIM(I2S(NoPieces)),Level=12)
+    IF(NoPieces == 1 ) RETURN
 
-    DO i = 1, Mesh % NumberOfNodes
-      j = MeshPiece(i)
-      IF( j == 0 ) CYCLE
-      MeshPiece(i) = PiecePerm(j)
-    END DO
-
-    DO i=1,MaxIndex
-      PRINT *,'Cuts in coil:',i,COUNT(MeshPiece == i)
-    END DO
-
-    ! Ok, here we just choose the first cut, we could choose some else too
-    DO i=1,Mesh % NumberOfNodes      
-      j = Perm(i)
-      IF( j==0 ) CYCLE
-      IF( MeshPiece(i) > 1 ) Set(j) = 0
-    END DO
+    MaxIndex = ParallelReductionInt(MaxIndex,2)
+        
+    ! Ok, here we just choose the maximum index
+    WHERE ( MeshPiece /= MaxIndex ) 
+      Set = 0
+    END WHERE
 
     CALL Info('CoilSolver','Saving mesh piece field to: mesh piece',Level=5)
   
