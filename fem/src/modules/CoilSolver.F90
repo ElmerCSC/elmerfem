@@ -607,6 +607,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     ! Only Default dirichlet conditions activate the BCs above!
     CALL DefaultDirichletBCs()
     
+    Solver % Variable % Values = 0
     Norm = DefaultSolve()
     
     CALL Info('CoilSolver','Fixing elemental current density to be divergence free!')
