@@ -30,7 +30,7 @@ Simulation
 !  Timestep Intervals = 20
 !  Output Intervals = 1
   Steady State Max Iterations = 1
-!  Post File = "hemisphere.ep"
+!  Post File = "hemisphere.vtu"
 End
 
 Body 1
