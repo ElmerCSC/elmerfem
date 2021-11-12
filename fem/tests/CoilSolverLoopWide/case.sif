@@ -1,5 +1,5 @@
-! This version of coil solver uses a narrow version of the interface
-! conditions for the closed coil. 
+! This version of coil solver uses the old not-narrow version
+! of the interface conditions for the closed coil. 
 
 Check Keywords "Warn"
 
@@ -84,8 +84,8 @@ Solver 1
 
   Coil Closed = Logical True
 
-! This could be useful sometimes
-  Narrow Interface = Logical True
+! Default is nowadays true. This tests only convention.
+  Narrow Interface = Logical False
 
   Save Coil Set = Logical True
   Save Loads = Logical True
@@ -118,5 +118,5 @@ Material 1
 End
 
 
-Solver 1 :: Reference Norm = 8.62332813
+Solver 1 :: Reference Norm = 7.74178076
 Solver 2 :: Reference Norm = 1.20856155E-01
