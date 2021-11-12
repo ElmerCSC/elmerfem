@@ -141,10 +141,8 @@ CONTAINS
     INTEGER, TARGET :: BCIndexes(27)
     INTEGER :: ElmerCode, i,j,k,n,hits
     INTEGER, POINTER :: Order(:)
-    INTEGER, TARGET, DIMENSION(4) :: Order204 = (/1,4,2,3/)
-    INTEGER, TARGET, DIMENSION(10) :: Order310 = (/1,4,10,2,3,7,9,8,5,6/)
     INTEGER, TARGET, DIMENSION(16) :: &
-        Order416 = (/1,4,16,13,2,3,8,12,15,14,9,5,6,7,11,10/)
+        Order416 = (/1,2,3,4,5,6,7,8,10,9,12,11,13,14,16,15/)
     INTEGER, TARGET, DIMENSION(20) :: &
         Order820 = (/1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16/)
     INTEGER, TARGET, DIMENSION(27) :: &
@@ -201,14 +199,6 @@ CONTAINS
     ! Linear elements never require reordering 
     IF( .NOT. SaveLinear ) THEN
       SELECT CASE (ElmerCode)
-
-      CASE( 204 )
-        Order => Order204
-        DoReOrder = .TRUE.
-
-      CASE( 310 )
-        Order => Order310
-        DoReOrder = .TRUE.
 
       CASE( 416 )
         Order => Order416
