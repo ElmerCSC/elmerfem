@@ -3935,7 +3935,7 @@ CONTAINS
       FileCount = 0
     END IF
  
-    FileCount = NINT( ParallelReduction( 1.0_dp * FileCount ) )
+    FileCount = ParallelReduction( FileCount ) 
     IF( FileCount == 0 ) THEN
       CALL Error( Caller,'=======================================' )
       CALL Error( Caller,'' )

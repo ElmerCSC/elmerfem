@@ -741,7 +741,7 @@ CONTAINS
       CALL Info('BlockPickDofsPhysical','All physical domains given block index',Level=10)
     END IF
     
-    MaxBlock = NINT( ParallelReduction(1.0_dp*MaxBlock, 2 ) )    
+    MaxBlock = ParallelReduction(MaxBlock, 2 ) 
     NoVar = MaxBlock
 
   END SUBROUTINE BlockPickDofsPhysical
@@ -2036,7 +2036,7 @@ CONTAINS
     END IF
           
     stot = ParallelReduction(s)
-    ntot = ParallelReduction(1.0_dp*m)
+    ntot = ParallelReduction(m)
     
     nrm = SQRT( stot / ntot )
     
@@ -4034,13 +4034,13 @@ CONTAINS
     
     HaveConstraint = 0
     IF ( ASSOCIATED(A % ConstraintMatrix) )  HaveConstraint = 1
-    HaveConstraint = ParallelReduction(HaveConstraint*1._dp)
+    HaveConstraint = ParallelReduction(HaveConstraint)
      
     HaveAdd = 0
     IF ( ASSOCIATED(A % AddMatrix) )  THEN
       IF ( A % AddMatrix % NumberOFRows > 0 ) HaveAdd = 1
     END IF
-    HaveAdd = ParallelReduction(HaveAdd*1._dp)
+    HaveAdd = ParallelReduction(HaveAdd)
 
     IF( HaveConstraint > 0 ) BlockDofs = BlockDofs + 1
     IF( HaveAdd > 0 ) BlockDofs = BlockDofs + 1    

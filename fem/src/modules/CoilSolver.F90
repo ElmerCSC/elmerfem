@@ -1254,7 +1254,7 @@ CONTAINS
     j = COUNT(MeshPiece > 0)
     
     IF( Parallel ) THEN
-      jmax = ParallelReductionInt(j,2)
+      jmax = ParallelReduction(j,2)
       MeshPiece = MeshPiece + ParEnv % MyPe * jmax
       CALL Info(Caller,&
           'Maximum number of candidante nodes in coil '//TRIM(I2S(jmax)),Level=12)
@@ -1311,7 +1311,7 @@ CONTAINS
       ! Was there any need to communicate?
       ! If even one node needed to be communicated then repeat the serial algo. 
       j = SUM(MeshPiece)-i
-      j = ParallelReductionInt(j)
+      j = ParallelReduction(j)
       IF(j > 0 ) THEN
         CALL Info(Caller,'Continuing after parallel reduction!',Level=6)
         GOTO 100
@@ -1347,18 +1347,18 @@ CONTAINS
       END IF
     END IF
     
-    NoPieces = ParallelReductionInt(NoPieces)
+    NoPieces = ParallelReduction(NoPieces)
     CALL Info(Caller,'Number of separate cuts in mesh is '//TRIM(I2S(NoPieces)),Level=12)
     IF(NoPieces == 1 ) RETURN
       
     IF( ListGetLogical( Solver % Values,'Select Min Coil Cut',Found ) ) THEN
       ! We may choose the minimum index
       MinIndex = MINVAL(MeshPiece,MeshPiece>0)
-      MinIndex = ParallelReductionInt(MinIndex,1)      
+      MinIndex = ParallelReduction(MinIndex,1)      
       WHERE ( MeshPiece /= MinIndex ) Set = 0
     ELSE      
       ! Or the maximum. We don't really know how many there are.
-      MaxIndex = ParallelReductionInt(MaxIndex,2)
+      MaxIndex = ParallelReduction(MaxIndex,2)
       WHERE ( MeshPiece /= MaxIndex ) Set = 0
     END IF
           
@@ -1432,8 +1432,8 @@ CONTAINS
           nminus = nminus + 1
         END IF
       END DO
-      nplus = NINT( ParallelReduction( 1.0_dp * nplus ) ) 
-      nminus = NINT( ParallelReduction( 1.0_dp * nminus ) ) 
+      nplus = ParallelReduction( nplus ) 
+      nminus = ParallelReduction( nminus ) 
     END IF
 
     CALL Info(Caller,'Set'//TRIM(I2S(SetNo))//' : '&

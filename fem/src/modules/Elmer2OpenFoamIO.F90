@@ -127,7 +127,7 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   IF( .NOT. ListCheckPresent(Params,'OpenFOAM Mesh 1') ) THEN
     CALL OpenFOAMBlocks()
   END IF
-  NoDir = NINT( ParallelReduction(1.0_dp * NoDir ) )
+  NoDir = ParallelReduction(NoDir ) 
   CALL Info('Elmer2OpenFOAMWrite','Number of active OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=5)
 
   

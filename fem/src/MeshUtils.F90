@@ -767,7 +767,7 @@ CONTAINS
      END IF
    END IF
    
-   i = NINT( ParallelReduction( 1.0_dp * NoDiscontNodes ) )
+   i = ParallelReduction( NoDiscontNodes ) 
    CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '&
        //TRIM(I2S(i)),Level=7)
 
@@ -1317,7 +1317,7 @@ CONTAINS
    IF ( ParEnv % PEs <= 1 ) RETURN
 
    ! As index offset use the number of nodes in the whole mesh
-   goffset = ParallelReduction( MAXVAL(Mesh % ParallelInfo % GlobalDofs)*1._dp,2 )
+   goffset = ParallelReduction( MAXVAL(Mesh % ParallelInfo % GlobalDofs),2 )
 
    n0 = SIZE( Mesh % ParallelInfo % GlobalDofs )
    n1 = Mesh % NumberOfNodes 
@@ -2676,8 +2676,8 @@ CONTAINS
    END IF
 
    IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
-     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
-     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
+     Mesh % MaxElementDOFs  = ParallelReduction( Mesh % MaxElementDOFs,2  ) 
+     Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
    
    

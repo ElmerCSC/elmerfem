@@ -206,7 +206,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     END DO 
 
     NoMoving = Particles % NumberOfMovingParticles
-    NoMoving = NINT( ParallelReduction( 1.0_dp * NoMoving ) )
+    NoMoving = ParallelReduction( NoMoving ) 
     WRITE (Message,'(A,I0,A,I0,A)') 'Timestep ',i,' with ',NoMoving,' moving particles'
     CALL Info('ParticleAdvector',Message,Level=6)
 

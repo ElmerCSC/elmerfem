@@ -3454,7 +3454,9 @@ END SUBROUTINE ExchangeInterfaces
 END SUBROUTINE ExchangeIfValues
 !*********************************************************************
 
-
+!---------------------------------------------------------------------
+! This routine sums up (or takes min or max) of parallel matrices that
+! have multiple contributions at the interfaces. 
 !*********************************************************************
 SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
             ParallelInfo, SourceVec, op )
@@ -3631,7 +3633,10 @@ END SUBROUTINE ExchangeSourceVec
 !*********************************************************************
 
 
-
+!---------------------------------------------------------------------
+! This routine is exactly as the previous one but instead of being for
+! double precision vectors it is for integers. If you find bug in either
+! remember to harmonize the routine. 
 !*********************************************************************
 SUBROUTINE ExchangeSourceVecInt( SourceMatrix, SplittedMatrix, &
             ParallelInfo, SourceVec, op )

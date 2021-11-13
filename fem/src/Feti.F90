@@ -901,7 +901,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !!call resettimer('project')
 
-    maxnz = parallelreduction(1._dp*nz,2)
+    maxnz = parallelreduction(nz,2)
 
     ! check whether anything to do:
     ! -----------------------------
@@ -2169,8 +2169,8 @@ END SUBROUTINE FetiProject
 #endif
     END IF
 
-    mind=ParallelReduction(nz*1._dp,1)
-    maxd=ParallelReduction(nz*1._dp,2)
+    mind=ParallelReduction(nz,1)
+    maxd=ParallelReduction(nz,2)
     WRITE(Message,*) 'min/max nz:',FLOOR(mind+0.5_dp),FLOOR(maxd+0.5_dp)
     CALL Info('Feti:', Message,Level=6)
 

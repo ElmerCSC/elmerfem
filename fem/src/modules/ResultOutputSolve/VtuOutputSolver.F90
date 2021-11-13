@@ -432,15 +432,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL ParallelActive( NumberOfDofNodes > 0 )
 
   IF( nTime == 1 ) THEN
-    ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfGeomNodes ) )
+    ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
     CALL Info(Caller, 'Total number of geometry nodes to save: '&
         //TRIM(I2S(ParallelNodes)),Level=6)
 
-    ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfDofNodes ) )
+    ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
     CALL Info(Caller, 'Total number of dof nodes to save: '&
         //TRIM(I2S(ParallelNodes)),Level=6)
 
-    ParallelElements = NINT( ParallelReduction( 1.0_dp * NumberOfElements ) )
+    ParallelElements = ParallelReduction( NumberOfElements ) 
     CALL Info(Caller, 'Total number of elements to save: '&
         //TRIM(I2S(ParallelElements)),Level=6)
   END IF
@@ -566,7 +566,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! We may need to jump here to write a new eigenmode
 100 CONTINUE
 
-  ParallelDofsNodes = NINT( ParallelReduction( 1.0_dp * NumberOfDofNodes ) )
+  ParallelDofsNodes = ParallelReduction( NumberOfDofNodes ) 
   
   IF(Parallel) THEN
     ! Generate the filename for saving
@@ -1865,7 +1865,7 @@ CONTAINS
     Active = 0
     IF( ThisActive ) Active = 1    	
 
-    NoActive = NINT( ParallelReduction( 1.0_dp * Active ) )
+    NoActive = ParallelReduction( Active ) 
     IF( NoActive == 0 ) THEN
       CALL Warn('WritePvtuFile','No active partitions for saving')
     END IF

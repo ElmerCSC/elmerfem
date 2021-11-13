@@ -626,7 +626,7 @@ CONTAINS
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
          i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = NINT( ParallelReduction( 1.0_dp * i, 2 ) )
+         i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)
@@ -2151,7 +2151,7 @@ CONTAINS
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
          i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = NINT( ParallelReduction( 1.0_dp * i, 2 ) )
+         i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)

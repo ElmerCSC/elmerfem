@@ -1029,7 +1029,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF( IsParallel ) lpar = CurrentElement % GElementIndex
     END IF
 
-    lpar = NINT( ParallelReduction(1.0_dp * lpar, 2 ) )
+    lpar = ParallelReduction(lpar, 2 ) 
     IF( lpar == 0 ) CYCLE
     
     IF( l > 0 ) THEN
@@ -1536,7 +1536,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   n = 1
-  n = NINT( ParallelReduction(1.0_dp*n) )
+  n = ParallelReduction(n) 
 
   PrevRunInd = RunInd
 

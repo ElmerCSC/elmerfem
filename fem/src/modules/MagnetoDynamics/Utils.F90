@@ -814,7 +814,7 @@ CONTAINS
       END DO
 
       snodes0 = COUNT( SurfacePerm > 0 )
-      snodes0 = NINT( ParallelReduction(1.0_dp * snodes0) ) 
+      snodes0 = ParallelReduction(snodes0) 
 
       !DO i=1,n
       !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
@@ -835,7 +835,7 @@ CONTAINS
       END IF
     END DO     
     
-    snodes = NINT( ParallelReduction(1.0_dp * snodes) ) 
+    snodes = ParallelReduction(snodes) 
     CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
 
     IF( EnsureBC ) THEN

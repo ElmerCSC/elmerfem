@@ -5502,19 +5502,19 @@ CONTAINS
 
           k = ind
           IF( Parallel ) THEN
-            k = NINT( ParallelReduction( 1.0_dp * ind, 2 ) ) 
+            k = ParallelReduction( ind, 2 ) 
             
             ! Find the maximum partition that owns a suitable node. 
             ! It could be minimum also, just some convection is needed. 
             k = -1
             IF( ind > 0 ) k = ParEnv % MyPe          
-            k = NINT( ParallelReduction( 1.0_dp * k, 2 ) ) 
+            k = ParallelReduction( k, 2 ) 
             IF( k == -1 ) THEN
               CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
             ELSE
               IF( k /= ParEnv % MyPe ) ind = 0                         
               IF( InfoActive(8) ) THEN
-                ind = NINT( ParallelReduction( 1.0_dp * ind, 2 ) )               
+                ind = ParallelReduction( ind, 2 )                
                 CALL Info(Caller,'Fixing single node '&
                     //TRIM(I2S(ind))//' at partition '//TRIM(I2S(k)),Level=8)
                 IF( k /= ParEnv % MyPe ) ind = 0
@@ -5678,7 +5678,7 @@ CONTAINS
           IF( Parallel ) THEN
             k = -1
             IF( ind > 0 ) k = ParEnv % MyPe          
-            k = NINT( ParallelReduction( 1.0_dp * k, 2 ) ) 
+            k = ParallelReduction( k, 2 ) 
             IF( k == -1 ) THEN
               CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
             END IF
@@ -5893,7 +5893,7 @@ CONTAINS
     
     IF( InfoActive(12) )  THEN
       IF( Parallel ) THEN
-        DirCount = NINT( ParallelReduction( 1.0_dp * DirCount ) )
+        DirCount = ParallelReduction( DirCount ) 
       END IF
       CALL Info(Caller,'Number of dofs set for '//TRIM(Name)//': '&
           //TRIM(I2S(DirCount)),Level=12)
@@ -8340,7 +8340,7 @@ CONTAINS
     n = COUNT( A % ConstrainedDOF )
 
     IF( Parallel ) THEN
-      n = NINT( ParallelReduction(1.0_dp * n ) )
+      n = ParallelReduction( n )
     END IF
       
     IF( n == 0 ) THEN
@@ -10209,7 +10209,7 @@ END FUNCTION SearchNodeL
         END DO
       END SELECT
 
-      totn = NINT( ParallelReduction(1._dp*totn) )
+      totn = ParallelReduction(totn) 
       nscale = 1.0_dp * totn
       
       SELECT CASE(NormDim)
@@ -10224,7 +10224,7 @@ END FUNCTION SearchNodeL
       END SELECT
     
     ELSE IF( NormDofs < Dofs ) THEN
-      totn = NINT( ParallelReduction(1._dp*n) )
+      totn = ParallelReduction(n) 
       nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
 
@@ -10270,8 +10270,7 @@ END FUNCTION SearchNodeL
       END SELECT
             
     ELSE IF( Parallel ) THEN
-      val = ParallelReduction(1.0_dp*n)
-      totn = NINT( val )
+      totn = ParallelReduction(n)
       IF (totn == 0) THEN
         CALL Warn('ComputeNorm','Requested norm of a variable with no Dofs')
         Norm = 0.0_dp
@@ -14490,7 +14489,7 @@ END FUNCTION SearchNodeL
       END IF
     END DO
 
-    totn = NINT( ParallelReduction(1.0_dp * n) )
+    totn = ParallelReduction(n)
 
     r2sum = SUM( r**2 )
     Nrm = SQRT( ParallelReduction(r2sum) / totn )
@@ -14521,7 +14520,7 @@ END FUNCTION SearchNodeL
       IF ( A % AddMatrix % NumberOFRows > 0 ) n = n + 1
     END IF
     
-    n = ParallelReduction(n*1._dp)
+    n = ParallelReduction(n)
 
     HaveConstraint = ( n > 0 ) 
     
@@ -17055,7 +17054,7 @@ CONTAINS
     INTEGER :: i,j,ng
 
     ng = A % NumberOfRows
-!   ng = ParallelReduction(1._dp*MAXVAL(A % ParallelInfo % GLobalDOfs))
+!   ng = ParallelReduction(MAXVAL(A % ParallelInfo % GLobalDOfs))
     ALLOCATE(x(ng),r(ng))
 
     x = 0._dp
@@ -17519,10 +17518,10 @@ CONTAINS
       dumpfile = TRIM(dumpprefix)//'_sizes.dat'
       CALL Info(Caller,'Saving matrix sizes to: '//TRIM(dumpfile),Level=6)
       OPEN(1,FILE=dumpfile, STATUS='Unknown')
-      WRITE(1,*) NINT(ParallelReduction(1._dP*A % ParMatrix % &
-                           SplittedMatrix % InsideMatrix % NumberOfRows))
-      WRITE(1,*) NINT(ParallelReduction(1._dp*SIZE(A % Values)))
-      IF( SavePerm ) WRITE(1,*) NINT(ParallelReduction(1._dp*SIZE( Perm )))
+      WRITE(1,*) ParallelReduction(A % ParMatrix % &
+                           SplittedMatrix % InsideMatrix % NumberOfRows)
+      WRITE(1,*) ParallelReduction(SIZE(A % Values))
+      IF( SavePerm ) WRITE(1,*) ParallelReduction(SIZE( Perm ))
       CLOSE(1)
     END IF
     

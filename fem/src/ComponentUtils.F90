@@ -408,7 +408,7 @@ MODULE ComponentUtils
     END DO
     
     
-    sumi = NINT( ParallelReduction(1.0_dp * sumi) )
+    sumi = ParallelReduction(sumi) 
     IF( sumi == 0 ) THEN
       CALL Warn('ComponentNodalReduction','No active nodes to reduced!')
       RETURN
