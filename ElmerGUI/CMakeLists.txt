@@ -16,6 +16,11 @@ SET(WITH_VTK FALSE CACHE BOOL "ElmerGUI: Use VTK for postprocessing?")
 SET(WITH_QWT TRUE CACHE BOOL "ElmerGUI: Use QWT for convergence monitor?")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "ElmerGUI: Include ElmerGUIlogger")
 
+find_package(Qt5 COMPONENTS Widgets)
+if (Qt5_FOUND)
+set(WITH_QT5 TRUE CACHE BOOL "ElmerGUI: Use Qt5")
+endif()
+
 IF(WITH_QT5)
   MESSAGE(STATUS "------------------------------------------------")
   IF(WIN32)
