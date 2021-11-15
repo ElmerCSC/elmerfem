@@ -587,7 +587,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Finished writing vtu file',Level=12)
   END IF
 
-  ! For transient simulation or group collections write a holder for indivisual files
+  ! For transient simulation or group collections write a holder for individual files
   !-----------------------------------------------------------------------------------
   IF( TimeCollection .OR. GroupCollection ) THEN
     CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex, ParallelBase = ParallelBase )    
@@ -646,6 +646,7 @@ CONTAINS
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
+    CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
         ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
     LOGICAL :: WriteData, WriteXML, L, Buffered
@@ -690,7 +691,7 @@ CONTAINS
     !-------------------------------------------------------------------------
     OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='replace', IOStat=iostat)
     IF( iostat /= 0 ) THEN
-      CALL Fatal('WriteVtuFile','Opening of file failed: '//TRIM(VtuFile))
+      CALL Fatal(Caller,'Opening of file failed: '//TRIM(VtuFile))
     END IF
         
     Solver => Model % Solver
@@ -719,7 +720,7 @@ CONTAINS
     ScalarFieldName = GetString( Params,'Scalar Field 1',ScalarsExist)
     VectorFieldName = GetString( Params,'Vector Field 1',VectorsExist)
     IF( .NOT. ( ScalarsExist .OR. VectorsExist) ) THEN
-      CALL Warn('WriteVtuFile','Are there really no scalars or vectors?')
+      CALL Warn(Caller,'Are there really no scalars or vectors?')
     END IF
 
     WRITE( OutStr,'(A)') '      <PointData>'//lf
@@ -793,7 +794,7 @@ CONTAINS
               ComponentVector = .TRUE.
             ELSE
               WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
+              CALL Warn(Caller, Txt)
               CYCLE
             END IF
           END IF
@@ -843,7 +844,7 @@ CONTAINS
               IF( IndField > NoModes ) THEN
                 WRITE( Message,'(A,I0,A,I0,A)') 'Too few eigenmodes (',&
                     IndField,',',NoModes,') in '//TRIM(FieldName)       
-                CALL Warn('WriteVtuXMLFile',Message)
+                CALL Warn(Caller,Message)
                 CYCLE
               END IF
               NoModes = 1
@@ -860,7 +861,7 @@ CONTAINS
               IF( IndField > NoModes2 ) THEN
                 WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
                     IndField,',',NoModes,') in '//TRIM(FieldName)       
-                CALL Warn('WriteVtuXMLFile',Message)
+                CALL Warn(Caller,Message)
                 CYCLE
               END IF
               NoModes2 = 1
@@ -893,7 +894,7 @@ CONTAINS
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
             IF( VarType == Variable_on_gauss_points ) THEN
-              CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
+              CALL Warn(Caller,'Gauss point variables cannot currently be given componentwise!')
               CYCLE
             END IF
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
@@ -948,7 +949,7 @@ CONTAINS
                 END IF
                 ComplementExists = .TRUE.
               ELSE
-                CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldNameB))
+                CALL Warn(Caller,'Complement does not exist:'//TRIM(FieldNameB))
               END IF
             END IF
           END IF
@@ -965,10 +966,10 @@ CONTAINS
           DO iField = 1, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
-              CALL Info('WriteVTUFile','Setting field type to discontinuous',Level=12)
+              CALL Info(Caller,'Setting field type to discontinuous',Level=12)
               InvFieldPerm => InvDgPerm
             ELSE IF( ALLOCATED( InvNodePerm ) ) THEN
-              CALL Info('WriteVTUFile','Setting field type to nodal',Level=14)
+              CALL Info(Caller,'Setting field type to nodal',Level=14)
               InvFieldPerm => InvNodePerm
             ELSE
               InvFieldPerm => NULL()
@@ -1245,7 +1246,7 @@ CONTAINS
           ! Finally save the field values 
           !---------------------------------------------------------------------
           IF( WriteXML ) THEN
-            CALL Info('WriteVtuFile','Writing variable: '//TRIM(FieldName) )
+            CALL Info(Caller,'Writing variable: '//TRIM(FieldName) )
             WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
             CALL AscBinStrWrite( OutStr )
 
@@ -1769,7 +1770,7 @@ CONTAINS
       CALL ReleaseVariableList( TmpSolDg )
     END IF
     
-    CALL Info('WriteVtuFile','Finished writing file',Level=15)
+    CALL Info(Caller,'Finished writing file',Level=15)
     
   END SUBROUTINE WriteVtuFile
 
@@ -1952,7 +1953,7 @@ CONTAINS
               ComponentVector = .TRUE.
             ELSE
               WRITE(Txt, '(A,A)') 'Nonexistent variable 2: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
+              CALL Warn('WritePvtuFile', Txt)
               CYCLE
             END IF
           END IF
@@ -1980,7 +1981,7 @@ CONTAINS
                 IndField = FileIndex
               END IF
               IF( IndField > NoModes ) THEN
-                CALL Warn('WriteVtuXMLFile','Too few eigenmodes!')
+                CALL Warn('WritePvtuFile','Too few eigenmodes!')
                 CYCLE
               END IF
               NoModes = 1
@@ -2074,7 +2075,7 @@ CONTAINS
               ELSE 
                 IF( L ) THEN
                   WRITE(Txt, '(A,A)') 'Nonexistent elemental variable 2: ',TRIM(FieldName)
-                  CALL Warn('WriteVtuXMLFile', Txt)
+                  CALL Warn('WritePvtuFile', Txt)
                 END IF
                 CYCLE
               END IF
@@ -2100,7 +2101,7 @@ CONTAINS
                   IndField = FileIndex
                 END IF
                 IF( IndField > NoModes ) THEN
-                  CALL Warn('WriteVtuXMLFile','Too few eigenmodes!')
+                  CALL Warn('WritePvtuFile','Too few eigenmodes!')
                   CYCLE
                 END IF
                 NoModes = 1

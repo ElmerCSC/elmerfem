@@ -105,14 +105,14 @@ CONTAINS
     END SELECT
 
 
-    ! If requested return the 1st order element corresponding to the higher order elements
+    ! If requested, return the 1st order element corresponding to the higher order elements
     IF( SaveLinear ) THEN
       SELECT CASE (VTKCode)
-      CASE( 21 )
+      CASE( 21, 35 )
         VTKCode = 3
-      CASE( 22 )
+      CASE( 22, 69 )
         VTKCode = 5
-      CASE( 23, 28 )
+      CASE( 23, 28, 70 )
         VTKCode = 9
       CASE( 24 )
         VTKCode = 10
@@ -289,7 +289,7 @@ CONTAINS
 
   
   
-  ! Given different criteria fos saving create a geometrical mask for elements
+  ! Given different criteria for saving create a geometrical mask for elements
   ! and continuous numbering for the associated nodes.
   !------------------------------------------------------------------------------  
   SUBROUTINE GenerateSaveMask(Mesh,Params,Parallel,GroupId,SaveLinear,&
