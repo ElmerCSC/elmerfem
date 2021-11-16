@@ -203,7 +203,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Found
   LOGICAL :: CurveDataOutput, SavePrincipalAxes, ComputeShellArea
   LOGICAL :: WriteElementalDirector
-  LOGICAL :: MacroElements, QuadraticApproximation = .FALSE.
+  LOGICAL :: QuadraticApproximation = .FALSE.
   LOGICAL :: PlateBody, PlanarPoint, UmbilicalPoint
   LOGICAL :: Bubbles, ApplyBubbles
   LOGICAL :: LargeDeflection, MeshDisplacementActive, Relax
@@ -321,7 +321,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         'Drilling DOFs cannot yet be combined with Large Deflection')
     SolveBenchmarkCase = .FALSE.
     IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
-        ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
+        CALL AllocateVector(Solver % Matrix % BulkRHS, SIZE(Solver % Matrix % RHS))
     Solver % Matrix % BulkRHS = 0.0d0
   ELSE
     MaxNonlinIters = 0
@@ -402,7 +402,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   IF (.NOT. ALLOCATED(LocalRHSForce)) ALLOCATE( LocalRHSForce((ShellModelPar+1) * Mesh % MaxElementDOFs) )
 
   IF (.NOT. ASSOCIATED(TotalSol)) THEN
-    ALLOCATE( TotalSol(SIZE(Solver % Variable % Values)) )
+    CALL AllocateVector(TotalSol, SIZE(Solver % Variable % Values))
   ELSE
     IF (MeshDisplacementActive) THEN
       CALL Info('ShellSolver', 'Returning the mesh to its reference position', Level=4)     
@@ -432,13 +432,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     ! approximation. The implementation may not be memory efficient as data is 
     ! duplicated for shared element edges with the same director data. Here the
     ! variable CurveDataOutput can be used to output edge data into a file.
-    ! With the macro element option we may create additional space curves
-    ! corresponding to subtriangulations of quadrilateral elements.
     ! ---------------------------------------------------------------------------------
     CurveDataOutput = GetLogical(SolverPars, 'Edge Curves Output', Found)
-    !MacroElements = GetLogical(SolverPars, 'Use Macro Elements', Found)
-    MacroElements = .FALSE.
-    CALL CreateCurvedEdges(CurveDataOutput, MacroElements)
+    CALL CreateCurvedEdges(CurveDataOutput)
 
     ! ---------------------------------------------------------------------------------
     ! Check whether the area of shell surface should be computed (here this is done
@@ -530,7 +526,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
           CALL LinesOfCurvatureFrame(BGElement, TaylorApproximation=.TRUE., &
               LagrangeNodes=LocalFrameNodes, d=d, PlanarSurface=PlateBody, &
               PlanarPoint=PlanarPoint, UmbilicalPoint=UmbilicalPoint, &
-              MacroElement=MacroElements, SaveProperties=.TRUE.) 
+              SaveProperties=.TRUE.) 
         END IF
         
         TaylorParams => GetElementProperty('taylor parameters', BGElement)
@@ -546,7 +542,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         !----------------------------------------------------------------------
         ! The area computation for the available geometry description:
         !----------------------------------------------------------------------
-        IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea, MacroElements)
+        IF (ComputeShellArea) CALL ComputeSurfaceArea(BGElement, BlendingSurfaceArea)
         !LocalFrameNodes(:,3) = ZNodes(:)
         !IF (ComputeShellArea) CALL MappedBGMeshArea(BGElement, LocalFrameNodes, MappedMeshArea)
       END IF REPARAMETRIZATION
@@ -1248,7 +1244,8 @@ CONTAINS
 ! Use nodal directors, which are retrieved as elementwise property 'director', 
 ! to create the parametrizations of curved edges for the Hermite interpolation.
 ! The edge curve data are written as elementwise properties 'edge frames' and
-! 'edge parameters'.
+! 'edge parameters'. With the MacroElement option we may create additional space 
+! curves corresponding to subtriangulations of quadrilateral elements.
 !-------------------------------------------------------------------------------
   SUBROUTINE CreateCurvedEdges( FileOutput, MacroElements )
 !-------------------------------------------------------------------------------
@@ -1309,8 +1306,7 @@ CONTAINS
           EdgesParametrized = 6   ! Even 8 edges could be created
         ELSE
           ! -------------------------------------------------------------------------------
-          ! We may consider 404 as a macroelement for a subtriangulation to ensure that 
-          ! fourth-order accurate approximation in L2 can be obtained. 
+          ! We may consider 404 as a macroelement for a subtriangulation
           ! -------------------------------------------------------------------------------
           IF (PRESENT(MacroElements)) Subtriangulation = MacroElements
           IF (Subtriangulation) EdgesParametrized = 6
@@ -1646,8 +1642,8 @@ CONTAINS
 ! TO DO: Complement and clean the implementation when the initial data
 !        is defined over second-order Lagrange elements
 !-----------------------------------------------------------------------------  
-  FUNCTION BlendingSurfaceInfo( Element, Nodes, u, v, &
-      deta, a1, a2, a3, A, B, x, MacroElement, BubbleDOFs, UseMeshOnly ) RESULT(stat)
+  FUNCTION BlendingSurfaceInfo( Element, Nodes, u, v, deta, a1, a2, a3, &
+      A, B, x, UseMeshOnly ) RESULT(stat)
 !----------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -1661,18 +1657,15 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: A(2,2)             !< The covariant components of the metric surface tensor at (u,v)  
     REAL(KIND=dp), INTENT(OUT) :: B(2,2)             !< The covariant components of the second fundamental form at (u,v)
     REAL(KIND=dp), INTENT(OUT) :: x(3)               !< Blending surface point corresponding to (u,v): x=x(u,v)
-    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement    !< This should be .FALSE. to avoid troubles
-    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: BubbleDOFs(4,3)  !< Coefficients for bubble basis functions
     LOGICAL, OPTIONAL, INTENT(IN) :: UseMeshOnly     ! Instead of blending use the original mesh in the calculation
     LOGICAL :: Stat                                  !< A dummy status variable at the moment
 !----------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: GElement => NULL()
-    LOGICAL :: QuadraticGeometryData, Subtriangulation, ComputeFromMesh
+    LOGICAL :: QuadraticGeometryData, ComputeFromMesh
     INTEGER :: i, j, e, n, q, i0, cn, EdgesParametrized, CurveDataSize, Family
-    REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:), BubbleValues(:)
+    REAL(KIND=dp), POINTER :: FrameData(:), EdgeParams(:)
     REAL(KIND=dp) :: Basis(MaxPatchNodes), dBasis(MaxPatchNodes,2), ddBasis(4,2,2)
     REAL(KIND=dp) :: xi, eta, ddr(3,2,2)
-    REAL(KIND=dp) :: BubbleCoeff(4,3)
     REAL(KIND=dp) :: ex(3), ey(3), ez(3), X0(3)
     REAL(KIND=dp) :: d(CurveDataSize2)
     REAL(KIND=dp) :: h, s, t, w, xe, c(3), deltac(3), dc(3), ddc(3)
@@ -1741,8 +1734,6 @@ CONTAINS
       GOTO 101
     END IF
 
-    ! Set some default values:
-    Subtriangulation = .FALSE.
     EdgesParametrized = Family
 
     SELECT CASE(Family)  
@@ -1750,35 +1741,7 @@ CONTAINS
       QuadraticGeometryData = Element % TYPE % NumberOfNodes == 6
     CASE(4)
       QuadraticGeometryData = Element % TYPE % NumberOfNodes == 9
-      IF (QuadraticGeometryData) THEN
-        EdgesParametrized = 6
-      ELSE
-        !
-        ! This must be a 4-node background element; see the tests already done in CreateCurvedEdges.
-        ! If the macro element strategy is used, the coefficients of the bubble functions must already
-        ! be available at the time of the function call and the virtual edges used in the construction
-        ! of the bubble functions are not employed within this function (thus, EdgesParametrized = 4). 
-        !
-        IF (PRESENT(BubbleDOFs)) THEN
-          Subtriangulation = .TRUE.
-          BubbleCoeff(1:4,1:3) = BubbleDOFs(1:4,1:3)
-        ELSE
-          IF (PRESENT(MacroElement)) Subtriangulation = MacroElement
-          IF (Subtriangulation) THEN
-            BubbleValues => GetElementProperty('bubble dofs', Element)
-            IF (ASSOCIATED(BubbleValues)) THEN
-              IF (SIZE(BubbleValues) < 12) CALL Fatal('BlendingSurfaceInfo', &
-                  'Bubble dofs data missing')
-              BubbleCoeff(1:4,1) = BubbleValues(1:4)
-              BubbleCoeff(1:4,2) = BubbleValues(5:8)
-              BubbleCoeff(1:4,3) = BubbleValues(9:12)
-            ELSE
-              CALL Fatal('BlendingSurfaceInfo',&
-                  'Bubble DOFs are not found as elementwise properties')
-            END IF
-          END IF
-        END IF
-      END IF
+      IF (QuadraticGeometryData) EdgesParametrized = 6
     CASE DEFAULT
       CALL Fatal('BlendingSurfaceInfo', 'Only quads and triangles can be handled')     
     END SELECT
@@ -1800,23 +1763,13 @@ CONTAINS
         FrameData => GetElementProperty('edge frames', Element) 
 
     IF (ASSOCIATED(FrameData)) THEN
-      IF (Subtriangulation) THEN
-        IF (SIZE(FrameData) < (EdgesParametrized+2)*FrameDataSize) &
-            CALL Fatal('BlendingSurfaceInfo','Frame data are not associated with all edges')        
-      ELSE
-        IF (SIZE(FrameData) < EdgesParametrized*FrameDataSize) &
-            CALL Fatal('BlendingSurfaceInfo','Frame data are not associated with all edges')
-      END IF
+      IF (SIZE(FrameData) < EdgesParametrized*FrameDataSize) &
+          CALL Fatal('BlendingSurfaceInfo','Frame data are not associated with all edges')
     END IF
 
     IF (ASSOCIATED(EdgeParams)) THEN
-      IF (Subtriangulation) THEN
-        IF (SIZE(EdgeParams) < (EdgesParametrized+2)*CurveDataSize) &
-            CALL Fatal('BlendingSurfaceInfo','edge parameters are not associated with all edges')       
-      ELSE
-        IF (SIZE(EdgeParams) < EdgesParametrized*CurveDataSize) &
-            CALL Fatal('BlendingSurfaceInfo','edge parameters are not associated with all edges')
-      END IF
+      IF (SIZE(EdgeParams) < EdgesParametrized*CurveDataSize) &
+          CALL Fatal('BlendingSurfaceInfo','edge parameters are not associated with all edges')
     ELSE
       CALL Fatal('BlendingSurfaceInfo','edge curves data could not be retrieved')
     END IF
@@ -2314,33 +2267,6 @@ CONTAINS
       END SELECT
     END DO
 
-    IF (Subtriangulation) THEN
-      ! --------------------------------------------------------------------------
-      ! Add contributions which relate to augmenting the serendipity
-      ! approximation by bubbles, so that an approximation Q3 is obtained.
-      ! --------------------------------------------------------------------------
-      IF ( .NOT. ASSOCIATED(GElement) ) GElement => AllocateElement()
-      GElement % Type => GetElementType(416,.FALSE.)
-
-      Basis = 0.0d0
-      DO q=13,16
-        Basis(q) = 1.0d0
-        ddBasis(q-12,1:2,1:2) = SecondDerivatives2D(GElement, Basis, u, v)
-        Basis(q) = 0.0d0
-      END DO
-      CALL NodalFirstDerivatives2D(dBasis, GElement, u, v)
-      CALL NodalBasisFunctions2D(Basis, GElement, u, v)
-
-      DO q=1,3
-        X(q) = X(q) + SUM( BubbleCoeff(1:4,q) * Basis(13:16) )
-        a1(q) = a1(q) + SUM( BubbleCoeff(1:4,q) * dBasis(13:16,1) )
-        a2(q) = a2(q) + SUM( BubbleCoeff(1:4,q) * dBasis(13:16,2) )
-        d1a1(q) = d1a1(q) + SUM( BubbleCoeff(1:4,q) * ddBasis(1:4,1,1) )
-        d2a2(q) = d2a2(q) + SUM( BubbleCoeff(1:4,q) * ddBasis(1:4,2,2) )
-        d2a1(q) = d2a1(q) + SUM( BubbleCoeff(1:4,q) * ddBasis(1:4,1,2) )
-      END DO
-    END IF
-
     101 CONTINUE
     !--------------------------------------------------------------------
     ! The metric surface tensor and its determinant
@@ -2467,111 +2393,6 @@ CONTAINS
   END SUBROUTINE HermiteBasis
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-! This subroutine finds the desired position of the blending surface at four
-! internal nodes corresponding to bubble basis functions of the Q3 space via
-! the macro element strategy. The nodal difference between the desired position 
-! and the serendipity approximation is returned via the variable BubbleNodesDelta.
-! This has a limited applicability as it works correctly for rectangular elements
-! only.
-!------------------------------------------------------------------------------
-  SUBROUTINE FindBubbleNodesQuad(Element, Nodes, BubbleNodesDelta)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(Element_t), POINTER, INTENT(IN) :: Element 
-    TYPE(Nodes_t), INTENT(IN) :: Nodes
-    REAL(KIND=dp), INTENT(OUT) :: BubbleNodesDelta(4,3)
-!------------------------------------------------------------------------------
-    LOGICAL :: Stat
-    INTEGER :: CurveDataSize, i, j, k, e, i0, cn
-    REAL(KIND=dp), POINTER :: EdgeParams(:) 
-    REAL(KIND=dp) :: s, u, v
-    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-    REAL(KIND=dp) :: c(3), r1(3), r2(3)
-    REAL(KIND=dp) :: h, xe, f
-    REAL(KIND=dp) :: d(CurveDataSize1)
-    REAL(KIND=dp) :: a1(3), a2(3), a3(3), a(2,2), Deta, b(2,2), p(3)
-!------------------------------------------------------------------------------
-    CurveDataSize = CurveDataSize1
-    cn = 2
-    !-----------------------------------------------------------------------
-    ! Retrieve parametrizations of curved edges:
-    !------------------------------------------------------------------------
-    EdgeParams => GetElementProperty('edge parameters', Element)
-    !------------------------------------------------------------------------
-    ! Note that the correct sizes of these data arrays are checked afterwards
-    ! in the function BlendingSurfaceInfo, so avoid the size check here:
-    !------------------------------------------------------------------------
-    IF ( .NOT. ASSOCIATED(EdgeParams) ) &
-        CALL Fatal('FindBubbleNodesQuad', 'Elemental properties missing')
-    !-----------------------------------------------------------------------
-    ! Find the desired place of the blending surface via the additional
-    ! edges of the subtriangulation. We need two position evaluations
-    ! per additional edge of the subtriangulation: 
-    !-----------------------------------------------------------------------
-    DO e=5,6
-      i0 = (e-1)*CurveDataSize
-      d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
-      h = 2.0d0 ! the length of reference element [-1,1]
-
-      ! The indices 12+i and 12+j are the bubble DOF indices of 416 (Q3) element:
-      SELECT CASE(e)
-      CASE(5)
-        i = 1
-        j = 3
-      CASE(6)
-        i = 2
-        j = 4        
-      END SELECT
-
-      r1(1) = Nodes % x(i)
-      r1(2) = Nodes % y(i)
-      r1(3) = Nodes % z(i)
-      r2(1) = Nodes % x(j)
-      r2(2) = Nodes % y(j)
-      r2(3) = Nodes % z(j)
-
-      DO k=1,2
-        s = -1.0d0/3.0d0 + (k-1)*2.0d0/3.0d0
-        CALL HermiteBasis(s, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
-
-        c(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
-            d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
-
-        SELECT CASE(k)
-        CASE(1)
-          BubbleNodesDelta(i,1:3) = c(1:3)
-        CASE(2)
-          BubbleNodesDelta(j,1:3) = c(1:3)
-        END SELECT
-      END DO
-    END DO
-    !-----------------------------------------------------------------------
-    ! Now, evaluate the place of the serendipity approximation at the bubble
-    ! node positions and evaluate the difference with respect to the desired 
-    ! position:
-    !-----------------------------------------------------------------------
-    DO j=1,4
-      SELECT CASE(j)
-      CASE(1)
-        u = -1.0d0/3.0d0
-        v = -1.0d0/3.0d0
-      CASE(2)
-        u = 1.0d0/3.0d0
-        v = -1.0d0/3.0d0
-      CASE(3)
-        u = 1.0d0/3.0d0
-        v = 1.0d0/3.0d0
-      CASE(4)
-        u = -1.0d0/3.0d0
-        v = 1.0d0/3.0d0
-      END SELECT
-      stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, p)
-      BubbleNodesDelta(j,1:3) = BubbleNodesDelta(j,1:3) - p(1:3)
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE FindBubbleNodesQuad
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 ! This subroutine creates an orthonormal basis which gives the orientation of 
@@ -2592,20 +2413,17 @@ CONTAINS
 ! The optional argument d can be used to ensure that e3 and d point to the same
 ! direction, while PlanarSurface indicates whether the surface is planar
 ! at the given point.
-!   The optional argument MacroElement indicates whether a quadrilateral should
-! be considered as a macro element for a subtriangulation. The argument 
-! SaveProperties can be used to save the quantities computed as elementwise 
-! properties to avoid later recomputation. The elementwise properties are
-! as follows.
+!   The argument SaveProperties can be used to save the quantities computed as 
+! elementwise properties to avoid later recomputation. The elementwise properties
+! are as follows.
 !    * 'element frame': e1, e2, e3 and o
 !    * 'taylor parameters': the coefficients of the Taylor polynomial
-!    * 'bubble dofs': the coefficients for bubble basis functions of Q3
 !    * 'planar point': to indicate that the surface is planar
 !    * 'umbilical point': to indicate that the surface is umbilical
 !------------------------------------------------------------------------------
   SUBROUTINE LinesOfCurvatureFrame(Element, xi1, xi2, e1, e2, e3, o, TaylorApproximation, &
       LagrangeNodes, d, PlanarSurface, PlanarPoint, UmbilicalPoint, &
-      MacroElement, SaveProperties, SizeRadiusRatio, ReparametrizeMesh)
+      SaveProperties, SizeRadiusRatio, ReparametrizeMesh)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -2618,7 +2436,6 @@ CONTAINS
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarSurface
     LOGICAL, OPTIONAL, INTENT(OUT) :: PlanarPoint
     LOGICAL, OPTIONAL, INTENT(OUT) :: UmbilicalPoint
-    LOGICAL, OPTIONAL, INTENT(IN) :: MacroElement
     LOGICAL, OPTIONAL, INTENT(IN) :: SaveProperties  
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: SizeRadiusRatio
     LOGICAL, OPTIONAL, INTENT(IN) :: ReparametrizeMesh
@@ -2628,7 +2445,7 @@ CONTAINS
     LOGICAL :: Stat, Found
     LOGICAL :: Converged, ComputeTaylorPolynomial
     LOGICAL :: ApproximatePlaneDomain, CheckOrientation, WriteElementProperties
-    LOGICAL :: Subtriangulation, Planar, Umbilical
+    LOGICAL :: Planar, Umbilical
     LOGICAL :: UseMeshOnly
     INTEGER :: Family, n, m, e, i, j, k, GridPoint
 
@@ -2690,10 +2507,6 @@ CONTAINS
       CheckOrientation = .FALSE.
     END IF
 
-    Subtriangulation = .FALSE.
-    IF ( PRESENT(MacroElement) .AND. (Family == 4) ) &
-        Subtriangulation = MacroElement .AND. Element % TYPE % NumberOfNodes == 4
-
     IF ( PRESENT(SaveProperties) ) THEN
       WriteElementProperties = SaveProperties
     ELSE
@@ -2736,27 +2549,8 @@ CONTAINS
     ! element coordinates are used as curvilinear coordinates on the shell
     ! surface.
     ! -------------------------------------------------------------------------
-    IF (Subtriangulation) THEN
-      ! To employ the macro element approach, the positions of the bubble nodes
-      ! must be evaluated first ...
-      CALL FindBubbleNodesQuad(Element, Nodes, BubbleNodesDelta)
-      ! ... and then evaluate the blending surface data, with the bubble part
-      ! taken into account:
-      Stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, X0, &
-          BubbleDOFs=BubbleNodesDelta) 
-
-      !err = sqrt(sum(BubbleNodesDelta(1,:)**2))
-      !IF (err > 1.0d-10)  print *, 'diff1 = ', err
-      !err = sqrt(sum(BubbleNodesDelta(2,:)**2))
-      !IF (err > 1.0d-10)  print *, 'diff2 = ', err
-      !err = sqrt(sum(BubbleNodesDelta(3,:)**2))
-      !IF (err > 1.0d-10)  print *, 'diff3 = ', err
-      !err = sqrt(sum(BubbleNodesDelta(4,:)**2))
-      !IF (err > 1.0d-10)  print *, 'diff4 = ', err
-    ELSE
-      stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, X0, &
-          UseMeshOnly=UseMeshOnly)      
-    END IF
+    stat = BlendingSurfaceInfo(Element, Nodes, u, v, deta, a1, a2, a3, a, b, X0, &
+        UseMeshOnly=UseMeshOnly)      
 
     !---------------------------------------------------------------------------
     ! The computation of principal directions via solving an eigenvalue problem.
@@ -2974,13 +2768,8 @@ CONTAINS
             eta = GElement % Type % NodeV(j)
           END IF
 
-          IF (Subtriangulation) THEN
-            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
-                a1, a2, a3, a, b, p, BubbleDOFs=BubbleNodesDelta)
-          ELSE
-            stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
-                a1, a2, a3, a, b, p, UseMeshOnly=UseMeshOnly)         
-          END IF
+          stat = BlendingSurfaceInfo(Element, Nodes, xi, eta, deta, &
+              a1, a2, a3, a, b, p, UseMeshOnly=UseMeshOnly)
         ELSE
           p(1) = Nodes % x(j)
           p(2) = Nodes % y(j)
@@ -3083,13 +2872,9 @@ CONTAINS
 
           Converged = .FALSE.
           DO k=1,GeometryMaxIters
-            IF (Subtriangulation) THEN
-              stat = BlendingSurfaceInfo( Element, Nodes, uk, vk, &
-                  deta, a1, a2, a3, a, b, pk, BubbleDOFs=BubbleNodesDelta)
-            ELSE
-              stat = BlendingSurfaceInfo( Element, Nodes, uk, vk, &
-                  deta, a1, a2, a3, a, b, pk, UseMeshOnly=UseMeshOnly)             
-            END IF
+            stat = BlendingSurfaceInfo( Element, Nodes, uk, vk, &
+                deta, a1, a2, a3, a, b, pk, UseMeshOnly=UseMeshOnly)             
+
             r(1) = p0(1) + ptarget(1) - DOT_PRODUCT(pk,GlobPDir1)
             r(2) = p0(2) + ptarget(2) - DOT_PRODUCT(pk,GlobPDir2)
             err = SQRT(SUM(r(:)**2))
@@ -3239,13 +3024,6 @@ CONTAINS
         UmbilicalFlag = -1.0d0
       END IF
       CALL SetElementProperty('umbilical point', UmbilicalFlag, Element) 
-
-      IF (Subtriangulation) THEN
-        NodesArray(1:4) = BubbleNodesDelta(1:4,1)
-        NodesArray(5:8) = BubbleNodesDelta(1:4,2)
-        NodesArray(9:12) = BubbleNodesDelta(1:4,3)
-        CALL SetElementProperty('bubble dofs', NodesArray(1:12), Element)
-      END IF
     END IF
     
     !print *, 'o=', o
@@ -6892,12 +6670,11 @@ END SUBROUTINE RetrieveLocalFrame
 ! Compute the area of the blending element surface by calling the function
 ! BlendingSurfaceInfo that defines the blending surface in the first place
 !--------------------------------------------------------------------------------
-  SUBROUTINE ComputeSurfaceArea(Element, SurfaceArea, MacroElement)
+  SUBROUTINE ComputeSurfaceArea(Element, SurfaceArea)
 !--------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     REAL(KIND=dp), INTENT(INOUT) :: SurfaceArea
-    LOGICAL, INTENT(IN) :: MacroElement
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -6924,7 +6701,7 @@ END SUBROUTINE RetrieveLocalFrame
 
     DO j=1,IP % n
       stat = BlendingSurfaceInfo(Element, Nodes, IP % U(j), IP % V(j), &
-          DetA, a1, a2, a3, A, B, x, MacroElement)      
+          DetA, a1, a2, a3, A, B, x)      
       SurfaceArea = SurfaceArea + IP % s(j) * SQRT(Deta)
     END DO
 !-------------------------------------------------------------------------------------
