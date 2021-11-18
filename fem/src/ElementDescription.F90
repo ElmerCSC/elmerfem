@@ -2502,13 +2502,13 @@ CONTAINS
      REAL(KIND=dp) :: Basis(:)                      !< Basis function values at p=(u,v,w)
      REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)       !< Global first derivatives of basis functions at (u,v,w)
      REAL(KIND=dp), OPTIONAL :: ddBasisddx(:,:,:)   !< Global second derivatives of basis functions at (u,v,w) if requested
+     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
+     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 	                                                !! May be used with P element basis functions
-     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
-     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
-     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
@@ -2570,17 +2570,23 @@ CONTAINS
         RETURN
      END IF
 
+     IF (PRESENT(USolver)) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element,USolver) ) THEN
+     IF ( isActivePElement(element,pSolver) ) THEN
 
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
@@ -2626,7 +2632,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge calculate the value of edge basis function
            DO i=1,3
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Get local number of edge start and endpoint nodes
               tmp(1:2) = getTriangleEdgeMap(i)
@@ -2696,7 +2702,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge begin node calculate values of edge functions 
            DO i=1,4
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Choose correct parity by global edge dofs
               tmp(1:2) = getQuadEdgeMap(i)
@@ -2774,7 +2780,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN   
            ! For each edge calculate value of edge functions
            DO i=1,6
-              Edge => CurrentModel % Solver % Mesh % Edges (Element % EdgeIndexes(i))
+              Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
 
               ! Do not solve edge DOFS if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -2798,7 +2804,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes )) THEN
            ! For each face calculate value of face functions
            DO F=1,4
-              Face => CurrentModel % Solver % Mesh % Faces (Element % FaceIndexes(F))
+              Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
 
               ! Do not solve face DOFs if there is not any
               IF (Face % BDOFs <= 0) CYCLE
@@ -2858,7 +2864,7 @@ CONTAINS
         IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in wedge, calculate values of edge functions
            DO i=1,8
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -2894,7 +2900,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in pyramid, calculate values of face functions
            DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
@@ -2982,7 +2988,7 @@ CONTAINS
         IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in wedge, calculate values of edge functions
            DO i=1,9
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -3023,7 +3029,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in wedge, calculate values of face functions
            DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
@@ -3124,7 +3130,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in brick, calculate values of edge functions 
            DO i=1,12
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -3168,7 +3174,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in brick, calculate values of face functions
            DO F=1,6
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
                           
               ! Do not calculate face values if no dofs
               IF (Face % BDOFs <= 0) CYCLE
