@@ -23763,6 +23763,41 @@ CONTAINS
    END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
 
+  FUNCTION NodeToDGIndex(Mesh,nodeind) RESULT ( dgind )
+
+    TYPE(Mesh_t) :: Mesh
+    INTEGER :: nodeind
+    INTEGER :: dgind
+    
+    INTEGER :: i,j,t
+    TYPE(Element_t), POINTER :: Element
+
+    dgind = 0
+
+    IF(nodeind < 1 ) THEN
+      CALL Warn('NodeToDGIndex','Cannot find DG index for too small node index!')
+      RETURN
+    END IF
+    IF(nodeind > Mesh % NumberOfNodes ) THEN
+      CALL Warn('NodeToDGIndex','Cannot find DG index for too large node index!')
+      RETURN
+    END IF         
+    
+    DO t=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)
+      DO i = 1,Element % TYPE % NumberOfNodes          
+        IF( Element % NodeIndexes(i) == nodeind ) THEN
+          IF(.NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+            CALL Fatal('NodeToDGIndex','There are no DG indexes!')
+          END IF
+          dgind = Element % DGIndexes(i)
+          EXIT
+        END IF
+      END DO
+      IF(dgind > 0 ) EXIT
+    END DO
+    
+  END FUNCTION NodeToDGIndex
 
   
 !------------------------------------------------------------------------------
