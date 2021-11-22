@@ -41,13 +41,8 @@
 !> \ingroup Programs
 !> \{
 
-!> \defgroup ViewFactors Program ViewFactors
+!> \defgroup ViewFactors Program RadiatorFacers
 !> \{
-
-   MODULE ViewFactorGlobals
-     USE Types
-     REAL(KIND=dp), ALLOCATABLE :: Jdiag(:), Jacobian(:,:)
-   END MODULE ViewFactorGlobals
 
 !------------------------------------------------------------------------------
 !> A separate program that computes the radiatiave source coefficients to an
@@ -57,10 +52,9 @@
 !> do not exist, a system call for this program is performed. 
 !------------------------------------------------------------------------------
       
-   PROGRAM ViewFactors
+   PROGRAM RadiatorFactors
    
      USE DefUtils
-     USE ViewFactorGlobals
 
      IMPLICIT NONE
 
@@ -300,7 +294,6 @@
 ! Check the maximum radiation body
      MaxRadiationBody = 0
 
-print*,'go go go -2', nofradiators, n
      DO t= 1, Mesh % NumberOfBoundaryElements
 
        Element => GetBoundaryElement(t)
@@ -321,7 +314,6 @@ print*,'go go go -2', nofradiators, n
        STOP
      END IF
 
-print*,'go go go -1.5', nofradiators, n
      RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
        WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
@@ -360,7 +352,6 @@ print*,'go go go -1.5', nofradiators, n
        
        N = RadiationSurfaces
        
-print*,'go go go -1', nofradiators, n
        IF ( N == 0 ) THEN
          CALL Warn( 'RadiatorFactors', 'No surfaces participating in radiation?' )
          IF(RadiationBody < MaxRadiationBody) THEN
@@ -382,7 +373,6 @@ print*,'go go go -1', nofradiators, n
          CALL Fatal( 'RadiatonFactors', 'Memory allocation error. Aborting' )
        END IF
        
-print*,'go go go 0', nofradiators
        DO t=1,N
 
          Element => RadElements(t)
@@ -540,7 +530,6 @@ print*,'go go go 0', nofradiators
          IF ( .NOT. GotIt ) Nrays = 1
 
 
-print*,'go go go', nofradiators
          CALL RadiatorFactors3d( &
              N, Surfaces, Type, Coords, Normals, &
              0, Surfaces, Type, Coords, Normals, &
@@ -621,24 +610,18 @@ print*,'go go go', nofradiators
          CALL Info( Caller,'Symmetrizing Factors... ')
        ELSE
          CALL Info( Caller,'Normalizaing Factors...')
-         IF( Fmin < EPSILON( Fmin ) ) THEN
-!          CALL Fatal(Caller,'Invalied view factors for normalization, check your geometry!')
-         END IF       
        END IF
 
-!      CALL NormalizeFactors( Model )
 
        DO i=1,NofRadiators
-         s = 0.0D0
+         s = 0.0d0
          DO j=1,N
            s = s + Factors((i-1)*N+j)
          END DO
-         IF(i == 1) THEN
-           Fmin = s; Fmax = s
-         ELSE
-           FMin = MIN(FMin,s)
-           FMax = MAX(FMax,s)
-         END IF
+
+         DO j=1,N
+           Factors((i-1)*N+j) = Factors((i-1)*N+j) / s
+         END DO
        END DO
        
        WRITE (Message,'(A,F8.2)') 'Radiator factors manipulated in time (s):',CPUTime()-at0
@@ -738,181 +721,6 @@ print*,'go go go', nofradiators
 
    CONTAINS
    
-!> View factors are normalized in order to improve the numberical accuracy. With 
-!> normalization it is ensured that all boundary elements see exactly half 
-!> space. 
-!------------------------------------------------------------------------------
-
-      SUBROUTINE NormalizeFactors( Model )
-        IMPLICIT NONE
-        TYPE(Model_t), POINTER :: Model
-!------------------------------------------------------------------------------
-        INTEGER :: itmax,it,i,j,k
-        LOGICAL :: li,lj
-        REAL(KIND=dp), ALLOCATABLE :: RHS(:),SOL(:),Areas(:),PSOL(:)
-        REAL(KIND=dp) :: cum,s,si,sj
-        REAL(KIND=dp), PARAMETER :: eps=1.0D-20
-        REAL(KIND=dp) :: at1
-
-        itmax = 20
-        it = 0
-        cum = 0.0_dp
-        
-        ALLOCATE( Areas(n),STAT=istat )
-        IF ( istat /= 0 ) THEN
-          CALL Fatal(Caller,'Memory allocation error in NormalizeFactors for Areas.' )
-        END IF
-
-!------------------------------------------------------------------------------
-!       First force the matrix (before dividing by area) to be symmetric
-!------------------------------------------------------------------------------
-        DO i=1,n
-          Element => RadElements(i)
-          Areas(i) = ElementArea( Mesh, Element, Element % Type % NumberOfNodes)
-        END DO
-        
-        DO i=1,n
-          DO j=i,n
-            si = Areas(i) * Factors((i-1)*n+j)
-            sj = Areas(j) * Factors((j-1)*n+i)
-
-            li = (ABS(si) < HUGE(si)) 
-            lj = (ABS(sj) < HUGE(sj)) 
-
-            IF(li .AND. lj) THEN 
-              s = (si+sj)/2.0
-            ELSE IF(li) THEN
-              s = si
-            ELSE IF(lj) THEN
-              s = sj
-            ELSE 
-              s = 0.0
-            END IF
-
-            Factors((i-1)*n+j) = s
-            Factors((j-1)*n+i) = s
-          END DO
-        END DO
-
-!------------------------------------------------------------------------------
-!       Next we solve the equation DFD = A by Newton iteration (this is a very
-!       well behaved equation (symmetric, diagonal dominant), no need for any
-!       tricks...)
-!------------------------------------------------------------------------------
-        IF(.NOT. RadiationOpen ) THEN
-          
-          ALLOCATE( RHS(n),SOL(n),PSOL(n),Jdiag(n),Jacobian(n,n),STAT=istat )
-          IF ( istat /= 0 ) THEN
-            CALL Fatal( Caller,'Memory allocation error in NormalizeFactors for RHS etc.' )
-          END IF
-
-          SOL = 1.0_dp
-          cum = 1.0_dp
-          
-          DO it=1,itmax
-            DO i=1,n
-              cum = 0.0_dp
-              DO j=1,n
-                cum = cum + Factors((i-1)*n+j) * SOL(j)
-              END DO
-              cum = cum * SOL(i)
-              RHS(i) = Areas(i) - cum
-            END DO
-            
-            cum = SUM( RHS*RHS/Areas ) / n
-            
-            WRITE (Message,'(A,ES12.3)') &
-                'Normalization iteration '//TRIM(I2S(it))//': ',cum
-            CALL Info( Caller,Message, Level=3 )
-            
-            IF ( cum <= eps ) EXIT
-            
-            DO i=1,n
-              DO j=1,n
-                Jacobian(i,j) = Factors((i-1)*n+j) * SOL(i)
-              END DO
-              DO j=1,n
-                Jacobian(i,i) = Jacobian(i,i) + Factors((i-1)*n+j) * SOL(j)
-              END DO
-              Jdiag(i) = 1._dp / Jacobian(i,i)
-            END DO
-
-            PSOL = SOL
-            CALL IterSolv( n,SOL,RHS )
-            SOL = PSOL + SOL
-          END DO
-          
-!------------------------------------------------------------------------------
-!       Normalize the factors and (re)divide by areas
-!------------------------------------------------------------------------------
-          DO i=1,N
-            DO j=1,N
-              Factors((i-1)*N+j) = Factors((i-1)*N+j)*SOL(i)*SOL(j)/Areas(i)
-            END DO
-          END DO
-          DEALLOCATE( SOL,RHS,PSOL,Jdiag,Jacobian )
-
-        ELSE
-         DO i=1,N
-           DO j=1,N
-             Factors((i-1)*N+j) = Factors((i-1)*N+j)/Areas(i)
-           END DO
-         END DO
-       END IF
-
-       DEALLOCATE( Areas )
-
-    END SUBROUTINE NormalizeFactors
-
-
-#include "huti_fdefs.h"
-
-!> Local handle to the iterative methods for linear systems. 
-!------------------------------------------------------------------------------
-    SUBROUTINE IterSolv( N,x,b )
-      IMPLICIT NONE
-
-      INTEGER :: N
-      REAL(KIND=dp), DIMENSION(n) :: x,b
-
-      REAL(KIND=dp) :: dpar(50)
-      INTEGER :: ipar(50),wsize
-      REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-      INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
-      INTEGER(KIND=AddrInt) :: AddrFunc
-      EXTERNAL :: AddrFunc
-!------------------------------------------------------------------------------
-      HUTI_NDIM = N
-      dProc = 0
-    
-      ipar = 0
-      dpar = 0.0_dp
-
-      HUTI_WRKDIM = HUTI_CG_WORKSIZE
-      wsize = HUTI_WRKDIM
-          
-      HUTI_NDIM     = N
-      HUTI_DBUGLVL  = 0
-      HUTI_MAXIT    = 100
- 
-      ALLOCATE( work(N, wsize), STAT=istat )
-      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for IterSolv work.')
-
-      
-      work = 0D0
-      HUTI_TOLERANCE = 1.0D-12
-      HUTI_MAXTOLERANCE = 1.0d20
-      HUTI_INITIALX = HUTI_USERSUPPLIEDX
-      HUTI_STOPC = HUTI_TRESID_SCALED_BYB
-      
-      iterProc  = AddrFunc(HUTI_D_CG)
-      mvProc    = AddrFunc(MatvecViewFact)
-      pcondProc = AddrFunc(DiagPrecViewFact)
-      CALL IterCall( iterProc,x,b,ipar,dpar,work,mvProc,pcondProc, &
-                dProc, dProc, dProc, dProc )
-          
-      DEALLOCATE( work )
-    END SUBROUTINE IterSolv 
 
 
     SUBROUTINE MirrorMesh(Mesh,c,Plane )
@@ -1013,34 +821,6 @@ print*,'go go go', nofradiators
      END SUBROUTINE MirrorMesh
 
   END PROGRAM ViewFactors
-
-
-  SUBROUTINE DiagPrecViewFact( u,v,ipar )
-    USE ViewFactorGlobals
-    IMPLICIT NONE
-
-    REAL(KIND=dp) :: u(*),v(*)
-    INTEGER :: ipar(*)
-
-    INTEGER :: n
-
-    n = HUTI_NDIM
-    u(1:n) = v(1:n)*Jdiag(1:n)
-  END SUBROUTINE DiagPrecViewFact
-
-
-  SUBROUTINE MatvecViewFact( u,v,ipar )
-    USE ViewFactorGlobals
-    IMPLICIT NONE
-
-    INTEGER :: ipar(*)
-    REAL(KIND=dp) :: u(*),v(*)
-
-    INTEGER :: n
-
-    n = HUTI_NDIM
-    CALL DGEMV('N',n,n,1.0_dp,Jacobian,n,u,1,0.0_dp,v,1)
-  END SUBROUTINE MatvecViewFact
 
   
 !> \}
