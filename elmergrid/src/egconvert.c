@@ -3594,6 +3594,12 @@ static int GmshToElmerType(int gmshtype)
   case 21:
     elmertype = 310;
     break;
+  case 26:
+    elmertype = 204;
+    break;
+  case 36:
+    elmertype = 416;
+    break;
 
   /* These are supported by Gmsh but not by ElmerSolver */
   case 13:        
@@ -3613,9 +3619,6 @@ static int GmshToElmerType(int gmshtype)
     break;
   case 25:
     elmertype = 320;
-    break;
-  case 26:
-    elmertype = 204;
     break;
   case 27:
     elmertype = 205;

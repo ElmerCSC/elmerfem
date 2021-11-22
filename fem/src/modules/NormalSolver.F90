@@ -187,6 +187,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   BLOCK
     TYPE(Variable_t), POINTER :: Var1,Var2,Var3
     REAL(KIND=dp) :: nvec(3),dvec(3),dvec0(3)
+    REAL(KIND=dp) :: maxd, limd, coeff
     INTEGER :: id,in      
     LOGICAL :: ScaleDt
     
@@ -204,6 +205,8 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
     END IF
     
     IF( GotIt ) THEN       
+      CALL Info(Caller,'Projecting field "'//TRIM(Vname)//'" to normal direction',Level=5)
+
       ! We deal with displacement or velocity field with component-wise since
       ! otherwise we should deal with the 'flow solution' vector separetely.
       Var1 => VariableGet( Mesh % Variables,TRIM(Vname)//' 1')
@@ -217,10 +220,10 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
       dvec0(1) = ListGetCReal( SolverParams,'Vector Field Offset 1',GotIt)
       dvec0(2) = ListGetCReal( SolverParams,'Vector Field Offset 2',GotIt)
-      dvec0(3) = ListGetCReal( SolverParams,'Vector Field Offset 3',GotIt)
-
+      dvec0(3) = ListGetCReal( SolverParams,'Vector Field Offset 3',GotIt)      
       
       nvec = 0.0_dp; dvec = 0.0_dp
+      maxd = 0.0_dp
       DO i=1, Mesh % NumberOfNodes
         in = NrmSol % Perm(i)
         IF(in==0) CYCLE
@@ -238,19 +241,34 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
         dvec = dvec - dvec0
         dvec = SUM(dvec*nvec)*nvec
+
+        maxd = MAX(maxd,SQRT(SUM(dvec(1:dim)**2)))
         
         DO j=1,dim
           k = DOFs*(in-1)+j
-          NrmSol % Values(k) = nvec(j)
+          NrmSol % Values(k) = dvec(j)
         END DO
       END DO
 
       ! If we have velocity then the normal displacement is given by
       ! d = dt*(n.v)n
-      IF( ScaleDt ) THEN
+      IF( ScaleDt .AND. Transient ) THEN
         NrmSol % Values = dt *  NrmSol % Values
+        maxd = maxd * dt
       END IF
+
+      limd = ListGetCReal( SolverParams,'Maximum Displacement',GotIt)
+      IF( GotIt ) THEN
+        IF( maxd > limd ) THEN
+          coeff = limd / maxd
+          WRITE(Message,'(A,ES12.3)') 'Limiting displacements with factor: ',coeff
+          CALL Info(Caller,Message)
+          NrmSol % Values = coeff *  NrmSol % Values         
+        END IF
+      END IF            
     END IF
+      
+    
   END BLOCK
   
   at2 = RealTime()

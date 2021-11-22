@@ -147,7 +147,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       StartNewFile
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
-
   REAL (KIND=DP) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
       Mean, Variance, MinDist, x, y, z, Vol, Intmean, intvar, &
       KineticEnergy, PotentialEnergy, &
@@ -170,16 +169,18 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       jsonpos, PassiveCoordinate
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
+  INTEGER, ALLOCATABLE :: DGIndex(:)
   REAL (KIND=DP) :: CT, RT  
   LOGICAL :: SlicesReduce, TimesReduce, DoIt
   INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
+  CHARACTER(*), PARAMETER :: Caller = 'SaveScalars'
   
   SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
 
-  CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
-  CALL Info('SaveScalars','Saving scalar values of various kinds',Level=4)
+  CALL Info(Caller, '-----------------------------------------', Level=4 )
+  CALL Info(Caller,'Saving scalar values of various kinds',Level=4)
 
   
   Mesh => GetMesh()
@@ -311,8 +312,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   NoPoints = 0
   PointIndex => ListGetIntegerArray( Params,'Save Points',GotIt)
-  IF ( gotIt ) NoPoints = SIZE(PointIndex)
-    
+  IF ( gotIt ) THEN    
+    NoPoints = SIZE(PointIndex)
+    IF( ASSOCIATED( Mesh % Elements(1) % DGIndexes ) ) THEN
+      ALLOCATE( DGIndex(NoPoints) )
+      DO i=1,NoPoints
+        DGIndex(i) = NodeToDGIndex(Mesh,PointIndex(i)) 
+      END DO
+    END IF
+  END IF
+  
   NoCoordinates = 0
   NoElements = 0
   PointCoordinates => ListGetConstRealArray(Params,'Save Coordinates',gotIt)
@@ -321,7 +330,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     ExactCoordinates = ListGetLogical(Params,'Exact Coordinates',GotIt )      
 
     IF( ParallelReduce .AND. .NOT. ExactCoordinates) THEN
-      CALL Warn('SaveScalars','Only Exact Save Coordinates works in parallel, enforcing...')
+      CALL Warn(Caller,'Only Exact Save Coordinates works in parallel, enforcing...')
       ExactCoordinates = .TRUE.
     END IF
 
@@ -333,10 +342,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CoordinatesElemNo => ListGetIntegerArray( Params,'Save Coordinate Elements',GotIt )
       END IF
       IF(.NOT. GotIt ) THEN
-        CALL Info('SaveScalars','Searching for elements containing save coordinates',Level=8)
+        CALL Info(Caller,'Searching for elements containing save coordinates',Level=8)
 
         ALLOCATE(ClosestIndex(NoElements), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error for CoordinateElemNo')         
+        IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for CoordinateElemNo')         
         DO j=1,NoElements
           Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
@@ -357,9 +366,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CoordinateIndex => ListGetIntegerArray( Params,'Save Coordinate Indexes',GotIt )
       END IF
       IF( .NOT. GotIt ) THEN
-        CALL Info('SaveScalars','Searching for closest nodes to coordinates',Level=8)
+        CALL Info(Caller,'Searching for closest nodes to coordinates',Level=8)
         ALLOCATE(ClosestIndex(NoCoordinates), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error for CoordinateIndex') 
+        IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for CoordinateIndex') 
         DO j=1,NoCoordinates 
           Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
@@ -380,14 +389,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   n = Mesh % MaxElementNodes 
   ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
       ElementValues( n ), CoordinateBasis(n), STAT=istat)
-  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 1') 	
+  IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 1') 	
 
   n = MAX( Model % NumberOfBodies, MAX(Model % NumberOfBCs, NoLines))
   ALLOCATE( BoundaryFluxes(n), BoundaryAreas(n), BoundaryHits(n), STAT=istat )
-  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 2') 	
+  IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 2') 	
   
   ALLOCATE( ActiveBC( Model % NumberOfBCs ), STAT=istat )
-  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 3') 	
+  IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3') 	
 
 
   ComplexEigenVectors = ListGetLogical(Params,'Complex Eigen Vectors',GotIt)
@@ -423,7 +432,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 
     IF(TRIM(VariableName) == 'cpu time' .OR. TRIM(VariableName) == 'cpu memory') THEN
-      CALL Warn('SaveScalars','This variable should now be invoked as an operator: '//TRIM(VariableName))
+      CALL Warn(Caller,'This variable should now be invoked as an operator: '//TRIM(VariableName))
       CYCLE
     END IF
     
@@ -434,12 +443,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
         Var => VariableGet( Model % Variables, TRIM(VariableName)//' 1' )
         IF( ASSOCIATED( Var ) ) THEN
-          CALL Info('SaveScalars','Treating a component variable: '//TRIM(VariableName),Level=8)
+          CALL Info(Caller,'Treating a component variable: '//TRIM(VariableName),Level=8)
           ComponentVar = .TRUE.
           Var2 => VariableGet( Model % Variables, TRIM(VariableName)//' 2' )
           Var3 => VariableGet( Model % Variables, TRIM(VariableName)//' 3' )          
         ELSE
-          CALL Warn('SaveScalars','Requested variable does not exist: '//TRIM(VariableName))
+          CALL Warn(Caller,'Requested variable does not exist: '//TRIM(VariableName))
           CYCLE
         END IF
       ELSE
@@ -503,19 +512,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 
     IF( ASSOCIATED( Var ) ) THEN
-      CALL Info('SaveScalars','Treating variable: '//TRIM(VariableName),Level=12)
+      CALL Info(Caller,'Treating variable: '//TRIM(VariableName),Level=12)
       ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
     END IF
 
     IF( GotOper ) THEN
-      CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)
+      CALL Info(Caller,'Treating operator: '//TRIM(Oper0),Level=12)
       OldOper0 = Oper0
       GotOldOper = .TRUE.
     ELSE IF( GotOldOper ) THEN
       Oper0 = OldOper0
       GotOper = GotOldOper
     ELSE
-      CALL Info('SaveScalars','No operator given for variable: '//TRIM(VariableName))
+      CALL Info(Caller,'No operator given for variable: '//TRIM(VariableName))
       CYCLE
     END IF
 
@@ -538,7 +547,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
     MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
     IF( MaskOper ) THEN
-      CALL Info('SaveScalars','Operator to be masked: '//TRIM(Oper),Level=12)
+      CALL Info(Caller,'Operator to be masked: '//TRIM(Oper),Level=12)
     END IF
 
     nlen = LEN_TRIM(Oper) 
@@ -575,7 +584,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         GotIt = ListGetLogicalAnyMaterial( Model, MaskName )
       END IF
       IF(.NOT. GotIt ) THEN
-        CALL Warn('SaveScalars','Masked operators require mask: '//TRIM(MaskName))
+        CALL Warn(Caller,'Masked operators require mask: '//TRIM(MaskName))
       END IF
     END IF
     
@@ -605,7 +614,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       CASE DEFAULT
         IF( .NOT. (GotVar .OR. GotOldVar ) ) THEN
-          CALL Error('SaveScalars','Operator > '//TRIM(Oper)//' < requires variable')
+          CALL Error(Caller,'Operator > '//TRIM(Oper)//' < requires variable')
           CYCLE
         END IF
       END SELECT
@@ -773,7 +782,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           'boundary min abs','boundary mean')
         
         IF( .NOT. ANY( ActiveBC ) ) THEN
-          CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
+          CALL Error(Caller,'No flag > '//TRIM(MaskName)// &
               ' < active for operator: '// TRIM(Oper))
           CYCLE
         END IF
@@ -788,7 +797,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           IF( ActiveBC(j) ) THEN
             IF( TRIM(Oper) == 'boundary mean' ) THEN
               IF( IsParallel .AND. ParallelReduce ) THEN
-                CALL Warn('SaveScalars','Operator > boundary mean < not implemented in parallel!')
+                CALL Warn(Caller,'Operator > boundary mean < not implemented in parallel!')
               ELSE IF( BoundaryHits(j) > 0 ) THEN
                 BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryHits(j)
               END IF
@@ -801,7 +810,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('boundary int','boundary int mean','area','diffusive flux','convective flux')
         
         IF( .NOT. ANY( ActiveBC ) ) THEN
-          CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
+          CALL Error(Caller,'No flag > '//TRIM(MaskName)// &
               '< active for operator: '// TRIM(Oper))
         ELSE
           BoundaryHits = 0
@@ -819,7 +828,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
             IF( ActiveBC(j) ) THEN
               IF( TRIM(Oper) == 'boundary int mean' ) THEN
                 IF( IsParallel .AND. ParallelReduce ) THEN
-                  CALL Warn('SaveScalars','Operator > boundary int mean < not implemented in parallel!')
+                  CALL Warn(Caller,'Operator > boundary int mean < not implemented in parallel!')
                 ELSE IF( BoundaryAreas(j) > 0.0 ) THEN
                   BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryAreas(j)
                 END IF
@@ -865,7 +874,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE DEFAULT 
         
         WRITE (Message,'(A,A)') 'Unknown operator: ',TRIM(Oper)
-        CALL WARN('SaveScalars',Message)
+        CALL WARN(Caller,Message)
         
       END SELECT
 
@@ -874,7 +883,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   IF( NoVar > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Performed ',NoVar-1,' reduction operations'
-    CALL Info('SaveScalars',Message,Level=7)
+    CALL Info(Caller,Message,Level=7)
   END IF
 
 
@@ -934,7 +943,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END DO
     WRITE (Message,'(A,I0,A)') 'Found ',l,' Eigenvalues'
-    CALL Info('SaveScalars',Message)
+    CALL Info(Caller,Message)
   END IF
     
   !------------------------------------------------------------------------------
@@ -947,6 +956,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     ELSE
       l = CoordinateIndex(k-NoPoints)
     END IF
+
+
     
     Var => Model % Variables
 
@@ -994,8 +1005,15 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         ! The variables exist always also as scalars, therefore omit vectors. 
 
         Ind = l
-        IF(ASSOCIATED(Var % Perm)) Ind = Var % Perm(l)
 
+        IF(ASSOCIATED(Var % Perm)) THEN
+          IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
+            Ind = Var % Perm(DGIndex(k))
+          ELSE          
+            IF(ASSOCIATED(Var % Perm)) Ind = Var % Perm(l)
+          END IF
+        END IF
+          
         IF(Ind > 0) THEN
           WRITE(Name,'("value: ",A," at node ",I7)') TRIM( Var % Name ), l
           CALL AddToSaveList( TRIM(Name), Var % Values(Ind))        
@@ -1009,7 +1027,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   
   IF( NoPoints + NoCoordinates > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Tabulated all field values at ',NoPoints+NoCoordinates,' points'
-    CALL Info('SaveScalars',Message)
+    CALL Info(Caller,Message)
   END IF
   
   !------------------------------------------------------------------------------
@@ -1156,14 +1174,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   IF( NoElements > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Tabulated points within ',NoElements,' elements'
-    CALL Info('SaveScalars',Message)
+    CALL Info(Caller,Message)
   END IF
 
   !------------------------------------------------------------------------------
   ! Update time elapsed from start if requested
   !------------------------------------------------------------------------------
   IF( ListGetLogical( Model % Simulation,'Simulation Timing',GotIt ) ) THEN
-    CALL Info('SaveScalars','Adding information on simulation timing',Level=10)
+    CALL Info(Caller,'Adding information on simulation timing',Level=10)
     CT = CPUTime() - ListGetConstReal( Model % Simulation,'cputime0',GotIt)
     RT = RealTime() - ListGetConstReal( Model % Simulation,'realtime0',GotIt)
     CALL AddToSaveList('simulation: cpu time (s)',CT )
@@ -1186,7 +1204,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END DO
   IF(l > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in simulation section'
-    CALL Info('SaveScalars',Message,Level=7)
+    CALL Info(Caller,Message,Level=7)
   END IF
 
   !------------------------------------------------------------------------------
@@ -1207,7 +1225,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DoIt = ListGetLogical( Params,'Save Component Results',GotIt )
   IF(.NOT. GotIt) DoIt = (Model % NumberOfComponents > 0)
   IF(DoIt) THEN
-    CALL Info('SaveScalars','Saving results from component - if any',Level=10)
+    CALL Info(Caller,'Saving results from component - if any',Level=10)
     l = 0
     DO i = 1, Model % NumberOfComponents
       Lst => ListHead( Model % Components(i) % Values )
@@ -1223,7 +1241,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END DO
     IF(l > 0 ) THEN
       WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in components section'
-      CALL Info('SaveScalars',Message,Level=7)
+      CALL Info(Caller,Message,Level=7)
     END IF
   END IF
   
@@ -1232,10 +1250,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ! If there are no values 
   !------------------------------------------------------------------------------
   IF( NoValues == 0 ) THEN
-    CALL Warn('SaveScalars','Found no values to save')
+    CALL Warn(Caller,'Found no values to save')
     RETURN
   ELSE
-    CALL Info('SaveScalars','Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
+    CALL Info(Caller,'Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
   END IF
 
 
@@ -1252,17 +1270,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
 
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
-      CALL Info( 'SaveScalars', Message, Level=4 )
+      CALL Info( Caller, Message, Level=4 )
       
       IF( Solver % TimesVisited > 0 ) THEN
         WRITE ( Message,'(A,I0,A,I0)') 'Number of scalar values differ from previous time:',&
             NoValues,' vs. ',PrevNoValues
-        CALL Warn('SaveScalars',Message)
+        CALL Warn(Caller,Message)
       END IF
       
-      IF(ParallelWrite) CALL Info('SaveScalars','Parallel data is written into separate files',Level=6)
-      IF(ParallelReduce) CALL Info('SaveScalars','Parallel data is reduced into one file',Level=6)
-      IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
+      IF(ParallelWrite) CALL Info(Caller,'Parallel data is written into separate files',Level=6)
+      IF(ParallelReduce) CALL Info(Caller,'Parallel data is reduced into one file',Level=6)
+      IF(FileAppend) CALL Info(Caller,'Data is appended to existing file',Level=6)
       
       OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile)
       
@@ -1316,7 +1334,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     !------------------------------------------------------------------------------
     
     WRITE( Message,'(A)' ) 'Saving values to file: '// TRIM(ScalarsFile)
-    CALL Info( 'SaveScalars', Message, Level=4 )
+    CALL Info( Caller, Message, Level=4 )
     
     IF ( ParallelWrite ) THEN      
       IF(WriteCore) WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPe      
@@ -1392,11 +1410,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
 
       IF(SaveJson .AND. WriteCore ) THEN
-        CALL Info('SaveScalars','Saving data in jason format o file: '&
+        CALL Info(Caller,'Saving data in jason format o file: '&
             //TRIM(ScalarsFile)//'.json',Level=6)
 
-        IF(ParallelWrite) CALL Warn('SaveScalars','Use "Parallel Reduce=True" with JSON format!')
-        IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
+        IF(ParallelWrite) CALL Warn(Caller,'Use "Parallel Reduce=True" with JSON format!')
+        IF(FileAppend) CALL Info(Caller,'Data is appended to existing file',Level=6)
     
         ! Save data in JSON format
         StartNewFile = ( Solver % TimesVisited == 0 .AND. .NOT. FileAppend)
@@ -1471,10 +1489,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ! Echo values if requested, this is the default if no output to file
   !------------------------------------------------------------------------------
   IF( EchoValues ) THEN
-    CALL Info( 'SaveScalars','Showing computed results:')
+    CALL Info( Caller,'Showing computed results:')
     DO No=1,NoValues
       WRITE(Message,'(I4,": ",A,ES22.12E3)') No,TRIM(ValueNames(No)),Values(No)
-      CALL Info('SaveScalars',Message)
+      CALL Info(Caller,Message)
     END DO
   END IF
 
@@ -1495,7 +1513,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Solver % Variable % Norm = ABS( Values ( NormInd ) ) 
 
     Name = ListGetString( Params, 'Equation',GotIt)
-    IF(.NOT. GotIt) Name = 'SaveScalars'
+    IF(.NOT. GotIt) Name = Caller
 
     ! Here the name is ComputeChange in order to get the change also to ElmerGUI
     ! albeit in a very dirt style. One could also edit ElmerGUI....
@@ -1518,10 +1536,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF( ListGetLogical( Params,'Mark Failed Strategy',GotIt) ) THEN
       LineInd = ListGetInteger( Params,'Line Marker',GotIt)
       IF(.NOT. GotIt) THEN
-        CALL Fatal('SaveScalars','Failed strategy marked requires > Line Marker <')
+        CALL Fatal(Caller,'Failed strategy marked requires > Line Marker <')
       END IF
 
-      CALL Info('SaveScalars','Saving True marker at end')
+      CALL Info(Caller,'Saving True marker at end')
       Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
       i = 1
       OPEN(NEWUNIT=MarkerUnit,FILE=Name,STATUS='Unknown')
@@ -1544,7 +1562,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
 
   
-  CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
+  CALL Info(Caller, '-----------------------------------------', Level=7 )
 
   
 !------------------------------------------------------------------------------
@@ -1583,7 +1601,7 @@ CONTAINS
       ParOper = ListGetString( Params,'Default Parallel Operator',GotIt)
       IF( .NOT. GotIt ) THEN
         ParOper = 'none'
-        CALL Warn('SaveScalars','Reduction not implemented in parallel:'//TRIM(LocalOper))
+        CALL Warn(Caller,'Reduction not implemented in parallel:'//TRIM(LocalOper))
       END IF      
 
     END SELECT
@@ -1618,7 +1636,7 @@ CONTAINS
     IF(.NOT. ALLOCATED(Values)) THEN
       n = 20
       ALLOCATE( Values(n), ValueNames(n), ValuesInteger(n), STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 6') 	
+      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 6') 	
       Values = 0._dp
     END IF
 
@@ -1627,7 +1645,7 @@ CONTAINS
     ! If vectors are too small make some more room in a rather dummy way
     IF(n >= SIZE(Values) ) THEN
       ALLOCATE(TmpValues(n), TmpValueNames(n), TmpValuesInteger(n),STAT=istat)
-      IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 8') 		
+      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 8') 		
 	
       TmpValues(1:n) = Values(1:n)
       TmpValuesInteger(1:n) = ValuesInteger(1:n)
@@ -1635,7 +1653,7 @@ CONTAINS
       DEALLOCATE(Values,ValueNames,ValuesInteger)
 
       ALLOCATE(Values(n+10), ValueNames(n+10), ValuesInteger(n+10), STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 9') 		
+      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 9') 		
       Values = 0._dp
 
       Values(1:n) = TmpValues(1:n)
@@ -1699,7 +1717,7 @@ CONTAINS
           MPIOper = -1
           
         CASE DEFAULT
-          CALL Warn('SaveScalars','Unknown parallel operator: '//TRIM(ParOper))
+          CALL Warn(Caller,'Unknown parallel operator: '//TRIM(ParOper))
           MPIOper = -1
           
         END SELECT
@@ -1725,14 +1743,14 @@ CONTAINS
       IF(.NOT. ASSOCIATED(TargetVar)) THEN
         NULLIFY(WrkPntr)
         ALLOCATE(WrkPntr(1),STAT=istat)
-	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 5') 	
+	IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 5') 	
  
         CALL VariableAdd( Model % Variables, Mesh, Solver, &
             TRIM(VariableName), 1, WrkPntr )
         TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )       
       END IF
       TargetVar % Values(1) = Values(n)
-      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)),Level=8)
+      CALL Info(Caller,'Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)),Level=8)
     END IF
     
   END SUBROUTINE AddToSaveList
@@ -1748,7 +1766,7 @@ CONTAINS
 
     IF(.NOT. MaskOper ) RETURN
 
-    CALL Info('SaveScalars','Creating mask for: '//TRIM(MaskName),Level=10)
+    CALL Info(Caller,'Creating mask for: '//TRIM(MaskName),Level=10)
     
     IF( ALLOCATED( NodeMask ) ) THEN
       IF( SIZE( NodeMask ) /= SIZE( Var % Perm ) ) DEALLOCATE( NodeMask ) 
@@ -1788,7 +1806,7 @@ CONTAINS
     END DO
     
     t = COUNT( NodeMask )    
-    CALL Info('SaveScalars','Created mask of size: '&
+    CALL Info(Caller,'Created mask of size: '&
         //TRIM(I2S(t)),Level=12)
 
   END SUBROUTINE CreateNodeMask
@@ -1809,7 +1827,7 @@ CONTAINS
     TYPE(NeighbourList_t), POINTER :: nlist(:)
     INTEGER, POINTER :: PPerm(:)
     
-    CALL Info('SaveScalars','Computing operator: '//TRIM(OperName),Level=12)
+    CALL Info(Caller,'Computing operator: '//TRIM(OperName),Level=12)
 
     sumi = 0
     sumx = 0.0
@@ -1838,7 +1856,7 @@ CONTAINS
     
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
-        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+        CALL Info(Caller,'Decreasing operator range to size of mask: '&
             //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))), Level=8)
         NoNodes = SIZE(NodeMask)
       END IF
@@ -1964,12 +1982,12 @@ CONTAINS
       operx = Variance
       
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical operator!')
+      CALL Warn(Caller,'Unknown statistical operator!')
 
     END SELECT
       
     
-    CALL Info('SaveScalars','Finished computing operator',Level=12)
+    CALL Info(Caller,'Finished computing operator',Level=12)
 
 
   END FUNCTION VectorStatistics
@@ -2004,7 +2022,7 @@ CONTAINS
 
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
-        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+        CALL Info(Caller,'Decreasing operator range to size of mask: '&
             //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
         NoNodes = SIZE(NodeMask)
       END IF
@@ -2312,7 +2330,7 @@ CONTAINS
           integral1 = integral1 + s * coeff * func
 
         CASE DEFAULT 
-          CALL Warn('SaveScalars','Unknown statistical OPERATOR')
+          CALL Warn(Caller,'Unknown statistical OPERATOR')
 
         END SELECT
 
@@ -2411,7 +2429,7 @@ CONTAINS
       
       CASE('diffusive flux') 
       IF(NoDofs /= 1) THEN
-        CALL Warn('SaveScalars','diffusive flux & NoDofs /= 1?')
+        CALL Warn(Caller,'diffusive flux & NoDofs /= 1?')
         RETURN
       END IF
 
@@ -2420,10 +2438,10 @@ CONTAINS
         IF( NoDofs == 1 ) THEN
           VeloVar => VariableGet( Mesh % Variables,'Flow Solution')
           IF( .NOT. ASSOCIATED( VeloVar ) ) THEN
-            CALL Fatal('SaveScalars','For convective flux of a scalar we need the convective field!')
+            CALL Fatal(Caller,'For convective flux of a scalar we need the convective field!')
           END IF
         ELSE
-          CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
+          CALL Warn(Caller,'convective flux & NoDofs < DIM?')
           RETURN
         END IF
       END IF
@@ -2431,7 +2449,7 @@ CONTAINS
       CASE ('area','boundary int','boundary int mean')
 
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical OPERATOR')
+      CALL Warn(Caller,'Unknown statistical OPERATOR')
 
     END SELECT
 
@@ -2529,7 +2547,7 @@ CONTAINS
             ELSE
               WRITE( Message, * ) 'No such flux integrate body on bc ', &
                   Element % BoundaryInfo % Constraint
-              CALL Fatal( 'SaveScalars', Message )
+              CALL Fatal( Caller, Message )
             END IF
           ELSE        
             Parent => ELement % BoundaryInfo % Left
@@ -2544,7 +2562,7 @@ CONTAINS
                 IF(stat) stat = ALL(Var % Perm(Parent % NodeIndexes) > 0)
               END IF
             END IF
-            IF ( .NOT. stat )  CALL Fatal( 'SaveScalars',&
+            IF ( .NOT. stat )  CALL Fatal( Caller,&
                 'No solution available for specified boundary' )
           END IF                   
           
@@ -2604,7 +2622,7 @@ CONTAINS
             ELSE
               WRITE( Message, * ) 'No such flux integrate body on bc ', &
                   Element % BoundaryInfo % Constraint
-              CALL Fatal( 'SaveScalars', Message )
+              CALL Fatal( Caller, Message )
             END IF
           ELSE        
             Parent => ELement % BoundaryInfo % Left
@@ -2619,7 +2637,7 @@ CONTAINS
                 IF(stat) stat = ALL(Var % Perm(Parent % NodeIndexes) > 0)
               END IF
             END IF
-            IF ( .NOT. stat )  CALL Fatal( 'SaveScalars',&
+            IF ( .NOT. stat )  CALL Fatal( Caller,&
                 'No solution available for specified boundary' )
           END IF                   
 
@@ -2847,7 +2865,7 @@ CONTAINS
       FindMinMax = .TRUE.
       
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical operator')
+      CALL Warn(Caller,'Unknown statistical operator')
       
     END SELECT
 
@@ -2990,20 +3008,20 @@ CONTAINS
       
       CASE('diffusive flux') 
       IF(NoDofs /= 1) THEN
-        CALL Warn('SaveScalars','diffusive flux & NoDofs /= 1?')
+        CALL Warn(Caller,'diffusive flux & NoDofs /= 1?')
         RETURN
       END IF
 
       CASE ('convective flux')
       IF(NoDofs /= 1 .AND. NoDofs < DIM) THEN
-        CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
+        CALL Warn(Caller,'convective flux & NoDofs < DIM?')
         RETURN
       END IF
       
       CASE ('area','boundary int','boundary int mean')
 
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown physical OPERATOR')
+      CALL Warn(Caller,'Unknown physical OPERATOR')
 
     END SELECT
 
