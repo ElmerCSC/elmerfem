@@ -462,111 +462,100 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
   
                   EA = LinearEofA(U,V,X,Y,Z);
                   F += S_Integ1d[i] * EA *
-indent: Standard input:2: Error:Stmt nesting error.
-indent: Standard input:3: Error:Unmatched #endif
-indent: Standard input:27: Error:Stmt nesting error.
-indent: Standard input:28: Error:Stmt nesting error.
-indent: Standard input:94: Error:Stmt nesting error.
-indent: Standard input:120: Error:Unexpected end of file
-(*IntegrateDiffToArea[GB->GeometryType]) (GB, FX, FY, FZ, DX, DY, DZ);
-}
+                      (*IntegrateDiffToArea[GB->GeometryType])(GB,FX,FY,FZ,DX,DY,DZ);
+              }
 #endif
 
-F = Hit * F / (1.0 * Nrays);
-Fb = F / GB->Area;
-Fa = F / GA->Area;
+            F = Hit*F/(1.0*Nrays);
+            Fb = F / GB->Area;
+            Fa = F / GA->Area;
 
-Link = (GeometryList_t *) calloc (sizeof (GeometryList_t), 1);
-Link->Next = GA->Link;
-GA->Link = Link;
+            Link = (GeometryList_t *)calloc(sizeof(GeometryList_t),1);
+            Link->Next = GA->Link;
+            GA->Link = Link;
 
-Link->Entry = GB;
-Link->ViewFactor = Fa;
+            Link->Entry = GB;
+            Link->ViewFactor = Fa;
 
-if (GA != GB)
-  {
-    Link = (GeometryList_t *) calloc (sizeof (GeometryList_t), 1);
-    Link->Next = GB->Link;
-    GB->Link = Link;
+            if ( GA != GB )
+            {
+                Link = (GeometryList_t *)calloc(sizeof(GeometryList_t),1);
+                Link->Next = GB->Link;
+                GB->Link = Link;
 
-    Link->Entry = GA;
-    Link->ViewFactor = Fb;
-  }
+                Link->Entry = GA;
+                Link->ViewFactor = Fb;
+            }
 
-return;
-}
-}
+            return;
+        }
+    }
 
 subdivide:
 
-if (GA == GB)
-  {
-    if (!GB->Left)
-      LinearSubdivide (GB, LevelB, 1);
+    if ( GA == GB )
+    {
+        if ( !GB->Left ) LinearSubdivide( GB, LevelB,1 );
 
-    if (GB->Flags & GEOMETRY_FLAG_LEAF)
-      {
-	GB->Flags &= ~GEOMETRY_FLAG_LEAF;
+        if ( GB->Flags & GEOMETRY_FLAG_LEAF )
+        {
+            GB->Flags &= ~GEOMETRY_FLAG_LEAF;
 
-	GB->Left->Flags |= GEOMETRY_FLAG_LEAF;
-	GB->Right->Flags |= GEOMETRY_FLAG_LEAF;
+            GB->Left->Flags   |= GEOMETRY_FLAG_LEAF;
+            GB->Right->Flags  |= GEOMETRY_FLAG_LEAF;
 
-	if (!GB->Left->Area)
-	  {
-	    GB->Left->Area = LinearArea (GB->Left);
-	    GB->Right->Area = LinearArea (GB->Right);
-	  }
-      }
+            if ( !GB->Left->Area )
+            {
+                GB->Left->Area  = LinearArea(GB->Left);
+                GB->Right->Area = LinearArea(GB->Right);
+            }
+        }
 
-    LinearComputeViewFactors (GB->Left, GB->Left, LevelA + 1, LevelB + 1);
-    LinearComputeViewFactors (GB->Right, GB->Right, LevelA + 1, LevelB + 1);
-    LinearComputeViewFactors (GB->Left, GB->Right, LevelA + 1, LevelB + 1);
-  }
-else if (Fa > Fb)
-  {
-    if (!GB->Left)
-      (*Subdivide[GB->GeometryType]) (GB, LevelB, 1);
+        LinearComputeViewFactors( GB->Left, GB->Left, LevelA+1,LevelB+1 );
+        LinearComputeViewFactors( GB->Right,GB->Right,LevelA+1,LevelB+1 );
+        LinearComputeViewFactors( GB->Left, GB->Right,LevelA+1,LevelB+1 );
+    }
+    else if ( Fa > Fb )
+    {
+        if ( !GB->Left ) (*Subdivide[GB->GeometryType])( GB,LevelB,1 );
 
-    if (GB->Flags & GEOMETRY_FLAG_LEAF)
-      {
-	GB->Flags &= ~GEOMETRY_FLAG_LEAF;
+        if ( GB->Flags & GEOMETRY_FLAG_LEAF )
+        {    
+            GB->Flags &= ~GEOMETRY_FLAG_LEAF;
 
-	GB->Left->Flags |= GEOMETRY_FLAG_LEAF;
-	GB->Right->Flags |= GEOMETRY_FLAG_LEAF;
+            GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;
+            GB->Right->Flags |= GEOMETRY_FLAG_LEAF;
 
-	if (!GB->Left->Area)
-	  {
-	    GB->Left->Area = (*AreaCompute[GB->GeometryType]) (GB->Left);
-	    GB->Right->Area = (*AreaCompute[GB->GeometryType]) (GB->Right);
-	  }
-      }
+            if ( !GB->Left->Area)
+            {
+                GB->Left->Area  = (*AreaCompute[GB->GeometryType])(GB->Left);
+                GB->Right->Area = (*AreaCompute[GB->GeometryType])(GB->Right);
+            }
+        }
 
-    LinearComputeViewFactors (GA, GB->Left, LevelA, LevelB + 1);
-    LinearComputeViewFactors (GA, GB->Right, LevelA, LevelB + 1);
-  }
-else
-  {
-    if (!GA->Left)
-      LinearSubdivide (GA, LevelA, 1);
+        LinearComputeViewFactors( GA,GB->Left,LevelA,LevelB+1 );
+        LinearComputeViewFactors( GA,GB->Right,LevelA,LevelB+1 );
+    } else
+    {
+        if ( !GA->Left ) LinearSubdivide( GA, LevelA,1 );
 
-    if (GA->Flags & GEOMETRY_FLAG_LEAF)
-      {
-	GA->Flags &= ~GEOMETRY_FLAG_LEAF;
-	GA->Left->Flags |= GEOMETRY_FLAG_LEAF;
-	GA->Right->Flags |= GEOMETRY_FLAG_LEAF;
+        if ( GA->Flags & GEOMETRY_FLAG_LEAF )
+        {
+            GA->Flags &= ~GEOMETRY_FLAG_LEAF;
+            GA->Left->Flags  |= GEOMETRY_FLAG_LEAF;
+            GA->Right->Flags |= GEOMETRY_FLAG_LEAF;
 
-	if (!GA->Left->Area)
-	  {
-	    GA->Left->Area = LinearArea (GA->Left);
-	    GA->Right->Area = LinearArea (GA->Right);
-	  }
-      }
+            if ( !GA->Left->Area )
+            {
+                GA->Left->Area  = LinearArea(GA->Left);
+                GA->Right->Area = LinearArea(GA->Right);
+            }
+        }
 
-    LinearComputeViewFactors (GA->Left, GB, LevelA + 1, LevelB);
-    LinearComputeViewFactors (GA->Right, GB, LevelA + 1, LevelB);
-  }
+        LinearComputeViewFactors( GA->Left,GB,LevelA+1,LevelB );
+        LinearComputeViewFactors( GA->Right,GB,LevelA+1,LevelB );
+    }
 }
-
 /*******************************************************************************
 
 Compute  differential view factor for linear surface elements by subdivision
@@ -579,7 +568,7 @@ view between the elements is resolved by ray tracing.
 *******************************************************************************/
 void
 LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
-			      double dz, int LevelA)
+         double dz, int LevelA)
 {
   double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
   double F, Fa, Fb, EA, PI = 2 * acos (0.0);
