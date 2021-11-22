@@ -254,7 +254,6 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
               lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
               (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
-fprintf( stderr, "%d %d\n", i, j );
               Fact = ComputeViewFactorValue( &lel[i],0 );
               Factors[i*N+j] = Fact / lel[i].Area;
               Factors[j*N+i] = Fact / lel[j].Area;
