@@ -233,7 +233,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
     k  = 0;
     l  = 0;
-#pragma omp for private(i,j,k,l,Fact) shared(NofRadiators) schedule(dynamic,10)
+    /* #pragma omp for private(i,j,k,l,Fact) shared(NofRadiators) schedule(dynamic,10) */
     for( i=0; i<Ns; i++ )
     {
          if ( NofRadiators==0 ) { k=i; l=i+1; }
