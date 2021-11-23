@@ -41,7 +41,7 @@
 !> \ingroup Programs
 !> \{
 
-!> \defgroup ViewFactors Program RadiatorFacers
+!> \defgroup ViewFactors Program RadiatorFactors
 !> \{
 
 !------------------------------------------------------------------------------
@@ -111,17 +111,6 @@
             INTEGER(C_INT) :: Nr, NInteg, NInteg3, Combine
         END SUBROUTINE radiatorfactors3d
         
-!       ! extern "C" void STDCALLBULL radiatorsaxis
-!       ! (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
-!       ! CALL ViewFactorsAxis( N, Surfaces, Coords, Factors, divide, CombineInt )
-!       SUBROUTINE viewfactorsaxis(n, surf, crd, vf, idiv, fast) BIND(C)
-!           USE, INTRINSIC :: ISO_C_BINDING
-!           IMPLICIT NONE 
-!           INTEGER(C_INT) :: n, surf(*)
-!           REAL(KIND=C_DOUBLE) :: crd(*), vf(*)
-!           INTEGER :: idiv, fast 
-!       END SUBROUTINE viewfactorsaxis
-
       END INTERFACE
 
      INTEGER, POINTER :: Timesteps(:)
@@ -512,30 +501,31 @@
        CALL Info( Caller, 'Computing radiator view coefficients...', Level=4 )
 
        at0 = CPUTime(); rt0 = RealTime()
-       
-       IF ( CylindricSymmetry ) THEN
-         divide = GetInteger( Params, 'Viewfactor divide',GotIt)
-         IF ( .NOT. GotIt ) Divide = 1
-!       CALL ViewFactorsAxis( N, Surfaces, Coords, Factors, divide, CombineInt )
+
+       Combine = GetLogical( Params, 'Viewfactor combine elements',GotIt)
+       IF ( .NOT. GotIt ) Combine = .TRUE.
+       IF( Combine ) THEN
+         CombineInt = 1
        ELSE
-         AreaEPS = GetConstReal( Params, 'Radiator Area Tolerance',  GotIt )
-         IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
-         FactEPS = GetConstReal( Params, 'Radiator Factor Tolerance ', GotIt )
-         IF ( .NOT. GotIt ) FactEPS = 1.0d-2
-         RayEPS = GetConstReal( Params, 'Radiator Raytrace Tolerace',  GotIt )
-         IF ( .NOT. GotIt ) RayEPS = 1.0d-5
-         Nrays = GetInteger( Params, 'Radiator Number of Rays ',  GotIt )
-         IF ( .NOT. GotIt ) Nrays = 1
-
-
-         CALL RadiatorFactors3d( &
-             N, Surfaces, Type, Coords, Normals, &
-             0, Surfaces, Type, Coords, Normals, &
-             NofRadiators, Radiators, &
-             Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
+         CombineInt = 0
        END IF
        
-       WRITE (Message,'(A,F8.2,F8.2)') 'Radiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
+       AreaEPS = GetConstReal( Params, 'Viewfactor Area Tolerance',  GotIt )
+       IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
+
+       FactEPS = GetConstReal( Params, 'Viewfactor Factor Tolerance ', GotIt )
+       IF ( .NOT. GotIt ) FactEPS = 1.0d-2
+
+       RayEPS = GetConstReal( Params, 'Viewfactor Raytrace Tolerace',  GotIt )
+       IF ( .NOT. GotIt ) RayEPS = 1.0d-5
+
+       Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
+       IF ( .NOT. GotIt ) Nrays = 1
+
+       RadaitorCALL Factors3d( & N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
+           NofRadiators, Radiators, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
+       
+       WRITE (Message,'(A,F8.2,F8.2)') 'Rdiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( Caller,Message, Level=3 )
 
        IF(SYMMETRY_NOW) THEN
@@ -604,12 +594,7 @@
        
        at0 = CPUTime()
 
-       IF( RadiationOpen ) THEN
-         CALL Info( Caller,'Symmetrizing Factors... ')
-       ELSE
-         CALL Info( Caller,'Normalizaing Factors...')
-       END IF
-
+       CALL Info( Caller,'Normalizing Factors...')
 
        DO i=1,NofRadiators
          s = 0.0d0
