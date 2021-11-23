@@ -522,7 +522,7 @@
        Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
        IF ( .NOT. GotIt ) Nrays = 1
 
-       RadaitorCALL Factors3d( & N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
+       CALL RadiatorFactors3d( N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
            NofRadiators, Radiators, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
        
        WRITE (Message,'(A,F8.2,F8.2)') 'Rdiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
