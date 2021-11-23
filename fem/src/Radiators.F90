@@ -139,8 +139,6 @@
      INTEGER :: iostat, NoArgs
      REAL(KIND=dp), POINTER :: Radiators(:,:)
      
-     EXTERNAL MatvecViewFact,DiagPrecViewFact
-
 
      CALL Info( Caller, ' ', Level=3 )
      CALL Info( Caller, '==============================================', Level=3 )
@@ -820,7 +818,7 @@
        Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
      END SUBROUTINE MirrorMesh
 
-  END PROGRAM ViewFactors
+  END PROGRAM RadiatorFactors
 
   
 !> \}
