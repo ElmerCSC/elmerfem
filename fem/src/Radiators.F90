@@ -180,9 +180,8 @@
 
      Params => GetSolverParams()
 
-
-     CALL GetConstRealArray( Params, Radiators, 'Radiatiors', Found )
-     IF(.NOT. Found ) CALL Fatal( 'RadiatiorFactors', 'No radiators present, quitting' )
+     CALL GetConstRealArray( Params, Radiators, 'Radiators', Found )
+     IF(.NOT. Found ) CALL Fatal( 'RadiatorFactors', 'No radiators present, quitting' )
 
      NofRadiators = SIZE(Radiators,1)
      CALL Info( 'RadiatorFactors', 'Computing flux coefficients for ' // &
@@ -194,7 +193,7 @@
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Params, 'Radiatiors Symmetry x min', Found );
+           Plane = GetCReal( Params, 'Radiators Symmetry x min', Found );
            IF(.NOT. Found ) Found = ListGetLogical( Params, 'Radiators Symmetry x', GotIt );
          CASE(2)
            Plane = GetCReal( Params, 'Radiators Symmetry x max', Found );
@@ -261,7 +260,7 @@
      END IF
 
      IF ( istat /= 0 ) THEN
-       CALL Fatal('Radiatiorfactors', 'Memory allocation error. Aborting' )
+       CALL Fatal('Radiatorfactors', 'Memory allocation error. Aborting' )
      END IF
 
      ! The routine originally plays with the element list and therefore
@@ -288,7 +287,7 @@
        BC => GetBC()
        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
  
-       RadiationFlag = GetLogical( BC, 'Radiatior BC',GotIt )
+       RadiationFlag = GetLogical( BC, 'Radiator BC',GotIt )
 
        IF ( RadiationFlag ) THEN
          i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ) )
@@ -324,7 +323,7 @@
          BC => GetBC()
          IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
          
-         RadiationFlag = GetLogical( BC, 'Radiatior BC', GotIt )
+         RadiationFlag = GetLogical( BC, 'Radiator BC', GotIt )
          IF ( RadiationFlag ) THEN
            i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ))
            IF(i == RadiationBody) THEN

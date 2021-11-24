@@ -637,8 +637,9 @@ MODULE Types
 !-------------------------------------------------------------------------------
 
    TYPE BoundaryInfo_t
-     TYPE(Factors_t), POINTER :: GebhardtFactors=>NULL()
+     TYPE(Factors_t), POINTER :: GebhardtFactors => NULL()
      INTEGER :: Constraint = 0, OutBody = -1
+     REAL(KIND=dp), ALLOCATABLE :: Radiators(:)
      TYPE(Element_t), POINTER :: Left =>NULL(), Right=>NULL()
    END TYPE BoundaryInfo_t
 

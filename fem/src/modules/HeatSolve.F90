@@ -188,6 +188,8 @@
 !    Newton lineariarization option is needed only when there is radiation.
 !------------------------------------------------------------------------------
      IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
+     IsRadiation = IsRadiation .OR. ListCheckPresentAnyBC( Model,'Radiator BC')
+
      IF( IsRadiation ) THEN
        CALL RadiationFactors( Solver, .FALSE.)
      END IF
@@ -1379,6 +1381,9 @@ CONTAINS
             AText(1:n) = Text
           END IF
         END IF
+
+        IF (ALLOCATED(Element % BoundaryInfo % Radiators) ) &
+          Atext(1:n) = Atext(1:n) + SUM(Element % BoundaryInfo % Radiators)
 !------------------------------------------------------------------------------
 !       Add our own contribution to surface temperature (and external
 !       if using linear type iteration or idealized radiation)
@@ -1390,10 +1395,12 @@ CONTAINS
           IF ( .NOT. HeatGapBC .AND. NewtonLinearization ) THEN
              HeatTransferCoeff(j) = Emissivity * 4*Temperature(k)**3 * &
                                StefanBoltzmann
+
              LOAD(j) = Emissivity*(3*Temperature(k)**4+Text**4) * &
                                StefanBoltzmann
           ELSE
              HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 + &
+
              Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
                                StefanBoltzmann 
              LOAD(j) = HeatTransferCoeff(j) * Text
