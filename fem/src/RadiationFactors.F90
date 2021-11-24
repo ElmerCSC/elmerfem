@@ -103,7 +103,7 @@
          ComputeViewFactors, OptimizeBW, TopologyTest, TopologyFixed, &
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
          ConstantEmissivity, Found, Debug, gSymm, gTriv, BinaryMode, UpdateRadiatorFactors, &
-            ComputeRadiatorFactors, RadiatorsFound
+            ComputeRadiatorFactors, RadiatorsFound, DiffuseGrayRadiationFound
      LOGICAL, POINTER :: ActiveNodes(:)
      LOGICAL :: DoScale
      INTEGER, PARAMETER :: VFUnit = 10
@@ -126,9 +126,9 @@
        RadiatorsFound = RadiatorsFound .OR. GetLogical( BC, 'Radiator BC', Gotit )
 
        RadiationFlag = GetString( BC, 'Radiation', GotIt )
-       IF ( RadiationFlag == 'diffuse gray' ) Found = .TRUE.
+       IF ( RadiationFlag == 'diffuse gray' ) DiffuseGrayRadiationFound = .TRUE.
      END DO
-     IF(.NOT. Found .AND. .NOT. RadiatorsFound) RETURN
+     IF(.NOT. DiffuseGrayRadiationFound .AND. .NOT. RadiatorsFound) RETURN
 
 
      Mesh => TSolver % Mesh
@@ -379,7 +379,7 @@
 !------------------------------------------------------------------------------
 !    Check that the needed files exist if os assumed, if not recompute view factors
 !------------------------------------------------------------------------------
-     IF(  RadiationFlag == 'diffuse gray' ) THEN
+     IF( DiffuseGrayRadiationFound ) THEN 
        FilesExist = .TRUE.
        DO RadiationBody = 1, MaxRadiationBody 
          ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
@@ -433,6 +433,7 @@
 
      IF(ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
            (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))) THEN
+
        
        ! This is a dirty thrick where the input mesh is scaled after loading.
        ! We need to perform scaling and backscaling then here too. 
@@ -653,7 +654,7 @@ END BLOCK
 
 !--------------------------------------------------
 
-     IF(RadiationFlag /= 'diffuse gray' ) RETURN
+     IF( .NOT. DiffuseGrayRadiationFound ) RETURN
 
      ViewFactors => TSolver % Mesh % ViewFactors
      ! Open the file for ViewFactors
