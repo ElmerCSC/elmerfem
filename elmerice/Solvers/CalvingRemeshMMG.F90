@@ -620,6 +620,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
         CALL WARN(SolverName, Message)
         IF(mmgloops==MaxLsetIter) THEN
+          Success=.FALSE.
+          CalvingOccurs = .FALSE.
           GO TO 20
         ELSE
           GO TO 10
@@ -990,7 +992,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
             NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem, Success=RSuccess)
         IF(.NOT. RSuccess) THEN
           CALL WARN(SolverName, 'Remeshing failed - no calving at this timestep')
-          GO TO 30
+          GO TO 30 ! remeshing failed so no calving at this timestep
         END IF
         CALL ReleaseMesh(NewMeshR)
         NewMeshR => NewMeshRR
@@ -1035,6 +1037,17 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      CALL MPI_GROUP_FREE(group_world,ierr)
    END IF
    CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+
+   CALL MPI_BCAST(RSuccess, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+   IF(.NOT. RSuccess) THEN
+      CALL ReleaseMesh(GatheredMesh)
+      ! Release GatheredMesh % Redistribution
+      IF(ASSOCIATED(GatheredMesh % Repartition)) THEN
+          DEALLOCATE(GatheredMesh % Repartition)
+          GatheredMesh % Repartition => NULL()
+      END IF
+      RETURN
+   END IF
 
    !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
    CALL RenumberGDOFs(Mesh, GatheredMesh)
