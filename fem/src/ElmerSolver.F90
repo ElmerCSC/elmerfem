@@ -2713,11 +2713,13 @@ END INTERFACE
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
          
-         Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
-         'Timestep Intervals', GotIt )
-         IF ( .NOT.GotIt ) THEN
-            CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
-                'defined for transient and scanning simulations' )
+         IF(Transient) THEN
+            Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
+            'Timestep Intervals', GotIt )
+            IF ( .NOT.GotIt ) THEN
+                CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+                    'defined for transient and scanning simulations' )
+            END IF
          END IF
          Timestep = Timestep + 1
 
