@@ -139,6 +139,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! have changed. The routine may also affect matrix topology.
   !---------------------------------------------------------------------------
   Mesh => GetMesh()
+
   CALL RadiationFactors( Solver, .FALSE.) 
   HaveFactors = ListCheckPresentAnyBC( Model,'Radiation')
 
@@ -155,8 +156,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Params => GetSolverParams()  
   EqName = ListGetString( Params,'Equation', Found ) 
 
-  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
+  DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
 
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
@@ -856,6 +857,9 @@ CONTAINS
           RadText = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
         END IF
 
+        IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
+          RadText = RadText + SUM(Element % BoundaryInfo % Radiators)
+
         ! Basis not treated right yet        
         Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
@@ -955,7 +959,7 @@ CONTAINS
          NodalTemp(1:n) = Temperature( TempPerm(Element % NodeIndexes) )
        END IF
        Temps4(j) = ( SUM( NodalTemp(1:n)**4 )/ n )**(1._dp/4._dp)       
-       
+
        IF( PRESENT( Emiss ) ) THEN
          NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
          IF (.NOT. Found) &
@@ -980,7 +984,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: F,C,T0, Emis, Emis2, RadC, RadF, RadText, Text, Fj, &
-        RadLoadAtIp, A1, A2, AngleFraction, Topen, Emis1, AssFrac
+        RadLoadAtIp, A1, A2, AngleFraction, Topen, Emis1, AssFrac, Text0
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3),Atext(12),Base(12),S,RadCoeffAtIP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
     REAL(KIND=dp), POINTER :: Fact(:)
@@ -1049,6 +1053,10 @@ CONTAINS
     ELSE
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
     END IF
+
+    Text0 = 0
+    IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
+      Text0 = SUM(Element % BoundaryInfo % Radiators)
       
     ! Go through surfaces (j) this surface (i) is getting radiated from.
     !------------------------------------------------------------------------------        
@@ -1090,8 +1098,9 @@ CONTAINS
         ! of the element, so take average of nodal temperatures
         !-------------------------------------------------------------
         bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-        Text = Temps4(bindex)
-        
+        Text = Text0 + Temps4(bindex)
+
+       
         IF( j <= nf_imp ) THEN        
           ! Linearization of the G_jiT^4_j term
           !------------------------------------------------------------------------------
@@ -1132,7 +1141,7 @@ CONTAINS
       END DO
     ELSE
       ! Compute the weighted sum of T^4
-      Text = 0.0_dp
+      Text = 0
       
       DO j=1,nf
         RadElement => Mesh % Elements(ElementList(j))
@@ -1171,7 +1180,7 @@ CONTAINS
     ! having computed the complete T_ext^4. So this is done in the end.
     !----------------------------------------------------------------------------
     IF( .NOT. Newton ) THEN      
-      Text = Text**0.25
+      Text = Text0 + Text**0.25
       DO t=1,IP % n
         stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
         s = detJ * IP % s(t)        
