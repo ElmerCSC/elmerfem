@@ -7206,7 +7206,7 @@ CONTAINS
         ! check both ends of rails as not sure which way glacier flowing
         tempdist = PointLineSegmDist2D((/xL(1), yL(1)/),(/xR(1), yL(1)/), (/xx, yy/))
         IF(tempdist < mindist) CYCLE
-        tempdist = PointLineSegmDist2D((/xL(Nl), yL(Nl)/),(/xR(Nr), yL(Nr)/), (/xx, yy/))
+        tempdist = PointLineSegmDist2D((/xL(Nl), yL(Nl)/),(/xR(Nr), yR(Nr)/), (/xx, yy/))
         IF(tempdist < mindist) CYCLE
 
         IF(mindist > buffer) THEN
