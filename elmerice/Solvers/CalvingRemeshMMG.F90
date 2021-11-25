@@ -94,7 +94,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success,&
-       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving
+       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
@@ -159,7 +159,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  Default=4000.0_dp)
   hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", Default=0.5_dp)
   WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hausd", Found)
-  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hausd input array to be iterated through: "Mesh Hausd"')
   IF(MaxLsetIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
           must equal the number of hausd options')
   ALLOCATE(hausdarray(MaxLsetIter))
@@ -184,6 +184,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           & assuming True")
      PauseAfterCalving = .TRUE.
   END IF
+  FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", Default=.TRUE.)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -1104,7 +1105,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Mesh)
 
-   CALL EnforceLateralMargins(Model, Solver % Values)
+   IF(FixNodesOnRails) CALL EnforceLateralMargins(Model, Solver % Values)
 
    !Calculate mesh volume
    CALL MeshVolume(Model % Mesh, .TRUE., PostCalveVolume)
