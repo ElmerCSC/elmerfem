@@ -419,7 +419,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   !
   ! allocate space for 3d face intersections / 2d point:
   ! ----------------------------------------------------
-  MaxInt =  100
+  MaxInt =  10
   ALLOCATE( PointStore(PlaneNodes) )
   DO i=1,PlaneNodes
     ALLOCATE( PointStore(i) % IntValues(DOFs_3D,MaxInt), &
