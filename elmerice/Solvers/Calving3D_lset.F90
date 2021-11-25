@@ -87,7 +87,7 @@
         EdgeX(:), EdgeY(:), EdgePoly(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
-        PC_EqName, Iso_EqName, VTUSolverName
+        PC_EqName, Iso_EqName, VTUSolverName, EqName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, LeftToRight, inside, Complete,&
         LatCalvMargins, FullThickness
@@ -1410,8 +1410,27 @@
        CALL Info( SolverName, 'Calving Event',Level=1)
     ELSE
        !If only insignificant calving events occur, reset everything
-       CalvingValues = 0.0_dp
+       !CalvingValues = 0.0_dp
        IsCalvingNode = .FALSE.
+    END IF
+
+    !if calving doesn't occur then no need to run remeshing solver
+    EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+    DO j=1,Model % NumberOfSolvers
+      IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        Found = .TRUE.
+        !Turn off (or on) the solver
+        !If CalvingOccurs, (switch) off = .true.
+        CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+        IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+        EXIT
+      END IF
+    END DO
+
+    IF(.NOT. Found) THEN
+      WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+          " to switch off after calving."
+      CALL Fatal(SolverName,Message)
     END IF
 
     ! because isomesh has no bulk?
