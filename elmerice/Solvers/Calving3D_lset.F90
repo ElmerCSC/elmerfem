@@ -74,6 +74,7 @@
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
         buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
+        CalvingLimit, CrevPenetration, PrevValue, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -89,7 +90,7 @@
         PC_EqName, Iso_EqName, VTUSolverName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, LeftToRight, inside, Complete,&
-        LatCalvMargins
+        LatCalvMargins, FullThickness
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
@@ -148,6 +149,12 @@
    LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", Default=.TRUE.)
 
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
+
+   CrevPenetration = ListGetConstReal(Params, "Crevasse Penetration",Found, Default = 1.0_dp)
+   IF(.NOT. Found) CALL Info(SolverName, "No Crevasse Penetration specified so assuming full thickness")
+   FullThickness = CrevPenetration == 1.0_dp
+   PRINT*, 'CrevPenetration: ', CrevPenetration
+   IF(CrevPenetration > 1 .OR. CrevPenetration < 0) CALL FATAL(SolverName, "Crevasse Penetraion must be between 0-1")
 
    DistVar => VariableGet(Model % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
    DistValues => DistVar % Values
@@ -804,6 +811,33 @@
     END IF
 
     IF(Boss) THEN
+
+        IF(.NOT. FullThickness) THEN
+          ! save original ave_cindex
+          n = PlaneMesh % NumberOfNodes
+          ALLOCATE(WorkPerm(n), WorkReal(n))
+          WorkReal = CrevVar % Values(CrevVar % Perm)
+          WorkPerm = [(i,i=1,n)]
+          CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "ave_cindex_fullthickness", &
+          1, WorkReal, WorkPerm)
+          NULLIFY(WorkReal, WorkPerm)
+
+          CalvingLimit = 1.0_dp - CrevPenetration
+
+          !alter ave_cindix so relflect %crevasses indicated in sif
+          ! 0 full
+          DO i=1, n
+            IF(CrevVar % Values(CrevVar % Perm(i)) <= CalvingLimit) THEN
+              CrevVar % Values(CrevVar % Perm(i)) = 0.0_dp
+            ELSE
+              PrevValue = CrevVar % Values(CrevVar % Perm(i))
+              CrevVar % Values(CrevVar % Perm(i)) = PrevValue - CalvingLimit
+            END IF
+          END DO
+        END IF
+
+
+
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
           IF(GetString(Model % Solvers(i) % Values, 'Equation') == Iso_EqName) THEN
