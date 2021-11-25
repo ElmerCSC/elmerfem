@@ -993,7 +993,9 @@
              EXIT
            END IF
          END DO
-         IF(Found) EXIT
+         ! when lateral margin advances it doesn't follow the z axis so we want to determine
+         ! the further point the lateral margins have advanced
+         IF(Found .AND. IMBdryConstraint(i) /= FrontConstraint) EXIT
        END DO
      END DO
 
