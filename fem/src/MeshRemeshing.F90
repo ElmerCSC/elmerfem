@@ -1103,7 +1103,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   END IF
   IF(SaveMMGSols) THEN
     WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
-    CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+    CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
@@ -1134,7 +1134,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   END IF
   IF(SaveMMGSols) THEN
     WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
-    CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+    CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
 
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
@@ -1145,6 +1145,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     IF(Quality == 0) CALL WARN(FuncName, 'Remeshing could not determine elem quality')
     IF(Quality <= RemeshMinQuality) counter = counter+1
   END DO
+  IF(Debug) PRINT*, 'Bad Element Count: ', Counter
   IF ( Counter > 0 ) THEN
     PRINT*,"Bad elements detected - reruning remeshing"
     !! Release mmg mesh
