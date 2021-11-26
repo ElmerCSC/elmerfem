@@ -259,7 +259,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
               Factors[j*N+i] = Fact / lel[j].Area;
             } else {
               (*RadiatorFactorsCompute[lel[j].GeometryType])( &lel[j],
-                  RadiatorCoords[i*3], RadiatorCoords[i*3+1], RadiatorCoords[i*3+2], 0 );
+                  RadiatorCoords[i*4], RadiatorCoords[i*4+1], RadiatorCoords[i*4+2], 0 );
 
               Fact = ComputeViewFactorValue( &lel[j],0 );
               Factors[i*N+j] = Fact; // lel[j].Area;
