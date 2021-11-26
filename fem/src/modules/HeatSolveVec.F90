@@ -172,7 +172,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   IF(.NOT. Found ) THEN
     VecAsm = (nColours > 1) .OR. (nthr > 1)
   END IF
-  
+
   IF( VecAsm .AND. AxiSymmetric ) THEN
     CALL Info(Caller,'Vectorized assembly not yet available in axisymmetric case',Level=7)    
     VecAsm = .FALSE.
@@ -198,7 +198,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     !---------------------------------------
     CALL DefaultInitialize()
 
-    ! For speed compute averaged esissivity and temperature over boundary elements
+    ! For speed compute averaged emissivity and temperature over boundary elements
     ! for diffuse gray radiation.
     !-----------------------------------------------------------------------------
     IF( HaveFactors ) THEN
@@ -248,7 +248,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     nColours = GetNOFBoundaryColours(Solver)
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
-    
+
     !$OMP PARALLEL &
     !$OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray ) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
@@ -324,10 +324,12 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     CALL DefaultFinishBoundaryAssembly()
         
     CALL DefaultFinishAssembly()
+
     CALL DefaultDirichletBCs()
     
     ! And finally, solve:
     !--------------------
+
     Norm = DefaultSolve()
 
     IF( DefaultConverged(Solver) ) EXIT
@@ -560,6 +562,7 @@ CONTAINS
       IF(.NOT. Found ) THEN
         CALL Fatal(Caller,'Required keyword: '//TRIM(Cond_h % Name))
       END IF
+
       IF( CondRank == 0 ) THEN
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
             CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
@@ -1035,7 +1038,7 @@ CONTAINS
 
     Emis1 = Emiss(bindex)
     
-    IP = GaussPoints( Element )       
+    IP = GaussPoints( Element )
 
     BCOpen = GetLogical( BC, 'Radiation Boundary Open', Found)
     IF( BCOpen ) THEN
@@ -1054,17 +1057,17 @@ CONTAINS
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
     END IF
 
-    Text0 = 0
+    Text0 = 0._dp
     IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
       Text0 = SUM(Element % BoundaryInfo % Radiators)
-      
+
     ! Go through surfaces (j) this surface (i) is getting radiated from.
     !------------------------------------------------------------------------------        
     IF ( Newton ) THEN                
       ! Linearization of T^4_i term
       !----------------------------------------------------------------------------
       RadCoeff(1:n) = 4 * Emis1 * NodalTemp(1:n)**3 * StefBoltz
-      RadLoad(1:n) = 3 * Emis1 * NodalTemp(1:n)**4 * StefBoltz 
+      RadLoad(1:n) = Emis1 * (3*NodalTemp(1:n)**4+Text0**4) * StefBoltz 
       Base = 0.0_dp
 
       DO t=1,IP % n
@@ -1074,8 +1077,8 @@ CONTAINS
           s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
         END IF
 
-        RadCoeffAtIp = SUM( Basis(1:n) * RadCoeff(1:n) )
         RadLoadAtIp = SUM( Basis(1:n) * RadLoad(1:n) )
+        RadCoeffAtIp = SUM( Basis(1:n) * RadCoeff(1:n) )
                 
         DO p=1,n
           DO q=1,n
@@ -1098,7 +1101,7 @@ CONTAINS
         ! of the element, so take average of nodal temperatures
         !-------------------------------------------------------------
         bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-        Text = Text0 + Temps4(bindex)
+        Text = Temps4(bindex)
 
        
         IF( j <= nf_imp ) THEN        
@@ -1180,7 +1183,7 @@ CONTAINS
     ! having computed the complete T_ext^4. So this is done in the end.
     !----------------------------------------------------------------------------
     IF( .NOT. Newton ) THEN      
-      Text = Text0 + Text**0.25
+      Text = Text0 + Text**0.25_dp
       DO t=1,IP % n
         stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
         s = detJ * IP % s(t)        
@@ -1189,8 +1192,7 @@ CONTAINS
         END IF
 
         T0 = SUM( Basis(1:n) * NodalTemp(1:n) )
-        RadCoeffAtIp = Emis1 * StefBoltz * &
-            (T0**3 + T0**2*Text + T0*Text**2 + Text**3)
+        RadCoeffAtIp = Emis1 * StefBoltz*(T0**3 + T0**2*Text + T0*Text**2 + Text**3)
                 
         DO p=1,n
           DO q=1,n
