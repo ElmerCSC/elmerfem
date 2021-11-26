@@ -647,6 +647,8 @@ BLOCK
 
            Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators(i) = Radiators(i,4) * Vals(j)
          END DO
+
+         DEALLOCATE( Cols, Vals )
        END DO
        CLOSE(VFUnit)
 END BLOCK

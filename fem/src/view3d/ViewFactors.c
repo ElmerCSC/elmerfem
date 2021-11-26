@@ -231,10 +231,8 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
     lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
     memcpy(lel,Elements,N*sizeof(Geometry_t));
 
-    k  = 0;
-    l  = 0;
     #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
-    for( i=0; i<Ns; i++ )
+    for( i=k=l=0; i<Ns; i++ )
     {
          if ( NofRadiators==0 ) { k=i; l=i+1; }
 

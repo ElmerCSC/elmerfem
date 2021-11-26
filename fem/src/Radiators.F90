@@ -88,7 +88,7 @@
      INTEGER :: divide, nprob, NofRadiators
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
      REAL(KIND=dp) :: at0, rt0
-     CHARACTER(*), PARAMETER :: Caller = 'ViewFactors'
+     CHARACTER(*), PARAMETER :: Caller = 'Radiators'
 
      INTERFACE
         ! void radiatiors3d
