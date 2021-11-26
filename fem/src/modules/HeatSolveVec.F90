@@ -1147,7 +1147,7 @@ CONTAINS
         RadElement => Mesh % Elements(ElementList(j))
         k = RadElement % TYPE % NumberOfNodes
         Fj = Fact(j)
-        bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
+        bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
         Emis2 = Emiss(bindex)
 
         Text=Text+Emis2*Fj*Temps4(bindex)**4
