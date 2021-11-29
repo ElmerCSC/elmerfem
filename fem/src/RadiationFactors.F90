@@ -613,7 +613,7 @@ BLOCK
        INTEGER :: NofRadiators
        REAL(KIND=dp), POINTER :: Radiators(:,:)
 
-       CALL GetConstRealArray( Params, Radiators, 'Radiators', Found )
+       CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
        IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
 
        NofRadiators = SIZE(Radiators,1)
@@ -635,6 +635,7 @@ BLOCK
            ELSE
              READ(VFUnit,*) t,Cols(j),Vals(j)         
            END IF
+           Vals(j) = Vals(j) / Areas(j)
            Cols(j) = ElementNumbers(Cols(j))
          END DO
 
@@ -645,7 +646,7 @@ BLOCK
              Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators = 0
            END IF
 
-           Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators(i) = Radiators(i,4) * Vals(j)
+           Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators(i) = Vals(j)
          END DO
 
          DEALLOCATE( Cols, Vals )

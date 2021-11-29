@@ -180,7 +180,7 @@
 
      Params => GetSolverParams()
 
-     CALL GetConstRealArray( Params, Radiators, 'Radiators', Found )
+     CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
      IF(.NOT. Found ) CALL Fatal( 'RadiatorFactors', 'No radiators present, quitting' )
 
      NofRadiators = SIZE(Radiators,1)

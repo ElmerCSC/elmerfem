@@ -221,25 +221,21 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
         Elements[i].Flags |= GEOMETRY_FLAG_LEAF;
     }
 
-    Ns = NofRadiators;
-    if (Ns==0) Ns = N;
-
     MaxLev = 0;
+    if (NofRadiators==0) {
 #pragma omp parallel
 {
-    Geometry_t *lel;
-    lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
-    memcpy(lel,Elements,N*sizeof(Geometry_t));
+      Geometry_t *lel;
+      lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
+      memcpy(lel,Elements,N*sizeof(Geometry_t));
 
-    #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
-    for( i=k=l=0; i<Ns; i++ )
-    {
-         if ( NofRadiators==0 ) { k=i; l=i+1; }
-
-         for( j=k; j<N; j++ ) Factors[i*N+j] = 0.0;
+      #pragma omp for private(i,j,k,l,Fact) schedule(dynamic,10)
+      for( i=0; i<N; i++ )
+      {
+         for( j=i; j<N; j++ ) Factors[i*N+j] = 0.0;
          if ( lel[i].Area<1.0e-10 ) continue;
 
-         for( j=l; j<N; j++ )
+         for( j=i+1; j<N; j++ )
          { 
             if ( lel[j].Area<1.0e-10 ) continue;
 
@@ -247,21 +243,12 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             FreeLinks( &lel[j] );
 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
+            lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
-            if(NofRadiators==0) {
-              lel[i].Flags |= GEOMETRY_FLAG_LEAF;
-
-              (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
-              Fact = ComputeViewFactorValue( &lel[i],0 );
-              Factors[i*N+j] = Fact / lel[i].Area;
-              Factors[j*N+i] = Fact / lel[j].Area;
-            } else {
-              (*RadiatorFactorsCompute[lel[j].GeometryType])( &lel[j],
-                  RadiatorCoords[i], RadiatorCoords[NofRadiators+i], RadiatorCoords[2*NofRadiators+i], 0 );
-
-              Fact = ComputeViewFactorValue( &lel[j],0 );
-              Factors[i*N+j] = Fact; // lel[j].Area;
-            }
+            (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
+            Fact = ComputeViewFactorValue( &lel[i],0 );
+            Factors[i*N+j] = Fact / lel[i].Area;
+            Factors[j*N+i] = Fact / lel[j].Area;
          }
 
          FreeChilds( lel[i].Left );
@@ -269,12 +256,44 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 
          FreeChilds( lel[i].Right );
          lel[i].Right = NULL;
+      }
+      free(lel);
+}
+    } else {
+      Geometry_t *lel;
+      lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
+      memcpy(lel,Elements,N*sizeof(Geometry_t));
+
+      for( i=0; i<NofRadiators; i++ )
+      {
+         for( j=0; j<N; j++ ) Factors[i*N+j] = 0.0;
+         for( j=0; j<N; j++ )
+         { 
+            if ( lel[j].Area<1.0e-10 ) continue;
+
+            FreeLinks( &lel[j] );
+            lel[j].Flags |= GEOMETRY_FLAG_LEAF;
+
+            (*RadiatorFactorsCompute[lel[j].GeometryType])( &lel[j],
+                RadiatorCoords[i], RadiatorCoords[NofRadiators+i], RadiatorCoords[2*NofRadiators+i], 0 );
+
+            Fact = ComputeViewFactorValue( &lel[j],0 );
+            Factors[i*N+j] = Fact; // lel[j].Area;
+
+            FreeChilds( lel[j].Left );
+            lel[j].Left = NULL;
+
+            FreeChilds( lel[j].Right );
+            lel[j].Right = NULL;
+         }
+      }
+
+      free(lel);
     }
 
-    free(lel);
-}
-
     k = 0;
+    Ns = NofRadiators;
+    if ( NofRadiators==0) Ns = N;
     for(i=0; i<Ns; i++ )
     {
          s = 0.0;

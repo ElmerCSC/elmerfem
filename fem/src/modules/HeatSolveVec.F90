@@ -124,7 +124,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
   INTEGER, POINTER :: TempPerm(:)
-  REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:)
+  REAL(KIND=dp), ALLOCATABLE :: Temps4(:), Emiss(:), RadiatorPowers(:)
   REAL(KIND=dp) :: Norm, StefBoltz
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
@@ -249,8 +249,21 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
     CALL Info(Caller,'Performing boundary element assembly',Level=12)
 
+BLOCK
+      REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+
+      CALL GetConstRealArray( Params, RadiatorCoords, 'Radiator Coordinates', Found)
+      IF(Found) THEN
+        n = SIZE(RadiatorCoords,1)
+        ALLOCATE( RadiatorPowers(n))
+        DO t=1,n
+          RadiatorPowers(t)=GetCReal( Params, 'Radiator '//TRIM(I2S(t))//' Power', Found)
+        END DO
+      END IF
+END BLOCK
+
     !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray ) &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
     !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
@@ -320,6 +333,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         END DO
       END BLOCK
     END IF
+
+    IF (ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers)
         
     CALL DefaultFinishBoundaryAssembly()
         
@@ -794,6 +809,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
+
     ! In parallel if we have halo the same BC element may occur several times.
     ! Fetch here the fraction of the assembly to be accounted in this occurance. 
     AssFrac = BCAssemblyFraction(Element)
@@ -835,7 +851,14 @@ CONTAINS
 
       ! Given flux:
       ! -----------
+
       F = ListGetElementReal( HeatFlux_h, Basis, Element, Found )
+      IF( GetLogical( BC,'Radiator BC', Found ) ) THEN
+        IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+          F=F+SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
+        END IF
+      END IF
+
       IF( Found ) THEN
         FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
       END IF
@@ -860,8 +883,8 @@ CONTAINS
           RadText = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
         END IF
 
-        IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
-          RadText = RadText + SUM(Element % BoundaryInfo % Radiators)
+!       IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
+!         RadText = RadText + SUM(Element % BoundaryInfo % Radiators)
 
         ! Basis not treated right yet        
         Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
@@ -1058,8 +1081,8 @@ CONTAINS
     END IF
 
     Text0 = 0._dp
-    IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
-      Text0 = SUM(Element % BoundaryInfo % Radiators)
+!   IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
+!     Text0 = SUM(Element % BoundaryInfo % Radiators)
 
     ! Go through surfaces (j) this surface (i) is getting radiated from.
     !------------------------------------------------------------------------------        
