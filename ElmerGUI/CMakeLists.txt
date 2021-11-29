@@ -95,8 +95,27 @@ ENDIF()
 
 IF(WITH_VTK)
   # ADD_DEFINITIONS(-DEG_VTK)
-  FIND_PACKAGE(VTK REQUIRED)
-  INCLUDE(${VTK_USE_FILE})
+  SET(NON_PREFIX_VTK_COMPONENTS ViewsQt FiltersParallel RenderingAnnotation RenderingFreeType IOXML IOImage FiltersParallelFlowPaths)
+  FIND_PACKAGE(VTK REQUIRED vtkCommonCore)
+
+  #Append vtk to components if version is <9.0
+  IF(VTK_VERSION VERSION_LESS 9.0)
+    FOREACH(vtkComponent ${NON_PREFIX_VTK_COMPONENTS})
+     SET(vtkComponent "vtk${vtkComponent}")
+     LIST(APPEND VTK_COMPONENTS ${vtkComponent})
+    ENDFOREACH()
+  ELSE()
+    set(VTK_COMPONENTS ${NON_PREFIX_VTK_COMPONENTS})
+  ENDIF()
+
+  IF(VTK_VERSION VERSION_LESS 9.0)
+    IF(VTK_USE_FILE)
+      INCLUDE(${VTK_USE_FILE})
+    ENDIF()
+  ENDIF()
+
+  FIND_PACKAGE(VTK REQUIRED ${VTK_COMPONENTS})
+
   MESSAGE(STATUS "  [ElmerGUI] VTK version:       " ${VTK_VERSION})
   MESSAGE(STATUS "  [ElmerGUI] VTK_LIBS:          " "${VTK_LIBRARIES}")
   MESSAGE(STATUS "  [ElmerGUI] VTK_INCLUDE_DIRS:  " "${VTK_INCLUDE_DIRS}")

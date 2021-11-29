@@ -58,10 +58,7 @@ namespace nglib {
 #include <BRepMesh_IncrementalMesh.hxx>
 #endif
 
-#include "vtkConfigure.h"
-#ifndef VTK_MAJOR_VERSION
-#include "vtkVersionMacros.h"
-#endif
+#include "vtkVersion.h"
 
 class QMenu;
 class QAction;
