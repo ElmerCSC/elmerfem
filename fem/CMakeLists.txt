@@ -62,7 +62,7 @@ IF(APPLE)
   SET(SHL_EXTENSION ".dylib")
 ENDIF()
 
-# this should just use ELMER_FEM_VERSION as plane VERSION is to bread on prone to conflicts
+# this should just use ELMER_FEM_VERSION as plane VERSION is to broad on prone to conflicts
 set(VERSION ${ELMER_FEM_VERSION})
 CONFIGURE_FILE(config.h.cmake config.h.commented)
 FORTRANIZE(${CMAKE_BINARY_DIR}/fem/config.h.commented ${CMAKE_BINARY_DIR}/fem/config.h)
