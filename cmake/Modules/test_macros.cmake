@@ -5,6 +5,8 @@ ENDMACRO()
 
 
 MACRO(ADD_ELMER_TEST TestName)
+  # Escape \; in CMAKE_MODULE_PATH allowing to pass it as argument to `COMMAND` in `add_test()`
+  string(REPLACE ";" "\\;" CMAKE_MODULE_PATH_escaped "${CMAKE_MODULE_PATH}")
   # Parse optional named arguments, NPROCS and LABELS, which can be lists
   CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "NPROCS;LABELS" "${ARGN}")
 
@@ -48,7 +50,7 @@ MACRO(ADD_ELMER_TEST TestName)
       ADD_TEST(NAME ${_this_test_name}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND}
-        -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
+        -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH_escaped}
         -DELMERGRID_BIN=${ELMERGRID_BIN}
         -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
         -DFINDNORM_BIN=${FINDNORM_BIN}
