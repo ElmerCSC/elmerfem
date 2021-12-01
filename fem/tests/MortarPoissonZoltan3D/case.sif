@@ -30,7 +30,7 @@ Simulation
   Partition Mesh = Logical True
   Partitioning Method = String "Zoltan"
   Partition Connected BCs = Logical True
-  Number of partitions = Integer 6
+!  Number of partitions = Integer 6
 
   Boundary Partitioning Method = String "uniform"
   Boundary Partition Halo = Logical True

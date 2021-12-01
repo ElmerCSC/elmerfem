@@ -3406,6 +3406,7 @@ CONTAINS
      LOGICAL :: Found, PartBalance, EqInterface
      INTEGER, ALLOCATABLE :: EquationPart(:)    
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     INTEGER :: PartOffset, PartOffsetBC
      CHARACTER(*), PARAMETER :: FuncName = 'PartitionMeshSerial'
      
      !-----------------------------------------------------------------------
@@ -3436,6 +3437,8 @@ CONTAINS
      PartitionCand = .FALSE.
      ElementSet = 0
      ElementPart = 0
+     PartOffset = 0
+     PartOffsetBC = 0
      
      n = MAX( Model % NumberOfBCs, Model % NumberOfEquations )
      ALLOCATE( ParameterInd(n), STAT = allocstat ) 
@@ -3467,11 +3470,13 @@ CONTAINS
              SectionParams => Model % BCs(id) % Values
            END IF
          END IF
-         CALL PartitionMeshPart(SetNo,SectionParams,.TRUE.)
+         CALL PartitionMeshPart(SetNo,SectionParams,.TRUE.,PartOffset,PartOffsetBC)
        END DO
 
        IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
          CALL MergeJoinedPartitions(.TRUE.)
+         PartOffset = MAXVAL( ElementPart )
+         PartOffsetBC = PartOffset
        END IF
        
        CALL InheritBoundaryToBulkPart()
@@ -3496,10 +3501,12 @@ CONTAINS
        END IF
        
      ELSE IF( EqInterface ) THEN
-       NumberOfBoundarySets = 1
+       NumberOfBoundarySets = 1       
        CALL SetInterfacePartition()
        CALL ExtendBoundaryPart(.FALSE.)
        CALL InheritBulkToBoundaryPart()
+       PartOffset = 1
+       PartOffsetBC = 1
      END IF
      
      CALL Info(FuncName,'Partition the bulk elements sets')
@@ -3507,7 +3514,7 @@ CONTAINS
      
      j0 = MAXVAL( ElementPart )
      ParameterInd = 0
-
+     
      CALL Info(FuncName,'Maximum partition index for BCs: '//TRIM(I2S(j0)),Level=8)
      
      CALL InitializeBulkElementSet(NumberOfSets)
@@ -3526,13 +3533,14 @@ CONTAINS
          END IF
        END IF
 
-       CALL PartitionMeshPart(SetNo+NumberOfBoundarySets,SectionParams,.FALSE.,j0)        
+       CALL PartitionMeshPart(SetNo+NumberOfBoundarySets,SectionParams,.FALSE.,PartOffset,PartOffsetBC)        
        IF( SetNo == 1 ) THEN
-         j1 = MAXVAL( ElementPart )
+         j0 = PartOffsetBC
+         j1 = PartOffset
        END IF
      END DO
 
-     IF( PartBalance ) THEN
+      IF( PartBalance ) THEN
        NoEqs = Model % NumberOfEquations
        CALL Info(FuncName,'Removing offset for optimal load balancing of '//TRIM(I2S(NoEqs))//' equations',Level=10)
        DO i=1,SIZE(ElementPart)
@@ -3555,13 +3563,13 @@ CONTAINS
        n = Mesh % NumberOfBulkElements
        m = MAXVAL(ElementPart(1:n))
               
-       ALLOCATE(PartCount(m))
+       ALLOCATE(PartCount(0:m))
        PartCount = 0
        DO i=1,n
          j = ElementPart(i)
          PartCount(j) = PartCount(j) + 1
        END DO       
-       DO i=1,m
+       DO i=0,m
          PRINT *,'Elements in Partition:',i,PartCount(i)
        END DO
      END IF
@@ -4451,28 +4459,22 @@ CONTAINS
      
      ! Partition the nodes that have the correct ElementSet using various strategies.
      !------------------------------------------------------------------------
-     SUBROUTINE PartitionMeshPart(SetNo, LocalParams, IsBoundary, MinOffset)
+     SUBROUTINE PartitionMeshPart(SetNo, LocalParams, IsBoundary, PartOffset, PartOffsetBC )
        
       INTEGER :: SetNo
-      LOGICAL :: IsBoundary      
       TYPE(ValueList_t), POINTER :: LocalParams       
-      INTEGER, OPTIONAL :: MinOffset
-      
+      LOGICAL :: IsBoundary      
+      INTEGER :: PartOffset, PartOffsetBC
+     
       CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform, SetMethod
       LOGICAL :: GotCoordTransform, SetNodes
       INTEGER :: SumPartitions, NoPartitions, NoCand
-      LOGICAL :: Found
+      LOGICAL :: Found, GotMethod
       INTEGER :: i,j,NoCandElements
       REAL(KIND=dp) :: BoundaryFraction
-      INTEGER :: PartOffset = 0, PartOffsetBC = 0
-
-      SAVE :: PartOffset, PartOffsetBC
-
-      IF(PRESENT(MinOffset)) THEN
-        PartOffset = MAX(MinOffset,PartOffset)
-        PartOffsetBC = MAX(MinOffset,PartOffsetBC)
-      END IF
+      INTEGER, POINTER :: PartDivs(:)
       
+
       PartitionCand = ( ElementSet == SetNo )
       n = Mesh % NumberOfBulkElements      
       NoCandElements = COUNT( PartitionCand ) 
@@ -4486,66 +4488,88 @@ CONTAINS
         RETURN
       END IF
         
+
+      GotMethod = .FALSE.
+      IF( ASSOCIATED( LocalParams) ) THEN
+        SetMethod = ListGetString( LocalParams,'Partitioning Method',GotMethod)
+      END IF
+      IF(.NOT. GotMethod ) THEN
+        IF( IsBoundary ) THEN
+          SetMethod = ListGetString( Params,'Boundary Partitioning Method',GotMethod)
+        ELSE
+          SetMethod = ListGetString( Params,'Partitioning Method',GotMethod)
+        END IF
+      END IF
+
       NoPartitions = 0
       Found = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         NoPartitions = ListGetInteger( LocalParams,'Number of Partitions',Found )        
       END IF
+      
       IF(.NOT. Found ) THEN
         IF( IsBoundary ) THEN
           NoPartitions = ListGetInteger( Params,'Boundary Number of Partitions',Found)
         ELSE
-          NoPartitions = ListGetInteger( Params,'Number Of Partitions',Found) - PartOffsetBC         
+          NoPartitions = ListGetInteger( Params,'Number Of Partitions',Found)
+          IF(Found) NoPartitions = NoPartitions - PartOffsetBC         
         END IF
       END IF
 
-      IF(.NOT. Found ) THEN
+      IF( NoPartitions == 0 ) THEN
+        IF(GotMethod) THEN
+          IF( SetMethod == 'uniform' .OR. SetMethod == 'directional') THEN
+            PartDivs => ListGetIntegerArray( Params,'Partitioning Divisions',Found )
+            IF( Found ) THEN
+              NoPartitions = 1
+              DO i=1,SIZE(PartDivs)
+                NoPartitions = NoPartitions * MAX(1,PartDivs(i))
+              END DO
+            END IF
+          END IF
+        END IF
+      END IF
+      
+      IF(NoPartitions == 0 ) THEN
         IF( IsBoundary ) THEN
           CALL Info(FuncName,'Defaulting to one partition for BCs',Level=10)
-          NoPartitions = 1
+          NoPartitions = 1          
         ELSE
           NoPartitions = ParEnv % PEs - PartOffsetBC
           CALL Info(FuncName,'Defaulting rest of partitions for the equation: '//TRIM(I2S(NoPartitions)),Level=5)
         END IF
       END IF
-
+      
       ! We have parallel case but asked too many partitions
       IF( ParEnv % PEs > 1 .AND. NoPartitions + PartOffsetBC > ParEnv % PEs ) THEN
         NoPartitions = ParEnv % PEs - PartOffsetBC
         CALL Info(FuncName,'Reducing partitions for the following split to: '//TRIM(I2S(NoPartitions)),Level=5)
       END IF
 
-      BoundaryFraction = ListGetCReal( Params,'Partitioning Maximum Fraction',Found)
-      IF( Found .AND. NoCandElements <= &
-          BoundaryFraction * Mesh % NumberOfBulkElements ) THEN
-        NoPartitions = 1 
-        WRITE(Message,'(A,ES12.3)') 'Number of elements in set below critical limit: ',BoundaryFraction
-        CALL Info(FuncName,Message )
+      BoundaryFraction = ListGetCReal( Params,'Boundary Partitioning Maximum Fraction',Found)
+      IF( Found ) THEN
+        IF( NoCandElements <= BoundaryFraction * Mesh % NumberOfBulkElements ) THEN
+          NoPartitions = 1 
+          WRITE(Message,'(A,ES12.3)') 'Number of elements in set below critical limit: ',BoundaryFraction
+          CALL Info(FuncName,Message )
+        ELSE
+          NoPartitions = CEILING(  Mesh % NumberOfBulkElements / ( BoundaryFraction * NoCandElements ) )
+        END IF
       END IF
-
+      
       IF( NoPartitions == 1 ) THEN
         CALL Info(FuncName,'Partitions set to one, doing nothing.',Level=10)
         PartOffset = PartOffset + 1
         IF( IsBoundary ) PartOffsetBC = PartOffset
         WHERE( PartitionCand ) ElementPart = PartOffset 
+        PartitionCand = .FALSE.
         RETURN
       END IF
 
-      Found = .FALSE.
-      IF( ASSOCIATED( LocalParams) ) THEN
-        SetMethod = ListGetString( LocalParams,'Partitioning Method',Found)
-      END IF
-      IF(.NOT. Found ) THEN
-        IF( IsBoundary ) THEN
-          SetMethod = ListGetString( Params,'Boundary Partitioning Method',Found)
-        ELSE
-          SetMethod = ListGetString( Params,'Partitioning Method',Found)
-        END IF
-      END IF
-      IF( .NOT. Found ) THEN
+      IF( .NOT. GotMethod ) THEN
         CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
       END IF
-          
+
       Found = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         CoordTransform = ListGetString( LocalParams,&
