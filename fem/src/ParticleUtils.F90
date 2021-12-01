@@ -4400,8 +4400,12 @@ RETURN
     Velo = 0.0_dp
     IF( PRESENT( GradVelo ) ) GradVelo = 0.0_dp
     
-    n = CurrentElement % TYPE % NumberOfNodes
-    LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+    n = CurrentElement % TYPE % NumberOfNodes    
+    IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN      
+      LocalPerm(1:n) = Var % Perm( CurrentElement % DGIndexes )
+    ELSE
+      LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+    END IF
     npos = COUNT ( LocalPerm(1:n) > 0 )
     
     

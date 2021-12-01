@@ -865,9 +865,9 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Valuelist_t), POINTER :: Params
      REAL(KIND=dp) :: PotAtPoint, GradPotAtPoint(3),VeloAtPoint(3), &
-         GradVeloAtPoint(3,3)
+         GradVeloAtPoint(3,3), BAtPoint(3)
      LOGICAL :: Stat, UseGradVelo, CoordCond, VeloCond, Visited = .FALSE., &
-         GotIt, GotPot, GotPot2, GotVelo
+         GotIt, GotPot, GotPot2, GotVelo, GotB
      INTEGER :: i,j,k,l,n,dim,TimeOrder,NoGroups, MaxField, PrevGroup, CurrGroup
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: SqrtElementMetric, Weight, TimeDecay, DistDecay, Dist, &
@@ -878,7 +878,7 @@ CONTAINS
      REAL(KIND=dp), POINTER :: gWork(:,:), ForceVector(:)
      INTEGER, POINTER :: ForcePerm(:)
      CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, DensityName, FieldMode, FieldWeight, GroupName, str
-     TYPE(Variable_t), POINTER :: VeloVar, PotVar, PotVar2, VeloCondVar, CoordCondVar, WeightVar
+     TYPE(Variable_t), POINTER :: VeloVar, PotVar, PotVar2, BVar, VeloCondVar, CoordCondVar, WeightVar
      LOGICAL :: GotGravity, GotBuoyancy, GotField, &
          GotTimeDecay, GotDistDecay, GotFieldMode, GotFieldWeight, &
          NormalizedVars(MAXPARFIELDS)
@@ -892,9 +892,9 @@ CONTAINS
      SAVE :: Visited, dim, Basis, dBasisdx, &
          FieldMode, FieldWeight, TimeDecay, DistDecay, UseGradVelo, TimeOrder, &
          GotFieldMode, GotFieldWeight, GotGravity, GotDamping, GotTimeDecay, GotDistDecay, &
-         GotPot, GotPot2, GotVelo, Gravity, Damping, VeloCond, CoordCond, GotBuoyancy, &
+         GotPot, GotB, GotPot2, GotVelo, Gravity, Damping, VeloCond, CoordCond, GotBuoyancy, &
          ParticleVolume, GotField, CoordCondVar, VeloCondVar, DensityName, &
-         PotVar, PotVar2, VeloVar, Mesh, PrevDtime, DistVar, &
+         PotVar, BVar, PotVar2, VeloVar, Mesh, PrevDtime, DistVar, &
          ActiveVars, ActiveOpers, ActiveGroups, NormalizedVars, MaxField, NoGroups
 
 
@@ -936,6 +936,14 @@ CONTAINS
          END IF
        END IF
 
+       VariableName = ListGetString(Params,'Magnetic Field Variable Name',GotB)
+       IF( GotB ) THEN
+         BVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
+         IF(.NOT. ASSOCIATED( BVar ) ) THEN
+           CALL Fatal('ParticleFieldInteraction','Magnetic field variable does not exist: '//TRIM(VariableName))           
+         END IF
+       END IF
+       
        VariableName = ListGetString(Params,'Velocity Variable Name',GotVelo)
        IF( GotVelo ) THEN
          VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
@@ -1250,6 +1258,11 @@ CONTAINS
            CALL GetScalarFieldInMesh(PotVar, BulkElement, Basis, PotAtPoint, &
                dBasisdx, GradPotAtPoint )
            Force = Force - charge * GradPotAtPoint 
+         END IF
+
+         IF( GotB ) THEN           
+           CALL GetVectorFieldInMesh(BVar, BulkElement, Basis, BAtPoint )
+           Force = Force + charge * CrossProduct( Velo, BAtPoint )  
          END IF
          
          ! there can be a secondary potential field also
