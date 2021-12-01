@@ -18898,7 +18898,8 @@ CONTAINS
 !> to normal Lagrangian elements.
 !------------------------------------------------------------------------------
   SUBROUTINE MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical, ParallelComm )
+      OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical, &
+      ParallelComm, BreakLoop )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Mesh_t)   :: Mesh
@@ -18910,15 +18911,16 @@ CONTAINS
     LOGICAL, OPTIONAL :: MaskOnBulk
     LOGICAL, OPTIONAL :: RequireLogical
     LOGICAL, OPTIONAL :: ParallelComm
+    LOGICAL, OPTIONAL :: BreakLoop
 !------------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm(:), Neighbours(:)
     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:)
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id,nn,ii(ParEnv % PEs)
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id,nn,t0,ii(ParEnv % PEs)
     INTEGER :: ierr, status(MPI_STATUS_SIZE), NewDofs
     LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit, Parallel
     LOGICAL, ALLOCATABLE :: IsNeighbour(:)
-    INTEGER :: Indexes(30), ElemStart, ElemFin, Width
+    INTEGER :: Indexes(30), ElemStart, ElemFin, Width, BreakNode
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
     TYPE(Element_t), POINTER :: CurrentElement,Elm
     REAL(KIND=dp) :: MinDist, Dist
@@ -18979,7 +18981,9 @@ CONTAINS
     k = 0
     Perm = 0
     FirstRound = .TRUE.
-
+    BreakNode = 0
+    t0 = 0
+    
     ! Loop over the active elements
     ! 1st round initial numbering is given
     ! 2nd round a list matrix giving all the connections is created
@@ -19016,20 +19020,29 @@ CONTAINS
        Indexes(1:n) = CurrentElement % NodeIndexes(1:n)
        
        IF( FirstRound ) THEN
-          DO i=1,n
+         ! Just plainly create the permutation
+         DO i=1,n
              j = Indexes(i)
              IF ( Perm(j) == 0 ) THEN
                 k = k + 1
                 Perm(j) = k
              END IF
           END DO
-       ELSE
+        ELSE
+          ! Create the list matrix for the connectivity in order to minimize the bandwidth
           DO i=1,n
              k1 = Perm(Indexes(i))
              IF ( k1 <= 0 ) CYCLE
              DO j=1,n
                 k2 = Perm(Indexes(j))
                 IF ( k2 <= 0 ) CYCLE
+                IF( k1 == BreakNode .OR. k2 == BreakNode ) THEN
+                  IF( t0 == 0 ) t0 = t
+                  IF( t0 /= t ) THEN
+                    PRINT *,'breaking connection between:',k1,k2
+                    CYCLE
+                  END IF
+                END IF
                 Lptr => List_GetMatrixIndex( ListMatrix,k1,k2 )
              END DO
           END DO
@@ -19037,9 +19050,10 @@ CONTAINS
     END DO
     LocalNodes = k
 
-    !In parallel case, detect nodes which are shared with another partition
-    !which may not have an element on this boundary
-    !Code borrowed from CommunicateLinearSystemTag
+    ! In parallel case, detect nodes which are shared with another partition
+    ! which may not have an element on this boundary
+    ! Code borrowed from CommunicateLinearSystemTag
+    !------------------------------------------------------------------------------
     IF( Parallel ) THEN
 
       ALLOCATE( IsNeighbour(ParEnv % PEs), fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
@@ -19141,6 +19155,12 @@ CONTAINS
        Perm(i) = Perm(j)
        Perm(j) = 1
 
+       ! Minimizing the bandwith of a closed loop is impossible.
+       ! So let us break the loop on one node. 
+       IF(PRESENT(BreakLoop)) THEN
+         IF(BreakLoop) BreakNode = 1
+       END IF
+       
        GOTO 100
     END IF
 
