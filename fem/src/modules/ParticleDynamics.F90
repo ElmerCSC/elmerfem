@@ -1064,7 +1064,7 @@ CONTAINS
        END IF
 
        GotField = ParticleToField .OR. GotVelo .OR. GotPot .OR. &
-           VeloCond .OR. CoordCond .OR. GotBuoyancy
+           VeloCond .OR. CoordCond .OR. GotBuoyancy .OR. GotB
 
        Visited = .TRUE.
      END IF
