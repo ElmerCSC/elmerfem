@@ -1047,6 +1047,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           DEALLOCATE(GatheredMesh % Repartition)
           GatheredMesh % Repartition => NULL()
       END IF
+      ! make sure solvers are unpaused so front advances
+      CALL PauseCalvingSolvers(Model, SolverParams, .FALSE.)
       RETURN
    END IF
 
