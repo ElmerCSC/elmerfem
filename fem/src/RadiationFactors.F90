@@ -110,6 +110,8 @@
 
      TYPE(ValueList_t), POINTER :: Params, BC
      TYPE(Variable_t), POINTER :: Var
+
+     TYPE(BoundaryInfo_t), POINTER :: BoundaryInfo
      
      SAVE TimesVisited 
 
@@ -635,18 +637,19 @@ BLOCK
            ELSE
              READ(VFUnit,*) t,Cols(j),Vals(j)         
            END IF
-           Vals(j) = Vals(j) / Areas(j)
+           Vals(j) = Vals(j) / Areas(Cols(j))
            Cols(j) = ElementNumbers(Cols(j))
          END DO
 
 
          DO j=1,n
-           IF ( .NOT.ALLOCATED( Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators ) ) THEN
-             ALLOCATE( Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators(NofRadiators) )
-             Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators = 0
+           BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
+           IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
+             ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
+             BoundaryInfo % Radiators = 0
            END IF
 
-           Mesh % Elements(Cols(j)) % BoundaryInfo % Radiators(i) = Vals(j)
+           BoundaryInfo % Radiators(i) = Vals(j)
          END DO
 
          DEALLOCATE( Cols, Vals )
