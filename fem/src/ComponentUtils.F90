@@ -204,9 +204,12 @@ MODULE ComponentUtils
 
          ! Only compute the parallel reduction once
          IF( isParallel ) THEN
-           IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+           IF( VisitNodeOnlyOnce ) THEN           
+             IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+           END IF
          END IF
-
+           
          F(1) = NF % Values( dofs*(k-1) + 1)
          F(2) = NF % Values( dofs*(k-1) + 2)
          IF( dofs == 3 ) THEN 

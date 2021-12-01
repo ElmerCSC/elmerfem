@@ -2700,7 +2700,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
-    LOGICAL :: IsBulk, Found
+    LOGICAL :: IsBulk, Found, HaveParent
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
@@ -3009,27 +3009,39 @@ CONTAINS
       
       ! Then use the temporal vectors to repoint the left and right indexes to elements
       DO i = newnbulk+1, newnbulk + newnbdry
-        Element => NewMesh % Elements(i)
+        Element => NewMesh % Elements(i)        
+        HaveParent = .FALSE.
 
         j = LeftParent(i)
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
-          IF( k <= 0 .OR. k > newnbulk ) THEN
+          IF( k == 0 ) THEN
+            CONTINUE
+          ELSE IF( k < 0 .OR. k > newnbulk ) THEN
             errcount = errcount + 1
             PRINT *,'k left out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
           ELSE
+            HaveParent = .TRUE.
             Element % BoundaryInfo % Left => NewMesh % Elements(k)
           END IF
         END IF
         j = RightParent(i)
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
-          IF( k <= 0 .OR. k > newnbulk ) THEN
+          IF( k == 0 ) THEN
+            CONTINUE
+          ELSE IF( k <= 0 .OR. k > newnbulk ) THEN
             errcount = errcount + 1
             PRINT *,'k right out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
-          ELSE          
+          ELSE
+            HaveParent = .TRUE.
             Element % BoundaryInfo % Right => NewMesh % Elements(k)
           END IF
+        END IF
+
+        IF(.NOT. HaveParent ) THEN
+          errcount = errcount + 1
+          PRINT *,'No parent for boundary element:',ParEnv % MyPe, i, newnbulk, minelem, maxelem
         END IF
       END DO
       DEALLOCATE( GlobalToLocalElem ) 
@@ -3386,7 +3398,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params 
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: SectionParams
-     INTEGER, ALLOCATABLE :: ParameterInd(:), ElementSet(:)
+     INTEGER, ALLOCATABLE :: ParameterInd(:), ElementSet(:), PartCount(:)
      INTEGER, POINTER :: ElementPart(:)
      INTEGER :: NumberOfSets, NumberOfBoundarySets, SetNo, id, NoEqs
      LOGICAL, POINTER :: PartitionCand(:)
@@ -3539,10 +3551,18 @@ CONTAINS
      CALL CreateNeighbourList()
 
 
-     IF( InfoActive(12) ) THEN
+     IF( InfoActive(5) ) THEN
        n = Mesh % NumberOfBulkElements
-       DO i=MINVAL(ElementPart(1:n)),MAXVAL(ElementPart(1:n))
-         PRINT *,'Partition elems:',i,COUNT(ElementPart(1:n)==i)
+       m = MAXVAL(ElementPart(1:n))
+              
+       ALLOCATE(PartCount(m))
+       PartCount = 0
+       DO i=1,n
+         j = ElementPart(i)
+         PartCount(j) = PartCount(j) + 1
+       END DO       
+       DO i=1,m
+         PRINT *,'Elements in Partition:',i,PartCount(i)
        END DO
      END IF
 
