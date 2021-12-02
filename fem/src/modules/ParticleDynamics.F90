@@ -921,6 +921,7 @@ CONTAINS
        END IF
 
        VariableName = ListGetString(Params,'Potential Variable Name',GotPot)
+       IF(.NOT. GotPot) VariableName = ListGetString(Params,'Potential Variable',GotPot)
        IF( GotPot ) THEN
          PotVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( PotVar ) ) THEN
@@ -929,6 +930,7 @@ CONTAINS
        END IF
        
        VariableName = ListGetString(Params,'Secondary Potential Variable Name',GotPot2)
+       IF(.NOT. GotPot2) VariableName = ListGetString(Params,'Secondary Potential Variable',GotPot2)
        IF( GotPot2 ) THEN
          PotVar2 => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( PotVar2 ) ) THEN
@@ -937,6 +939,7 @@ CONTAINS
        END IF
 
        VariableName = ListGetString(Params,'Magnetic Field Variable Name',GotB)
+       IF(.NOT. GotB) VariableName = ListGetString(Params,'Magnetic Field Variable',GotB)
        IF( GotB ) THEN
          BVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( BVar ) ) THEN
@@ -945,6 +948,7 @@ CONTAINS
        END IF
        
        VariableName = ListGetString(Params,'Velocity Variable Name',GotVelo)
+       IF(.NOT. GotVelo) VariableName = ListGetString(Params,'Velocity Variable',GotVelo)
        IF( GotVelo ) THEN
          VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
@@ -956,6 +960,7 @@ CONTAINS
        END IF
     
        VariableName = ListGetString(Params,'Velocity Condition Variable Name',VeloCond)
+       IF(.NOT. VeloCond) VariableName = ListGetString(Params,'Velocity Condition Variable',VeloCond)
        IF( VeloCond ) THEN
          VeloCondVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloCondVar ) ) THEN
@@ -964,6 +969,7 @@ CONTAINS
        END IF
 
        VariableName = ListGetString(Params,'Coordinate Condition Variable Name',CoordCond)
+       IF(.NOT. CoordCond) VariableName = ListGetString(Params,'Coordinate Condition Variable',CoordCond)
        IF( CoordCond ) THEN
          CoordCondVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( CoordCondVar ) ) THEN
@@ -1539,8 +1545,9 @@ CONTAINS
          IF( MovingWall ) THEN
            IF( Collision ) THEN
              VariableName = ListGetString(Params,'Wall Velocity Variable Name',Found)
+             IF(.NOT. Found) VariableName = ListGetString(Params,'Wall Velocity Variable',Found)
              IF( .NOT. Found ) THEN
-               CALL Fatal('ParticleWallContact','Moving wall needs > Wall Velocity Variable Name <')                    
+               CALL Fatal('ParticleWallContact','Moving wall needs > Wall Velocity Variable <')                    
              END IF
            ELSE
              CALL Fatal('ParticleWallContact','Moving Wall assumes > Wall Particle Collision <')
@@ -1550,8 +1557,9 @@ CONTAINS
          IF( AccumulationLimit ) THEN
            IF( Contact ) THEN
              VariableName = ListGetString(Params,'Velocity Variable Name',Found)
+             IF(.NOT. Found) VariableName = ListGetString(Params,'Velocity Variable',Found)
              IF( .NOT. Found ) THEN
-               CALL Fatal('ParticleWallContact','Particle Accumulation needs > Velocity Variable Name <')                    
+               CALL Fatal('ParticleWallContact','Particle Accumulation needs > Velocity Variable <')                    
              END IF
            ELSE
              CALL Warn('ParticleWallContact','Particle Accumulation assumes > Wall Particle Collision <')

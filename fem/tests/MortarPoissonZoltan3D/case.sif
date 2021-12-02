@@ -34,8 +34,10 @@ Simulation
 
   Boundary Partitioning Method = String "uniform"
   Boundary Partition Halo = Logical True
+!  Boundary Partition Halo Width = Integer 1
+  Boundary Partition Halo Master = Logical True
 !  Boundary Bounding Box Halo = Logical True
-  Partitioning Divisions(3) = Integer 1 1 2
+  Partitioning Divisions(3) = Integer 1 1 4
   Partition Mesh Extend Layers = Integer 1
 End  
 
@@ -94,9 +96,9 @@ Solver 2
   Linear System Iterative Method = BiCGStabl
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU1
+  Linear System Preconditioning = ILU2
   Linear System Abort Not Converged = False
-  Linear System Residual Output = 20
+  Linear System Residual Output = 50
   Linear System Precondition Recompute = 1
  
   Optimize Bandwidth = False

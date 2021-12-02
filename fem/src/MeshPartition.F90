@@ -3385,8 +3385,8 @@ CONTAINS
   END FUNCTION FindMeshNeighboursGeometric
 
 
-  !> Makes a serial mesh partitiong. Current uses geometric criteria.
-  !> Includes some hybrid strategies where the different physical domains
+  !> Makes a serial mesh partitiong. Currently uses geometric criteria or Zoltan.
+  !> Includes some hybrid strategies where the different physical domains (bc & bulk)
   !> are partitioned using different strategies. 
   !----------------------------------------------------------------------------  
   SUBROUTINE PartitionMeshSerial( Model, Mesh, Params ) 
@@ -3403,10 +3403,11 @@ CONTAINS
      INTEGER :: NumberOfSets, NumberOfBoundarySets, SetNo, id, NoEqs
      LOGICAL, POINTER :: PartitionCand(:)
      INTEGER :: i,j,j0,j1,k,n,m,allocstat
-     LOGICAL :: Found, PartBalance, EqInterface
+     LOGICAL :: Found, PartBalance, EqInterface, MasterHalo
      INTEGER, ALLOCATABLE :: EquationPart(:)    
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
      INTEGER :: PartOffset, PartOffsetBC
+     LOGICAL, ALLOCATABLE :: MasterElement(:)
      CHARACTER(*), PARAMETER :: FuncName = 'PartitionMeshSerial'
      
      !-----------------------------------------------------------------------
@@ -3439,7 +3440,14 @@ CONTAINS
      ElementPart = 0
      PartOffset = 0
      PartOffsetBC = 0
-     
+
+     ! Only use the halo for master elements
+     MasterHalo = ListGetLogical( Model % Simulation,'Boundary Partition Halo Master')
+     IF( MasterHalo ) THEN
+       ALLOCATE( MasterElement(n) )
+       MasterElement = .FALSE.
+     END IF
+          
      n = MAX( Model % NumberOfBCs, Model % NumberOfEquations )
      ALLOCATE( ParameterInd(n), STAT = allocstat ) 
      IF( allocstat /= 0 ) THEN
@@ -3450,7 +3458,8 @@ CONTAINS
      ParameterInd = 0
 
      EqInterface = ListGetLogical( Model % Simulation,'Partition Equation Interface',Found )
-              
+                  
+
      CALL Info(FuncName,'Partitioning boundary elements sets') 
      CALL InitializeBoundaryElementSet(NumberOfBoundarySets)
      
@@ -3611,12 +3620,18 @@ CONTAINS
 
              IF( ASSOCIATED( Parent ) ) THEN               
                ElemIndx = Parent % ElementIndex
+
                IF( ElementPart( ElemIndx ) == 0 ) THEN
                  NoHerited = NoHerited + 1
-                 ElementPart( ElemIndx ) = BoundPart
+                 ElementPart( ElemIndx ) = BoundPart                 
                ELSE IF( ElementPart( ElemIndx ) /= BoundPart ) THEN
                  NoConflict = NoConflict + 1
                END IF
+
+               ! Inherit also the master status.
+               ! This is done always since we need the halo if the bulk
+               ! element is associated to any master element.
+               IF( MasterHalo ) MasterElement( ElemIndx ) = MasterElement( t )               
              END IF
            END DO
          END IF
@@ -3919,11 +3934,12 @@ CONTAINS
      SUBROUTINE GenerateSetHalo()
        
        TYPE(Element_t), POINTER :: Element
-       INTEGER :: t, nblk, nbndry, nelem, nhalo, ntothalo, i, j, MinPart, MaxPart
+       INTEGER :: t, nblk, nbndry, nelem, ntothalo, i, j, MinPart, &
+           MaxPart, dPart, ThisPart, nhalo
        
        MaxPart = MAXVAL( ElementPart, PartitionCand ) 
        MinPart = MINVAL( ElementPart, PartitionCand ) 
-
+       
        IF( MaxPart - MinPart == 0 ) THEN
          CALL Info(FuncName,'No need not generate halo within one partition!',Level=12)
          RETURN
@@ -3935,6 +3951,8 @@ CONTAINS
        nblk = Mesh % NumberOfBulkElements
        nbndry = Mesh % NumberOfBoundaryElements
        nelem = nblk + nbndry
+
+       dPart = ListGetInteger( Params,'Boundary Partition Halo Width',Found )
        
        IF(.NOT. ASSOCIATED( Mesh % Halo ) ) THEN
          ALLOCATE( Mesh % Halo(nelem) )         
@@ -3944,19 +3962,38 @@ CONTAINS
        END IF
        
        ! For this halo type the number of neighbuor partitions in always constant
-       nhalo = MaxPart - MinPart
        ntothalo = 0
        
        DO t=1, nelem
-         IF( ElementPart( t ) < MinPart .OR. ElementPart( t ) > MaxPart ) CYCLE
+         ThisPart = ElementPart( t ) 
+         IF( ThisPart < MinPart .OR. ThisPart > MaxPart ) CYCLE
 
+         ! Create halo only for master elements.
+         ! This is usefull for mortar & contact BCs. 
+         IF( MasterHalo ) THEN           
+           IF( .NOT. MasterElement(t) ) CYCLE
+         END IF
+         
          Element => Mesh % Elements(t) 
          IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
+           nhalo = 0
+           DO i=MinPart, MaxPart
+             IF( ThisPart == i ) CYCLE
+             IF( dPart > 0 ) THEN
+               IF( ABS(ThisPart-i) > dPart ) CYCLE
+             END IF
+             nhalo = nhalo + 1
+           END DO
+
            ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo) )
            j = 0
            DO i=MinPart, MaxPart
              ! The owner is always considered, hence don't add that to the halo elements
-             IF( ElementPart(t) == i ) CYCLE
+             IF( ThisPart == i ) CYCLE
+             ! The width may be used for example when the partitioning is slices in z-direction
+             IF( dPart > 0 ) THEN
+               IF( ABS(ThisPart-i) > dPart ) CYCLE
+             END IF
              j = j + 1
              Mesh % Halo(t) % Neighbours(j) = i
            END DO
@@ -4296,11 +4333,12 @@ CONTAINS
        
        INTEGER :: NumberOfParts
        
-       INTEGER :: i,j,k,bc_id
+       INTEGER :: i,j,k,n,bc_id
        TYPE(ValueList_t), POINTER :: ValueList
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: Found, NewSet, SeparateBoundarySets        
        INTEGER, ALLOCATABLE :: BCPart(:)
+       LOGICAL, ALLOCATABLE :: BCMaster(:)
        INTEGER :: allocstat
 
        NumberOfParts = 0
@@ -4310,18 +4348,20 @@ CONTAINS
        SeparateBoundarySets = ListGetLogical( Params, &
            'Partitioning Separate Boundary Set', Found)
 
-       ALLOCATE( BCPart( Model % NUmberOfBCs ), STAT = allocstat )
+       n = Model % NumberOfBCs
+       ALLOCATE( BCPart(n), BCMaster(n), STAT = allocstat )
        IF( allocstat /= 0 ) THEN
          CALL Fatal(FuncName,'Allocation error for BCPart')
        END IF
        BCPart = 0
+       BCMaster = .FALSE.
 
        ! First, set the partition sets enforced by the user
        DO bc_id = 1, Model % NumberOfBCs 
          ValueList => Model % BCs(bc_id) % Values
          k = ListGetInteger( ValueList,'Partition Set',Found)
          IF( .NOT. Found ) CYCLE
-         BCPart(bc_id) = k 
+         BCPart(bc_id) = k         
          ParameterInd(k) = bc_id
        END DO
 
@@ -4336,9 +4376,10 @@ CONTAINS
            NewSet = ListGetLogical( ValueList, 'Discontinuous Boundary', Found ) .OR. &
                ListGetLogical( ValueList, 'Partition BC',Found) 
 
-           k = ListGetInteger( ValueList, 'Discontinuous BC',Found)
-           IF(.NOT. Found) k = ListGetInteger( ValueList, 'Periodic BC',Found) 
-           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Mortar BC',Found)
+           k = ListGetInteger( ValueList, 'Mortar BC',Found)
+           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Contact BC',Found)
+           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Discontinuous BC',Found)
+           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Periodic BC',Found) 
            IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Conforming BC',Found)
            IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Discontinuous BC',Found)           
            
@@ -4346,7 +4387,10 @@ CONTAINS
 
            IF( NewSet ) THEN
              BCPart(bc_id) = j
-             IF(k > 0) BCPart(k) = j
+             IF(k > 0) THEN
+               BCPart(k) = j
+               BCMaster(k) = .TRUE.
+             END IF
              ParameterInd(j) = bc_id
 
              IF( k > 0 ) THEN
@@ -4377,6 +4421,9 @@ CONTAINS
                Model % BCs(bc_id) % Tag ) THEN
              IF( BCPart( bc_id ) > 0 ) THEN
                ElementSet( i ) = BCPart( bc_id )
+               IF( MasterHalo ) THEN
+                 IF( BCMaster( bc_id) ) MasterElement(i) = .TRUE.
+               END IF
              END IF
              EXIT
            END IF
