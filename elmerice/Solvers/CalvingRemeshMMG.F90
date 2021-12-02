@@ -1049,6 +1049,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END IF
       ! make sure solvers are unpaused so front advances
       CALL PauseCalvingSolvers(Model, SolverParams, .FALSE.)
+      !remove mesh update
+      CALL ResetMeshUpdate(Model, Solver)
       RETURN
    END IF
 
