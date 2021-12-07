@@ -115,14 +115,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t), POINTER :: Element
-
   REAL(KIND=dp) :: Norm
   INTEGER :: i,j,k,n, nb, nd, t, istat, Active, NonlinIter, iter, tind
-
   TYPE(ValueList_t), POINTER :: BC
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
-               NEWX(:), NEWY(:), POT(:)
-
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), POT(:)
   TYPE(Mesh_t),   POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: SolverParams
   
@@ -815,7 +811,7 @@ CONTAINS
           CoilBody = .TRUE.
 !          CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
-          CALL Fatal ('MagnetoDynamics2D', 'Non existent Coil Type Chosen!')
+          CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
         END SELECT
       END IF
     END IF
@@ -1057,11 +1053,16 @@ CONTAINS
     StrandedCoil = .FALSE.
     CoilType = ListGetElementString(CoilType_h, Element, Found ) 
     IF( Found ) THEN
-      IF( CoilType == 'stranded' ) THEN
+      SELECT CASE (CoilType)
+      CASE ('stranded')
         StrandedCoil = .TRUE.
-      ELSE
-        CALL Fatal(Caller,'Implemented only for stranded coils for now!')
-      END IF
+      CASE ('massive')
+        CONTINUE
+      CASE ('foil winding')
+        CONTINUE
+      CASE DEFAULT
+        CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
+      END SELECT
     END IF
         
     ! Initialize
@@ -3177,13 +3178,13 @@ CONTAINS
           StrandedCoil = .TRUE.
           
           IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
-          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Current Variable Id not found!')
+          IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Current Variable Id not found!')
  
           N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
-          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
+          IF (.NOT. Found) CALL Fatal (Caller, 'Stranded Coil N_j not found!')
  
           nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
+          IF (.NOT. Found) CALL Fatal(Caller,'Stranded Coil: Number of Turns not found!')
           
           i_multiplier_re = GetConstReal(CompParams, 'Current Multiplier re', Found)
           IF (.NOT. Found) i_multiplier_re = 0._dp
@@ -3197,47 +3198,38 @@ CONTAINS
           IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
 
           IF ( StrandedHomogenization ) THEN 
-!            nu_11 = 0._dp
-!            nuim_11 = 0._dp
 !            nu_11 = GetReal(CompParams, 'nu 11', Found)
 !            nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
-!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
-!                                                      'Homogenization Model nu 11 not found!')
-!            nu_22 = 0._dp
-!            nuim_22 = 0._dp
+!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal (Caller,'Homogenization Model nu 11 not found!')
 !            nu_22 = GetReal(CompParams, 'nu 22', Found)
 !            nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
-!                                                      'Homogenization Model nu 22 not found!')
+!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal (Caller,'Homogenization Model nu 22 not found!')
             sigma_33 = GetReal(CompParams, 'sigma 33', Found)
-            IF ( .NOT. Found ) sigma_33 = 0._dp
             sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
-            IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
-            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
-                                                                 'Homogenization Model Sigma 33 not found!')
+            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal (Caller,'Homogenization Model Sigma 33 not found!')
           END IF
  
         CASE ('massive')
           CoilBody = .TRUE.
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
-          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+          IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Voltage Variable Id not found!')
 
         CASE ('foil winding')
           CoilBody = .TRUE.
           CALL GetLocalSolution(alpha,'Alpha')
 
           VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
-          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+          IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Voltage Variable Id not found!')
 
           coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
-          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
+          IF (.NOT. Found) CALL Fatal(Caller,'Foil Winding: Coil Thickness not found!')
  
           nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
+          IF (.NOT. Found) CALL Fatal(Caller,'Foil Winding: Number of Turns not found!')
  
           VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
-          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
+          IF (.NOT. Found) CALL Fatal (Caller, 'Circuit Voltage Variable dofs not found!')
           InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
           IF (InPlaneProximity) THEN
              LaminateThickness = coilthickness/nofturns
@@ -3854,23 +3846,22 @@ CONTAINS
       END DO
    END IF
 
-    IF (BodyVolumesCompute)         DEALLOCATE(BodyVolumes)
-    IF (CirCompVolumesCompute)      DEALLOCATE(CirCompVolumes)
-    IF (AverageBCompute)            DEALLOCATE(BodyAvBre, BodyAvBim)
-    IF (AverageBCompute)            DEALLOCATE(CirCompAvBre, CirCompAvBim)
-    IF (BodyICompute)               DEALLOCATE(BodyCurrent)
-    IF (BodyICompute)               DEALLOCATE(CirCompCurrent)
-    IF (ComplexPowerCompute)        DEALLOCATE(BodyComplexPower)
-    IF (ComplexPowerCompute)        DEALLOCATE(CirCompComplexPower)
-    IF (HomogenizationParamCompute) DEALLOCATE(BodySkinCond     ,  &
-                                            BodyProxNu       ,  & 
-                                            CirCompSkinCond,  & 
-                                            CirCompProxNu      )
-    IF (LorentzForceCompute)        DEALLOCATE(BodyLorentzForcesRe, &
-                                               BodyLorentzForcesIm, &
-                                               ComponentLorenzForcesRe, &
-                                               ComponentLorenzForcesIm)
-      
+   IF (BodyVolumesCompute)         DEALLOCATE(BodyVolumes)
+   IF (CirCompVolumesCompute)      DEALLOCATE(CirCompVolumes)
+   IF (AverageBCompute)            DEALLOCATE(BodyAvBre, BodyAvBim)
+   IF (AverageBCompute)            DEALLOCATE(CirCompAvBre, CirCompAvBim)
+   IF (BodyICompute)               DEALLOCATE(BodyCurrent)
+   IF (BodyICompute)               DEALLOCATE(CirCompCurrent)
+   IF (ComplexPowerCompute)        DEALLOCATE(BodyComplexPower)
+   IF (ComplexPowerCompute)        DEALLOCATE(CirCompComplexPower)
+   IF (HomogenizationParamCompute) DEALLOCATE(BodySkinCond     ,  &
+       BodyProxNu       ,  & 
+       CirCompSkinCond,  & 
+       CirCompProxNu      )
+   IF (LorentzForceCompute)        DEALLOCATE(BodyLorentzForcesRe, &
+       BodyLorentzForcesIm, &
+       ComponentLorenzForcesRe, &
+       ComponentLorenzForcesIm)
 
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33, CoreLossUDF)
