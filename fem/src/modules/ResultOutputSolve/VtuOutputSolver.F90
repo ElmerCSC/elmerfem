@@ -666,7 +666,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
     REAL(KIND=dp), POINTER :: TmpArray(:,:)
-    REAL(KIND=dp) :: CoordScale(3)
+    REAL(KIND=dp) :: CoordScale(3), CoordOffset(3)
     
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
@@ -760,7 +760,19 @@ CONTAINS
         END DO
       END IF
     END IF
-      
+
+    CoordOffset = 0.0_dp
+    TmpArray => ListGetConstRealArray( Params,'Coordinate Offset',Found )    
+    IF( Found ) THEN            
+      DO i=1,MIN( 3, SIZE(TmpArray,1) )
+        CoordOffset(i) = TmpArray(i,1)
+      END DO
+    ELSE
+      DO i=1,3
+        CoordOffset(i) = ListGetCReal( Params,'Coordinate Offset '//TRIM(I2S(i)),Found )
+      END DO
+    END IF
+    
 
     ! When the data is 'appended' two loops will be taken and the data will be written
     ! on the second loop. Offset is the position in the appended data after the '_' mark.
@@ -1549,9 +1561,9 @@ CONTAINS
           END IF
         END IF
 
-        x = CoordScale(1) * x
-        y = CoordScale(2) * y
-        z = CoordScale(3) * z
+        x = CoordScale(1) * x + CoordOffset(1)
+        y = CoordScale(2) * y + CoordOffset(2)
+        z = CoordScale(3) * z + CoordOffset(3)
         
         CALL AscBinRealWrite( x )
         CALL AscBinRealWrite( y )

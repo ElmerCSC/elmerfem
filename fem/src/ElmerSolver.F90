@@ -78,7 +78,7 @@
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
          steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodicTime(:),sPeriodicCycle(:),&
          sScan(:),sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),&
-         sSliceWeight(:), sAngle(:), sAngleVelo(:)
+         sSliceWeight(:), sAngle(:), sAngleVelo(:),sSector(:)
 
      LOGICAL :: GotIt,Transient,Scanning, LastSaved, MeshMode = .FALSE.
 
@@ -785,7 +785,7 @@ END INTERFACE
            ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
            steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodicTime(1), &
            sPeriodicCycle(1), sPar(1), sScan(1), sSweep(1), sFinish(1), &
-           sProduce(1),sSlice(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
+           sProduce(1),sSlice(1), sSector(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
            sAngleVelo(1) )
        
        dt = 0._dp       
@@ -803,6 +803,7 @@ END INTERFACE
        sFinish = -1.0_dp
        sProduce = -1.0_dp
        sSlice = 0._dp
+       sSector = 0._dp
        sSliceRatio = 0._dp
        sSliceWeight = 1.0_dp
        sAngle = 0.0_dp
@@ -1379,7 +1380,10 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='slice weight', DOFs=1, Values=sSliceWeight )
        END IF
        
-       
+       IF( ListCheckPresent( CurrentModel % Simulation,'Parallel Timestepping') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='time sector', DOFs=1, Values=sSector )
+       END IF
+             
        ! Add partition as a elemental field in case we have just one partition
        ! and have asked still for partitioning into many.
        IF( ParEnv % PEs == 1 .AND. ASSOCIATED( Mesh % Repartition ) ) THEN
@@ -2336,7 +2340,7 @@ END INTERFACE
      nSlices = 1
      nTimes = 1
      iTime = 0
-     iSlice = 0 
+     iSlice = 0
      
      IF( ParallelTime .AND. ParallelSlices ) THEN
        nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
@@ -2407,6 +2411,14 @@ END INTERFACE
          sSliceWeight = 1.0_dp / nSlices 
        END IF
      END IF
+
+     IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN
+       IF( nTimes <= 1 ) THEN
+         sSector = 0.0_dp
+       ELSE         
+         sSector = 1.0_dp * iTime 
+       END IF
+     END IF       
      
      DO interval = 1,TimeIntervals
        
