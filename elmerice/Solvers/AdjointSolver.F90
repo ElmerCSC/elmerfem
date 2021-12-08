@@ -76,20 +76,21 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: VbPerm(:)
   REAL(KIND=dp),POINTER :: ForceVector(:)
   integer :: t,n,NSDOFs,NVals,SolverInd
-  REAL(KIND=dp),ALLOCATABLE :: STIFF(:,:),FORCE(:),ExtPressure(:),LoadVector(:,:),Alpha(:),Beta(:),SlipCoeff(:,:),w(:)
-  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal=.TRUE.
+  REAL(KIND=dp),ALLOCATABLE :: STIFF(:,:),FORCE(:),ExtPressure(:),LoadVector(:,:), &
+    StabCoeff(:),Alpha(:),Beta(:),SlipCoeff(:,:),w(:)
+  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal=.TRUE.,FSSA
   INTEGER, POINTER :: NodeIndexes(:),Perm(:)
   integer :: p,q,dim,c
 
   integer :: i,iii,jjj,k
-  Real(KIND=dp) :: Unorm
+  REAL(KIND=dp) :: Unorm
   REAL(KIND=dp), allocatable :: FullMat(:,:)
   character(len=50) :: fo1
   character(LEN=MAX_NAME_LEN) :: SolName
   character(LEN=MAX_NAME_LEN) :: SolverName="Adjoint Solver"
 
 
-  save SolverName,Firsttime,SolverInd,STIFF,FORCE,ExtPressure,LoadVector,Alpha,Beta,SlipCoeff,w
+  save SolverName,Firsttime,SolverInd,STIFF,FORCE,ExtPressure,LoadVector,Alpha,Beta,SlipCoeff,w,StabCoeff
 
    CALL Info(SolverName,'***********************',level=0)
    CALL Info(SolverName,' This solver has been replaced by:',level=0)
@@ -115,7 +116,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
           Firsttime=.False.
           N = Solver % Mesh % MaxElementDOFs
           allocate(FORCE(  2*NSDOFs*N ),STIFF( 2*NSDOFs*N,2*NSDOFs*N ),ExtPressure(N), & 
-                    SlipCoeff(3,N),LoadVector(4,N),Alpha(N),Beta(N),w(N))
+                    SlipCoeff(3,N),LoadVector(4,N),Alpha(N),Beta(N),w(N),StabCoeff(N))
 
           SolverParams => GetSolverParams()
           SolName = GetString( SolverParams,'Flow Solution Equation Name',Gotit)
@@ -200,29 +201,34 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         GotForceBC = GetLogical( BC, 'Adjoint Force BC',gotIt )
 
         IF (GotForceBC) Then
-        LoadVector=0.0d0
-        Alpha=0.0d0
-        Beta=0.0d0
-        STIFF=0.0
-        FORCE=0.0
-        ExtPressure=0.0
-        SlipCoeff = 0.0d0
+          LoadVector=0.0d0
+          Alpha=0.0d0
+          Beta=0.0d0
+          STIFF=0.0
+          FORCE=0.0
+          ExtPressure=0.0
+          SlipCoeff=0.0d0
+          StabCoeff=0.0d0
+          FSSA=.FALSE.
 
-        ! I only see 1 case where we have to impose Neumann condition to the
-        ! Adjoint system; the slip BC
-        NormalTangential = GetLogical( BC, &
-                         'Normal-Tangential Adjoint', GotIt )
+          ! I only see 1 case where we have to impose Neumann condition to the
+          ! Adjoint system; the slip BC
+          NormalTangential = GetLogical( BC, &
+                           'Normal-Tangential Adjoint', GotIt )
 
-        SlipCoeff(1,1:n) =  GetReal( BC, 'Slip Coefficient 1',GotIt )
-        SlipCoeff(2,1:n) =  GetReal( BC, 'Slip Coefficient 2',GotIt )
-        SlipCoeff(3,1:n) =  GetReal( BC, 'Slip Coefficient 3',GotIt )
+          SlipCoeff(1,1:n) =  GetReal( BC, 'Slip Coefficient 1',GotIt )
+          SlipCoeff(2,1:n) =  GetReal( BC, 'Slip Coefficient 2',GotIt )
+          SlipCoeff(3,1:n) =  GetReal( BC, 'Slip Coefficient 3',GotIt )
 
-        CALL NavierStokesBoundary(  STIFF, FORCE, &
-             LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
-                Element, n, ElementNodes )
+          FSSA = GetLogical( BC, 'FSSA', GotIt )
+          StabCoeff(1:n) = GetReal( BC, 'FSSA Coefficient', GotIt)
 
-        CALL DefaultUpdateEquations( STIFF, FORCE )
-       end if
+          CALL NavierStokesBoundary(  STIFF, FORCE, &
+               LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, StabCoeff, & 
+               NormalTangential, FSSA, Element, n, ElementNodes)
+
+          CALL DefaultUpdateEquations( STIFF, FORCE )
+        END IF
 
       END DO
       
@@ -235,7 +241,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
            q=(VbPerm(t)-1)*c+i
            ForceVector(p)=Vb(q)
         End Do
-      EndDo
+      End Do
 
       CALL FinishAssembly( Solver, ForceVector )
        

@@ -961,12 +961,12 @@ END BLOCK
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     INTEGER :: c,i,j,k,l,p,q,t,ngp
-    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, Found, Stat
-    REAL(KIND=dp) :: ExtPressure, s, detJ
+    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, Found, Stat, HaveFSSA
+    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAcoeff
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
-                NormalTangential_h, NormalTangentialVelo_h
+                NormalTangential_h, NormalTangentialVelo_h, FSSAcoeff_h
     
     SAVE Basis
     
@@ -984,8 +984,9 @@ END BLOCK
              'Normal-Tangential Velocity' )
 
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
-          'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
-
+           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
+      CALL ListInitElementKeyword( FSSAcoeff_h, 'Boundary Condition',&
+           'FSSA Coefficient')
       InitHandles = .FALSE.
     END IF
     
@@ -1033,13 +1034,17 @@ END BLOCK
       
       ! Given force to the normal direction
       !------------------------------------
-      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
+      ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )
+
+      ! FSSA Coefficient
+      !--------------------
+      FSSAcoeff = ListGetElementReal( FSSAcoeff_h,  Basis, Element, HaveFSSA, GaussPoint = t )
       
       ! Nothing to do, exit the routine
-      IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres)) RETURN
+      IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential ) THEN
+      IF( HavePres .OR. HaveFSSA .OR. NormalTangential ) THEN
         Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
       END IF
       
@@ -1103,7 +1108,48 @@ END BLOCK
           END DO
         END IF
       END IF
+      
+      !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
+      !---------------------------------------------------------------
+      ! version 1
+      IF ( HaveFSSA ) THEN
+        DO p=1,nd
+          DO q=1,nd
+            DO i=1,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+                s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+            END DO
+          END DO
+        END DO
+      END IF
+      
+      ! approximation with normal pointing into z-direction
+      !IF ( HaveFSSA ) THEN        
+      !  DO p=1,nd
+      !    DO q=1,nd
+      !      DO i=dim,dim
+      !        STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+      !             STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+      !             s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+      !      END DO
+      !    END DO
+      !  END DO
+      !END IF
 
+      !! version 2, transposed
+      !IF ( HaveFSSA ) THEN
+      !  DO p=1,nd
+      !    DO q=1,nd
+      !      DO i=1,dim
+      !          STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
+      !          STIFF( (p-1)*c+i,(q-1)*c+dim ) + &
+      !          s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+      !      END DO
+      !    END DO
+      !  END DO
+      !END IF
+   
       ! Assemble given forces to r.h.s.
       IF( HaveForce .OR. HavePres ) THEN
         IF ( NormalTangential ) THEN
