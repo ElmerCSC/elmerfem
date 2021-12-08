@@ -1077,7 +1077,7 @@ BLOCK
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
         DO i=1,n
-          RadiatorPowers(i) = GetCReal( SolverParams, 'Radiator '//TRIM(I2S(i))//' Power', Found)
+          RadiatorPowers(i) = GetCReal( SolverParams, 'Radiator Power '//TRIM(I2S(i)), Found)
         END DO
       END IF
 END BLOCK

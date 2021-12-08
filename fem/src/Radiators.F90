@@ -591,37 +591,38 @@
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
            //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
        
-       at0 = CPUTime()
+       IF( .NOT. RadiationOpen ) THEN 
+         at0 = CPUTime()
 
-       CALL Info( Caller,'Normalizing Factors...')
+         CALL Info( Caller,'Normalizing Factors...')
 
-       DO i=1,NofRadiators
-         s = 0.0d0
-         DO j=1,N
-           s = s + Factors((i-1)*N+j)
+         DO i=1,NofRadiators
+           s = 0.0d0
+           DO j=1,N
+             s = s + Factors((i-1)*N+j)
+           END DO
+
+           DO j=1,N
+             Factors((i-1)*N+j) = Factors((i-1)*N+j) / s
+           END DO
          END DO
 
-         DO j=1,N
-           Factors((i-1)*N+j) = Factors((i-1)*N+j) / s
-         END DO
-       END DO
-       
-       WRITE (Message,'(A,F8.2)') 'Radiator factors manipulated in time (s):',CPUTime()-at0
-       CALL Info( Caller,Message, Level=3 )
-       
-       CALL Info( Caller, ' ', Level=3 )
-       CALL info( Caller, 'Radiator factors after manipulation: ')
-       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
-       CALL Info( Caller, Message )
-       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
-       CALL Info( Caller, Message )
-       IF( FMax > 1.001 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
-       END IF
-       IF( FMin < 0.999 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
-       END IF
+         WRITE (Message,'(A,F8.2)') 'Radiator factors manipulated in time (s):',CPUTime()-at0
+         CALL Info( Caller,Message, Level=3 )
 
+         CALL Info( Caller, ' ', Level=3 )
+         CALL info( Caller, 'Radiator factors after manipulation: ')
+         WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+         CALL Info( Caller, Message )
+         WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+         CALL Info( Caller, Message )
+         IF( FMax > 1.001 ) THEN
+           CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
+         END IF
+         IF( FMin < 0.999 ) THEN
+           CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         END IF
+       END IF
 
        ViewFactorsFile = GetString( GetSimulation(),'Raditor Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'RadiatorFactors.dat'

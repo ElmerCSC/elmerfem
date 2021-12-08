@@ -257,7 +257,7 @@ BLOCK
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
         DO t=1,n
-          RadiatorPowers(t)=GetCReal( Params, 'Radiator '//TRIM(I2S(t))//' Power', Found)
+          RadiatorPowers(t)=GetCReal( Params, 'Radiator Power '//TRIM(I2S(t)), Found)
         END DO
       END IF
 END BLOCK
@@ -781,14 +781,14 @@ CONTAINS
         RadC, RadF, RadText, Text, Emis, AssFrac
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
-    LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse
+    LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC
     INTEGER :: i,j,t,p,q,Indexes(n)
     INTEGER :: NoOwners, NoParents
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
-        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h 
+        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h 
 
     SAVE Nodes
     !$OMP THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h)
@@ -805,7 +805,8 @@ CONTAINS
       CALL ListInitElementKeyword( RadExtTemp_h,'Boundary Condition','Radiation External Temperature')
       CALL ListInitElementKeyword( EmisBC_h,'Boundary Condition','Emissivity')
       CALL ListInitElementKeyword( EmisMat_h,'Material','Emissivity')
-            
+      CALL ListInitElementKeyword( TorBC_h,'Boundary Condition','Radiator BC')
+      
       InitHandles = .FALSE.
     END IF
 
@@ -834,6 +835,10 @@ CONTAINS
     !-----------------------
     IP = GaussPoints( Element )
 
+    ! Is this a radiator BC? 
+    TorBC = ListGetElementLogical( TorBC_h, Element, Found = Found ) 
+
+        
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -853,9 +858,10 @@ CONTAINS
       ! -----------
 
       F = ListGetElementReal( HeatFlux_h, Basis, Element, Found )
-      IF( GetLogical( BC,'Radiator BC', Found ) ) THEN
+      IF( TorBC ) THEN
         IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-          F=F+SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
+          Found = .TRUE.
+          F = F + SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
         END IF
       END IF
 
