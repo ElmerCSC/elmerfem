@@ -19450,6 +19450,7 @@ CONTAINS
     REAL(KIND=dp) :: Tolerance
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
+    TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
 	UpHit, DownHit, bc_ind, jmin, jmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
@@ -19468,7 +19469,7 @@ CONTAINS
 
     DIM = Mesh % MeshDim
     Params => Solver % Values
-
+    
     ActiveDirection = ListGetInteger(Params,'Active Coordinate')
     IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
       CALL Fatal('StructuredMeshMapper','Invalid value for Active Coordinate')
@@ -19476,7 +19477,12 @@ CONTAINS
     UnitVector = 0.0_dp
     UnitVector(ActiveDirection) = 1.0_dp
 
-
+    IF( ListGetLogical(Params,'Mapping Original Coordinates',Found ) ) THEN
+      MeshNodes => Mesh % NodesOrig
+    ELSE
+      MeshNodes => Mesh % Nodes
+    END IF
+    
     IF( ListGetLogical(Params,'Project To Bottom',GotIt) ) &
         UnitVector = -1.0_dp * UnitVector
 
@@ -19620,9 +19626,9 @@ CONTAINS
       CurrentModel % CurrentElement => Element
       
       n = Element % TYPE % NumberOfNodes
-      Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-      Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-      Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+      Nodes % x(1:n) = MeshNodes % x(NodeIndexes)
+      Nodes % y(1:n) = MeshNodes % y(NodeIndexes)
+      Nodes % z(1:n) = MeshNodes % z(NodeIndexes)
       
       ! This is probably a copy-paste error, I comment it away for time being.   
       ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
@@ -20011,6 +20017,12 @@ CONTAINS
     IF( DownActive ) THEN
       CALL Info(Caller,'Number of nodes at the bottom: '//TRIM(I2S(BotNodes)),Level=6)
     END IF
+
+    IF(DownActive .AND. UpActive ) THEN
+      IF(TopNodes /= BotNodes ) THEN
+        CALL Fatal(Caller, 'Something wrong: top and bottom node counts differ!')
+      END IF
+    END IF
     
 
   CONTAINS
@@ -20089,6 +20101,7 @@ CONTAINS
     REAL(KIND=dp) :: Tolerance
     TYPE(Element_t), POINTER :: Element, Parent
     TYPE(Nodes_t) :: Nodes
+    TYPE(Nodes_t), POINTER :: MeshNodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
 	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:)
@@ -20122,8 +20135,14 @@ CONTAINS
     ActiveDirection = ListGetInteger(Params,'Active Coordinate')
     IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
       CALL Fatal(Caller,'Invalid value for Active Coordinate')
-    END IF  
+    END IF
 
+    IF( ListGetLogical(Params,'Mapping Original Coordinates',Found ) ) THEN
+      MeshNodes => Mesh % NodesOrig
+    ELSE
+      MeshNodes => Mesh % Nodes
+    END IF
+    
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
@@ -20189,9 +20208,9 @@ CONTAINS
       CurrentModel % CurrentElement => Element
 
       n = Element % TYPE % NumberOfNodes
-      Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-      Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-      Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+      Nodes % x(1:n) = MeshNodes % x(NodeIndexes)
+      Nodes % y(1:n) = MeshNodes % y(NodeIndexes)
+      Nodes % z(1:n) = MeshNodes % z(NodeIndexes)
 
       IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
@@ -20414,13 +20433,48 @@ CONTAINS
     IF( DownActive ) THEN
       CALL Info(Caller,'Number of elements at the bottom: '//TRIM(I2S(BotNodes)),Level=8)
     END IF
-   
+
+    IF(DownActive .AND. UpActive ) THEN
+      IF(TopNodes /= BotNodes ) THEN
+        CALL Fatal(Caller, 'Something wrong: top and bottom element counts differ!')
+      END IF
+    END IF
+    
 
   END SUBROUTINE DetectExtrudedElements
  !---------------------------------------------------------------
 
 
-  
+  SUBROUTINE StoreOriginalCoordinates(Mesh)
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER CONTIG :: NewCoords(:)
+    INTEGER :: n
+
+    IF( ASSOCIATED( Mesh % NodesOrig ) ) THEN
+      CALL Info('StoreOriginalCoordinates','Original coordinates already stored')
+    END IF
+
+    n = SIZE( Mesh % Nodes % x )    
+    NULLIFY( NewCoords )
+    ALLOCATE( NewCoords(3*n) )
+
+    ALLOCATE( Mesh % NodesOrig ) 
+    Mesh % NodesOrig % x => NewCoords(1:n)
+    Mesh % NodesOrig % y => NewCoords(n+1:2*n)
+    Mesh % NodesOrig % z => NewCoords(2*n+1:3*n)
+
+    Mesh % NodesOrig % x = Mesh % Nodes % x
+    Mesh % NodesOrig % y = Mesh % Nodes % y
+    Mesh % NodesOrig % z = Mesh % Nodes % z
+
+    Mesh % NodesMapped => Mesh % Nodes
+
+    CALL Info('StoreOriginalCoordinates','Original coordinates stored',Level=6)
+    
+  END SUBROUTINE StoreOriginalCoordinates
+
+    
+   
   !----------------------------------------------------------------
   !> Maps coordinates from the original nodes into a new coordinate
   !> system while optionally maintaining the original coordinates. 
@@ -20588,6 +20642,7 @@ CONTAINS
   END SUBROUTINE CoordinateTransformation
 !---------------------------------------------------------------
 
+  
 
 !---------------------------------------------------------------
 !> Return back to the original coordinate system. 

@@ -2053,18 +2053,19 @@ CONTAINS
 
      INTEGER :: i,n,nd,sz,sz1
      INTEGER, POINTER :: Indexes(:)
-
-     TYPE(Solver_t),  POINTER  :: Solver
      TYPE(Mesh_t),  POINTER  :: Mesh
      TYPE(Element_t), POINTER :: Element
 
-     Solver => CurrentModel % Solver
-     IF ( PRESENT( USolver ) ) Solver => USolver
-
      Element => GetCurrentElement(UElement)
 
-     Mesh => Solver % Mesh
-     IF ( PRESENT( UMesh ) ) Mesh => UMesh
+     IF( PRESENT( UMesh ) ) THEN
+       Mesh => UMesh
+     ELSE IF( PRESENT( USolver ) ) THEN
+       Mesh => USolver % Mesh
+     ELSE
+       Mesh => CurrentModel % Solver % Mesh
+     END IF
+             
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
 
      IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
@@ -2100,6 +2101,41 @@ CONTAINS
      END IF
   END SUBROUTINE GetElementNodes
 
+
+  ! This is just a small wrapper in case we want to get the original and not the
+  ! mapped coordinates. This assumes that the original coordinates are stored in
+  ! NodesOrig. This is rarely need hence no reason to overload the standard routine
+  ! with this baggage.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE GetElementNodesOrig( ElementNodes, UElement, USolver, UMesh )
+     TYPE(Nodes_t) :: ElementNodes
+     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Mesh_t),  POINTER  :: Mesh
+     TYPE(Nodes_t), POINTER :: TmpNodes
+
+     IF( PRESENT( UMesh ) ) THEN
+       Mesh => UMesh
+     ELSE IF( PRESENT( USolver ) ) THEN
+       Mesh => USolver % Mesh
+     ELSE
+       Mesh => CurrentModel % Solver % Mesh
+     END IF
+
+     TmpNodes => Mesh % Nodes
+     IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
+       CALL Fatal('GetElementNodesOrig','Original node coordinates not yet stored!')
+     END IF
+     Mesh % Nodes => Mesh % NodesOrig
+
+     CALL GetElementNodes( ElementNodes, UElement, Umesh = Mesh )
+     Mesh % Nodes => TmpNodes
+
+   END SUBROUTINE GetElementNodesOrig
+
+  
 !> Returns the nodal coordinate values in the active element
     SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
         TYPE(Nodes_t), TARGET :: ElementNodes
@@ -2116,15 +2152,14 @@ CONTAINS
         TYPE(Mesh_t),  POINTER  :: Mesh
         TYPE(Element_t), POINTER :: Element
 
-        Solver => CurrentModel % Solver
-        IF ( PRESENT( USolver ) ) Solver => USolver
-
         Element => GetCurrentElement(UElement)
 
-        IF ( PRESENT( UMesh ) ) THEN
-            Mesh => UMesh
+        IF( PRESENT( UMesh ) ) THEN
+          Mesh => UMesh
+        ELSE IF( PRESENT( USolver ) ) THEN
+          Mesh => USolver % Mesh
         ELSE
-            Mesh => Solver % Mesh
+          Mesh => CurrentModel % Solver % Mesh
         END IF
 
         n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
@@ -2187,6 +2222,38 @@ CONTAINS
         END IF
     END SUBROUTINE GetElementNodesVec
 
+
+    SUBROUTINE GetElementNodesOrigVec( ElementNodes, UElement, USolver, UMesh )
+      TYPE(Nodes_t), TARGET :: ElementNodes
+      TYPE(Element_t), OPTIONAL, TARGET :: UElement
+      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
+      
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Nodes_t), POINTER :: TmpNodes
+      
+      IF( PRESENT( UMesh ) ) THEN
+        Mesh => UMesh
+      ELSE IF( PRESENT( USolver ) ) THEN
+        Mesh => USolver % Mesh
+      ELSE
+        Mesh => CurrentModel % Solver % Mesh
+      END IF
+
+      TmpNodes => Mesh % Nodes
+      IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
+        CALL Fatal('GetElementNodesOrigVec','Original node coordinates not yet stored!')
+      END IF
+      Mesh % Nodes => Mesh % NodesOrig
+      
+      CALL GetElementNodesVec( ElementNodes, UElement, UMesh = Mesh ) 
+            
+      Mesh % Nodes => TmpNodes
+      
+    END SUBROUTINE GetElementNodesOrigVec
+      
+        
+    
 !> Get element body id
 !------------------------------------------------------------------------------
   FUNCTION GetBody( Element ) RESULT(body_id)

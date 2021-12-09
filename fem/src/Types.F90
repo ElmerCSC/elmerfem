@@ -765,8 +765,8 @@ MODULE Types
 
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
-     TYPE(Nodes_t), POINTER :: NodesOrig
-     TYPE(Nodes_t), POINTER :: NodesMapped
+     TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
+     TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)

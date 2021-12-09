@@ -5097,9 +5097,10 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: M
      INTEGER :: comm_active, group_active, group_world, ierr
 
-     LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel
+     LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
-
+     TYPE(Mesh_t), POINTER :: Mesh
+     
 !------------------------------------------------------------------------------
      IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
@@ -5122,6 +5123,18 @@ CONTAINS
      END IF
 !------------------------------------------------------------------------------
 
+     UseOrigMesh = ListGetLogical(Solver % Values,'Use Original Coordinates',Found )
+     IF(UseOrigMesh ) THEN
+       Mesh => Solver % Mesh
+       IF(.NOT. ASSOCIATED(Mesh % NodesOrig)) THEN
+         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesOrig not associated!')
+       END IF
+       IF(.NOT. ASSOCIATED(Mesh % NodesMapped)) THEN
+         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesMapped not associated!')
+       END IF
+       Mesh % Nodes => Mesh % NodesOrig
+     END IF
+     
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
 
      MeActive = ASSOCIATED(Solver % Matrix)
@@ -5281,6 +5294,8 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
+
+     IF( UseOrigMesh ) Mesh % Nodes => Mesh % NodesMapped
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
