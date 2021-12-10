@@ -251,13 +251,20 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
 BLOCK
       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+      TYPE(ValueList_t), POINTER :: RadList
 
-      CALL GetConstRealArray( Params, RadiatorCoords, 'Radiator Coordinates', Found)
+      ! If radiator is in body force section then use it:
+      ! This will make it easier to make GUIs etc.
+      IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+          RadList => Params
+      
+      CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
+      
       IF(Found) THEN
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
         DO t=1,n
-          RadiatorPowers(t)=GetCReal( Params, 'Radiator Power '//TRIM(I2S(t)), Found)
+          RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)), Found)
         END DO
       END IF
 END BLOCK

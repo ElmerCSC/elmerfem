@@ -80,7 +80,7 @@
      REAL(KIND=dp) :: Norm,PrevNorm,MinFactor, Normal_in, Plane
  
      TYPE(Nodes_t) :: ElementNodes
-     TYPE(ValueList_t), POINTER :: BC, Material, Params
+     TYPE(ValueList_t), POINTER :: BC, Material, Params, RadList
 
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
@@ -180,7 +180,10 @@
 
      Params => GetSolverParams()
 
-     CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
+     IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+         RadList => Params
+     
+     CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
      IF(.NOT. Found ) CALL Fatal( 'RadiatorFactors', 'No radiators present, quitting' )
 
      NofRadiators = SIZE(Radiators,1)

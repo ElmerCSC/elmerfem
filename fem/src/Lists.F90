@@ -3551,7 +3551,7 @@ use spariterglobals
 !------------------------------------------------------------------------------
   END FUNCTION ListGetSection
 !------------------------------------------------------------------------------
-
+  
 
   SUBROUTINE ListWarnUnsupportedKeyword( SectionName, Keyword, Found, FatalFound ) 
 
@@ -7623,17 +7623,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any boundary condition.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBC( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBC( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: bc
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()     
      DO bc = 1,Model % NumberOfBCs
        Found = ListCheckPresent( Model % BCs(bc) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % BCs(bc) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBC
@@ -7642,17 +7647,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any boundary condition.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyIC( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyIC( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: ic
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO ic = 1,Model % NumberOfICs
        Found = ListCheckPresent( Model % ICs(ic) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % ICs(ic) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyIC
@@ -7681,17 +7691,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any body.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBody( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBody( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: body
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO body = 1,Model % NumberOfBodies
        Found = ListCheckPresent( Model % Bodies(body) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Bodies(body) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBody
@@ -7747,17 +7762,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any body force.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBodyForce( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBodyForce( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: bf
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO bf = 1,Model % NumberOfBodyForces
        Found = ListCheckPresent( Model % BodyForces(bf) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % BodyForces(bf) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBodyForce
@@ -7785,17 +7805,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any material.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyMaterial( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyMaterial( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
-     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
+      LOGICAL :: Found
      INTEGER :: mat
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO mat = 1,Model % NumberOfMaterials
        Found = ListCheckPresent( Model % Materials(mat) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Materials(mat) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyMaterial
@@ -7805,17 +7830,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any solver.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnySolver( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnySolver( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: ind
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO ind = 1,Model % NumberOfSolvers
        Found = ListCheckPresent( Model % Solvers(ind) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Solvers(ind) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnySolver
@@ -7826,20 +7856,24 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any component.
 !------------------------------------------------------------------------------
-  FUNCTION ListCheckPresentAnyComponent( Model, Name ) RESULT( Found )
+  FUNCTION ListCheckPresentAnyComponent( Model, Name, ValueLst ) RESULT( Found )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
-    
+    IMPLICIT NONE    
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: Name
+    TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
     LOGICAL :: Found
     INTEGER :: ind
         
     Found = .FALSE.
+    IF(PRESENT(ValueLst)) ValueLst => NULL()
     DO ind=1, Model % NumberOfComponents
       Found = ListCheckPresent( Model % Components(ind) % Values, Name )
-      IF( Found ) EXIT
-    END DO   
+      IF( Found ) THEN
+        IF(PRESENT(ValueLst)) ValueLst => Model % Components(ind) % Values
+        EXIT
+      END IF    
+    END DO
 !------------------------------------------------------------------------------
   END FUNCTION ListCheckPresentAnyComponent
 !------------------------------------------------------------------------------  
@@ -7939,17 +7973,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any equation.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyEquation( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyEquation( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: eq
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO eq = 1,Model % NumberOfEquations
        Found = ListCheckPresent( Model % Equations(eq) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Equations(eq) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyEquation

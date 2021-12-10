@@ -59,12 +59,12 @@ Solver 1
 
   Steady State Convergence Tolerance = 1.0e-8
 
-  Radiator Coordinates(2,3) = Real \
-          0.15 0.15 0.15 \
-          0.85 0.85 0.85
+!  Radiator Coordinates(2,3) = Real \
+!          0.15 0.15 0.15 \
+!          0.85 0.85 0.85
 
-  Radiator Power 1 = Real 1.0e2
-  Radiator Power 2 = Real 2.0e2
+!  Radiator Power 1 = Real 1.0e2
+!  Radiator Power 2 = Real 2.0e2
 
   Viewfactor area tolerance   = 0.001
   Viewfactor factor tolerance = 0.001
@@ -92,6 +92,18 @@ Boundary Condition 1
 
   External Temperature = 0
   Heat Transfer Coefficient = 1.0
+End
+
+
+Body Force 1
+  Name = "Radiate"
+
+  Radiator Coordinates(2,3) = Real \
+          0.15 0.15 0.15 \
+          0.85 0.85 0.85
+
+  Radiator Power 1 = Real 1.0e2
+  Radiator Power 2 = Real 2.0e2
 End
 
 

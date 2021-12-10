@@ -614,8 +614,12 @@ BLOCK
        INTEGER, ALLOCATABLE ::  Cols(:)
        INTEGER :: NofRadiators
        REAL(KIND=dp), POINTER :: Radiators(:,:)
+       TYPE(ValueList_t), POINTER :: RadList
+       
+       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+           RadList => Params
 
-       CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
+       CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
        IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
 
        NofRadiators = SIZE(Radiators,1)
