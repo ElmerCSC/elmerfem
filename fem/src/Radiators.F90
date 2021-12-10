@@ -651,7 +651,8 @@
          ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
          MinFactor = MinFactor / 10.0
          
-         BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         BinaryMode = ListGetLogical( Params,'Radiatorfactor Binary Output',Found ) 
+         IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
          SaveMask = ( Factors > MinFactor )
 
@@ -671,7 +672,7 @@
                  WRITE( VFUnit ) j,Factors((i-1)*N+j)
                END IF
              END DO
-           END DO           
+           END DO
          ELSE
            CALL Info(Caller,'Saving radiator factors in ascii mode',Level=5)
 
