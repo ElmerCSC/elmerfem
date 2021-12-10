@@ -17253,20 +17253,22 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), POINTER :: x0(:),b(:),BulkRhsSave(:),dr(:),r0(:),dy(:),y0(:)
-    REAL(KIND=dp), ALLOCATABLE, TARGET :: dx(:),f(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: dx(:),f(:,:)
     INTEGER, POINTER :: Perm(:)
-    INTEGER :: dofs, i, j, nsize, ControlNode, dof0
-    REAL(KIND=dp) :: Nrm, c, dc, val, cand
-    LOGICAL :: GotF, Found, UseLoads
-    CHARACTER(LEN=MAX_NAME_LEN) :: SourceName
+    INTEGER :: dofs, i, j, nsize, ControlNode, dof0, nControl, iControl
+    REAL(KIND=dp) :: Nrm, val, cand, dc
+    LOGICAL :: GotF, Found, UseLoads    
+    REAL(KIND=dp), ALLOCATABLE :: c(:)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'ControlLinearSystem'
 
-    SAVE f
+    
+    SAVE f, c
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Fatal(Caller,'Controlling of source terms implemented only in serial!')
     END IF
-
     
     Params => Solver % Values
     Mesh => Solver % Mesh 
@@ -17277,135 +17279,217 @@ CONTAINS
     dofs = Var % Dofs
     Perm => Var % Perm
     nsize = SIZE(x0)
-        
-    ! Default name for controlled source term
-    SourceName = TRIM(Var % Name)//' Control'
-    
-    IF( PreSolve ) THEN    
-      ! We need to add the control source here in order to be able to use
-      ! standard means for convergence monitoring. 
-      CALL Info(Caller,'Computing source term for control',Level=7)
-      ALLOCATE(f(nsize))
-      f = 0.0_dp          
-      CALL SetNodalSources( CurrentModel,Mesh,SourceName, &
-          dofs, Perm, GotF, f )
 
-      ! The additional source needs to be nullified for Dirichlet conditions
-      IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
-        WHERE( A % ConstrainedDOF ) f = 0.0_dp
-      END IF
 
-      ! This is inhereted from previous control iterations.
-      c = ListGetCReal( Params,'Control Amplitude',Found )
+    nControl = ListGetInteger(Params,'Number of Controls',Found ) 
+    IF(.NOT. Found ) nControl = 1
 
-!      DO i=1,dofs
-!        PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
-!        PRINT *,'ranges f:',i,MINVAL(f(i::dofs)),MAXVAL(f(i::dofs)),SUM(f(i::dofs))
-!      END DO
 
-      IF( Found ) THEN
-        b(1:nsize) = b(1:nsize) + c * f(1:nsize)
-      END IF
-    ELSE
-      CALL Info(Caller,'Applying control to tune source term amplitude',Level=7)     
+    IF( PreSolve ) THEN
+      CALL Info(Caller,'Applying controlled sources',Level=7)     
+      ALLOCATE(f(nsize,nControl),c(nControl))      
+
+      f = 0.0_dp
+      DO iControl = 1, nControl
+       ! This is inhereted from previous control iterations.
+       str = 'Control Amplitude'
+       IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))
+       c(iControl) = ListGetCReal( Params, str, Found )
+
+       IF(.NOT. Found ) THEN
+         str = 'Initial Control Amplitude'
+         IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))
+         c(iControl) = ListGetCReal( Params, str, Found )          
+        END IF
+      END DO
+           
+      DO iControl = 1, Ncontrol            
+        ! Default name for controlled source term
+        str = TRIM(Var % Name)//' Control'
+        IF(Ncontrol>1) str = TRIM(str)//' '//TRIM(I2S(iControl))
+              
+        ! We need to add the control source here in order to be able to use
+        ! standard means for convergence monitoring. 
+        CALL Info(Caller,'Computing source term for: '//TRIM(str),Level=7)
+        CALL SetNodalSources( CurrentModel,Mesh,str, &
+            dofs, Perm, GotF, f(:,iControl) )
+
+       ! The additional source needs to be nullified for Dirichlet conditions
+       IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
+         WHERE( A % ConstrainedDOF ) f(:,iControl) = 0.0_dp
+       END IF
+
+       IF(InfoActive(10)) THEN
+         DO i=1,dofs
+           PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
+           PRINT *,'ranges f:',i,MINVAL(f(i::dofs,iControl)),&
+               MAXVAL(f(i::dofs,iControl)),SUM(f(i::dofs,iControl))
+         END DO
+       END  IF
+       
+        IF( ABS(c(iControl)) > 1.0e-20 ) THEN
+          b(1:nsize) = b(1:nsize) + c(iControl) * f(1:nsize,iControl)
+        END IF
+      END DO
+    END IF
+
+      
+    IF(.NOT. PreSolve ) THEN
+      CALL Info(Caller,'Dertermining source term amplitude',Level=7)     
+      
       CALL ListPushNameSpace('control:')
       CALL ListAddLogical( Params,'control: Skip Compute Nonlinear Change',.TRUE.)
       CALL ListAddLogical( Params,'control: Skip Advance Nonlinear iter',.TRUE.)
 
-      ALLOCATE(dx(nsize))
-      dx = 0.0_dp
-      CALL SolveSystem(A,ParMatrix,f,dx,Nrm,dofs,Solver)
-      CALL ListPopNamespace()
-
-      
+      ALLOCATE(dx(nsize))      
       UseLoads = ListGetLogical( Params,'Control Use Loads', Found )
-      IF( UseLoads ) THEN
+      IF(UseLoads) THEN        
         ALLOCATE(r0(nsize),dr(nsize))      
-        CALL CalculateLoads( Solver, A, x0, dofs, .TRUE., NodalValues = r0 ) 
-        BulkRhsSave => A % BulkRhs
-        A % BulkRhs => f
-        CALL CalculateLoads( Solver, A, dx, dofs, .TRUE., NodalValues = dr ) 
-        A % BulkRhs => BulkRhsSave
-        y0 => r0
-        dy => dr
-      ELSE
-        y0 => x0
-        dy => dx
       END IF
-      
-      val = ListGetCReal( Params,'Control Target Value',UnfoundFatal=.TRUE.)
-      c = ListGetCReal( Params,'Control Amplitude',Found )
-
-      dof0 = 1
-      IF( dofs > 1) THEN
-        dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
-      END IF
-      
-      ControlNode = ListGetInteger( Params,'Control Node Index',Found )
-
-      IF(.NOT. Found ) THEN
-        BLOCK
-          REAL(KIND=dp) :: Coord(3),Coord0(3),mindist,dist
-          REAL(KIND=dp), POINTER :: RealWork(:,:)
-          
-          RealWork => ListGetConstRealArray( Params,'Control Node Coordinates',Found )           
-          IF( Found ) THEN
-            CALL Info(Caller,'Locating control node coordinates',Level=15)
-            Coord0(1:3) = RealWork(1:3,1)           
-
-            mindist = HUGE( mindist )
-            DO i=1,Mesh % NumberOfNodes
-              IF( Perm(i) == 0 ) CYCLE             
-              Coord(1) = Mesh % Nodes % x(i)
-              Coord(2) = Mesh % Nodes % y(i)
-              Coord(3) = Mesh % Nodes % z(i)
-              
-              dist = SUM((Coord0-Coord)**2)
-              IF( dist < mindist ) THEN
-                mindist = dist
-                ControlNode = i
-              END IF
-            END DO
-            CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
-            CALL ListAddInteger( Params,'Control Node Index',ControlNode )
+        
+      DO iControl = 1, Ncontrol            
+        ! We already know the sources, now compute their affect
+        dx = 0.0_dp
+        CALL SolveSystem(A,ParMatrix,f(:,iControl),dx,Nrm,dofs,Solver)
+        
+        IF( UseLoads ) THEN
+          ! Nodal loads with the base case
+          IF(iControl==1) THEN
+            CALL CalculateLoads( Solver, A, x0, dofs, .TRUE., NodalValues = r0 ) 
           END IF
-        END BLOCK
-      END IF
 
-      ! We use either solution or reaction force for (y0,dy) so that we can
-      ! generalize the control procedures for both. 
-      IF( ControlNode > 0 ) THEN      
-        IF( ControlNode > nsize ) CALL Fatal(Caller,&
-            'Invalid "Control Node Index": '//TRIM(I2S(ControlNode)))
-        i = Perm(ControlNode)
-        j = dofs*(i-1)+dof0
-        dc = (val-y0(j))/dy(j)
-        WRITE(Message,'(A,ES15.6)') 'Scaling control update for control node:',dc      
-      ELSE
-        dc = HUGE(dc)
-        DO i=1,nsize
-          j = dofs*(i-1)+dof0          
-          IF(ABS(dy(j)) < TINY(dy(j))) CYCLE
-          cand = (val-y0(j))/dy(j)
-          IF( ABS(cand) < ABS(dc) ) dc = cand
-        END DO
-        WRITE(Message,'(A,ES15.6)') 'Scaling control update for extrumum value:',dc      
-      END IF
-      CALL Info(Caller,Message,Level=6)
-
-      c = c + dc
-      CALL ListAddConstReal( Params,'Control Amplitude', c )
-     
-      ! Apply control, this always to the solution - not to load
-      x0(1:nsize) = x0(1:nsize) + dc * dx(1:nsize)
-
-      WRITE(Message,'(A,ES15.6)') 'Scaling control applied:',c      
-      CALL Info(Caller,Message,Level=5)
-
-      DEALLOCATE(f,dx)
-      IF(UseLoads) DEALLOCATE(dr,r0)
-    END IF
+          ! We we use loads then compute the effect of the controlled source to the
+          ! reaction force. Hence some hazzle with the temporal pointers.          
+          BulkRhsSave => A % BulkRhs
+          A % BulkRhs => f(:,iControl)
+          CALL CalculateLoads( Solver, A, dx, dofs, .TRUE., NodalValues = dr ) 
+          A % BulkRhs => BulkRhsSave
+          y0 => r0
+          dy => dr
+        ELSE
+          y0 => x0
+          dy => dx
+        END IF
+        
+        str = 'Control Target Value'
+        IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
+        val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
+        
+        dof0 = 1
+        IF( dofs > 1) THEN
+          dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
+        END IF
+        
+        ControlNode = GetControlNode() 
+        
+        ! We use either solution or reaction force for (y0,dy) so that we can
+        ! generalize the control procedures for both. 
+        IF( ControlNode > 0 ) THEN      
+          i = Perm(ControlNode)
+          j = dofs*(i-1)+dof0
+          dc = (val-y0(j))/dy(j)
+          WRITE(Message,'(A,ES15.6)') 'Scaling control update for control node:',dc      
+        ELSE
+          dc = HUGE(dc)
+          DO i=1,nsize
+            j = dofs*(i-1)+dof0          
+            IF(ABS(dy(j)) < TINY(dy(j))) CYCLE
+            cand = (val-y0(j))/dy(j)
+            IF( ABS(cand) < ABS(dc) ) dc = cand
+          END DO
+          WRITE(Message,'(A,ES15.6)') 'Scaling control update for extrumum value:',dc      
+        END IF
+        CALL Info(Caller,Message,Level=6)
+        
+        str = 'Control Amplitude'
+        IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
+        c(iControl) = ListGetCReal( Params,str,Found)
+        
+        c(iControl) = c(iControl) + dc
+        CALL ListAddConstReal( Params, str, c(iControl) )
+        
+        ! Apply control, this always to the solution - not to load
+        x0(1:nsize) = x0(1:nsize) + dc * dx(1:nsize)
+        
+        WRITE(Message,'(A,ES15.6)') 'Scaling control applied:',c(iControl)      
+        CALL Info(Caller,Message,Level=5)
+      END DO
+        
+      CALL ListPopNamespace()
       
+      DEALLOCATE(f,dx,c)
+      IF(UseLoads) DEALLOCATE(dr,r0)      
+    END IF
+
+    CALL Info(Caller,'All done for now',Level=15)
+
+    
+  CONTAINS
+
+
+    FUNCTION GetControlNode() RESULT ( ControlNode ) 
+
+      INTEGER :: ControlNode
+      
+      REAL(KIND=dp) :: Coord(3),Coord0(3),mindist,dist
+      REAL(KIND=dp), POINTER :: RealWork(:,:)
+            
+      str = 'Control Node Index' 
+      IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))                
+      ControlNode = ListGetInteger( Params,str,Found )
+      
+      IF(.NOT. Found ) THEN        
+        Coord0 = 0.0_dp
+        str = 'Control Node Coordinates'
+        RealWork => ListGetConstRealArray( Params,str,Found )           
+        IF(Found) THEN
+          i = iControl
+        ELSE
+          str = TRIM(str)//' '//TRIM(I2S(iControl))        
+          RealWork => ListGetConstRealArray( Params,str,Found )                         
+          i = 1
+        END IF
+
+        IF( Found ) THEN
+          IF(SIZE(RealWork,2)==1) THEN
+            Coord0 = RealWork(:,i)
+          ELSE
+            Coord0 = RealWork(i,:)
+          END IF
+
+          CALL Info(Caller,'Locating control node coordinates',Level=15)
+
+          IF( InfoActive(20) ) THEN
+            PRINT *,'Finding node closest to:',i,Coord0
+          END IF
+          
+          mindist = HUGE( mindist )
+          DO i=1,Mesh % NumberOfNodes
+            IF( Perm(i) == 0 ) CYCLE             
+            Coord(1) = Mesh % Nodes % x(i)
+            Coord(2) = Mesh % Nodes % y(i)
+            Coord(3) = Mesh % Nodes % z(i)
+            
+            dist = SUM((Coord0-Coord)**2)
+            IF( dist < mindist ) THEN
+              mindist = dist
+              ControlNode = i
+            END IF
+          END DO
+          CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
+          
+          str = 'Control Node Index'
+          IF(nControl > 1 ) str = TRIM(str)//' '//TRIM(I2S(iControl))  
+          CALL ListAddInteger( Params, str, ControlNode )
+        END IF
+      END IF
+
+      IF( ControlNode > nsize ) CALL Fatal(Caller,&
+          'Invalid "Control Node Index": '//TRIM(I2S(ControlNode)))
+      
+    END FUNCTION GetControlNode
+
+    
   END SUBROUTINE ControlLinearSystem
 
 
