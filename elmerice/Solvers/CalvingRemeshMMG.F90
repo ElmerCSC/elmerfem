@@ -94,7 +94,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success,&
-       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails
+       SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
+       SolversPaused
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
@@ -1047,10 +1048,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           DEALLOCATE(GatheredMesh % Repartition)
           GatheredMesh % Repartition => NULL()
       END IF
+      SolversPaused = ListGetLogical(Model % Simulation, 'Calving Pause Solvers', Default=.FALSE.)
+      !remove mesh update
+      IF(.NOT. SolversPaused) THEN
+        CALL ResetMeshUpdate(Model, Solver)
+      ELSE ! solvers paused so mesh must have changed since last free surface
+        Mesh % MeshTag = Mesh % MeshTag + 1
+      END IF
+
       ! make sure solvers are unpaused so front advances
       CALL PauseCalvingSolvers(Model, SolverParams, .FALSE.)
-      !remove mesh update
-      CALL ResetMeshUpdate(Model, Solver)
       RETURN
    END IF
 

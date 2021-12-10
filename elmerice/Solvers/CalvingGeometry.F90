@@ -7362,6 +7362,8 @@ CONTAINS
       END IF
     END DO
 
+    CALL ListAddLogical( Model % Simulation, 'Calving Pause Solvers', PauseSolvers )
+
     IF(PauseSolvers) PRINT*, 'Solvers Paused!'
 
   END SUBROUTINE PauseCalvingSolvers
