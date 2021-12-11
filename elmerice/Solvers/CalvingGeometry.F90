@@ -4478,11 +4478,12 @@ CONTAINS
 
    END SUBROUTINE GetCalvingEdgeNodes
 
-   SUBROUTINE MeshVolume(Mesh, Parallel, Volume)
+   SUBROUTINE MeshVolume(Mesh, Parallel, Volume, ElemMask)
 
       TYPE(Mesh_t), POINTER :: Mesh
       LOGICAL :: Parallel
       REAL(kind=dp) :: Volume
+      LOGICAL, OPTIONAL :: ElemMask(:)
       !-----------------------------
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i, j, NBdry, NBulk, n, ierr
@@ -4495,9 +4496,13 @@ CONTAINS
 
       ALLOCATE(Vertices(4,3), Vectors(3,3))
 
+
       ! calculate volume of each bulk tetra. Add these together to get mesh volume
       Volume = 0.0_dp
       DO, i=1, NBulk
+        IF(PRESENT(ElemMask)) THEN
+          IF(.NOT. ElemMask(i)) CYCLE
+        END IF
         Element => Mesh % Elements(i)
         ElementNodes = Element % NodeIndexes
         n = Element % TYPE % NumberOfNodes
@@ -7367,6 +7372,160 @@ CONTAINS
     IF(PauseSolvers) PRINT*, 'Solvers Paused!'
 
   END SUBROUTINE PauseCalvingSolvers
+
+  SUBROUTINE CalvingStatsMMG(Params, Mesh, Mask, ElemMask, FileCreated, MaxBergVolume)
+
+    TYPE(Valuelist_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: Mask(:), ElemMask(:), FileCreated
+    REAL(kind=dp) :: MaxBergVolume
+    !-----------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i, j, k, idx, NBdry, NBulk, NNodes, index, iceberg, node
+    INTEGER, ALLOCATABLE :: ElNodes(:), nodes(:)
+    LOGICAL :: HasNeighbour, NoNewNodes, NewIceBerg, Found
+    LOGICAL, ALLOCATABLE :: FoundNode(:), UsedElem(:), IcebergElem(:), GotNode(:), &
+        NodeCount(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    REAL(kind=dp), ALLOCATABLE :: BergVolumes(:), BergExtents(:)
+    REAL(kind=dp) :: BergVolume, extent(4)
+
+    Filename = ListGetString(Params,"Calving Stats File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
+      Filename = "CalvingStats.txt"
+    END IF
+    rt0 = RealTime()
+
+    NBdry = Mesh % NumberOfBoundaryElements
+    NBulk = Mesh % NumberOfBulkElements
+    NNodes = Mesh % NumberOfNodes
+
+    !limit here of 10 possible mesh 'islands'
+    ALLOCATE(FoundNode(NNodes), NodeCount(NNodes), ElNodes(4), &
+              UsedElem(NBulk), IceBergElem(NBulk), BergVolumes(100), &
+              BergExtents(100 * 4))
+    FoundNode = .FALSE.
+    NodeCount = .NOT. Mask
+    UsedElem = .FALSE. !count of elems used
+    IcebergElem = .FALSE.
+    iceberg=0 ! count of different mesh islands
+    HasNeighbour=.FALSE. ! whether node has neighour
+
+    NoNewNodes = .TRUE.
+    DO WHILE(COUNT(NodeCount) < NNodes)
+      IF(NoNewNodes) THEN
+        NewIceberg = .TRUE.
+        IcebergElem=.FALSE.
+      END IF
+      NoNewNodes = .TRUE.
+      DO i=1, NBulk
+        IF(.NOT. ElemMask(i)) CYCLE
+        IF(UsedElem(i)) CYCLE
+        Element => Mesh % Elements(i)
+        ElNodes = Element % NodeIndexes
+        ! if there are not any matching nodes and its not a new iceberg
+        IF(ALL(.NOT. FoundNode(ElNodes)) .AND. .NOT. NewIceberg) CYCLE
+        NewIceberg = .FALSE.
+        UsedElem(i) = .TRUE.
+        IcebergElem(i) = .TRUE.
+        FoundNode(ElNodes) = .TRUE.
+        NodeCount(ElNodes) = .TRUE.
+        NoNewNodes = .FALSE.
+      END DO
+      IF(COUNT(NodeCount) == NNodes .OR. NoNewNodes) THEN
+        DO i=1, NBulk
+          IF(.NOT. ElemMask(i)) CYCLE
+          IF(UsedElem(i)) CYCLE
+          Element => Mesh % Elements(i)
+          ElNodes = Element % NodeIndexes
+          IF(ANY(.NOT. FoundNode(Elnodes))) CYCLE
+          IcebergElem(i) = .TRUE.
+        END DO
+        iceberg = iceberg + 1
+        CALL MeshVolume(Mesh, .FALSE., BergVolume, IcebergElem)
+        CALL IcebergExtent(Mesh, IcebergElem, Extent)
+
+        IF(SIZE(BergVolumes) < Iceberg) CALL DoubleDPVectorSize(BergVolumes)
+        BergVolumes(iceberg) = BergVolume
+
+        IF(SIZE(BergExtents) < Iceberg*4) CALL DoubleDPVectorSize(BergExtents)
+        BergExtents(iceberg*4-3:iceberg*4) = Extent
+
+        IF(Iceberg > 0) THEN ! not first time
+          PRINT*, 'Iceberg no.', Iceberg, BergVolume, 'extent', extent
+        END IF
+      END IF
+    END DO
+
+    MaxBergVolume = MAXVAL(BergVolumes(1:iceberg))
+
+    ! write to file
+    IF(FileCreated) THEN
+      OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+    ELSE
+        OPEN( 36, FILE=filename, STATUS='UNKNOWN')
+        WRITE(36, '(A)') "Calving Stats Output File"
+    END IF
+
+    !Write out the left and rightmost points
+    WRITE(36, '(A,i0,ES30.21)') 'Time: ',GetTimestep(),GetTime()
+
+    !Write the iceberg count
+    WRITE(36, '(A,i0)') 'Number of Icebergs: ',Iceberg
+
+    DO i=1,iceberg
+
+        WRITE(36, '(A,i0,A,F20.0,A,F12.4,F12.4,F12.4,F12.4)') 'Iceberg ',i, ' Volume ', BergVolumes(i),&
+          ' Extent ', BergExtents(i*4-3:i*4)
+
+    END DO
+
+    CLOSE(36)
+    FileCreated = .TRUE.
+
+  END SUBROUTINE CalvingStatsMMG
+
+  SUBROUTINE IcebergExtent(Mesh, ElemMask, Extent)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: ElemMask(:)
+    REAL(kind=dp) :: Extent(4)
+    !-----------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i, j, NBulk, n
+    INTEGER, ALLOCATABLE :: ElementNodes(:)
+    REAL(kind=dp) :: MinX, MaxX, MinY, MaxY
+
+    NBulk = Mesh % NumberOfBulkElements
+
+    ! calculate volume of each bulk tetra. Add these together to get mesh volume
+    MinX = HUGE(1.0_dp)
+    MinY = HUGE(1.0_dp)
+    MaxX = -HUGE(1.0_dp)
+    MaxY = -HUGE(1.0_dp)
+    DO, i=1, NBulk
+      IF(.NOT. ElemMask(i)) CYCLE
+      Element => Mesh % Elements(i)
+      ElementNodes = Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+
+      ! get elem nodes
+      DO j=1, n
+        MinX = MIN(MinX, Mesh % Nodes % x(ElementNodes(j)))
+        MinY = MIN(MinY, Mesh % Nodes % y(ElementNodes(j)))
+        MaxX = MAX(MaxX, Mesh % Nodes % x(ElementNodes(j)))
+        MaxY = MAX(MaxY, Mesh % Nodes % y(ElementNodes(j)))
+      END DO
+
+    END DO
+
+    Extent(1) = MinX
+    Extent(2) = MaxX
+    Extent(3) = MinY
+    Extent(4) = MaxY
+
+  END SUBROUTINE IcebergExtent
 
 END MODULE CalvingGeometry
 

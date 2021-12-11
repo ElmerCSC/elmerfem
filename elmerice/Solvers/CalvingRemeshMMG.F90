@@ -85,7 +85,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
        Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, &
-       newdist, Quality, PauseVolumeThresh
+       newdist, Quality, PauseVolumeThresh, MaxBergVolume
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:), Ptest_dist(:), Gtest_dist(:), hminarray(:), hausdarray(:)
   REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
@@ -95,14 +95,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
-       SolversPaused, NewIceberg, GotNodes(4)
+       SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
 
-  SAVE :: WorkArray
+  SAVE :: WorkArray, CalvingFileCreated
 
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -827,6 +827,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
+      !output calving stats to file and find maxbergvolume
+      CALL CalvingStatsMMG(SolverParams, NewMeshR, RmNode, RmElem, &
+          CalvingFileCreated, MaxBergVolume)
+
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
@@ -970,7 +974,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         CalveVolume = PreCalveVolume - PostCalveVolume
 
-        PRINT*, 'CalveVolume', CalveVolume
+        PRINT*, 'CalveVolume', CalveVolume, 'MaxBergVolume', MaxBergVolume
 
         CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
         !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
@@ -1024,6 +1028,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    END IF
    CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
 
+   CALL MPI_BCAST(CalvingFileCreated, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
    CALL MPI_BCAST(RSuccess, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
    IF(.NOT. RSuccess) THEN
       CALL ReleaseMesh(GatheredMesh)
@@ -1130,7 +1135,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           PauseVolumeThresh = 0.0_dp
         END IF
 
-        PauseSolvers = CalveVolume > PauseVolumeThresh .AND. RSuccess
+        PauseSolvers = MaxBergVolume > PauseVolumeThresh .AND. RSuccess
     END IF
 
     CALL MPI_BCAST(PauseSolvers, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
