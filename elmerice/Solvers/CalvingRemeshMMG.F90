@@ -93,9 +93,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success,&
+       RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
-       SolversPaused
+       SolversPaused, NewIceberg, GotNodes(4)
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
@@ -839,46 +839,30 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !main icebody
       !limit here of 10 possible mesh 'islands'
       ALLOCATE(FoundNode(10, NNodes), ElNodes(4), &
-              UsedElem(NBulk), NewNodes(NBulk))
+              UsedElem(NBulk))
       FoundNode = .FALSE.! count of nodes found
       UsedElem = .FALSE. !count of elems used
-      NewNodes=.FALSE. !count of new elems in last sweep
       island=0 ! count of different mesh islands
-      HasNeighbour=.FALSE. ! whether node has neighour
+      NoNewNodes=.TRUE. ! whether node has neighour
       DO WHILE(COUNT(FoundNode) < NNodes)
-        ! if last sweep has found no new neighbour nodes then move onto new island
-        IF(.NOT. HasNeighbour) THEN
+        IF(NoNewNodes) THEN
           island = island + 1
-          IF(Island > 10) CALL FATAL(SolverName, 'More than 10 icebergs left after levelset')
-          !find first unfound node
-          Inner: DO i=1, NNodes
-            IF(ANY(FoundNode(:, i))) CYCLE
-            NewNodes(i) = .TRUE.
-            FoundNode(island, i) = .TRUE.
-            EXIT Inner
-          END DO Inner
+          NewIceberg = .TRUE.
         END IF
-        HasNeighbour=.FALSE.
-        nodes=PACK((/ (i,i=1,SIZE(NewNodes)) /), NewNodes .eqv. .TRUE.)
-        NewNodes=.FALSE.
-        DO i=1, Nbulk
-          IF(UsedElem(i)) CYCLE !already used elem
-          DO j=1, SIZE(Nodes)
-            node=Nodes(j)
-            Element => NewMeshR % Elements(i)
-            ElNodes = Element % NodeIndexes
-            IF(.NOT. ANY(ElNodes==node)) CYCLE ! doesn't contain node
-            UsedElem(i) = .TRUE. ! got nodes from elem
-            DO k=1,SIZE(ElNodes)
-              idx = Element % NodeIndexes(k)
-              IF(idx == Node) CYCLE ! this nodes
-              IF(FoundNode(island,idx)) CYCLE ! already got
-              FoundNode(island, idx) = .TRUE.
-              counter = counter + 1
-              HasNeighbour = .TRUE.
-              NewNodes(idx) = .TRUE.
-            END DO
+        NoNewNodes = .TRUE.
+        DO i=1, NBulk
+          IF(UsedElem(i)) CYCLE
+          Element => NewMeshR % Elements(i)
+          ElNodes = Element % NodeIndexes
+          ! if there are not any matching nodes and its not a new iceberg
+          DO j=1, 4
+            GotNodes(j) = ANY(FoundNode(:, ElNodes(j)))
           END DO
+          IF(ALL(.NOT. GotNodes) .AND. .NOT. NewIceberg) CYCLE
+          NewIceberg = .FALSE.
+          UsedElem(i) = .TRUE.
+          FoundNode(island, ElNodes) = .TRUE.
+          NoNewNodes = .FALSE.
         END DO
       END DO
 
