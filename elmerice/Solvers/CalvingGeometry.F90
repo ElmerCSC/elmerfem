@@ -7395,7 +7395,6 @@ CONTAINS
       CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
       Filename = "CalvingStats.txt"
     END IF
-    rt0 = RealTime()
 
     NBdry = Mesh % NumberOfBoundaryElements
     NBulk = Mesh % NumberOfBulkElements
