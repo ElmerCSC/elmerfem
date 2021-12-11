@@ -48,12 +48,13 @@ SUBROUTINE GlacierMeshMetricAniso(Model, nodenumber, y, TargetLength)
        lc_mindist, lc_maxdist, lc_min, lc_max,s,dx,dz
   INTEGER, POINTER :: FrontPerm(:)
   INTEGER :: i,NNodes, NFront
-  LOGICAL :: NewTime,FirstTime=.TRUE.
+  LOGICAL :: NewTime,FirstTime=.TRUE., Debug
   CHARACTER(LEN=MAX_NAME_LEN) :: FrontMaskName="Calving Front Mask"
 
   SAVE :: FirstTime, told, FrontPerm, Mesh, NNodes, nfront, lc_maxdist, lc_mindist,&
-       lc_max, lc_min, dz
+       lc_max, lc_min, dz, newtime
 
+  Debug = .FALSE.
   Timevar => VariableGet( Model % Variables,'Time')
   t = TimeVar % Values(1)
   Solver => Model % Solver
@@ -81,6 +82,7 @@ SUBROUTINE GlacierMeshMetricAniso(Model, nodenumber, y, TargetLength)
     Mesh => Model % Mesh
     NNodes = Mesh % NumberOfNodes
 
+    !mask is the most computationally expense element of this routine
     IF(ASSOCIATED(FrontPerm)) DEALLOCATE(FrontPerm)
     CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
          .FALSE., FrontPerm, nfront, ParallelComm = .FALSE.)
@@ -113,8 +115,6 @@ SUBROUTINE GlacierMeshMetricAniso(Model, nodenumber, y, TargetLength)
   TargetLength(2) = dx
   TargetLength(3) = dz
 
-  PRINT *,'Node ',nodenumber,'TargetLength: ',TargetLength,' dist: ',Dist,' s: ',s
-
-
+  IF(Debug) PRINT *,'Node ',nodenumber,'TargetLength: ',TargetLength,' dist: ',Dist,' s: ',s
 
 END SUBROUTINE GlacierMeshMetricAniso
