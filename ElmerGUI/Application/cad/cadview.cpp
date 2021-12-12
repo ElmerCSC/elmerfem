@@ -74,7 +74,6 @@
 #include <BRepAdaptor_Curve2d.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
-#include <BRepMesh.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
