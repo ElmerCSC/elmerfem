@@ -539,7 +539,11 @@ END FUNCTION isComponentName
     Mesh => CurrentModel % Mesh
 
     Parallel = ( ParEnv % PEs > 1 )
-    IF( Mesh % SingleMesh ) Parallel = .FALSE.
+    IF( Parallel ) THEN
+      IF( Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+      END IF
+    END IF
     
     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
@@ -707,8 +711,12 @@ END FUNCTION isComponentName
   Comp % ElArea = 0._dp
 
   Parallel = ( ParEnv % PEs > 1 )
-  IF( Mesh % SingleMesh ) Parallel = .FALSE.
-  
+  IF( Parallel ) THEN
+    IF( Mesh % SingleMesh ) THEN
+      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+    END IF
+  END IF
+    
   IF (CoordinateSystemDimension() == 2) THEN
     DO t=1,GetNOFActive()
       Element => GetActiveElement(t)

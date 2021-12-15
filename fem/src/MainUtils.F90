@@ -71,7 +71,9 @@ CONTAINS
     Params => ListGetSolverParams(Solver)
     str = ListGetString( Params,'Linear System Solver', Found )
 
-    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Solver % Mesh % SingleMesh ) 
+    Parallel = ( ParEnv % PEs > 1 )
+    IF(Solver % Mesh % SingleMesh ) Parallel = &
+        ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found ) 
 
     
     IF ( str == 'direct' ) THEN
@@ -5142,7 +5144,9 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
+     Parallel = ( ParEnv % PEs > 1 )
+     IF( Solver % Mesh % SingleMesh ) Parallel = &
+         ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.

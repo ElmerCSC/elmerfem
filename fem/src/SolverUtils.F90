@@ -8346,10 +8346,7 @@ CONTAINS
     IF( n == 0 ) THEN
       CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
-    END IF
-    
-
-
+    END IF    
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -10095,8 +10092,10 @@ END FUNCTION SearchNodeL
       x => Solver % Variable % Values
     END IF
     
-    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
-
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF(Solver % Mesh % SingleMesh ) Parallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Stat )
+    END IF
     
     NormDim = ListGetInteger(Solver % Values,'Nonlinear System Norm Degree',Stat)
     IF(.NOT. Stat) NormDim = 2
@@ -10448,8 +10447,9 @@ END FUNCTION SearchNodeL
     SolverParams => Solver % Values
     RelativeP = .FALSE.
     SingleMesh = Solver % Mesh % SingleMesh
-    
-    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. SingleMesh ) 
+
+    Parallel = ( ParEnv % PEs > 1 ) 
+    IF(SingleMesh) Parallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Stat )
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -13300,7 +13300,9 @@ END FUNCTION SearchNodeL
     LOGICAL :: UseVar, Parallel
 
 
-    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh )
+    Parallel = ( ParEnv % PEs > 1 )
+
+    IF(Solver % Mesh % SingleMesh ) Parallel =  ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
 
     UseVar = .FALSE.
     IF(PRESENT( NodalLoads ) ) THEN

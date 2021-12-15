@@ -99,7 +99,7 @@ MODULE ComponentUtils
 
      IsParallel = ( ParEnv % PEs > 1 )
      IF( IsParallel ) THEN
-       IF( Mesh % SingleMesh ) isParallel = .FALSE.
+       IF( Mesh % SingleMesh ) IsParallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found )
      END IF
 
      

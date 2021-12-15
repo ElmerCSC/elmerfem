@@ -141,7 +141,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     Parallel = ( ParEnv % PEs > 1 )
     IF( Parallel ) THEN
-      IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+      IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
     END IF
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
@@ -1203,7 +1203,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     Parallel = (ParEnv % PEs > 1 )
     IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
     END IF        
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
@@ -2319,7 +2319,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! -----------------------------------------------
   Parallel = ( ParEnv % PEs > 1 )
   IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( SolverParams,'Enforce Parallel',Found )
+    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found )
   END IF
     
   ALLOCATE(crt(circuit_tot_n), crtt(circuit_tot_n))
