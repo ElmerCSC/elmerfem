@@ -27,8 +27,8 @@ RUN apt update -o Acquire::CompressionTypes::Order::=gz && apt upgrade -y && apt
         curl
 
 # Clone the ElmerIce source code and compile Elmer/Ice
-COPY . elmer
-RUN      mkdir elmer/builddir \
+RUN git clone git://www.github.com/ElmerCSC/elmerfem elmer \
+        && mkdir elmer/builddir \
 	&& cd elmer/builddir \
 	&& cmake /home/elmer \
 		-DCMAKE_INSTALL_PREFIX=/usr/local/Elmer-devel \
