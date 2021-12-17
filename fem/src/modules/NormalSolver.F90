@@ -268,8 +268,13 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
       END IF            
     END IF
       
-    
   END BLOCK
+
+
+  IF( ListGetLogical(SolverParams,'Enforce Symmetry') ) THEN 
+    CALL EnforceSymmetry()    
+  END IF
+
   
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
@@ -367,6 +372,58 @@ CONTAINS
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE EnforceSymmetry()
+!------------------------------------------------------------------------------       
+    LOGICAL :: Found    
+    INTEGER :: elem,t,i,j,n,nd,m
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t), SAVE :: Nodes    
+
+    CALL Info(Caller,'Enforcing symmetry of normal field',Level=6)
+
+    m = 0
+    DO elem = 1,Solver % NumberOfActiveElements
+      ! Element information
+      ! ---------------------
+      Element => GetActiveElement(elem)
+      CALL GetElementNodes( Nodes )
+      nd = GetElementNOFDOFs()
+      n  = GetElementNOFNodes()
+
+      Found = .FALSE.
+      DO i=1,n
+        IF( ABS(Nodes % x(i)) < 1.0d-8) THEN
+          Found = .TRUE.
+          EXIT
+        END IF
+      END DO
+      
+      IF( Found ) THEN
+        j = 3-i
+
+        !PRINT *,'Indeces:',i,j,Element % NodeIndexes
+        j = Element % NodeIndexes(j)
+        i = Element % NodeIndexes(i)
+        
+        j = NrmSol % Perm(j)
+        i = NrmSol % Perm(i)
+
+        DO k=1,dim
+          NrmSol % Values(Dofs*(i-1)+k) = NrmSOl % Values(Dofs*(j-1)+k)
+        END DO
+        m = m + 1
+      END IF
+    END DO
+
+    CALL Info(Caller,'Enforced axial symmetry in nodes: '//TRIM(I2S(m)),Level=5)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE EnforceSymmetry
+!------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE NormalSolver
 !------------------------------------------------------------------------------
