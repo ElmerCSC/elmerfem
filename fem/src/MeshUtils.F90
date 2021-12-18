@@ -588,8 +588,8 @@ CONTAINS
    LOGICAL :: CheckForHalo
    LOGICAL, POINTER :: HaloNode(:)
    TYPE(ValueList_t), POINTER :: BCList
-
    LOGICAL :: DoneThisAlready = .FALSE.
+   CHARACTER(*), PARAMETER :: Caller = 'CreateDiscontMesh'
 
    IF(.NOT.PRESENT(DoAlways)) THEN
      IF (DoneThisAlready) RETURN
@@ -619,10 +619,10 @@ CONTAINS
    END DO
    IF(ActiveBCs == 0 ) RETURN
    
-   CALL Info('CreateDiscontMesh','Creating discontinuous boundaries')
+   CALL Info(Caller,'Creating discontinuous boundaries')
 
    IF( ActiveBCs > 1 ) THEN
-     CALL Warn('CreateDiscontMesh','Be careful when using more than one > Discontinuous Boundary < !')
+     CALL Warn(Caller,'Be careful when using more than one > Discontinuous Boundary < !')
    END IF
 
    Parallel = ( ParEnv % PEs > 1 )
@@ -693,7 +693,7 @@ CONTAINS
    END DO
    
    IF( NoMissingElems > 0 ) THEN
-     CALL Warn('CreateDiscontMesh','Missing '//TRIM(I2S(NoMissingElems))// &
+     CALL Warn(Caller,'Missing '//TRIM(I2S(NoMissingElems))// &
      ' parent elements in partition '//TRIM(I2S(ParEnv % MyPe))) 
    END IF
 
@@ -701,9 +701,9 @@ CONTAINS
    ! associated to them. 
    NoDisContElems = COUNT( DiscontElem )
    NoDisContNodes = COUNT( DisContNode ) 
-   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
+   CALL Info(Caller,'Number of discontinuous boundary elements: '&
        //TRIM(I2S(NoDisContElems)),Level=7)
-   CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
+   CALL Info(Caller,'Number of candicate nodes: '&
        //TRIM(I2S(NoDisContNodes)),Level=7)
 
    ! By default all nodes that are associated to elements immediately at the discontinuous 
@@ -720,7 +720,7 @@ CONTAINS
      IF(.NOT. Found ) GreedyBC = .TRUE.     
      
      IF( .NOT. ( GreedyBC .AND. GreedyBulk ) ) THEN
-       CALL Info('CreateDiscontMesh','Applying non-greedy strategies for Discontinuous mesh',Level=12)
+       CALL Info(Caller,'Applying non-greedy strategies for Discontinuous mesh',Level=12)
 
        DO t = 1,NoBulkElems+NoBoundElems
          Element => Mesh % Elements(t)
@@ -749,30 +749,30 @@ CONTAINS
      END IF
 
      IF( ConflictElems > 0 ) THEN
-       CALL Info('CreateDiscontMesh','Conflicting discontinuity in elements: '&
+       CALL Info(Caller,'Conflicting discontinuity in elements: '&
            //TRIM(I2S(ConflictElems)))
      END IF
 
      IF( NoDiscontNodes < n ) THEN
-       CALL Info('CreateDiscontMesh','Number of local discontinuous nodes: '&
+       CALL Info(Caller,'Number of local discontinuous nodes: '&
            //TRIM(I2S(NoDisContNodes)), Level=12)
      ELSE
-       CALL Info('CreateDiscontMesh','All candidate nodes used',Level=12)
+       CALL Info(Caller,'All candidate nodes used',Level=12)
      END IF
      
      IF( NoDiscontNodes == 0 ) THEN
        IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
-         CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
+         CALL Info(Caller,'You might want to try the Greedy bulk strategy',Level=3)
        END IF
      END IF
    END IF
    
    i = ParallelReduction( NoDiscontNodes ) 
-   CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '&
+   CALL Info(Caller,'Number of discontinuous nodes: '&
        //TRIM(I2S(i)),Level=7)
 
    IF( i == 0 ) THEN
-     CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
+     CALL Warn(Caller,'Nothing to create, exiting...')
      IF( CheckForHalo ) DEALLOCATE( HaloNode ) 
      DEALLOCATE( DiscontNode, DiscontElem, ParentUsed )
      RETURN
@@ -817,10 +817,10 @@ CONTAINS
    ! boundary. Note that this currently only works currently in serial!
    IF(.NOT. UseTargetBodies ) THEN
      IF( ParEnv % PEs > 1 ) THEN
-       CALL Fatal('CreateDiscontMesh','Please give > Discontinuous Target Bodies < on the BC!')
+       CALL Fatal(Caller,'Please give > Discontinuous Target Bodies < on the BC!')
      END IF
      
-     CALL Info('CreateDiscontMesh','Trying to find a dominating parent body',Level=12)
+     CALL Info(Caller,'Trying to find a dominating parent body',Level=12)
 
      CandA = -1
      CandB = -1
@@ -829,10 +829,10 @@ CONTAINS
        Element => Mesh % Elements(NoBulkElems + t)
 
        IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-         CALL Fatal('CreateDiscontMesh','Alternative strategy requires all parent elements!')
+         CALL Fatal(Caller,'Alternative strategy requires all parent elements!')
        END IF
        IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
-         CALL Fatal('CreateDiscontMesh','Alternative strategy requires all parent elements!')
+         CALL Fatal(Caller,'Alternative strategy requires all parent elements!')
        END IF
 
        LeftBody = Element % BoundaryInfo % Left % BodyId         
@@ -860,13 +860,13 @@ CONTAINS
      TargetBody(1) = MAX( CandA, CandB )
 
      IF( TargetBody(1) > 0 ) THEN
-       CALL Info('CreateDiscontMesh',&
+       CALL Info(Caller,&
            'There seems to be a consistent discontinuous body: '&
            //TRIM(I2S(TargetBody(1))),Level=8)
        UseConsistantBody = .TRUE.
        TargetBodies => TargetBody
      ELSE
-       CALL Fatal('CreateDiscontMesh',&
+       CALL Fatal(Caller,&
            'No simple rules available for determining discontinuous body')
      END IF
    END IF
@@ -900,9 +900,9 @@ CONTAINS
      END IF
    END DO
 
-   CALL Info('CreateDiscontMesh','Number of bulk elements moving: '&
+   CALL Info(Caller,'Number of bulk elements moving: '&
        //TRIM(I2S(NoMovingElems)), Level=8)
-   CALL Info('CreateDiscontMesh','Number of bulk elements staying: '&
+   CALL Info(Caller,'Number of bulk elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8)
 
    ! Set discontinuous nodes only if there is a real moving node associted with it
@@ -987,7 +987,7 @@ CONTAINS
        Moving = ANY( TargetBodies == LeftElem % BodyId )
        Moving2 = ANY( TargetBodies == RightElem % BodyId ) 
        IF( Moving .NEQV. Moving2) THEN
-         CALL Warn('CreateDiscontMesh','Conflicting moving information')
+         CALL Warn(Caller,'Conflicting moving information')
          !PRINT *,'Moving:',t,Element % BoundaryInfo % Constraint, &
          !    Moving,Moving2,LeftElem % BodyId, RightElem % BodyId
          Set = .FALSE.
@@ -1002,7 +1002,7 @@ CONTAINS
      ELSE IF( ASSOCIATED( RightElem ) ) THEN
        Moving = ANY( RightElem % NodeIndexes > NoNodes )
      ELSE
-       CALL Fatal('CreateDiscontMesh','Boundary BC has no parants!')
+       CALL Fatal(Caller,'Boundary BC has no parants!')
      END IF
 
      ! Otherwise we follow the majority rule
@@ -1032,15 +1032,15 @@ CONTAINS
      END IF
    END DO
 
-   CALL Info('CreateDiscontMesh','Number of related elements moving: '&
+   CALL Info(Caller,'Number of related elements moving: '&
        //TRIM(I2S(NoMovingElems)), Level=8 )
-   CALL Info('CreateDiscontMesh','Number of related elements staying: '&
+   CALL Info(Caller,'Number of related elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8 )
    IF( NoUndecided == 0 ) THEN
-     CALL Info('CreateDiscontMesh','All elements marked either moving or staying')
+     CALL Info(Caller,'All elements marked either moving or staying')
    ELSE
-     CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
-     CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
+     CALL Info(Caller,'Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
+     CALL Warn(Caller,'Could not decide what to do with some boundary elements!')
    END IF
 
 
@@ -1073,7 +1073,7 @@ CONTAINS
    Mesh % NumberOfNodes = NoNodes + NoDisContNodes   
    CALL EnlargeCoordinates( Mesh ) 
 
-   CALL Info('CreateDiscontMesh','Setting new coordinate positions',Level=12)
+   CALL Info(Caller,'Setting new coordinate positions',Level=12)
    DO i=1, NoNodes
      j = DisContPerm(i)
      IF( j > 0 ) THEN
@@ -1089,7 +1089,7 @@ CONTAINS
    ! is saved. The periodic and mortar conditions now need to perform
    ! searches. On the other hand the meshes may now freely move.,
    IF( DoubleBC ) THEN
-     CALL Info('CreateDiscontMesh','Creating secondary boundary for Discontinuous gap',Level=10)
+     CALL Info(Caller,'Creating secondary boundary for Discontinuous gap',Level=10)
 
      CALL EnlargeBoundaryElements( Mesh, NoDiscontElems ) 
 
@@ -1101,7 +1101,7 @@ CONTAINS
 
        Element => Mesh % Elements(NoBulkElems + t)
        IF(.NOT. ASSOCIATED(Element) ) THEN
-         CALL Fatal('CreateDiscontMesh','Element '//TRIM(I2S(NoBulkElems+t))//' not associated!')
+         CALL Fatal(Caller,'Element '//TRIM(I2S(NoBulkElems+t))//' not associated!')
        END IF
        Indexes => Element % NodeIndexes
 
@@ -1124,7 +1124,7 @@ CONTAINS
          END IF
        END DO
        IF( .NOT. Found .OR. DisContTarget == 0 ) THEN
-         CALL Fatal('CreateDiscontMesh','Nonzero target boundary must be given for all, if any bc!')
+         CALL Fatal(Caller,'Nonzero target boundary must be given for all, if any bc!')
        END IF
 
        RightElem => Element % BoundaryInfo % Right
@@ -1135,7 +1135,7 @@ CONTAINS
 
        OtherElem => Mesh % Elements( j )
        IF(.NOT. ASSOCIATED(OtherElem) ) THEN
-         CALL Fatal('CreateDiscontMesh','Other elem '//TRIM(I2S(j))//' not associated!')
+         CALL Fatal(Caller,'Other elem '//TRIM(I2S(j))//' not associated!')
        END IF
 
        OtherElem = Element 
@@ -1167,11 +1167,11 @@ CONTAINS
        OtherElem % BoundaryInfo % Constraint = DisContTarget
      END DO
 
-     CALL Info('CreateDiscontMesh','Number of original bulk elements: '&
+     CALL Info(Caller,'Number of original bulk elements: '&
          //TRIM(I2S(Mesh % NumberOfBulkElements)),Level=10)
-     CALL Info('CreateDiscontMesh','Number of original boundary elements: '&
+     CALL Info(Caller,'Number of original boundary elements: '&
          //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=10)
-     CALL Info('CreateDiscontMesh','Number of additional boundary elements: '&
+     CALL Info(Caller,'Number of additional boundary elements: '&
          //TRIM(I2S(NoDisContElems)),Level=10)
 
      Mesh % DiscontMesh = .FALSE.
@@ -1187,7 +1187,7 @@ CONTAINS
    CALL EnlargeParallelInfo(Mesh, DiscontPerm )
    IF( ParEnv % PEs > 1 ) THEN
      m = COUNT( Mesh % ParallelInfo % GlobalDofs == 0) 
-     IF( m > 0 ) CALL Warn('CreateDiscontMesh','There are nodes with zero global dof index: '//TRIM(I2S(m)))
+     IF( m > 0 ) CALL Warn(Caller,'There are nodes with zero global dof index: '//TRIM(I2S(m)))
    END IF
 
    IF( DoubleBC .AND. NoDiscontNodes > 0 ) DEALLOCATE( DisContPerm )
@@ -2164,7 +2164,7 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
-   CHARACTER(LEN=MAX_NAME_LEN) :: Caller='LoadMesh'
+   CHARACTER(*), PARAMETER :: Caller='LoadMesh'
    TYPE(ValueList_t), POINTER :: VList
 
    Mesh => Null()
@@ -2649,7 +2649,7 @@ CONTAINS
    LOGICAL :: Parallel
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
    LOGICAL :: Found
-   CHARACTER(LEN=MAX_NAME_LEN) :: Caller='PrepareMesh'
+   CHARACTER(*),PARAMETER :: Caller='PrepareMesh'
 
       
    IF( Mesh % MaxDim == 0) THEN
@@ -3794,6 +3794,7 @@ CONTAINS
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Normal(3), Normal1(3), Normal2(3), Dot1Min, Dot2Min, Alpha
     LOGICAL :: ConstantNormals
+    CHARACTER(*), PARAMETER :: Caller = 'CheckInterfaceMeshAngle'
 
     ! Currently check of the normal direction is not enforced since at this stage 
     ! CurrentModel % Nodes may not exist!
@@ -3843,25 +3844,25 @@ CONTAINS
     ConstantNormals = ( 1 - Dot1Min < 1.0d-6 ) .AND. ( 1 - Dot2Min < 1.0d-6 )     
     IF( ConstantNormals ) THEN
       WRITE(Message,'(A,3ES12.3)') 'Master normal: ',Normal1
-      CALL Info('CheckInterfaceMeshAngle',Message,Level=8)    
+      CALL Info(Caller,Message,Level=8)    
       
       WRITE(Message,'(A,3ES12.3)') 'Initial Target normal: ',Normal2
-      CALL Info('CheckInterfaceMeshAngle',Message,Level=8)    
+      CALL Info(Caller,Message,Level=8)    
             
       ! The full angle between the two normals
       Alpha = ACOS( SUM( Normal1 * Normal2 ) ) * 180.0_dp / PI
       WRITE(Message,'(A,ES12.3)') &
           'Suggested angle between two normals in degs (+/- 180): ',Alpha 
-      CALL Info('CheckInterfaceMeshAngle',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
     ELSE
-      CALL Warn('CheckInterfaceMeshAngle','Could not suggest rotation angle')
+      CALL Warn(Caller,'Could not suggest rotation angle')
     END IF
 
 
     GotAngles = .FALSE.
     Angles = 0.0_dp
     IF( .NOT. ConstantNormals ) THEN
-      CALL Warn('CheckInterfaceMeshAngle','Normals are not constant, cannot test for rotation!')
+      CALL Warn(Caller,'Normals are not constant, cannot test for rotation!')
     ELSE IF( Alpha > EPSILON( Alpha ) ) THEN
       ! Rotation should be performed 
       DO i=1,3
@@ -3869,13 +3870,13 @@ CONTAINS
           GotAngles = .TRUE.            
           WRITE(Message,'(A,I0,A,ES12.3)') &
               'Rotation around axis ',i,' in degs ',Alpha 
-          CALL Info('CheckInterfaceMeshAngle',Message,Level=8)
+          CALL Info(Caller,Message,Level=8)
           Angles(i) = Alpha
           EXIT
         END IF
       END DO
       IF(.NOT. GotAngles ) THEN
-        CALL Warn('CheckInterfaceMeshAngle','could not define rotation axis, improve algorithm!')
+        CALL Warn(Caller,'could not define rotation axis, improve algorithm!')
       END IF
     END IF
 
@@ -4410,12 +4411,13 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp) :: Normal(3)
     LOGICAL :: Parallel
-    
-    CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
+    CHARACTER(*), PARAMETER :: Caller = 'CreateInterfaceMeshes'
+  
+    CALL Info(Caller,'Making a list of elements at interface',Level=9)
 
    
     IF ( This <= 0 .OR. Trgt <= 0 ) THEN
-      CALL Fatal('CreateInterfaceMeshes','Invalid target boundaries')
+      CALL Fatal(Caller,'Invalid target boundaries')
     END IF
 
     ! Interface meshes consist of boundary elements only    
@@ -4424,7 +4426,7 @@ CONTAINS
     ! We need direction of initial normal if we have a "normal projector"
     TagNormalFlip = ListGetLogical( Model % BCs(This) % Values,'Normal Projector',Found )
     IF( TagNormalFlip ) THEN
-      CALL Info('CreateInterfaceMeshes','Storing initial information on normal directions',Level=12)
+      CALL Info(Caller,'Storing initial information on normal directions',Level=12)
       n = Mesh % MaxElementNodes
       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
     END IF
@@ -4434,7 +4436,7 @@ CONTAINS
     IF( Mesh % NumberOfFaces > 0 .OR. Mesh % NumberOfEdges > 0 ) THEN
       SplitQuadratic = .FALSE.
     END IF
-    IF( SplitQuadratic ) CALL Info('CreateInterfaceMeshes',&
+    IF( SplitQuadratic ) CALL Info(Caller,&
         'Quadratic elements will be split',Level=7)
 
 
@@ -4472,7 +4474,7 @@ CONTAINS
     CheckForHalo = NarrowHalo .OR. NoHalo
 
     IF( CheckForHalo ) THEN
-      CALL Info('CreateInterfaceMeshes','Checking for halo elements',Level=15)
+      CALL Info(Caller,'Checking for halo elements',Level=15)
       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
       HaloCount = 0
       ActiveNode = .FALSE.
@@ -4501,11 +4503,11 @@ CONTAINS
 
       ! No halo element found on the boundary so no need to check them later
       IF( HaloCount == 0 ) THEN
-        CALL Info('CreateInterfaceMeshes','Found no halo elements to eliminate',Level=15)
+        CALL Info(Caller,'Found no halo elements to eliminate',Level=15)
         DEALLOCATE( ActiveNode ) 
         CheckForHalo = .FALSE.
       ELSE
-        CALL Info('CreateInterfaceMeshes','Number of halo elements to eliminate: '&
+        CALL Info(Caller,'Number of halo elements to eliminate: '&
             //TRIM(I2S(HaloCount)),Level=12)
       END IF
     END IF
@@ -4570,13 +4572,13 @@ CONTAINS
     END DO
 
     IF( CheckForHalo ) THEN
-      CALL Info('CreateInterfaceMeshes','Number of halo elements eliminated: '&
+      CALL Info(Caller,'Number of halo elements eliminated: '&
           //TRIM(I2S(HaloCount)),Level=12)
     END IF
 
     IF ( n1 <= 0 .OR. n2 <= 0 ) THEN
       ! This is too conservative in parallel
-      ! CALL Warn('CreateInterfaceMeshes','There are no active boundaries!')
+      ! CALL Warn(Caller,'There are no active boundaries!')
       Success = .FALSE.
       RETURN
     END IF
@@ -4589,7 +4591,7 @@ CONTAINS
     BMesh2 % Parent => Mesh
 
     WRITE(Message,'(A,I0,A,I0)') 'Number of interface elements: ',n1,', ',n2
-    CALL Info('CreateInterfaceMeshes',Message,Level=9)    
+    CALL Info(Caller,Message,Level=9)    
     
     CALL AllocateVector( BMesh1 % Elements,n1 )
     CALL AllocateVector( BMesh2 % Elements,n2 )
@@ -4853,12 +4855,12 @@ CONTAINS
     ! As there were some active boundary elements this condition should 
     ! really never be possible   
     IF (BMesh1 % NumberOfNodes==0 .OR. BMesh2 % NumberOfNOdes==0) THEN
-      CALL Fatal('CreateInterfaceMeshes','No active nodes on periodic boundary!')
+      CALL Fatal(Caller,'No active nodes on periodic boundary!')
     END IF
 
     WRITE(Message,'(A,I0,A,I0)') 'Number of interface nodes: ',&
         BMesh1 % NumberOfNodes, ', ',BMesh2 % NumberOfNOdes
-    CALL Info('CreateInterfaceMeshes',Message,Level=9)    
+    CALL Info(Caller,Message,Level=9)    
     
     ALLOCATE( BMesh1 % Nodes )
     CALL AllocateVector( BMesh1 % Nodes % x, BMesh1 % NumberOfNodes ) 
@@ -5952,7 +5954,7 @@ CONTAINS
       LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: Caller='NormalProjectorWeak3D'
+      CHARACTER(*), PARAMETER :: Caller='NormalProjectorWeak3D'
 
       CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
@@ -13136,7 +13138,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
     INTEGER :: n
-    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="IntegralProjector"
+    CHARACTER(*), PARAMETER :: Caller="IntegralProjector"
 
     
     BC => Model % BCs(BCInd) % Values
@@ -19462,7 +19464,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
-    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="DetectExtrudedStructure"
+    CHARACTER(*), PARAMETER :: Caller="DetectExtrudedStructure"
    
     CALL Info(Caller,'Determining extruded structure',Level=6)
     at0 = CPUTime()
@@ -20113,7 +20115,7 @@ CONTAINS
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName
     INTEGER :: TestCounter(3),ElementIndex(2)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="DetectExtrudedElements"
+    CHARACTER(*),PARAMETER :: Caller="DetectExtrudedElements"
          
     CALL Info(Caller,'Determining extruded element structure',Level=6)
     at0 = CPUTime()
@@ -21170,7 +21172,7 @@ CONTAINS
     REAL(KIND=dp) :: BoundingBox(6)
     INTEGER, ALLOCATABLE :: CellCount(:,:,:)
     LOGICAL, ALLOCATABLE :: NodeMask(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="ClusterElementsUniform"
+    CHARACTER(*),PARAMETER :: Caller="ClusterElementsUniform"
 
     CALL Info(Caller,'Clustering elements uniformly in bounding box',Level=6)
 
@@ -21945,6 +21947,9 @@ CONTAINS
     Mesh % MaxElementDOFs = ne
     Mesh % MeshDim = 1
 
+    CALL SetMeshMaxDOFs(Mesh)
+
+    
     WRITE(Message,'(A,I0)') 'Number of elements created: ',NoElements
     CALL Info('CreateLineMesh',Message)
 

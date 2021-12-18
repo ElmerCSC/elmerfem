@@ -165,7 +165,7 @@ CONTAINS
                   
          IF( GotDgMap ) THEN
            IF( SIZE( DgMap ) /= Model % NumberOfBodies ) THEN
-             CALL Fatal('InitialPermutation','Invalid size of > Dg Reduced Basis Mapping <')
+             CALL Fatal(Caller,'Invalid size of > Dg Reduced Basis Mapping <')
            END IF
            MaxGroup = MAXVAL( DgMap )
          ELSE IF( GotMaster ) THEN
@@ -195,7 +195,7 @@ CONTAINS
            
            k1 = k
 
-           CALL Info('InitialPermutation',&
+           CALL Info(Caller,&
                'Group '//TRIM(I2S(group0))//' starts from index '//TRIM(I2S(k1)),Level=10)
            
            DO t=1,Mesh % NumberOfBulkElements
@@ -542,7 +542,7 @@ CONTAINS
          END DO
 
          Solver % PeriodicFlipActive = ( n > 0 )
-         CALL Info('InitialPermutation','Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+         CALL Info(Caller,'Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
        END IF
      END IF
     
