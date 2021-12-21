@@ -5495,15 +5495,25 @@ RETURN
       IF( .NOT. Particles % DtConstant ) THEN
         DtVar => ParticleVariableGet( Particles,'particle dt')
         IF(.NOT. ASSOCIATED( DtVar ) ) THEN
-          CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
+          CALL Fatal('ParticlePathIntegral','Variable timestep, > particle dt < should exist!')
         END IF
       END IF
       
       TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
       TimeInteg = ASSOCIATED( TimeIntegVar )
+      IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+          'Particle Time Integral Source') ) THEN
+        CALL Fatal('ParticlePathIntegral',&
+            'Path integral requires body force: "Particle Time Integral Source"')
+      END IF
 
       DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
       DistInteg = ASSOCIATED( DistIntegVar )
+      IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+          'Particle Distance Integral Source') ) THEN
+        CALL Fatal('ParticlePathIntegral',&
+            'Path integral requires body force: "Particle Distance Integral Source"')
+      END IF
     END IF
 
     ! Nothing to integrate over
