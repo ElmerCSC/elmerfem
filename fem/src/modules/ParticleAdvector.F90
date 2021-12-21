@@ -119,9 +119,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( VisitedTimes == 1 ) THEN
-    IF( GetLogical( Params,'Particle Time',Found) ) THEN
-      CALL ParticleVariableCreate( Particles,'particle time')
-    END IF 
+    CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
   ELSE	 
     PtimeVar => ParticleVariableGet( Particles, 'particle time' )

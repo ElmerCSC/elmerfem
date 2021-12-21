@@ -5471,6 +5471,28 @@ RETURN
     IF(.NOT. Visited ) THEN
       Visited = .TRUE.
 
+      TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
+      TimeInteg = ASSOCIATED( TimeIntegVar )
+      IF( TimeInteg ) THEN
+        IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+            'Particle Time Integral Source') ) THEN
+          CALL Fatal('ParticlePathIntegral',&
+              'Path integral requires body force: "Particle Time Integral Source"')
+        END IF
+      END IF
+        
+      DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
+      DistInteg = ASSOCIATED( DistIntegVar )
+      IF( DistInteg ) THEN
+        IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+            'Particle Distance Integral Source') ) THEN
+          CALL Fatal('ParticlePathIntegral',&
+              'Path integral requires body force: "Particle Distance Integral Source"')
+        END IF
+      END IF
+
+      IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
+      
       Params => ListGetSolverParams()
       Mesh => CurrentModel % Solver % Mesh
       dim = Particles % dim
@@ -5499,23 +5521,8 @@ RETURN
         END IF
       END IF
       
-      TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
-      TimeInteg = ASSOCIATED( TimeIntegVar )
-      IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
-          'Particle Time Integral Source') ) THEN
-        CALL Fatal('ParticlePathIntegral',&
-            'Path integral requires body force: "Particle Time Integral Source"')
-      END IF
-
-      DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
-      DistInteg = ASSOCIATED( DistIntegVar )
-      IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
-          'Particle Distance Integral Source') ) THEN
-        CALL Fatal('ParticlePathIntegral',&
-            'Path integral requires body force: "Particle Distance Integral Source"')
-      END IF
     END IF
-
+      
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 

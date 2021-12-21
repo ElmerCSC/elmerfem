@@ -106,7 +106,6 @@ Solver 2
 
 ! Show some info in the end
   Particle Info = Logical True
-  Particle Time = Logical True
 
 ! The field variables being advected
   Variable 1 = String "Pressure"
