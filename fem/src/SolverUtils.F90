@@ -17870,7 +17870,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
     REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
-    LOGICAL :: Stat, IsHarmonic, IsTransient
+    LOGICAL :: Stat, IsHarmonic, IsTransient, IsEigen
     INTEGER :: dim,mat_id,tcount
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
     LOGICAL, ALLOCATABLE :: NodeDone(:)
@@ -17940,6 +17940,9 @@ CONTAINS
     ! Here we assume harmonic coupling if there are more then 3 structure dofs
     dim = 3
     IsHarmonic = .FALSE.
+    IsEigen = .FALSE.
+    IsTransient = .FALSE.
+    
     IF( IsPlate ) THEN
       IF( sdofs == 6 ) THEN
         IsHarmonic = .TRUE.
@@ -17964,7 +17967,6 @@ CONTAINS
     ! The elasticity solver defines whether the system is real or harmonic
     IF( IsHarmonic ) THEN
       CALL Info(Caller,'Assuming harmonic coupling matrix',Level=10)
-      IsTransient = .FALSE.
     ELSE
       CALL Info(Caller,'Assuming real valued coupling matrix',Level=10)
       IsTransient = ( ListGetString( CurrentModel % Simulation,&
@@ -17972,7 +17974,12 @@ CONTAINS
       IF( IsTransient ) THEN
         CALL Info(Caller,'Assuming transient coupling matrix',Level=10)
       ELSE
-        CALL Info(Caller,'Assuming steady-state coupling matrix',Level=10)       
+        IsEigen = ListGetLogicalAnySolver( CurrentModel,'Eigen Analysis')
+        IF( IsEigen ) THEN
+          CALL Info(Caller,'Assuming eigen system coupling matrix',Level=10)
+        ELSE
+          CALL Info(Caller,'Assuming steady-state coupling matrix',Level=10)
+        END IF
       END IF      
     END IF
 
@@ -18006,15 +18013,15 @@ CONTAINS
       pcomp = 1
     END IF
 
-    
+
+    dt = 0.0_dp
+    Omega = 0.0_dp
     IF( IsHarmonic ) THEN
       Omega = 2 * PI * ListGetCReal( CurrentModel % Simulation,'Frequency',Stat ) 
       IF( .NOT. Stat) THEN
         CALL Fatal(Caller,'Frequency in Simulation list not found!')
       END IF
-      dt = 0.0_dp
-    ELSE
-      Omega = 0.0_dp
+    ELSE IF( IsTransient ) THEN
       dtVar => VariableGet( Solver % Mesh % Variables,'timestep size')
       dt = dtVar % Values(1)
     END IF
@@ -18029,7 +18036,7 @@ CONTAINS
     CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
 
-    ! Add the lasrgest entry that allocates the whole list matrix structure
+    ! Add the largest entry that allocates the whole list matrix structure
     CALL AddToMatrixElement(A_fs,i,j,0.0_dp)
     CALL AddToMatrixElement(A_sf,j,i,0.0_dp)
     
@@ -18107,8 +18114,8 @@ CONTAINS
       MASS(1:n,1:n) = 0.0_dp
       
       mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material' )
-      rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values,'Density',Stat)
-      IF(.NOT. Stat) rho = ListGetConstReal( CurrentModel % Materials(mat_id) % Values, &
+      rho = ListGetCReal( CurrentModel % Materials(mat_id) % Values,'Density',Stat)
+      IF(.NOT. Stat) rho = ListGetCReal( CurrentModel % Materials(mat_id) % Values, &
           'Equilibrium Density',Stat)
 
       IF( .NOT. Stat) THEN
@@ -18117,13 +18124,11 @@ CONTAINS
       
       ! The sign depends on the convection of the normal direction
       ! If density is divided out already in the Helmholtz equation the multiplier will
-      ! be different. 
-      IF( UseDensity ) THEN
-        coeff = omega**2
-      ELSE
-        coeff = rho * omega**2
-      END IF
-      
+      ! be different.       
+      coeff = 1.0_dp
+      IF( UseDensity ) coeff = rho
+      IF( IsHarmonic ) coeff = coeff * omega**2
+        
       ! Numerical integration:
       !----------------------
       IP = GaussPoints( Element )
@@ -18239,6 +18244,8 @@ CONTAINS
 
       ELSE ! .NOT. IsNS
         ! For pressure equations (Helmholtz) the structure applies a Neumann condition
+
+        PRINT *,'Here:',IsNs,IsPlate,IsHarmonic,FreeF,UseDensity,coeff
         
         DO i=1,n
           ii = Indexes(i)
@@ -18312,9 +18319,9 @@ CONTAINS
               ! If there is a plate then fluid is always 3D
               IF( Normal(3) < 0 ) val = -val
 
-              IF( IsHarmonic ) THEN
-                jstruct = sdofs*(SPerm(jj)-1)+1
+              jstruct = sdofs*(SPerm(jj)-1)+1
 
+              IF( IsHarmonic ) THEN
                 ! Structure load on the fluid: -1/rho dp/dn = -omega^2 u.n = omega^2 u.m
                 IF( FreeF ) THEN
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,MultFS*val*coeff)     ! Re 
@@ -18333,11 +18340,9 @@ CONTAINS
                 CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,0.0_dp)
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp)
               ELSE
-                jstruct = sdofs*(SPerm(jj)-1)+1
-
                 ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                 IF( FreeF ) THEN
-                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*coeff)           
                 END IF
               END IF
 
@@ -18473,7 +18478,17 @@ CONTAINS
       CALL List_toCRSMatrix(A_fs)
       CALL List_toCRSMatrix(A_sf)
     END IF
-      
+
+    ! If we have eigen system the coupling matrix is actually related to the mass values.
+    ! This way it gets multiplied with omega^2 in Arpack solver.
+    IF( IsEigen ) THEN
+      n = SIZE( A_fs % Values ) 
+      ALLOCATE( A_fs % MassValues( n ) )
+      A_fs % MassValues = A_fs % Values
+      A_fs % Values = 0.0_dp
+      CALL Info(Caller,'Moved '//TRIM(I2S(n))//' coupling values to MassValues of A_fs!',Level=7) 
+    END IF
+    
     !PRINT *,'interface area:',area
     !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
     !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
