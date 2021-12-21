@@ -271,7 +271,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   END BLOCK
 
 
-  IF( ListGetLogical(SolverParams,'Enforce Symmetry') ) THEN 
+  IF( ListGetLogical(SolverParams,'Enforce Symmetry',GotIt) ) THEN 
     CALL EnforceSymmetry()    
   END IF
 
