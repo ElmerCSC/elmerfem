@@ -134,7 +134,6 @@ Solver 2
 
 ! Show some info in the end
 !  Particle Info = Logical True
-!  Particle Time = Logical True
 
   Variable 1 = Surface
   Result Variable 1 = String "Surface"
