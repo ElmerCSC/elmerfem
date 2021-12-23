@@ -4323,7 +4323,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        DO i=1,A % NumberOfRows
-         b(i) = b(i) / A % Values( A % Diag(i) )
+         s = A % Values(A % Diag(i))
+         IF(s /= 0 ) b(i) = b(i) / s
        END DO
        RETURN
     END IF
