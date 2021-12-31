@@ -1974,7 +1974,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO
 
        !DO l=1,Dofs
-       IF (NodalFields) THEN
+       IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
          CALL UpdateGlobalForce( GForce(:,l), &
              Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)
