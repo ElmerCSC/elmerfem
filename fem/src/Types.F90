@@ -366,10 +366,10 @@ MODULE Types
      INTEGER :: ElementCode                         ! numeric code for element
 
      INTEGER :: BasisFunctionDegree, &              ! linear or quadratic
-                NumberOfNodes, &                
-                NumberOfEdges, &                
-                NumberOfFaces, &                
-                DIMENSION                           ! 1=line, 2=surface, 3=volume
+         NumberOfNodes, &                
+         NumberOfEdges, &                
+         NumberOfFaces, &                
+         DIMENSION                           ! 1=line, 2=surface, 3=volume
 
      INTEGER :: GaussPoints,GaussPoints2, GaussPoints0 ! number of gauss points to use
 

@@ -31,7 +31,6 @@ Simulation
 !  Timestep Intervals = 20
 !  Output Intervals = 1
   Steady State Max Iterations = 1
-!  Post File = "hemisphere.vtu"
 End
 
 Body 1
@@ -91,6 +90,19 @@ Solver 2
   Filename = hemisphere.dat
   Variable 1 = U
   Save Points(2) = 1 5
+End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = hemisphere
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Lagrange Element Degree = Integer 8
 End
 
 ! ----------------------------------------------------

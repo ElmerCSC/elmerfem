@@ -2570,23 +2570,22 @@ CONTAINS
         RETURN
      END IF
 
-     IF (PRESENT(USolver)) THEN
-       pSolver => USolver
-     ELSE
-       pSolver => CurrentModel % Solver
-     END IF
-
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element,pSolver) ) THEN
+     IF ( isActivePElement(element,USolver) ) THEN
+
+      pSolver => CurrentModel % Solver
+      IF (PRESENT(USolver)) THEN
+        IF (ASSOCIATED(USolver)) pSolver => USolver
+      END IF
 
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:

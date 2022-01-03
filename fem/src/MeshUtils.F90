@@ -13329,9 +13329,6 @@ CONTAINS
         TYPE(Matrix_t), POINTER :: Projector
         LOGICAL :: NodalJump
       END FUNCTION WeightedProjector
-
-
-
     END INTERFACE
 !------------------------------------------------------------------------------
     Projector => NULL()
@@ -23843,7 +23840,605 @@ CONTAINS
    END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
 
-  FUNCTION NodeToDGIndex(Mesh,nodeind) RESULT ( dgind )
+
+
+!------------------------------------------------------------------------------
+  FUNCTION GetLagrangeIndexes( Mesh, LagN, Element, Indexes )  RESULT(L)
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: LagN
+    TYPE(Element_t), OPTIONAL, TARGET :: Element
+    INTEGER, OPTIONAL :: Indexes(:)
+    INTEGER :: L
+!------------------------------------------------------------------------------    
+    TYPE(Solver_t),  POINTER :: Solver
+    TYPE(Element_t), POINTER :: Parent, Edge, Face
+    LOGICAL :: OrientationsMatch
+    LOGICAL :: EdgesActive, FacesActive
+    LOGICAL :: Visited = .FALSE.
+
+    INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
+
+    INTEGER :: EdgeMap(2), FaceMap(4)
+    INTEGER :: VTKTetraFaceMap(4,3)
+    INTEGER :: VTKBrickFaceMap(6,4), BrickFaceOrdering(6)
+    INTEGER :: Perm(MAX_LAGRANGE_NODES), TmpInd(MAX_LAGRANGE_NODES)
+    INTEGER :: i,j,m,n0,e1,e2,f
+    INTEGER :: nelem, nface, nedge, elemdim, thiselem
+    INTEGER :: nelem_max, nface_max, nedge_max
+    INTEGER :: ElemFamily, nsize
+    INTEGER :: ElemType
+    CHARACTER(*), PARAMETER :: Caller = 'GetLagrangeIndexes'
+
+    SAVE Visited, nelem_max, nface_max, nedge_max, nsize, EdgesActive, &
+        FacesActive, VTKTetraFaceMap, VTKBrickFaceMap, BrickFaceOrdering
+!------------------------------------------------------------------------------
+    
+    IF (.NOT. Visited) THEN
+      Visited = .TRUE.
+
+      ! VTK's convention:
+      VTKTetraFaceMap(1,:) = (/ 1,2,4 /)
+      VTKTetraFaceMap(2,:) = (/ 3,4,2 /)
+      VTKTetraFaceMap(3,:) = (/ 1,4,3 /)
+      VTKTetraFaceMap(4,:) = (/ 1,3,2 /)
+
+      VTKBrickFaceMap(1,:) = (/ 1,4,8,5 /)
+      VTKBrickFaceMap(2,:) = (/ 2,3,7,6 /)
+      VTKBrickFaceMap(3,:) = (/ 1,2,6,5 /)
+      VTKBrickFaceMap(4,:) = (/ 4,3,7,8 /)
+      VTKBrickFaceMap(5,:) = (/ 1,2,3,4 /)
+      VTKBrickFaceMap(6,:) = (/ 5,6,7,8 /)
+      BrickFaceOrdering = (/ 6,4,3,5,1,2 /)
+
+      nedge_max = 0
+      nface_max = 0
+      nelem_max = 0
+
+      DO i=1,Mesh % NumberOfBulkElements
+        ElemFamily = Mesh % Elements(i) % TYPE % ElementCode / 100
+        CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+        nedge_max = MAX(nedge, nedge_max)
+        nface_max = MAX(nface, nface_max)
+        nelem_max = MAX(nelem, nelem_max) 
+      END DO
+      
+      EdgesActive = ASSOCIATED(Mesh % Edges)
+      FacesActive = ASSOCIATED(Mesh % Faces)
+      
+      IF (.NOT. EdgesActive .AND. nedge_max > 0) CALL Warn(Caller, 'Mesh edges needed but not associated')
+      IF (.NOT. FacesActive .AND. nface_max > 0) CALL Warn(Caller, 'Mesh faces needed but not associated')
+
+      nsize = Mesh % NumberOfNodes + nelem_max * Mesh % NumberOfBulkElements + &
+          nface_max * Mesh % NumberOfFaces + nedge_max * Mesh % NumberOfEdges
+
+      nsize = nsize + Mesh % NumberOfBoundaryElements * MAX(nedge_max, nface_max)
+    END IF
+
+    ! If we don't have a specific element, then only return the total number which is sufficiently large
+    ! in order to index all DOFs in the Lagrange mesh. 
+    IF (.NOT. PRESENT(Element)) THEN
+      l = nsize
+      RETURN
+    END IF
+        
+    ! The count of corner nodes:
+    l = Element % TYPE % ElementCode / 100 
+    IF( l >= 5 .AND. l <= 7 ) l = l-1             
+
+    IF (PRESENT(Indexes)) THEN
+      Indexes = 0
+      Indexes(1:l) = Element % NodeIndexes(1:l)
+    END IF
+    ! Offset
+    n0 = Mesh % NumberOfNodes
+
+    IF(l>4) THEN
+      ElemDim = 3
+    ELSE IF(l>2) THEN
+      ElemDim = 2
+    ELSE
+      ElemDim = 1
+    END IF
+
+    
+    ! Number the additional edge nodes
+    IF (EdgesActive ) THEN
+      ElemFamily = Element % TYPE % ElementCode / 100
+      CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+
+      ! If this is a boundary element, we need to number it just as it would if it were an edge
+      ! of a bulk element. 
+      IF( ElemDim == 1 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
+        thiselem = 1        
+        nedge = nelem
+      ELSE
+        thiselem = 0
+      END IF
+      
+      DO i=1,MAX(thiselem,Element % TYPE % NumberOfEdges)
+        IF(thiselem==1) THEN
+          ! We use sneaky definitions here to be able to use rest of the edge indexing code.
+          ! We want to use the edge indexing that has been generated for the edges of
+          ! the parent element.
+          Parent => Element % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED( Parent ) ) THEN
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF (.NOT. ASSOCIATED(Parent)) RETURN
+          Edge => Find_Edge(Mesh,Parent,Element)
+          EdgeMap = [1,2]
+        ELSE
+          f = i
+          SELECT CASE(ElemFamily)
+          CASE(2)
+            CALL Error(Caller, '2D element is supposed to have elemental DOFs')
+          CASE(3)
+            EdgeMap = GetTriangleEdgeMap(i)
+          CASE(4)
+            EdgeMap = GetQuadEdgeMap(i)
+          CASE(5)
+            EdgeMap = GetTetraEdgeMap(i)
+            IF (i == 3) THEN
+              e1 = EdgeMap(2)
+              e2 = EdgeMap(1)
+              EdgeMap(1) = e1
+              EdgeMap(2) = e2
+            END IF
+          CASE(6)
+            EdgeMap = GetPyramidEdgeMap(i)
+          CASE(7)
+            EdgeMap = GetWedgeEdgeMap(i)
+          CASE(8)
+            ! It seems that VTK cell types 72 and 12/29 are not interchangeable:
+            IF (LagN > 2) THEN
+              ! The following is needed for 72:
+              SELECT CASE(i)
+              CASE(11)
+                f = 12
+              CASE(12)
+                f = 11
+              CASE DEFAULT
+                CONTINUE
+              END SELECT
+            END IF
+            EdgeMap = GetBrickEdgeMap(f)
+          END SELECT
+          Edge => Mesh % Edges(Element % EdgeIndexes(f))     
+        END IF
+        
+        e1 = Edge % NodeIndexes(1)
+        e2 = Edge % NodeIndexes(2)
+
+        IF (e2 < e1) THEN
+          OrientationsMatch = e1 == Element % NodeIndexes(EdgeMap(2))
+        ELSE
+          OrientationsMatch = e1 == Element % NodeIndexes(EdgeMap(1))
+        END IF        
+        
+        ! Ensure the edge DOFs are listed in the right order:
+        IF (OrientationsMatch) THEN
+          DO j=1,nedge
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = n0 + nedge_max*(Edge % ElementIndex-1)+j
+          END DO
+        ELSE
+          DO j=nedge,1,-1
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = n0 + nedge_max*(Edge % ElementIndex-1)+j
+          END DO
+        END IF
+      END DO
+
+      ! Nothing to be done here. This was boundary element that was exhausted.
+      IF(thiselem==1) RETURN
+      
+      n0 = n0 + Mesh % NumberOfEdges * nedge_max      
+    END IF
+
+    ! Then number the additional face nodes
+    IF (FacesActive) THEN
+      
+      SELECT CASE(Element % TYPE % ElementCode / 100)
+      CASE(3,4)
+        ! For 2D element only save the face if it is a boundary!
+        IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+          Parent => Element % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED( Parent ) ) THEN
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF (.NOT. ASSOCIATED(Parent)) RETURN
+          Face => Find_Face(Mesh,Parent,Element)
+          ElemFamily = Face % TYPE % ElementCode / 100
+          CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+          
+          IF (nelem < 1) RETURN
+
+          IF (ElemFamily == 4) THEN
+            Perm = LagrangeQuadFacePermutation(Element % NodeIndexes(1:4), LagN)
+          ELSE
+            Perm(1:3) = LagrangeTriFacePermutation(Element % NodeIndexes(1:3), LagN)
+          END IF
+
+          IF (PRESENT(Indexes)) THEN
+            DO j=1,nelem
+              TmpInd(j) = n0 + nface_max*(Face % ElementIndex-1) + j
+            END DO
+          END IF
+          ! Permute to create the final list of indices:
+          DO j=1,nelem
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = TmpInd(Perm(j))
+          END DO
+        END IF
+        RETURN          
+
+      CASE(5)
+        DO i=1,Element % Type % NumberOfFaces
+          !
+          ! Elmer has created its face indices by using face maps different from
+          ! VTK's convention. Set f so that we can assign the right global indices
+          ! to the face i according to VTK's convention.
+          !
+          IF (i == 4) THEN
+            f = 1
+          ELSE
+            f = i+1
+          END IF
+          
+          Face => Mesh % Faces(Element % FaceIndexes(f))          
+          ElemFamily = Face % TYPE % ElementCode / 100
+          CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+          nface = nelem ! The number of elementwise DOFs in 2D gives the count of face DOFs in 3D
+
+          ! test:
+          !m = 0
+          !DO j=1,3
+          !  DO k=1,3
+          !    IF (Face % NodeIndexes(j) == Element % NodeIndexes(VTKTetraFaceMap(i,k))) THEN
+          !      m = m + 1
+          !      EXIT
+          !    END IF
+          !  END DO
+          !END DO
+          !IF (m /= 3) CALL Fatal(Caller, 'Face is not identified correctly')
+
+          Perm(1:3) = LagrangeTriFacePermutation(Element % NodeIndexes(VTKTetraFaceMap(i,1:3)), LagN)
+          
+          IF (PRESENT(Indexes)) THEN
+            DO j=1,nface
+              TmpInd(j) = n0 + nface_max*(Face % ElementIndex-1) + j
+            END DO
+          END IF
+
+          DO j=1,nface
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = TmpInd(Perm(j))
+          END DO
+        END DO
+
+      CASE(6)
+        ! The quad face:
+        Face => Mesh % Faces(Element % FaceIndexes(1))
+        CALL LagrangeDOFCount(4, LagN, nedge, nface, nelem)
+        nface = nelem ! The number of elementwise DOFs in 2D gives the count of face DOFs in 3D
+        FaceMap = GetPyramidFaceMap(1)
+
+        IF (nface > 1) THEN
+          CALL Fatal(Caller, 'For pyramids Lagrange Element Degree < 3 supported currently')
+        END IF
+
+        DO j=1,nface
+          l = l + 1
+          IF (PRESENT(Indexes)) Indexes(l) = n0 + nface_max*(Face % ElementIndex-1) + j
+        END DO
+
+        ! TO DO: Index triangular faces for degrees p > 3
+
+      CASE(7)
+        ! Triangular faces:
+        DO f=1,2
+          Face => Mesh % Faces(Element % FaceIndexes(f))
+          ElemFamily = Face % TYPE % ElementCode / 100
+          CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+          nface = nelem ! The number of elementwise DOFs in 2D gives the count of face DOFs in 3D
+
+          IF (nface < 1) CYCLE
+
+          FaceMap = GetWedgeFaceMap(f)
+          Perm(1:3) = LagrangeTriFacePermutation(Element % NodeIndexes(FaceMap(1:3)), LagN)
+          
+          IF (PRESENT(Indexes)) THEN
+            DO j=1,nface
+              TmpInd(j) = n0 + nface_max*(Face % ElementIndex-1) + j
+            END DO
+          END IF
+
+          DO j=1,nface
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = TmpInd(Perm(j))
+          END DO
+        END DO
+
+        ! Quad faces:
+        DO f=3,5
+          Face => Mesh % Faces(Element % FaceIndexes(f))          
+          ElemFamily = Face % TYPE % ElementCode / 100
+          CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+          nface = nelem ! The number of elementwise DOFs in 2D gives the count of face DOFs in 3D
+
+          IF (nface < 1) CYCLE
+
+          FaceMap = GetWedgeFaceMap(f)
+          Perm = LagrangeQuadFacePermutation(Element % NodeIndexes(FaceMap(1:4)), LagN)
+
+          IF (PRESENT(Indexes)) THEN
+            DO j=1,nface
+              TmpInd(j) = n0 + nface_max*(Face % ElementIndex-1) + j
+            END DO
+          END IF
+
+          DO j=1,nface
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = TmpInd(Perm(j))
+          END DO
+        END DO
+
+      CASE(8)
+        DO i=1,Element % Type % NumberOfFaces 
+          f = BrickFaceOrdering(i)
+
+          Face => Mesh % Faces(Element % FaceIndexes(f))          
+          ElemFamily = Face % TYPE % ElementCode / 100
+          CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)
+          nface = nelem ! The number of elementwise DOFs in 2D gives the count of face DOFs in 3D
+
+          IF (nface < 1) CYCLE
+
+          Perm = LagrangeQuadFacePermutation(Element % NodeIndexes(VTKBrickFaceMap(i,1:4)), LagN)
+
+          IF (PRESENT(Indexes)) THEN
+            DO j=1,nface
+              TmpInd(j) = n0 + nface_max*(Face % ElementIndex-1) + j
+            END DO
+          END IF
+          ! Permute to create the final list of indices:
+          DO j=1,nface
+            l = l + 1
+            IF (PRESENT(Indexes)) Indexes(l) = TmpInd(Perm(j))
+          END DO
+        END DO
+      END SELECT
+      
+      n0 = n0 + Mesh % NumberOfFaces * nface_max
+    END IF
+
+    ! Then number the additional internal nodes (never shared)
+    ElemFamily = Element % TYPE % ElementCode / 100
+    CALL LagrangeDOFCount(ElemFamily, LagN, nedge, nface, nelem)    
+    DO j=1,nelem
+      l = l + 1
+      IF (PRESENT(Indexes)) Indexes(l) = n0 + nelem_max*(Element % ElementIndex-1) + j
+    END DO
+
+  CONTAINS
+    ! 
+    ! A subroutine for returning the maximal number of interior nodes associated with
+    ! the element edges, faces and the volume in the Lagrange interpolation of degree p
+    !
+    SUBROUTINE LagrangeDOFCount(Family, p, nedge, nface, nelem)
+      INTEGER, INTENT(IN) :: Family, p
+      INTEGER, INTENT(OUT) :: nedge, nface, nelem
+      
+      INTEGER :: m
+
+      m = p - 1
+      nelem = 0
+      nface = 0
+      nedge = 0
+
+      IF (Family == 1) RETURN
+      
+      SELECT CASE(Family)
+      CASE(2)
+        nelem = m
+      CASE(3)
+        nelem = m*(m-1)/2
+        nedge = m
+      CASE(4)
+        nelem = m*m
+        nedge = m
+      CASE(5)
+        nelem = m*(m-1)*(m-2)/6
+        nface = m*(m-1)/2
+        nedge = m
+      CASE(6)
+        nedge = m
+        nface = m*m ! the maximum is determined by quad faces
+        IF (p > 1) THEN
+          IF (p==2) THEN
+            nelem = 1
+          ELSE
+            CALL Fatal('LagrangeDOFCount', 'Cannot handle pyramids of degree > 2')
+          END IF
+        END IF
+      CASE(7)
+        nedge = m
+        nface = m*m ! the maximum is determined by quad faces
+        nelem = m*(m-1)/2*m
+      CASE(8)
+        nelem = m*m*m
+        nface = m*m
+        nedge = m
+      CASE DEFAULT          
+        CALL Fatal('LagrangeDOFCount', 'Unknown element family') 
+      END SELECT
+    END SUBROUTINE LagrangeDOFCount
+
+    !
+    ! A function to generate a permutation vector for indexing nodes on quad faces
+    !
+    FUNCTION LagrangeQuadFacePermutation(FaceNodes, p) RESULT(Perm)
+      INTEGER, INTENT(IN) :: FaceNodes(4)
+      INTEGER, INTENT(IN) :: p       ! the order of Lagrange interpolation
+      INTEGER :: Perm(MAX_LAGRANGE_NODES)
+
+      INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
+      INTEGER :: AllIndices((p-1)**2)
+      INTEGER :: i, j, n, i0, MinEntryInd(1)
+
+      SELECT CASE(p)
+      CASE(2)
+        Perm = 0
+        Perm(1) = 1
+
+      CASE DEFAULT
+        !
+        ! We have 4 x 2 permutation patterns. Create a permutation
+        ! vector to alter the default ordering in each case. The first face
+        ! index is assigned to the node which is closest to the face corner A
+        ! having the smallest global index. The next indices are created in 
+        ! the direction of the face edge AB, with B the smallest possible 
+        ! global index.
+        !
+        Perm = 0
+        n = (p-1)**2
+        DO i=1,n
+          AllIndices(i) = i
+        END DO
+
+        MinEntryInd = MINLOC(FaceNodes(1:4))
+        SELECT CASE(MinEntryInd(1))
+        CASE(1)
+          IF (FaceNodes(4) < FaceNodes(2)) THEN
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              Perm(i0+1:i0+p-1) = AllIndices(i:n:p-1)
+            END DO
+          ELSE
+            Perm(1:n) = AllIndices(1:n)
+          END IF
+
+        CASE(2)
+          IF (FaceNodes(3) < FaceNodes(1)) THEN
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              DO j=1,p-1
+                Perm(i0+j) = AllIndices(p-i+(j-1)*(p-1))
+              END DO
+            END DO
+          ELSE
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              DO j=1,p-1
+                Perm(i0+j) = AllIndices(i0+p-j)
+              END DO
+            END DO
+          END IF          
+
+        CASE(3)
+          IF (FaceNodes(4) < FaceNodes(2)) THEN
+            DO i=1,n
+              Perm(i) = AllIndices(n+1-i)
+            END DO
+          ELSE
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              DO j=1,p-1
+                Perm(i0+j) = AllIndices(n+1-i-(j-1)*(p-1))
+              END DO
+            END DO
+          END IF
+
+        CASE(4)
+          IF (FaceNodes(1) < FaceNodes(3)) THEN
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              DO j=1,p-1
+                Perm(i0+j) = AllIndices(n-p+1+i-(j-1)*(p-1))
+              END DO
+            END DO
+          ELSE
+            DO i=1,p-1
+              i0 = (i-1)*(p-1)
+              DO j=1,p-1
+                Perm(i0+j) = AllIndices(n-i*(p-1)+j)
+              END DO
+            END DO
+          END IF
+        END SELECT
+
+      END SELECT
+    END FUNCTION LagrangeQuadFacePermutation
+
+    !
+    ! A function to generate a permutation vector for indexing nodes on triangular faces
+    !
+    FUNCTION LagrangeTriFacePermutation(FaceNodes, p) RESULT(Perm)
+      INTEGER, INTENT(IN) :: FaceNodes(3)
+      INTEGER, INTENT(IN) :: p       ! the order of Lagrange interpolation
+      INTEGER :: Perm(3)
+
+      INTEGER :: MinEntryInd(1)
+
+      SELECT CASE(p)
+      CASE(3)
+        Perm = 0
+        Perm(1) = 1
+
+      CASE(4)
+        !
+        ! We have 3 x 2 permutation patterns. Create a permutation
+        ! vector to alter the default ordering in each case. The first face
+        ! index is assigned to the node which is closest to the face corner A
+        ! having the smallest global index. The next indices are created in 
+        ! the direction of the face edge AB, with B the smallest possible 
+        ! global index.
+        !
+        Perm = 0
+
+        MinEntryInd = MINLOC(FaceNodes(1:3))
+        SELECT CASE(MinEntryInd(1))
+        CASE(1)
+          IF (FaceNodes(3) < FaceNodes(2)) THEN
+            Perm = (/ 1,3,2 /)
+          ELSE
+            Perm = (/ 1,2,3 /)
+          END IF
+
+        CASE(2)
+          IF (FaceNodes(3) < FaceNodes(1)) THEN
+            Perm = (/ 2,3,1 /)
+          ELSE
+            Perm = (/ 2,1,3 /)
+          END IF          
+
+        CASE(3)
+          IF (FaceNodes(1) < FaceNodes(2)) THEN
+            Perm = (/ 3,1,2 /)
+          ELSE
+            Perm = (/ 3,2,1 /)
+          END IF
+        END SELECT
+
+      CASE DEFAULT
+        CALL Fatal('LagrangeTriFacePermutation', &
+            'For triangular faces Lagrange Element Degree < 5 supported currently')
+
+      END SELECT
+    END FUNCTION LagrangeTriFacePermutation
+
+
+
+!------------------------------------------------------------------------------
+  END FUNCTION GetLagrangeIndexes
+!------------------------------------------------------------------------------   
+
+
+ !> Find a representative DG index for a node index. Note that
+ !> there may be several possibilities and this is just one of them.
+ !------------------------------------------------------------------  
+   FUNCTION NodeToDGIndex(Mesh,nodeind) RESULT ( dgind )
 
     TYPE(Mesh_t) :: Mesh
     INTEGER :: nodeind

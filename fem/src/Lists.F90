@@ -441,7 +441,7 @@ CONTAINS
                END IF
              END IF
              ndofs = 0
-             IF ( l >= 0) THEN
+             IF (l > 0) THEN
                ndofs = l
              ELSE IF (Def_Dofs(6)>=0) THEN
                ndofs = FaceDOFs(Element % FaceIndexes(i))
@@ -853,7 +853,9 @@ use spariterglobals
           Var1 => Var1 % Next
        END DO
 
-       IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+       IF (ASSOCIATED(Var % Values)) THEN
+         IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+       END IF
 
        IF (ASSOCIATED(Var % Perm)) THEN
          Var1 => VariableList

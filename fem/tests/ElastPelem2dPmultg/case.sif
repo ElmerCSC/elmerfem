@@ -111,6 +111,7 @@ Solver 3
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
   Vtu Format = Logical True
+  Lagrange Element Degree = $pn
 End
 
 Equation 1

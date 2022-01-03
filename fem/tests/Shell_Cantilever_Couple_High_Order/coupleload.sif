@@ -25,7 +25,6 @@ Simulation
   Timestep Intervals = 15
   Output Intervals = 1
   Steady State Max Iterations = 1
-!  Post File = "liveload.vtu"
 End
 
 Body 1
@@ -54,7 +53,7 @@ Solver 1
   Variable DOFs = 6
 
   Large Deflection = True
-  Displace Mesh = False
+  Displace Mesh = True
   Nonlinear System Max Iterations = 200
   Nonlinear System Convergence Tolerance = 1e-5
 
@@ -83,6 +82,19 @@ Solver 2
   Filename = cantilever.dat
   Variable 1 = U
   Save Points(2) = 9 18
+End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = liveload
+  Vtu Format = Logical True
+!  Ascii Output = False
+  Lagrange Element Degree = Integer 4
 End
 
 ! ----------------------------------------------------

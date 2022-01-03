@@ -21926,6 +21926,178 @@ CONTAINS
    !-------------------------------------------------------------------------------------
 
 
+   ! This routine changes from p-DOFs to higher-order Lagrange DOFs.
+   !---------------------------------------------------------------------------------------
+   SUBROUTINE p2LagrangeSwapper( Mesh, FromVar, ToVar, LagN, LagPerm, LagSize )
+
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Variable_t), POINTER :: FromVar
+     TYPE(Variable_t), POINTER :: ToVar
+     INTEGER :: LagN
+     INTEGER :: LagPerm(:)
+     INTEGER :: LagSize
+
+     INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
+ 
+     TYPE(Solver_t), POINTER, SAVE :: PDefsSolver => NULL()
+     TYPE(Variable_t), POINTER :: TmpVar
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: TmpType
+     INTEGER :: varsize,i,j,k,np,nl,t,dofs
+     REAL(KIND=dp), ALLOCATABLE :: pSol(:,:), lSol(:,:)
+     INTEGER, ALLOCATABLE :: pIndexes(:), lIndexes(:)
+     INTEGER, ALLOCATABLE :: NodeHits(:)
+     LOGICAL, SAVE :: Visited = .FALSE.
+     LOGICAL :: DgField, NodalField, ElemField
+
+     CHARACTER(*), PARAMETER :: Caller = 'p2LagrangeSwapper'
+
+     INTERFACE 
+       SUBROUTINE HierarchicPToLagrange(PElement, Degree, PSol, LSol, DOFs, PSolver)
+         USE Types
+         IMPLICIT NONE
+         TYPE(Element_t), POINTER :: PElement 
+         INTEGER :: Degree                         
+         REAL(KIND=dp) :: PSol(:,:)                
+         REAL(KIND=dp) :: LSol(:,:)                
+         INTEGER, OPTIONAL :: DOFs                 
+         TYPE(Solver_t), POINTER, OPTIONAL :: PSolver 
+       END SUBROUTINE HierarchicPToLagrange         
+     END INTERFACE
+
+     IF(.NOT. ASSOCIATED(FromVar) ) THEN
+       CALL Fatal(Caller,'From variable is not associated!')
+     END IF
+     
+     CALL Info(Caller,'Swapping variable from p field to Lagrange field: '//TRIM(FromVar % Name),Level=8)
+
+     IF (.NOT. Visited) THEN
+       ! Pick some p-solver in order to handle special cases
+       TmpVar => Mesh % Variables
+       DO WHILE(ASSOCIATED(TmpVar))
+         IF (TmpVar % Valid) THEN 
+           IF (ASSOCIATED(TmpVar % Solver)) THEN
+             IF (ALLOCATED(TmpVar % Solver % Def_Dofs)) THEN
+               IF (ANY(TmpVar % Solver % Def_Dofs(:,:,6)>0)) THEN
+                 PDefsSolver => TmpVar % Solver  
+                 EXIT
+               END IF
+             END IF
+           END IF
+         END IF
+         TmpVar => TmpVar % Next
+       END DO
+       Visited = .TRUE.
+     END IF
+     
+     ! We can only map p-variables and nodal variables!
+     TmpType = FromVar % TYPE
+     DgField = ( TmpType == Variable_on_nodes_on_elements )
+     ElemField = ( TmpType == Variable_on_elements )
+     IF(DgField .OR. ElemField ) THEN
+       CALL Warn(Caller,'Wrong type of variable: '//TRIM(I2S(TmpType)))
+       RETURN
+     END IF
+               
+     dofs = FromVar % Dofs
+
+     ToVar % Name = FromVar % Name 
+     ToVar % Dofs = dofs
+     ToVar % TYPE = TmpType
+     ToVar % NameLen = FromVar % NameLen
+     ToVar % Solver => FromVar % Solver
+     ToVar % Perm => NULL()
+
+     IF( ASSOCIATED( ToVar % Values ) ) THEN
+       IF( SIZE(ToVar % Values) < dofs * LagSize ) THEN
+         DEALLOCATE( ToVar % Values )
+       END IF
+     END IF
+     IF( .NOT. ASSOCIATED( ToVar % Values ) ) THEN
+       ALLOCATE( ToVar % Values( dofs * LagSize ) )       
+     END IF
+     ToVar % Values = 0.0_dp
+          
+     ALLOCATE( pSol(dofs,MAX_LAGRANGE_NODES), lSol(dofs,MAX_LAGRANGE_NODES), &
+         pIndexes(MAX_LAGRANGE_NODES), lIndexes(MAX_LAGRANGE_NODES) ) 
+     pSol = 0.0_dp
+     lSol = 0.0_dp
+          
+     DO t=1,Mesh % NumberOfBulkElements
+       Element => Mesh % Elements(t)
+       
+       IF (ASSOCIATED(FromVar % Solver)) THEN
+         np = mGetElementDOFs(pIndexes, Element, FromVar % Solver)
+       ELSE
+         IF (.NOT. ASSOCIATED(PDefsSolver)) THEN
+           np = mGetElementDOFs(pIndexes, Element)
+         ELSE
+           np = mGetElementDOFs(pIndexes, Element, PDefsSolver)
+         END IF
+       END IF
+
+       ! If all corner nodes are not active, then there is no possibility for interpolation
+       IF( ASSOCIATED(FromVar % Perm)) THEN
+         k = Element % TYPE % ElementCode / 100
+         IF(k>=5 .AND. k<=7) k=k-1
+         IF( ANY(FromVar % Perm(pIndexes(1:k)) == 0) ) CYCLE
+       END IF
+
+       ! Copy from a global p-solution to local one (pSol) 
+       DO i=1,np
+         j = pIndexes(i)
+         IF( ASSOCIATED(FromVar % Perm)) j = FromVar % Perm(j)         
+         DO k=1,dofs           
+           IF(j>0) THEN
+             pSol(k,i) = FromVar % Values(dofs*(j-1)+k)
+           ELSE
+             pSol(k,i) = 0.0_dp
+           END IF
+         END DO
+       END DO       
+
+       IF( ASSOCIATED( FromVar % Solver ) ) THEN      
+         CALL HierarchicPToLagrange(Element, LagN, PSol, LSol, DOFs, FromVar % Solver)
+       ELSE
+         CALL HierarchicPToLagrange(Element, LagN, PSol, LSol, DOFs, PDefsSolver)
+       END IF
+       
+       ! Copy from the local Lagrange solution (lSol) to global one
+       nl = GetLagrangeIndexes( Mesh, LagN, Element, lIndexes ) 
+       DO i=1,nl
+         j = lIndexes(i)
+         IF(j<=0 .OR. j>SIZE(LagPerm)) THEN
+           PRINT *,'Index error:',i,nl,j,SIZE(LagPerm)
+           CYCLE
+         END IF
+         j = LagPerm(j)
+         IF(j==0) CYCLE
+         DO k=1,dofs           
+           ToVar % Values(dofs*(j-1)+k) = lSol(k,i)
+         END DO
+       END DO
+     END DO
+
+     ! There are just gentle reminders that we could also map discontinuous fields to L-elements
+     !IF( NodalField ) THEN
+     !  ALLOCATE( NodeHits(varsize) )
+     !  NodeHits = 0
+     !END IF               
+     !DO k=1,dofs
+     !  WHERE( NodeHits > 0 ) 
+     !    TmpVar % Values(k::dofs) = TmpVar % Values(k::dofs) / NodeHits
+     !  END WHERE
+     !END DO
+     !DEALLOCATE( NodeHits ) 
+
+     CALL Info(Caller,'Swapping variable from p to Lagrange done',Level=12)
+     
+   END SUBROUTINE P2LagrangeSwapper
+   !-------------------------------------------------------------------------------------
+
+
+   
+
   
    ! Generic evaluation of field value at given point of element.
    ! The idea is that the field value to be evaluated may be nodal, elemental,
