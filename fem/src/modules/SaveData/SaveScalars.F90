@@ -1836,8 +1836,8 @@ CONTAINS
 
     Maximum = -HUGE(x)
     Minimum = HUGE(x)
-    AbsMaximum = -HUGE(x)
-    AbsMinimum = HUGE(x)
+    AbsMaximum = 0.0_dp
+    AbsMinimum = HUGE(AbsMinimum)
 
     PPerm => Var % Perm
     IF( Var % TYPE == Variable_on_gauss_points .OR. &

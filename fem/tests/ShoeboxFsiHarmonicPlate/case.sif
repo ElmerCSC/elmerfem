@@ -11,9 +11,9 @@
 ! P.R. 1.12.2017
 
 
-$ AirDensity = 1.21
+$ AirDensity = 1.21/1
 $ SoundSpeed = sqrt( 1.402 * 0.402 * 716 * 293)
-
+ 
 
 Header
   Mesh DB "." "shoebox"
@@ -26,12 +26,18 @@ Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
+  Timestep Intervals = 201
   Output Intervals = 1
   Steady State Max Iterations = 1
 
   Post File = "harm.vtu"
 
-  Frequency = 100.0
+  Mesh Levels = 2
+
+!$c=100^(1.0/200)
+!  Frequency = Variable "time"
+!    Real MATC "10*c^(tx-1)"
+  Frequency = 100
 End
 
 Body 1
@@ -93,6 +99,7 @@ Solver 1
   Linear System Abort Not Converged = True
   Linear System Preconditioning = "ILU1"
   Linear System Residual Output = 10
+  BiCgStabl polynomial Degree = 4
   Steady State Convergence Tolerance = 1.0e-05
 
 ! The index of the fluid and structure solver must be given now
@@ -143,7 +150,7 @@ Solver 2
   Linear System Solver = Direct
   Linear System Direct Method = umfpack
   
-  Linear System Max Iterations = 500
+  Linear System Max Iterations = 1000
   Linear System Residual Output = 10
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = none
@@ -163,7 +170,7 @@ Solver 2
 ! "Harmonic mode" create a fully functional linear system that can then be
 ! treated with other linear strategies. 
   Harmonic Mode = Logical True
-  Variable Output = Logical False
+!  Variable Output = Logical False
 
 !  block: Linear System Scaling = Logical True
 !  Linear System Scaling = False
@@ -185,17 +192,30 @@ Solver 3
   Equation = "SaveScalars"
   Procedure = File "SaveData" "SaveScalars"
 
+  Expression 1 = Variable "time"
+    Real MATC "1.05^(tx-1)"
+
   Variable 1 = Deflection 1
   Operator 1 = min 
-  Operator 2 = max 
-  Operator 3 = int mean
+  Operator 2 = max
+  Operator 3 = max abs
+  Operator 4 = int mean
 
-  Variable 4 = Pressure Re
-  Operator 4 = min
-  Operator 5 = max
-  Operator 6 = int mean
+  Variable 5 = Pressure Re
+  Operator 5 = min
+  Operator 6 = max
+  Operator 7 = max abs
+  Operator 8 = int mean
 
-  Filename = harm.dat
+  Variable 9 = Pressure Im
+  Operator 9 = min
+  Operator 10 = max
+  Operator 11 = max abs
+  Operator 12 = int mean
+
+  Variable 13 = time
+
+  Filename = f.dat
 
 !  File Append = Logical True
 End

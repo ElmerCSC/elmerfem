@@ -321,7 +321,6 @@ CONTAINS
     ALLOCATE( BlockMatrix % Offset(NoVar+1))
     BlockMatrix % Offset = 0
     BlockMatrix % maxsize = 0
-
     
     IF( PRESENT( SkipVar ) ) THEN
       IF( SkipVar ) THEN
@@ -3630,11 +3629,12 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, CompVar, SolverVar
     TYPE(Variable_t), TARGET :: MonolithicVar
-    REAL(KIND=dp) :: TotNorm
+    REAL(KIND=dp) :: TotNorm, Eps
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: CollMat
     LOGICAL :: Found, HaveMass, HaveDamp, SaveImag, Visited = .FALSE.
     CHARACTER(LEN=max_name_len) :: CompName
+    TYPE(Variable_t), POINTER :: pSolver
     CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
     
     SAVE Visited, CollMat, CollX, HaveMass, HaveDamp, SaveImag
@@ -3646,6 +3646,8 @@ CONTAINS
     SolverVar => Solver % Variable
     Solver % Variable => MonolithicVar
 
+    Eps = EPSILON( Eps ) 
+    
         
     IF(.NOT. Visited ) THEN
       n = 0
@@ -3672,8 +3674,12 @@ CONTAINS
           END IF
           
           m = m + SIZE( A % Values )
+          
           IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
-          IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
+          IF( ASSOCIATED( A % DampValues ) ) THEN
+            IF( ANY( ABS( A % DampValues ) > Eps ) ) HaveDamp = .TRUE.
+          END IF
+
         END DO
       END DO
 
@@ -3684,18 +3690,20 @@ CONTAINS
             CALL Warn(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
           END IF
         END DO
-        CALL Info(Caller,'Treating MassValues of block matrix too!',Level=20)
+        CALL Info(Caller,'Treating MassValues of block matrix too!',Level=12)
       END IF
 
       IF( HaveDamp ) THEN
-        CALL Info(Caller,'Treating DampValues of block matrix too!',Level=20)
+        CALL Info(Caller,'Treating DampValues of block matrix too!',Level=12)
       END IF
         
       NoEigen = Solver %  NOFEigenValues
 
       DampedEigen = ListGetLogical(Solver % Values,'Eigen System Complex',Found )  
       IF( DampedEigen ) THEN
-        CALL Info(Caller,'Creating complex system for eigen values!')
+        CALL Info(Caller,'Creating complex system for eigen values!',Level=6)
+      ELSE
+        CALL Info(Caller,'Creating real system for eigen values!',Level=6)
       END IF
       
       SaveImag = ListGetLogical(Solver % Values,'Pick Im Component',Found )  

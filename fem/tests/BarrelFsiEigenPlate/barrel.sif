@@ -23,7 +23,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 20
   Coordinate System = Cartesian
 
   Simulation Type = Steady State
@@ -60,7 +60,7 @@ Initial Condition 1
 End 
 
 Material 1
-  Density = $ rpar(0)*AirDensity
+  Density = $ AirDensity
   Sound Speed = $ SoundSpeed
 End
 
@@ -89,7 +89,7 @@ Solver 1
   Steady State Convergence Tolerance = 1e-09
 
   Linear System Solver = "Direct"
-  Linear System Direct Method = MUMPS
+  Linear System Direct Method = umfpack !MUMPS
 
   Linear System Scaling = Logical False
 
@@ -99,7 +99,8 @@ Solver 1
   Eigen System Convergence Tolerance = Real 1.0e-6
 
   Use Density = False
-  Fs Multiplier = Real -1.0
+  Fs Multiplier = Real 1.0
+  Sf Multiplier = Real 1.0
 
 
   Automated Fluid-Structure Coupling = Logical True
@@ -162,7 +163,6 @@ Solver 3
 
 
   File Append = Logical True
-  Expression 1 = Real $rpar(0)
   Filename = eig.dat
 
 !  File Append = Logical True

@@ -18244,8 +18244,6 @@ CONTAINS
 
       ELSE ! .NOT. IsNS
         ! For pressure equations (Helmholtz) the structure applies a Neumann condition
-
-        PRINT *,'Here:',IsNs,IsPlate,IsHarmonic,FreeF,UseDensity,coeff
         
         DO i=1,n
           ii = Indexes(i)
@@ -18307,6 +18305,8 @@ CONTAINS
                   ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                   IF( FreeF ) THEN
                     CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                  ELSE
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
                   END IF
                 END IF
               END DO
@@ -18343,6 +18343,8 @@ CONTAINS
                 ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
                 IF( FreeF ) THEN
                   CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*coeff)           
+                ELSE
+                  CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)           
                 END IF
               END IF
 
@@ -18426,9 +18428,9 @@ CONTAINS
             ! If there is a plate then fluid is always 3D
             IF( Normal(3) < 0 ) val = -val
             
+            jstruct = sdofs*(SPerm(jj)-1)+1
+
             IF( IsHarmonic ) THEN
-              jstruct = sdofs*(SPerm(jj)-1)+1
-              
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
                 FreeSim = .NOT. ConstrainedS(jstruct+1)
@@ -18452,15 +18454,15 @@ CONTAINS
               CALL AddToMatrixElement(A_sf,jstruct,ifluid+1,0.0_dp)
               CALL AddToMatrixElement(A_sf,jstruct+1,ifluid,0.0_dp)
             ELSE
-              jstruct = sdofs*(SPerm(jj)-1)+1
-
               IF( ASSOCIATED( ConstrainedS ) ) THEN
                 FreeS = .NOT. ConstrainedS(jstruct)
               END IF
               
               ! Fluid load on the structure: tau \cdot n = p * n
               IF( FreeS ) THEN
-                CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)           
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,MultSF*val)
+              ELSE
+                CALL AddToMatrixElement(A_sf,jstruct,ifluid,0.0_dp)               
               END IF
             END IF
             
