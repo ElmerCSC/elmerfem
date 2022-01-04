@@ -17257,16 +17257,17 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x0(:),b(:),BulkRhsSave(:),dr(:),r0(:),dy(:),y0(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: dx(:),f(:,:)
     INTEGER, POINTER :: Perm(:)
-    INTEGER :: dofs, i, j, nsize, ControlNode, dof0, nControl, iControl
-    REAL(KIND=dp) :: Nrm, val, cand, dc
-    LOGICAL :: GotF, Found, UseLoads    
-    REAL(KIND=dp), ALLOCATABLE :: c(:)
-
+    INTEGER :: dofs, i, j, nsize, ControlNode, dof0, nControl, iControl,jControl
+    REAL(KIND=dp) :: Nrm, val, cand, mincand, Relax
+    LOGICAL :: GotF, Found, UseLoads, ExtremumMode, DiagControl    
+    REAL(KIND=dp), ALLOCATABLE :: cAmp(:), cTarget(:), cVal(:), dc(:), cSens(:,:)
+    INTEGER, ALLOCATABLE :: cDof(:)
+    
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'ControlLinearSystem'
 
     
-    SAVE f, c
+    SAVE f, cAmp, cTarget, cSens, cVal, dc, cDof
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Fatal(Caller,'Controlling of source terms implemented only in serial!')
@@ -17289,22 +17290,24 @@ CONTAINS
 
     IF( PreSolve ) THEN
       CALL Info(Caller,'Applying controlled sources',Level=7)     
-      ALLOCATE(f(nsize,nControl),c(nControl))      
-
+      ALLOCATE(f(nsize,nControl),cAmp(nControl),cTarget(nControl),cVal(nControl),&
+          dc(nControl),cSens(nControl,nControl),cDof(nControl))      
+      cAmp = 0.0_dp; cTarget = 0.0_dp; cVal = 0.0_dp; dc = 0.0_dp; cSens = 0.0_dp; cDof = 0
+      
       f = 0.0_dp
       DO iControl = 1, nControl
        ! This is inhereted from previous control iterations.
        str = 'Control Amplitude'
        IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))
-       c(iControl) = ListGetCReal( Params, str, Found )
+       cAmp(iControl) = ListGetCReal( Params, str, Found )
 
        IF(.NOT. Found ) THEN
          str = 'Initial Control Amplitude'
          IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))
-         c(iControl) = ListGetCReal( Params, str, Found )          
+         cAmp(iControl) = ListGetCReal( Params, str, Found )          
         END IF
       END DO
-           
+      
       DO iControl = 1, Ncontrol            
         ! Default name for controlled source term
         str = TRIM(Var % Name)//' Control'
@@ -17329,8 +17332,8 @@ CONTAINS
          END DO
        END  IF
        
-        IF( ABS(c(iControl)) > 1.0e-20 ) THEN
-          b(1:nsize) = b(1:nsize) + c(iControl) * f(1:nsize,iControl)
+        IF( ABS(cAmp(iControl)) > 1.0e-20 ) THEN
+          b(1:nsize) = b(1:nsize) + cAmp(iControl) * f(1:nsize,iControl)
         END IF
       END DO
     END IF
@@ -17348,12 +17351,43 @@ CONTAINS
       IF(UseLoads) THEN        
         ALLOCATE(r0(nsize),dr(nsize))      
       END IF
-        
+
+      DiagControl = ListGetLogical( Params,'Control Diagonal', Found )
+      
+      dof0 = 1
+      IF( dofs > 1) THEN
+        dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
+      END IF
+            
+      ! Get the target values for control
+      DO iControl = 1, Ncontrol            
+        str = 'Control Target Value'
+        IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
+        val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
+        cTarget(iControl) = val
+        i = GetControlNode()
+        IF(i>0) i = dofs*(Perm(i)-1)+dof0
+        cDof(iControl) = i 
+      END DO
+      
+      ! The possibility to use control for extremum temperature is here included.
+      ExtremumMode = .FALSE.
+      IF( ANY(cDof==0) ) THEN
+        IF( Ncontrol == 1 ) THEN
+          ExtremumMode = .TRUE.
+        ELSE
+          CALL Fatal(Caller,'Extremum control cannot be used with multiple controls!')
+        END IF
+      END IF
+      
+      
       DO iControl = 1, Ncontrol            
         ! We already know the sources, now compute their affect
         dx = 0.0_dp
         CALL SolveSystem(A,ParMatrix,f(:,iControl),dx,Nrm,dofs,Solver)
         
+        ! We use either solution or reaction force for (y0,dy) so that we can
+        ! generalize the control procedures for both. 
         IF( UseLoads ) THEN
           ! Nodal loads with the base case
           IF(iControl==1) THEN
@@ -17372,54 +17406,69 @@ CONTAINS
           y0 => x0
           dy => dx
         END IF
-        
-        str = 'Control Target Value'
-        IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
-        val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
-        
-        dof0 = 1
-        IF( dofs > 1) THEN
-          dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
-        END IF
-        
-        ControlNode = GetControlNode() 
-        
-        ! We use either solution or reaction force for (y0,dy) so that we can
-        ! generalize the control procedures for both. 
-        IF( ControlNode > 0 ) THEN      
-          i = Perm(ControlNode)
-          j = dofs*(i-1)+dof0
-          dc = (val-y0(j))/dy(j)
-          WRITE(Message,'(A,ES15.6)') 'Scaling control update for control node:',dc      
-        ELSE
-          dc = HUGE(dc)
+       
+        val = cTarget(iControl) 
+        ControlNode = cDof(iControl)
+
+        IF( ExtremumMode ) THEN
+          ! We basically do tuning here already but for the sake of uniformity lets just
+          ! register the sensitivity and current value. 
+          mincand = HUGE(mincand)
           DO i=1,nsize
             j = dofs*(i-1)+dof0          
             IF(ABS(dy(j)) < TINY(dy(j))) CYCLE
             cand = (val-y0(j))/dy(j)
-            IF( ABS(cand) < ABS(dc) ) dc = cand
+            IF( ABS(cand) < ABS(mincand) ) THEN
+              mincand = cand
+              cSens(1,1) = dy(j)
+              cVal(iControl) = y0(j)
+            END IF
           END DO
-          WRITE(Message,'(A,ES15.6)') 'Scaling control update for extrumum value:',dc      
+          CALL Info(Caller,'Extremum value is easiest found in dof: '//TRIM(I2S(ControlNode)),Level=7)    
+        ELSE                       
+          DO jControl=1,nControl           
+            IF(DiagControl .AND. jControl /= iControl) CYCLE
+            cSens(jControl,iControl) = dy(cDof(jControl))
+          END DO
+          cVal(iControl) = y0(cDof(iControl))
         END IF
-        CALL Info(Caller,Message,Level=6)
+      END DO
+
+      IF( InfoActive(20) ) THEN
+        PRINT *,'cVal:',cVal
+        PRINT *,'cTarget:',cTarget
         
+        DO i=1,NControl
+          PRINT *,'Sens',i,':',cSens(i,:)
+        END DO
+      END IF
+                  
+      ! Here we solve the control equation without any assumption of diagonal dominance etc. 
+      dc = cTarget - cVal      
+      CALL LuSolve(nControl,cSens,dc)
+
+      Relax = ListGetCReal( Params,'Control Relaxation Factor', Found ) 
+      IF( Found ) dc = Relax * dc
+      
+
+      DO iControl = 1, Ncontrol                    
         str = 'Control Amplitude'
         IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
-        c(iControl) = ListGetCReal( Params,str,Found)
+        cAmp(iControl) = ListGetCReal( Params,str,Found)
         
-        c(iControl) = c(iControl) + dc
-        CALL ListAddConstReal( Params, str, c(iControl) )
+        cAmp(iControl) = cAmp(iControl) + dc(iControl)
+        CALL ListAddConstReal( Params, str, cAmp(iControl) )
         
         ! Apply control, this always to the solution - not to load
-        x0(1:nsize) = x0(1:nsize) + dc * dx(1:nsize)
-        
-        WRITE(Message,'(A,ES15.6)') 'Scaling control applied:',c(iControl)      
+        x0(1:nsize) = x0(1:nsize) + dc(iControl) * dx(1:nsize)
+
+        WRITE(Message,'(A,ES15.6)') 'Applied '//TRIM(str)//': ',cAmp(iControl)      
         CALL Info(Caller,Message,Level=5)
       END DO
         
       CALL ListPopNamespace()
       
-      DEALLOCATE(f,dx,c)
+      DEALLOCATE(f,dx,cAmp,cTarget,cVal,dc,cSens,cDof)
       IF(UseLoads) DEALLOCATE(dr,r0)      
     END IF
 
