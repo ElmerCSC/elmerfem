@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO mortar.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(RotatingBCPoisson2D LABELS mortar)
+ADD_ELMER_TEST(RotatingBCPoisson2Dnormal LABELS mortar)

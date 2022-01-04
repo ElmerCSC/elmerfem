@@ -4976,6 +4976,7 @@ CONTAINS
            TrfMatrix(4,4),Identity(4,4),Angles(3),Alpha,scl(3),s1,s2
     REAL(KIND=dp), POINTER :: PArray(:,:)
     INTEGER :: i,j,k
+    CHARACTER(*), PARAMETER :: Caller = 'OverlayInterfaceMeshes'
 
     ! First, check the bounding boxes
     !---------------------------------------------------------------------------
@@ -4988,9 +4989,9 @@ CONTAINS
     x1_max(3) = MAXVAL( BMesh1 % Nodes % z )
 
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for this periodic BC:  ',x1_min
-    CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+    CALL Info(Caller,Message,Level=8)    
     WRITE(Message,'(A,3ES15.6)') 'Maximum values for this periodic BC:  ',x1_max
-    CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+    CALL Info(Caller,Message,Level=8)    
 
     x2_min(1) = MINVAL( BMesh2 % Nodes % x )
     x2_min(2) = MINVAL( BMesh2 % Nodes % y )
@@ -5001,9 +5002,9 @@ CONTAINS
     x2_max(3) = MAXVAL( BMesh2 % Nodes % z )
     
     WRITE(Message,'(A,3ES15.6)') 'Minimum values for target periodic BC:',x2_min
-    CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+    CALL Info(Caller,Message,Level=8)    
     WRITE(Message,'(A,3ES15.6)') 'Maximum values for target periodic BC:',x2_max
-    CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+    CALL Info(Caller,Message,Level=8)    
 
 !    If whole transformation matrix given, it will be used directly
 !    --------------------------------------------------------------
@@ -5043,7 +5044,7 @@ CONTAINS
 
       IF ( GotRotate ) THEN
         WRITE(Message,'(A,3ES15.6)') 'Rotating target with: ',Angles
-        CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+        CALL Info(Caller,Message,Level=8)    
         
         DO i=1,3
           Alpha = Angles(i) * PI / 180.0_dp
@@ -5093,10 +5094,10 @@ CONTAINS
         x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
         
         WRITE(Message,'(A,3ES15.6)') 'Minimum values for rotated target:',x2r_min
-        CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+        CALL Info(Caller,Message,Level=8)    
         
         WRITE(Message,'(A,3ES15.6)') 'Maximum values for rotated target:',x2r_max
-        CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+        CALL Info(Caller,Message,Level=8)    
       ELSE
         x2r_min = x2_min
         x2r_max = x2_max
@@ -5124,7 +5125,7 @@ CONTAINS
         END IF
         
         WRITE(Message,'(A,3ES15.6)') 'Scaling with: ',scl(1:3)
-        CALL Info('OverlayInterfaceMeshes',Message)
+        CALL Info(Caller,Message)
         DO i=1,3 
           SclMatrix(i,i) = scl(i)        
         END DO
@@ -5146,7 +5147,7 @@ CONTAINS
         END DO
       END IF
       WRITE(Message,'(A,3ES15.6)') 'Translation: ',TrsMatrix(4,1:3)
-      CALL Info('OverlayInterfaceMeshes',Message)
+      CALL Info(Caller,Message)
       TrfMatrix = MATMUL( SclMatrix, TrsMatrix )
     END IF
 
@@ -5173,10 +5174,10 @@ CONTAINS
       x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
       
       WRITE(Message,'(A,3ES15.6)') 'Minimum values for transformed target:',x2r_min
-      CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+      CALL Info(Caller,Message,Level=8)    
       
       WRITE(Message,'(A,3ES15.6)') 'Maximum values for transformed target:',x2r_max
-      CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
+      CALL Info(Caller,Message,Level=8)    
     END IF
 
   END SUBROUTINE OverlayIntefaceMeshes
@@ -5773,17 +5774,27 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: DualProjector
     LOGICAL :: Found, Parallel, BiOrthogonalBasis, &
         CreateDual, DualSlave, DualMaster, DualLCoeff 
-    REAL(KIND=dp) :: NodeScale 
+    REAL(KIND=dp) :: NodeScale, MaxNormalDot, MaxDistance 
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,n,m
-        
-    CALL Info('NormalProjector','Creating projector between 3D surfaces',Level=7)
+    INTEGER :: i,n,m,MeshDim
+    CHARACTER(*), PARAMETER :: Caller = 'NormalProjector'
+       
+    CALL Info(Caller,'Creating projector using local normal-tangential coordinates',Level=7)
     
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
     BMesh1 % Parent => NULL()
     BMesh2 % Parent => NULL()
+
+    MeshDim = Mesh % MeshDim
+    IF( MeshDim == 3 ) THEN
+      Element => BMesh1 % Elements(1)
+      IF( Element % type % dimension == 1 ) THEN
+        CALL Warn(Caller,'Enforcing 1D integration for 1D boundary elements in 3D mesh!?')
+        MeshDim = 2
+      END IF
+    END IF
     
     InvPerm1 => BMesh1 % InvPerm
     InvPerm2 => BMesh2 % InvPerm
@@ -5810,7 +5821,7 @@ CONTAINS
       BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
           'Eliminate Linear Constraints',Found )
       IF( BiOrthogonalBasis ) THEN
-        CALL Info('NormalProjector',&
+        CALL Info(Caller,&
             'Enforcing > Use Biorthogonal Basis < to True to enable elimination',Level=8)
         CALL ListAddLogical( BC, 'Use Biorthogonal Basis',.TRUE. )
       END IF
@@ -5836,9 +5847,8 @@ CONTAINS
 
       Projector % Child => AllocateMatrix()
       Projector % Child % Format = MATRIX_LIST
-      CALL Info('NormalProjector','Using biorthogonal basis, as requested',Level=8)      
+      CALL Info(Caller,'Using biorthogonal basis, as requested',Level=8)      
     END IF
-    
 
     ALLOCATE( NodePerm( Mesh % NumberOfNodes ) )
     NodePerm = 0
@@ -5858,7 +5868,7 @@ CONTAINS
         NodePerm(i) = n
       END IF
     END DO
-    CALL Info('NormalProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
+    CALL Info(Caller,'Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
     
     ALLOCATE( Projector % InvPerm(n) )
     Projector % InvPerm = 0
@@ -5868,11 +5878,24 @@ CONTAINS
 
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling', Found)
     IF(.NOT. Found ) NodeScale = 1.0_dp
+
+    MaxNormalDot = ListGetCReal( BC,'Max Search Normal',Found)
+    IF(.NOT. Found ) MaxNormalDot = -0.1
     
+    MaxDistance = ListGetCReal( BC,'Projector Max Distance',Found)
+    IF(.NOT. Found ) THEN
+      MaxDistance = ListGetCReal( CurrentModel % Solver % Values,&
+          'Projector Max Distance', Found )       
+    END IF
     
-    ! Here we create the projector
+       
+    ! Here we actually create the projector
     !--------------------------------------------------------------
-    CALL NormalProjectorWeak3D()
+    IF( MeshDim == 3 ) THEN
+      CALL NormalProjectorWeak()
+    ELSE
+      CALL NormalProjectorWeak1D()
+    END IF
     !--------------------------------------------------------------
 
     
@@ -5880,9 +5903,9 @@ CONTAINS
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
-    CALL Info('NormalProjector','Number of rows in projector: '&
+    CALL Info(Caller,'Number of rows in projector: '&
         //TRIM(I2S(Projector % NumberOfRows)),Level=12)
-    CALL Info('NormalProjector','Number of entries in projector: '&
+    CALL Info(Caller,'Number of entries in projector: '&
         //TRIM(I2S(SIZE(Projector % Values))),Level=12)
   
     IF(ASSOCIATED(Projector % Child)) THEN
@@ -5897,15 +5920,14 @@ CONTAINS
     
     m = COUNT( Projector % InvPerm  > 0 ) 
     IF( m > 0 ) THEN
-      CALL Info('NormalProjector','Projector % InvPerm set for dofs: '//TRIM(I2S(m)),Level=7)
+      CALL Info(Caller,'Projector % InvPerm set for dofs: '//TRIM(I2S(m)),Level=7)
     END IF
     m = COUNT( Projector % InvPerm  == 0 ) 
     IF( m > 0 ) THEN
-      CALL Warn('NormalProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
+      CALL Warn(Caller,'Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
     END IF
 
-    CALL Info('NormalProjector','Projector created',Level=10)
-
+    CALL Info(Caller,'Projector created',Level=10)
 
     
   CONTAINS
@@ -5919,7 +5941,7 @@ CONTAINS
     ! system. Using the n-t coordinate system we can again operate in a local
     ! x-y coordinate system.
     !----------------------------------------------------------------------
-    SUBROUTINE NormalProjectorWeak3D()
+    SUBROUTINE NormalProjectorWeak()
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
@@ -5936,7 +5958,7 @@ CONTAINS
           xminm,yminm,DetJ,Wtemp,q,u,v,w,RefArea,dArea,&
           SumArea,MaxErr,MinErr,Err,Depth,MinDepth,MaxDepth,phi(10),Point(3),uvw(3), &
           val_dual, zmin, zmax, zave, zminm, zmaxm, uq, vq, TolS, &
-          MaxNormalDot, ElemdCoord(3), ElemH, MaxElemH(2), MinElemH(2)
+          ElemdCoord(3), ElemH, MaxElemH(2), MinElemH(2)
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist
       REAL(KIND=dp) :: TotRefArea, TotSumArea
@@ -5946,7 +5968,7 @@ CONTAINS
       TYPE(Variable_t), POINTER :: TimestepVar
       TYPE(Mesh_t), POINTER :: pMesh      
       TYPE(Nodes_t) :: Center2
-      REAL(KIND=dp) :: Center(3), MaxDistance, Normal(3), Tangent(3), Tangent2(3), &
+      REAL(KIND=dp) :: Center(3), Normal(3), Tangent(3), Tangent2(3), &
           NormalM(3), r(3)
       
       ! These are used temporarily for debugging purposes
@@ -5954,19 +5976,15 @@ CONTAINS
       LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
 
-      CHARACTER(*), PARAMETER :: Caller='NormalProjectorWeak3D'
+      CHARACTER(*), PARAMETER :: Caller='NormalProjectorWeak'
 
       CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
-
-      MaxDistance = ListGetCReal( BC,'Projector Max Distance',Found )
-            
+      
       SaveInd = ListGetInteger( BC,'Projector Save Element Index',Found )
       DebugInd = ListGetInteger( BC,'Projector Debug Element Index',Found )
       SaveErr = ListGetLogical( BC,'Projector Save Fraction',Found)
-      MaxNormalDot = ListGetCReal( BC,'Max Search Normal',Found)
-      IF(.NOT. Found ) MaxNormalDot = -0.1
       
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
@@ -5981,7 +5999,7 @@ CONTAINS
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
           NodesT % x(3), NodesT % y(3), NodesT % z(3), Basis(n), &
           STAT = AllocStat )
-      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 1')
+      IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 1')
                       
       MaxErr = 0.0_dp
       MinErr = HUGE( MinErr )
@@ -6038,6 +6056,7 @@ CONTAINS
           Indexes => Element % NodeIndexes
           n = Element % TYPE % NumberOfNodes
           ne = Element % TYPE % ElementCode / 100
+          ! These are surface elements so ne<=4. 
           
           ! Calculate maximum size of element
           ElemdCoord(1) = MAXVAL( pMesh % Nodes % x(Indexes(1:ne)) ) - &
@@ -6147,15 +6166,6 @@ CONTAINS
           PRINT *,'zrange:',zmin,zmax
         END IF
 
-        ! Nullify z since we don't need it anymore after registering (zmin,zmax)
-        Nodes % z = 0.0_dp
-        
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-        
-        IP = GaussPoints( Element, PreferenceElement = .FALSE. )
-        RefArea = detJ * SUM( IP % s(1:IP % n) ) 
-        SumArea = 0.0_dp
-
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
           OPEN( 10,FILE=Filename)
@@ -6164,6 +6174,15 @@ CONTAINS
           END DO
           CLOSE( 10 )
         END IF
+        
+        ! Nullify z since we don't need it anymore after registering (zmin,zmax)
+        Nodes % z = 0.0_dp
+        
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+        
+        IP = GaussPoints( Element, PreferenceElement = .FALSE. )
+        RefArea = detJ * SUM( IP % s(1:IP % n) ) 
+        SumArea = 0.0_dp
         
         DO i=1,n
           j = InvPerm1(Indexes(i))
@@ -6587,15 +6606,439 @@ CONTAINS
           'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info(Caller,Message,Level=6)
 
-      WRITE( Message,'(A,ES12.4)') &
-          'Minimum depth in normal direction:',MinDepth
+      WRITE( Message,'(A,ES12.4)') 'Minimum depth in normal direction:',MinDepth
       CALL Info(Caller,Message,Level=8)
-      WRITE( Message,'(A,ES12.4)') &
-          'Maximum depth in normal direction:',MaxDepth
+      WRITE( Message,'(A,ES12.4)') 'Maximum depth in normal direction:',MaxDepth
       CALL Info(Caller,Message,Level=8)
       
-    END SUBROUTINE NormalProjectorWeak3D
+    END SUBROUTINE NormalProjectorWeak
 
+
+    !----------------------------------------------------------------------
+    ! Create weak projector for the nodes and p:2 elements in 2D mesh.
+    ! Accurate integration is used. For the purpose a intermediate mesh
+    ! consisting of several element segments is used. 
+    !----------------------------------------------------------------------
+    SUBROUTINE NormalProjectorWeak1D()
+
+      INTEGER, TARGET :: IndexesT(3)
+      INTEGER, ALLOCATABLE :: Indexes(:), IndexesM(:)
+      INTEGER :: sgn0,n,nd,nM,ndM,ind,indM,ne,neM,iMesh,nrow,j
+      INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep, NoGaussPoints
+      TYPE(Element_t), POINTER :: Element, ElementM
+      TYPE(Element_t) :: ElementT 
+      TYPE(GaussIntegrationPoints_t) :: IP, IPT
+      TYPE(Nodes_t) :: Nodes, NodesM, NodesT
+      REAL(KIND=dp) :: xt,xmax,xmin,ymin,ymax,dx,dxcut,xmaxm,ymaxm,u,v,w, &
+          xminm,yminm,DetJ, SumArea, RefArea, MaxErr,MinErr,Err, &
+          ElemdCoord(2),MaxDepth,MinDepth
+      REAL(KIND=dp) :: TotRefArea, TotSumArea, ArcCoeff = 1.0_dp, NodeCoeff = 1.0_dp
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+      LOGICAL :: pElemBasis, pElemProj, Stat 
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Variable_t), POINTER :: TimestepVar
+      TYPE(Nodes_t) :: Center2
+      TYPE(Mesh_t), POINTER :: pMesh
+      INTEGER, POINTER :: pIndexes(:)
+      INTEGER, ALLOCATABLE :: DualNodePerm(:)
+      REAL(KIND=dp) :: Center(3), ElemCoord(3), ElemH, MinElemH(2), MaxElemH(2), &
+          MaxDistance, Normal(3), Tangent(3), NormalM(3), r(3)
+            
+      ! These are used temporarily for debugging purposes
+      INTEGER :: SaveInd
+      LOGICAL :: SaveElem, DebugElem
+      CHARACTER(LEN=20) :: FileName
+      INTEGER :: allocstat
+      CHARACTER(*), PARAMETER :: Caller = "NormalProjectorWeak1D"
+
+           
+      CALL Info(Caller,'Creating weak constraints using a 1D normal integrator',Level=8)      
+
+      Mesh => CurrentModel % Solver % Mesh 
+
+      MaxDistance = ListGetCReal( BC,'Projector Max Distance',Found )
+
+      SaveInd = ListGetInteger( BC,'Projector Save Element Index',Found )
+      TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
+      Timestep = NINT( TimestepVar % Values(1) )
+ 
+      ! We assume that the 1st element may be used to determine whether the mesh is a p-element
+      ! mesh or not.
+      Element => BMesh1 % Elements(1)        
+      pElemBasis = isPElement(Element) 
+      pElemProj = pElemBasis
+      IF( pElemProj ) THEN
+        IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
+      END IF
+      IF( pElemProj ) THEN
+        CALL Info(Caller,'Using p-elements when creating mortar projector',Level=8)
+      END IF     
+
+      n = Mesh % MaxElementDOFs
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
+          NodesM % x(n), NodesM % y(n), NodesM % z(n), &
+          NodesT % x(n), NodesT % y(n), NodesT % z(n), &
+          Basis(n), Indexes(n), IndexesM(n), STAT = allocstat )
+      IF( allocstat /= 0 ) CALL Fatal(Caller,'Error in allocation')
+      
+ !     IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
+
+      Nodes % y  = 0.0_dp
+      NodesM % y = 0.0_dp
+      NodesT % y = 0.0_dp
+      Nodes % z  = 0.0_dp
+      NodesM % z = 0.0_dp
+      NodesT % z = 0.0_dp
+      MaxErr = 0.0_dp
+      MinErr = HUGE( MinErr )
+      MinDepth = HUGE( MinDepth )
+      MaxDepth = -HUGE( MaxDepth ) 
+      MaxErrInd = 0
+      MinErrInd = 0
+     
+      ! The temporal element segment used in the numerical integration
+      ElementT % TYPE => GetElementType( 202, .FALSE. )
+      ElementT % NodeIndexes => IndexesT
+
+      ! Use optionally user defined integration rules           
+      NoGaussPoints = ListGetInteger( BC,'Mortar BC Gauss Points',Found ) 
+      IF( NoGaussPoints > 0 ) THEN
+        IPT = GaussPoints( ElementT, NoGaussPoints, PreferenceElement = .FALSE. )
+      ELSE
+        IPT = GaussPoints( ElementT, PreferenceElement = .FALSE. )
+      END IF
+      CALL Info(Caller,'Number of integration points for temporal segment: '&
+          //TRIM(I2S(IPT % n)),Level=7)
+
+      TotHits = 0
+      TotRefArea = 0.0_dp
+      TotSumArea = 0.0_dp
+
+
+      ! Save center of elements for master mesh for fast rough test
+      n = BMesh2 % NumberOfBulkElements
+      ALLOCATE( Center2 % x(n), Center2 % y(n), Center2 % z(n) )
+
+      MaxElemH = 0.0_dp
+      MinElemH = HUGE( ElemH ) 
+
+      ! Calculate maximum and minimum elementsize for slave and master mesh
+      DO iMesh=1,2
+        IF( iMesh == 1 ) THEN
+          pMesh => BMesh1
+        ELSE
+          pMesh => BMesh2
+        END IF
+
+        DO ind=1,pMesh % NumberOfBulkElements
+          Element => pMesh % Elements(ind)        
+          pIndexes => Element % NodeIndexes
+          ne = Element % TYPE % ElementCode / 100
+          IF( ne /= 2 ) THEN
+            CALL Fatal(Caller,'We should only treat segments here!')
+          END IF
+          
+          ! Calculate size of element
+          ElemdCoord(1) = pMesh % Nodes % x(pIndexes(1)) - pMesh % Nodes % x(pIndexes(2))
+          ElemdCoord(2) = pMesh % Nodes % y(pIndexes(1)) - pMesh % Nodes % y(pIndexes(2))
+          
+          ElemH = SQRT( SUM( ElemdCoord(1:2)**2 ) )
+
+          MaxElemH(iMesh) = MAX( MaxElemH(iMesh), ElemH ) 
+          MinElemH(iMesh) = MIN( MinElemH(iMesh), ElemH ) 
+        
+          IF( iMesh == 2 ) THEN
+            Center2 % x(ind) = SUM( pMesh % Nodes % x(pIndexes(1:ne)) ) / ne
+            Center2 % y(ind) = SUM( pMesh % Nodes % y(pIndexes(1:ne)) ) / ne
+          END IF
+          
+        END DO
+
+        PRINT *,'Element size range:',MinElemH(iMesh),MaxElemH(iMesh)
+      END DO
+
+      ! Maximum theoretical distance of centerpoints  
+      ElemH = 0.5 * SUM( MaxElemH )
+      
+      IF( MaxDistance < ElemH ) THEN
+        CALL Info(Caller,'Increasing search distance radius')
+        !PRINT *,'MaxDistance:',MaxDistance,ElemH
+        MaxDistance = 1.2 * ElemH ! some tolerance!
+      END IF
+      
+      DO ind=1,BMesh1 % NumberOfBulkElements
+
+        ! Optionally save the submesh for specified element, for visualization and debugging
+        SaveElem = ( SaveInd == ind )
+        DebugElem = ( ind == 0 ) 
+        
+        Element => BMesh1 % Elements(ind)        
+        
+        nd = mGetElementDOFs(Indexes,Element)
+        n = Element % TYPE % NumberOfNodes
+        ne = 2
+        
+        IF(.NOT. pElemBasis) nd = n
+
+        n = Element % TYPE % NumberOfNodes        
+        Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
+        Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
+        IF(pElemBasis) THEN
+          Nodes % x(n+1:) = 0._dp
+          Nodes % y(n+1:) = 0._dp
+        END IF
+
+        ! Center in the original coordinates
+        Center(1) = SUM( Nodes % x(1:ne) ) / ne
+        Center(2) = SUM( Nodes % y(1:ne) ) / ne
+        
+        ! Find the new normal-tangential coordinate system for this particular element
+        Normal = NormalVector( Element, Nodes, Check = .FALSE. ) 
+        IF( BMesh1 % PeriodicFlip(ind) ) Normal = -Normal
+        CALL TangentDirections( Normal,Tangent )
+        
+        IF( DebugElem ) THEN
+          PRINT *,'Center of element:',Center
+          PRINT *,'Normal:',Normal,BMesh1 % PeriodicFlip(ind)
+          PRINT *,'Tangent:',Tangent
+        END IF
+
+        ! Move to local normal-tangential coordinate system for the slave element
+        DO i=1,n        
+          r(1) = Nodes % x(i)
+          r(2) = Nodes % y(i)
+          r(3) = 0.0_dp
+          
+          ! Coordinate projected to nt-coordinates
+          Nodes % x(i) = SUM( Tangent * r ) 
+          Nodes % y(i) = SUM( Normal * r ) 
+        END DO
+        
+        xmin = MINVAL(Nodes % x(1:n))
+        xmax = MAXVAL(Nodes % x(1:n))
+        dx = xmax - xmin 
+
+        ymin = MINVAL(Nodes % y(1:n))
+        ymax = MAXVAL(Nodes % y(1:n))
+                        
+        ! Compute the reference area
+        u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
+        IF( DebugElem ) THEN
+          PRINT *,'Element n-t range:'
+          PRINT *,'xrange:',xmin,xmax
+          PRINT *,'yrange:',ymin,ymax
+        END IF
+
+        IF( SaveElem ) THEN
+          FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
+          OPEN( 10,FILE=Filename)
+          DO i=1,n
+            WRITE( 10, * ) Nodes % x(i), Nodes % z(i)
+          END DO
+          CLOSE( 10 )
+        END IF
+        
+        ! Nullify y since we don't need it anymore after registering (ymin,ymax)
+        Nodes % y = 0.0_dp        
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+        
+        IP = GaussPoints( Element, PreferenceElement = .FALSE. )
+        RefArea = detJ * SUM( IP % s(1:IP % n) ) 
+        SumArea = 0.0_dp
+
+        IF( DebugElem ) THEN
+          PRINT *,'RefArea:',RefArea
+        END IF
+        
+        ! Set the values to maintain the size of the matrix
+        ! The size of the matrix is used when allocating for utility vectors of contact algo.
+        ! This does not set the Projector % InvPerm to nonzero value that is used to 
+        ! determine whether there really is a projector. 
+        DO i=1,n
+          j = InvPerm1(Indexes(i))
+          nrow = NodePerm(j)
+          IF( DebugElem ) THEN
+            PRINT *,'SelfProjector:',i,j,nrow
+          END IF
+          IF( nrow == 0 ) CYCLE
+          CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
+        END DO
+
+        IF(pElemProj) THEN 
+          DO i=n+1,nd
+            j = Indexes(i)
+            nrow = NodePerm(j)
+            IF( DebugElem ) THEN
+              PRINT *,'SelfProjector:',i,j,nrow
+            END IF            
+            IF( nrow == 0 ) CYCLE
+            CALL List_AddMatrixIndex(Projector % ListMatrix, nrow, j ) 
+          END DO
+        END IF
+
+        ! Currently a n^2 loop but it could be improved
+        !--------------------------------------------------------------------
+        ElemHits = 0
+        DO indM=1,BMesh2 % NumberOfBulkElements
+          
+          ! Rough search, note that this cannot be too tight since then
+          ! we loose also the contacts.
+          IF( ABS( Center(1) - Center2 % x(indM) ) > MaxDistance ) CYCLE
+          IF( ABS( Center(2) - Center2 % y(indM) ) > MaxDistance ) CYCLE
+
+          IF( DebugElem ) THEN
+            PRINT *,'Potential hit:',indM,MaxDistance
+          END IF
+                    
+          ElementM => BMesh2 % Elements(indM)
+          
+          ndM = mGetElementDOFs(IndexesM,ElementM)
+          nM = ElementM % TYPE % NumberOfNodes
+          neM = ElementM % TYPE % ElementCode / 100
+          IF(.NOT.pElemBasis) ndM = nM
+
+          DO i=1,nM
+            j = IndexesM(i)
+            r(1) = BMesh2 % Nodes % x(j)
+            r(2) = BMesh2 % Nodes % y(j)
+            r(3) = 0.0_dp
+            
+            ! Coordinate projected to nt-coordinates
+            NodesM % x(i) = SUM( Tangent * r ) 
+            NodesM % y(i) = SUM( Normal * r ) 
+          END DO
+
+          IF(pElemBasis) THEN
+            NodesM % x(nM+1:) = 0._dp
+            NodesM % y(nM+1:) = 0._dp
+          END IF
+        
+          ! Now we can make the 2nd quick search in the nt-system.
+          ! Now the tangential coordinates can be treated exactly.
+          xminm = MINVAL( NodesM % x(1:neM) )
+          IF( xminm > xmax ) CYCLE
+
+          xmaxm = MAXVAL( NodesM % x(1:neM) )
+          IF( xmaxm < xmin ) CYCLE
+          
+          yminm = MINVAL( NodesM % y(1:neM) )
+          IF( yminm > ymax + MaxDistance ) CYCLE
+
+          ymaxm = MAXVAL( NodesM % y(1:neM) )
+          IF( ymaxm < ymin - MaxDistance ) CYCLE
+
+          NormalM = NormalVector( ElementM, NodesM, Check = .FALSE. ) 
+          IF( BMesh2 % PeriodicFlip(indM) ) NormalM = -NormalM
+
+          IF( DebugElem ) THEN
+            PRINT *,'ElementM n-t range:'
+            PRINT *,'xrange:',xminm,xmaxm
+            PRINT *,'yrange:',yminm,ymaxm
+            PRINT *,'Candidate elem normal:',NormalM, BMesh2 % PeriodicFlip(indM)
+          END IF
+                    
+          ! We must compare this normal to the nt-system where the slave normal is (0,0,1)
+          ! Positive normal means that this element is pointing to the same direction!
+          IF( NormalM(2) >= MaxNormalDot ) THEN
+            IF( DebugElem ) PRINT *,'Normals are not facing!' 
+            CYCLE
+          END IF
+            
+          NodesT % x(1) = MAX( xmin, xminm ) 
+          NodesT % x(2) = MIN( xmax, xmaxm )           
+
+!          dxcut = ABS( NodesT % x(1)-NodesT % x(2) )
+          dxcut = NodesT % x(2)-NodesT % x(1) 
+
+          ! Too small absolute values may result to problems when inverting matrix
+          IF( dxcut < 1.0d-12 ) CYCLE
+
+          ! Too small relative value is irrelevant
+          IF( dxcut < 1.0d-8 * dx ) CYCLE
+
+          sgn0 = 1          
+          ElemHits = ElemHits + 1
+
+          IF( SaveElem ) THEN
+            FileName = 't'//TRIM(I2S(TimeStep))//'_b'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,nM
+              WRITE( 10, * ) NodesM % x(i)
+            END DO
+            CLOSE( 10 )
+
+            FileName = 't'//TRIM(I2S(TimeStep))//'_e'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,2
+              WRITE( 10, * ) NodesT % x(i)
+            END DO
+            CLOSE( 10 )           
+          END IF
+
+          ! Nullify y since we don't need it anymore
+          NodesM % y = 0.0_dp
+          
+          ! In order to reuse the innermost assembly loop it has been
+          ! restructured into a separate routine. 
+          CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+              sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
+              Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
+              InvPerm1, InvPerm2, SumArea )
+        END DO
+        
+        IF( SaveElem ) THEN
+          FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
+          OPEN( 10,FILE=Filename)
+          WRITE( 10, * ) ElemHits 
+          CLOSE( 10 )
+        END IF
+
+        TotHits = TotHits + ElemHits
+        TotSumArea = TotSumArea + SumArea
+        TotRefArea = TotRefArea + RefArea
+
+        Err = SumArea / RefArea
+        IF( Err > MaxErr ) THEN
+          MaxErr = Err
+          MaxErrInd = Err
+        END IF
+        IF( Err < MinErr ) THEN
+          MinErr = Err
+          MinErrInd = ind
+        END IF
+
+        IF( DebugElem ) THEN
+          PRINT *,'ElemHits',ind,ElemHits,Err
+        END IF
+      END DO
+
+      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
+          NodesM % x, NodesM % y, NodesM % z, &
+          NodesT % x, NodesT % y, NodesT % z, &
+          Center2 % x, Center2 % y, Center2 % z )
+      DEALLOCATE( Basis )
+
+      CALL Info(Caller,'Number of integration pairs: '&
+          //TRIM(I2S(TotHits)),Level=10)
+
+      WRITE( Message,'(A,ES12.5)') 'Total reference length:',TotRefArea / ArcCoeff
+      CALL Info(Caller,Message,Level=8) 
+      WRITE( Message,'(A,ES12.5)') 'Total integrated length:',TotSumArea / ArcCoeff
+      CALL Info(Caller,Message,Level=8)
+
+      Err = TotSumArea / TotRefArea
+      WRITE( Message,'(A,ES12.3)') 'Average ratio in length integration:',Err 
+      CALL Info(Caller,Message,Level=8)
+
+      WRITE( Message,'(A,I0,A,ES12.4)') &
+          'Maximum relative discrepancy in length (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
+      CALL Info(Caller,Message,Level=8)
+      WRITE( Message,'(A,I0,A,ES12.4)') &
+          'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
+      CALL Info(Caller,Message,Level=8)
+
+    END SUBROUTINE NormalProjectorWeak1D
+    
   END FUNCTION NormalProjector
 
   
@@ -6767,9 +7210,9 @@ CONTAINS
     INTEGER :: minuscount, samecount, mini, doubleusecount
     LOGICAL :: Parallel, AntiPer
     LOGICAL, ALLOCATABLE :: EdgeUsed(:)
-    
-    
-    CALL Info('ConformingEdgePerm','Creating permutation for elimination of conforming edges',Level=8)
+    CHARACTER(*), PARAMETER :: Caller = 'ConformingEdgePerm'
+  
+    CALL Info(Caller,'Creating permutation for elimination of conforming edges',Level=8)
 
     n = Mesh % NumberOfEdges
     IF( n == 0 ) RETURN
@@ -6778,10 +7221,10 @@ CONTAINS
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
 
     CALL CreateEdgeCenters( Mesh, BMesh1, noedges, EdgeInds, EdgeX, EdgeY ) 
-    CALL Info('ConformingEdgePerm','Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
+    CALL Info(Caller,'Number of edges in slave mesh: '//TRIM(I2S(noedges)),Level=10)
 
     CALL CreateEdgeCenters( Mesh, BMesh2, noedgesm, EdgeIndsM, EdgeMX, EdgeMY )
-    CALL Info('ConformingEdgePerm','Number of edges in master mesh: '//TRIM(I2S(noedgesm)),Level=10)
+    CALL Info(Caller,'Number of edges in master mesh: '//TRIM(I2S(noedgesm)),Level=10)
 
     IF( noedges == 0 ) RETURN
     IF( noedgesm == 0 ) RETURN
@@ -6832,7 +7275,7 @@ CONTAINS
     END DO
 
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in edge centers:',SQRT(maxminss)
-    CALL Info('ConformingEdgePerm',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     minuscount = 0
 
@@ -6900,18 +7343,18 @@ CONTAINS
     DEALLOCATE( PeriodicEdge )
 
     IF( samecount > 0 ) THEN
-      CALL Info('ConformingEdgePerm','Number of edges are the same: '//TRIM(I2S(samecount)),Level=8)
+      CALL Info(Caller,'Number of edges are the same: '//TRIM(I2S(samecount)),Level=8)
     END IF
         
     IF( minuscount == 0 ) THEN
-      CALL Info('ConformingEdgePerm','All edges in conforming projector have consistent sign!',Level=8)
+      CALL Info(Caller,'All edges in conforming projector have consistent sign!',Level=8)
     ELSE
-      CALL Info('ConformingEdgePerm','Flipped sign of '//TRIM(I2S(minuscount))//&
+      CALL Info(Caller,'Flipped sign of '//TRIM(I2S(minuscount))//&
           ' (out of '//TRIM(I2S(noedges))//') edge projectors',Level=6)
     END IF
 
     IF( doubleusecount > 0 ) THEN
-      CALL Fatal('ConformingEdgePerm','This is not conforming! Number of edges used twice: '//TRIM(I2S(doubleusecount)))
+      CALL Fatal(Caller,'This is not conforming! Number of edges used twice: '//TRIM(I2S(doubleusecount)))
     END IF
 
     
@@ -6993,7 +7436,7 @@ CONTAINS
       END DO
 
       IF(noedges > 0 .AND. .NOT. AllocationsDone ) THEN
-        CALL Info('CreateEdgeCenters','Allocating stuff for edges',Level=20)
+        CALL Info(Caller,'Allocating stuff for edges',Level=20)
         ALLOCATE( EdgeInds(noedges), EdgeX(3,noedges), EdgeY(3,noedges) )
         AllocationsDone = .TRUE.
         GOTO 100
@@ -7020,15 +7463,16 @@ CONTAINS
     REAL(KIND=dp) :: x1, y1, z1, x2, y2, z2
     REAL(KIND=dp) :: ss, minss, maxminss
     LOGICAL, ALLOCATABLE :: NodeUsed(:)
+    CHARACTER(*), PARAMETER :: Caller = 'ConformingNodePerm'
 
     
-    CALL Info('ConformingNodePerm','Creating permutations for conforming nodes',Level=8)
+    CALL Info(Caller,'Creating permutations for conforming nodes',Level=8)
 
     n = 0
     IF( PRESENT( PerFlip ) ) n = n + 1
     IF( PRESENT( AntiPeriodic ) ) n = n + 1
     IF( n == 1 ) THEN
-      CALL Fatal('ConformingNodePerm','Either have zero or two optional parameters!')
+      CALL Fatal(Caller,'Either have zero or two optional parameters!')
     END IF
       
     n = Mesh % NumberOfNodes
@@ -7093,14 +7537,14 @@ CONTAINS
     END DO
 
     IF( samecount > 0 ) THEN
-      CALL Info('ConformingNodePerm','Number of nodes are the same: '//TRIM(I2S(samecount)),Level=8)
+      CALL Info(Caller,'Number of nodes are the same: '//TRIM(I2S(samecount)),Level=8)
     END IF
 
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
-    CALL Info('ConformingNodePerm',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     IF( doubleusecount > 0 ) THEN
-      CALL Fatal('ConformingNodePerm','This is not conforming! Number of nodes used twice: '//TRIM(I2S(doubleusecount)))
+      CALL Fatal(Caller,'This is not conforming! Number of nodes used twice: '//TRIM(I2S(doubleusecount)))
     END IF
 
   END SUBROUTINE ConformingNodePerm
@@ -7149,11 +7593,12 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
     LOGICAL :: SecondOrder, pElemProj, pElemBasis
+    CHARACTER(*), PARAMETER :: Caller = "LevelProjector"
 
-    CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
+    CALL Info(Caller,'Creating projector for a levelized mesh',Level=7)
 
     IF(.NOT. (DoEdges .OR. DoNodes ) ) THEN
-      CALL Warn('LevelProjector','Nothing to do, no nonodes, no edges!')
+      CALL Warn(Caller,'Nothing to do, no nonodes, no edges!')
       RETURN
     END IF
 
@@ -7171,9 +7616,9 @@ CONTAINS
         ListGetLogical( BC,'Anti Rotational Projector',Found )
     Cylindrical = ListGetLogical( BC,'Cylindrical Projector',Found ) 
     
-    MaxDistance = ListGetCReal( BC,'Projector Max Distance', HaveMaxDistance) 
+    MaxDistance = ListGetCReal( BC,'Projector Max Distance', HaveMaxDistance ) 
     IF(.NOT. HaveMaxDistance ) THEN
-      MaxDistance = ListGetCReal( CurrentModel % Solver % Values,&
+      MaxDistance = ListGetCReal( CurrentModel % Simulation,&
           'Projector Max Distance', HaveMaxDistance)       
     END IF
 
@@ -7221,14 +7666,14 @@ CONTAINS
 
     StrongProjector = ListGetLogical( BC,'Level Projector Strong',Found )
     IF( StrongProjector .AND. WeakProjector ) THEN
-      CALL Fatal('LevelProjector','Projector cannot be weak (Galerkin) and strong at the same time!')
+      CALL Fatal(Caller,'Projector cannot be weak (Galerkin) and strong at the same time!')
     END IF
     
     MeshDim = Mesh % MeshDim
     IF( MeshDim == 3 ) THEN
       Element => BMesh1 % Elements(1)
       IF( Element % TYPE % DIMENSION == 1 ) THEN
-        CALL Warn('LevelProjector','Enforcing 1D integration for 1D boundary elements in 3D mesh!')
+        CALL Warn(Caller,'Enforcing 1D integration for 1D boundary elements in 3D mesh!')
         MeshDim = 2
       END IF
     END IF
@@ -7246,7 +7691,7 @@ CONTAINS
     IF( DoEdges .AND. .NOT. GenericIntegrator ) THEN
       IF( Naxial > 0 ) THEN
         GenericIntegrator = .TRUE.
-        CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
+        CALL Info(Caller,'Generic integrator enforced for axial projector',Level=6)
       END IF
       
       ! It is assumed that that the target mesh is always un-skewed 
@@ -7255,30 +7700,30 @@ CONTAINS
       IF(.NOT. GenericIntegrator ) THEN
         MaxSkew1 = CheckMeshSkew( BMesh1, NotAllQuads )
         IF( NotAllQuads ) THEN
-          CALL Info('LevelProjector','This mesh has also triangles',Level=8)
+          CALL Info(Caller,'This mesh has also triangles',Level=8)
         END IF
         WRITE( Message,'(A,ES12.3)') 'Maximum skew in this mesh: ',MaxSkew1
-        CALL Info('LevelProjector',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         
         MaxSkew2 = CheckMeshSkew( BMesh2, NotAllQuads2 )
         IF( NotAllQuads2 ) THEN
-          CALL Info('LevelProjector','Target mesh has also triangles',Level=8)
+          CALL Info(Caller,'Target mesh has also triangles',Level=8)
         END IF
         WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew2
-        CALL Info('LevelProjector',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         
         IF( NotAllQuads .OR. NotAllQuads2 .OR. MaxSkew2 > SkewTol ) THEN
           IF( MaxSkew2 > MaxSkew1 .AND. MaxSkew1 < SkewTol ) THEN
-            CALL Warn('LevelProjector','You could try switching the master and target BC!')
+            CALL Warn(Caller,'You could try switching the master and target BC!')
           END IF
-          CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator when needed!')
+          CALL Warn(Caller,'Target mesh has too much skew, using generic integrator when needed!')
           GenericIntegrator = .TRUE. 
         END IF
       END IF
       
       IF( GenericIntegrator ) THEN
-        CALL Info('LevelProjector','Edge projection for the BC requires weak projector!',Level=7)
-        CALL Fatal('LevelProjector','We cannot use fully strong projector as wished in this geometry!')
+        CALL Info(Caller,'Edge projection for the BC requires weak projector!',Level=7)
+        CALL Fatal(Caller,'We cannot use fully strong projector as wished in this geometry!')
       END IF
     END IF
       
@@ -7306,7 +7751,7 @@ CONTAINS
       StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong', Found ) 
       IF( .NOT. Found ) StrongLevelEdges = StrongEdges
       IF( StrongLevelEdges .AND. GenericIntegrator ) THEN
-        CALL Info('LevelProjector','Using strong level edges with partially weak projector',Level=7)
+        CALL Info(Caller,'Using strong level edges with partially weak projector',Level=7)
       END IF
 
       StrongConformingEdges = ListGetLogical( BC,'Level Projector Conforming Edges Strong', Found ) 
@@ -7314,7 +7759,7 @@ CONTAINS
       StrongExtrudedEdges = ListGetLogical( BC,'Level Projector Extruded Edges Strong', Found ) 
       IF( .NOT. Found ) StrongExtrudedEdges = StrongEdges
       IF( StrongExtrudedEdges .AND. GenericIntegrator ) THEN
-        CALL Info('LevelProjector','Using strong extruded edges with partially weak projector',Level=7)
+        CALL Info(Caller,'Using strong extruded edges with partially weak projector',Level=7)
       END IF
       
       ! There is no strong strategy for skewed edges currently
@@ -7330,7 +7775,7 @@ CONTAINS
       ELSE 
         i = ListGetInteger( BC,'Rotational Projector Periods',Found,minv=1 ) 
         IF( GenericIntegrator .AND. .NOT. Found ) THEN
-          CALL Fatal('LevelProjector',&
+          CALL Fatal(Caller,&
               'Generic integrator requires > Rotational Projector Periods <')
         END IF
         Xrange = 360.0_dp / i
@@ -7373,7 +7818,7 @@ CONTAINS
       BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
           'Eliminate Linear Constraints',Found )
       IF( BiOrthogonalBasis ) THEN
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Enforcing > Use Biorthogonal Basis < to True to enable elimination',Level=8)
         CALL ListAddLogical( BC, 'Use Biorthogonal Basis',.TRUE. )
       END IF
@@ -7381,7 +7826,7 @@ CONTAINS
 
     IF (BiOrthogonalBasis) THEN
       IF( DoEdges ) THEN
-        CALL Warn('LevelProjector','Biorthogonal basis cannot be combined with edge elements!')
+        CALL Warn(Caller,'Biorthogonal basis cannot be combined with edge elements!')
       END IF
 
       DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
@@ -7403,7 +7848,7 @@ CONTAINS
 
       Projector % Child => AllocateMatrix()
       Projector % Child % Format = MATRIX_LIST
-      CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
+      CALL Info(Caller,'Using biorthogonal basis, as requested',Level=8)      
     END IF
 
 
@@ -7421,7 +7866,7 @@ CONTAINS
       IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
     END IF
     IF( pElemProj ) THEN
-      CALL Info('LevelProjector','Using p-elements when creating mortar projector',Level=8)
+      CALL Info(Caller,'Using p-elements when creating mortar projector',Level=8)
     END IF
        
     ! At the 1st stage determine the maximum size of the projector
@@ -7449,7 +7894,7 @@ CONTAINS
       END DO
 
       n = SUM( NodePerm )
-      CALL Info('LevelProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
+      CALL Info(Caller,'Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
 
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
@@ -7460,7 +7905,7 @@ CONTAINS
       IF( EliminateUnneeded ) THEN
         m = 0
         n = SUM(NodePerm)
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Number of potential dofs in projector: '//TRIM(I2S(n)),Level=10)        
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
@@ -7473,7 +7918,7 @@ CONTAINS
           END IF
         END DO
         IF( m > 0 ) THEN
-          CALL Info('LevelProjector',&
+          CALL Info(Caller,&
               'Eliminating redundant nodes from projector: '//TRIM(I2S(m)),Level=10)
         END IF
       END IF
@@ -7493,7 +7938,7 @@ CONTAINS
         IF( EliminateUnneeded ) THEN
           m = 0
           n = SUM( DualNodePerm )
-          CALL Info('LevelProjector',&
+          CALL Info(Caller,&
               'Number of potential dofs in dual projector: '//TRIM(I2S(n)),Level=10)        
           ! Now eliminate the nodes which also occur in the other mesh
           ! These must be redundant edges
@@ -7506,7 +7951,7 @@ CONTAINS
             END IF
           END DO
           IF( m > 0 ) THEN
-            CALL Info('LevelProjector',&
+            CALL Info(Caller,&
                 'Eliminating redundant dual nodes from projector: '//TRIM(I2S(m)),Level=10)
           END IF
         END IF
@@ -7532,7 +7977,7 @@ CONTAINS
             END IF
           END DO
         END DO
-        CALL Info('LevelProjector','Eliminated nodes with negative condition: '//&
+        CALL Info(Caller,'Eliminated nodes with negative condition: '//&
             TRIM(I2S(m)),Level=10)        
         DEALLOCATE( Cond ) 
       END IF
@@ -7545,7 +7990,7 @@ CONTAINS
         END IF
       END DO
       
-      CALL Info('LevelProjector',&
+      CALL Info(Caller,&
           'Number of active nodes in projector: '//TRIM(I2S(m)),Level=8)
       EdgeRow0 = m
       
@@ -7561,7 +8006,7 @@ CONTAINS
         DualProjector % InvPerm = 0
 
         IF( DoEdges ) THEN
-          CALL Fatal('LevelProjector','Dual projector cannot handle edges!')
+          CALL Fatal(Caller,'Dual projector cannot handle edges!')
         END IF
       END IF
     ELSE
@@ -7591,7 +8036,7 @@ CONTAINS
 
       IF( EliminateUnneeded ) THEN
         n = SUM( EdgePerm )
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Number of potential edges in projector: '//TRIM(I2S(n)),Level=10)        
         ! Now eliminate the edges which also occur in the other mesh
         ! These must be redundant edges
@@ -7624,10 +8069,10 @@ CONTAINS
       END DO
 
       IF( EliminateUnneeded ) THEN
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Eliminating redundant edges from projector: '//TRIM(I2S(n-m)),Level=10)
       END IF
-      CALL Info('LevelProjector',&
+      CALL Info(Caller,&
           'Number of active edges in projector: '//TRIM(I2S(m)),Level=8)
       IF (SecondOrder) THEN
         FaceRow0 = EdgeRow0 + 2*m
@@ -7643,15 +8088,15 @@ CONTAINS
         DO i=1,BMesh1 % NumberOfBulkElements
           m = m + BMesh1 % Elements(i) % BDOFs
         END DO
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Number of active faces in projector: '//TRIM(I2S(BMesh1 % NumberOfBulkElements)),Level=8)
-        CALL Info('LevelProjector',&
+        CALL Info(Caller,&
             'Number of active face DOFs in projector: '//TRIM(I2S(m)),Level=8)
         ProjectorRows = FaceRow0 + m
       END IF
     END IF
 
-    CALL Info('LevelProjector',&
+    CALL Info(Caller,&
         'Max number of rows in projector: '//TRIM(I2S(ProjectorRows)),Level=10)
     ALLOCATE( Projector % InvPerm(ProjectorRows) )
     Projector % InvPerm = 0
@@ -7698,7 +8143,7 @@ CONTAINS
         ! Some of the dofs may have been set by the strong projector. 
         m = COUNT( EdgePerm > 0 )
         IF( m > 0 ) THEN
-          CALL Info('LevelProjector',&
+          CALL Info(Caller,&
               'Number of weak edges in projector: '//TRIM(I2S(m)),Level=10)      
         END IF
         IF( m > 0 .OR. PiolaVersion) THEN
@@ -7715,7 +8160,7 @@ CONTAINS
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( MeshDim == 2 ) THEN
-        CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
+        CALL Info(Caller,'Initial mesh is 2D, using 1D projectors!',Level=10) 
         CALL AddProjectorWeak1D()
       ELSE IF( GenericIntegrator ) THEN
         CALL AddProjectorWeakGeneric()
@@ -7728,27 +8173,7 @@ CONTAINS
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
-
-    IF( InfoActive(15) ) THEN
-      val = SUM( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Sum of projector entries:',val
-      CALL Info('LevelProjector',Message)
-      
-      val = MINVAL( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Minimum of projector entries:',val
-      CALL Info('LevelProjector',Message)
-      
-      val = MAXVAL( Projector % Values )
-      WRITE(Message,'(A,ES12.3)') 'Maximum of projector entries:',val
-      CALL Info('LevelProjector',Message)
-      
-      CALL Info('LevelProjector','Number of rows in projector: '&
-          //TRIM(I2S(Projector % NumberOfRows)))
-      CALL Info('LevelProjector','Number of entries in projector: '&
-          //TRIM(I2S(SIZE(Projector % Values))))
-    END IF
-      
-
+     
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
       CALL CRS_SortMatrix(Projector % Child,.TRUE.)
@@ -7765,10 +8190,10 @@ CONTAINS
 
     m = COUNT( Projector % InvPerm  == 0 ) 
     IF( m > 0 ) THEN
-      CALL Warn('LevelProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
+      CALL Warn(Caller,'Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
     END IF
 
-    CALL Info('LevelProjector','Projector created',Level=10)
+    CALL Info(Caller,'Projector created',Level=10)
     
   CONTAINS
 
@@ -9424,10 +9849,10 @@ CONTAINS
 
       Mesh => CurrentModel % Solver % Mesh 
 
-      SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
-      DebugInd = ListGetInteger( BC,'Level Projector Debug Element Index',Found )
-      SaveErr = ListGetLogical( BC,'Level Projector Save Fraction',Found)
-      DebugEdge = ListGetLogical( BC,'Level Projector Debug Edge',Found )
+      SaveInd = ListGetInteger( BC,'Projector Save Element Index',Found )
+      DebugInd = ListGetInteger( BC,'Projector Debug Element Index',Found )
+      SaveErr = ListGetLogical( BC,'Projector Save Fraction',Found)
+      DebugEdge = ListGetLogical( BC,'Projector Debug Edge',Found )
       
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
@@ -10707,12 +11132,9 @@ CONTAINS
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
       INTEGER :: allocstat
-      
-!      REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
       CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeak1D"
 
-      
-      
+           
       CALL Info(Caller,'Creating weak constraints using a 1D integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
@@ -10891,7 +11313,8 @@ CONTAINS
 
           NodesT % x(1) = MAX( xmin, xminm ) 
           NodesT % x(2) = MIN( xmax, xmaxm ) 
-          dxcut = ABS( NodesT % x(1)-NodesT % x(2) )
+!          dxcut = ABS( NodesT % x(1)-NodesT % x(2) )
+          dxcut = NodesT % x(2)-NodesT % x(1) 
 
           ! Too small absolute values may result to problems when inverting matrix
           IF( dxcut < 1.0d-12 ) GOTO 100
@@ -13166,10 +13589,10 @@ CONTAINS
     IF( InfoActive(20) ) THEN
        WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix entries: ',SUM(Projector%Values)
        CALL Info(Caller,Message)
-       CALL Info(Caller,'Constraint matrix cols min:'//TRIM(I2S(MINVAL(Projector%Cols))))
-       CALL Info(Caller,'Constraint matrix cols max:'//TRIM(I2S(MAXVAL(Projector%Cols))))
-       CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Projector%Rows))))
-       CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Projector%Rows))))
+       CALL Info(Caller,'Constraint matrix cols min: '//TRIM(I2S(MINVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix cols max: '//TRIM(I2S(MAXVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix rows min: '//TRIM(I2S(MINVAL(Projector%Rows))))
+       CALL Info(Caller,'Constraint matrix rows max: '//TRIM(I2S(MINVAL(Projector%Rows))))
      END IF
             
   CONTAINS
@@ -13311,11 +13734,12 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
-    REAL(KIND=dp) :: NodeScale, EdgeScale, Radius, Coeff
+    REAL(KIND=dp) :: NodeScale, EdgeScale, Radius, Coeff, val 
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix
     TYPE(Variable_t), POINTER :: v
-
+    CHARACTER(*), PARAMETER :: Caller="PeriodicProjector"
+    
     INTERFACE
       FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
           UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, &
@@ -13333,11 +13757,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     Projector => NULL()
     IF ( This <= 0  ) RETURN    
-    CALL Info('PeriodicProjector','Starting projector creation',Level=12)
+    CALL Info(Caller,'Starting projector creation',Level=12)
 
     DIM = CoordinateSystemDimension()
 
-    CALL ResetTimer('PeriodicProjector')
+    CALL ResetTimer(Caller)
     
     Projector => NULL()
     BC => Model % BCs(This) % Values
@@ -13376,9 +13800,9 @@ CONTAINS
     ! The projector is assumed to be either a rotational projector with no translation
     ! and rotation, or then generic one with possible coordinate mapping.
     !---------------------------------------------------------------------------------
-    CALL Info('PeriodicProjector','-----------------------------------------------------',Level=8)
+    CALL Info(Caller,'-----------------------------------------------------',Level=8)
     WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
-    CALL Info('PeriodicProjector',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     ! Create temporal mesh structures that are utilized when making the 
     ! projector between "This" and "Trgt" boundary.
@@ -13427,13 +13851,13 @@ CONTAINS
     AntiPlane = ListGetLogical( BC,'Anti Plane Projector',GotIt )    
     IF( AntiPlane ) Plane = .TRUE.
     
-    IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
-    IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
-    IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
-    IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
-    IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
-    IF( Flat ) CALL Info('PeriodicProjector','Enforcing > Flat Projector <',Level=12)
-    IF( Plane ) CALL Info('PeriodicProjector','Enforcing > Plane Projector <',Level=12)
+    IF( Radial ) CALL Info(Caller,'Enforcing > Radial Projector <',Level=12)
+    IF( Axial ) CALL Info(Caller,'Enforcing > Axial Projector <',Level=12)
+    IF( Sliding ) CALL Info(Caller,'Enforcing > Sliding Projector <',Level=12)
+    IF( Cylindrical ) CALL Info(Caller,'Enforcing > Cylindrical Projector <',Level=12)
+    IF( Rotational ) CALL Info(Caller,'Enforcing > Rotational Projector <',Level=12)
+    IF( Flat ) CALL Info(Caller,'Enforcing > Flat Projector <',Level=12)
+    IF( Plane ) CALL Info(Caller,'Enforcing > Plane Projector <',Level=12)
 
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
@@ -13457,13 +13881,13 @@ CONTAINS
     IF( ListGetLogical( BC,'Stride Projector',GotIt) ) THEN
       CALL ListAddLogical( BC,'Level Projector',.TRUE.)
       CALL ListAddLogical( BC,'Level Projector Strong',.TRUE.)
-      CALL Warn('PeriodicProjector','Enforcing > Level Projector < instead of old > Stride Projector <')
+      CALL Warn(Caller,'Enforcing > Level Projector < instead of old > Stride Projector <')
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
     IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat .OR. Plane .OR. Axial ) THEN
       IF(.NOT. GotIt ) THEN
-        CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
+        CALL Info(Caller,'Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
         LevelProj = .TRUE. 
       ELSE IF(.NOT. LevelProj ) THEN
@@ -13502,7 +13926,7 @@ CONTAINS
           IF( DoEdges ) THEN
             IF(isPelement(Mesh % Elements(1))) THEN
               DoEdges = .FALSE.
-              CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+              CALL Info(Caller,'Edge projector will not be created for p-element mesh',Level=10)
             END IF
           END IF
         END IF
@@ -13518,6 +13942,12 @@ CONTAINS
     Radius = 1.0_dp
     FullCircle = .FALSE.
     EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
+
+    IF( .NOT. Rotational ) THEN
+      IF( ListCheckPresent( BC,'Mesh Rotate 3' ) ) THEN
+        CALL Fatal(Caller,'Only "Rotational Projector" has the "Mesh Rotate 3" trick implemented')
+      END IF
+    END IF
 
     IF( Rotational .OR. Cylindrical ) THEN
       CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
@@ -13552,17 +13982,22 @@ CONTAINS
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
+    ELSE IF( NormalProj ) THEN
+      IF( AntiRepeating ) THEN
+        CALL Fatal(Caller,'An antiperiodic projector cannot be dealt with the normal projector!')
+      END IF
+      Projector => NormalProjector( BMesh2, BMesh1, BC )
     ELSE
       IF( FullCircle ) THEN
-        CALL Fatal('PeriodicProjector','A full circle cannot be dealt with the generic projector!')
+        CALL Fatal(Caller,'A full circle cannot be dealt with the generic projector!')
       END IF
 
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
       
-      IF( NormalProj ) THEN
-        Projector => NormalProjector( BMesh2, BMesh1, BC )
-      ELSE IF( WeakProjector ) THEN
+      IF( WeakProjector ) THEN
+        CALL Info(Caller,'Weighted projector is very suboptimal, do not use it!',Level=3)
+        CALL Warn(Caller,'Use "Normal Projector" or "Level Projector" instead!')
         Projector => WeightedProjector( BMesh2, BMesh1, BMesh2 % InvPerm, BMesh1 % InvPerm, &
             UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
       ELSE
@@ -13571,7 +14006,28 @@ CONTAINS
       END IF
     END IF
 
+    IF( InfoActive(15) ) THEN
+      val = SUM( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Sum of projector entries:',val
+      CALL Info(Caller,Message)
+      
+      val = MINVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Minimum of projector entries:',val
+      CALL Info(Caller,Message)
+      
+      val = MAXVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Maximum of projector entries:',val
+      CALL Info(Caller,Message)
+      
+      CALL Info(Caller,'Number of rows in projector: '&
+          //TRIM(I2S(Projector % NumberOfRows)))
+      CALL Info(Caller,'Number of entries in projector: '&
+          //TRIM(I2S(SIZE(Projector % Values))))
+    END IF
 
+
+
+    
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
@@ -13626,8 +14082,8 @@ CONTAINS
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP EXIT_OK
     END IF    
 
-    CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
-    CALL Info('PeriodicProjector','Projector created, now exiting...',Level=8)
+    CALL CheckTimer(Caller,Delete=.TRUE.)
+    CALL Info(Caller,'Projector created, now exiting...',Level=8)
 
 !------------------------------------------------------------------------------
   END FUNCTION PeriodicProjector

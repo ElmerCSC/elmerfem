@@ -1223,8 +1223,10 @@ CONTAINS
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
   !> A temporal mesh structure with a node for each Gaussian integration point is 
-  !> created. The this projector matrix is transferred to a projector on the nodal
-  !> coordinates.   
+  !> created. This projector matrix is transferred to a projector on the nodal
+  !> coordinates.
+  !> Note that this approach is very suboptimal compared to the version where
+  !> a temporal supermesh is used for in the integration. 
   !---------------------------------------------------------------------------
    FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
        UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
