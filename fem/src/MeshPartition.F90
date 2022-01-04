@@ -80,7 +80,8 @@ CONTAINS
   !> info in Mesh % Repartition (defined on elements)
   !> Dual-graph (element connectivity) is determined based on shared faces(3D)/edges(2D)
   !-------------------------------------------------------------------------------------
-  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand )
+  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand, &
+                                StartImbalanceTol, TolChange, MinElems )
 
     USE MeshUtils
 
@@ -93,23 +94,25 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, OPTIONAL :: SerialMode
-    INTEGER, OPTIONAL :: NoPartitions 
+    INTEGER, OPTIONAL :: NoPartitions, MinElems
     LOGICAL, POINTER, OPTIONAL :: PartitionCand(:)
+    REAL(KIND=dp), OPTIONAL :: StartImbalanceTol, TolChange
     !------------------------
 
 #ifdef HAVE_ZOLTAN
     TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
-    REAL(KIND=dp) :: t1,t2
+    REAL(KIND=dp) :: t1,t2, ImbalanceTol
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
          max_elemno,NoPart
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
     INTEGER, ALLOCATABLE :: PartitionPerm(:), InvPerm(:)
-    LOGICAL :: UsePerm
+    LOGICAL :: UsePerm, Success
+    LOGICAL, ALLOCATABLE :: PartSuccess(:)
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface"
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface", ImbTolStr, Messageq
 
     !Zoltan things
     TYPE(Zoltan_Struct), POINTER :: zz_obj
@@ -129,7 +132,23 @@ CONTAINS
     TYPE(ValueListEntry_t), POINTER :: ptr
     INTEGER :: ncopy
  
-    
+    IF(PRESENT(StartImbalanceTol)) THEN
+      ImbalanceTol = StartImbalanceTol
+    ELSE
+      CALL Info(FuncName, 'No imbalance tolerance given so starting with 1.1 (10%)')
+      ImbalanceTol = 1.1_dp
+    END IF
+
+    IF(.NOT. PRESENT(TolChange)) THEN
+      CALL Info(FuncName, 'No imbalance tolerance change given so using a 0.02 reduction')
+      TolChange = 0.02_dp
+    END IF
+
+    IF(.NOT. PRESENT(MinElems)) THEN
+      CALL Info(FuncName, 'No min elements required for every partition so setting to 0')
+      MinElems = 0
+    END IF
+
     CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=10)
     PartParams => Model % Simulation
 
@@ -155,6 +174,8 @@ CONTAINS
       CALL Info(FuncName,'Nothing to do without any partitions requested!')
       RETURN
     END IF
+
+10  CONTINUE
           
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
@@ -220,7 +241,9 @@ CONTAINS
     CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
     CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
     IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
-    CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
+    !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
+    WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
+    CALL ListAddNewString( PartParams,"zoltan: imbalance_tol",TRIM(ImbTolStr))
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
@@ -308,6 +331,15 @@ CONTAINS
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
     IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
+
+    ! need to check all partitions are given elements
+    Success = .TRUE.
+    IF(NBulk - numExport + numImport <= MinElems) THEN
+      WRITE(Message, '(i0,A)') ParEnv % MyPE,' Part not given any elements'
+      CALL WARN(FuncName, Message)
+      Success = .FALSE.
+    END IF
+
         
     IF(ASSOCIATED(Mesh % Repartition)) THEN
       IF( SIZE( Mesh % Repartition ) < NBulk ) DEALLOCATE(Mesh % Repartition)
@@ -346,6 +378,22 @@ CONTAINS
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportToPart(1:numExport) + 1
     ELSE
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportProcs(1:numExport) + 1
+    END IF
+
+    ! check the success of the rebalancing. Does every partition have nodes?
+    ! if not retry with stricter imbalance tolerance
+    IF(.NOT. Serial) THEN
+      ALLOCATE(PartSuccess(ParEnv % PEs))
+      CALL MPI_ALLGATHER(Success, 1, MPI_LOGICAL, PartSuccess, 1, MPI_LOGICAL,&
+          ELMER_COMM_WORLD, ierr)
+      IF(ANY(.NOT. PartSuccess)) THEN
+        ImbalanceTol = ImbalanceTol - TolChange
+        WRITE(Message, '(A,F10.2)') 'Retrying rebalancing using stricter imbalance tolerance: ', ImbalanceTol
+        CALL Info(FuncName, Message)
+        IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
+        DEALLOCATE(ElemAdj, ElemAdjProc, ElemStart, PartSuccess)
+        GOTO 10
+      END IF
     END IF
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
@@ -2562,8 +2610,10 @@ CONTAINS
       maxind = MAX( maxind, MAXVAL( PPack % idata(i1:i2) ) )
     END DO
 
-    CALL Info('LocalNumberingMeshPieces','Global index range '&
-         //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
+    IF(minind == 0) RETURN
+
+    !CALL Info('LocalNumberingMeshPieces','Global index range '&
+    !     //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
 
     ! Allocate the vector for local renumbering
     ALLOCATE( GlobalToLocal(minind:maxind), STAT=allocstat)

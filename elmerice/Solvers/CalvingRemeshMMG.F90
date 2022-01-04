@@ -1089,7 +1089,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    ! then do the redistribution
    !-------------------------------
 
-   CALL Zoltan_Interface( Model, GatheredMesh )
+   CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
