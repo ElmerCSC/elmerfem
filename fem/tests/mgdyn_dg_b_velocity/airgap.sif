@@ -81,8 +81,7 @@ Material 2
   Relative Permeability = 1000
 
 ! This is here only to control that the dependency could exist
-  Magnetization 1 = Variable Magnetic Flux Density 1, Magnetic Flux Density 2, \
-         Magnetic Flux Density e Velocity 1, Magnetic Flux Density e Velocity 2
+  Magnetization 1 = Variable Magnetic Flux Density e Velocity 1, Magnetic Flux Density e Velocity 2
     Real Matc "0"
 End
 Material 3
