@@ -396,7 +396,7 @@ MODULE Types
 
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
-     REAL(KIND=dp) :: Coeff = 1.0_dp
+     REAL(KIND=dp) :: Coeff = 1.0_dp    
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
@@ -409,7 +409,7 @@ MODULE Types
 #ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
 #endif
-     
+     INTEGER :: partag = 0
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t

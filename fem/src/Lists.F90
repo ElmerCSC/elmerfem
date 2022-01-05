@@ -2233,6 +2233,7 @@ use spariterglobals
    END FUNCTION ListCheckSuffixAnyBodyForce
 !------------------------------------------------------------------------------
 
+   
 !------------------------------------------------------------------------------
 !> Finds an entry related to vector keyword of type "name" or "name i", i=1,2,3.
 !> This could save time since it will detect at one sweep whether the keyword
@@ -2355,7 +2356,7 @@ use spariterglobals
                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
                  WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
                      TRIM( ptr2 % Name )// ' < by ',Coeff
-                 CALL Info('ListSetCoefficients',Message)
+                 CALL Info('ListSetCoefficients',Message,Level=7)
                  ptr2 % Coeff = Coeff
                  EXIT
                END IF
@@ -2367,11 +2368,144 @@ use spariterglobals
        END IF
        ptr => ptr % Next
      END DO
-
+!------------------------------------------------------------------------------
    END SUBROUTINE ListSetCoefficients
- 
+!------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
+!> Finds a keyword with the given basename and sets an integer tag to it
+!> that may be used in sensitivity computation or optimization later on.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListTagParameters( list, name )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*) :: name
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     INTEGER :: k, k1, n, n2, m, partag
+
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     Ptr => list % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n >= k ) THEN
+         ! Did we find a keyword which has the correct suffix?
+         IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+           Ptr2 => list % Head
+           DO WHILE( ASSOCIATED(ptr2) )
+             n2 = ptr2 % NameLen
+             IF( n2 + k <= n ) THEN
+               ! Did we find the corresponding keyword without the suffix?
+               IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
+                 partag = ptr % IValues(1)
+                 IF(partag<1) THEN
+                   CALL Warn('ListTagParameters','Positive integer expected for parameter tag!')
+                 END IF
+                 WRITE( Message,'(A,ES12.5)') 'Adding tag '//TRIM(I2S(partag))//&
+                     ' to "'//TRIM( ptr2 % Name )//'"'
+                 CALL Info('ListTagParameters',Message,Level=7)
+                 ptr2 % partag = partag
+                 EXIT
+               END IF
+             END IF
+             ptr2 => ptr2 % Next
+           END DO
+         END IF
+       END IF
+       ptr => ptr % Next
+     END DO
+
+   END SUBROUTINE ListTagParameters
+   
+
+!----------------------------------------------------------------
+!> Given any real keyword that is tagged to be a design parameter
+!> multiply it with the given coefficient. This assumes that the
+!> List operatiorsn use the "coeff" field to scale the real valued
+!> keywords. The intended use for this is to make it easier to
+!> variations for optimization, control and sensitivity analysis.    
+!----------------------------------------------------------------
+  SUBROUTINE ListMultiplyParameters( Model, partag, mult, Found ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    INTEGER :: partag
+    REAL(KIND=dp) :: mult
+    LOGICAL :: Found
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+
+    CALL Info('ListMultiplyCounters',&
+        'Setting variation to parameter: '//TRIM(I2S(partag)),Level=5)
+    cnt = 0
+    
+    CALL ListMultiplyTagged(Model % Simulation, partag, mult, cnt )
+    CALL ListMultiplyTagged(Model % Constants, partag, mult, cnt )
+    DO i=1,Model % NumberOfEquations
+      CALL ListMultiplyTagged(Model % Equations(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL ListMultiplyTagged(Model % Components(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL ListMultiplyTagged(Model % BodyForces(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL ListMultiplyTagged(Model % ICs(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL ListMultiplyTagged(Model % BCs(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL ListMultiplyTagged(Model % Materials(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfBoundaries
+      CALL ListMultiplyTagged(Model % Boundaries(i) % Values, partag, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL ListMultiplyTagged(Model % Solvers(i) % Values, partag, mult, cnt )
+    END DO
+    
+    Found = ( cnt > 0 ) 
+    
+    IF( Found ) THEN
+      CALL Info('ListMultiplyParameters',&
+          'Altered number of parameters: '//TRIM(I2S(cnt)),Level=7)
+    ELSE
+      CALL Warn('ListMultiplyParameters','No parameters were altered!')
+    END IF
+
+  CONTAINS
+
+    SUBROUTINE ListMultiplyTagged(list, partag, mult, cnt) 
+      TYPE(ValueList_t), POINTER :: list
+      INTEGER :: partag
+      REAL(KIND=dp) :: mult
+      INTEGER :: cnt
+
+      TYPE(ValueListEntry_t), POINTER :: ptr
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      ptr => List % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        IF(partag == ptr % partag ) THEN
+          ptr % coeff = mult * ptr % coeff
+          cnt = cnt + 1
+        END IF
+        ptr => ptr % Next
+      END DO
+    END SUBROUTINE ListMultiplyTagged
+    
+  END SUBROUTINE ListMultiplyParameters
+!-----------------------------------------------------------------------------------
 
 
+!-----------------------------------------------------------------------------------
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
    SUBROUTINE ListCopyItem( ptr, list, name )
@@ -3614,8 +3748,9 @@ use spariterglobals
     IF( PRESENT( Found ) ) Found = LFound
     
   END SUBROUTINE ListWarnUnsupportedKeyword
-  
 
+  
+  
 !> Get pointer to list of section
 !------------------------------------------------------------------------------
   FUNCTION ListGetSectionId( Element, SectionName, Found ) RESULT(id)
