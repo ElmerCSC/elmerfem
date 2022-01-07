@@ -781,7 +781,7 @@
                   CALL FATAL('Calving3D_lset', 'Error building edgeine')
                 ALLOCATE(WorkInt(EdgeLength-2))
                 WorkInt(1:j) = EdgeLineNodes(1:j)
-                WorkInt(j:) = EdgeLineNodes(j+3:)
+                WorkInt(j+1:) = EdgeLineNodes(j+3:)
                 DEALLOCATE(EdgeLineNodes)
                 EdgeLength = EdgeLength - 2
                 ALLOCATE(EdgeLineNodes(EdgeLength))
