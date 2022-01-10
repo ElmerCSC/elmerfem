@@ -85,7 +85,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
        Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, &
-       newdist, Quality, PauseVolumeThresh, MaxBergVolume
+       newdist, Quality, PauseVolumeThresh, MaxBergVolume, RmcValue
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:), Ptest_dist(:), Gtest_dist(:), hminarray(:), hausdarray(:)
   REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
@@ -168,6 +168,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   NULLIFY(WorkArray)
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
   LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", Default=0.00001_dp)
+  RmcValue = ListGetConstReal(SolverParams,"Mesh Rmc Value", Default=1e-15_dp)
   CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
   SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", Default=.FALSE.)
   SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", Default=.FALSE.)
@@ -563,8 +564,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hgrad,&
            hgrad,ierr)
 
-      !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
-      !     0.0001_dp,ierr)
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
+           RmcValue,ierr)
 
       !Feed in the level set distance
       CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgLs, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
