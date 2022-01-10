@@ -3372,7 +3372,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
-    LOGICAL :: LinearSystemTrialing, SourceControl
+    LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl
     REAL(KIND=dp) :: s(3)
     
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
@@ -3422,6 +3422,10 @@ CONTAINS
 
     SourceControl = ListGetLogical( Params,'Apply Source Control',Found )
     IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.TRUE. ) 
+    
+    NonlinearControl = ListGetLogical( Params,'Apply Nonlinear Control',Found )
+    IF(NonlinearControl) CALL ControlNonlinearSystem( Solver, PreSolve=.TRUE.)
+
     
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
@@ -3476,6 +3480,7 @@ CONTAINS
     END IF
     
     IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. ) 
+    IF(NonlinearControl) CALL ControlNonlinearSystem(Solver,PreSolve=.FALSE.)
     
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
@@ -3607,7 +3612,7 @@ CONTAINS
   END FUNCTION DefaultLinesearch
 
 
-
+ 
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------

@@ -410,6 +410,7 @@ MODULE Types
      LOGICAL :: LuaFun = .FALSE.
 #endif
      INTEGER :: partag = 0
+     LOGICAL :: disttag = .FALSE.
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
@@ -1027,6 +1028,9 @@ MODULE Types
       
       LOGICAL :: HarmonicCircuits
 
+! Tag counts to speed things up
+      INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1
+      
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel

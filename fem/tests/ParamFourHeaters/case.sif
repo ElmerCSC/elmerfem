@@ -107,12 +107,14 @@ End
 
 Body Force 3
   Name = "Heater3"
-  Heat Source = $rpar(2)
+!  Heat Source = $rpar(2)
+  Heat Source = -rpar 3 1.0
 End
 
 Body Force 4
   Name = "Heater4"
-  Heat Source = $rpar(3)
+!  Heat Source = $rpar(3)
+  Heat Source = -rpar 4 1.0 
 End
 
 

@@ -483,7 +483,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 !      Get Output File Options
 !------------------------------------------------------------------------------
-
+       
        ! Initial Conditions:
        ! -------------------
        IF ( FirstLoad ) THEN
@@ -519,15 +519,24 @@ END INTERFACE
          IF( DoControl ) THEN
            CALL ControlResetMesh(Control % Control, iSweep )            
            IF( iSweep > 1 ) THEN
-             CALL ControlParameters(Control % Control, &
-                 iSweep,GotParams,FinishEarly)           
+             CALL ControlParameters(Control % Control,iSweep,&
+                 GotParams,FinishEarly)           
              IF( FinishEarly ) EXIT
              Found = ReloadInputFile(CurrentModel,RewindFile=.TRUE.)
              CALL InitializeIntervals()
+           END IF
+
+           ! This is another calling slot as here we have formed the model structure and
+           ! may toggle with the keyword coefficients. 
+           CALL ControlParameters(Control % Control,iSweep,&
+               GotParams,FinishEarly,SetCoeffs=.TRUE.)
+
+           IF( iSweep > 1 ) THEN
              IF( ListGetLogical( Control % Control,'Reset Initial Conditions',Found ) ) THEN
                CALL SetInitialConditions()
              END IF
            END IF
+           
          END IF
            
          !------------------------------------------------------------------------------

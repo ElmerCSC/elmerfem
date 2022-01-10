@@ -2343,6 +2343,15 @@ use spariterglobals
      
      Ptr => list % Head
      DO WHILE( ASSOCIATED(ptr) )
+       IF( ptr % disttag ) THEN
+         WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
+             TRIM( ptr2 % Name )// ' < by ',Coeff
+         CALL Info('ListSetCoefficients',Message,Level=7)
+         ptr % Coeff = Coeff
+         ptr => ptr % Next 
+         CYCLE
+       END IF
+       
        n = ptr % NameLen
        IF ( n >= k ) THEN
          ! Did we find a keyword which has the correct suffix?
@@ -2372,57 +2381,271 @@ use spariterglobals
    END SUBROUTINE ListSetCoefficients
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Add a parameter tag to an existing keyword. By construction we know this
+!> should exist.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListParTagKeyword( List,Name,partag )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER :: partag
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      LOGICAL :: Found
+!------------------------------------------------------------------------------
+      ptr => ListFind( List, Name, Found )
+      IF(.NOT. Found) THEN
+        CALL Fatal('ListParTagKeyword','Cannot add tag to non-existing keyword: '//TRIM(Name))
+      END IF        
+      Ptr % partag = partag
+        
+    END SUBROUTINE ListParTagKeyword
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add tag to distribute value of existing keyword.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListDistTagKeyword( List,Name )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      LOGICAL :: Found
+!------------------------------------------------------------------------------
+      ptr => ListFind( List, Name, Found )
+      IF(.NOT. Found) THEN
+        CALL Fatal('ListDistTagKeyword','Cannot add tag to non-existing keyword: '//TRIM(Name))
+      END IF        
+      Ptr % disttag = .TRUE.
+        
+    END SUBROUTINE ListDistTagKeyword
+!------------------------------------------------------------------------------
+
+
+!----------------------------------------------------------------
+!> Given a suffix tag keyword that have the keyword without the
+!> suffix. If the "tagwei" flag is True set the tag related to the
+!> weight computation, if it is False set integer tag related to parameter
+!> control. 
+!----------------------------------------------------------------
+  SUBROUTINE ListTagKeywords( Model, suffix, tagwei, Found ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: suffix
+    LOGICAL :: tagwei
+    LOGICAL :: Found
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+
+    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=5)
+    cnt = 0
+    
+    CALL ListTagEntry(Model % Simulation, suffix, tagwei, cnt )
+    CALL ListTagEntry(Model % Constants, suffix, tagwei, cnt )
+    DO i=1,Model % NumberOfEquations
+      CALL ListTagEntry(Model % Equations(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL ListTagEntry(Model % Components(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL ListTagEntry(Model % BodyForces(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL ListTagEntry(Model % ICs(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL ListTagEntry(Model % BCs(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL ListTagEntry(Model % Materials(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBoundaries
+      CALL ListTagEntry(Model % Boundaries(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL ListTagEntry(Model % Solvers(i) % Values, suffix, tagwei, cnt )
+    END DO
+    
+    Found = ( cnt > 0 ) 
+    
+    IF( Found ) THEN
+      CALL Info('ListTagKeywords',&
+          'Tagged '//TRIM(I2S(cnt))//' parameters with suffix: '//TRIM(suffix),Level=7)
+    ELSE
+      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=7)
+    END IF
+
+  CONTAINS
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE ListTagEntry( list, name, tagwei, cnt )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: list
+      CHARACTER(LEN=*) :: name
+      LOGICAL :: tagwei     
+      INTEGER :: cnt
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
+      CHARACTER(LEN=LEN_TRIM(Name)) :: str
+      INTEGER :: k, k1, n, n2, m, partag
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      m = 0 
+      k = StringToLowerCase( str,Name,.TRUE. )
+
+      Ptr => list % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        n = ptr % NameLen
+        IF ( n >= k ) THEN
+          ! Did we find a keyword which has the correct suffix?
+          IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+            Ptr2 => list % Head
+            DO WHILE( ASSOCIATED(ptr2) )
+              n2 = ptr2 % NameLen
+              IF( n2 + k <= n ) THEN
+                ! Did we find the corresponding keyword without the suffix?
+                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
+                  IF( tagwei ) THEN
+                    ptr2 % disttag = ptr % Lvalue
+                    m = m + 1
+                    WRITE( Message,'(A)') 'Adding dist tag to "'//TRIM( ptr2 % Name )//'"'
+                    CALL Info('ListTagKeywords',Message,Level=15)
+                  ELSE
+                    partag = ptr % IValues(1)
+                    IF(partag<1) THEN
+                      CALL Warn('ListTagKeywords','Positive integer expected for parameter tag!')           
+                    ELSE
+                      WRITE( Message,'(A)') 'Adding tag '//TRIM(I2S(partag))//&
+                          ' to "'//TRIM( ptr2 % Name )//'"'
+                      CALL Info('ListTagKeywords',Message,Level=15)
+                      ptr2 % partag = partag
+                      m = m + 1
+                    END IF
+                  END IF
+                END IF
+              END IF
+              ptr2 => ptr2 % Next
+            END DO
+          END IF
+        END IF
+        ptr => ptr % Next
+      END DO
+
+      IF( m > 0 ) THEN
+        CALL Info('ListTagKeywords',&
+            'Tagged '//TRIM(I2S(m))//' parameters in list',Level=15)
+      END IF
+      cnt = cnt + m
+
+    END SUBROUTINE ListTagEntry
+    
+  END SUBROUTINE ListTagKeywords
    
-!------------------------------------------------------------------------------
-!> Finds a keyword with the given basename and sets an integer tag to it
-!> that may be used in sensitivity computation or optimization later on.
-!------------------------------------------------------------------------------
-   SUBROUTINE ListTagParameters( list, name )
-!------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list
-     CHARACTER(LEN=*) :: name
-!------------------------------------------------------------------------------
-     TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
-     CHARACTER(LEN=LEN_TRIM(Name)) :: str
-     INTEGER :: k, k1, n, n2, m, partag
 
-     IF(.NOT.ASSOCIATED(List)) RETURN
 
-     k = StringToLowerCase( str,Name,.TRUE. )
-     
-     Ptr => list % Head
-     DO WHILE( ASSOCIATED(ptr) )
-       n = ptr % NameLen
-       IF ( n >= k ) THEN
-         ! Did we find a keyword which has the correct suffix?
-         IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
-           Ptr2 => list % Head
-           DO WHILE( ASSOCIATED(ptr2) )
-             n2 = ptr2 % NameLen
-             IF( n2 + k <= n ) THEN
-               ! Did we find the corresponding keyword without the suffix?
-               IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
-                 partag = ptr % IValues(1)
-                 IF(partag<1) THEN
-                   CALL Warn('ListTagParameters','Positive integer expected for parameter tag!')
-                 END IF
-                 WRITE( Message,'(A,ES12.5)') 'Adding tag '//TRIM(I2S(partag))//&
-                     ' to "'//TRIM( ptr2 % Name )//'"'
-                 CALL Info('ListTagParameters',Message,Level=7)
-                 ptr2 % partag = partag
-                 EXIT
-               END IF
-             END IF
-             ptr2 => ptr2 % Next
-           END DO
-         END IF
-       END IF
-       ptr => ptr % Next
-     END DO
+!----------------------------------------------------------------
+!> Given a suffix tag keyword that have the keyword without the
+!> suffix. If the "tagwei" flag is True set the tag related to the
+!> weight computation, if it is False set tag related to parameter
+!> control. 
+!----------------------------------------------------------------
+  FUNCTION ListTagCount( Model, tagwei ) RESULT ( cnt ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    LOGICAL :: tagwei
+    INTEGER :: cnt 
+!----------------------------------------------------------------
+    INTEGER :: i
 
-   END SUBROUTINE ListTagParameters
+    IF( tagwei ) THEN
+      CALL Info('ListTagCount','Counting tags for keyword normalization!',Level=12)
+    ELSE
+      CALL Info('ListTagCount','Counting tags for keyword variation!',Level=12)
+    END IF
+
+    ! Only the following lists have been created for weights.
+    ! We could add more, but only lists that have elements associated to them. 
+    cnt = 0
+    DO i=1,Model % NumberOfBCs
+      CALL ListTagCnt(Model % BCs(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL ListTagCnt(Model % Materials(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL ListTagCnt(Model % BodyForces(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodies
+      CALL ListTagCnt(Model % Bodies(i) % Values, tagwei, cnt )
+    END DO
+    IF(tagwei) THEN
+      CALL Info('ListTagCount','Found number of normalized keywords: '//TRIM(I2S(cnt)),Level=6)
+      RETURN
+    END IF
+    
+    CALL ListTagCnt(Model % Simulation, tagwei, cnt )
+    CALL ListTagCnt(Model % Constants, tagwei, cnt )
+    DO i=1,Model % NumberOfEquations
+      CALL ListTagCnt(Model % Equations(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL ListTagCnt(Model % Components(i) % Values, tagwei, cnt )
+    END DO    
+    DO i=1,Model % NumberOfICs
+      CALL ListTagCnt(Model % ICs(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBoundaries
+      CALL ListTagCnt(Model % Boundaries(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL ListTagCnt(Model % Solvers(i) % Values, tagwei, cnt )
+    END DO
+    
+    CALL Info('ListTagCount','Found number of parameters: '//TRIM(I2S(cnt)),Level=6)
+
+  CONTAINS
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE ListTagCnt( list, tagwei, cnt )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: list
+      LOGICAL :: tagwei     
+      INTEGER :: cnt
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      INTEGER :: m
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      m = 0 
+
+      Ptr => list % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        IF( tagwei ) THEN
+          IF( ptr % disttag ) m = m + 1
+        ELSE
+          IF( ptr % partag > 0 ) m = m + 1
+        END IF        
+        ptr => ptr % Next
+      END DO
+      
+      IF( m > 0 ) THEN
+        CALL Info('ListTagParameters',&
+            'Tagged number of parameters in list: '//TRIM(I2S(m)),Level=15)
+      END IF
+      cnt = cnt + m
+
+    END SUBROUTINE ListTagCnt
+    
+  END FUNCTION ListTagCount
    
-
+  
 !----------------------------------------------------------------
 !> Given any real keyword that is tagged to be a design parameter
 !> multiply it with the given coefficient. This assumes that the
@@ -2430,78 +2653,110 @@ use spariterglobals
 !> keywords. The intended use for this is to make it easier to
 !> variations for optimization, control and sensitivity analysis.    
 !----------------------------------------------------------------
-  SUBROUTINE ListMultiplyParameters( Model, partag, mult, Found ) 
+  SUBROUTINE ListSetParameters( Model, partag, val, mult, Found ) 
 !----------------------------------------------------------------
     TYPE(Model_t) :: Model
     INTEGER :: partag
-    REAL(KIND=dp) :: mult
+    REAL(KIND=dp) :: val
+    LOGICAL :: mult
     LOGICAL :: Found
 !----------------------------------------------------------------
     INTEGER :: i,cnt
-
-    CALL Info('ListMultiplyCounters',&
-        'Setting variation to parameter: '//TRIM(I2S(partag)),Level=5)
-    cnt = 0
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: Weights(:)
     
-    CALL ListMultiplyTagged(Model % Simulation, partag, mult, cnt )
-    CALL ListMultiplyTagged(Model % Constants, partag, mult, cnt )
-    DO i=1,Model % NumberOfEquations
-      CALL ListMultiplyTagged(Model % Equations(i) % Values, partag, mult, cnt )
-    END DO
-    DO i=1,Model % NumberOfComponents
-      CALL ListMultiplyTagged(Model % Components(i) % Values, partag, mult, cnt )
+    CALL Info('ListSetParameters',&
+        'Setting variation to parameter: '//TRIM(I2S(partag)),Level=12)
+    cnt = 0
+
+    Weights => NULL()
+    Mesh => Model % Mesh
+    
+    DO i=1,Model % NumberOfBodies
+      Weights => Mesh % BodyWeight
+      CALL ListSetTagged(Model % Bodies(i) % Values, partag, val, mult, cnt )
     END DO
     DO i=1,Model % NumberOfBodyForces
-      CALL ListMultiplyTagged(Model % BodyForces(i) % Values, partag, mult, cnt )
-    END DO
-    DO i=1,Model % NumberOfICs
-      CALL ListMultiplyTagged(Model % ICs(i) % Values, partag, mult, cnt )
+      Weights => Mesh % BodyForceWeight
+      CALL ListSetTagged(Model % BodyForces(i) % Values, partag, val, mult, cnt )
     END DO
     DO i=1,Model % NumberOfBCs
-      CALL ListMultiplyTagged(Model % BCs(i) % Values, partag, mult, cnt )
+      Weights => Mesh % BCWeight
+      CALL ListSetTagged(Model % BCs(i) % Values, partag, val, mult, cnt )
     END DO
     DO i=1,Model % NumberOfMaterials
-      CALL ListMultiplyTagged(Model % Materials(i) % Values, partag, mult, cnt )
+      Weights => Mesh % MaterialWeight
+      CALL ListSetTagged(Model % Materials(i) % Values, partag, val, mult, cnt )
     END DO
-    DO i=1,Model % NumberOfBoundaries
-      CALL ListMultiplyTagged(Model % Boundaries(i) % Values, partag, mult, cnt )
-    END DO
-    DO i=1,Model % NumberOfSolvers
-      CALL ListMultiplyTagged(Model % Solvers(i) % Values, partag, mult, cnt )
-    END DO
-    
-    Found = ( cnt > 0 ) 
+
+    IF( partag > 0 ) THEN
+      CALL ListSetTagged(Model % Simulation, partag, val, mult, cnt )
+      CALL ListSetTagged(Model % Constants, partag, val, mult, cnt )
+      DO i=1,Model % NumberOfEquations
+        CALL ListSetTagged(Model % Equations(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfComponents
+        CALL ListSetTagged(Model % Components(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfICs
+        CALL ListSetTagged(Model % ICs(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfBoundaries
+        CALL ListSetTagged(Model % Boundaries(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfSolvers
+        CALL ListSetTagged(Model % Solvers(i) % Values, partag, val, mult, cnt )
+      END DO
+    END IF
+
+10  Found = ( cnt > 0 ) 
     
     IF( Found ) THEN
-      CALL Info('ListMultiplyParameters',&
-          'Altered number of parameters: '//TRIM(I2S(cnt)),Level=7)
+      CALL Info('ListSetParameters',&
+          'Altered number of parameters: '//TRIM(I2S(cnt)),Level=6)
     ELSE
-      CALL Warn('ListMultiplyParameters','No parameters were altered!')
+      CALL Warn('ListSetParameters','No parameters were altered!')
     END IF
 
   CONTAINS
 
-    SUBROUTINE ListMultiplyTagged(list, partag, mult, cnt) 
+    SUBROUTINE ListSetTagged(list, partag, val, mult, cnt) 
       TYPE(ValueList_t), POINTER :: list
       INTEGER :: partag
-      REAL(KIND=dp) :: mult
+      REAL(KIND=dp) :: val
+      LOGICAL :: mult
       INTEGER :: cnt
 
       TYPE(ValueListEntry_t), POINTER :: ptr
 
       IF(.NOT.ASSOCIATED(List)) RETURN
-
+      
       ptr => List % Head
       DO WHILE( ASSOCIATED(ptr) )
-        IF(partag == ptr % partag ) THEN
-          ptr % coeff = mult * ptr % coeff
+        IF( partag == 0 ) THEN
+          IF( ptr % disttag ) THEN         
+            IF(ASSOCIATED(Weights)) THEN
+              IF( Weights(i) > TINY(Weights(i)) ) THEN
+                ptr % coeff = 1.0_dp / Weights(i)
+                cnt = cnt + 1
+              ELSE
+                CALL Warn('ListSetParameters','Refusing division with zero!')
+              END IF
+            END IF
+          END IF
+        ELSE IF(partag == ptr % partag ) THEN
+          IF( mult ) THEN
+            ptr % coeff = val * ptr % coeff
+          ELSE
+            ptr % coeff = val
+          END IF
           cnt = cnt + 1
         END IF
         ptr => ptr % Next
       END DO
-    END SUBROUTINE ListMultiplyTagged
+    END SUBROUTINE ListSetTagged
     
-  END SUBROUTINE ListMultiplyParameters
+  END SUBROUTINE ListSetParameters
 !-----------------------------------------------------------------------------------
 
 

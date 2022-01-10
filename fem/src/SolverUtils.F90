@@ -17240,6 +17240,60 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Get the node from on which the controlled value should be set. 
+!------------------------------------------------------------------------------
+  FUNCTION GetControlNode(Mesh,Perm,Params,nControl,iControl) RESULT ( ControlNode ) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:)
+    TYPE(ValueList_t), POINTER :: Params    
+    INTEGER :: nControl
+    INTEGER :: iControl
+    INTEGER :: ControlNode
+
+    INTEGER :: i
+    REAL(KIND=dp) :: Coord(3), MinDist
+    REAL(KIND=dp), POINTER :: RealWork(:,:)
+    LOGICAL :: Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(*), PARAMETER :: Caller = 'GetControlNode'
+   
+    str = 'Control Node Index' 
+    IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))                
+    ControlNode = ListGetInteger( Params,str,Found )
+
+    IF(.NOT. Found ) THEN        
+      Coord = 0.0_dp
+      str = 'Control Node Coordinates'
+      RealWork => ListGetConstRealArray( Params,str,Found )           
+      IF(Found) THEN
+        i = iControl
+      ELSE
+        str = TRIM(str)//' '//TRIM(I2S(iControl))        
+        RealWork => ListGetConstRealArray( Params,str,Found )                         
+        i = 1
+      END IF
+
+      IF( Found ) THEN
+        IF(SIZE(RealWork,2)==1) THEN
+          Coord = RealWork(:,i)
+        ELSE
+          Coord = RealWork(i,:)
+        END IF
+
+        CALL FindClosestNode(Mesh,Coord,MinDist,ControlNode,ParEnv % PEs>1,Perm=Perm)
+        CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
+
+        str = 'Control Node Index'
+        IF(nControl > 1 ) str = TRIM(str)//' '//TRIM(I2S(iControl))  
+        CALL ListAddInteger( Params, str, ControlNode )
+      END IF
+    END IF
+
+  END FUNCTION GetControlNode
+
+
+  
+!------------------------------------------------------------------------------
 !> Given the operation point and an additional r.h.s. source vector find the
 !> amplitude for the latter one such that the control problem is resolved.
 !> We can request a field value at given point, for example. This tries to
@@ -17365,7 +17419,9 @@ CONTAINS
         IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
         val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
         cTarget(iControl) = val
-        i = GetControlNode()
+
+        i = GetControlNode(Mesh,Perm,Params,nControl,iControl) 
+
         IF(i>0) i = dofs*(Perm(i)-1)+dof0
         cDof(iControl) = i 
       END DO
@@ -17473,76 +17529,237 @@ CONTAINS
     END IF
 
     CALL Info(Caller,'All done for now',Level=15)
-
-    
-  CONTAINS
-
-
-    FUNCTION GetControlNode() RESULT ( ControlNode ) 
-
-      INTEGER :: ControlNode
-      
-      REAL(KIND=dp) :: Coord(3),Coord0(3),mindist,dist
-      REAL(KIND=dp), POINTER :: RealWork(:,:)
-            
-      str = 'Control Node Index' 
-      IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))                
-      ControlNode = ListGetInteger( Params,str,Found )
-      
-      IF(.NOT. Found ) THEN        
-        Coord0 = 0.0_dp
-        str = 'Control Node Coordinates'
-        RealWork => ListGetConstRealArray( Params,str,Found )           
-        IF(Found) THEN
-          i = iControl
-        ELSE
-          str = TRIM(str)//' '//TRIM(I2S(iControl))        
-          RealWork => ListGetConstRealArray( Params,str,Found )                         
-          i = 1
-        END IF
-
-        IF( Found ) THEN
-          IF(SIZE(RealWork,2)==1) THEN
-            Coord0 = RealWork(:,i)
-          ELSE
-            Coord0 = RealWork(i,:)
-          END IF
-
-          CALL Info(Caller,'Locating control node coordinates',Level=15)
-
-          IF( InfoActive(20) ) THEN
-            PRINT *,'Finding node closest to:',i,Coord0
-          END IF
-          
-          mindist = HUGE( mindist )
-          DO i=1,Mesh % NumberOfNodes
-            IF( Perm(i) == 0 ) CYCLE             
-            Coord(1) = Mesh % Nodes % x(i)
-            Coord(2) = Mesh % Nodes % y(i)
-            Coord(3) = Mesh % Nodes % z(i)
-            
-            dist = SUM((Coord0-Coord)**2)
-            IF( dist < mindist ) THEN
-              mindist = dist
-              ControlNode = i
-            END IF
-          END DO
-          CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
-          
-          str = 'Control Node Index'
-          IF(nControl > 1 ) str = TRIM(str)//' '//TRIM(I2S(iControl))  
-          CALL ListAddInteger( Params, str, ControlNode )
-        END IF
-      END IF
-
-      IF( ControlNode > nsize ) CALL Fatal(Caller,&
-          'Invalid "Control Node Index": '//TRIM(I2S(ControlNode)))
-      
-    END FUNCTION GetControlNode
-
     
   END SUBROUTINE ControlLinearSystem
 
+
+
+!------------------------------------------------------------------------------
+!> Given the operation point and an additional r.h.s. source vector find the
+!> amplitude for the latter one such that the control problem is resolved.
+!> We can request a field value at given point, for example. This tries to
+!> mimic some ideas of the "Smart Heater Control" of "HeatSolver" available
+!> long ago. This would hopefully be applicable to wider set of modules. 
+!------------------------------------------------------------------------------
+  SUBROUTINE ControlNonlinearSystem(Solver,PreSolve)
+    TYPE(Solver_t), POINTER :: Solver
+    LOGICAL :: PreSolve
+
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Matrix_t), POINTER :: A    
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: x0(:),b(:),dr(:),r0(:),dy(:),y0(:),prevvalues(:),x(:),dx(:,:)
+    INTEGER, POINTER :: Perm(:)
+    INTEGER :: dofs, i, j, nsize, ControlNode, dof0, nControl, iControl=0,jControl
+    REAL(KIND=dp) :: Nrm, val, cand, mincand, Relax, Eps
+    LOGICAL :: GotF, Found, UseLoads, ExtremumMode, DiagControl, Multiply    
+    REAL(KIND=dp), ALLOCATABLE :: cAmp(:), cTarget(:), cVal(:), dc(:), cSens(:,:)
+    INTEGER, ALLOCATABLE :: cDof(:)
+    TYPE(Model_t), POINTER :: Model    
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(*), PARAMETER :: Caller = 'ControlNonlinearSystem'
+    
+    SAVE cAmp, cTarget, cSens, cVal, dc, cDof, iControl, &
+        UseLoads, DiagControl, ExtremumMode, Eps, &
+        dy, dx, x0, r0, dr, prevvalues 
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Fatal(Caller,'Controlling of source terms implemented only in serial!')
+    END IF
+
+    Model => CurrentModel
+    Params => Solver % Values
+    Mesh => Solver % Mesh 
+    A => Solver % Matrix
+    Var => Solver % Variable    
+    b => A % RHS
+    x => Var % Values
+    dofs = Var % Dofs
+    Perm => Var % Perm
+    nsize = SIZE(x)
+
+
+    nControl = ListGetInteger(Params,'Number of Controls',Found ) 
+    IF(.NOT. Found ) nControl = 1
+
+    Multiply = .TRUE.
+    
+    IF( PreSolve ) THEN
+      IF( iControl == 0 ) THEN
+        CALL Info(Caller,'Applying controlled sources',Level=7)     
+        nsize = SIZE(x)
+        ALLOCATE(x0(nsize),dx(nsize,nControl),prevvalues(nsize),&
+            cAmp(nControl),cTarget(nControl),cVal(nControl),&
+            dc(nControl),cSens(nControl,nControl),cDof(nControl))      
+        cAmp = 1.0_dp; cTarget = 0.0_dp; cVal = 0.0_dp; dc = 0.0_dp; cSens = 0.0_dp; cDof = 0
+
+        ! Save previous values
+        prevvalues = x
+
+        UseLoads = ListGetLogical( Params,'Control Use Loads', Found )
+        IF( UseLoads ) THEN
+          ALLOCATE(r0(nsize),dr(nsize))
+        END IF
+                  
+        dof0 = 1
+        IF( dofs > 1) THEN
+          dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
+        END IF
+
+        ! Get the target values for control
+        DO jControl = 1, Ncontrol            
+          str = 'Control Target Value'
+          IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(jControl))        
+          val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
+          cTarget(jControl) = val
+          !i = GetControlNode(jControl)
+
+          i = GetControlNode(Mesh,Perm,Params,nControl,jControl) 
+
+          IF(i>0) i = dofs*(Perm(i)-1)+dof0
+          cDof(jControl) = i 
+        END DO
+
+        ! The possibility to use control for extremum temperature is here included.
+        ExtremumMode = .FALSE.
+        IF( ANY(cDof==0) ) THEN
+          IF( Ncontrol == 1 ) THEN
+            ExtremumMode = .TRUE.
+          ELSE
+            CALL Fatal(Caller,'Extremum control cannot be used with multiple controls!')
+          END IF
+        END IF
+
+        DiagControl = ListGetLogical( Params,'Control Diagonal', Found ) 
+
+        Eps = ListGetCReal( Params,'Control Epsilon',Found )
+        IF(.NOT. Found ) Eps = 0.01_dp
+      ELSE IF( iControl == 1 ) THEN        
+        CALL ListPushNameSpace('control:')
+        CALL ListAddLogical( Params,'control: Skip Compute Nonlinear Change',.TRUE.)
+        CALL ListAddLogical( Params,'control: Skip Advance Nonlinear iter',.TRUE.)        
+      END IF
+    END IF
+    
+
+    IF(.NOT. PreSolve) THEN
+      IF(iControl == 0 ) THEN
+        x0 = Var % Values
+
+        IF(UseLoads) THEN        
+          ! Reaction force for the base case
+          CALL CalculateLoads( Solver, A, x, dofs, .TRUE., NodalValues = r0 )
+        END IF
+      ELSE
+        ! Remove variation of the parameters
+        val = 1.0/(1.0_dp + eps)
+        CALL ListSetParameters( Model, iControl, val, multiply, Found )            
+
+        dx(:,iControl) = x - x0
+        
+        IF(UseLoads) THEN
+          ! Reaction force for the variation
+          y0 => r0
+          CALL CalculateLoads( Solver, A, x, dofs, .TRUE., NodalValues = dr )
+          dr = dr - r0
+          dy => dr
+        ELSE
+          y0 => x0
+          dy => dx(:,iControl)
+        END IF
+
+        val = cTarget(iControl) 
+        ControlNode = cDof(iControl)
+
+        IF( ExtremumMode ) THEN
+          ! We basically do tuning here already but for the sake of uniformity lets just
+          ! register the sensitivity and current value. 
+          mincand = HUGE(mincand)
+          DO i=1,nsize
+            j = dofs*(i-1)+dof0          
+            IF(ABS(dy(j)) < TINY(dy(j))) CYCLE
+            cand = (val-y0(j))/dy(j)
+            IF( ABS(cand) < ABS(mincand) ) THEN
+              mincand = cand
+              cSens(1,1) = dy(j) / eps
+              cVal(iControl) = y0(j)
+            END IF
+          END DO
+          CALL Info(Caller,'Extremum value is easiest found in dof: '//TRIM(I2S(ControlNode)),Level=7)    
+        ELSE                       
+          DO jControl=1,nControl           
+            IF(DiagControl .AND. jControl /= iControl) CYCLE
+            cSens(jControl,iControl) = dy(cDof(jControl)) / eps
+          END DO
+          cVal(iControl) = y0(cDof(iControl))
+        END IF
+      END IF
+                
+      IF(iControl == nControl ) THEN
+        CALL Info(Caller,'Dertermining source term amplitude',Level=7)     
+        
+        ! Here we solve the control equation without any assumption of diagonal dominance etc. 
+        dc = cTarget - cVal      
+        CALL LuSolve(nControl,cSens,dc)
+
+        IF( InfoActive(20) ) THEN
+          PRINT *,'cVal:',cVal
+          PRINT *,'cTarget:',cTarget          
+          DO i=1,NControl
+            PRINT *,'Sens',i,':',cSens(i,:)
+          END DO
+        END IF
+        
+        Relax = ListGetCReal( Params,'Control Relaxation Factor', Found ) 
+        IF( Found ) dc = Relax * dc        
+        
+        x = x0
+        
+        DO jControl = 1, Ncontrol                    
+          str = 'Control Amplitude'
+          IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))        
+          cAmp(jControl) = ListGetCReal( Params,str,Found)
+          IF(.NOT. Found) cAmp(jControl) = 1.0_dp
+
+          val = 1.0_dp + dc(jControl)
+          cAmp(jControl) = val * cAmp(jControl) 
+
+          IF( .NOT. multiply ) val = cAmp(jControl)             
+          CALL ListSetParameters( Model, jControl, val, multiply, Found )            
+            
+          CALL ListAddConstReal( Params, str, cAmp(jControl) )
+        
+          ! Apply control, this always to the solution - not to load
+          x = x + dc(jControl) * dx(:,jControl)
+
+          WRITE(Message,'(A,ES15.6)') 'Applied '//TRIM(str)//': ',cAmp(iControl)      
+          CALL Info(Caller,Message,Level=5)
+        END DO
+        
+        DEALLOCATE(prevvalues,x0,dx)
+        IF(UseLoads) DEALLOCATE(r0,dr)
+        DEALLOCATE(cAmp,cTarget,cVal,dc,cSens,cDof)
+        
+        CALL ListPopNamespace()
+        iControl = 0
+      ELSE
+        iControl = iControl + 1
+        ! Add variation from the parameters
+        val = (1.0_dp + eps)
+        CALL ListSetParameters( Model, iControl, val, multiply, Found )                    
+
+        ! Start from the same base case with the matrix assembly
+        x = prevvalues
+      END IF
+
+    END IF
+      
+    CALL Info(Caller,'All done for now',Level=15)
+    
+  END SUBROUTINE ControlNonlinearSystem
+
+  
 
 !------------------------------------------------------------------------------
   SUBROUTINE SaveLinearSystem( Solver, Ain )

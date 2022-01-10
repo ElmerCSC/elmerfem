@@ -178,80 +178,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! This subroutine enables the scaling of keywords by geometric entities. 
 ! If any Real type keyword has an associated keyword with suffix 'Normalize by Area'
-! or 'Normalize by Volume' the keyword will be divided with the the area/volume.
-! This way any quantity may be made distributed on-the-fly. The current implementation
-! assumes fixed geometry. The inverse of area/volume will be located at ValueList % Coeff.
-! There is some small additional cost for fetching the value. 
+! or 'Normalize by Volume', or the real valued keyword has the prefix -dist
+! the keyword will be divided with the area/volume.
 !------------------------------------------------------------------------------
    SUBROUTINE SetNormalizedKeywords(Model, Mesh)
      TYPE(Model_t) :: Model
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
-     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
-     INTEGER :: list_ind
-     REAL(KIND=dp) :: EntityWeight
+     INTEGER :: cnt
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: List
+
+     cnt = Model % NumberOfDistTags 
+
+     ! Initialize the count if not done before
+     IF( cnt == -1 ) THEN
+       cnt = ListTagCount(Model,.TRUE.)
+       Model % NumberOfDistTags = cnt
+     END IF
+     
+     ! If no tags nothing to do
+     IF( cnt == 0 ) RETURN
 
      ! If the weights have been already computed for linear cases no need to redo
      IF( Mesh % EntityWeightsComputed ) THEN
        IF( .NOT. ListGetLogical( Model % Simulation,&
            'Update Keyword Normalization',Found ) ) RETURN
      END IF
-
-
-     Suffix = 'Normalize By Area'
-     AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
-
-     Suffix = 'Normalize By Volume'
-     AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
-     AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
-     AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
-
-     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
-
-     ! This computes all the weights as the cost is not that large and
-     ! places the 'Entity Weight' to each list. 
+     
+     ! Calculate entity weights
      CALL CalculateEntityWeights( Model, Mesh ) 
 
-     Suffix = 'Normalize By Area'
-     IF( AnyBC ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBCs
-         List => Model % BCs(list_ind) % Values
-         EntityWeight = Mesh % BCWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     Suffix = 'Normalize By Volume'
-     IF( AnyBodyForce ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBodyForces
-         List => Model % BodyForces(list_ind) % Values
-         EntityWeight = Mesh % BodyForceWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     IF( AnyMat ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfMaterials
-         List => Model % Materials(list_ind) % Values
-         EntityWeight = Mesh % MaterialWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     IF( AnyBody ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBodies
-         List => Model % Bodies(list_ind) % Values
-         EntityWeight = Mesh % BodyWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
+     ! Tag count for entity normalization tags, 2nd and 3rd parameter neglected
+     ! for this USE CASE!
+     CALL ListSetParameters( Model, 0, 0.0_dp, .FALSE., Found ) 
 
    END SUBROUTINE SetNormalizedKeywords
 !------------------------------------------------------------------------------
