@@ -118,6 +118,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
 #if MMG_VERSION_LT(5,6)
   PRINT*, SolverName, ': Starting MMG'
+#elif MMG_VERSION_LT(5,7)
+  PRINT*, SolverName, ': Starting MMG'
 #else
   CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
 #endif
