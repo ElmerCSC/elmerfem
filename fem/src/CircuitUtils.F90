@@ -54,21 +54,29 @@ CONTAINS
     
     TYPE(Valuelist_t), POINTER :: simulation
     REAL(KIND=dp) :: depth
-    LOGICAL :: Found, CSymmetry
-
+    LOGICAL :: Found, CSymmetry, Parallel
+    INTEGER :: NoSlices
+    
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
     simulation => GetSimulation()
-    IF (.NOT. ASSOCIATED(simulation)) CALL Fatal ('GetCircuitModelDepth', 'Simulation not found!')
-   
     depth = GetConstReal(simulation, 'Circuit Model Depth', Found)
-    
-    IF (.NOT. Found) THEN
+
+    IF( Found ) THEN
+      NoSlices = ListGetInteger(simulation,'Number of Slices',Found)
+      IF(NoSlices > 1) THEN
+        Parallel = (ParEnv % PEs > 1) 
+        IF( CurrentModel % Mesh % SingleMesh ) THEN
+          Parallel = ListGetLogical( simulation,'Enforce Parallel',Found )
+        END IF
+        IF(Parallel) depth = depth / NoSlices
+      END IF
+    ELSE
       depth = 1._dp
       IF (CSymmetry) depth = 2._dp * pi
     END IF
-       
+        
 !------------------------------------------------------------------------------
   END FUNCTION GetCircuitModelDepth
 !------------------------------------------------------------------------------
@@ -683,7 +691,6 @@ END FUNCTION isComponentName
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
-
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
       END SELECT
@@ -703,7 +710,7 @@ END FUNCTION isComponentName
   TYPE(ValueList_t), POINTER :: CompParams, BC
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
-  INTEGER :: t, n, BCid
+  INTEGER :: t, n, BCid, NoSlices
   LOGICAL :: Found
   LOGICAL :: Parallel 
   
@@ -713,7 +720,7 @@ END FUNCTION isComponentName
   Parallel = ( ParEnv % PEs > 1 )
   IF( Parallel ) THEN
     IF( Mesh % SingleMesh ) THEN
-      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )      
     END IF
   END IF
     
@@ -727,7 +734,12 @@ END FUNCTION isComponentName
     END DO
     IF( Parallel ) THEN
       Comp % ElArea = ParallelReduction(Comp % ElArea)
+      NoSlices = ListGetInteger(CurrentModel % Simulation,'Number of Slices',Found )
+      IF(NoSlices > 1) Comp % ElArea = Comp % ElArea / NoSlices
     END IF
+
+    ! Add this to list since no need to compute this twice
+    CALL ListAddConstReal(CompParams,'Electrode Area',Comp % ElArea )        
   ELSE
     IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
         CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
@@ -740,6 +752,9 @@ END FUNCTION isComponentName
     IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
     
   END IF
+
+
+  
 !-------------------------------------------------------------------
  END SUBROUTINE ComputeElectrodeArea
 !-------------------------------------------------------------------
