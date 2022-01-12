@@ -16300,6 +16300,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        DEALLOCATE(MultVar % Values)
        MultVar % Values => MultiplierValues
      END IF
+
+     IF( InfoActive(25) ) THEN
+       CALL VectorValuesRange(MultVar % values,SIZE(MultVar % values),'MultVar')
+     END IF
   ELSE
      MultiplierValues => NULL()
   END IF

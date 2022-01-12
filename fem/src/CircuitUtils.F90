@@ -719,9 +719,9 @@ END FUNCTION isComponentName
 
   Parallel = ( ParEnv % PEs > 1 )
   IF( Parallel ) THEN
-    IF( Mesh % SingleMesh ) THEN
-      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )      
-    END IF
+    ! If we have single mesh then we have either parallel times or parallel slices.
+    ! In both cases let us not do a parallel sum. 
+    IF( Mesh % SingleMesh ) Parallel = .FALSE.
   END IF
     
   IF (CoordinateSystemDimension() == 2) THEN
@@ -732,10 +732,9 @@ END FUNCTION isComponentName
         Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
       END IF
     END DO
+    
     IF( Parallel ) THEN
       Comp % ElArea = ParallelReduction(Comp % ElArea)
-      NoSlices = ListGetInteger(CurrentModel % Simulation,'Number of Slices',Found )
-      IF(NoSlices > 1) Comp % ElArea = Comp % ElArea / NoSlices
     END IF
 
     ! Add this to list since no need to compute this twice
@@ -750,7 +749,6 @@ END FUNCTION isComponentName
 
     Comp % ElArea = GetConstReal(BC, 'Area', Found)
     IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
-    
   END IF
 
 
