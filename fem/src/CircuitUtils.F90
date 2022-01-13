@@ -66,11 +66,7 @@ CONTAINS
     IF( Found ) THEN
       NoSlices = ListGetInteger(simulation,'Number of Slices',Found)
       IF(NoSlices > 1) THEN
-        Parallel = (ParEnv % PEs > 1) 
-        IF( CurrentModel % Mesh % SingleMesh ) THEN
-          Parallel = ListGetLogical( simulation,'Enforce Parallel',Found )
-        END IF
-        IF(Parallel) depth = depth / NoSlices
+        IF( CurrentModel % Solver % Parallel ) depth = depth / NoSlices
       END IF
     ELSE
       depth = 1._dp
@@ -546,12 +542,7 @@ END FUNCTION isComponentName
     BoundaryAreas = 0._dp
     Mesh => CurrentModel % Mesh
 
-    Parallel = ( ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
-      END IF
-    END IF
+    Parallel = CurrentModel % Solver % Parallel
     
     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
@@ -719,9 +710,9 @@ END FUNCTION isComponentName
 
   Parallel = ( ParEnv % PEs > 1 )
   IF( Parallel ) THEN
-    IF( Mesh % SingleMesh ) THEN
-      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )      
-    END IF
+    ! If we have single mesh then we have either parallel times or parallel slices.
+    ! In both cases let us not do a parallel sum. 
+    IF( Mesh % SingleMesh ) Parallel = .FALSE.
   END IF
     
   IF (CoordinateSystemDimension() == 2) THEN
@@ -732,10 +723,9 @@ END FUNCTION isComponentName
         Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
       END IF
     END DO
+    
     IF( Parallel ) THEN
       Comp % ElArea = ParallelReduction(Comp % ElArea)
-      NoSlices = ListGetInteger(CurrentModel % Simulation,'Number of Slices',Found )
-      IF(NoSlices > 1) Comp % ElArea = Comp % ElArea / NoSlices
     END IF
 
     ! Add this to list since no need to compute this twice
@@ -750,7 +740,6 @@ END FUNCTION isComponentName
 
     Comp % ElArea = GetConstReal(BC, 'Area', Found)
     IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
-    
   END IF
 
 
@@ -1998,13 +1987,7 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    Parallel = (ParEnv % PEs > 1)
-    IF( Parallel ) THEN
-      IF( ASolver % Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
-      END IF
-    END IF
-      
+    Parallel = CurrentModel % Solver % Parallel      
     IF( Parallel ) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:

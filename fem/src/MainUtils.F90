@@ -69,13 +69,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     Params => ListGetSolverParams(Solver)
+    Parallel = Solver % Parallel
+    
     str = ListGetString( Params,'Linear System Solver', Found )
 
-    Parallel = ( ParEnv % PEs > 1 )
-    IF(Solver % Mesh % SingleMesh ) Parallel = &
-        ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found ) 
-
-    
     IF ( str == 'direct' ) THEN
       str = ListGetString( Params,'Linear System Direct Method', Found )
       
@@ -1032,7 +1029,7 @@ CONTAINS
     TYPE(GraphColour_t) :: GraphColouring, BoundaryGraphColouring
     LOGICAL :: ConsistentColours
 
-    LOGICAL :: ThreadedStartup, MultiColourSolver, HavePerm
+    LOGICAL :: ThreadedStartup, MultiColourSolver, HavePerm, Parallel
     INTEGER :: VariableType
     
     ! Set pointer to the list of solver parameters
@@ -1150,7 +1147,22 @@ CONTAINS
     END IF
 #endif
 
+    ! Mark whether the solver will be treated as parallel in future
+    ! Mainly related to the linear system solution since assembly is trivially parallel.
+    ! There are some special cases where we have same mesh for multiple instances of almost
+    ! same independent problem. 
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF(Solver % Mesh % SingleMesh ) THEN      
+        Parallel = ListGetLogical( SolverParams,'Enforce Parallel',Found )
+        IF(.NOT. Found) THEN
+          Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+        END IF
+      END IF
+    END IF
+    Solver % Parallel = Parallel 
 
+    
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
@@ -1241,8 +1253,6 @@ CONTAINS
       END IF
     END IF
 
-
-
     ! Default order of equation
     !--------------------------
     Solver % Order = 1
@@ -1313,6 +1323,7 @@ CONTAINS
     NULLIFY( Solver % Matrix )    
     var_name = ListGetString( SolverParams, 'Variable', Found )
 
+    
     IF(.NOT. Found ) THEN
       ! Variable does not exist
       !------------------------------------------------------
@@ -5103,9 +5114,7 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     Parallel = ( ParEnv % PEs > 1 )
-     IF( Solver % Mesh % SingleMesh ) Parallel = &
-         ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+     Parallel = Solver % Parallel 
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.

@@ -139,10 +139,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     First = .FALSE.
     
-    Parallel = ( ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
-    END IF
+    Parallel = Solver % Parallel
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
     ELSE
@@ -175,6 +172,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         EXIT
       END IF
     END DO
+
+    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
+      Solver % Parallel = .TRUE.
+      ASolver % Parallel = .TRUE.
+    END IF
+    
     IF(.NOT. ASSOCIATED(ASolver) ) THEN
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
@@ -234,7 +238,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     LagrangeVar => VariableGet( Solver % Mesh % Variables, MultName )
 
     IF(ASSOCIATED(LagrangeVar)) THEN
-      n = SIZE( LagrangeVar % Values )        
+      n = SIZE( LagrangeVar % Values )
+
+      ! Debugging stuff activated only when "Max Output Level" >= 25
+      IF( InfoActive( 25 ) ) THEN
+        CALL VectorValuesRange(LagrangeVar % Values,n,TRIM(LagrangeVar % Name))       
+      END IF
+      
       IF( n < Model % Circuit_tot_n ) THEN
         CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
       END IF
@@ -255,11 +265,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       LagrangeVar % PrevValues(:,1) = LagrangeVar % Values 
         
       Crt = LagrangeVar % PrevValues(1:Model%Circuit_tot_n,1)
-
-      ! Debugging stuff activated only when "Max Output Level" >= 20
-      IF( InfoActive( 20 ) ) THEN
-        CALL VectorValuesRange(Crt,Model%Circuit_tot_n,'Crt')       
-      END IF
     END IF
     
     CALL Circuits_ToMeshVariable(Solver,crt) 
@@ -400,7 +405,7 @@ CONTAINS
     INTEGER :: VvarId, IvarId, q, j, astat
     REAL(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     REAL(KIND=dp) :: RotM(3,3,nn)
-    REAL(KIND=dp) :: value, dt
+    REAL(KIND=dp) :: val, dt
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: Found, IsActive
 
@@ -468,13 +473,13 @@ CONTAINS
             !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
             ! where V_m is the mth dof of the polynomial
             ! --------------------------------------------------------------
-            value = - REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
-            CALL AddToMatrixElement(CM, VvarId, j + VvarId, value)
+            val = - REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
+            CALL AddToMatrixElement(CM, VvarId, j + VvarId, val)
 
             ! Circuit eqns for the pdofs:
             ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
             ! ----------------------------------------------------------
-            CALL AddToMatrixElement(CM, j + VvarId, IvarId, value)
+            CALL AddToMatrixElement(CM, j + VvarId, IvarId, val)
           END DO
         END SELECT
       END IF
@@ -546,7 +551,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
-    REAL(KIND=dp) :: localC, value, circ_eq_coeff, localR !, localL
+    REAL(KIND=dp) :: localC, val, circ_eq_coeff, localR !, localL
     INTEGER :: j,t
     LOGICAL :: stat
 
@@ -686,27 +691,27 @@ CONTAINS
           ! ( d/dt a,w )        
 
           IF ( TransientSimulation ) THEN 
-            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
-            IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
-            value = value / Comp % VoltageFactor
+            IF (dim == 2) val = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
+            IF (dim == 3) val = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
+            val = val / Comp % VoltageFactor
 
-!           localL = value
+!           localL = val
 !           Comp % Inductance = Comp % Inductance + localL
 
-            CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
-            CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
+            CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * val)
+            CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * val
          END IF
           
           ! source: 
           ! (J, rot a'), where
           ! J = w*I, thus I*(w, rot a'):
           ! ----------------------------         
-          IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
-          IF (dim == 3) value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
+          IF (dim == 2) val = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
+          IF (dim == 3) val = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
-          value = value * Comp % SymmetryCoeff
+          val = val * Comp % SymmetryCoeff
 
-          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
+          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, val)
         END IF
       END DO
     END DO
@@ -727,7 +732,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3)
-    REAL(KIND=dp) :: localC, value, circ_eq_coeff, grads_coeff, localConductance !, localL
+    REAL(KIND=dp) :: localC, val, circ_eq_coeff, grads_coeff, localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
@@ -804,14 +809,14 @@ CONTAINS
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
-      IF(dim==2) value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
-      IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
-      value = value * Comp % VoltageFactor
+      IF(dim==2) val = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
+      IF(dim==3) val = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      val = val * Comp % VoltageFactor
 
-      localConductance = ABS(value)
+      localConductance = ABS(val)
       Comp % Conductance = Comp % Conductance + localConductance
 
-      CALL AddToMatrixElement(CM, vvarId, vvarId, value)
+      CALL AddToMatrixElement(CM, vvarId, vvarId, val)
 
       DO j=1,ncdofs
         q=j
@@ -820,18 +825,18 @@ CONTAINS
         ! ---------------------------------------------------------
  
         IF ( TransientSimulation ) THEN 
-          IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
-          IF(dim==3) value = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
-  !        localL = value
+          IF(dim==2) val = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
+          IF(dim==3) val = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
+  !        localL = val
   !        Comp % Inductance = Comp % Inductance + localL
-          CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
-          CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
+          CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * val)
+          CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * val
         END IF
 
-        IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
-        IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
-        value = value * Comp % VoltageFactor
-        CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, value)
+        IF(dim==2) val = IP % s(t)*detJ*localC*basis(j)*grads_coeff
+        IF(dim==3) val = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        val = val * Comp % VoltageFactor
+        CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, val)
       END DO
     END DO
 
@@ -846,7 +851,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value, dt
+    REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), val, dt
     TYPE(Component_t) :: Comp
 
     TYPE(Solver_t), POINTER :: ASolver
@@ -974,10 +979,10 @@ CONTAINS
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
-          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
-          value = value * Comp % VoltageFactor
-          CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, value)
+          IF (dim == 2) val = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
+          IF (dim == 3) val = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          val = val * Comp % VoltageFactor
+          CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, val)
         END DO
 
 
@@ -987,12 +992,12 @@ CONTAINS
             IF (dim == 3) q=q+nn
             ! computing the mass term (sigma * d/dt * a, V'(alpha) grad si):
             ! ---------------------------------------------------------
-            IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
-            IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
-  !          localL = value
+            IF (dim == 2) val = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
+            IF (dim == 3) val = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
+  !          localL = val
   !          Comp % Inductance = Comp % Inductance + localL
-            CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
-            CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
+            CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * val)
+            CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * val
           END DO
         END IF
 
@@ -1005,10 +1010,10 @@ CONTAINS
         DO j=1,ncdofs
             q=j
             IF (dim == 3) q=q+nn
-            IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
-            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
-            value = value * Comp % VoltageFactor
-            CALL AddToMatrixElement(CM, PS(indexes(q)), dofId+nm, value)
+            IF (dim == 2) val = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
+            IF (dim == 3) val = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            val = val * Comp % VoltageFactor
+            CALL AddToMatrixElement(CM, PS(indexes(q)), dofId+nm, val)
         END DO
       END DO
 
@@ -1240,6 +1245,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Circuit equations associated with solver index: '&
         //TRIM(I2S(ASolver % SolverId)),Level=6)
     Model % ASolver => ASolver 
+
+    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
+      Solver % Parallel = .TRUE.
+      ASolver % Parallel = .TRUE.
+    END IF
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
     Circuits => Model % Circuits
@@ -1333,7 +1344,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Matrix_t), POINTER :: CM
     INTEGER :: p, i, nm, RowId, ColId, j
     REAL(KIND=dp) :: Omega, vphi
-    COMPLEX(KIND=dp) :: cmplx_value
+    COMPLEX(KIND=dp) :: cmplx_val
     LOGICAL :: Found
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     
@@ -1391,13 +1402,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF(Cvar % B(j) /= 0._dp) THEN
           
           IF (Cvar % Mre(j) /= 0._dp .OR. Cvar % Mim(j) /= 0._dp) THEN
-            cmplx_value = Cvar % Mre(j) + im * Cvar % Mim(j)
-            cmplx_value = cmplx_value * Cvar % B(j)
+            cmplx_val = Cvar % Mre(j) + im * Cvar % Mim(j)
+            cmplx_val = cmplx_val * Cvar % B(j)
           ELSE
-            cmplx_value = Cvar % B(j)
+            cmplx_val = Cvar % B(j)
           END IF
           
-          CALL AddToCmplxMatrixElement(CM, RowId, ColId, REAL(cmplx_value), AIMAG(cmplx_value))
+          CALL AddToCmplxMatrixElement(CM, RowId, ColId, REAL(cmplx_val), AIMAG(cmplx_val))
         END IF
       END DO
     END DO
@@ -1420,7 +1431,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
     INTEGER :: VvarId, IvarId, q, j, astat
-    COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
+    COMPLEX(KIND=dp) :: i_multiplier, cmplx_val
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     REAL(KIND=dp) :: RotM(3,3,nn)
@@ -1489,15 +1500,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
             ! where V_m is the mth dof of the polynomial
             ! --------------------------------------------------------------
-            cmplx_value = -i_multiplier * REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
+            cmplx_val = -i_multiplier * REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
             CALL AddToCmplxMatrixElement(CM, VvarId, 2*j + VvarId, &
-                REAL(cmplx_value), AIMAG(cmplx_value))
+                REAL(cmplx_val), AIMAG(cmplx_val))
 
             ! Circuit eqns for the pdofs:
             ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
             ! ----------------------------------------------------------
             CALL AddToCmplxMatrixElement(CM, 2*j + VvarId, IvarId, &
-               REAL(cmplx_value), AIMAG(cmplx_value))
+               REAL(cmplx_val), AIMAG(cmplx_val))
           END DO
         END SELECT
       END IF
@@ -1594,7 +1605,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp) :: Basis(nn), DetJ, x, circ_eq_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
-    COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_value
+    COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_val
     REAL(KIND=dp) :: localR !, localL
     INTEGER :: j,t
     LOGICAL :: stat
@@ -1722,26 +1733,26 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
-          IF (dim == 2) cmplx_value = im * Omega * Comp % N_j &
+          IF (dim == 2) cmplx_val = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*Basis(j)*circ_eq_coeff*w(3)
-          IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
+          IF (dim == 3) cmplx_val = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
-          cmplx_value = cmplx_value / Comp % VoltageFactor
-!          localL = ABS(cmplx_value)
+          cmplx_val = cmplx_val / Comp % VoltageFactor
+!          localL = ABS(cmplx_val)
 !          Comp % Inductance = Comp % Inductance + localL
 
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
-                 REAL(cmplx_value), AIMAG(cmplx_value))
+                 REAL(cmplx_val), AIMAG(cmplx_val))
           
-          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
-          IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
-          IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
+          IF (dim == 2) cmplx_val = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
+          IF (dim == 3) cmplx_val = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
+          IF (i_multiplier /= 0._dp) cmplx_val = i_multiplier*cmplx_val
 
-          cmplx_value = cmplx_value * Comp % SymmetryCoeff
+          cmplx_val = cmplx_val * Comp % SymmetryCoeff
           
           CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(q))), IvarId, &
-             REAL(cmplx_value), AIMAG(cmplx_value))
+             REAL(cmplx_val), AIMAG(cmplx_val))
 
         END IF
       END DO
@@ -1764,7 +1775,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Omega, grads_coeff, circ_eq_coeff
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3)
-    COMPLEX(KIND=dp) :: localC, cmplx_value
+    COMPLEX(KIND=dp) :: localC, cmplx_val
     REAL(KIND=dp) :: localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
@@ -1837,34 +1848,34 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
-      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
+      IF(dim==2) cmplx_val = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
 
-      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
+      IF(dim==3) cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
 
-      localConductance = ABS(cmplx_value)
+      localConductance = ABS(cmplx_val)
       Comp % Conductance = Comp % Conductance + localConductance
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
-              REAL(cmplx_value), AIMAG(cmplx_value))
+              REAL(cmplx_val), AIMAG(cmplx_val))
 
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
-        IF(dim==2) cmplx_value = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
+        IF(dim==2) cmplx_val = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
 
-        IF(dim==3) cmplx_value = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+        IF(dim==3) cmplx_val = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
 
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
-               REAL(cmplx_value), AIMAG(cmplx_value))
+               REAL(cmplx_val), AIMAG(cmplx_val))
 
-!        localL = ABS(1._dp/cmplx_value)
+!        localL = ABS(1._dp/cmplx_val)
 !        Comp % Inductance = Comp % Inductance + localL
         
-        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff * Comp % VoltageFactor
-        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+        IF(dim==2) cmplx_val = IP % s(t)*detJ*localC*basis(j)*grads_coeff * Comp % VoltageFactor
+        IF(dim==3) cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
-                REAL(cmplx_value), AIMAG(cmplx_value))
+                REAL(cmplx_val), AIMAG(cmplx_val))
       END DO
     END DO
 
@@ -1879,7 +1890,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t), POINTER :: Element
-    COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), val
     TYPE(Component_t) :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
 
@@ -2073,11 +2084,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
-          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(Jvec*gradv)
-          value = value * Comp % VoltageFactor
+          IF (dim == 2) val = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
+          IF (dim == 3) val = IP % s(t)*detJ*localV*localVtest*SUM(Jvec*gradv)
+          val = val * Comp % VoltageFactor
 
-          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
+          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(val), AIMAG(val))
         END DO
 
         DO j=1,ncdofs
@@ -2085,9 +2096,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (dim == 3) q=q+nn
           ! computing the mass term (sigma * im * Omega * a, V'(alpha) grad si):
           ! ---------------------------------------------------------
-          IF (dim == 2) value = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff
-          IF (dim == 3) value = im * Omega * IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)
-          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(q))), REAL(value), AIMAG(value) )
+          IF (dim == 2) val = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff
+          IF (dim == 3) val = im * Omega * IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)
+          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(q))), REAL(val), AIMAG(val) )
         END DO
 
       END DO
@@ -2099,10 +2110,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         DO j=1,ncdofs
             q=j
             IF (dim == 3) q=q+nn
-            IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
-            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(Jvec*Wbasis(j,:))
-            value = value * Comp % VoltageFactor
-            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId+nm, REAL(value), AIMAG(value))
+            IF (dim == 2) val = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
+            IF (dim == 3) val = IP % s(t)*detJ*localV*SUM(Jvec*Wbasis(j,:))
+            val = val * Comp % VoltageFactor
+            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId+nm, REAL(val), AIMAG(val))
         END DO
       END DO
 
