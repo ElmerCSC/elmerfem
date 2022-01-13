@@ -360,6 +360,65 @@ IF(WITH_Zoltan)
   ENDIF()
 ENDIF(WITH_Zoltan)
 
+
+IF(WITH_NETCDF)
+  # ---------------------- #
+  # -- NETCDF libraries -- #
+  #----------------------- #
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Elmer/Ice package: Looking for [NETCDF] & [NETCDF Fortran] libraries")
+  
+  
+  FIND_PACKAGE(NETCDF)
+  
+  IF(NETCDF_FOUND)
+  
+    SET(HAVE_NETCDF TRUE CACHE BOOL "Has NETCDF for Elmer/Ice Output" )
+    GET_FILENAME_COMPONENT(NETCDF_LIBDIR ${NETCDF_LIBRARY} DIRECTORY)
+    GET_FILENAME_COMPONENT(NETCDFF_LIBDIR ${NETCDFF_LIBRARY} DIRECTORY)
+  
+    MARK_AS_ADVANCED(HAVE_NETCDF)
+    INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DHAVE_NETCDF)
+  
+    MESSAGE(STATUS "  NETCDF:           " "${NETCDF_FOUND}")
+    MESSAGE(STATUS "  NETCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
+    MESSAGE(STATUS "  NETCDF_LIBS:     " "${NETCDF_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "Library not found: >NETCDF_FOUND< ")
+    MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY<,  >NETCDFF_LIBRARY< \n some functionalities will be disabled")
+  ENDIF(NETCDF_FOUND)
+  
+  IF(NETCDF_FOUND)
+    # ---------------------- #
+    # -- HDF5 libraries -- #
+    #----------------------- #
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+  
+    FIND_PACKAGE(PHDF5)
+    
+    IF(PHDF5_FOUND)
+    
+      SET(HAVE_HDF5 TRUE CACHE BOOL "Has HDF5 for Elmer/Ice Output" )
+      GET_FILENAME_COMPONENT(PHDF5_LIBDIR ${PHDF5_LIBRARY} DIRECTORY)
+      GET_FILENAME_COMPONENT(PHDF5HL_LIBDIR ${PHDF5HL_LIBRARY} DIRECTORY)
+    
+      MARK_AS_ADVANCED(HAVE_HDF5)
+      INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+      ADD_DEFINITIONS(-DHAVE_HDF5)
+    
+      MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+      MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+      MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+    ELSE()
+      MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+      MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+    ENDIF(PHDF5_FOUND)
+  ENDIF(NETCDF_FOUND)
+  
+ENDIF(WITH_NETCDF)
+
 # MMG Remeshing
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
@@ -393,6 +452,10 @@ ENDIF(MMG_FOUND)
 
 MESSAGE(STATUS "------------------------------------------------")
 
+# MPI and LAPACK
+FIND_PACKAGE(BLAS REQUIRED)
+FIND_PACKAGE(LAPACK REQUIRED)
+# BLAS and LAPACK libraries may be needed for testing
 
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
