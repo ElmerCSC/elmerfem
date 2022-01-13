@@ -139,10 +139,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     First = .FALSE.
     
-    Parallel = ( ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
-    END IF
+    Parallel = Solver % Parallel
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
     ELSE
@@ -175,6 +172,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         EXIT
       END IF
     END DO
+
+    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
+      Solver % Parallel = .TRUE.
+      ASolver % Parallel = .TRUE.
+    END IF
+    
     IF(.NOT. ASSOCIATED(ASolver) ) THEN
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
@@ -1241,6 +1245,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Circuit equations associated with solver index: '&
         //TRIM(I2S(ASolver % SolverId)),Level=6)
     Model % ASolver => ASolver 
+
+    IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
+      CALL Warn(Caller,'Conflicting parallel status for circuit and A solver!')
+      Solver % Parallel = .TRUE.
+      ASolver % Parallel = .TRUE.
+    END IF
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
     Circuits => Model % Circuits

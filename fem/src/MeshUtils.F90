@@ -1460,8 +1460,10 @@ CONTAINS
 
      PseudoParallel = .FALSE.
      IF(.NOT. Parallel ) THEN
-       PseudoParallel = ( ParEnv % PEs > 1 ) .AND. &
-           ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
+       IF( ParEnv % PEs > 1 ) THEN
+         PseudoParallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
+         IF(.NOT. Found ) PseudoParallel = ListGetLogicalAnySolver(CurrentModel,'Enforce Parallel')
+       END IF
      END IF
      
      i = LEN_TRIM(MeshNamePar)

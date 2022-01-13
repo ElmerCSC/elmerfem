@@ -66,11 +66,7 @@ CONTAINS
     IF( Found ) THEN
       NoSlices = ListGetInteger(simulation,'Number of Slices',Found)
       IF(NoSlices > 1) THEN
-        Parallel = (ParEnv % PEs > 1) 
-        IF( CurrentModel % Mesh % SingleMesh ) THEN
-          Parallel = ListGetLogical( simulation,'Enforce Parallel',Found )
-        END IF
-        IF(Parallel) depth = depth / NoSlices
+        IF( CurrentModel % Solver % Parallel ) depth = depth / NoSlices
       END IF
     ELSE
       depth = 1._dp
@@ -546,12 +542,7 @@ END FUNCTION isComponentName
     BoundaryAreas = 0._dp
     Mesh => CurrentModel % Mesh
 
-    Parallel = ( ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
-      END IF
-    END IF
+    Parallel = CurrentModel % Solver % Parallel
     
     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
@@ -1996,13 +1987,7 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    Parallel = (ParEnv % PEs > 1)
-    IF( Parallel ) THEN
-      IF( ASolver % Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
-      END IF
-    END IF
-      
+    Parallel = CurrentModel % Solver % Parallel      
     IF( Parallel ) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:

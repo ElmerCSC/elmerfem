@@ -2336,12 +2336,14 @@ END INTERFACE
          .AND. ( ParEnv % PEs > 1 ) 
 
      ! For parallel slices we need to introduce the slices
-     ParallelSlices = ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) &
-         .AND. ( ParEnv % PEs > 1 )
+     ParallelSlices = ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) 
+         !.AND. ( ParEnv % PEs > 1 )
 
      IF( ParallelTime .OR. ParallelSlices ) THEN
-       IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Single Mesh',GotIt ) ) THEN
-         CALL Fatal('ExecSimulation','Parallel time and slices only available with "Single Mesh"')
+       IF( ParEnv % PEs > 1 ) THEN
+         IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Single Mesh',GotIt ) ) THEN
+           CALL Fatal('ExecSimulation','Parallel time and slices only available with "Single Mesh"')
+         END IF
        END IF
      END IF
 
