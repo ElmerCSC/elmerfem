@@ -434,7 +434,7 @@ CONTAINS
 
       CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
-      IF (Comp % CoilType == 'stranded') THEN
+      IF (Comp % CoilType == 'stranded' .OR. Comp % ComponentType == 'resistor') THEN
         Comp % Resistance = ListGetCReal(CompParams, 'Resistance', Found)
         IF (Found) THEN
           Comp % UseCoilResistance = .TRUE.
@@ -449,41 +449,50 @@ CONTAINS
       END IF
       
       IF ( IsActive ) THEN
-        SELECT CASE (Comp % CoilType)
-        CASE('stranded')
-          IF (Comp % UseCoilResistance) THEN
+        IF (Comp % ComponentType == 'resistor') THEN
             CALL Info('AddComponentEquationsAndCouplings',&
-                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
+                'Writing resistor equation, component '//TRIM(i2s(CompInd)), Level = 7)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
-          ELSE
-            Comp % Resistance = 0._dp
-          END IF
-          CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
-        CASE('massive')
-          CALL AddToMatrixElement(CM, VvarId, IvarId, -1._dp)
-        CASE('foil winding')
-          ! Foil Winding voltage: 
-          ! V + ...added next... = 0
-          ! ----------------------
-          CALL AddToMatrixElement(CM, VvarId, VvarId, 1._dp)
-          
-          DO j = 1, Cvar % pdofs 
+            CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
+        ELSE
+          SELECT CASE (Comp % CoilType)
+          CASE('stranded')
+            IF (Comp % UseCoilResistance) THEN
+              CALL Info('AddComponentEquationsAndCouplings',&
+                  'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
+              CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
+            ELSE
+              Comp % Resistance = 0._dp
+            END IF
+            CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
+          CASE('massive')
+            CALL AddToMatrixElement(CM, VvarId, IvarId, -1._dp)
+          CASE('foil winding')
             ! Foil Winding voltage: 
-            !  ... - Nf/Lalpha * int_0^{Lalpha}(V_0+V_1*alpha+V_2*alpha**2+...) = 0
-            !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
-            ! where V_m is the mth dof of the polynomial
-            ! --------------------------------------------------------------
-            val = - REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
-            CALL AddToMatrixElement(CM, VvarId, j + VvarId, val)
+            ! V + ...added next... = 0
+            ! ----------------------
+            CALL AddToMatrixElement(CM, VvarId, VvarId, 1._dp)
+            
+            DO j = 1, Cvar % pdofs 
+              ! Foil Winding voltage: 
+              !  ... - Nf/Lalpha * int_0^{Lalpha}(V_0+V_1*alpha+V_2*alpha**2+...) = 0
+              !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
+              ! where V_m is the mth dof of the polynomial
+              ! --------------------------------------------------------------
+              val = - REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
+              CALL AddToMatrixElement(CM, VvarId, j + VvarId, val)
 
-            ! Circuit eqns for the pdofs:
-            ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
-            ! ----------------------------------------------------------
-            CALL AddToMatrixElement(CM, j + VvarId, IvarId, val)
-          END DO
-        END SELECT
+              ! Circuit eqns for the pdofs:
+              ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
+              ! ----------------------------------------------------------
+              CALL AddToMatrixElement(CM, j + VvarId, IvarId, val)
+            END DO
+          END SELECT
+        END IF
       END IF
       
+      IF (Comp % ComponentType == 'resistor') CYCLE
+
       DO q=GetNOFActive(),1,-1
         Element => GetActiveElement(q)
         IF (ElAssocToComp(Element, Comp)) THEN
