@@ -449,7 +449,6 @@ CONTAINS
                 'Writing resistor equation, component '//TRIM(i2s(CompInd)), Level = 7)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
             CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
-            CYCLE
         ELSE
           SELECT CASE (Comp % CoilType)
           CASE('stranded')
@@ -487,6 +486,8 @@ CONTAINS
         END IF
       END IF
       
+      IF (Comp % ComponentType == 'resistor') CYCLE
+
       DO q=GetNOFActive(),1,-1
         Element => GetActiveElement(q)
         IF (ElAssocToComp(Element, Comp)) THEN
