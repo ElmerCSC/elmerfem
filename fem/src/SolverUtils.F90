@@ -10092,10 +10092,7 @@ END FUNCTION SearchNodeL
       x => Solver % Variable % Values
     END IF
     
-    Parallel = ( ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF(Solver % Mesh % SingleMesh ) Parallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Stat )
-    END IF
+    Parallel = Solver % Parallel
     
     NormDim = ListGetInteger(Solver % Values,'Nonlinear System Norm Degree',Stat)
     IF(.NOT. Stat) NormDim = 2
@@ -10448,9 +10445,8 @@ END FUNCTION SearchNodeL
     RelativeP = .FALSE.
     SingleMesh = Solver % Mesh % SingleMesh
 
-    Parallel = ( ParEnv % PEs > 1 ) 
-    IF(SingleMesh) Parallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Stat )
-    
+    Parallel = Solver % Parallel
+      
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
@@ -12724,12 +12720,7 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
-    Parallel = ( ParEnv % PEs > 1)
-    IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
-      END IF
-    END IF
+    Parallel = Solver % Parallel
       
     CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
@@ -13300,10 +13291,8 @@ END FUNCTION SearchNodeL
     LOGICAL :: UseVar, Parallel
 
 
-    Parallel = ( ParEnv % PEs > 1 )
-
-    IF(Solver % Mesh % SingleMesh ) Parallel =  ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
-
+    Parallel = Solver % Parallel
+      
     UseVar = .FALSE.
     IF(PRESENT( NodalLoads ) ) THEN
       UseVar = ASSOCIATED( NodalLoads )
@@ -13968,12 +13957,7 @@ END FUNCTION SearchNodeL
       CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
     END IF
 
-    Parallel = ( ParEnv % Pes>1 ) 
-    IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) THEN
-        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
-      END IF
-    END IF
+    Parallel = Solver % Parallel
     
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
@@ -16172,12 +16156,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CALL Info( Caller, ' ', Level=6 )
 
   SolverPointer => Solver  
-  Parallel = (ParEnv % PEs > 1 )
-  IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) THEN
-      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
-    END IF
-  END IF
+
+  Parallel = Solver % Parallel
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
@@ -16299,6 +16279,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
        DEALLOCATE(MultVar % Values)
        MultVar % Values => MultiplierValues
+     END IF
+
+     IF( InfoActive(25) ) THEN
+       CALL VectorValuesRange(MultVar % values,SIZE(MultVar % values),'MultVar')
      END IF
   ELSE
      MultiplierValues => NULL()

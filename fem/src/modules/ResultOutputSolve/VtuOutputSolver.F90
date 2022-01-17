@@ -768,14 +768,14 @@ CONTAINS
     END IF
 
     CoordOffset = 0.0_dp
-    TmpArray => ListGetConstRealArray( Params,'Coordinate Offset',Found )    
+    TmpArray => ListGetConstRealArray( Params,'Mesh Translate',Found )    
     IF( Found ) THEN            
       DO i=1,MIN( 3, SIZE(TmpArray,1) )
         CoordOffset(i) = TmpArray(i,1)
       END DO
     ELSE
       DO i=1,3
-        CoordOffset(i) = ListGetCReal( Params,'Coordinate Offset '//TRIM(I2S(i)),Found )
+        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//TRIM(I2S(i)),Found )
       END DO
     END IF
     

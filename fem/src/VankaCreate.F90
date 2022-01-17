@@ -301,15 +301,6 @@
 
       ndim = ipar(3)
 
-      IF(ASSOCIATED( A % ILUValues)) THEN
-        DO i=ndim-A % ExtraDOFs+1,ndim-A % ExtraDOFs+n
-          DO j=A % ILURows(i), A % ILURows(i+1)-1
-            A % ILUValues(j) = 0._dp
-          END DO
-          A % ILUValues(A % ILUDiag(i))=1._dp
-        END DO
-      END IF
-
       CALL CRS_LUPrecondition(u,v, ipar)
 
       IF(n>0) THEN
@@ -326,6 +317,7 @@
           CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
         END IF
       END IF
+
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
 !-------------------------------------------------------------------------------

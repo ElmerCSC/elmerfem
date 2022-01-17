@@ -868,6 +868,7 @@ MODULE Types
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
+      LOGICAL :: Parallel = .FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
