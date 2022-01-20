@@ -1794,15 +1794,16 @@ CONTAINS
     
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateStranded','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
+
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
     IF(dim==2) THEN
       ncdofs1=1
       ncdofs2=nd
     ELSE IF(dim==3) THEN
-      ncdofs1=nn
+      ncdofs1=nn+1
       ncdofs2=nd
     END IF
-    
+
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
 
@@ -1819,11 +1820,11 @@ CONTAINS
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm) 
           CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind, harm)
-!          CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind)
+!         CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind)
         ELSE
           CALL CountMatElement(Rows, Cnts, i, 1, harm)
           CALL CountMatElement(Rows, Cnts, j, 1, harm)
-!          CALL CountMatElement(Rows, Cnts, j, 1)
+!         CALL CountMatElement(Rows, Cnts, j, 1)
         END IF
       END IF
     END DO
@@ -1865,7 +1866,7 @@ CONTAINS
       ncdofs1=1
       ncdofs2=nd
     ELSE IF(dim==3) THEN
-      ncdofs1=nn
+      ncdofs1=nn+1
       ncdofs2=nd
     END IF
     DO p=ncdofs1,ncdofs2
@@ -2008,9 +2009,12 @@ CONTAINS
     ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
 
     CM % NumberOfRows = nm + Circuit_tot_n
+
     n = CM % NumberOfRows
+
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
-    ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
+    ALLOCATE(Done(SIZE(PS)), CM % RowOwner(n)); Cm % RowOwner=-1
+
 
     Parallel = CurrentModel % Solver % Parallel      
     IF( Parallel ) CALL SetCircuitsParallelInfo()
