@@ -96,7 +96,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand, ExtrudedMeshName
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputFile, PostFile, RestartFile, &
                 OutputName=' ',PostName=' ', When, OptionString
 
@@ -633,24 +633,27 @@ END INTERFACE
      SUBROUTINE CreateExtrudedMesh()
 
        INTEGER :: ExtrudeLayers
+       LOGICAL :: SliceVersion
+
+       IF(.NOT. ListCheckPrefix(CurrentModel % Simulation,'Extruded Mesh') ) RETURN
        
-       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found) - 1 
+       ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)-1 
        IF( .NOT. Found ) THEN
          ExtrudeLayers = GetInteger(CurrentModel % Simulation,'Extruded Mesh Layers',Found)
        END IF
        IF(.NOT. Found ) RETURN
-
+       
        IF(ExtrudeLayers < 2) THEN
          CALL Fatal('ElmerSolver','There must be at least two "Extruded Mesh Layers"!')
        END IF
 
-       ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
-       IF (Found) THEN
-         ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1, ExtrudedMeshName)
+       SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
+       IF( SliceVersion ) THEN
+         ExtrudedMesh => MeshExtrudeSlices(CurrentModel % Meshes, ExtrudeLayers-1)
        ELSE
          ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
        END IF
-
+         
        ! Make the solvers point to the extruded mesh, not the original mesh
        !-------------------------------------------------------------------
        DO i=1,CurrentModel % NumberOfSolvers

@@ -14,7 +14,10 @@ End
 Simulation
   Max Output Level = 5
 
-  Extruded Mesh Levels=10
+  Extruded Mesh Levels = 10
+
+! Version that partitions slices in z starting from single mesh. 
+! Extruded Mesh Slices = Logical True
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
