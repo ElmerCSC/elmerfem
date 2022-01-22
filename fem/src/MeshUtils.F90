@@ -9838,8 +9838,8 @@ CONTAINS
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarily for debugging purposes
-      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
-      LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster, symmCount
+      LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge, symmX, symmY
       REAL(KIND=dp) :: sums, summ, summ2, summabs, EdgeProj(2), EdgeProjM(2), ci, &
           EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
       CHARACTER(LEN=20) :: FileName
@@ -9856,6 +9856,10 @@ CONTAINS
       DebugInd = ListGetInteger( BC,'Projector Debug Element Index',Found )
       SaveErr = ListGetLogical( BC,'Projector Save Fraction',Found)
       DebugEdge = ListGetLogical( BC,'Projector Debug Edge',Found )
+
+      symmX = ListGetLogical( BC,'Projector symmetry x',Found )
+      symmY = LIstGetLogical( BC,'Projector symmetry y',Found )
+      IF(symmY) CALL Fatal(Caller,'Symmetry in y not implemented yet!')
       
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
@@ -9997,7 +10001,7 @@ CONTAINS
         END IF
 
         ! For axial projector the angle is neither of the coordinates
-       IF( Naxial > 1 ) THEN
+        IF( Naxial > 1 ) THEN
           ! Calculate the [min,max] range of radius squared for slave element.
           ! We are working with squares because squareroot is a relatively expensive operation. 
           rmax2 = 0.0_dp
@@ -10168,7 +10172,8 @@ CONTAINS
             IF( zmaxm < zmin - MaxDistance ) CYCLE
             IF( zminm > zmax + MaxDistance ) CYCLE
           END IF
-          
+
+          SymmCount = 0
           NodesM % y(1:nM) = BMesh2 % Nodes % y(ElementM % NodeIndexes(1:nM))
         
           ! Make the quick and dirty search first
@@ -10936,7 +10941,7 @@ CONTAINS
               END IF
             END DO
 
-300         CONTINUE
+            CONTINUE
             
           END DO
 
@@ -10959,15 +10964,26 @@ CONTAINS
                 END DO
               ELSE
                 Nrange = Nrange2
-                NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
+                NodesM % x(1:nM) = NodesM % x(1:nM) + ArcRange  * (Nrange2 - Nrange1)
               END IF
+              xminm = MINVAL( NodesM % x(1:neM))
+              xmaxm = MAXVAL( NodesM % x(1:neM))
+              GOTO 200
+            END IF
+          END IF  ! Repeating
+
+          ! Just mirror the element and try again
+          IF( SymmX ) THEN
+            IF( SymmCount == 0 ) THEN
+              SymmCount = SymmCount + 1
+              NodesM % x(1:nM) = -NodesM % x(1:nM) 
               xminm = MINVAL( NodesM % x(1:neM))
               xmaxm = MAXVAL( NodesM % x(1:neM))
               GOTO 200
             END IF
           END IF
 
-        END DO
+        END DO  ! indM
 
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
@@ -11004,7 +11020,7 @@ CONTAINS
           MaxEdgeErr = MAX( MaxEdgeErr, EdgeErr ) 
         END IF
         
-      END DO
+      END DO ! ind
 
       IF( SaveErr ) CLOSE(11)
 
