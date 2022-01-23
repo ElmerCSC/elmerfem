@@ -8116,3 +8116,11 @@ void MainWindow::selectParaViewSlot(){
   selectVtkPostAct->setChecked(false);
   selectParaViewAct->setChecked(true);
 }
+
+void MainWindow::rebuildGLLists(){
+  /*
+  This function is assumed to be called from ObjectBrowser to avoid a problem of 3D surface
+  mesh not shown correctly when project loading (typically, TemperatureGeneric sample)
+  */
+  glWidget->rebuildLists();
+}
