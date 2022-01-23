@@ -1814,11 +1814,12 @@ void MainWindow::saveAsSlot() {
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(
+  QString dirName = QFileDialog::getExistingDirectory(
       this, tr("Open directory to save mesh"), defaultDirName);
 
-  if (!saveDirName.isEmpty()) {
-    logMessage("Output directory " + saveDirName);
+  if (!dirName.isEmpty()) {
+    logMessage("Output directory " + dirName);
+    saveDirName = dirName;
   } else {
     logMessage("Unable to save: directory undefined");
     return;
