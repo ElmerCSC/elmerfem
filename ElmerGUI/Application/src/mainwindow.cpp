@@ -309,11 +309,13 @@ MainWindow::MainWindow() {
   // default size:
   int defW = egIni->value("width").toInt();
   int defH = egIni->value("height").toInt();
-  if (defW <= 200)
-    defW = 200;
-  if (defH <= 200)
-    defH = 200;
+  if (defW <= 300)
+    defW = 300;
+  if (defH <= 300)
+    defH = 300;
   this->resize(defW, defH);
+  sifWindow->resize(defW - 50, defH - 50);  
+  solverLogWindow->resize(defW - 50, defH - 50);
 
   loadSettings();
 }
