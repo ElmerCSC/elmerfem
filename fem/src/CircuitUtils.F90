@@ -534,16 +534,34 @@ END FUNCTION isComponentName
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: BC
-    REAL(KIND=dp) :: BoundaryAreas(CurrentModel % NumberOFBCs)
-    INTEGER :: Active, t, i, BCid, n
+    REAL(KIND=dp), ALLOCATABLE :: BoundaryAreas(:)
+    REAL(KIND=dp) :: area
+    INTEGER :: Active, t0, t, i, BCid, n, nBC
+    INTEGER, POINTER :: ChildBCs(:)
     LOGICAL :: Found
     LOGICAL :: Parallel 
 
-    BoundaryAreas = 0._dp
     Mesh => CurrentModel % Mesh
 
     Parallel = CurrentModel % Solver % Parallel
+
+    ! Not all boundary elements are associated to a BC.
+    ! Some may also be created by extrusion. 
+    t0 = Mesh % NumberOfBulkElements
+    nBC = 0
+    DO t=1,Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t0+t)
+      IF(ASSOCIATED(Element % BoundaryInfo) ) THEN
+        nBC = MAX(nBC, Element % BoundaryInfo % Constraint )
+      END IF
+    END DO
+
+    nBC = MAX(nBC,CurrentModel % NumberOfBCs)
+    nBC = ParallelReduction(nBC,2)
     
+    ALLOCATE( BoundaryAreas(nBC) )
+    BoundaryAreas = 0.0_dp
+        
     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
        IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('SetBoundaryAreasToValueLists', 'Boundary not found!')
@@ -553,25 +571,48 @@ END FUNCTION isComponentName
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-!       IF (.NOT. ActiveBoundaryElement()) CYCLE
        
        BC=>GetBC()
-       IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     
-       BCid = GetInteger(BC, 'Boundary Id', Found)
-       n = GetElementNOFNodes() 
-       BoundaryAreas(BCid) = BoundaryAreas(BCid) + ElementAreaNoAxisTreatment(Mesh, Element, n) 
-    END DO
+       IF (ASSOCIATED(BC) ) THEN
+         BCid = GetInteger(BC, 'Boundary Id', Found)
+       ELSE
+         BCid = Element % BoundaryInfo % Constraint
+       END IF
 
-    DO i=1, CurrentModel % NumberOfBcs
+       IF( BCid > 0 ) THEN
+         n = GetElementNOFNodes() 
+         BoundaryAreas(BCid) = BoundaryAreas(BCid) + ElementAreaNoAxisTreatment(Mesh, Element, n)
+       END IF
+     END DO
+     
+     IF( Parallel ) THEN
+       DO i=1, nBC
+         BoundaryAreas(i) = ParallelReduction(BoundaryAreas(i))
+       END DO
+     END IF
+
+     IF( InfoActive(20) ) THEN
+       DO i=1,nBC
+         PRINT *,'A(i)',i,i<=CurrentModel % NumberOfBCs,BoundaryAreas(i)
+       END DO
+     END IF
+     
+     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
        IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeCoilBoundaryAreas', 'Boundary not found!')
        BCid = GetInteger(BC, 'Boundary Id', Found)
-       IF( Parallel ) THEN
-         BoundaryAreas(BCid) = ParallelReduction(BoundaryAreas(BCid))
-       END IF
        CALL ListAddConstReal(BC, 'Area', BoundaryAreas(BCid))
-    END DO
+     END DO
+     
+     DO i=1, CurrentModel % NumberOfBodies
+       BC => CurrentModel % Bodies(i) % Values
+       ChildBCs => ListGetIntegerArray( BC,'Extruded Child BCs',Found ) 
+       IF(Found) THEN
+         !PRINT *,'Child BCs area:',i,BoundaryAreas(ChildBCs)
+         area = SUM(BoundaryAreas(ChildBCs)) / SIZE( ChildBCs )         
+         CALL ListAddConstReal(BC,'Extruded Child Area', area )         
+       END IF
+     END DO
     
 !-------------------------------------------------------------------
  END SUBROUTINE SetBoundaryAreasToValueLists
@@ -588,7 +629,10 @@ END FUNCTION isComponentName
     TYPE(Component_t), POINTER :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
     LOGICAL :: Found
+    INTEGER :: ExtMaster
 
+    CALL Info('ReadComponents','Reading component: '//TRIM(I2S(Cid)),Level=20)
+    
     Circuit => CurrentModel % Circuits(CId)
     
     Circuit % CvarDofs = 0
@@ -626,29 +670,57 @@ END FUNCTION isComponentName
       IF (.NOT. Found) Comp % VoltageFactor = 1._dp
 
       Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
-      
+
+      ! This is a feature intended to make it easier to extruded meshes internally with
+      ! ElmerSolver. The idea is that the code knows which are the BCs that were created
+      ! from extruding this 2D body. 
+      ExtMaster = 0
+      IF(.NOT. Found ) THEN
+        IF( ListGetLogical( CurrentModel % Solver % Values,'Extruded Child BC Electrode', Found ) ) THEN
+          BLOCK
+            INTEGER :: body_id
+            INTEGER, POINTER :: pIntArray(:) => NULL()
+            pIntArray => ListGetIntegerArray(CompParams, 'Master Bodies', Found )
+            IF( Found ) THEN
+              IF(SIZE(pIntArray)==1) THEN
+                body_id = pIntArray(1)
+                NULLIFY(pIntArray)
+                pIntArray => ListGetIntegerArray(CurrentModel % Bodies(body_id) % Values,&
+                    'Extruded Child BCs',Found )
+                IF(Found) THEN
+                  CALL Info('Circuits_int','Associating "Electrode Boundaries" to extruded bcs!',Level=10)
+                  Comp % ElBoundaries => pIntArray
+                  ExtMaster = body_id
+                END IF
+              END IF
+            END IF
+          END BLOCK
+        END IF
+      END IF
+
       IF (Comp % ComponentType == 'resistor') THEN
-        Comp % ivar % dofs = 1
+       Comp % ivar % dofs = 1
         Comp % vvar % dofs = 1
         Comp % ivar % pdofs = 0
         Comp % vvar % pdofs = 0
       ELSE
         SELECT CASE (Comp % CoilType) 
         CASE ('stranded')
+          
           Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
-
+          
           Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
-          IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
-
+          IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams, ExtMaster )
+          
           Comp % CoilThickness = GetConstReal(CompParams, 'Coil Thickness', Found)
           IF (.NOT. Found) Comp % CoilThickness = 1._dp
 
           Comp % SymmetryCoeff = GetConstReal(CompParams, 'Symmetry Coefficient', Found)
           IF (.NOT. Found) Comp % SymmetryCoeff = 1.0_dp
-
+          
           Comp % N_j = Comp % CoilThickness * Comp % nofturns / Comp % ElArea
-
+          
           ! Stranded coil has current and voltage 
           ! variables (which both have a dof):
           ! ------------------------------------
@@ -698,20 +770,26 @@ END FUNCTION isComponentName
           Comp % N_j = Comp % nofturns / Comp % ElArea
         END SELECT
       END IF
+
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
+
     END DO
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadComponents
 !------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------
- SUBROUTINE ComputeElectrodeArea(Comp, CompParams)
+ SUBROUTINE ComputeElectrodeArea(Comp, CompParams, ExtMaster )
 !-------------------------------------------------------------------
   USE ElementUtils
   IMPLICIT NONE
   TYPE(Component_t), POINTER :: Comp
-  TYPE(ValueList_t), POINTER :: CompParams, BC
+  TYPE(ValueList_t), POINTER :: CompParams
+  INTEGER, OPTIONAL :: ExtMaster 
+
+  TYPE(ValueList_t), POINTER :: BC
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: t, n, BCid, NoSlices
@@ -744,18 +822,29 @@ END FUNCTION isComponentName
     ! Add this to list since no need to compute this twice
     CALL ListAddConstReal(CompParams,'Electrode Area',Comp % ElArea )        
   ELSE
-    IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
-        CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
+    BCid = 0
 
-    BCid = Comp % ElBoundaries(1)
-    BC => CurrentModel % BCs(BCid) % Values
-    IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Boundary not found!')
-
-    Comp % ElArea = GetConstReal(BC, 'Area', Found)
-    IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
-  END IF
-
-
+    ! This is a special case for extruded meshes where the area is computed and stored
+    ! in the master body that the extruded boundary comes from. This is treated only
+    ! when the extruded master is given as a parameter.
+    IF( PRESENT( ExtMaster ) ) BCid = ExtMaster
+    IF( BCid > 0 ) THEN
+      BC => CurrentModel % Bodies(BCid) % Values
+      IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Master body not found!')            
+      Comp % ElArea = GetConstReal(BC, 'Extruded Child Area', Found ) 
+      IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', '"Extruded Child Area" not found!')
+    ELSE
+      IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
+          CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')      
+      BCid = Comp % ElBoundaries(1)
+      IF( BCid > CurrentModel % NumberOfBCs ) &     
+          CALL Fatal('ComputeElectrodeArea', 'BCid is beyond range: '//TRIM(I2S(BCid)))
+      BC => CurrentModel % BCs(BCid) % Values
+      IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Boundary not found!')
+      Comp % ElArea = GetConstReal(BC, 'Area', Found)
+      IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', '"Area" not found!')
+    END IF
+  END IF    
   
 !-------------------------------------------------------------------
  END SUBROUTINE ComputeElectrodeArea

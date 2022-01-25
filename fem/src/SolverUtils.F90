@@ -4755,6 +4755,46 @@ CONTAINS
     END IF
 
 
+
+    BLOCK
+      INTEGER,ALLOCATABLE :: ChildBCs(:)
+      INTEGER,POINTER :: BCInds(:)
+      REAL(KIND=dp) :: zero = 0.0_dp
+      IF( ListGetLogical( Model % Solver % Values,'Extruded Child BC Zero',GotIt ) ) THEN
+        CALL Info(Caller,'Setting extruded BCs (start & end) to zero!',Level=10)
+
+        ALLOCATE(ChildBCs(2*Model % NumberOfBodies))
+        ChildBCs=0
+
+        ! Collect a list of child BCs that were generated when extruding
+        m = 0
+        DO i=1,Model % NumberOfBodies
+          BCInds => ListGetIntegerArray(Model % Bodies(i) % Values,'Extruded Child BCs',GotIt)
+          IF(GotIt) THEN
+            ChildBCs(m+1:m+2) = BCInds(1:2)
+            m=m+2
+          END IF          
+        END DO        
+        IF(m==0) CALL Fatal(Caller,'No "Extruded Child BCs" to set')
+
+        IF( InfoActive(20) ) THEN
+          PRINT *,'ChildBCs:',m,ChildBCs(1:m)
+        END IF
+          
+        ! Set the extruded BCs to zero. Note that only this value is available currently.
+        DO t = bndry_start, bndry_end
+          Element => Model % Elements(t)
+          IF(ANY(ChildBCs(1:m) == Element % BoundaryInfo % Constraint ) ) THEN          
+            Model % CurrentElement => Element
+            n = mGetElementDOFs( Indexes, Element, Model % Solver )            
+            DO i=1,n
+              CALL SetSinglePoint(Indexes(i),DOF,zero,.TRUE.)
+            END DO
+          END IF
+        END DO
+      END IF
+    END BLOCK
+      
 !------------------------------------------------------------------------------
 ! Go through the Dirichlet conditions in the body force lists
 !------------------------------------------------------------------------------

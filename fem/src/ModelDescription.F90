@@ -2355,7 +2355,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2664,7 +2664,7 @@ CONTAINS
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
           CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
-     
+          
           !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
           !  DEALLOCATE( SerialMesh % RePartition ) 
           !END IF
@@ -2674,12 +2674,24 @@ CONTAINS
         CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Single = ListGetLogical( Model % Simulation,'Single Mesh', GotIt ) 
+
+        ModuloMesh = ListGetInteger( Model % Simulation,'Parallel Mesh Modulo',GotIt)
+        IF(GotIt) THEN
+          IF( MODULO( numprocs, ModuloMesh ) /= 0 ) THEN
+            CALL Fatal('LoadMesh','Number of partitions should divisible with mesh modulo!')
+          END IF
+        END IF
+        
         IF( Single ) THEN
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','Whole primary mesh will be read for each partition!',Level=7)
           END IF
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, 1, mype, Def_Dofs )
+        ELSE IF( ModuloMesh > 0 ) THEN
+          Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+              BoundariesOnly, ModuloMesh, MODULO( mype, ModuloMesh) , Def_Dofs )
+          CALL SetMeshPartitionOffset( Model % Meshes, ModuloMesh ) 
         ELSE
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, numprocs, mype, Def_Dofs )
