@@ -74,9 +74,11 @@
 #include <BRepAdaptor_Curve2d.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
-#include <BRepMesh.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
+#if OCE_FOUND
+  #include <BRepMesh.hxx>
+#endif 
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
