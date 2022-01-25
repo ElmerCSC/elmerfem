@@ -878,6 +878,10 @@ void ObjectBrowser::loadProjectSlot() {
 
   tree->resizeColumnToContents(0);
   tree->resizeColumnToContents(1);
+  
+  /* Call rebuildGLLists() to avoid a problem of 3D surface mesh not shown
+  correctly when project loading (typically, TemperatureGeneric sample) */
+  mainwindow->rebuildGLLists();
 }
 
 void ObjectBrowser::saveProjectSlot() {
