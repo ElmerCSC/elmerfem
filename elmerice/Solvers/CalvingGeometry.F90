@@ -909,12 +909,14 @@ CONTAINS
             a2(2) = Mesh % Nodes % z(Last)
             headland = .FALSE.
             DO k=i+1,j-2
-              b1(1) = Mesh % Nodes % y(k)
-              b1(2) = Mesh % Nodes % z(k)
-              b2(1) = Mesh % Nodes % y(k+1)
-              b2(2) = Mesh % Nodes % z(k+1)
+              b1(1) = Mesh % Nodes % y(CurrentPath % NodeNumbers(k))
+              b1(2) = Mesh % Nodes % z(CurrentPath % NodeNumbers(k))
+              b2(1) = Mesh % Nodes % y(CurrentPath % NodeNumbers(k+1))
+              b2(2) = Mesh % Nodes % z(CurrentPath % NodeNumbers(k+1))
 
               CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland .AND. Debug) PRINT*, 'Headland intersect: ', 'a1', a1, &
+                                              'a2', a2, 'b1', b1, 'b2', b2
               IF(headland) EXIT
             END DO
             IF(headland) CYCLE
@@ -6286,12 +6288,14 @@ CONTAINS
             a2(2) = Mesh % Nodes % z(Last)
             headland = .FALSE.
             DO k=i+1,j-2
-              b1(1) = Mesh % Nodes % y(k)
-              b1(2) = Mesh % Nodes % z(k)
-              b2(1) = Mesh % Nodes % y(k+1)
-              b2(2) = Mesh % Nodes % z(k+1)
+              b1(1) = Mesh % Nodes % y(CurrentPath % NodeNumbers(k))
+              b1(2) = Mesh % Nodes % z(CurrentPath % NodeNumbers(k))
+              b2(1) = Mesh % Nodes % y(CurrentPath % NodeNumbers(k+1))
+              b2(2) = Mesh % Nodes % z(CurrentPath % NodeNumbers(k+1))
 
               CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland .AND. Debug) PRINT*, 'Headland intersect: ', 'a1', a1, &
+                                              'a2', a2, 'b1', b1, 'b2', b2
               IF(headland) EXIT
             END DO
             IF(headland) CYCLE
