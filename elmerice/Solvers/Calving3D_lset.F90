@@ -717,8 +717,30 @@
           DO j=1,4
             IF(ANY(EdgeLineNodes == NodeIndexes(j))) counter=counter+1
           END DO
-          IF(counter <= 1) CYCLE
-          IF(Counter == 2) THEN
+          IF(counter == 1) THEN
+            ! add three missing nodes in order
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                END DO
+                ALLOCATE(WorkInt(EdgeLength+4))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                DO k=1,4 ! 4 as need to add original node back in at end
+                  n = NodePositions(1) + k
+                  IF(n > 4) n = n - 4
+                  WorkInt(j+k) = NodeIndexes(n)
+                END DO
+                WorkInt(j+5:EdgeLength+4) = EdgeLineNodes(j+1:EdgeLength)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength + 4
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          ELSE IF(Counter == 2) THEN
             ! add two missing nodes in order
             DO j=1,EdgeLength
               IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
@@ -728,7 +750,7 @@
                 END DO
                 IF(NodePositions(1) == NodePositions(2)) CYCLE
                 IF(ABS(NodePositions(1) - NodePositions(2)) == 2) &
-                  CALL FATAL('Calving3D_lset', 'Error building edgeine')
+                  CALL FATAL('Calving3D_lset', 'Error building edgeline')
                 ! add in other nodes
                 ALLOCATE(WorkInt(EdgeLength+2))
                 WorkInt(1:j) = EdgeLineNodes(1:j)
@@ -792,6 +814,7 @@
             END DO
           END IF
           UsedElem(i)=.TRUE.
+          IF(counter == 0) CALL WARN(SolverName, 'Element to be added not connected')
         END DO
       END DO
       ! update edge line
