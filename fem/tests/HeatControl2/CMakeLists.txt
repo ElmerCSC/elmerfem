@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(HeatControl2)
-ADD_ELMER_LABEL(HeatControl2 quick)
+ADD_ELMER_TEST(HeatControl2 LABELS quick control)

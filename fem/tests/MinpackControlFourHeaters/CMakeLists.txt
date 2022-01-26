@@ -1,3 +1,4 @@
+IF(HAVE_EXTOPTIM)
 INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
@@ -5,4 +6,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY spots.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(LinControlFourHeaters LABELS quick control)
+ADD_ELMER_TEST(MinpackControlFourHeaters LABELS control extoptim)
+ENDIF()

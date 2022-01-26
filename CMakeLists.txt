@@ -178,6 +178,10 @@ IF(WITH_LUA)
   MARK_AS_ADVANCED(HAVE_LUA)
 ENDIF()
 
+IF(WITH_EXTOPTIM)
+  SET(HAVE_EXTOPTIM TRUE)
+ENDIF()
+
 IF(WITH_OpenMP)
   # Advanced properties
   MARK_AS_ADVANCED(
@@ -613,6 +617,13 @@ IF(HAVE_LUA)
   MESSAGE(STATUS "  Building Lua")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(HAVE_LUA)
+
+IF(HAVE_EXTOPTIM)
+  MESSAGE(STATUS "  Building with external optimization routines")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_EXTOPTIM)
+
+
 
 # Packaging
 if(NOT BYPASS_CPACK)

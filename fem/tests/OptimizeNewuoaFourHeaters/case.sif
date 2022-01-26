@@ -2,10 +2,11 @@
 ! so that the temperature at the center of each heater is as 
 ! desired. 
 !
-! This is a remake of the old test case to utilize internal
-! optimization routines.
+! This is a remake of the old test case to utilize external optimization
+! routines. In this case "NEWUOA" routine is used, see
+! https://handwiki.org/wiki/NEWUOA
 !
-! P.R. 20.5.2020
+! P.R. 19.1.2022
 
 Check Keywords warn
 
@@ -16,38 +17,45 @@ Header
 End
 
 Run Control 
-  Run Control Iterations = Integer 100
+  Run Control Iterations = Integer 200
 
   Cost Function = Variable Time
     Real Procedure "CostFunction" "CostFunction"   
 
-  Parameter Count = Integer 4
-  Optimal Finish = Logical True
+$n=4
+  Parameter Count = Integer $n
+  Parameter Optimal Finish = Logical True
+
   Parameter Best File = File "optimize-best.dat"
-  Parameter History File = File "optimize-history.dat"
-  !Parameter History Append = Logical True
-  !Parameter Restart File = "optimize-best0.dat"
-
-  !Parameter Filetype = String 'table' ! 'dakota'
-  !Parameter Row Offset = Integer 
-  !Parameter Column Offset = Integer
+!  Parameter Restart File = File "optimize-best.dat"
 
   Cost Function = Variable Time
     Real Procedure "CostFunction" "CostFunction"   
-  !Cost Function Target = Real 
-  !Cost Function Absolute = Logical
-  !Cost Function Maximize = Logical 
 
-  Optimization Method = String "simplex"
-  Simplex Relative Length Scale = Real 1.0 
-  !Simplex Restart Interval = Integer 20
-  !Simplex Restart Convergence Ratio = Real 1.0
+  Optimization Method = String "newuoa"
+! Optimization Method = String "bobyqa"
 
-  !Initial Stepsize = Real
-  !Max Stepsize = Real
-  !Stepsize Relaxation Factor = Real
+  Min Parameter 1 = Real 1.0e-2
+  Min Parameter 2 = Real 1.0e-2
+  Min Parameter 3 = Real 1.0e-2
+  Min Parameter 4 = Real 1.0e-2
 
-  Max Output Level = 5 
+  Max Parameter 1 = Real 1.0e2
+  Max Parameter 2 = Real 1.0e2
+  Max Parameter 3 = Real 1.0e2
+  Max Parameter 4 = Real 1.0e2
+
+  Initial Parameter 1 = Real 10.0
+  Initial Parameter 2 = Real 10.0
+  Initial Parameter 3 = Real 10.0
+  Initial Parameter 4 = Real 10.0
+
+  !Powell Interpolation Conditions = Integer $n+2
+
+  Initial Stepsize = Real 0.1
+  Min Stepsize = Real 1.0e-2
+
+  Max Output Level = 10
 End 
 
 Simulation
@@ -56,8 +64,8 @@ Simulation
   Simulation Type = Steay State 
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Max Output Level = 5 
-  Post File = "case.vtu"
+  Max Output Level = 15 
+!  Post File = "case.vtu"
 End
 
 Constants
@@ -158,6 +166,6 @@ Boundary Condition 1
   Temperature = Real 0
 End
 
-Solver 1 :: Reference Norm = 2.15705666E+01
+Solver 1 :: Reference Norm = 2.20303331E+01
 
 

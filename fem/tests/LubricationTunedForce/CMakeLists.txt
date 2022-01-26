@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO bump.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(LubricationTunedForce)
-ADD_ELMER_LABEL(LubricationTunedForce quick)
+ADD_ELMER_TEST(LubricationTunedForce LABELS quick control)
