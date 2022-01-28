@@ -477,12 +477,15 @@ MODULE Types
    TYPE VariableHandle_t     
      TYPE(Variable_t), POINTER :: Variable=>NULL()
      REAL(KIND=dp),POINTER :: Values(:)=>NULL()
+     REAL(KIND=dp),POINTER :: ipValues(:)=>NULL()
+     REAL(KIND=dp),POINTER :: ipValues3D(:,:)=>NULL()     
+     INTEGER :: ipN = 0     
      INTEGER,POINTER :: Perm(:)=>NULL()
      INTEGER :: dofs
      INTEGER :: tstep = 0
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: ActiveElement = .FALSE.
-     INTEGER :: Indexes(100)
+     INTEGER :: Indexes(100)     
      INTEGER :: n = 0
    END TYPE VariableHandle_t
    
