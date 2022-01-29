@@ -42,6 +42,36 @@
 !> Initialization of the primary solver, i.e. HeatSolver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
+SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------  
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found
+  
+  Params => GetSolverParams()
+
+  IF( ListCheckPresentAnyEquation( Model,'Convection' ) .OR. &
+      ListGetLogical( Params,'Bubbles',Found) ) THEN
+    IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
+      CALL ListAddString(Params,'Element', &
+          'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
+    END IF
+  END IF
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE HeatSolver_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -459,7 +489,6 @@ CONTAINS
 
     ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )    
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
-
     
     ! Numerical integration:
     ! Compute basis function values and derivatives at integration points
@@ -469,7 +498,8 @@ CONTAINS
     
     ! Compute actual integration weights (recycle the memory space of DetJVec)
     DetJVec(1:ngp) = IP % s(1:ngp) * DetJVec(1:ngp)
-    
+
+    ! Get pointer to vector including density on all integration points
     RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
 
     ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
@@ -477,13 +507,14 @@ CONTAINS
     IF( Found ) THEN
       CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
     END IF
-    
+
+    ! We need heat capacity only if the case is transient or we have convection
     IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
       CpAtIpVec => ListGetElementRealVec( Cp_h, ngp, Basis, Element, Found ) 
       TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
     END IF
 
-    ! advection term
+    ! convection, either constant or computed
     ! STIFF=STIFF+(C*grad(u),v)
     IF( ConvConst .OR. ConvComp ) THEN
       IF( ConvConst ) THEN

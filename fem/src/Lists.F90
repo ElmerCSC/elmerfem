@@ -7655,8 +7655,8 @@ use spariterglobals
        IF( Handle % ipN > 0 ) THEN
          DEALLOCATE( Handle % ipValues3D )
        END IF
-       ALLOCATE( Handle % ipValues3D(ngp,3) )
-       Handle % ipValues3D(1:ngp,1:3) = 0.0_dp
+       ALLOCATE( Handle % ipValues3D(ngp,Handle % dofs) )
+       Handle % ipValues3D(1:ngp,1:Handle % Dofs) = 0.0_dp
        Handle % ipN = ngp
      END IF
      
