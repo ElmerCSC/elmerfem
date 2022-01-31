@@ -2187,7 +2187,7 @@
            ! If we have single mesh we have the luxury of using either parallel or serial restart
            isParallel = ParEnv % PEs > 1
            IF(isParallel .AND. Mesh % SingleMesh ) THEN
-             isParallel = .NOT. ListGetLogical( RestartList,'Restart Serial',Found )
+             isParallel = ListGetLogical( RestartList,'Restart Parallel',Found )
            END IF                        
            IF(isParallel) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
@@ -2247,7 +2247,7 @@
 
          isParallel = ParEnv % PEs > 1
          IF(isParallel .AND. Mesh % SingleMesh ) THEN
-           isParallel = .NOT. ListGetLogical( RestartList,'Restart Serial',Found )
+           isParallel = ListGetLogical( RestartList,'Restart Parallel',Found )
          END IF                  
          IF(isParallel ) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
          

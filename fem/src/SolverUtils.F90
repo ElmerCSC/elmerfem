@@ -14023,6 +14023,11 @@ END FUNCTION SearchNodeL
         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
             //GetVarName(Solver % Variable),Found)
         rst = rst + ct
+
+        WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time cumulative (CPU,REAL) for '&
+            //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
+        CALL Info('SolveSystem',Message,Level=7)    
+        
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
             //GetVarName(Solver % Variable),st)
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
