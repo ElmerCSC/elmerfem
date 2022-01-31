@@ -85,10 +85,10 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   INTEGER :: i, j, k, l, dofs, n, m, NoVar, SolverInd, layers, maxperm
   INTEGER, POINTER :: pPerm(:)
   REAL(KIND=dp), POINTER :: pVals(:)
-  LOGICAL :: Found, CreateVar
+  LOGICAL :: Found, CreateVar, LagrangeCopy
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'ExtrudedRestart'
-  
+    
   CALL Info(Caller,'Mapping result between meshes')
     
   ThisMesh => Getmesh()
@@ -201,6 +201,33 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     
   CALL Info(Caller,'Interpolated variables between meshes',Level=7)
 
+
+  ! One intened use of this module is to extrude data from 2D electrical machine computation
+  ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
+  ! found in the Lagrange multiplier values. Hence we add this feature also here even though there
+  ! is nothing related to extrusion here.
+  !------------------------------------------------------------------------------------------------
+  IF( ListGetLogical( Params,'Copy Lagrange Multiplier', Found ) ) THEN
+    VarName = ListGetString( Params,'Lagrange Multiplier Name', Found )
+    IF(.NOT. Found) VarName = 'LagrangeMultiplier'
+    pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+    IF(.NOT. ASSOCIATED(pVar) ) CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName)) 
+
+    n = SIZE(pVar % Values)
+    
+    NULLIFY(pVals)
+    ALLOCATE(pVals(n))
+    pVals = 0.0_dp
+
+    pVals = pVar % Values
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(VarName))
+    END IF
+        
+    CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
+        VarName,1,pVals)
+    CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=7)
+  END IF    
   
 END SUBROUTINE ExtrudedRestart
 

@@ -2129,7 +2129,7 @@
      TYPE(ValueList_t), POINTER :: RestartList
      LOGICAL, ALLOCATABLE :: MeshDone(:)
      INTEGER, POINTER :: MeshesToRestart(:)
-     LOGICAL :: CheckMesh, DoMesh
+     LOGICAL :: CheckMesh, DoMesh, isParallel
 !------------------------------------------------------------------------------
 
      
@@ -2183,11 +2183,16 @@
            ELSE
              OutputName = TRIM(RestartFile)
            END IF
-                                 
-           IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
-               OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
-           CALL SetCurrentMesh( CurrentModel, Mesh )
 
+           ! If we have single mesh we have the luxury of using either parallel or serial restart
+           isParallel = ParEnv % PEs > 1
+           IF(isParallel .AND. Mesh % SingleMesh ) THEN
+             isParallel = .NOT. ListGetLogical( RestartList,'Restart Serial',Found )
+           END IF                        
+           IF(isParallel) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+
+           CALL SetCurrentMesh( CurrentModel, Mesh )
+           
            k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
            CALL LoadRestartFile( OutputName, k, Mesh, SolverId = i )
            
@@ -2239,8 +2244,12 @@
          ELSE
            OutputName = TRIM(RestartFile)
          END IF
-         IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
-           OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+
+         isParallel = ParEnv % PEs > 1
+         IF(isParallel .AND. Mesh % SingleMesh ) THEN
+           isParallel = .NOT. ListGetLogical( RestartList,'Restart Serial',Found )
+         END IF                  
+         IF(isParallel ) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
          
          l = l+1
 
