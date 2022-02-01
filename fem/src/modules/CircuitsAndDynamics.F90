@@ -572,8 +572,13 @@ CONTAINS
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
     TYPE(VariableHandle_t), SAVE :: Wvec_h
+ 
+    LOGICAL :: PiolaVersion = .FALSE.
     
     SAVE CSymmetry, dim, First, InitHandle
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
 
     IF (First) THEN
       First = .FALSE.
@@ -613,10 +618,10 @@ CONTAINS
       END IF
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+
+      PiolaVersion = GetLogical( ASolver % Values, 'Use Piola Transform', Found )
     END IF
 
-    ASolver => CurrentModel % Asolver
-    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -655,16 +660,21 @@ CONTAINS
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
+    IF(PiolaVersion) THEN
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., EdgeBasisDegree=1, PReferenceElement=PiolaVersion)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis,dBasisdx )
       
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis,dBasisdx )
+
         w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
@@ -672,7 +682,16 @@ CONTAINS
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+
+        IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree=1, ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                    IP % W(t), detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        END IF
 
         IF (CoilUseWvec) THEN
           w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
