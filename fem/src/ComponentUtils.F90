@@ -97,11 +97,7 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
-     IsParallel = ( ParEnv % PEs > 1 )
-     IF( IsParallel ) THEN
-       IF( Mesh % SingleMesh ) isParallel = .FALSE.
-     END IF
-
+     IsParallel = CurrentModel % Solver % Parallel
      
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     

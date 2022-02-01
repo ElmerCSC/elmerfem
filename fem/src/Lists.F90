@@ -165,7 +165,7 @@ CONTAINS
                   
          IF( GotDgMap ) THEN
            IF( SIZE( DgMap ) /= Model % NumberOfBodies ) THEN
-             CALL Fatal('InitialPermutation','Invalid size of > Dg Reduced Basis Mapping <')
+             CALL Fatal(Caller,'Invalid size of > Dg Reduced Basis Mapping <')
            END IF
            MaxGroup = MAXVAL( DgMap )
          ELSE IF( GotMaster ) THEN
@@ -195,7 +195,7 @@ CONTAINS
            
            k1 = k
 
-           CALL Info('InitialPermutation',&
+           CALL Info(Caller,&
                'Group '//TRIM(I2S(group0))//' starts from index '//TRIM(I2S(k1)),Level=10)
            
            DO t=1,Mesh % NumberOfBulkElements
@@ -441,7 +441,7 @@ CONTAINS
                END IF
              END IF
              ndofs = 0
-             IF ( l >= 0) THEN
+             IF (l > 0) THEN
                ndofs = l
              ELSE IF (Def_Dofs(6)>=0) THEN
                ndofs = FaceDOFs(Element % FaceIndexes(i))
@@ -542,7 +542,7 @@ CONTAINS
          END DO
 
          Solver % PeriodicFlipActive = ( n > 0 )
-         CALL Info('InitialPermutation','Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+         CALL Info(Caller,'Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
        END IF
      END IF
     
@@ -853,7 +853,9 @@ use spariterglobals
           Var1 => Var1 % Next
        END DO
 
-       IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+       IF (ASSOCIATED(Var % Values)) THEN
+         IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+       END IF
 
        IF (ASSOCIATED(Var % Perm)) THEN
          Var1 => VariableList
@@ -2231,6 +2233,7 @@ use spariterglobals
    END FUNCTION ListCheckSuffixAnyBodyForce
 !------------------------------------------------------------------------------
 
+   
 !------------------------------------------------------------------------------
 !> Finds an entry related to vector keyword of type "name" or "name i", i=1,2,3.
 !> This could save time since it will detect at one sweep whether the keyword
@@ -2340,6 +2343,15 @@ use spariterglobals
      
      Ptr => list % Head
      DO WHILE( ASSOCIATED(ptr) )
+       IF( ptr % disttag ) THEN
+         WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
+             TRIM( ptr2 % Name )// ' < by ',Coeff
+         CALL Info('ListSetCoefficients',Message,Level=7)
+         ptr % Coeff = Coeff
+         ptr => ptr % Next 
+         CYCLE
+       END IF
+       
        n = ptr % NameLen
        IF ( n >= k ) THEN
          ! Did we find a keyword which has the correct suffix?
@@ -2353,7 +2365,7 @@ use spariterglobals
                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
                  WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
                      TRIM( ptr2 % Name )// ' < by ',Coeff
-                 CALL Info('ListSetCoefficients',Message)
+                 CALL Info('ListSetCoefficients',Message,Level=7)
                  ptr2 % Coeff = Coeff
                  EXIT
                END IF
@@ -2365,11 +2377,390 @@ use spariterglobals
        END IF
        ptr => ptr % Next
      END DO
-
+!------------------------------------------------------------------------------
    END SUBROUTINE ListSetCoefficients
- 
+!------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Add a parameter tag to an existing keyword. By construction we know this
+!> should exist.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListParTagKeyword( List,Name,partag )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+      INTEGER :: partag
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      LOGICAL :: Found
+!------------------------------------------------------------------------------
+      ptr => ListFind( List, Name, Found )
+      IF(.NOT. Found) THEN
+        CALL Fatal('ListParTagKeyword','Cannot add tag to non-existing keyword: '//TRIM(Name))
+      END IF        
+      Ptr % partag = partag
+        
+    END SUBROUTINE ListParTagKeyword
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add tag to distribute value of existing keyword.
+!------------------------------------------------------------------------------
+    SUBROUTINE ListDistTagKeyword( List,Name )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: List
+      CHARACTER(LEN=*) :: Name
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      LOGICAL :: Found
+!------------------------------------------------------------------------------
+      ptr => ListFind( List, Name, Found )
+      IF(.NOT. Found) THEN
+        CALL Fatal('ListDistTagKeyword','Cannot add tag to non-existing keyword: '//TRIM(Name))
+      END IF        
+      Ptr % disttag = .TRUE.
+        
+    END SUBROUTINE ListDistTagKeyword
+!------------------------------------------------------------------------------
+
+
+!----------------------------------------------------------------
+!> Given a suffix tag keyword that have the keyword without the
+!> suffix. If the "tagwei" flag is True set the tag related to the
+!> weight computation, if it is False set integer tag related to parameter
+!> control. 
+!----------------------------------------------------------------
+  SUBROUTINE ListTagKeywords( Model, suffix, tagwei, Found ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: suffix
+    LOGICAL :: tagwei
+    LOGICAL :: Found
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+
+    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=5)
+    cnt = 0
+    
+    CALL ListTagEntry(Model % Simulation, suffix, tagwei, cnt )
+    CALL ListTagEntry(Model % Constants, suffix, tagwei, cnt )
+    DO i=1,Model % NumberOfEquations
+      CALL ListTagEntry(Model % Equations(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL ListTagEntry(Model % Components(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL ListTagEntry(Model % BodyForces(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL ListTagEntry(Model % ICs(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL ListTagEntry(Model % BCs(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL ListTagEntry(Model % Materials(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBoundaries
+      CALL ListTagEntry(Model % Boundaries(i) % Values, suffix, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL ListTagEntry(Model % Solvers(i) % Values, suffix, tagwei, cnt )
+    END DO
+    
+    Found = ( cnt > 0 ) 
+    
+    IF( Found ) THEN
+      CALL Info('ListTagKeywords',&
+          'Tagged '//TRIM(I2S(cnt))//' parameters with suffix: '//TRIM(suffix),Level=7)
+    ELSE
+      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=7)
+    END IF
+
+  CONTAINS
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE ListTagEntry( list, name, tagwei, cnt )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: list
+      CHARACTER(LEN=*) :: name
+      LOGICAL :: tagwei     
+      INTEGER :: cnt
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
+      CHARACTER(LEN=LEN_TRIM(Name)) :: str
+      INTEGER :: k, k1, n, n2, m, partag
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      m = 0 
+      k = StringToLowerCase( str,Name,.TRUE. )
+
+      Ptr => list % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        n = ptr % NameLen
+        IF ( n >= k ) THEN
+          ! Did we find a keyword which has the correct suffix?
+          IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+            Ptr2 => list % Head
+            DO WHILE( ASSOCIATED(ptr2) )
+              n2 = ptr2 % NameLen
+              IF( n2 + k <= n ) THEN
+                ! Did we find the corresponding keyword without the suffix?
+                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
+                  IF( tagwei ) THEN
+                    ptr2 % disttag = ptr % Lvalue
+                    m = m + 1
+                    WRITE( Message,'(A)') 'Adding dist tag to "'//TRIM( ptr2 % Name )//'"'
+                    CALL Info('ListTagKeywords',Message,Level=15)
+                  ELSE
+                    partag = ptr % IValues(1)
+                    IF(partag<1) THEN
+                      CALL Warn('ListTagKeywords','Positive integer expected for parameter tag!')           
+                    ELSE
+                      WRITE( Message,'(A)') 'Adding tag '//TRIM(I2S(partag))//&
+                          ' to "'//TRIM( ptr2 % Name )//'"'
+                      CALL Info('ListTagKeywords',Message,Level=15)
+                      ptr2 % partag = partag
+                      m = m + 1
+                    END IF
+                  END IF
+                END IF
+              END IF
+              ptr2 => ptr2 % Next
+            END DO
+          END IF
+        END IF
+        ptr => ptr % Next
+      END DO
+
+      IF( m > 0 ) THEN
+        CALL Info('ListTagKeywords',&
+            'Tagged '//TRIM(I2S(m))//' parameters in list',Level=15)
+      END IF
+      cnt = cnt + m
+
+    END SUBROUTINE ListTagEntry
+    
+  END SUBROUTINE ListTagKeywords
+   
+
+
+!----------------------------------------------------------------
+!> Given a suffix tag keyword that have the keyword without the
+!> suffix. If the "tagwei" flag is True set the tag related to the
+!> weight computation, if it is False set tag related to parameter
+!> control. 
+!----------------------------------------------------------------
+  FUNCTION ListTagCount( Model, tagwei ) RESULT ( cnt ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    LOGICAL :: tagwei
+    INTEGER :: cnt 
+!----------------------------------------------------------------
+    INTEGER :: i
+
+    IF( tagwei ) THEN
+      CALL Info('ListTagCount','Counting tags for keyword normalization!',Level=12)
+    ELSE
+      CALL Info('ListTagCount','Counting tags for keyword variation!',Level=12)
+    END IF
+
+    ! Only the following lists have been created for weights.
+    ! We could add more, but only lists that have elements associated to them. 
+    cnt = 0
+    DO i=1,Model % NumberOfBCs
+      CALL ListTagCnt(Model % BCs(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL ListTagCnt(Model % Materials(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL ListTagCnt(Model % BodyForces(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodies
+      CALL ListTagCnt(Model % Bodies(i) % Values, tagwei, cnt )
+    END DO
+    IF(tagwei) THEN
+      CALL Info('ListTagCount','Found number of normalized keywords: '//TRIM(I2S(cnt)),Level=6)
+      RETURN
+    END IF
+    
+    CALL ListTagCnt(Model % Simulation, tagwei, cnt )
+    CALL ListTagCnt(Model % Constants, tagwei, cnt )
+    DO i=1,Model % NumberOfEquations
+      CALL ListTagCnt(Model % Equations(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL ListTagCnt(Model % Components(i) % Values, tagwei, cnt )
+    END DO    
+    DO i=1,Model % NumberOfICs
+      CALL ListTagCnt(Model % ICs(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfBoundaries
+      CALL ListTagCnt(Model % Boundaries(i) % Values, tagwei, cnt )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL ListTagCnt(Model % Solvers(i) % Values, tagwei, cnt )
+    END DO
+    
+    CALL Info('ListTagCount','Found number of parameters: '//TRIM(I2S(cnt)),Level=6)
+
+  CONTAINS
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE ListTagCnt( list, tagwei, cnt )
+!------------------------------------------------------------------------------
+      TYPE(ValueList_t), POINTER :: list
+      LOGICAL :: tagwei     
+      INTEGER :: cnt
+!------------------------------------------------------------------------------
+      TYPE(ValueListEntry_t), POINTER :: ptr
+      INTEGER :: m
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      m = 0 
+
+      Ptr => list % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        IF( tagwei ) THEN
+          IF( ptr % disttag ) m = m + 1
+        ELSE
+          IF( ptr % partag > 0 ) m = m + 1
+        END IF        
+        ptr => ptr % Next
+      END DO
+      
+      IF( m > 0 ) THEN
+        CALL Info('ListTagParameters',&
+            'Tagged number of parameters in list: '//TRIM(I2S(m)),Level=15)
+      END IF
+      cnt = cnt + m
+
+    END SUBROUTINE ListTagCnt
+    
+  END FUNCTION ListTagCount
+   
+  
+!----------------------------------------------------------------
+!> Given any real keyword that is tagged to be a design parameter
+!> multiply it with the given coefficient. This assumes that the
+!> List operatiorsn use the "coeff" field to scale the real valued
+!> keywords. The intended use for this is to make it easier to
+!> variations for optimization, control and sensitivity analysis.    
+!----------------------------------------------------------------
+  SUBROUTINE ListSetParameters( Model, partag, val, mult, Found ) 
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    INTEGER :: partag
+    REAL(KIND=dp) :: val
+    LOGICAL :: mult
+    LOGICAL :: Found
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: Weights(:)
+    
+    CALL Info('ListSetParameters',&
+        'Setting variation to parameter: '//TRIM(I2S(partag)),Level=12)
+    cnt = 0
+
+    Weights => NULL()
+    Mesh => Model % Mesh
+    
+    DO i=1,Model % NumberOfBodies
+      Weights => Mesh % BodyWeight
+      CALL ListSetTagged(Model % Bodies(i) % Values, partag, val, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      Weights => Mesh % BodyForceWeight
+      CALL ListSetTagged(Model % BodyForces(i) % Values, partag, val, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      Weights => Mesh % BCWeight
+      CALL ListSetTagged(Model % BCs(i) % Values, partag, val, mult, cnt )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      Weights => Mesh % MaterialWeight
+      CALL ListSetTagged(Model % Materials(i) % Values, partag, val, mult, cnt )
+    END DO
+
+    IF( partag > 0 ) THEN
+      CALL ListSetTagged(Model % Simulation, partag, val, mult, cnt )
+      CALL ListSetTagged(Model % Constants, partag, val, mult, cnt )
+      DO i=1,Model % NumberOfEquations
+        CALL ListSetTagged(Model % Equations(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfComponents
+        CALL ListSetTagged(Model % Components(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfICs
+        CALL ListSetTagged(Model % ICs(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfBoundaries
+        CALL ListSetTagged(Model % Boundaries(i) % Values, partag, val, mult, cnt )
+      END DO
+      DO i=1,Model % NumberOfSolvers
+        CALL ListSetTagged(Model % Solvers(i) % Values, partag, val, mult, cnt )
+      END DO
+    END IF
+
+10  Found = ( cnt > 0 ) 
+    
+    IF( Found ) THEN
+      CALL Info('ListSetParameters',&
+          'Altered number of parameters: '//TRIM(I2S(cnt)),Level=6)
+    ELSE
+      CALL Warn('ListSetParameters','No parameters were altered!')
+    END IF
+
+  CONTAINS
+
+    SUBROUTINE ListSetTagged(list, partag, val, mult, cnt) 
+      TYPE(ValueList_t), POINTER :: list
+      INTEGER :: partag
+      REAL(KIND=dp) :: val
+      LOGICAL :: mult
+      INTEGER :: cnt
+
+      TYPE(ValueListEntry_t), POINTER :: ptr
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+      
+      ptr => List % Head
+      DO WHILE( ASSOCIATED(ptr) )
+        IF( partag == 0 ) THEN
+          IF( ptr % disttag ) THEN         
+            IF(ASSOCIATED(Weights)) THEN
+              IF( Weights(i) > TINY(Weights(i)) ) THEN
+                ptr % coeff = 1.0_dp / Weights(i)
+                cnt = cnt + 1
+              ELSE
+                CALL Warn('ListSetParameters','Refusing division with zero!')
+              END IF
+            END IF
+          END IF
+        ELSE IF(partag == ptr % partag ) THEN
+          IF( mult ) THEN
+            ptr % coeff = val * ptr % coeff
+          ELSE
+            ptr % coeff = val
+          END IF
+          cnt = cnt + 1
+        END IF
+        ptr => ptr % Next
+      END DO
+    END SUBROUTINE ListSetTagged
+    
+  END SUBROUTINE ListSetParameters
+!-----------------------------------------------------------------------------------
+
+
+!-----------------------------------------------------------------------------------
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
    SUBROUTINE ListCopyItem( ptr, list, name )
@@ -3551,7 +3942,7 @@ use spariterglobals
 !------------------------------------------------------------------------------
   END FUNCTION ListGetSection
 !------------------------------------------------------------------------------
-
+  
 
   SUBROUTINE ListWarnUnsupportedKeyword( SectionName, Keyword, Found, FatalFound ) 
 
@@ -3612,8 +4003,9 @@ use spariterglobals
     IF( PRESENT( Found ) ) Found = LFound
     
   END SUBROUTINE ListWarnUnsupportedKeyword
-  
 
+  
+  
 !> Get pointer to list of section
 !------------------------------------------------------------------------------
   FUNCTION ListGetSectionId( Element, SectionName, Found ) RESULT(id)
@@ -6910,13 +7302,14 @@ use spariterglobals
 !> initialized. This handle is more compact. Does not support p-fields or
 !> Hcurl & Hdiv fields yet. 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep )
+   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep, Found)
 !------------------------------------------------------------------------------
      TYPE(VariableHandle_t) :: Handle
      CHARACTER(LEN=*), OPTIONAL  :: Name
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
+     LOGICAL, OPTIONAL :: Found
 
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
@@ -6928,6 +7321,7 @@ use spariterglobals
      Handle % Perm => NULL()
      Handle % Element => NULL()
      Handle % dofs = 0
+     Handle % Found = .FALSE.
      
      IF ( PRESENT(USolver) ) THEN
        Solver => USolver
@@ -6942,11 +7336,13 @@ use spariterglobals
      ELSE
        Variable => Solver % Variable 
      END IF
+     IF( PRESENT( Found ) ) Found = Handle % Found
      
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
      
      Handle % Variable => Variable
      Handle % dofs = Variable % Dofs
+     Handle % Found = .TRUE.
      
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep < 0 ) THEN
@@ -6959,6 +7355,8 @@ use spariterglobals
        Handle % Values => Variable % Values      
      END IF
      Handle % Perm => Variable % Perm
+     
+     IF(PRESENT(Found)) Found = Handle % Found
      
    END SUBROUTINE ListInitElementVariable
 !------------------------------------------------------------------------------
@@ -7089,6 +7487,253 @@ use spariterglobals
    END FUNCTION ListGetElementScalarSolution
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Get a scalar field (e.g. potential or pressure) at the integration points.
+!> Works with different types of fields. Vectorized version. 
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementScalarSolutionVec( Handle, ngp, Basis, Element, Found, dof  ) RESULT ( Vals )
+     
+     TYPE(VariableHandle_t) :: Handle
+     INTEGER :: ngp
+     REAL(KIND=dp), OPTIONAL :: Basis(:,:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: dof
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), POINTER :: Vals(:)
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: i,j, k, n
+     INTEGER, POINTER :: Indexes(:)
+          
+     NULLIFY(Vals)
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     IF( ASSOCIATED( Handle % Element, pElement ) ) THEN 
+       IF( Handle % ActiveElement ) THEN
+         Vals => Handle % IpValues
+       END IF
+       IF( PRESENT( Found )  ) Found = Handle % ActiveElement
+       RETURN       
+     ELSE
+       Handle % Element => pElement
+     END IF
+
+     IF( Handle % dofs > 1 ) THEN
+       IF( .NOT. PRESENT( dof ) ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec','Argument "dof" is needed for vector fields!')
+       END IF
+     END IF
+
+     IF( Handle % ipN < ngp ) THEN
+       IF( Handle % ipN > 0 ) THEN
+         DEALLOCATE( Handle % ipValues )
+       END IF
+       ALLOCATE( Handle % ipValues(ngp) )
+       Handle % ipValues(1:ngp) = 0.0_dp
+       Handle % ipN = ngp
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 )        
+       IF( n == 0 ) RETURN
+
+       IF( n /= ngp ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec','Mismatch in number of Gauss points!')
+       END IF
+       
+       k = Handle % Perm(j)            
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = Handle % Values(k+1:k+ngp)
+       ELSE           
+         Handle % ipValues(1:ngp) = Handle % Values(k+dof:k+ngp*Handle % Dofs:Handle % Dofs)
+       END IF
+       Vals => Handle % ipValues
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 )        
+       IF( j == 0 ) RETURN             
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = Handle % Values( j )
+       ELSE         
+         Handle % ipValues(1:ngp) = Handle % Values( Handle % Dofs * (j-1) + dof )
+       END IF
+       Vals => Handle % ipValues
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec',&
+             'Argument "Basis" required for non gauss-point variable!')
+       END IF
+       
+       IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % DGIndexes
+         IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+           CALL Fatal('ListGetElementScalarSolutionVec','DGIndexes not associated!')
+         END IF
+       ELSE
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % NodeIndexes
+       END IF
+       
+       Handle % n = n         
+         
+       IF( ASSOCIATED( Handle % Perm ) ) THEN
+         Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+         Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
+         IF(.NOT. Handle % ActiveElement ) RETURN           
+       ELSE
+         Handle % Indexes(1:n) = Indexes(1:n)
+         Handle % ActiveElement = .TRUE.
+       END IF
+       
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Indexes(1:n) ) )
+       ELSE
+         Handle % ipValues(1:ngp) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Dofs*( Handle % Indexes(1:n)-1)+dof ) )
+       END IF
+       Vals => Handle % ipValues        
+     END IF
+              
+     IF( PRESENT( Found ) ) Found = ASSOCIATED( Vals ) 
+     
+   END FUNCTION ListGetElementScalarSolutionVec
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Get a vector field (e.g. velocity or displacement) at the integration points.
+!> Works with different types of fields. Vectorized version. 
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementVectorSolutionVec( Handle, ngp, dim, Basis, Element, Found  ) RESULT ( Vals )
+     
+     TYPE(VariableHandle_t) :: Handle
+     INTEGER :: ngp, dim
+     REAL(KIND=dp), OPTIONAL :: Basis(:,:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), POINTER :: Vals(:,:)
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: i,j, k, n, dof
+     INTEGER, POINTER :: Indexes(:)
+          
+     NULLIFY(Vals)
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+     
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     IF( ASSOCIATED( Handle % Element, pElement ) ) THEN 
+       IF( Handle % ActiveElement ) THEN
+         Vals => Handle % IpValues3D
+       END IF
+       IF( PRESENT( Found )  ) Found = Handle % ActiveElement
+       RETURN       
+     ELSE
+       Handle % Element => pElement
+     END IF
+
+     IF( Handle % ipN < ngp ) THEN
+       IF( Handle % ipN > 0 ) THEN
+         DEALLOCATE( Handle % ipValues3D )
+       END IF
+       ALLOCATE( Handle % ipValues3D(ngp,Handle % dofs) )
+       Handle % ipValues3D(1:ngp,1:Handle % Dofs) = 0.0_dp
+       Handle % ipN = ngp
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 )        
+       IF( n == 0 ) RETURN
+
+       IF( n /= ngp ) THEN
+         CALL Fatal('ListGetElementVectorSolutionVec','Mismatch in number of Gauss points!')
+       END IF
+       
+       k = Handle % Perm(j)       
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = Handle % Values(k+dof:k+ngp*Handle % Dofs:Handle % Dofs)
+       END DO
+       Vals => Handle % ipValues3D
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 )        
+       IF( j == 0 ) RETURN             
+
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = Handle % Values( Handle % Dofs * (j-1) + dof )
+       END DO
+       Vals => Handle % ipValues3D
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('ListGetElementVectorSolutionVec',&
+             'Argument "Basis" required for non gauss-point variable!')
+       END IF
+       
+       IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % DGIndexes
+         IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+           CALL Fatal('ListGetElementVectorSolutionVec','DGIndexes not associated!')
+         END IF
+       ELSE
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % NodeIndexes
+       END IF
+       
+       Handle % n = n         
+         
+       IF( ASSOCIATED( Handle % Perm ) ) THEN
+         Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+         Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
+         IF(.NOT. Handle % ActiveElement ) RETURN           
+       ELSE
+         Handle % Indexes(1:n) = Indexes(1:n)
+         Handle % ActiveElement = .TRUE.
+       END IF
+
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Dofs*( Handle % Indexes(1:n)-1)+dof ) )
+       END DO
+       Vals => Handle % ipValues3D        
+     END IF
+              
+     IF( PRESENT( Found ) ) Found = ASSOCIATED( Vals ) 
+     
+   END FUNCTION ListGetElementVectorSolutionVec
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
 !> Get a vector field (e.g. velocity or displacement) at the integration point.
 !> Works with different types of fields.
@@ -7623,17 +8268,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any boundary condition.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBC( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBC( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: bc
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()     
      DO bc = 1,Model % NumberOfBCs
        Found = ListCheckPresent( Model % BCs(bc) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % BCs(bc) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBC
@@ -7642,17 +8292,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any boundary condition.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyIC( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyIC( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: ic
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO ic = 1,Model % NumberOfICs
        Found = ListCheckPresent( Model % ICs(ic) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % ICs(ic) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyIC
@@ -7681,17 +8336,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any body.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBody( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBody( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: body
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO body = 1,Model % NumberOfBodies
        Found = ListCheckPresent( Model % Bodies(body) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Bodies(body) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBody
@@ -7747,17 +8407,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any body force.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyBodyForce( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyBodyForce( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: bf
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO bf = 1,Model % NumberOfBodyForces
        Found = ListCheckPresent( Model % BodyForces(bf) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % BodyForces(bf) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyBodyForce
@@ -7785,17 +8450,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any material.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyMaterial( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyMaterial( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
-     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
+      LOGICAL :: Found
      INTEGER :: mat
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO mat = 1,Model % NumberOfMaterials
        Found = ListCheckPresent( Model % Materials(mat) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Materials(mat) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyMaterial
@@ -7805,17 +8475,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any solver.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnySolver( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnySolver( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: ind
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO ind = 1,Model % NumberOfSolvers
        Found = ListCheckPresent( Model % Solvers(ind) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Solvers(ind) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnySolver
@@ -7826,20 +8501,24 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any component.
 !------------------------------------------------------------------------------
-  FUNCTION ListCheckPresentAnyComponent( Model, Name ) RESULT( Found )
+  FUNCTION ListCheckPresentAnyComponent( Model, Name, ValueLst ) RESULT( Found )
 !------------------------------------------------------------------------------
-    IMPLICIT NONE
-    
+    IMPLICIT NONE    
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: Name
+    TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
     LOGICAL :: Found
     INTEGER :: ind
         
     Found = .FALSE.
+    IF(PRESENT(ValueLst)) ValueLst => NULL()
     DO ind=1, Model % NumberOfComponents
       Found = ListCheckPresent( Model % Components(ind) % Values, Name )
-      IF( Found ) EXIT
-    END DO   
+      IF( Found ) THEN
+        IF(PRESENT(ValueLst)) ValueLst => Model % Components(ind) % Values
+        EXIT
+      END IF    
+    END DO
 !------------------------------------------------------------------------------
   END FUNCTION ListCheckPresentAnyComponent
 !------------------------------------------------------------------------------  
@@ -7939,17 +8618,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Check if the keyword is present in any equation.
 !------------------------------------------------------------------------------
-   FUNCTION ListCheckPresentAnyEquation( Model, Name ) RESULT(Found)
+   FUNCTION ListCheckPresentAnyEquation( Model, Name, ValueLst ) RESULT(Found)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueLst
      LOGICAL :: Found
      INTEGER :: eq
      
      Found = .FALSE.
+     IF(PRESENT(ValueLst)) ValueLst => NULL()
      DO eq = 1,Model % NumberOfEquations
        Found = ListCheckPresent( Model % Equations(eq) % Values, Name )
-       IF( Found ) EXIT
+       IF( Found ) THEN
+         IF(PRESENT(ValueLst)) ValueLst => Model % Equations(eq) % Values
+         EXIT
+       END IF
      END DO
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresentAnyEquation

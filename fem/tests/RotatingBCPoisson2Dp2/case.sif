@@ -19,8 +19,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = 0.1
-  Timestep Intervals = 20
-
+  Timestep Intervals = 10
   Output Intervals = 0
 !  Post File = mortar.ep
 !  Output File = case.result
@@ -65,7 +64,6 @@ End
 
 
 Solver 1
-!  Exec Solver = Before all
   Exec Solver = Before Timestep
   Equation = MeshDeform
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
@@ -77,38 +75,30 @@ End
 Solver 2
   Equation = Poisson Equation
   Procedure = "Poisson" "PoissonSolver"
-  Variable = -dofs 1 Temperature
-  Exec Solver = Always
-  Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
+  Variable = Temperature
+
   Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
-
   Nonlinear System Relaxation Factor = 1.0  
+  Nonlinear System Consistent Norm = True
+
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabl
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU0
-  Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
  
   Optimize Bandwidth = False
 
-
   Apply Mortar BCs = Logical True
   Export Lagrange Multiplier = Logical True
 
   Element = p:2
   Eliminate Linear Constraints = True
-
-!  No Explicit Constrained Matrix = Logical True
 
   Linear System Timing = Logical True
   Solver Timing = Logical True
@@ -197,11 +187,11 @@ Boundary Condition 3
   Target Boundaries(4) = 1 2 3 4
   Name = "Mortar Inside"
 
-  Mortar BC =  Integer 2
-  Level Projector = True
-  Level Projector Generic = True
+  Mortar BC = 2
+  Rotational Projector = True
+  Galerkin Projector = True
 End
 
 
-Solver 2 :: Reference Norm = Real 2.97535905
-RUN
+Solver 2 :: Reference Norm = 3.74622339
+

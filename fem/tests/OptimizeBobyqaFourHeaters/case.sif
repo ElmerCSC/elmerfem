@@ -1,0 +1,171 @@
+! optimize the heat distribution of an object with four heaters
+! so that the temperature at the center of each heater is as 
+! desired. 
+!
+! This is a remake of the old test case to utilize external optimization
+! routines. In this case "BOBYQA" routine is used, see
+! https://handwiki.org/wiki/BOBYQA
+!
+! P.R. 19.1.2022
+
+Check Keywords warn
+
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Run Control 
+  Run Control Iterations = Integer 200
+
+  Cost Function = Variable Time
+    Real Procedure "CostFunction" "CostFunction"   
+
+$n=4
+  Parameter Count = Integer $n
+  Parameter Optimal Finish = Logical True
+
+  Parameter Best File = File "optimize-best.dat"
+!  Parameter Restart File = File "optimize-best.dat"
+
+  Cost Function = Variable Time
+    Real Procedure "CostFunction" "CostFunction"   
+
+!  Optimization Method = String "newuoa"
+ Optimization Method = String "bobyqa"
+
+  Min Parameter 1 = Real 1.0e-2
+  Min Parameter 2 = Real 1.0e-2
+  Min Parameter 3 = Real 1.0e-2
+  Min Parameter 4 = Real 1.0e-2
+
+  Max Parameter 1 = Real 1.0e2
+  Max Parameter 2 = Real 1.0e2
+  Max Parameter 3 = Real 1.0e2
+  Max Parameter 4 = Real 1.0e2
+
+  Initial Parameter 1 = Real 10.0
+  Initial Parameter 2 = Real 10.0
+  Initial Parameter 3 = Real 10.0
+  Initial Parameter 4 = Real 10.0
+
+  !Powell Interpolation Conditions = Integer $n+2
+
+  Initial Stepsize = Real 0.1
+  Min Stepsize = Real 1.0e-2
+
+  Max Output Level = 10
+End 
+
+Simulation
+  Coordinate System = String Cartesian
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steay State 
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Max Output Level = 15 
+!  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 1.0
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 1
+End
+
+Material 1
+  Name = "Unity"
+  Density = Real 1
+  Heat Conductivity = Real 1
+End
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = $rpar(0)
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = $rpar(1)
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = $rpar(2)
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = $rpar(3)
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = Real 0
+End
+
+Solver 1 :: Reference Norm = 2.20299891E+01
+
+

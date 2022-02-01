@@ -366,10 +366,10 @@ MODULE Types
      INTEGER :: ElementCode                         ! numeric code for element
 
      INTEGER :: BasisFunctionDegree, &              ! linear or quadratic
-                NumberOfNodes, &                
-                NumberOfEdges, &                
-                NumberOfFaces, &                
-                DIMENSION                           ! 1=line, 2=surface, 3=volume
+         NumberOfNodes, &                
+         NumberOfEdges, &                
+         NumberOfFaces, &                
+         DIMENSION                           ! 1=line, 2=surface, 3=volume
 
      INTEGER :: GaussPoints,GaussPoints2, GaussPoints0 ! number of gauss points to use
 
@@ -396,7 +396,7 @@ MODULE Types
 
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
-     REAL(KIND=dp) :: Coeff = 1.0_dp
+     REAL(KIND=dp) :: Coeff = 1.0_dp    
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
@@ -409,7 +409,8 @@ MODULE Types
 #ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
 #endif
-     
+     INTEGER :: partag = 0
+     LOGICAL :: disttag = .FALSE.
    END TYPE ValueListEntry_t
 
    TYPE ValueList_t
@@ -476,12 +477,16 @@ MODULE Types
    TYPE VariableHandle_t     
      TYPE(Variable_t), POINTER :: Variable=>NULL()
      REAL(KIND=dp),POINTER :: Values(:)=>NULL()
+     REAL(KIND=dp),POINTER :: ipValues(:)=>NULL()
+     REAL(KIND=dp),POINTER :: ipValues3D(:,:)=>NULL()     
+     INTEGER :: ipN = 0     
      INTEGER,POINTER :: Perm(:)=>NULL()
      INTEGER :: dofs
      INTEGER :: tstep = 0
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: ActiveElement = .FALSE.
-     INTEGER :: Indexes(100)
+     LOGICAL :: Found
+     INTEGER :: Indexes(100)     
      INTEGER :: n = 0
    END TYPE VariableHandle_t
    
@@ -765,8 +770,8 @@ MODULE Types
 
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
-     TYPE(Nodes_t), POINTER :: NodesOrig
-     TYPE(Nodes_t), POINTER :: NodesMapped
+     TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
+     TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
@@ -867,6 +872,7 @@ MODULE Types
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
+      LOGICAL :: Parallel = .FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -890,6 +896,7 @@ MODULE Types
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    CHARACTER(LEN=MAX_NAME_LEN) :: ComponentType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
     LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
@@ -1027,6 +1034,9 @@ MODULE Types
       
       LOGICAL :: HarmonicCircuits
 
+! Tag counts to speed things up
+      INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1
+      
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel

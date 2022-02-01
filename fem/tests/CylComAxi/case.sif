@@ -8,7 +8,7 @@
 ! http://www.code-aster.org/V2/doc/v10/en/man_v/v3/v3.06.100.pdf
 !
 ! The results between Elmer and Aster differ very little here. 
-! Aster seems to suffer a bit less from locking, propalby due to
+! Aster seems to suffer a bit less from locking, probably due to
 ! beneficial approximations.
 ! 
 ! As in _Aster, axisymmetric presentation allows more accuracy
@@ -37,7 +37,6 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Solver Input File = case.sif
-  Post File = case.vtu
 End
 
 Constants
@@ -76,7 +75,19 @@ Solver 1
   Element = p:8
 End
 
-!Solver 2
+Solver 2
+  !
+  ! Use high-order Lagrange interpolation to visualize the solution
+  ! 
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  Lagrange Element Degree = Integer 8
+  Save Bulk Only = True
+End
+
+!Solver 3
 !  Exec Solver = After Simulation
 !  Equation = SaveScalars
 !  Procedure = "SaveData" "SaveScalars"

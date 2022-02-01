@@ -290,18 +290,18 @@
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A
-      INTEGER :: i,j
+      INTEGER :: i,j,k
       LOGICAL :: stat
 
       INTEGER :: ndim, n
-      TYPE(Solver_t), POINTER :: sv => Null()
+      TYPE(Solver_t), POINTER, SAVE :: sv => Null()
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
       n = A % CircuitMatrix % NumberOfRows
 
       ndim = ipar(3)
-      u(1:ndim) = v(1:ndim)
-      CALL CRS_LUPrecondition( u,v, ipar)
+
+      CALL CRS_LUPrecondition(u,v, ipar)
 
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
@@ -313,9 +313,11 @@
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
 
-
-        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+        IF(ANY(ABS(A % CircuitMatrix % Values)>0)) THEN
+          CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+        END IF
       END IF
+
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
 !-------------------------------------------------------------------------------
@@ -404,6 +406,7 @@
      COMPLEX(KIND=dp) :: c
 
      TYPE(Matrix_t), POINTER :: tm
+
 
      Diag => A % Diag
      Rows => A % Rows

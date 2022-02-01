@@ -47,7 +47,8 @@ MODULE MeshPartition
 
   USE Types
   USE MeshUtils
-
+  USE ClusteringMethods
+  
 #ifdef HAVE_ZOLTAN
   USE Zoltan
 #endif

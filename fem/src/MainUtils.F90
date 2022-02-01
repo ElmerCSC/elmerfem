@@ -69,11 +69,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     Params => ListGetSolverParams(Solver)
+    Parallel = Solver % Parallel
+    
     str = ListGetString( Params,'Linear System Solver', Found )
 
-    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Solver % Mesh % SingleMesh ) 
-
-    
     IF ( str == 'direct' ) THEN
       str = ListGetString( Params,'Linear System Direct Method', Found )
       
@@ -176,80 +175,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! This subroutine enables the scaling of keywords by geometric entities. 
 ! If any Real type keyword has an associated keyword with suffix 'Normalize by Area'
-! or 'Normalize by Volume' the keyword will be divided with the the area/volume.
-! This way any quantity may be made distributed on-the-fly. The current implementation
-! assumes fixed geometry. The inverse of area/volume will be located at ValueList % Coeff.
-! There is some small additional cost for fetching the value. 
+! or 'Normalize by Volume', or the real valued keyword has the prefix -dist
+! the keyword will be divided with the area/volume.
 !------------------------------------------------------------------------------
    SUBROUTINE SetNormalizedKeywords(Model, Mesh)
      TYPE(Model_t) :: Model
      TYPE(Mesh_t), POINTER :: Mesh
 
-     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
-     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
-     INTEGER :: list_ind
-     REAL(KIND=dp) :: EntityWeight
+     INTEGER :: cnt
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: List
+
+     cnt = Model % NumberOfDistTags 
+
+     ! Initialize the count if not done before
+     IF( cnt == -1 ) THEN
+       cnt = ListTagCount(Model,.TRUE.)
+       Model % NumberOfDistTags = cnt
+     END IF
+     
+     ! If no tags nothing to do
+     IF( cnt == 0 ) RETURN
 
      ! If the weights have been already computed for linear cases no need to redo
      IF( Mesh % EntityWeightsComputed ) THEN
        IF( .NOT. ListGetLogical( Model % Simulation,&
            'Update Keyword Normalization',Found ) ) RETURN
      END IF
-
-
-     Suffix = 'Normalize By Area'
-     AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
-
-     Suffix = 'Normalize By Volume'
-     AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
-     AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
-     AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
-
-     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
-
-     ! This computes all the weights as the cost is not that large and
-     ! places the 'Entity Weight' to each list. 
+     
+     ! Calculate entity weights
      CALL CalculateEntityWeights( Model, Mesh ) 
 
-     Suffix = 'Normalize By Area'
-     IF( AnyBC ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBCs
-         List => Model % BCs(list_ind) % Values
-         EntityWeight = Mesh % BCWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     Suffix = 'Normalize By Volume'
-     IF( AnyBodyForce ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBodyForces
-         List => Model % BodyForces(list_ind) % Values
-         EntityWeight = Mesh % BodyForceWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     IF( AnyMat ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfMaterials
-         List => Model % Materials(list_ind) % Values
-         EntityWeight = Mesh % MaterialWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
-
-     IF( AnyBody ) THEN
-       Found = .FALSE.
-       DO list_ind = 1,Model % NumberOfBodies
-         List => Model % Bodies(list_ind) % Values
-         EntityWeight = Mesh % BodyWeight(list_ind)
-         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
-       END DO
-     END IF
+     ! Tag count for entity normalization tags, 2nd and 3rd parameter neglected
+     ! for this USE CASE!
+     CALL ListSetParameters( Model, 0, 0.0_dp, .FALSE., Found ) 
 
    END SUBROUTINE SetNormalizedKeywords
 !------------------------------------------------------------------------------
@@ -1071,7 +1029,7 @@ CONTAINS
     TYPE(GraphColour_t) :: GraphColouring, BoundaryGraphColouring
     LOGICAL :: ConsistentColours
 
-    LOGICAL :: ThreadedStartup, MultiColourSolver, HavePerm
+    LOGICAL :: ThreadedStartup, MultiColourSolver, HavePerm, Parallel
     INTEGER :: VariableType
     
     ! Set pointer to the list of solver parameters
@@ -1189,7 +1147,22 @@ CONTAINS
     END IF
 #endif
 
+    ! Mark whether the solver will be treated as parallel in future
+    ! Mainly related to the linear system solution since assembly is trivially parallel.
+    ! There are some special cases where we have same mesh for multiple instances of almost
+    ! same independent problem. 
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Parallel ) THEN
+      IF(Solver % Mesh % SingleMesh ) THEN      
+        Parallel = ListGetLogical( SolverParams,'Enforce Parallel',Found )
+        IF(.NOT. Found) THEN
+          Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+        END IF
+      END IF
+    END IF
+    Solver % Parallel = Parallel 
 
+    
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
@@ -1280,8 +1253,6 @@ CONTAINS
       END IF
     END IF
 
-
-
     ! Default order of equation
     !--------------------------
     Solver % Order = 1
@@ -1352,6 +1323,7 @@ CONTAINS
     NULLIFY( Solver % Matrix )    
     var_name = ListGetString( SolverParams, 'Variable', Found )
 
+    
     IF(.NOT. Found ) THEN
       ! Variable does not exist
       !------------------------------------------------------
@@ -5097,9 +5069,10 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: M
      INTEGER :: comm_active, group_active, group_world, ierr
 
-     LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel
+     LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
-
+     TYPE(Mesh_t), POINTER :: Mesh
+     
 !------------------------------------------------------------------------------
      IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
@@ -5122,6 +5095,18 @@ CONTAINS
      END IF
 !------------------------------------------------------------------------------
 
+     UseOrigMesh = ListGetLogical(Solver % Values,'Use Original Coordinates',Found )
+     IF(UseOrigMesh ) THEN
+       Mesh => Solver % Mesh
+       IF(.NOT. ASSOCIATED(Mesh % NodesOrig)) THEN
+         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesOrig not associated!')
+       END IF
+       IF(.NOT. ASSOCIATED(Mesh % NodesMapped)) THEN
+         CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesMapped not associated!')
+       END IF
+       Mesh % Nodes => Mesh % NodesOrig
+     END IF
+     
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
 
      MeActive = ASSOCIATED(Solver % Matrix)
@@ -5129,7 +5114,7 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
+     Parallel = Solver % Parallel 
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.
@@ -5281,6 +5266,8 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
+
+     IF( UseOrigMesh ) Mesh % Nodes => Mesh % NodesMapped
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver

@@ -21,7 +21,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 20
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -30,7 +30,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-  Post File = "case.vtu"
+!  Post File = "case.vtu"
 End
 
 Constants

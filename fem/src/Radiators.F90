@@ -80,7 +80,7 @@
      REAL(KIND=dp) :: Norm,PrevNorm,MinFactor, Normal_in, Plane
  
      TYPE(Nodes_t) :: ElementNodes
-     TYPE(ValueList_t), POINTER :: BC, Material, Params
+     TYPE(ValueList_t), POINTER :: BC, Material, Params, RadList
 
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
@@ -180,7 +180,10 @@
 
      Params => GetSolverParams()
 
-     CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
+     IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+         RadList => Params
+     
+     CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
      IF(.NOT. Found ) CALL Fatal( 'RadiatorFactors', 'No radiators present, quitting' )
 
      NofRadiators = SIZE(Radiators,1)
@@ -193,20 +196,20 @@
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Params, 'Radiators Symmetry x min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Radiators Symmetry x', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
          CASE(2)
-           Plane = GetCReal( Params, 'Radiators Symmetry x max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
          CASE(3)
-           Plane = GetCReal( Params, 'Radiators Symmetry y min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Radiators Symmetry y', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
          CASE(4)
-           Plane = GetCReal( Params, 'Radiators Symmetry y max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
          CASE(5)
-           Plane = GetCReal( Params, 'Radiators Symmetry z min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Radiators Symmetry z', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
          CASE(6)
-           Plane = GetCReal( Params, 'Radiators Symmetry z max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
          END SELECT
 
          IF(.NOT. Found ) CYCLE
@@ -531,28 +534,29 @@
          DO l=6,1,-1
            SELECT CASE(l)
            CASE(1)
-             Plane = GetCReal( Params, 'Raditors Symmetry x min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Raditors Symmetry x', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
              ! Note that Plane is zero if 1st keyword not found!
            CASE(2)
-             Plane = GetCReal( Params, 'Raditors Symmetry x max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
            CASE(3)
-             Plane = GetCReal( Params, 'Raditors Symmetry y min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Raditors Symmetry y', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
            CASE(4)
-             Plane = GetCReal( Params, 'Raditors Symmetry y max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
            CASE(5)
-             Plane = GetCReal( Params, 'Raditors Symmetry z min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Raditors Symmetry z', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
            CASE(6)
-             Plane = GetCReal( Params, 'Raditors Symmetry z max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
            END SELECT
+
            IF(.NOT.Found) CYCLE
 
            CALL Info(Caller,'Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
            
            k = 0
-           DO i=1,n/2
+           DO i=1,NofRadiators
            DO j=1,n/2
              k = k + 1
              Factors(k) = Factors((i-1)*n+j) + Factors((i-1)*n+j+n/2)
@@ -591,37 +595,38 @@
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
            //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
        
-       at0 = CPUTime()
+       IF( .NOT. RadiationOpen ) THEN 
+         at0 = CPUTime()
 
-       CALL Info( Caller,'Normalizing Factors...')
+         CALL Info( Caller,'Normalizing Factors...')
 
-       DO i=1,NofRadiators
-         s = 0.0d0
-         DO j=1,N
-           s = s + Factors((i-1)*N+j)
+         DO i=1,NofRadiators
+           s = 0.0_dp
+           DO j=1,N
+             s = s + Factors((i-1)*N+j)
+           END DO
+
+           DO j=1,N
+             Factors((i-1)*N+j) = Factors((i-1)*N+j) / s
+           END DO
          END DO
 
-         DO j=1,N
-           Factors((i-1)*N+j) = Factors((i-1)*N+j) / s
-         END DO
-       END DO
-       
-       WRITE (Message,'(A,F8.2)') 'Radiator factors manipulated in time (s):',CPUTime()-at0
-       CALL Info( Caller,Message, Level=3 )
-       
-       CALL Info( Caller, ' ', Level=3 )
-       CALL info( Caller, 'Radiator factors after manipulation: ')
-       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
-       CALL Info( Caller, Message )
-       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
-       CALL Info( Caller, Message )
-       IF( FMax > 1.001 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
-       END IF
-       IF( FMin < 0.999 ) THEN
-         CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
-       END IF
+         WRITE (Message,'(A,F8.2)') 'Radiator factors manipulated in time (s):',CPUTime()-at0
+         CALL Info( Caller,Message, Level=3 )
 
+         CALL Info( Caller, ' ', Level=3 )
+         CALL info( Caller, 'Radiator factors after manipulation: ')
+         WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+         CALL Info( Caller, Message )
+         WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+         CALL Info( Caller, Message )
+         IF( FMax > 1.001 ) THEN
+           CALL Warn(Caller,'Rowsum of view factors should not be larger than one!')
+         END IF
+         IF( FMin < 0.999 ) THEN
+           CALL Warn(Caller,'Rowsum of view factors should not be smaller than one!')
+         END IF
+       END IF
 
        ViewFactorsFile = GetString( GetSimulation(),'Raditor Factors',GotIt)
        IF ( .NOT.GotIt ) ViewFactorsFile = 'RadiatorFactors.dat'
@@ -647,9 +652,10 @@
          ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
          MinFactor = MinFactor / 10.0
          
-         BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         BinaryMode = ListGetLogical( Params,'Radiatorfactor Binary Output',Found ) 
+         IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
-         SaveMask = ( Factors > MinFactor )
+         SaveMask = ( Factors(1:n*NofRadiators) > MinFactor )
 
          IF( BinaryMode ) THEN
            CALL Info(Caller,'Saving radiator factors in binary mode',Level=5)
@@ -660,25 +666,25 @@
            WRITE( VFUnit ) N
 
            DO i=1,NofRadiators
-             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             k = COUNT( SaveMask((i-1)*n+1:i*n) )
              WRITE( VFUnit ) k 
-             DO j=1,N
+             DO j=1,n
                IF( SaveMask((i-1)*N+j ) ) THEN
-                 WRITE( VFUnit ) j,Factors((i-1)*N+j)
+                 WRITE( VFUnit ) j,Factors((i-1)*n+j)
                END IF
              END DO
-           END DO           
+           END DO
          ELSE
            CALL Info(Caller,'Saving radiator factors in ascii mode',Level=5)
 
            OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown' )
            
            DO i=1,NofRadiators
-             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             k = COUNT( SaveMask((i-1)*n+1:i*n) )
              WRITE( VFUnit,* ) k
-             DO j=1,N
-               IF ( SaveMask((i-1)*N+j) ) THEN
-                 WRITE( VFUnit,* ) i,j,Factors((i-1)*N+j)
+             DO j=1,n
+               IF ( SaveMask((i-1)*n+j) ) THEN
+                 WRITE( VFUnit,* ) i,j,Factors((i-1)*n+j)
                END IF
              END DO
            END DO

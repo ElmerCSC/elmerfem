@@ -50,7 +50,8 @@ MODULE Multigrid
    USE DirectSolve
    USE Smoothers
    USE ClusteringMethods
-
+   USE MatrixAssembly, ONLY : mGetElementDofs
+   
    IMPLICIT NONE
 
 
@@ -1029,7 +1030,12 @@ CONTAINS
 
            DO i=1,Solver % NumberOfActiveElements
              Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
+#if 0
              n = PMGGetElementDOFs( Indexes, Element )
+#else
+             n = mGetElementDOFs( Indexes, Element ) 
+#endif
+             
              CALL ElementBasisDegree(Element, Deg)
 
              DO j=1,n
@@ -1268,6 +1274,7 @@ CONTAINS
 
   CONTAINS
 
+#if 0
 !------------------------------------------------------------------------------
   FUNCTION PMGGetElementDOFs( Indexes, UElement, USolver )  RESULT(NB)
 !------------------------------------------------------------------------------
@@ -1387,7 +1394,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION PMGGetElementDOFs
 !------------------------------------------------------------------------------
-
+#endif
   
 !------------------------------------------------------------------------------
     RECURSIVE FUNCTION PMGSweep() RESULT(RNorm)

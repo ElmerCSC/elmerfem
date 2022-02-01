@@ -7,7 +7,6 @@
 ! Polynomial degree of element
 $n=4
 
-
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "angle"
@@ -65,11 +64,16 @@ Solver 2
 End
 
 Solver 3
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
   Vtu Format = Logical True
+
+! These are for visualizing the p-solution by high-order 
+! Lagrange interpolation:
+  Lagrange Element Degree = Integer $n 
+  Save Bulk Only = True
 End
 
 

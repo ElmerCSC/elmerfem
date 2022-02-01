@@ -1661,7 +1661,7 @@ CONTAINS
 
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
-       CALL Info('CreateMatrix','creating initial permutation',Level=14)
+       CALL Info(Caller,'Creating initial permutation',Level=14)
        k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
        IF ( k <= 0 ) THEN
          IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
@@ -1728,7 +1728,7 @@ CONTAINS
 
      !------------------------------------------------------------------------------
      IF (UseThreads) THEN
-       CALL Info('CreateMatrix','Creating threaded list matrix array for equation',Level=14)
+       CALL Info(Caller,'Creating threaded list matrix array for equation',Level=14)
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrixArray( Model, Solver, Mesh, ListMatrixArray, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE. )
@@ -1745,7 +1745,7 @@ CONTAINS
        !------------------------------------------------------------------------------
        ! Initialize the matrix. Multithreading only supports CRS.
        !------------------------------------------------------------------------------
-       CALL Info('CreateMatrix','Initializing list matrix array for equation',Level=14)
+       CALL Info(Caller,'Initializing list matrix array for equation',Level=14)
        IF ( MatrixFormat == MATRIX_CRS) THEN
          Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
              Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
@@ -1757,15 +1757,16 @@ CONTAINS
            CALL InitializeMatrix( Matrix, k, ListMatrixArray % Rows, DOFs )          
          END IF
        ELSE
-         CALL Fatal('CreateMatrix','Multithreaded startup only supports CRS matrix format')
+         CALL Fatal(Caller,'Multithreaded startup only supports CRS matrix format')
        END IF
        
-       CALL Info('CreateMatrix','Matrix created',Level=14)
+       CALL Info(Caller,'Matrix created',Level=14)
 
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
        NULLIFY( ListMatrix )
-       CALL Info('CreateMatrix','Creating list matrix for equation: '//TRIM(Eq),Level=14)
+       CALL Info(Caller,'Creating list matrix for equation: '//TRIM(Eq),Level=14)
+
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
@@ -1782,9 +1783,10 @@ CONTAINS
        !------------------------------------------------------------------------------
        ! Initialize the matrix. 
        !------------------------------------------------------------------------------
-       CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
+       CALL Info(Caller,'Initializing list matrix for equation',Level=14)
        SELECT CASE( MatrixFormat )
        CASE( MATRIX_CRS )
+         
          Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
              Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
          Matrix % FORMAT = MatrixFormat
@@ -1794,7 +1796,6 @@ CONTAINS
          ELSE
            CALL InitializeMatrix( Matrix, k, ListMatrix, DOFs )
          END IF
-            
       CASE( MATRIX_BAND )
         Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.FALSE.,.TRUE. )
          
@@ -1823,7 +1824,7 @@ CONTAINS
        ALLOCATE( A % Rows(n+1), A % Diag(n), A % RHS(n), &
            ConstrainedNode(Mesh % NumberOfNodes), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for CRS matrix topology: '//TRIM(I2S(n)))
+         CALL Fatal(Caller,'Allocation error for CRS matrix topology: '//TRIM(I2S(n)))
        END IF
 
        DO i=1,n
@@ -1865,7 +1866,7 @@ CONTAINS
 
        ALLOCATE( A % Cols(cols), A % Values(cols), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for CRS cols and values: '//TRIM(I2S(cols)))
+         CALL Fatal(Caller,'Allocation error for CRS cols and values: '//TRIM(I2S(cols)))
        END IF
        A % Cols = 0
        A % Values = 0

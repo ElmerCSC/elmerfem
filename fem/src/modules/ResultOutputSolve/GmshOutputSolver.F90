@@ -119,7 +119,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements,&
       ElemFirst,ElemLast)
   
-  CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,.FALSE.,&
+  CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,.FALSE.,&
       ActiveElem,NumberOfGeomNodes,NoPermutation,NumberOfDofNodes,&
       DgPerm,InvDgPerm,NodePerm,InvNodePerm)
   

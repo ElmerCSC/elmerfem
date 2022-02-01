@@ -128,6 +128,24 @@ Solver 2
   Filename = g.dat
 End
 
+Solver 3
+  !
+  ! Use high-order Lagrange interpolation to visualize the solution
+  ! 
+
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_order_8
+
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Save Geometry Ids = True
+
+  Lagrange Element Degree = Integer 8
+!  Save Bulk Only = True
+End
+
 ! Symmetry at y2 = 0:
 ! --------------------
 Boundary Condition 1

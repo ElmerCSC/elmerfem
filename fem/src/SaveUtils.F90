@@ -45,6 +45,8 @@ MODULE SaveUtils
   USE SParIterGlobals
   USE Lists
   USE Messages
+  USE MeshUtils, ONLY: GetLagrangeIndexes
+  
   IMPLICIT NONE
 
 CONTAINS
@@ -56,7 +58,7 @@ CONTAINS
     INTEGER :: ElmerCode
     LOGICAL :: SaveLinear
     INTEGER :: VTKCode
-
+    
     SELECT CASE (ElmerCode)
     CASE( 101 )
       VTKCode = 1
@@ -66,11 +68,13 @@ CONTAINS
       VTKCode = 21
     CASE( 204 )
       VTKCode = 35  ! VTK_CUBIC_LINE but 68, VTK_LAGRANGE_CURVE, tested to work as well 
+    CASE( 205, 206, 207, 208, 209 )
+      VTKCode = 68
     CASE( 303 )
       VTKCode = 5
     CASE( 306 )
       VTKCode = 22
-    CASE( 310 )
+    CASE( 310, 315, 321, 328, 336, 345 )
       VTKCode = 69  ! VTK_LAGRANGE_TRIANGLE
     CASE( 404 )
       VTKCode = 9
@@ -78,12 +82,14 @@ CONTAINS
       VTKCode = 23
     CASE( 409 )
       VTKCode = 28
-    CASE( 416 )
+    CASE( 416, 425, 436, 449, 464, 481 )
       VTKCode = 70  ! VTK_LAGRANGE_QUADRILATERAL
     CASE( 504 )
       VTKCode = 10
     CASE( 510 )
       VTKCode = 24
+    CASE( 520, 535 )
+      VTKCode = 71  ! VTK_LAGRANGE_TETRAHEDRON
     CASE( 605 )
       VTKCode = 14
     CASE( 613 )
@@ -92,18 +98,23 @@ CONTAINS
       VTKCode = 13
     CASE( 715 ) 
       VTKCode = 26
+    CASE( 718, 740, 775 ) 
+      VTKCode = 73  ! VTK_LAGRANGE_WEDGE
     CASE( 808 )
       VTKCode = 12
     CASE( 820 )
       VTKCode = 25
     CASE( 827 )
       VTKCode = 29
+    CASE( 864, 8125, 8216, 8343, 8512, 8729)
+      VTKCode = 72  ! VTK_LAGRANGE_HEXAHEDRON
     CASE DEFAULT
       WRITE(Message,'(A,I0)') 'Not implemented for elementtype: ',ElmerCode
       CALL Fatal('Elmer2VtkElement',Message)
 
     END SELECT
 
+    !PRINT *,'Code:',ElmerCode, VtkCode   
 
     ! If requested, return the 1st order element corresponding to the higher order elements
     IF( SaveLinear ) THEN
@@ -316,7 +327,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, LeftElem, RightElem
     TYPE(Model_t), POINTER :: Model
     CHARACTER(*), PARAMETER :: Caller = 'GenerateSaveMask'
-
+    
     Model => CurrentModel
 
     GroupCollection = ( GroupId > 0 ) 
@@ -551,14 +562,15 @@ CONTAINS
 
   END SUBROUTINE GenerateSaveMask
     
-
+  
   ! Given the geometric permutation, create the dof permutation used in saving
   ! the different parts.
   !-----------------------------------------------------------------------------  
-  SUBROUTINE GenerateSavePermutation(Mesh,DG,DN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
+  SUBROUTINE GenerateSavePermutation(Mesh,DG,DN,LagN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
       NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: DG, DN, SaveLinear
+    INTEGER :: LagN
     LOGICAL, ALLOCATABLE :: ActiveElem(:)
     INTEGER :: NumberOfGeomNodes,NumberOfDofNodes
     LOGICAL :: NoPermutation
@@ -567,18 +579,23 @@ CONTAINS
     INTEGER, ALLOCATABLE :: BodyVisited(:)
     INTEGER :: i,j,k,l,m,n
     INTEGER :: Sweep
-    INTEGER, POINTER :: NodeIndexes(:) 
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, ALLOCATABLE :: pIndexes(:)
     TYPE(Element_t), POINTER :: Element 
     TYPE(Model_t), POINTER :: Model
     CHARACTER(*), PARAMETER :: Caller = 'GenerateSavePermutation'
 
     
     Model => CurrentModel
-        
+            
     NumberOfDofNodes = 0
     IF( DG .OR. DN ) THEN
       NoPermutation = .FALSE.
 
+      IF( LagN > 0 ) THEN
+        CALL Fatal(Caller,'Cannot combine DG and higher order Lagrange elements!')
+      END IF
+      
       IF( DN ) THEN      
         CALL Info(Caller,'Saving results as discontinuous over bodies',Level=15)
         ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
@@ -669,6 +686,40 @@ CONTAINS
 
       IF( DN ) DEALLOCATE( BodyVisited ) 
 
+    ELSE IF( LagN > 0 ) THEN
+      CALL Info(Caller,'Creating permutation for order '//TRIM(I2S(LagN))//' Lagrange nodes!', Level=12)
+
+      ! Calling without Element as argument returns the max. index value
+      n = GetLagrangeIndexes( Mesh, LagN )
+      ALLOCATE(DgPerm(n), pIndexes(n))
+      DgPerm = 0        
+      pIndexes = 0 
+      
+      ! Now call and then number the indexes!
+      ! We use the same elemental subroutine to get the indexes as is done in the interpolation
+      ! to avoid problems related to code inconsistency. There could be faster global ways too...
+      DO i=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(i)
+        m = GetLagrangeIndexes( Mesh, LagN, Element, pIndexes )
+        DgPerm(pIndexes(1:m)) = 1
+      END DO
+
+      m = 0
+      DO i=1,n
+        IF(DgPerm(i) > 0) THEN
+          m = m+1
+          DgPerm(i) = m
+        END IF
+      END DO
+
+      ! Both the number of nodes and number of dofs will now follow the new higher order L-elements
+      ! We will use no permutation for dofs or coordinates since we create a permutation-free temporal
+      ! solution vectors and coordinates. 
+      NumberOfDofNodes = m
+      NumberOfGeomNodes = m
+      NoPermutation = .TRUE.
+      
+      CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//TRIM(I2S(m)),Level=12)
     ELSE
       NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
       IF( NoPermutation ) THEN
@@ -693,7 +744,10 @@ CONTAINS
       END IF
       NumberOfDofNodes = NumberOfGeomNodes 
     END IF
+    
   END SUBROUTINE GenerateSavePermutation
 
+
+  
 END MODULE SaveUtils
   

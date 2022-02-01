@@ -1071,13 +1071,17 @@ END BLOCK
 !------------------------------------------------------------------------------
 BLOCK
       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
-
-      CALL GetConstRealArray( SolverParams, RadiatorCoords, 'Radiator Coordinates', Found)
+      TYPE(ValueList_t), POINTER :: RadList
+      
+      IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+          RadList => SolverParams
+      
+      CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
       IF(Found) THEN
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
         DO i=1,n
-          RadiatorPowers(i) = GetCReal( SolverParams, 'Radiator '//TRIM(I2S(i))//' Power', Found)
+          RadiatorPowers(i) = GetCReal( RadList, 'Radiator Power '//TRIM(I2S(i)), Found)
         END DO
       END IF
 END BLOCK

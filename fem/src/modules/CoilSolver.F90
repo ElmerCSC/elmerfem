@@ -339,6 +339,13 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
       CALL Info(Caller,'Treating coil in Component: '//TRIM(I2S(i)),Level=7)
 
+      IF(i==1) THEN
+        IF( ListCheckPresent( Params,'Coil Normal') ) &
+            CALL Warn(Caller,'Place "Coil Normal" also in component section')
+        IF( ListCheckPresent( Params,'Coil Center') ) &
+            CALL Warn(Caller,'Place "Coil Center" also in component section')
+      END IF
+        
       IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
         ALLOCATE( CoilIndex( Mesh % NumberOfNodes ) )
         CoilIndex = 0
@@ -879,7 +886,7 @@ CONTAINS
     Imoment = 0.0_dp
 
     Active = GetNOFActive()
-
+    
     DO e=1,Active
       Element => GetActiveElement(e)
       
@@ -906,6 +913,7 @@ CONTAINS
         
         s = IP % s(t) * detJ
         r = r - CoilCenter
+        
         DO i=1,3
           Imoment(3*(i-1)+i) = Imoment(3*(i-1)+i) + s * SUM( r**2 )
           DO j=1,3
@@ -920,11 +928,12 @@ CONTAINS
       Imoment = ParTmp
     END IF
 
+    s = 1.0_dp    
     DO i=1,3
       DO j=1,3
         EigVec(i,j) = Imoment(3*(i-1)+j)
       END DO
-      EigVec(i,i) = EigVec(i,i) - 1.0_dp
+      EigVec(i,i) = EigVec(i,i) - s 
     END DO
 
     EigInfo = 0
@@ -939,7 +948,11 @@ CONTAINS
     WRITE( Message,'(A,3ES12.4)') 'Coil inertia eigenvalues:',EigVal
     CALL Info(Caller,Message,Level=10)
 
-    CoilNormal = EigVec(:,3)
+    IF( ListGetLogical( Params, 'Coil Geometry Tall', Found) ) THEN
+      CoilNormal = EigVec(:,1)  ! high coils
+    ELSE
+      CoilNormal = EigVec(:,3)  ! low coils
+    END IF
 
     ! Check the sign of the normal using the right-hand-rule.
     ! This is not generic but a rule is still a rule
@@ -1101,8 +1114,8 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: x,y,z,x0,y0
     REAL(KIND=dp) :: r(3),rp(3),MinCut, MaxCut, CutDist(27)
-    INTEGER :: t,i,j,k,n,ioffset
-    LOGICAL :: Found, Hit
+    INTEGER :: t,i,j,k,l,n,ioffset
+    LOGICAL :: Found, WrongSide
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: Indexes(:)
 
@@ -1127,17 +1140,13 @@ CONTAINS
         IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
       END IF
 
-
-      Hit = .TRUE.
-
+      WrongSide = .FALSE.
+      l = 0
       DO k = 1, n
         i = Indexes(k)
 
         j = Perm(i)
-        IF( j == 0 ) THEN
-          Hit = .FALSE.
-          CYCLE
-        END IF
+        IF( j == 0 ) CYCLE
           
         r(1) = Mesh % Nodes % x(i)
         r(2) = Mesh % Nodes % y(i)
@@ -1158,23 +1167,31 @@ CONTAINS
 
         ! This element can not be an the interface as it is on the wrong side
         IF( rp(1) < 0 ) THEN
-          Hit = .FALSE.
-          CYCLE
+          WrongSide = .TRUE.
+          EXIT
         END IF
-
-        CutDist(k) = rp(2)
+          
+        l = l + 1
+        CutDist(l) = rp(2)
       END DO
-      
-      IF(.NOT. Hit) CYCLE
 
-      MaxCut = MAXVAL( CutDist(1:n) )
-      MinCut = MINVAL( CutDist(1:n) )
+      ! If we are on the 
+      IF(WrongSide) CYCLE
+      
+      ! We need at least two nodes for a cut
+      IF(l<2) CYCLE
+
+      MaxCut = MAXVAL( CutDist(1:l) )
+      MinCut = MINVAL( CutDist(1:l) )
 
       IF( MaxCut >= -EPSILON( MaxCut) .AND. MinCut <= EPSILON( MinCut)  ) THEN
+        l = 0
         DO k=1,n
           i = Indexes(k)
           j = Perm(i)
-          IF( CutDist(k) > 0.0_dp ) THEN
+          IF(j==0) CYCLE
+          l = l + 1
+          IF( CutDist(l) > 0.0_dp ) THEN
             Set(j) = 2 + ioffset
           ELSE
             Set(j) = -2 - ioffset
@@ -1212,8 +1229,8 @@ CONTAINS
     INTEGER, POINTER :: Set(:)
     LOGICAL :: SelectNodes
 
-    LOGICAL :: Ready, Parallel
-    INTEGER :: i,j,k,l,n,t,MinIndex,MaxIndex,Loop,NoPieces,jmax,m
+    LOGICAL :: Ready, GotAny, Parallel
+    INTEGER :: i,j,k,l,n,t,MinIndex,MaxIndex,Loop,ParLoop,NoPieces,jmax,m,NoCand
     INTEGER, ALLOCATABLE :: MeshPiece(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: Indexes(:)
@@ -1251,55 +1268,75 @@ CONTAINS
       END DO
     END DO
 
-    j = COUNT(MeshPiece > 0)
-    
+    NoCand = COUNT(MeshPiece > 0)
+    CALL Info(Caller,&
+        'Number of candidante nodes in coil '//TRIM(I2S(NoCand)),Level=12)
+
     IF( Parallel ) THEN
-      jmax = ParallelReduction(j,2)
-      MeshPiece = MeshPiece + ParEnv % MyPe * jmax
+      jmax = ParallelReduction(NoCand,2)
       CALL Info(Caller,&
-          'Maximum number of candidante nodes in coil '//TRIM(I2S(jmax)),Level=12)
-    ELSE          
-      CALL Info(Caller,&
-          'Number of candidante nodes in coil '//TRIM(I2S(j)),Level=12)
+          'Total number of candidante nodes in coil '//TRIM(I2S(jmax)),Level=12)
     END IF
       
     ! We go through the elements and set all the piece indexes to minimimum index
     ! until the mesh is unchanged.
-    Ready = .FALSE.
+    Ready = (NoCand == 0)
     Loop = 0
+    ParLoop = 0
 100 DO WHILE(.NOT. Ready) 
       Ready = .TRUE.
+
       DO t = 1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)        
         Indexes => Element % NodeIndexes
         n = Element % TYPE % NumberOfNodes
         pIndexes(1:n) = Perm(Indexes)
         
-        IF( ANY( pIndexes(1:n) == 0 ) ) CYCLE
-
-        IF( SelectNodes ) THEN
-          IF( ANY( CoilIndex(Indexes) /= NoCoils ) ) CYCLE
-        END IF
-        IF( ALL( Set(pIndexes(1:n)) == 0 ) ) CYCLE
-
-        MaxIndex = MAXVAL( MeshPiece( pIndexes(1:n) ) )
-        MinIndex = MaxIndex
+        GotAny = .FALSE.
         DO i=1,n
-          j = MeshPiece(pIndexes(i))
-          IF(j>0) MinIndex = MIN(MinIndex,j)
+          j = Perm(Indexes(i))
+          IF(j==0) CYCLE
+          k = MeshPiece(j)
+          IF(k==0) CYCLE          
+          IF(SelectNodes) THEN
+!            IF(CoilIndex(Indexes(i)) /= NoCoils) CYCLE
+          END IF
+          IF(GotAny) THEN
+            MinIndex = MIN(MinIndex,k)
+            MaxIndex = MAX(MaxIndex,k)
+          ELSE
+            MinIndex = k
+            MaxIndex = k
+            GotAny = .TRUE.
+          END IF
         END DO
         
-        IF( MaxIndex > MinIndex ) THEN
-          WHERE( MeshPiece(pIndexes(1:n)) > 0 ) 
-            MeshPiece( pIndexes(1:n) ) = MaxIndex
-          END WHERE
-          ! We found a connection where the cellular automate still continues so we cannot stop this cycle
-          Ready = .FALSE.
-        END IF
+        IF(.NOT. GotAny) CYCLE
+        IF(MinIndex == MaxIndex) CYCLE
+
+        Ready = .FALSE.
+        DO i=1,n
+          j = Perm(Indexes(i))
+          IF(j==0) CYCLE
+          k = MeshPiece(j)
+          IF(k==0) CYCLE          
+          IF(SelectNodes) THEN
+!            IF(CoilIndex(Indexes(i)) /= NoCoils) CYCLE
+          END IF
+          MeshPiece(j) = MaxIndex
+        END DO       
       END DO
       Loop = Loop + 1
     END DO
     CALL Info(Caller,'Coil cut coloring loops: '//TRIM(I2S(Loop)),Level=12)
+    
+    IF( NoCand > 0 ) THEN
+      MaxIndex = MAXVAL(MeshPiece)
+    ELSE
+      MaxIndex = 0
+    END IF
+    MinIndex = MaxIndex
+
 
     ! In parallel we might not be ready. The coil cut may be shared at the interface.
     IF( Parallel ) THEN
@@ -1311,21 +1348,25 @@ CONTAINS
       ! Was there any need to communicate?
       ! If even one node needed to be communicated then repeat the serial algo. 
       j = SUM(MeshPiece)-i
-      j = ParallelReduction(j)
-      IF(j > 0 ) THEN
-        CALL Info(Caller,'Continuing after parallel reduction!',Level=6)
+      k = ParallelReduction(j)
+
+      IF(k > 0 ) THEN
+        ParLoop = ParLoop + 1
+        CALL Info(Caller,'Continuing after parallel reduction: '//TRIM(I2S(k)),Level=6)
+        Ready = .FALSE.
         GOTO 100
       END IF
     END IF
-    
-     i = COUNT( Set < 0 )
-    j = COUNT( Set > 0 )
-    
+        
     ! Compute the true number of different pieces starting from the biggest one.
     ! This does not really give the correct count in parallel. Only in serial.
-    MaxIndex = MAXVAL(MeshPiece)
+    IF( NoCand > 0 ) THEN
+      MaxIndex = MAXVAL(MeshPiece)
+    ELSE
+      MaxIndex = 0
+    END IF
     MinIndex = MaxIndex
-
+    
     NoPieces = 0
     l = 0
     IF( MaxIndex > 0 ) THEN
@@ -1333,11 +1374,13 @@ CONTAINS
       k = MaxIndex
       !PRINT *,'number of cuts:',k,COUNT(MeshPiece==k)
 200   j = 0
+      ! Find the biggest piece tag that is not the latest biggest
       DO i=1,m
         IF(MeshPiece(i)>j .AND. MeshPiece(i)<k) THEN
           j=MeshPiece(i)
         END IF
       END DO
+      ! If we found a bigger one then that is one piece more 
       IF( j>0 ) THEN
         !PRINT *,'number of cuts:',j,COUNT(MeshPiece==j)
         NoPieces = NoPieces + 1        
@@ -1346,24 +1389,30 @@ CONTAINS
         GOTO 200 
       END IF
     END IF
+
+    !PRINT *,'MinMax:',ParEnv % MyPe, MinIndex, MaxIndex, NoPieces, COUNT( MeshPiece > 0 )
     
     NoPieces = ParallelReduction(NoPieces)
     CALL Info(Caller,'Number of separate cuts in mesh is '//TRIM(I2S(NoPieces)),Level=12)
     IF(NoPieces == 1 ) RETURN
-      
+
+    MaxIndex = ParallelReduction(MaxIndex,2)
+
+
     IF( ListGetLogical( Solver % Values,'Select Min Coil Cut',Found ) ) THEN
       ! We may choose the minimum index
-      MinIndex = MINVAL(MeshPiece,MeshPiece>0)
+      IF( NoCand > 0 ) THEN
+        MinIndex = MINVAL(MeshPiece,MeshPiece>0)
+      ELSE
+        MinIndex = MaxIndex
+      END IF
       MinIndex = ParallelReduction(MinIndex,1)      
       WHERE ( MeshPiece /= MinIndex ) Set = 0
     ELSE      
       ! Or the maximum. We don't really know how many there are.
-      MaxIndex = ParallelReduction(MaxIndex,2)
-      WHERE ( MeshPiece /= MaxIndex ) Set = 0
+      WHERE ( MeshPiece /= MaxIndex) Set = 0
     END IF
-          
-    CALL Info(Caller,'Saving mesh piece field to: mesh piece',Level=5)
-  
+ 
   END SUBROUTINE ChooseCoilCut
 
   

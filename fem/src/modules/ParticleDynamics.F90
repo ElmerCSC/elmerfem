@@ -476,9 +476,11 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
   REAL(KIND=dp) :: cput1,cput2,dcput
+  REAL(KIND=dp) :: Coord(3)
   REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
-
+  CHARACTER(LEN=MAX_NAME_LEN) :: str
+  
   SAVE CollisionInteraction, ContactInteraction, NoGroups, &
       ParticleToField, OutputInterval, Nstep, VisitedTimes, &
       TimeOrder, ParticleInBox, &
@@ -551,8 +553,10 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       GetLogical( Params,'Reinitialize Particles',Found) ) THEN
 
     IF( NoGroups > 0 ) THEN
+      Group = ListGetInteger(Params,'Default Group',Found)
+      IF(.NOT. Found) Group = 1
       IF( ListGetLogical( Params,'Set Particle Group By Domain',Found ) ) THEN
-        CALL InitializeParticles( Particles, Group = 1 )
+        CALL InitializeParticles( Particles, Group = Group )
         CALL Info('ParticleDynamics','Setting particle group by domain',Level=9)
         DO i=1, Particles % NumberOfParticles
           j = Particles % ElementIndex(i)
@@ -562,9 +566,23 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
           END IF
           Particles % Group(i) = Mesh % Elements(j) % BodyId 
         END DO
+      ELSE IF( ListGetLogical( Params,'Set Particle Group By Condition',Found ) ) THEN
+        CALL InitializeParticles( Particles, Group = Group )
+        CALL Info('ParticleDynamics','Setting particle group by condition',Level=9)
         DO Group = 1, NoGroups
-          j = COUNT( Particles % Group == Group )
-          CALL Info('ParticleDynamics','Group '//TRIM(I2S(Group))//' particles: '//TRIM(I2S(j)),Level=9)
+          BLOCK
+            TYPE(ValueListEntry_t), POINTER :: ptr
+            REAL(KIND=dp) :: cond
+            str = 'Group Condition '//TRIM(I2S(Group))
+            ptr => ListFind(Params,str,Found)
+            IF ( .NOT.ASSOCIATED(ptr) ) CYCLE
+            
+            DO i=1, Particles % NumberOfParticles
+              Coord = GetParticleCoord( Particles, i )
+              cond = ExecRealFunction( ptr % PROCEDURE,CurrentModel, i, Coord )
+              IF( cond > 0.0_dp ) Particles % Group(i) = Group
+            END DO
+          END BLOCK
         END DO
       ELSE
         DO Group = 1, NoGroups
@@ -574,6 +592,10 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
           CALL ListPopNameSpace()
         END DO
       END IF
+      DO Group = 1, NoGroups
+        j = COUNT( Particles % Group == Group )
+        CALL Info('ParticleDynamics','Group '//TRIM(I2S(Group))//' particles: '//TRIM(I2S(j)),Level=5)
+      END DO
     ELSE
       CALL InitializeParticles( Particles )
     END IF

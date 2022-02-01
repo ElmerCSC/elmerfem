@@ -1008,8 +1008,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
-         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-         IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
+         !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+         !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
          VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
@@ -1025,8 +1025,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
 
-         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-         IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
+         !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+         !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
 
          VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
@@ -1974,7 +1974,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO
 
        !DO l=1,Dofs
-       IF (NodalFields) THEN
+       IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
          CALL UpdateGlobalForce( GForce(:,l), &
              Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)

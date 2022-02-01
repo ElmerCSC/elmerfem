@@ -34,7 +34,6 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File = "cartesian.vtu"
 End
 
 Body 1
@@ -98,6 +97,20 @@ Solver 2
 
   Filename = g.dat
 End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Lagrange Element Degree = Integer 8
+End
+
 
 ! Symmetry at y2 = 0:
 ! --------------------

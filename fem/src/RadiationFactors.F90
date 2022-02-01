@@ -122,8 +122,9 @@
 
      Found = .FALSE.
      RadiatorsFound = .FALSE.
+     DiffuseGrayRadiationFound = .FALSE.
+     
      DO i=1,Model % NumberOfBCs
-
        BC => Model % BCs(i) % Values
        RadiatorsFound = RadiatorsFound .OR. GetLogical( BC, 'Radiator BC', Gotit )
 
@@ -568,9 +569,9 @@
 !-----------------------------------------------
 
      IF( RadiatorsFound .AND. (FirstTime .OR. UpdateRadiatorFactors) ) THEN
-
-       RadiatorFactorsFile = GetString(Model % Simulation,'Radiator Factors',GotIt)
+       CALL Info('RadiationFactors','Loading radiator factors!',Level=7)
        
+       RadiatorFactorsFile = GetString(Model % Simulation,'Radiator Factors',GotIt)       
        IF ( .NOT.GotIt ) RadiatorFactorsFile = 'RadiatorFactors.dat'
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
@@ -592,18 +593,19 @@
        END IF
 
        BinaryMode = ListGetLogical( Params,'Radiatorfactor Binary Output',Found ) 
+       IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
        IF( BinaryMode ) THEN
-         CALL Info('RadiationFactors','Loading view factors in binary mode',Level=5)
-
+         CALL Info('RadiationFactors','Loading radiator factors from binary file: '//TRIM(OutputName),Level=5)
          OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read' )         
          READ( VFUnit ) n
          IF( n /= RadiationSurfaces ) THEN
-           CALL Fatal('RadiationFactors','Mismatch in viewfactor file size: '&
+           CALL Fatal('RadiationFactors','Mismatch in radiation factor file size: '&
                //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
          END IF
        ELSE
+         CALL Info('RadiationFactors','Loading radiator factors from ascii file: '//TRIM(OutputName),Level=5)
          OPEN( VFUnit,File=TRIM(OutputName) )
        END IF
 
@@ -614,8 +616,12 @@ BLOCK
        INTEGER, ALLOCATABLE ::  Cols(:)
        INTEGER :: NofRadiators
        REAL(KIND=dp), POINTER :: Radiators(:,:)
+       TYPE(ValueList_t), POINTER :: RadList
+       
+       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+           RadList => Params
 
-       CALL GetConstRealArray( Params, Radiators, 'Radiator Coordinates', Found )
+       CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
        IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
 
        NofRadiators = SIZE(Radiators,1)
@@ -666,7 +672,8 @@ END BLOCK
      ! Open the file for ViewFactors
 
      IF( FirstTime .OR. UpdateViewFactors ) THEN
-
+       CALL Info('RadiationFactors','Loading view factors!',Level=7)
+       
        IF ( .NOT.ASSOCIATED(ViewFactors) ) THEN
          ALLOCATE( ViewFactors(RadiationSurfaces), STAT=istat )
          IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 4.')
@@ -711,7 +718,7 @@ END BLOCK
        BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
        IF( BinaryMode ) THEN
-         CALL Info('RadiationFactors','Loading view factors in binary mode',Level=5)
+         CALL Info('RadiationFactors','Loading view factors from binary file: '//TRIM(OutputName),Level=5)
 
          OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read' )         
@@ -721,6 +728,7 @@ END BLOCK
                //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
          END IF
        ELSE
+         CALL Info('RadiationFactors','Loading view factors from ascii file: '//TRIM(OutputName),Level=5)
          OPEN( VFUnit,File=TRIM(OutputName) )
        END IF
                 

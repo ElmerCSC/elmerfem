@@ -42,12 +42,18 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
   ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
-  ZirkaHysteresis.F90 SolidMechanicsUtils.F90)
+  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
+  OptimizationUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
 
-
+IF(WITH_EXTOPTIM)
+  LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
+  PowellOptBobyqa.F90 PowellOptNewuoa.F90)
+  SET(HAVE_EXTOPTIM TRUE)
+ENDIF() 
+      
 IF(WITH_LUA)
   INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
   LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)

@@ -14,7 +14,9 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = a.ep
+
+!  Post File = a.ep
+  Post File = case.vtu
 End
 
 Body 1
@@ -69,8 +71,8 @@ Solver 1
           0.15 0.15 0.5 \
           0.85 0.85 0.5
 
-  Radiator 1 Power = Real 2200
-  Radiator 2 Power = Real 300
+  Radiator Power 1 = Real 2200
+  Radiator Power 2 = Real 300
 
   Viewfactor area tolerance   = 0.001
   Viewfactor factor tolerance = 0.001
@@ -101,4 +103,3 @@ End
 
 Solver 1 :: Reference Norm = Real 348.95464
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-RUN

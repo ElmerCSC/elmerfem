@@ -3183,14 +3183,11 @@ CONTAINS
           N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
           IF (.NOT. Found) CALL Fatal (Caller, 'Stranded Coil N_j not found!')
  
-          nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-          IF (.NOT. Found) CALL Fatal(Caller,'Stranded Coil: Number of Turns not found!')
+          !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+          !IF (.NOT. Found) CALL Fatal(Caller,'Stranded Coil: Number of Turns not found!')
           
           i_multiplier_re = GetConstReal(CompParams, 'Current Multiplier re', Found)
-          IF (.NOT. Found) i_multiplier_re = 0._dp
-          
           i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
-          IF (.NOT. Found) i_multiplier_im = 0._dp
           
           i_multiplier = i_multiplier_re + im * i_multiplier_im
 
