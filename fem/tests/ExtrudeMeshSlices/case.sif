@@ -19,6 +19,7 @@ Simulation
 ! There activate partitioning in z-direction while doing
 ! parallel extrusion.
   Single Mesh = Logical True
+!  Parallel Mesh Modulo = Integer 3
   Extruded Mesh Slices = Logical True
 
   Coordinate System = "Cartesian"

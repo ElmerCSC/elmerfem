@@ -561,6 +561,13 @@ private:
 
 
   ObjectBrowser *objectBrowser;
+
+public:  
+  /*
+  rebuildGLLists() is assumed to be called from ObjectBrowser to avoid a problem of 3D surface 
+  mesh not shown correctly when project loading (typically, TemperatureGeneric sample)
+  */
+  void rebuildGLLists();
 };
 
 #endif // MAINWINDOW_H

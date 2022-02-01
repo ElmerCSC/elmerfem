@@ -4755,6 +4755,46 @@ CONTAINS
     END IF
 
 
+
+    BLOCK
+      INTEGER,ALLOCATABLE :: ChildBCs(:)
+      INTEGER,POINTER :: BCInds(:)
+      REAL(KIND=dp) :: zero = 0.0_dp
+      IF( ListGetLogical( Model % Solver % Values,'Extruded Child BC Zero',GotIt ) ) THEN
+        CALL Info(Caller,'Setting extruded BCs (start & end) to zero!',Level=10)
+
+        ALLOCATE(ChildBCs(2*Model % NumberOfBodies))
+        ChildBCs=0
+
+        ! Collect a list of child BCs that were generated when extruding
+        m = 0
+        DO i=1,Model % NumberOfBodies
+          BCInds => ListGetIntegerArray(Model % Bodies(i) % Values,'Extruded Child BCs',GotIt)
+          IF(GotIt) THEN
+            ChildBCs(m+1:m+2) = BCInds(1:2)
+            m=m+2
+          END IF          
+        END DO        
+        IF(m==0) CALL Fatal(Caller,'No "Extruded Child BCs" to set')
+
+        IF( InfoActive(20) ) THEN
+          PRINT *,'ChildBCs:',m,ChildBCs(1:m)
+        END IF
+          
+        ! Set the extruded BCs to zero. Note that only this value is available currently.
+        DO t = bndry_start, bndry_end
+          Element => Model % Elements(t)
+          IF(ANY(ChildBCs(1:m) == Element % BoundaryInfo % Constraint ) ) THEN          
+            Model % CurrentElement => Element
+            n = mGetElementDOFs( Indexes, Element, Model % Solver )            
+            DO i=1,n
+              CALL SetSinglePoint(Indexes(i),DOF,zero,.TRUE.)
+            END DO
+          END IF
+        END DO
+      END IF
+    END BLOCK
+      
 !------------------------------------------------------------------------------
 ! Go through the Dirichlet conditions in the body force lists
 !------------------------------------------------------------------------------
@@ -8234,7 +8274,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
     LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
-    INTEGER :: LhsConflicts
+    INTEGER :: LhsConflicts, NormalConflicts
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
@@ -13983,6 +14023,11 @@ END FUNCTION SearchNodeL
         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
             //GetVarName(Solver % Variable),Found)
         rst = rst + ct
+
+        WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time cumulative (CPU,REAL) for '&
+            //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
+        CALL Info('SolveSystem',Message,Level=7)    
+        
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
             //GetVarName(Solver % Variable),st)
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
@@ -16346,11 +16391,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Get the node from on which the controlled value should be set. 
 !------------------------------------------------------------------------------
-  FUNCTION GetControlNode(Mesh,Perm,Params,nControl,iControl) RESULT ( ControlNode ) 
+  FUNCTION GetControlNode(Mesh,Perm,Params,iControl) RESULT ( ControlNode ) 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Perm(:)
     TYPE(ValueList_t), POINTER :: Params    
-    INTEGER :: nControl
     INTEGER :: iControl
     INTEGER :: ControlNode
 
@@ -16361,10 +16405,14 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'GetControlNode'
    
-    str = 'Control Node Index' 
-    IF(nControl > 1) str = TRIM(str)//' '//TRIM(I2S(iControl))                
+    str = 'Control Node Index '//TRIM(I2S(iControl))                
     ControlNode = ListGetInteger( Params,str,Found )
+    IF(.NOT. Found .AND. iControl == 1 ) THEN
+      str = 'Control Node Index'
+      ControlNode = ListGetInteger( Params,str,Found )    
+    END IF
 
+   
     IF(.NOT. Found ) THEN        
       Coord = 0.0_dp
       str = 'Control Node Coordinates'
@@ -16387,8 +16435,8 @@ CONTAINS
         CALL FindClosestNode(Mesh,Coord,MinDist,ControlNode,ParEnv % PEs>1,Perm=Perm)
         CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
 
-        str = 'Control Node Index'
-        IF(nControl > 1 ) str = TRIM(str)//' '//TRIM(I2S(iControl))  
+        ! Add the index for future rounds since it takes time to make the search every time!
+        str = 'Control Node Index '//TRIM(I2S(iControl))  
         CALL ListAddInteger( Params, str, ControlNode )
       END IF
     END IF
@@ -16396,6 +16444,66 @@ CONTAINS
   END FUNCTION GetControlNode
 
 
+  FUNCTION GetControlValue(Mesh,Params,iControl,Var,dof) RESULT ( val )
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Params  
+    INTEGER :: iControl
+    TYPE(Variable_t), POINTER, OPTIONAL :: Var
+    INTEGER, OPTIONAL :: dof
+    REAL(KIND=dp) :: val
+    
+    TYPE(Variable_t), POINTER :: pVar
+    INTEGER :: i,j
+    INTEGER :: dof0
+    REAL(KIND=dp) :: val0
+    LOGICAL :: Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: str, varname
+    CHARACTER(*), PARAMETER :: Caller = 'GetControlValue'
+
+    IF(.NOT. ASSOCIATED(Mesh)) CALL Fatal(Caller,'Mesh not associated!')
+    IF(.NOT. ASSOCIATED(Params)) CALL Fatal(Caller,'Params not associated!')
+    
+    IF(PRESENT(Var)) THEN
+      pVar => Var
+    ELSE
+      str = 'Control Variable'
+      varname = ListGetString( Params, str, Found )
+      IF(.NOT. Found ) THEN
+        str = 'Control Variable '//TRIM(I2S(iControl))
+        varname = ListGetString( Params, str, UnfoundFatal=.TRUE. )
+      END IF      
+      pVar => VariableGet( Mesh % Variables, varname )
+      IF(.NOT. ASSOCIATED(pVar) ) THEN
+        CALL Fatal(Caller,'Could not find control variable: '//TRIM(varname))
+      END IF
+    END IF
+
+    i = GetControlNode(Mesh,pVar % Perm,Params,iControl)
+    IF(i==0) THEN
+      CALL Fatal(Caller,'Could not find control node!')
+    END IF
+        
+    dof0 = 1   
+    IF(PRESENT(dof)) THEN
+      dof0 = dof
+    ELSE IF( pVar % Dofs > 1) THEN
+      dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
+    END IF
+    
+    str = 'Control Target Value'        
+    val0 = ListGetCReal( Params, str, Found )
+    IF(.NOT. Found ) THEN
+      str = 'Control Target Value '//TRIM(I2S(iControl))
+      val0 = ListGetCReal( Params, str, UnfoundFatal=.TRUE. )
+    END IF
+    
+    j = pVar % dofs*(pVar % Perm(i)-1)+dof0
+    
+    val = pVar % Values(j) - val0 
+    PRINT *,'Control value:',val,val0,pVar % Values(j),i,j
+
+  END FUNCTION GetControlValue
+    
   
 !------------------------------------------------------------------------------
 !> Given the operation point and an additional r.h.s. source vector find the
@@ -16524,7 +16632,7 @@ CONTAINS
         val = ListGetCReal( Params,str,UnfoundFatal=.TRUE.)
         cTarget(iControl) = val
 
-        i = GetControlNode(Mesh,Perm,Params,nControl,iControl) 
+        i = GetControlNode(Mesh,Perm,Params,iControl) 
 
         IF(i>0) i = dofs*(Perm(i)-1)+dof0
         cDof(iControl) = i 
@@ -16719,7 +16827,7 @@ CONTAINS
           cTarget(jControl) = val
           !i = GetControlNode(jControl)
 
-          i = GetControlNode(Mesh,Perm,Params,nControl,jControl) 
+          i = GetControlNode(Mesh,Perm,Params,jControl) 
 
           IF(i>0) i = dofs*(Perm(i)-1)+dof0
           cDof(jControl) = i 

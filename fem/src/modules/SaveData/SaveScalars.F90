@@ -1836,7 +1836,7 @@ CONTAINS
 
     Maximum = -HUGE(x)
     Minimum = HUGE(x)
-    AbsMaximum = -HUGE(x)
+    AbsMaximum = 0.0_dp
     AbsMinimum = HUGE(x)
 
     PPerm => Var % Perm

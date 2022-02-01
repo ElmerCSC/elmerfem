@@ -42,6 +42,36 @@
 !> Initialization of the primary solver, i.e. HeatSolver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
+SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------  
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found
+  
+  Params => GetSolverParams()
+
+  IF( ListCheckPresentAnyEquation( Model,'Convection' ) .OR. &
+      ListGetLogical( Params,'Bubbles',Found) ) THEN
+    IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
+      CALL ListAddString(Params,'Element', &
+          'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
+    END IF
+  END IF
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE HeatSolver_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -378,20 +408,20 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
-        SourceAtIpVec(:), RhoAtIpVec(:)
-    LOGICAL :: Stat,Found
+        SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
+    LOGICAL :: Stat,Found,ConvComp,ConvConst
     INTEGER :: i,t,p,q,ngp,allocstat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
+        ConvVelo_h(3), PerfRate_h, PerfDens_h, PerfCp_h, &
         PerfRefTemp_h, VolSource_h, OrigMesh_h
     TYPE(VariableHandle_t), SAVE :: ConvField_h
     
     
     !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
+    !$OMP               MASS, STIFF, FORCE, Nodes, ConvVelo, ConvVelo_i, VeloAtIpVec, &
     !$OMP               Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
     !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
     !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h)
@@ -408,7 +438,9 @@ CONTAINS
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
 
       CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')      
-      CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
+      DO i=1,3
+        CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//TRIM(I2S(i)))
+      END DO
 
       str = GetString( Params, 'Temperature Convection Field', Found )
       IF(.NOT. Found ) str = 'Flow Solution'
@@ -424,19 +456,20 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
     
-    IP = GaussPoints( Element, PReferenceElement = .TRUE.)      
+    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
     ngp = IP % n
     
     ! Deallocate storage if needed
     IF (ALLOCATED(Basis)) THEN
       IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-          DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE, TmpVec )
+          DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE, &
+          TmpVec, ConvVelo )
     END IF
     
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), &
+          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
           TmpVec(ngp), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
@@ -453,6 +486,9 @@ CONTAINS
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
+
+    ConvConst = ListCompareElementString( ConvFlag_h,'constant',Element, Found )    
+    ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
     
     ! Numerical integration:
     ! Compute basis function values and derivatives at integration points
@@ -462,7 +498,8 @@ CONTAINS
     
     ! Compute actual integration weights (recycle the memory space of DetJVec)
     DetJVec(1:ngp) = IP % s(1:ngp) * DetJVec(1:ngp)
-    
+
+    ! Get pointer to vector including density on all integration points
     RhoAtIpVec => ListGetElementRealVec( Rho_h, ngp, Basis, Element, Found ) 
 
     ! thermal conductivity term: STIFF=STIFF+(kappa*grad(u),grad(v))
@@ -471,10 +508,30 @@ CONTAINS
       CALL LinearForms_GradUdotGradU(ngp, nd, dim, dBasisdx, DetJVec, STIFF, CondAtIpVec )
     END IF
 
-    ! time derivative term: MASS=MASS+(rho*cp*dT/dt,v)
-    IF( Transient ) THEN
+    ! We need heat capacity only if the case is transient or we have convection
+    IF( ConvConst .OR. ConvComp .OR. Transient ) THEN
       CpAtIpVec => ListGetElementRealVec( Cp_h, ngp, Basis, Element, Found ) 
       TmpVec(1:ngp) = CpAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
+    END IF
+
+    ! convection, either constant or computed
+    ! STIFF=STIFF+(C*grad(u),v)
+    IF( ConvConst .OR. ConvComp ) THEN
+      IF( ConvConst ) THEN
+        DO i=1,dim
+          ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found ) 
+          IF( Found ) ConvVelo(1:ngp,i) = ConvVelo_i(1:ngp)
+        END DO
+        VeloAtIpVec => ConvVelo
+      ELSE
+        VeloAtIpVec => ListGetElementVectorSolutionVec( ConvField_h, ngp, dim, Basis, Element )
+      END IF      
+      CALL LinearForms_GradUdotU(ngp, nd, dim, dBasisdx, Basis, DetJVec, STIFF, &
+          TmpVec, VeloAtIpVec )       
+    END IF
+            
+    ! time derivative term: MASS=MASS+(rho*cp*dT/dt,v)
+    IF( Transient ) THEN
       CALL LinearForms_UdotU(ngp, nd, dim, Basis, DetJVec, MASS, TmpVec )
     END IF
       

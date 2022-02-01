@@ -339,6 +339,13 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
       CALL Info(Caller,'Treating coil in Component: '//TRIM(I2S(i)),Level=7)
 
+      IF(i==1) THEN
+        IF( ListCheckPresent( Params,'Coil Normal') ) &
+            CALL Warn(Caller,'Place "Coil Normal" also in component section')
+        IF( ListCheckPresent( Params,'Coil Center') ) &
+            CALL Warn(Caller,'Place "Coil Center" also in component section')
+      END IF
+        
       IF(.NOT. ALLOCATED( CoilIndex ) ) THEN
         ALLOCATE( CoilIndex( Mesh % NumberOfNodes ) )
         CoilIndex = 0
@@ -879,7 +886,7 @@ CONTAINS
     Imoment = 0.0_dp
 
     Active = GetNOFActive()
-
+    
     DO e=1,Active
       Element => GetActiveElement(e)
       
@@ -906,6 +913,7 @@ CONTAINS
         
         s = IP % s(t) * detJ
         r = r - CoilCenter
+        
         DO i=1,3
           Imoment(3*(i-1)+i) = Imoment(3*(i-1)+i) + s * SUM( r**2 )
           DO j=1,3
@@ -920,11 +928,12 @@ CONTAINS
       Imoment = ParTmp
     END IF
 
+    s = 1.0_dp    
     DO i=1,3
       DO j=1,3
         EigVec(i,j) = Imoment(3*(i-1)+j)
       END DO
-      EigVec(i,i) = EigVec(i,i) - 1.0_dp
+      EigVec(i,i) = EigVec(i,i) - s 
     END DO
 
     EigInfo = 0
@@ -939,7 +948,11 @@ CONTAINS
     WRITE( Message,'(A,3ES12.4)') 'Coil inertia eigenvalues:',EigVal
     CALL Info(Caller,Message,Level=10)
 
-    CoilNormal = EigVec(:,3)
+    IF( ListGetLogical( Params, 'Coil Geometry Tall', Found) ) THEN
+      CoilNormal = EigVec(:,1)  ! high coils
+    ELSE
+      CoilNormal = EigVec(:,3)  ! low coils
+    END IF
 
     ! Check the sign of the normal using the right-hand-rule.
     ! This is not generic but a rule is still a rule

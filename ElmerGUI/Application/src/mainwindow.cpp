@@ -309,11 +309,13 @@ MainWindow::MainWindow() {
   // default size:
   int defW = egIni->value("width").toInt();
   int defH = egIni->value("height").toInt();
-  if (defW <= 200)
-    defW = 200;
-  if (defH <= 200)
-    defH = 200;
+  if (defW <= 300)
+    defW = 300;
+  if (defH <= 300)
+    defH = 300;
   this->resize(defW, defH);
+  sifWindow->resize(defW - 50, defH - 50);  
+  solverLogWindow->resize(defW - 50, defH - 50);
 
   loadSettings();
 }
@@ -1812,11 +1814,12 @@ void MainWindow::saveAsSlot() {
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(
+  QString dirName = QFileDialog::getExistingDirectory(
       this, tr("Open directory to save mesh"), defaultDirName);
 
-  if (!saveDirName.isEmpty()) {
-    logMessage("Output directory " + saveDirName);
+  if (!dirName.isEmpty()) {
+    logMessage("Output directory " + dirName);
+    saveDirName = dirName;
   } else {
     logMessage("Unable to save: directory undefined");
     return;
@@ -8112,4 +8115,12 @@ void MainWindow::selectParaViewSlot(){
   selectElmerPostAct->setChecked(false);
   selectVtkPostAct->setChecked(false);
   selectParaViewAct->setChecked(true);
+}
+
+void MainWindow::rebuildGLLists(){
+  /*
+  This function is assumed to be called from ObjectBrowser to avoid a problem of 3D surface
+  mesh not shown correctly when project loading (typically, TemperatureGeneric sample)
+  */
+  glWidget->rebuildLists();
 }

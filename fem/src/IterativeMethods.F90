@@ -1252,7 +1252,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,ksum=0
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
       REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
@@ -1419,6 +1419,11 @@ CONTAINS
            WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
            CALL Info('IterMethod_GCR', Message, Level=i)            
 
+           IF( InfoActive(20) ) THEN
+             ksum = ksum + k
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+           END IF
+           
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT

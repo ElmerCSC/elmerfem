@@ -7482,6 +7482,253 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Get a scalar field (e.g. potential or pressure) at the integration points.
+!> Works with different types of fields. Vectorized version. 
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementScalarSolutionVec( Handle, ngp, Basis, Element, Found, dof  ) RESULT ( Vals )
+     
+     TYPE(VariableHandle_t) :: Handle
+     INTEGER :: ngp
+     REAL(KIND=dp), OPTIONAL :: Basis(:,:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: dof
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), POINTER :: Vals(:)
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: i,j, k, n
+     INTEGER, POINTER :: Indexes(:)
+          
+     NULLIFY(Vals)
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     IF( ASSOCIATED( Handle % Element, pElement ) ) THEN 
+       IF( Handle % ActiveElement ) THEN
+         Vals => Handle % IpValues
+       END IF
+       IF( PRESENT( Found )  ) Found = Handle % ActiveElement
+       RETURN       
+     ELSE
+       Handle % Element => pElement
+     END IF
+
+     IF( Handle % dofs > 1 ) THEN
+       IF( .NOT. PRESENT( dof ) ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec','Argument "dof" is needed for vector fields!')
+       END IF
+     END IF
+
+     IF( Handle % ipN < ngp ) THEN
+       IF( Handle % ipN > 0 ) THEN
+         DEALLOCATE( Handle % ipValues )
+       END IF
+       ALLOCATE( Handle % ipValues(ngp) )
+       Handle % ipValues(1:ngp) = 0.0_dp
+       Handle % ipN = ngp
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 )        
+       IF( n == 0 ) RETURN
+
+       IF( n /= ngp ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec','Mismatch in number of Gauss points!')
+       END IF
+       
+       k = Handle % Perm(j)            
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = Handle % Values(k+1:k+ngp)
+       ELSE           
+         Handle % ipValues(1:ngp) = Handle % Values(k+dof:k+ngp*Handle % Dofs:Handle % Dofs)
+       END IF
+       Vals => Handle % ipValues
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 )        
+       IF( j == 0 ) RETURN             
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = Handle % Values( j )
+       ELSE         
+         Handle % ipValues(1:ngp) = Handle % Values( Handle % Dofs * (j-1) + dof )
+       END IF
+       Vals => Handle % ipValues
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('ListGetElementScalarSolutionVec',&
+             'Argument "Basis" required for non gauss-point variable!')
+       END IF
+       
+       IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % DGIndexes
+         IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+           CALL Fatal('ListGetElementScalarSolutionVec','DGIndexes not associated!')
+         END IF
+       ELSE
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % NodeIndexes
+       END IF
+       
+       Handle % n = n         
+         
+       IF( ASSOCIATED( Handle % Perm ) ) THEN
+         Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+         Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
+         IF(.NOT. Handle % ActiveElement ) RETURN           
+       ELSE
+         Handle % Indexes(1:n) = Indexes(1:n)
+         Handle % ActiveElement = .TRUE.
+       END IF
+       
+       IF( Handle % Dofs == 1 ) THEN
+         Handle % ipValues(1:ngp) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Indexes(1:n) ) )
+       ELSE
+         Handle % ipValues(1:ngp) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Dofs*( Handle % Indexes(1:n)-1)+dof ) )
+       END IF
+       Vals => Handle % ipValues        
+     END IF
+              
+     IF( PRESENT( Found ) ) Found = ASSOCIATED( Vals ) 
+     
+   END FUNCTION ListGetElementScalarSolutionVec
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Get a vector field (e.g. velocity or displacement) at the integration points.
+!> Works with different types of fields. Vectorized version. 
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementVectorSolutionVec( Handle, ngp, dim, Basis, Element, Found  ) RESULT ( Vals )
+     
+     TYPE(VariableHandle_t) :: Handle
+     INTEGER :: ngp, dim
+     REAL(KIND=dp), OPTIONAL :: Basis(:,:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), POINTER :: Vals(:,:)
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: i,j, k, n, dof
+     INTEGER, POINTER :: Indexes(:)
+          
+     NULLIFY(Vals)
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+     
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     IF( ASSOCIATED( Handle % Element, pElement ) ) THEN 
+       IF( Handle % ActiveElement ) THEN
+         Vals => Handle % IpValues3D
+       END IF
+       IF( PRESENT( Found )  ) Found = Handle % ActiveElement
+       RETURN       
+     ELSE
+       Handle % Element => pElement
+     END IF
+
+     IF( Handle % ipN < ngp ) THEN
+       IF( Handle % ipN > 0 ) THEN
+         DEALLOCATE( Handle % ipValues3D )
+       END IF
+       ALLOCATE( Handle % ipValues3D(ngp,Handle % dofs) )
+       Handle % ipValues3D(1:ngp,1:Handle % Dofs) = 0.0_dp
+       Handle % ipN = ngp
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 )        
+       IF( n == 0 ) RETURN
+
+       IF( n /= ngp ) THEN
+         CALL Fatal('ListGetElementVectorSolutionVec','Mismatch in number of Gauss points!')
+       END IF
+       
+       k = Handle % Perm(j)       
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = Handle % Values(k+dof:k+ngp*Handle % Dofs:Handle % Dofs)
+       END DO
+       Vals => Handle % ipValues3D
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 )        
+       IF( j == 0 ) RETURN             
+
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = Handle % Values( Handle % Dofs * (j-1) + dof )
+       END DO
+       Vals => Handle % ipValues3D
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('ListGetElementVectorSolutionVec',&
+             'Argument "Basis" required for non gauss-point variable!')
+       END IF
+       
+       IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % DGIndexes
+         IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+           CALL Fatal('ListGetElementVectorSolutionVec','DGIndexes not associated!')
+         END IF
+       ELSE
+         n = pElement % TYPE % NumberOfNodes
+         Indexes => pElement % NodeIndexes
+       END IF
+       
+       Handle % n = n         
+         
+       IF( ASSOCIATED( Handle % Perm ) ) THEN
+         Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+         Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
+         IF(.NOT. Handle % ActiveElement ) RETURN           
+       ELSE
+         Handle % Indexes(1:n) = Indexes(1:n)
+         Handle % ActiveElement = .TRUE.
+       END IF
+
+       DO dof=1,MIN(Handle % dofs,dim)
+         Handle % ipValues3D(1:ngp,dof) = MATMUL(Basis(1:ngp,1:n),&
+             Handle % Values( Handle % Dofs*( Handle % Indexes(1:n)-1)+dof ) )
+       END DO
+       Vals => Handle % ipValues3D        
+     END IF
+              
+     IF( PRESENT( Found ) ) Found = ASSOCIATED( Vals ) 
+     
+   END FUNCTION ListGetElementVectorSolutionVec
+!------------------------------------------------------------------------------
+
+   
+!------------------------------------------------------------------------------
 !> Get a vector field (e.g. velocity or displacement) at the integration point.
 !> Works with different types of fields.
 !------------------------------------------------------------------------------
