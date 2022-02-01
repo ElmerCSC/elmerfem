@@ -485,6 +485,7 @@ MODULE Types
      INTEGER :: tstep = 0
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: ActiveElement = .FALSE.
+     LOGICAL :: Found
      INTEGER :: Indexes(100)     
      INTEGER :: n = 0
    END TYPE VariableHandle_t

@@ -114,13 +114,13 @@ CONTAINS
 
      IF ( nadv ) THEN
        ! If there are several partitions to be saved than plot the partition too
-       IF( MaxOutputPE > 0 ) THEN
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
          WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE         
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
        END IF
      ELSE
-       IF( MaxOutputPE > 0 ) THEN
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
          WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
