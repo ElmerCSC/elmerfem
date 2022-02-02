@@ -960,14 +960,18 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-    INTEGER :: c,i,j,k,l,p,q,t,ngp
-    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, Found, Stat
-    REAL(KIND=dp) :: ExtPressure, s, detJ
-    REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), Vect(3)
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    INTEGER :: c,i,j,k,l,p,q,t,ngp,skip_comp
+    LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveW, HaveNormal, Found, Stat
+    REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, un, ut
+    REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
+        Vect(3), Velo(3)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
-                NormalTangential_h, NormalTangentialVelo_h
-    
+        NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, &
+        WeertmanExp_h, WeertmanUt0_h
+    TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
+   
     SAVE Basis
     
 !------------------------------------------------------------------------------
@@ -980,12 +984,20 @@ END BLOCK
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
 
+      CALL ListInitElementKeyword( WeertmanCoeff_h,'Boundary Condition','Weertman Friction Coefficient')
+      CALL ListInitElementKeyword( WeertmanExp_h,'Boundary Condition','Weertman Exponent')
+      CALL ListInitElementKeyword( WeertmanUt0_h,'Boundary Condition','Weertman Linear Velocity')
+         
       CALL ListInitElementKeyword( NormalTangentialVelo_h,'Boundary Condition',&
              'Normal-Tangential Velocity' )
-
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
 
+      str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
+      IF(.NOT. Found) str = 'Normal Vector'
+      CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+      CALL ListInitElementVariable( Velo_v )
+      
       InitHandles = .FALSE.
     END IF
     
@@ -1012,8 +1024,10 @@ END BLOCK
     
     NormalTangential = ListGetElementLogical( NormalTangentialVelo_h, Element, Found )
     IF (.NOT.Found) THEN
-        NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
+      NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
     END IF
+    HaveW = .FALSE.
+    skip_comp = 0
     
     DO t=1,ngp      
 !------------------------------------------------------------------------------
@@ -1023,10 +1037,6 @@ END BLOCK
 
       s = detJ * IP % s(t)
       
-      ! Slip coefficient
-      !----------------------------------
-      SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
-
       ! Given force on a boundary componentwise
       !----------------------------------------
       SurfaceTraction = ListGetElementReal3D( SurfaceTraction_h, Basis, Element, HaveForce, GaussPoint = t )      
@@ -1034,15 +1044,65 @@ END BLOCK
       ! Given force to the normal direction
       !------------------------------------
       ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
-      
+
+      ! Slip coefficient
+      !----------------------------------
+      SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
+
+      ! Weertman friction law
+      ! This cannot coexist with "slip coefficient" keyword!
+      !-----------------------------------------------------
+      IF(.NOT. HaveSlip ) THEN 
+        wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, HaveW, GaussPoint = t )      
+      END IF
+
+      !PRINT *,'HaveStuff:',HaveForce,HavePres,HaveSlip,HaveW
+              
       ! Nothing to do, exit the routine
-      IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres)) RETURN
+      IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres .OR. HaveW)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential ) THEN
-        Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
+      IF( HavePres .OR. NormalTangential .OR. HaveW ) THEN
+        IF( HaveNormal ) THEN
+          Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
+        ELSE
+          Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
+        END IF
       END IF
-      
+        
+      IF( HaveW ) THEN
+        ! Other material parameters of the Weertman friction law
+        wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t) 
+        wut0 = ListGetElementReal( WeertmanUt0_h, Basis, Element, GaussPoint = t )      
+        
+        ! Velocity at integration point
+        Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dim )
+        
+        ! Define normal component to skip for Weertman friction law!
+        skip_comp = 1
+        IF( .NOT. NormalTangential) THEN
+          DO i=2,dim
+            IF(ABS(Normal(i)) > ABS(Normal(skip_comp))) skip_comp = i
+          END DO
+        END IF
+        ! It seems futile to take normal component away as it is usually zero by construction!
+#if 1
+        un = SUM( Normal(1:dim) * Velo(1:dim) )
+        ut = MAX(wut0, SQRT( SUM( (velo(1:dim)-un*normal(1:dim))**2.0 )) )
+#else
+        ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
+#endif
+        ! Determine slip coefficient in terms of Weertman law
+        SlipCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+        HaveSlip = .TRUE.
+      END IF
+
+      !IF(t==1)
+      !PRINT *,'Normal:',Normal,un,ut,skip_comp
+      !PRINT *,'wexp:',wexp,wcoeff,wut0,HaveW,HaveSlip,SlipCoeff
+      !PRINT *,'Velo:',dim,Velo,NormalTangential
+      !END IF
+            
       ! Project external pressure to the normal direction
       IF( HavePres ) THEN
         IF( NormalTangential ) THEN
@@ -1065,11 +1125,12 @@ END BLOCK
           CALL TangentDirections( Normal, Tangent, Tangent2 ) 
         END SELECT
       END IF
-       
+
       ! Assemble the slip coefficients to the stiffness matrix
-      IF( HaveSlip ) THEN       
+      IF( HaveSlip ) THEN               
         IF ( NormalTangential ) THEN
           DO i=1,dim
+            IF(i==skip_comp) CYCLE
             SELECT CASE(i)
             CASE(1)
               Vect = Normal
@@ -1078,7 +1139,7 @@ END BLOCK
             CASE(3)
               Vect = Tangent2
             END SELECT
-
+            
             DO p=1,nd
               DO q=1,nd               
                 DO j=1,dim
@@ -1095,6 +1156,7 @@ END BLOCK
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
+                IF(i == skip_comp) CYCLE
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)

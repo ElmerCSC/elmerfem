@@ -7302,13 +7302,14 @@ use spariterglobals
 !> initialized. This handle is more compact. Does not support p-fields or
 !> Hcurl & Hdiv fields yet. 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep )
+   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep, Found)
 !------------------------------------------------------------------------------
      TYPE(VariableHandle_t) :: Handle
      CHARACTER(LEN=*), OPTIONAL  :: Name
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
+     LOGICAL, OPTIONAL :: Found
 
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
@@ -7320,6 +7321,7 @@ use spariterglobals
      Handle % Perm => NULL()
      Handle % Element => NULL()
      Handle % dofs = 0
+     Handle % Found = .FALSE.
      
      IF ( PRESENT(USolver) ) THEN
        Solver => USolver
@@ -7334,11 +7336,13 @@ use spariterglobals
      ELSE
        Variable => Solver % Variable 
      END IF
+     IF( PRESENT( Found ) ) Found = Handle % Found
      
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
      
      Handle % Variable => Variable
      Handle % dofs = Variable % Dofs
+     Handle % Found = .TRUE.
      
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep < 0 ) THEN
@@ -7351,6 +7355,8 @@ use spariterglobals
        Handle % Values => Variable % Values      
      END IF
      Handle % Perm => Variable % Perm
+     
+     IF(PRESENT(Found)) Found = Handle % Found
      
    END SUBROUTINE ListInitElementVariable
 !------------------------------------------------------------------------------
