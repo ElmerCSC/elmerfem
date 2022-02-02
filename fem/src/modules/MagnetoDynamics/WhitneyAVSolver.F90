@@ -198,7 +198,7 @@ INTEGER, POINTER :: ActiveSolvers(:)
 
     Eq =  ListGetString( SolverParams, 'Equation' )
 
-    CALL ListAddIntegerArray( SolverParams, 'Post Solvers', 2, [n+1,n+2] )
+    CALL ListAddIntegerArray( SolverParams, 'Nonlinear Post Solvers', 2, [n+1,n+2] )
 
     CALL ListAddString( Model % Solvers(n+1) % Values, 'Procedure', &
               'MagnetoDynamics HelmholtzProjectorT', CaseConversion=.FALSE. )
@@ -2956,7 +2956,7 @@ SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
   CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   DO j=1,Model % NumberOfBCs
     IF ( ListCheckPresent( Model % BCs(j) % Values, &
-               TRIM(GetVarName(Model % Solvers(i) % Variable)) // '  {e}' ) ) THEN
+               TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' {e}' ) ) THEN
       CALL ListAddConstReal( Model % BCs(j) % Values, 'P', 0._dp )
     END IF
   END DO
@@ -3057,16 +3057,12 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
   IF (PiolaVersion) CALL Info('HelmholtzProjector', &
       'Using Piola-transformed finite elements', Level=5)
 
-  n = Solver % Matrix % NumberOfRows
-
   !-----------------------
   ! System assembly:
   !----------------------
-  active = GetNOFActive()
   CALL DefaultInitialize(Solver)
 
-  SaveRHS => Solver % Matrix % RHS
-
+  active = GetNOFActive()
   DO t=1,active
     Element => GetActiveElement(t)
     !
@@ -3111,7 +3107,7 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
       END IF
 
       SolverPtr % Variable % Values(k) = SolverPtr % Variable % Values(k) + &
-        (Solver % Variable % Values(j) - Solver % Variable % PrevValues(j,1))/ Solver % dt
+        (Solver % Variable % Values(j) - Solver % Variable % PrevValues(j,1))/ dt
     END DO
   END IF
 
