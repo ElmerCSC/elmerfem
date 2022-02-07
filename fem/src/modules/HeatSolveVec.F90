@@ -1653,14 +1653,14 @@ CONTAINS
         alpha = ListGetElementReal( CondParent_h, Basis, pElem, Found )
       END IF
       IF(.NOT. Found ) alpha = alpha0
-      
+
       IF( FoundBCJump ) THEN
         beta = ListGetElementReal( Beta_h, Basis, pElem, Found ) 
       ELSE
         beta = ListGetElementReal( BetaParent_h, Basis, pElem, Found ) 
       END IF
       IF(.NOT. Found ) beta = beta0
-      
+
       DO p = 1,n                  
         IF( DiagJump ) THEN          
           ! 1st side
@@ -1677,8 +1677,8 @@ CONTAINS
             STIFF(p+n,n+q) = STIFF(p+n,n+q) + alpha * Basis(p) * Basis(q) * s 
           END DO
         END IF          
-        FORCE(p) = FORCE(p) + beta * Basis(p) * s 
-        FORCE(p+n) = FORCE(p+n) - beta * Basis(p) * s 
+        FORCE(p) = FORCE(p) + beta/2 * Basis(p) * s 
+        FORCE(p+n) = FORCE(p+n) + beta/2 * Basis(p) * s 
       END DO
     END DO
 

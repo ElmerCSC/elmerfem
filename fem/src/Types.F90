@@ -442,6 +442,7 @@ MODULE Types
      REAL(KIND=dp), POINTER :: ValuesVec(:) => NULL()
      REAL(KIND=dp), POINTER :: Values(:) => NULL()
      REAL(KIND=dp), POINTER :: ParValues(:,:) => NULL()
+     LOGICAL, POINTER :: ParUsed(:)
      INTEGER :: ParNo = 0
      INTEGER :: IValue, DefIValue = 0
      REAL(KIND=dp) :: RValue, DefRValue = 0.0_dp
@@ -465,9 +466,9 @@ MODULE Types
      LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
-     TYPE(VariableTable_t) :: VarTable(32)
-     INTEGER :: VarCount
-
+     TYPE(VariableTable_t) :: VarTable(32)     
+     INTEGER :: VarCount = 0
+     INTEGER :: IntVarCount = 0
      TYPE(ValueHandle_t), POINTER :: HandleIm => NULL()
      TYPE(ValueHandle_t), POINTER :: Handle2 => NULL()
      TYPE(ValueHandle_t), POINTER :: Handle3 => NULL()
