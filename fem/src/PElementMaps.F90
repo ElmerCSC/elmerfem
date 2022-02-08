@@ -881,6 +881,29 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Checks if given element is a p element active in a particular solver.   
+!------------------------------------------------------------------------------
+  FUNCTION isActivePSolver(Solver) RESULT(retVal)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: retVal
+ 
+    TYPE(Element_t) :: Element
+        
+    retVal = .FALSE.    
+    IF(ALLOCATED(Solver % Def_Dofs)) THEN
+      retVal = ANY(Solver % Def_Dofs(:,:,6)>0)
+    END IF
+    
+!------------------------------------------------------------------------------
+  END FUNCTION isActivePSolver
+!------------------------------------------------------------------------------
+
+  
+
+!------------------------------------------------------------------------------
 !> Checks if given element is a p element.   
 !------------------------------------------------------------------------------
     FUNCTION isPElement( Element ) RESULT(retVal)
@@ -1357,7 +1380,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     END SUBROUTINE GetRefPElementNodes
 !------------------------------------------------------------------------------
-
+    
 
 END MODULE
 

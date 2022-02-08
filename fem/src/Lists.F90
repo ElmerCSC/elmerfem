@@ -4139,7 +4139,7 @@ use spariterglobals
              SomeAtNodes = .TRUE.
            END IF           
          ELSE
-           IF( VERIFY( str(l0:l1),'-.0123456789') == 0 ) THEN
+           IF( VERIFY( str(l0:l1),'-.0123456789eE') == 0 ) THEN
              !PRINT *,'We do have a number:',Val
              READ(str(l0:l1),*) Val
              VarTable(count) % Variable => NULL()
