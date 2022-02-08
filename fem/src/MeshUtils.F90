@@ -557,7 +557,39 @@ CONTAINS
   END SUBROUTINE MarkBCNodes
 
 
-  
+  !> Returns the local nodal coordinate values from the global mesh
+  !> structure in the given Element and Indexes.
+  !---------------------------------------------------------------------------
+  SUBROUTINE CopyElementNodesFromMesh( ElementNodes, Element, Mesh, n, Indexes)
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t) :: Element
+    INTEGER :: n,m
+    INTEGER, POINTER :: Indexes(:)
+
+    n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
+
+    IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
+      m = n
+      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
+    ELSE
+      m = SIZE(ElementNodes % x)
+      IF ( m < n ) THEN
+        DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
+        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
+      ELSE IF( m > n ) THEN
+        ElementNodes % x(n+1:m) = 0.0_dp
+        ElementNodes % y(n+1:m) = 0.0_dp
+        ElementNodes % z(n+1:m) = 0.0_dp
+      END IF
+    END IF
+
+    ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+    ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+    ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+
+  END SUBROUTINE CopyElementNodesFromMesh
+
 
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
@@ -7291,6 +7323,7 @@ CONTAINS
     EdgeUsed = .FALSE.
     maxminss = 0.0_dp
     n0 = Mesh % NumberOfNodes
+    
     Parallel = ( ParEnv % PEs > 1 )
     samecount = 0
     doubleusecount = 0
@@ -7507,6 +7540,283 @@ CONTAINS
   END SUBROUTINE ConformingEdgePerm
 
 
+  !---------------------------------------------------------------------------------
+  ! Create a permutation to eliminate faces in a conforming case.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE ConformingFacePerm( Mesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+    TYPE(Mesh_t), POINTER :: Mesh, BMesh1, BMesh2
+    INTEGER, POINTER :: PerPerm(:)
+    LOGICAL, POINTER :: PerFlip(:)
+    LOGICAL, OPTIONAL :: AntiPeriodic 
+    !---------------------------------------------------------------------------------      
+    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
+        nofaces, nofacesm, Nundefined, n0
+    TYPE(Element_t), POINTER :: Face, FaceM
+    INTEGER, POINTER :: Indexes(:), IndexesM(:)
+    REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, nrow
+    INTEGER, ALLOCATABLE :: PeriodicFace(:), FaceInds(:), FaceIndsM(:)
+    REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
+    REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
+    INTEGER :: minuscount, samecount, mini, doubleusecount, swap(2)
+    LOGICAL :: Parallel, AntiPer
+    LOGICAL, ALLOCATABLE :: FaceUsed(:)
+    CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
+  
+    CALL Info(Caller,'Creating permutation for elimination of conforming faces',Level=8)
+
+    n = Mesh % NumberOfFaces
+    IF( n == 0 ) RETURN
+
+    AntiPer = .FALSE.
+    IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
+
+    CALL CreateFaceCenters( Mesh, BMesh1, nofaces, FaceInds, FaceX, FaceY ) 
+    CALL Info(Caller,'Number of faces in slave mesh: '//TRIM(I2S(nofaces)),Level=10)
+
+    CALL CreateFaceCenters( Mesh, BMesh2, nofacesm, FaceIndsM, FaceMX, FaceMY )
+    CALL Info(Caller,'Number of faces in master mesh: '//TRIM(I2S(nofacesm)),Level=10)
+
+    IF( nofaces == 0 ) RETURN
+    IF( nofacesm == 0 ) RETURN
+    
+    ALLOCATE( PeriodicFace(nofaces),FaceUsed(nofacesm))
+    PeriodicFace = 0
+    FaceUsed = .FALSE.
+    maxminss = 0.0_dp
+    
+    Parallel = ( ParEnv % PEs > 1 )
+    samecount = 0
+    doubleusecount = 0
+    
+    DO i1=1,nofaces
+      x1 = FaceX(i1)
+      y1 = FaceY(i1)
+
+      minss = HUGE(minss)
+      mini = 0
+
+      DO i2=1,nofacesm
+        x2 = FaceMX(i2)
+        y2 = FaceMY(i2)
+
+        ss = (x1-x2)**2 + (y1-y2)**2
+        IF( ss < minss ) THEN
+          minss = ss
+          mini = i2
+        END IF
+      END DO
+
+      IF( FaceInds(i1) == FaceIndsM(mini) ) THEN        
+        samecount = samecount + 1        
+        CYCLE
+      END IF
+
+      IF( FaceUsed(mini ) ) THEN
+        doubleusecount = doubleusecount + 1
+      ELSE
+        FaceUsed(mini) = .TRUE.
+      END IF
+              
+      ! we have a hit
+      PeriodicFace(i1) = mini
+      maxminss = MAX( maxminss, minss )
+    END DO
+
+    WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in face centers:',SQRT(maxminss)
+    CALL Info(Caller,Message,Level=8)
+
+    IF( samecount > 0 ) THEN
+      CALL Info(Caller,'Number of faces are the same: '//TRIM(I2S(samecount)),Level=8)
+    END IF
+        
+    IF( doubleusecount > 0 ) THEN
+      CALL Fatal(Caller,'This is not conforming! Number of faces used twice: '//TRIM(I2S(doubleusecount)))
+    END IF
+
+    minuscount = 0
+
+
+    n0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+
+    
+    DO e=1,nofaces
+      em = PeriodicFace(e)
+      
+      eind = FaceInds(e)
+      eindm = FaceIndsM(em)
+
+      CALL CheckFaceBasisDirections(Mesh % Faces(eind), Mesh % Faces(eindm), .FALSE.,swap)
+
+      ! We flip if the system is AntiPeriodic OR the edge basis are opposite, not both!
+      PerFlip(n0+2*eind-1) = XOR( AntiPer, swap(1)<0 )
+      PerFlip(n0+2*eind-0) = XOR( AntiPer, swap(2)<0 )
+
+      minuscount = minuscount + COUNT(swap<0)
+      
+      PerPerm(n0+2*eind-1) = n0 + 2*(eindm-1)+ABS(swap(1))
+      PerPerm(n0+2*eind-0) = n0 + 2*(eindm-1)+ABS(swap(2))
+    END DO
+
+    IF( minuscount == 0 ) THEN
+      CALL Info(Caller,'All faces in conforming projector have consistent sign!',Level=8)
+    ELSE
+      CALL Info(Caller,'Flipped sign of '//TRIM(I2S(minuscount))//&
+          ' (out of '//TRIM(I2S(2*nofaces))//') face projectors',Level=6)
+    END IF
+
+    
+    DEALLOCATE( FaceInds, FaceX, FaceY ) 
+    DEALLOCATE( FaceIndsM, FaceMX, FaceMY )
+    DEALLOCATE( PeriodicFace )
+
+    
+  CONTAINS 
+
+    ! We know that two Elements are conforming. But we don't know how the edge basis
+    ! directions relate to each other. They depend on the numbering in a complex way
+    ! use this routine to do the checking and returm +/-1 and +/-2 hopefully. 
+    !------------------------------------------------------------------------------
+    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, QuadraticApproximation, swap)
+      !------------------------------------------------------------------------------
+      TYPE(Element_t), TARGET :: Element  !< The boundary element handled
+      TYPE(Element_t), TARGET :: ElementB  !< The boundary element handled
+      LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
+      INTEGER :: Swap(2)
+      !------------------------------------------------------------------------------
+      TYPE(Nodes_t), SAVE :: Nodes
+      LOGICAL :: Lstat
+      INTEGER :: i,j,p,n,DOFs,BasisDegree,Edofs, Fdofs,elem
+      REAL(KIND=dp) :: Basis(6)
+      REAL(KIND=dp), TARGET :: EdgeBasis(6,3),EdgeBasisB(6,3)
+      REAL(KIND=dp) :: v,s,DetJ,uvw(3),phi,phiB
+      REAL(KIND=dp), POINTER :: pEdgeBasis(:,:)
+      TYPE(Element_t), POINTER :: pElement
+      !------------------------------------------------------------------------------
+      
+      IF (QuadraticApproximation) THEN
+        BasisDegree = 2
+      ELSE
+        BasisDegree = 1
+      END IF
+      
+      uvw = 0.0_dp
+      IF( Element % TYPE % NumberOfNodes == 4 ) THEN
+        EDOFS = 4
+        FDOFS = 2
+      ELSE
+        EDOFS = 3
+        FDOFS = 0
+      END IF
+      n = EDOFS 
+
+      ! Loop over the two elements and register the EdgeBasis 
+      DO elem = 1, 2
+        IF( elem == 1 ) THEN
+          pElement => Element
+          pEdgeBasis => EdgeBasis
+        ELSE
+          pElement => ElementB
+          pEdgeBasis => EdgeBasisB
+        END IF
+        
+        CALL CopyElementNodesFromMesh( Nodes, pElement, Mesh, n, pElement % NodeIndexes)      
+        Lstat = EdgeElementInfo( pElement, Nodes, uvw(1), uvw(2), uvw(3), &
+            DetF=DetJ, Basis=Basis, EdgeBasis=pEdgeBasis, BasisDegree=BasisDegree, &
+            ApplyPiolaTransform=.TRUE. ) !, TangentialTrMapping=.TRUE.)
+
+        ! Assume that this is "radial projector" for now...
+        Phi = ATAN2(Nodes % x(1), Nodes % y(1) ) 
+        !PRINT *,'Phi:',elem,phi
+
+        ! Rotate the edge basis to reference angle and 
+        ! normalize the edge basis to unity.
+        DO i=EDOFs+1,EDOFs+FDOFS
+          x1 = pEdgeBasis(i,1)
+          y1 = pEdgeBasis(i,2)
+          s = SQRT(SUM(pEdgeBasis(i,:)**2))
+          pEdgeBasis(i,1) = COS(phi)*x1 - SIN(phi)*y1
+          pEdgeBasis(i,2) = SIN(phi)*x1 + COS(phi)*y1                
+          pEdgeBasis(i,:) = pEdgeBasis(i,:) / s
+        END DO
+      END DO
+
+      ! Hope that the dot product is either +1 or -1. 
+      swap = 0
+      DO i=1,FDOFS
+        DO j=1,FDOFS
+          s = SUM(EdgeBasis(EDOFS+i,:)*EdgeBasisB(EDOFS+j,:))
+          IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
+            swap(i) = j
+          ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
+            swap(i) = -j
+          END IF
+        END DO
+      END DO
+      
+      IF( ANY(Swap==0) ) THEN
+        PRINT *,'Could not ensure edge basis directions:'
+        DO i=EDOFs+1,EDOFs+FDOFS
+          PRINT *,'EdgeBasis:',i,EdgeBasis(i,:)
+          PRINT *,'EdgeBasisB:',i,EdgeBasisB(i,:)
+        END DO
+      ELSE
+        !PRINT *,'Swap:',swap        
+      END IF
+      
+    !------------------------------------------------------------------------------
+    END SUBROUTINE CheckFaceBasisDirections
+    !------------------------------------------------------------------------------
+
+    
+    ! Create face centers for the mapping routines.
+    !------------------------------------------------------------------------------
+    SUBROUTINE CreateFaceCenters( Mesh, FaceMesh, nofaces, FaceInds, FaceX, FaceY ) 
+
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Mesh_t), POINTER :: FaceMesh
+      INTEGER :: nofaces
+      INTEGER, ALLOCATABLE :: FaceInds(:)
+      REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:)
+
+      INTEGER :: ind, n, i 
+      TYPE(Element_t), POINTER :: Face, Parent, Element
+      INTEGER, POINTER :: Indexes(:)
+
+
+      nofaces = FaceMesh % NumberOfBulkElements
+
+      CALL Info(Caller,'Allocating stuff for faces',Level=20)
+      ALLOCATE( FaceInds(nofaces), FaceX(nofaces), FaceY(nofaces) )
+      FaceInds = 0
+      FaceX = 0.0_dp
+      FaceY = 0.0_dp
+
+      DO ind=1,FaceMesh % NumberOfBulkElements
+
+        Face => FaceMesh % Elements(ind)
+        Indexes => Face % NodeIndexes
+        n = Face % Type % NumberOfNodes
+
+        DO i = 1,n
+          FaceX(ind) = FaceX(ind) + FaceMesh % Nodes % x(Indexes(i))
+          FaceY(ind) = FaceY(ind) + FaceMesh % Nodes % y(Indexes(i))
+        END DO
+        FaceX(ind) = FaceX(ind) / n
+        FaceY(ind) = FaceY(ind) / n
+
+        !PRINT *,'Center:',ind,n,FaceX(ind),FaceY(ind),&
+        !    Face % ElementIndex
+
+        ! CreateInterfaceMeshes has already the ElementIndex set to point to the Mesh % Faces
+        FaceInds(ind) = Face % ElementIndex
+      END DO
+
+    END SUBROUTINE CreateFaceCenters
+
+    
+  END SUBROUTINE ConformingFacePerm
+
+  
 
   ! Create a permutation to eliminate nodes in a conforming case.
   !----------------------------------------------------------------------
@@ -14168,13 +14478,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Create a permutation between two meshes such that we can solve a smaller system.
 !------------------------------------------------------------------------------
-  SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm, PerFlip ) 
+  SUBROUTINE PeriodicPermutation( Model, Mesh, This, Trgt, PerPerm, PerFlip, DoFaces ) 
 !------------------------------------------------------------------------------   
     TYPE(Model_t) :: Model
     INTEGER :: This, Trgt
     TYPE(Mesh_t), TARGET :: Mesh
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
+    LOGICAL :: DoFaces
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, Success, Rotational, AntiRotational, Sliding, AntiSliding, Repeating, &
@@ -14299,7 +14610,9 @@ CONTAINS
     
     IF( DoNodes ) CALL ConformingNodePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
     IF( DoEdges ) CALL ConformingEdgePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
-        
+    IF( DoEdges .AND. DoFaces ) &
+        CALL ConformingFacePerm(PMesh, BMesh1, BMesh2, PerPerm, PerFlip, AntiPeriodic )
+    
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
@@ -14330,7 +14643,7 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,n,nocyclic,noconf,noflip,mini,maxi
-    LOGICAL :: Found
+    LOGICAL :: Found, NeedFaces
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
     
@@ -14343,19 +14656,23 @@ CONTAINS
 
     
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
+      NeedFaces = ListGetLogicalAnySolver( Model,'Use Piola Transform')
+      
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+        IF(NeedFaces) n = n + 2 * Mesh % NumberOfFaces
         ALLOCATE( Mesh % PeriodicPerm(n) )
         ALLOCATE( Mesh % PeriodicFlip(n) )
-      END IF
+      END IF      
       PerPerm => Mesh % PeriodicPerm      
       PerPerm = 0
       PerFlip => Mesh % PeriodicFlip
       PerFlip = .FALSE.
+
       DO i = 1,Model % NumberOfBCs
         k = ListGetInteger( Model % BCs(i) % Values, 'Conforming BC', Found )
         IF( Found ) THEN
-          CALL PeriodicPermutation( Model, Mesh, i, k, PerPerm, PerFlip )
+          CALL PeriodicPermutation( Model, Mesh, i, k, PerPerm, PerFlip, NeedFaces )
         END IF
       END DO
       nocyclic = 0
