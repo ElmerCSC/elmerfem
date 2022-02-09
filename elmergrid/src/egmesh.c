@@ -2870,16 +2870,30 @@ int PolarCoordinates(struct FemType *data,Real rad,int info)
 int CylinderCoordinates(struct FemType *data,int info)
 {
   int i;
-  Real rad,fii;
-
-  for(i=1;i<=data->noknots;i++) {
-    rad = data->x[i];
-    fii = FM_PI/180.0 * data->y[i];
-
-    data->x[i] = rad * cos(fii);
-    data->y[i] = rad * sin(fii);
+  Real x,y,z,rad,fii;
+  
+  if( data->dim == 3 ) {    
+    for(i=1;i<=data->noknots;i++) {
+      x = data->x[i];
+      y = data->y[i];
+      fii = FM_PI/180.0 * data->z[i];
+      rad = data->x[i];
+      
+      data->x[i] = rad * cos(fii);
+      data->y[i] = rad * sin(fii);
+      data->z[i] = y;
+    }
   }
-
+  else {
+    for(i=1;i<=data->noknots;i++) {
+      rad = data->x[i];
+      fii = FM_PI/180.0 * data->y[i];
+      
+      data->x[i] = rad * cos(fii);
+      data->y[i] = rad * sin(fii);
+    }
+  }
+    
   if(info) printf("Making coordinate transformation from cylindrical to cartesian\n");
 
   return(0);
