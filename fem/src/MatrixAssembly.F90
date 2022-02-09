@@ -758,12 +758,15 @@ CONTAINS
              END DO
            END IF
 
-           FDOFs = Element % BDOFs
-           DO i=1,FDOFs
-             NB = NB + 1
-             Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                 NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
-           END DO
+           IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
+             FDOFs = Element % BDOFs
+             DO i=1,FDOFs
+               NB = NB + 1
+
+               Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
+                   NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+             END DO
+           END IF
          END IF
        END SELECT
      ELSE IF ( GB ) THEN
