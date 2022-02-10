@@ -2436,8 +2436,8 @@ END BLOCK
 ! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
 ! *  grad Phi, with Phi being a H1-regular scalar field.
 ! * 
-! *  This file contains harmonic version of the transormation and also applies the
-!    correction to the V field within conducting regions.
+! *  This file contains harmonic version of the transformation and also applies the
+! *  correction to the V field within conducting regions.
 ! *
 ! *
 ! *  Authors: Mika Malinen, Juha Ruokolainen
@@ -2495,7 +2495,7 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
 
   CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   DO j=1,Model % NumberOfBCs
-    IF ( ListCheckPresent( Model % BCs(j) % Values, &
+    IF ( ListCheckPrefix( Model % BCs(j) % Values, &
                TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' re {e}' ) ) THEN
       CALL ListAddConstReal( Model % BCs(j) % Values, 'Pd', 0._dp )
     END IF
@@ -2667,7 +2667,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     k = SolverPtr % Variable % Perm(i)
     IF (k == 0) THEN
-      CALL Fatal('RemoveKernelComponent', &
+      CALL Fatal('HelmholtzProjector', &
         'The variable and potential permutations are nonmatching?')
     END IF
 
@@ -2778,14 +2778,35 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
+
+! ! Solver is using a single linear system to solve complex components,
+! ! the final result is the (Hcurl) imaginary component...
+! ! -------------------------------------------------------------------
+
+! Linear System Symmetric = True
+! Linear System Solver = "Iterative"
+! Linear System Preconditioning = None
+! Linear System Residual Output = 25
+! Linear System Max Iterations = 2000
+! Linear System Iterative Method = CG
+! Linear System Convergence Tolerance = 1.0e-9
+
+  CALL ListAddString( SolverParams, 'Variable', 'avm' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+  
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
+  
+  j = index(AVname, '[')
+  IF(j>0) AVname = AVname(1:j-1)
+  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
+
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
+    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
+    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
+
     IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
       CALL Warn("RemoveKernelComponent_Init0", &
            "Quadratic Approximation requested without Use Piola Transform " &
@@ -2806,35 +2827,6 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
       END IF
     END IF
   END IF
-
-
-! Kernel Variable = String "P"
-! Potential Variable = String "AV"
-
-! ! Solver is using a single linear system to solve complex components,
-! ! the final result is the (Hcurl) imaginary component...
-! ! -------------------------------------------------------------------
-
-! Linear System Symmetric = True
-! Linear System Solver = "Iterative"
-! Linear System Preconditioning = None
-! Linear System Residual Output = 25
-! Linear System Max Iterations = 2000
-! Linear System Iterative Method = CG
-! Linear System Convergence Tolerance = 1.0e-9
-
-  CALL ListAddString( SolverParams, 'Variable', 'avm' )
-  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
-  
-! Potential Variable = String "AV"
-  DO i=1,Model % NumberOfSolvers
-    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
-  END DO
-  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
-  
-  j = index(AVname, '[')
-  IF(j>0) AVname = AVname(1:j-1)
-  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
 
   ! Solver is using a single linear system to solve complex components,
   ! assing storage for final complex result.
