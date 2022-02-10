@@ -560,14 +560,11 @@ CONTAINS
   !> Returns the local nodal coordinate values from the global mesh
   !> structure in the given Element and Indexes.
   !---------------------------------------------------------------------------
-  SUBROUTINE CopyElementNodesFromMesh( ElementNodes, Element, Mesh, n, Indexes)
+  SUBROUTINE CopyElementNodesFromMesh( ElementNodes, Mesh, n, Indexes)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Mesh_t) :: Mesh
-    TYPE(Element_t) :: Element
     INTEGER :: n,m
     INTEGER, POINTER :: Indexes(:)
-
-    n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
 
     IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
       m = n
@@ -7549,7 +7546,7 @@ CONTAINS
     LOGICAL, POINTER :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
-    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i1, i2, &
+    INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i, i1, i2, &
         nofaces, nofacesm, Nundefined, n0
     TYPE(Element_t), POINTER :: Face, FaceM
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
@@ -7557,8 +7554,8 @@ CONTAINS
     INTEGER, ALLOCATABLE :: PeriodicFace(:), FaceInds(:), FaceIndsM(:)
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
-    INTEGER :: minuscount, samecount, mini, doubleusecount, swap(2)
-    LOGICAL :: Parallel, AntiPer
+    INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
+    LOGICAL :: Parallel, AntiPer, Radial
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
   
@@ -7570,6 +7567,9 @@ CONTAINS
     AntiPer = .FALSE.
     IF( PRESENT( AntiPeriodic ) ) AntiPer = AntiPeriodic
 
+    Radial = ListGetLogicalAnyBC( CurrentModel,'Radial Projector' ) .OR. &
+        ListGetLogicalAnyBC( CurrentModel,'Anti Radial Projector' )
+    
     CALL CreateFaceCenters( Mesh, BMesh1, nofaces, FaceInds, FaceX, FaceY ) 
     CALL Info(Caller,'Number of faces in slave mesh: '//TRIM(I2S(nofaces)),Level=10)
 
@@ -7645,16 +7645,17 @@ CONTAINS
       eind = FaceInds(e)
       eindm = FaceIndsM(em)
 
-      CALL CheckFaceBasisDirections(Mesh % Faces(eind), Mesh % Faces(eindm), .FALSE.,swap)
+      CALL CheckFaceBasisDirections(Mesh % Faces(eind), Mesh % Faces(eindm), .FALSE.,&
+          Radial, swap)
 
       ! We flip if the system is AntiPeriodic OR the edge basis are opposite, not both!
-      PerFlip(n0+2*eind-1) = XOR( AntiPer, swap(1)<0 )
-      PerFlip(n0+2*eind-0) = XOR( AntiPer, swap(2)<0 )
-
-      minuscount = minuscount + COUNT(swap<0)
+      PerFlip(n0+2*eind-1) = XOR( AntiPer, swap(4+1)<0 )
+      PerFlip(n0+2*eind-0) = XOR( AntiPer, swap(4+2)<0 )
       
-      PerPerm(n0+2*eind-1) = n0 + 2*(eindm-1)+ABS(swap(1))
-      PerPerm(n0+2*eind-0) = n0 + 2*(eindm-1)+ABS(swap(2))
+      PerPerm(n0+2*eind-1) = n0 + 2*(eindm-1)+ABS(swap(4+1))
+      PerPerm(n0+2*eind-0) = n0 + 2*(eindm-1)+ABS(swap(4+2))
+
+      minuscount = minuscount + COUNT(swap(5:6)<0)
     END DO
 
     IF( minuscount == 0 ) THEN
@@ -7676,19 +7677,21 @@ CONTAINS
     ! directions relate to each other. They depend on the numbering in a complex way
     ! use this routine to do the checking and returm +/-1 and +/-2 hopefully. 
     !------------------------------------------------------------------------------
-    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, QuadraticApproximation, swap)
+    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, QuadraticApproximation, &
+        Radial, swap)
       !------------------------------------------------------------------------------
       TYPE(Element_t), TARGET :: Element  !< The boundary element handled
       TYPE(Element_t), TARGET :: ElementB  !< The boundary element handled
       LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
-      INTEGER :: Swap(2)
+      LOGICAL :: Radial 
+      INTEGER :: Swap(6)
       !------------------------------------------------------------------------------
       TYPE(Nodes_t), SAVE :: Nodes
       LOGICAL :: Lstat
-      INTEGER :: i,j,p,n,DOFs,BasisDegree,Edofs, Fdofs,elem
+      INTEGER :: i,j,p,n,DOFs,BasisDegree,Edofs, Fdofs,elem,k,imax,jmax
       REAL(KIND=dp) :: Basis(6)
       REAL(KIND=dp), TARGET :: EdgeBasis(6,3),EdgeBasisB(6,3)
-      REAL(KIND=dp) :: v,s,DetJ,uvw(3),phi,phiB
+      REAL(KIND=dp) :: v,s,DetJ,uvw(3),phi,smax,r1(3),r2(3)
       REAL(KIND=dp), POINTER :: pEdgeBasis(:,:)
       TYPE(Element_t), POINTER :: pElement
       !------------------------------------------------------------------------------
@@ -7699,7 +7702,6 @@ CONTAINS
         BasisDegree = 1
       END IF
       
-      uvw = 0.0_dp
       IF( Element % TYPE % NumberOfNodes == 4 ) THEN
         EDOFS = 4
         FDOFS = 2
@@ -7709,58 +7711,120 @@ CONTAINS
       END IF
       n = EDOFS 
 
-      ! Loop over the two elements and register the EdgeBasis 
-      DO elem = 1, 2
-        IF( elem == 1 ) THEN
-          pElement => Element
-          pEdgeBasis => EdgeBasis
-        ELSE
-          pElement => ElementB
-          pEdgeBasis => EdgeBasisB
+      DO k=1,5
+
+        ! Use different points to check different equations
+        ! The 1st point is the center used to set the face edges
+        ! The following points are related to node dofs. 
+        IF(k==1) THEN
+          uvw = 0.0_dp
+        ELSE IF(k==2) THEN
+          uvw(1) = -1.0_dp
+        ELSE IF(k==3) THEN
+          uvw(1) = 1.0_dp
+        ELSE IF(k==4) THEN
+          uvw(1) = 0.0_dp
+          uvw(2) = -1.0_dp
+        ELSE IF(k==5) THEN
+          uvw(2) = 1.0_dp
         END IF
-        
-        CALL CopyElementNodesFromMesh( Nodes, pElement, Mesh, n, pElement % NodeIndexes)      
-        Lstat = EdgeElementInfo( pElement, Nodes, uvw(1), uvw(2), uvw(3), &
-            DetF=DetJ, Basis=Basis, EdgeBasis=pEdgeBasis, BasisDegree=BasisDegree, &
-            ApplyPiolaTransform=.TRUE. ) !, TangentialTrMapping=.TRUE.)
-
-        ! Assume that this is "radial projector" for now...
-        Phi = ATAN2(Nodes % x(1), Nodes % y(1) ) 
-        !PRINT *,'Phi:',elem,phi
-
-        ! Rotate the edge basis to reference angle and 
-        ! normalize the edge basis to unity.
-        DO i=EDOFs+1,EDOFs+FDOFS
-          x1 = pEdgeBasis(i,1)
-          y1 = pEdgeBasis(i,2)
-          s = SQRT(SUM(pEdgeBasis(i,:)**2))
-          pEdgeBasis(i,1) = COS(phi)*x1 - SIN(phi)*y1
-          pEdgeBasis(i,2) = SIN(phi)*x1 + COS(phi)*y1                
-          pEdgeBasis(i,:) = pEdgeBasis(i,:) / s
-        END DO
-      END DO
-
-      ! Hope that the dot product is either +1 or -1. 
-      swap = 0
-      DO i=1,FDOFS
-        DO j=1,FDOFS
-          s = SUM(EdgeBasis(EDOFS+i,:)*EdgeBasisB(EDOFS+j,:))
-          IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
-            swap(i) = j
-          ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
-            swap(i) = -j
+       
+        ! Loop over the two elements and register the EdgeBasis 
+        smax = 0.0_dp
+        DO elem = 1, 2
+          IF( elem == 1 ) THEN
+            pElement => Element
+            pEdgeBasis => EdgeBasis
+          ELSE
+            pElement => ElementB
+            pEdgeBasis => EdgeBasisB
           END IF
+
+          CALL CopyElementNodesFromMesh( Nodes, Mesh, n, pElement % NodeIndexes)      
+
+          IF( k==1 ) THEN
+            r2(1) = SUM( Nodes % x(1:n)) / n
+            r2(2) = SUM( Nodes % y(1:n)) / n
+            r2(3) = SUM( Nodes % z(1:n)) / n            
+            IF( elem == 1) r1 = r2
+          END IF
+
+          Lstat = EdgeElementInfo( pElement, Nodes, uvw(1), uvw(2), uvw(3), &
+              DetF=DetJ, Basis=Basis, EdgeBasis=pEdgeBasis, BasisDegree=BasisDegree, &
+              ApplyPiolaTransform=.TRUE. ) !, TangentialTrMapping=.TRUE.)
+
+          ! Assume that this is "radial projector" for now...
+          IF(Radial) Phi = ATAN2(Nodes % x(1), Nodes % y(1) ) 
+          !PRINT *,'Phi:',elem,phi
+
+          ! Rotate the edge basis to reference angle and 
+          ! normalize the edge basis to unity.
+          DO i=1,EDOFs+FDOFS
+            IF( Radial ) THEN
+              x1 = pEdgeBasis(i,1)
+              y1 = pEdgeBasis(i,2)
+              pEdgeBasis(i,1) = COS(phi)*x1 - SIN(phi)*y1
+              pEdgeBasis(i,2) = SIN(phi)*x1 + COS(phi)*y1
+            END IF
+
+            s = SQRT(SUM(pEdgeBasis(i,:)**2))
+            IF(s>EPSILON(s)) pEdgeBasis(i,:) = pEdgeBasis(i,:) / s
+
+            ! Mark the edge for which this point gets maximum norm
+            ! and therefore we check the projection for.
+            IF(s>smax .AND. i<=EDOFS .AND. elem==1) THEN
+              imax = i
+              smax = s
+            END IF
+          END DO
         END DO
+
+        
+        ! Hope that the dot product is either +1 or -1. 
+        IF(k==1) THEN
+          ! Check the direction of the two face edges
+          swap = 0
+          DO i=EDOFS+1,EDOFS+FDOFS
+            DO j=1,FDOFS
+              s = SUM(EdgeBasis(i,:)*EdgeBasisB(EDOFS+j,:))
+              IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
+                !PRINT *,'EdgeProd plus:',s,i-edofs,j,EdgeBasis(i,:),EdgeBasis(edofs+j,:)
+                swap(i) = j
+                EXIT
+              ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
+                !PRINT *,'EdgeProd minus:',s,i-edofs,j,EdgeBasis(i,:),EdgeBasis(edofs+j,:)
+                swap(i) = -j
+                EXIT
+              END IF
+            END DO
+          END DO
+          
+          IF( SUM(ABS(Swap(5:6))) /= 3 ) THEN
+            DO i=EDOFs+1,EDOFs+FDOFS
+              PRINT *,'EdgeBasis:',i,EdgeBasis(i,:)
+              PRINT *,'EdgeBasisB:',i,EdgeBasisB(i,:)
+            END DO
+            CALL Fatal(Caller,'Could not ensure edge basis directions')
+          END IF
+                   
+        ELSE
+          ! Check the direction of edge "imax" 
+          i=imax
+          DO j=1,EDOFS
+            s = SUM(EdgeBasis(i,:)*EdgeBasisB(j,:))
+            IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
+              swap(i) = j
+              EXIT
+            ELSE IF( ABS(s+1.0_dp) < 1.0e-2 ) THEN
+              swap(i) = -j
+              EXIT
+            END IF
+          END DO
+        END IF
       END DO
-      
-      IF( ANY(Swap==0) ) THEN
-        PRINT *,'Could not ensure edge basis directions:'
-        DO i=EDOFs+1,EDOFs+FDOFS
-          PRINT *,'EdgeBasis:',i,EdgeBasis(i,:)
-          PRINT *,'EdgeBasisB:',i,EdgeBasisB(i,:)
-        END DO
-      ELSE
-        !PRINT *,'Swap:',swap        
+
+      IF(SUM(r1**2)-SUM(r2**2) > 1.0e-8) THEN
+        PRINT *,'R comp:',r1,r2
       END IF
       
     !------------------------------------------------------------------------------
@@ -7797,12 +7861,8 @@ CONTAINS
         Indexes => Face % NodeIndexes
         n = Face % Type % NumberOfNodes
 
-        DO i = 1,n
-          FaceX(ind) = FaceX(ind) + FaceMesh % Nodes % x(Indexes(i))
-          FaceY(ind) = FaceY(ind) + FaceMesh % Nodes % y(Indexes(i))
-        END DO
-        FaceX(ind) = FaceX(ind) / n
-        FaceY(ind) = FaceY(ind) / n
+        FaceX(ind) = SUM( FaceMesh % Nodes % x(Indexes(1:n)) ) / n
+        FaceY(ind) = SUM( FaceMesh % Nodes % y(Indexes(1:n)) ) / n
 
         !PRINT *,'Center:',ind,n,FaceX(ind),FaceY(ind),&
         !    Face % ElementIndex
@@ -14658,9 +14718,11 @@ CONTAINS
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
       NeedFaces = ListGetLogicalAnySolver( Model,'Use Piola Transform')
       
+      n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+      IF(NeedFaces) n = n + 2 * Mesh % NumberOfFaces + 3 * Mesh % NumberOfBulkElements
+
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
-        n = Mesh % NumberOfNodes + Mesh % NumberOfEdges
-        IF(NeedFaces) n = n + 2 * Mesh % NumberOfFaces
+        CALL Info('GeneratePeriodicProjectors','Allocating for conforming data!')
         ALLOCATE( Mesh % PeriodicPerm(n) )
         ALLOCATE( Mesh % PeriodicFlip(n) )
       END IF      

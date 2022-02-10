@@ -1417,18 +1417,22 @@ CONTAINS
            WRITE( Message,'(A,I0,A,ES12.3)') 'Iterated residual norm after ',k,' iters:', rnorm
            CALL Info('IterMethod_GCR', Message, Level=i)
            WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
-           CALL Info('IterMethod_GCR', Message, Level=i)            
-
-           IF( InfoActive(20) ) THEN
-             ksum = ksum + k
-             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
-           END IF
-           
+           CALL Info('IterMethod_GCR', Message, Level=i)                       
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
         
       END DO
+
+      IF( InfoActive(20) ) THEN
+        ksum = ksum + k
+        IF( Converged ) THEN
+          CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+        ELSE
+          IF(k>Rounds) ksum = ksum-1
+          CALL Info('IterMethod_GCR','Total number of GCR iterations (diverged): '//TRIM(I2S(ksum)))           
+        END IF
+      END IF
       
       DEALLOCATE( R, T1, T2 )
       IF ( m > 1 ) DEALLOCATE( S, V)
