@@ -4903,8 +4903,7 @@ CONTAINS
             Parent => Element % BoundaryInfo % Right
           END IF
 
-          q => Find_Face(Mesh,Parent,Element)
-
+          q => Find_Face(Mesh,Parent,Element)                   
           PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
 
           ! set the elementindex to be faceindex as it may be needed
@@ -10239,7 +10238,7 @@ CONTAINS
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
           Centeri, CenteriM, CenterJ, CenterJM, AllocStat, NrangeAve
-      TYPE(Element_t), POINTER :: Element, ElementM, ElementP
+      TYPE(Element_t), POINTER :: Element, ElementM, ElementP, TrueElement
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
       TYPE(Element_t), TARGET :: ElementLin
@@ -10262,7 +10261,8 @@ CONTAINS
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarily for debugging purposes
-      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster, symmCount
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, &
+          Nslave, Nmaster, symmCount
       LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge, symmX, symmY
       REAL(KIND=dp) :: sums, summ, summ2, summabs, EdgeProj(2), EdgeProjM(2), ci, &
           EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
@@ -11092,19 +11092,20 @@ CONTAINS
               END IF
               
               IF( EdgeBasis ) THEN
+                TrueElement => Mesh % Faces(Element % ElementIndex)
                 IF (PiolaVersion) THEN
                   IF (SecondOrder) THEN
-                    stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+                    stat = EdgeElementInfo( TrueElement, Nodes, u, v, w, &
                         DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                         BasisDegree = 2, ApplyPiolaTransform = .TRUE.)
                   ELSE
-                    stat = ElementInfo( Element, Nodes, u, v, w, &
+                    stat = ElementInfo( TrueElement, Nodes, u, v, w, &
                         detJ, Basis, dBasisdx,EdgeBasis=WBasis)
                   END IF
                 ELSE
-                  stat = ElementInfo( Element, Nodes, u, v, w, &
+                  stat = ElementInfo( TrueElement, Nodes, u, v, w, &
                       detJ, Basis, dBasisdx )
-                  CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+                  CALL GetEdgeBasis(TrueElement,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -11129,19 +11130,20 @@ CONTAINS
               END IF
               
               IF( EdgeBasis ) THEN
+                TrueElement => Mesh % Faces(ElementM % ElementIndex)
                 IF (PiolaVersion) THEN
                   IF (SecondOrder) THEN
-                    stat = EdgeElementInfo( ElementM, NodesM, um, vm, wm, &
+                    stat = EdgeElementInfo( TrueElement, NodesM, um, vm, wm, &
                         DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
                         BasisDegree = 2, ApplyPiolaTransform = .TRUE.)                   
                   ELSE
-                    stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
+                    stat = ElementInfo( TrueElement, NodesM, um, vm, wm, &
                         detJ, BasisM, dBasisdx, EdgeBasis=WBasisM)
                   END IF
                 ELSE
-                  stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
+                  stat = ElementInfo( TrueElement, NodesM, um, vm, wm, &
                       detJ, BasisM, dBasisdx )
-                  CALL GetEdgeBasis(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
+                  CALL GetEdgeBasis(TrueElement,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )

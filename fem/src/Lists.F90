@@ -520,6 +520,34 @@ CONTAINS
      ! Here we create the initial permutation such that the conforming dofs are eliminated. 
      IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
        Solver % PeriodicFlipActive = .FALSE.
+       
+       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+         CALL Fatal(Caller,'PeridicPerm should be alloated here!')
+       END IF
+       
+       BLOCK
+         INTEGER, POINTER :: TmpPerm(:)
+         LOGICAL, POINTER :: TmpFlip(:)
+         n = SIZE( Mesh % PeriodicPerm )
+         IF( n < SIZE( Perm ) ) THEN
+           CALL Info(Caller,'Increasing size of periodic tables from '&
+               //TRIM(I2S(n))//' to '//TRIM(I2S(SIZE(Perm)))//'!',Level=7)
+           ALLOCATE( TmpPerm(SIZE(Perm)) )
+           TmpPerm = 0
+           TmpPerm(1:n) = Mesh % PeriodicPerm(1:n)
+           DEALLOCATE(Mesh % PeriodicPerm)
+           Mesh % PeriodicPerm => TmpPerm
+
+           IF(ASSOCIATED(Mesh % PeriodicFlip ) ) THEN
+             ALLOCATE( TmpFlip(SIZE(Perm)) )
+             TmpFlip = .FALSE.
+             TmpFlip(1:n) = Mesh % PeriodicFlip(1:n)
+             DEALLOCATE(Mesh % PeriodicFlip)
+             Mesh % PeriodicFlip => TmpFlip
+           END IF
+         END IF
+       END BLOCK
+
        n = 0
        IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
          ! Set the eliminated dofs to zero and renumber
