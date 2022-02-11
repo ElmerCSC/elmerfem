@@ -5969,6 +5969,8 @@ CONTAINS
           crop(Onside) = SideCornerNum
           addnodes = AddEdgeInt(2) - AddEdgeInt(1) + 1
 
+          IF(addnodes < 0) CALL FATAL(FuncName, 'Problem adding lateral margins - addition is negative')
+
           IF(Onside == 1) CrevEndNode=First
           IF(OnSide == 2) CrevEndNode=Last
 
