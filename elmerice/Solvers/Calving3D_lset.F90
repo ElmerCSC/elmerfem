@@ -68,7 +68,7 @@
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
          WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
-         EdgeLineNodes(:), NodePositions(:)
+         EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
@@ -953,6 +953,9 @@
      END IF
 
      IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+     ! check front boundary is connected returns FrontToLateralConstraint which
+     ! reassigns unconnected elems to nearest lateral margin in IMBdryConstraints
+     CALL CheckFrontBoundary(Model, FrontConstraint, RightConstraint, LeftConstraint, FrontToLateralConstraint)
 
      !Pass isoline boundary elements to all partitions to get info
      !about which boundary they cross
@@ -1018,6 +1021,8 @@
          END DO
          ! when lateral margin advances it doesn't follow the z axis so we want to determine
          ! the further point the lateral margins have advanced
+         IF(Found .AND. FrontToLateralConstraint(j) /= 0) &
+            IMBdryConstraint(i) = FrontToLateralConstraint(j)
          IF(Found .AND. IMBdryConstraint(i) /= FrontConstraint) EXIT
        END DO
      END DO

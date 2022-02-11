@@ -44,6 +44,10 @@ MODULE CalvingGeometry
      MODULE PROCEDURE DoubleIntVectorSizeP, DoubleIntVectorSizeA
   END INTERFACE
 
+  INTERFACE Double2DLogSize
+   MODULE PROCEDURE Double2DLogSizeP, Double2DLogSizeA
+  END INTERFACE
+
   INTERFACE Double3DArraySize
    MODULE PROCEDURE Double3DArraySizeP, Double3DArraySizeA
   END INTERFACE
@@ -4235,6 +4239,62 @@ CONTAINS
     OrientSaved=Orientation
   END FUNCTION GetFrontOrientation
 
+  SUBROUTINE Double2DLogSizeA(Vec, fill)
+    !only doubles size in one dimension
+    LOGICAL, ALLOCATABLE :: Vec(:,:)
+    LOGICAL, OPTIONAL :: fill
+    !----------------------------------------
+    LOGICAL, ALLOCATABLE :: WorkVec(:,:)
+    INTEGER, ALLOCATABLE :: D(:)
+
+    ALLOCATE(D(2))
+    d = SHAPE(Vec)
+
+    ALLOCATE(WorkVec(d(1), d(2)))
+
+    WorkVec = Vec
+
+    DEALLOCATE(Vec)
+    ALLOCATE(Vec(d(1)*2,d(2)))
+
+    IF(PRESENT(fill)) THEN
+       Vec = fill
+    ELSE
+       Vec = .FALSE.
+    END IF
+
+    Vec(1:d(1),:) = WorkVec
+
+ END SUBROUTINE Double2DLogSizeA
+
+ SUBROUTINE Double2DLogSizeP(Vec, fill)
+    !only doubles size in one dimension
+    LOGICAL, POINTER :: Vec(:,:)
+    LOGICAL, OPTIONAL :: fill
+    !----------------------------------------
+    LOGICAL, ALLOCATABLE :: WorkVec(:,:)
+    INTEGER, ALLOCATABLE :: D(:)
+
+    ALLOCATE(D(2))
+    d = SHAPE(Vec)
+
+    ALLOCATE(WorkVec(d(1), d(2)))
+
+    WorkVec = Vec
+
+    DEALLOCATE(Vec)
+    ALLOCATE(Vec(d(1)*2,d(2)))
+
+    IF(PRESENT(fill)) THEN
+       Vec = fill
+    ELSE
+       Vec = .FALSE.
+    END IF
+
+    Vec(1:d(1),:) = WorkVec
+
+ END SUBROUTINE Double2DLogSizeP
+
    SUBROUTINE Double3DArraySizeA(Vec, fill)
       !only doubles size in one dimension
       INTEGER, ALLOCATABLE :: Vec(:,:,:)
@@ -7529,6 +7589,272 @@ CONTAINS
     Extent(4) = MaxY
 
   END SUBROUTINE IcebergExtent
+
+  ! check the front boundary elements are connected
+  ! if not (usually due to front advance around a corner) return
+  ! an array of the disconnected front element groups with the nearest lateral boundary constraint
+  ! the isomesh assigns a boundary on these to suppress calving here
+  SUBROUTINE CheckFrontBoundary(Model, FrontConstraint, RightConstraint, LeftConstraint, ElemConstraint)
+
+    TYPE(Model_t) :: Model
+    INTEGER :: FrontConstraint, RightConstraint, LeftConstraint
+    INTEGER, ALLOCATABLE :: ElemConstraint(:)
+    !------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Solver_t), POINTER :: NullSolver => NULL()
+    INTEGER, POINTER :: LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
+    INTEGER :: i,j,k, counter, NBulk, NBdry, NNodes, LNNodes, RNNodes, group, &
+          FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, GroupConstraint
+    INTEGER, ALLOCATABLE :: GroupCounts(:), ElNodes(:), PartGroups(:), PartGroupCounts(:), &
+          GroupToPart(:), NeighbourList(:), SecNeighbourList(:), TotalGroupCounts(:)
+    INTEGER, POINTER :: Neighbours(:)
+    LOGICAL :: NoNewNodes, NewGroup, NoNewParts
+    LOGICAL, ALLOCATABLE :: UsedElem(:), FoundNode(:), IsNeighbour(:,:), &
+          PartNeighbours(:), GroupOnPart(:,:), Grouper(:,:), PartGrouper(:,:), GroupElems(:,:)
+    CHARACTER(MAX_NAME_LEN) :: LeftMaskName, RightMaskName
+
+    Mesh => Model % Mesh
+    NBulk = Mesh % NumberOfBulkElements
+    NBdry = Mesh % NumberOfBoundaryElements
+    NNodes = Mesh % NumberOfNodes
+
+    LeftMaskName = "Left Sidewall Mask"
+    RightMaskName = "Right Sidewall Mask"
+    !Generate perms to quickly get nodes on each boundary
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
+      .FALSE., LeftPerm, LNNodes)
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
+         .FALSE., RightPerm, RNNodes)
+
+    ! first step is to isolate any unconnected elements
+    ! two sweep allocate then fill
+    FNElm=0
+    DO i=NBulk+1, NBulk + NBdry
+      Element => Mesh % Elements(i)
+      IF(Element % BoundaryInfo % Constraint /= FrontConstraint) CYCLE
+      FNElm = FNElm + 1
+    END DO
+
+    ALLOCATE(UsedElem(NBulk + NBdry), GroupCounts(10), ElNodes(3),&
+              FoundNode(NNodes), IsNeighbour(10,ParEnv % PEs), &
+              GroupElems(10, NBulk+NBdry))
+    UsedElem = .FALSE.
+    FoundNode = .FALSE.
+    GroupElems = .FALSE.
+    IsNeighbour = .FALSE.
+    GroupCounts = 0
+    group = 1
+
+    NoNewNodes = .TRUE.
+    DO WHILE(COUNT(UsedElem) < FNElm)
+      IF(NoNewNodes) THEN
+        NewGroup = .TRUE.
+        Counter=0
+
+        !ensure arrays are large enough
+        IF(SIZE(GroupCounts) < group) THEN
+          CALL DoubleIntVectorSize(GroupCounts)
+          CALL Double2DLogSize(IsNeighbour)
+          CALL Double2DLogSize(GroupElems)
+        END IF
+      END IF
+      NoNewNodes = .TRUE.
+      DO i=NBulk+1, NBulk + NBdry
+        IF(UsedElem(i)) CYCLE
+        Element => Mesh % Elements(i)
+        ElNodes = Element % NodeIndexes
+        IF(Element % BoundaryInfo % Constraint /= FrontConstraint) CYCLE
+        IF(ALL(.NOT. FoundNode(ElNodes)) .AND. .NOT. NewGroup) CYCLE
+        NewGroup = .FALSE.
+        UsedElem(i) = .TRUE.
+        GroupElems(group,i) = .TRUE.
+        FoundNode(ElNodes) = .TRUE.
+        NoNewNodes = .FALSE.
+        counter= counter + 1
+        ! do any nodes have neighbours?
+        DO j=1, SIZE(ElNodes)
+          Neighbours => Mesh % ParallelInfo % NeighbourList(ElNodes(j)) % Neighbours
+          DO k=1, SIZE(Neighbours)
+            IF(Neighbours(k) == ParEnv % MyPE) CYCLE
+            IF(SIZE(GroupCounts) < group) CALL FATAL('iain', 'write double2darray')
+            IsNeighbour(group, Neighbours(k)+1) = .TRUE.
+          END DO
+        END DO
+
+      END DO
+      IF(COUNT(UsedElem) == FNElm .OR. NoNewNodes) THEN
+        DO i=NBulk+1, NBulk + NBdry
+          IF(UsedElem(i)) CYCLE
+          Element => Mesh % Elements(i)
+          IF(Element % BoundaryInfo % Constraint /= FrontConstraint) CYCLE
+          ElNodes = Element % NodeIndexes
+          IF(ANY(.NOT. FoundNode(Elnodes))) CYCLE
+          counter = counter+1
+          FoundNode(ElNodes) = .TRUE.
+        END DO
+        GroupCounts(group) = counter
+        group = group + 1
+      END IF
+    END DO
+
+    !overshoot by 1
+    group = group-1
+
+    ! gather number of groups on each proc
+    ALLOCATE(PartGroups(ParEnv % PEs))
+    CALL MPI_ALLGATHER(group, 1, MPI_INTEGER, &
+        PartGroups, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+    PRINT*, PArEnv % MyPE, 'partgroups', partgroups
+    NGroups = SUM(PartGroups)
+    ALLOCATE(GroupToPart(NGroups))
+    counter=0
+    DO i=1, ParEnv % PEs
+      DO j=1, PartGroups(i)
+        counter=counter+1
+        GroupToPart(counter) = i
+      END DO
+    END DO
+
+    ALLOCATE(PartNeighbours(NGroups * ParEnv % PEs), PartGroupCounts(NGroups))
+    PartGroupCounts=0
+    IF(group /= 0) THEN
+      counter=0
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          DO j=1,group
+            PartNeighbours(counter+1:counter+ParEnv % PEs) = IsNeighbour(j,:)
+            counter=counter+ParEnv % PEs
+          END DO
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        DO j=1, group
+          CALL MPI_BSEND(IsNeighbour(j,:), ParEnv % PEs, MPI_LOGICAL, &
+              proc,9000, ELMER_COMM_WORLD, ierr )
+        END DO
+        DO j=1, PartGroups(i)
+          CALL MPI_RECV( PartNeighbours(counter+1:counter + ParEnv % PEs), &
+              ParEnv % PEs, MPI_LOGICAL, proc, 9000, ELMER_COMM_WORLD, status, ierr )
+          counter = counter + ParEnv % PEs
+        END DO
+      END DO
+
+      counter=0
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          PartGroupCounts(counter+1:counter+group) = GroupCounts(:group)
+          counter=counter+group
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        CALL MPI_BSEND(GroupCounts(:group), group, MPI_INTEGER, &
+            proc,9001, ELMER_COMM_WORLD, ierr )
+        CALL MPI_RECV( PartGroupCounts(counter+1), PartGroups(i), MPI_INTEGER, &
+            proc, 9001, ELMER_COMM_WORLD, status, ierr )
+        counter = counter + PartGroups(i)
+      END DO
+
+      ALLOCATE(TotalGroupCounts(NGroups))
+      TotalGroupCounts = PartGroupCounts
+      counter=0
+      ALLOCATE(GroupOnPart(group,ParEnv % PEs), Grouper(group, NGroups))
+      GroupOnPart = IsNeighbour(:group,:)
+      GroupOnPart(:,ParEnv % MyPE+1) = .TRUE.
+      Grouper = .FALSE.
+      DO i=1, NGroups
+        IF(GroupToPart(i) == ParEnv % MyPE + 1) THEN
+          DO j=1,group
+            Grouper(j,i+j-1) = .TRUE.
+          END DO
+          EXIT
+        END IF
+      END DO
+      DO i=1, group
+        NoNewParts = .FALSE.
+        DO WHILE(.NOT. NoNewParts)
+          NoNewParts = .TRUE.
+          DO j=1, NGroups
+            IF(.NOT. Grouper(i,j)) CYCLE
+            NeighbourList = PACK((/ (k,k=1,ParEnv % PEs) /), &
+                PartNeighbours((j-1)*ParEnv % PEs+1:j*ParEnv % PEs))
+            DO k=1, NGroups
+              IF(ANY(NeighbourList == GroupToPart(k))) THEN
+                !check this group neighbours this part
+                SecNeighbourList = PACK((/ (proc,proc=1,ParEnv % PEs) /), &
+                    PartNeighbours((k-1)*ParEnv % PEs+1:k*ParEnv % PEs))
+                IF(.NOT. ANY(SecNeighbourList == GroupToPart(j))) CYCLE ! this groups doesn't neighbour
+                IF(.NOT. Grouper(i,k)) NoNewParts = .FALSE.
+                Grouper(i,k) = .TRUE.
+              END IF
+            END DO
+          END DO
+        END DO
+      END DO
+
+      ALLOCATE(PartGrouper(NGroups, NGroups))
+      counter=1
+      DO i=1, NGroups
+        proc = GroupToPart(i)-1
+        IF(proc==ParEnv % MyPE) THEN
+          PartGrouper(i,:) = Grouper(counter,:)
+          counter=counter+1
+          CYCLE
+        END IF
+        DO j=1, group
+          CALL MPI_BSEND(Grouper(j,:), NGroups, MPI_LOGICAL, &
+              proc,9002, ELMER_COMM_WORLD, ierr )
+        END DO
+        CALL MPI_RECV( PartGrouper(i,:), &
+              NGroups, MPI_LOGICAL, proc, 9002, ELMER_COMM_WORLD, status, ierr )
+      END DO
+
+      DO i=1, NGroups
+        TotalGroupCounts(i) = SUM(PartGroupCounts, PartGrouper(i,:))
+      END DO
+
+      counter=0
+      ALLOCATE(ElemConstraint(Nbdry+ NBulk))
+      ElemConstraint = 0
+      DO i=1, NGroups
+        IF(GroupToPart(i)-1 /= ParEnv % MyPE) CYCLE
+        counter= counter+1
+        IF(MAXVAL(TotalGroupCounts) == TotalGroupCounts(i)) CYCLE
+        PRINT*, ParENv % MyPE, 'suppressing calving group:', Counter
+        IF(ANY(GroupElems(Counter,:))) THEN ! find new constraint eg closest lateral boundary
+          FoundNode = .FALSE.
+          DO j=NBulk+1, NBulk + NBdry
+            Element => Mesh % Elements(j)
+            ElNodes = Element % NodeIndexes
+            FoundNode(ElNodes) = .TRUE.
+          END DO
+          !check if any node indexes are also on lateral boundaries
+          DO j=1, NNodes
+            IF(.NOT. FoundNode(j)) CYCLE
+            IF(RightPerm(j) /= 0) GroupConstraint = RightConstraint
+            IF(LeftPerm(j) /= 0) GroupConstraint = LeftConstraint
+          END DO
+        END IF
+
+        DO j=NBulk+1, NBulk + NBdry
+          IF(GroupElems(Counter,j)) ElemConstraint(j) = GroupConstraint
+        END DO
+
+      END DO
+
+    ELSE
+      ALLOCATE(ElemConstraint(Nbdry+ NBulk))
+      ElemConstraint = 0
+    END IF
+
+    DEALLOCATE(LeftPerm, RightPerm)
+
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
+  END SUBROUTINE CheckFrontBoundary
 
 END MODULE CalvingGeometry
 
