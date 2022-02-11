@@ -1357,7 +1357,7 @@
         END DO
       END IF
       ! release crevasse paths
-      CALL ReleaseCrevassePaths(CrevassePaths)
+      IF(ASSOCIATED(CrevassePaths)) CALL ReleaseCrevassePaths(CrevassePaths)
      END IF
 
      ! send bdrynode info to all procs
