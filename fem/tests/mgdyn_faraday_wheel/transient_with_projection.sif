@@ -7,6 +7,9 @@
 ! solving the A-V solution candidate. For a similar verification case see the 
 ! test ../mgdyn_faraday_disc_transient/.
 !
+! TO DO: Check the discrepancy between the computed eddy current power
+!        with Helmholtz Projection = True/False
+!
 ! Here a metallic disc rotates and is subject to a uniform magnetic field 
 ! parallel to the disc axis. When the disc is put to rotate, the mobile charges
 ! of the conductor start to feel a radial force due to the Lorentz term v x B
@@ -92,7 +95,7 @@ Body 2
 End
 
 Equation 1
-  Active Solvers(6) = 1 2 3 4 5 6
+  Active Solvers(4) = 1 2 3 4
 End
 
 Solver 1
@@ -108,10 +111,16 @@ Solver 2
   Equation = "MGDynamics"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
-  Nonlinear Post Solvers(2) = Integer 5 6
+  Helmholtz Projection = True
   Nonlinear System Max Iterations = 15
   Nonlinear System Min Iterations = 2
   Nonlinear System Convergence Tolerance = 1e-3
+  !
+  ! Enforce the weak continuity of a scalar field of 
+  ! the Helmholtz projection:
+  !
+  HelmholtzProjector: Apply Mortar BCs = True
+  HelmholtzProjector: Projector Skip Edges = True
 
   Fix Input Current Density = Logical False
   Use Piola Transform = Logical True
@@ -162,41 +171,6 @@ Solver 4
   Save Geometry IDs = Logical True
 End
 
-Solver 5
-  Equation = "Helmholtz projection"
-  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
-  Procedure = "HelmholtzProjection" "HelmholtzProjector"
-!  Potential variable = "av"
-  Variable = "phi"
-  Variable DOFs = 1
-  linear system solver = iterative
-  linear system iterative method = CG
-  linear system max iterations = 1000
-  linear system convergence tolerance = 1e-8
-  linear system preconditioning = ILU0
-  linear system abort not converged = True
-  linear system residual output = 20
-
-  Apply Mortar BCs = True
-  Projector Skip Edges = True
-End
-
-Solver 6
-  Equation = "Remove kernel component"
-  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
-  Procedure = "HelmholtzProjection" "RemoveKernelComponent"
-  Kernel Variable = String "phi"
-  Variable = "Kernel Component"
-  Variable DOFs = 1
-  Use Piola Transform = Logical True
-  linear system solver = iterative
-  linear system iterative method = CG
-  linear system max iterations = 1000
-  linear system convergence tolerance = 1e-8
-  linear system preconditioning = ILU0
-  linear system abort not converged = True
-  linear system residual output = 1
-End
 
 Material 1
   Name = "Material1"
@@ -236,7 +210,6 @@ Boundary Condition 2
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
-  Phi = Real 0.0
 End
 
 ! The outer face of the outer ring:
@@ -248,7 +221,6 @@ Boundary Condition 3
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
-  Phi = Real 0.0
 End
 
 ! The inner face of the outer ring:
@@ -260,11 +232,11 @@ End
 !
 ! Fix potential at one node on the inner face:
 !---------------------------------------------
-Boundary Condition 5
-  Target Nodes(1) = 5
-  AV = 0
-End
+!Boundary Condition 5
+!  Target Nodes(1) = 5
+!  AV = 0
+!End
 
-Solver 2 :: Reference Norm = Real 0.15876705E-01
+Solver 2 :: Reference Norm = Real 1.58829369E-02
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 

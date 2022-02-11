@@ -4,8 +4,8 @@ and outer part which are meshed independently. Moreover, the vector potential
 variable is made unique in an iterated manner (the nonlinear iteration is 
 employed for this purpose) by performing the Helmholtz projection after 
 solving the A-V solution candidate. For a similar verification case see the 
-test ../mgdyn_faraday_disc/ and for a transient version of this model the file
-transient_with_projection.sif in this directory.
+test ../mgdyn_faraday_disc/ and for a transient version of this model the test
+../mgdyn_faraday_disc_transient.
 
 Here a metallic disc rotates and is subject to a uniform magnetic field 
 parallel to the disc axis. When the disc is put to rotate, the mobile charges
