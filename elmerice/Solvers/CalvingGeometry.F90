@@ -7679,7 +7679,6 @@ CONTAINS
           Neighbours => Mesh % ParallelInfo % NeighbourList(ElNodes(j)) % Neighbours
           DO k=1, SIZE(Neighbours)
             IF(Neighbours(k) == ParEnv % MyPE) CYCLE
-            IF(SIZE(GroupCounts) < group) CALL FATAL('iain', 'write double2darray')
             IsNeighbour(group, Neighbours(k)+1) = .TRUE.
           END DO
         END DO
@@ -7708,7 +7707,6 @@ CONTAINS
     CALL MPI_ALLGATHER(group, 1, MPI_INTEGER, &
         PartGroups, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
-    PRINT*, PArEnv % MyPE, 'partgroups', partgroups
     NGroups = SUM(PartGroups)
     ALLOCATE(GroupToPart(NGroups))
     counter=0
@@ -7720,6 +7718,7 @@ CONTAINS
     END DO
 
     ALLOCATE(PartNeighbours(NGroups * ParEnv % PEs), PartGroupCounts(NGroups))
+    PartNeighbours = .FALSE.
     PartGroupCounts=0
     IF(group /= 0) THEN
       counter=0
@@ -7735,11 +7734,11 @@ CONTAINS
         IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(IsNeighbour(j,:), ParEnv % PEs, MPI_LOGICAL, &
-              proc,9000, ELMER_COMM_WORLD, ierr )
+              proc,9000+j, ELMER_COMM_WORLD, ierr )
         END DO
         DO j=1, PartGroups(i)
           CALL MPI_RECV( PartNeighbours(counter+1:counter + ParEnv % PEs), &
-              ParEnv % PEs, MPI_LOGICAL, proc, 9000, ELMER_COMM_WORLD, status, ierr )
+              ParEnv % PEs, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
           counter = counter + ParEnv % PEs
         END DO
       END DO
@@ -7754,9 +7753,9 @@ CONTAINS
         END IF
         IF(PartGroups(i) == 0) CYCLE
         CALL MPI_BSEND(GroupCounts(:group), group, MPI_INTEGER, &
-            proc,9001, ELMER_COMM_WORLD, ierr )
-        CALL MPI_RECV( PartGroupCounts(counter+1), PartGroups(i), MPI_INTEGER, &
-            proc, 9001, ELMER_COMM_WORLD, status, ierr )
+            proc,9100, ELMER_COMM_WORLD, ierr )
+        CALL MPI_RECV( PartGroupCounts(counter+1:counter+PartGroups(i)), PartGroups(i), MPI_INTEGER, &
+            proc, 9100, ELMER_COMM_WORLD, status, ierr )
         counter = counter + PartGroups(i)
       END DO
 
@@ -7799,19 +7798,25 @@ CONTAINS
 
       ALLOCATE(PartGrouper(NGroups, NGroups))
       counter=1
-      DO i=1, NGroups
-        proc = GroupToPart(i)-1
+      DO i=1, ParEnv % PEs
+        proc = i-1
         IF(proc==ParEnv % MyPE) THEN
-          PartGrouper(i,:) = Grouper(counter,:)
-          counter=counter+1
+          DO j=1, group
+            PartGrouper(counter,:) = Grouper(j,:)
+            counter=counter+1
+          END DO
           CYCLE
         END IF
+        IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(Grouper(j,:), NGroups, MPI_LOGICAL, &
-              proc,9002, ELMER_COMM_WORLD, ierr )
+                proc,9100+j, ELMER_COMM_WORLD, ierr )
         END DO
-        CALL MPI_RECV( PartGrouper(i,:), &
-              NGroups, MPI_LOGICAL, proc, 9002, ELMER_COMM_WORLD, status, ierr )
+        DO j=1, PartGroups(i)
+          CALL MPI_RECV( PartGrouper(counter,:), &
+              NGroups, MPI_LOGICAL, proc, 9100+j, ELMER_COMM_WORLD, status, ierr )
+          counter=counter+1
+        END DO
       END DO
 
       DO i=1, NGroups
