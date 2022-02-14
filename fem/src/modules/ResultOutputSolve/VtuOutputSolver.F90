@@ -434,17 +434,22 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL ParallelActive( NumberOfDofNodes > 0 )
 
   IF( nTime == 1 ) THEN
-    ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
-    CALL Info(Caller, 'Total number of geometry nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
-
-    ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
-    CALL Info(Caller, 'Total number of dof nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
-
     ParallelElements = ParallelReduction( NumberOfElements ) 
-    CALL Info(Caller, 'Total number of elements to save: '&
-        //TRIM(I2S(ParallelElements)),Level=6)
+
+    IF( ParallelElements == 0 ) THEN
+      CALL Info(Caller, 'Nothing to save for this selection: ',Level=8)
+    ELSE
+      CALL Info(Caller, 'Total number of elements to save: '&
+          //TRIM(I2S(ParallelElements)),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
+      CALL Info(Caller, 'Total number of geometry nodes to save: '&
+          //TRIM(I2S(ParallelNodes)),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
+      CALL Info(Caller, 'Total number of dof nodes to save: '&
+          //TRIM(I2S(ParallelNodes)),Level=8)
+    END IF
   END IF
 
   !------------------------------------------------------------------------------

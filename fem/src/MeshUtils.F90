@@ -7546,15 +7546,15 @@ CONTAINS
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !---------------------------------------------------------------------------------      
     INTEGER :: n, ind, indm, e, em, eind, eindm, k1, k2, km1, km2, sgn0, sgn, i, i1, i2, &
-        nofaces, nofacesm, Nundefined, n0
+        nofaces, nofacesm, Nundefined, nf0, ne0, edofs, fdofs, j, cnts(4)
     TYPE(Element_t), POINTER :: Face, FaceM
     INTEGER, POINTER :: Indexes(:), IndexesM(:)
     REAL(KIND=dp) :: xm1, xm2, ym1, ym2, x1, y1, x2, y2, y2m, nrow
-    INTEGER, ALLOCATABLE :: PeriodicFace(:), FaceInds(:), FaceIndsM(:)
+    INTEGER, ALLOCATABLE :: PeriodicFace(:)
     REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:), FaceMX(:), FaceMY(:)
     REAL(KIND=dp) :: coordprod, indexprod, ss, minss, maxminss
-    INTEGER :: minuscount, samecount, mini, doubleusecount, swap(6)
-    LOGICAL :: Parallel, AntiPer, Radial
+    INTEGER :: minuscount, samecount, mini, doubleusecount, swap(20)
+    LOGICAL :: Parallel, AntiPer, Radial, Piola
     LOGICAL, ALLOCATABLE :: FaceUsed(:)
     CHARACTER(*), PARAMETER :: Caller = 'ConformingFacePerm'
   
@@ -7568,11 +7568,13 @@ CONTAINS
 
     Radial = ListGetLogicalAnyBC( CurrentModel,'Radial Projector' ) .OR. &
         ListGetLogicalAnyBC( CurrentModel,'Anti Radial Projector' )
+
+    Piola = .TRUE.
     
-    CALL CreateFaceCenters( Mesh, BMesh1, nofaces, FaceInds, FaceX, FaceY ) 
+    CALL CreateFaceCenters( Mesh, BMesh1, nofaces, FaceX, FaceY ) 
     CALL Info(Caller,'Number of faces in slave mesh: '//TRIM(I2S(nofaces)),Level=10)
 
-    CALL CreateFaceCenters( Mesh, BMesh2, nofacesm, FaceIndsM, FaceMX, FaceMY )
+    CALL CreateFaceCenters( Mesh, BMesh2, nofacesm, FaceMX, FaceMY )
     CALL Info(Caller,'Number of faces in master mesh: '//TRIM(I2S(nofacesm)),Level=10)
 
     IF( nofaces == 0 ) RETURN
@@ -7605,7 +7607,8 @@ CONTAINS
         END IF
       END DO
 
-      IF( FaceInds(i1) == FaceIndsM(mini) ) THEN        
+      IF( Bmesh1 % Elements(i1) % ElementIndex == &
+          Bmesh2 % Elements(mini) % ElementIndex ) THEN
         samecount = samecount + 1        
         CYCLE
       END IF
@@ -7634,29 +7637,67 @@ CONTAINS
 
     minuscount = 0
 
+    ne0 = Mesh % NumberOfNodes
+    nf0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
 
-    n0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
-
+    cnts = 0   
     
     DO e=1,nofaces
       em = PeriodicFace(e)
       
-      eind = FaceInds(e)
-      eindm = FaceIndsM(em)
+      !eind = FaceInds(e)
+      !eindm = FaceIndsM(em)
 
-      CALL CheckFaceBasisDirections(Mesh % Faces(eind), Mesh % Faces(eindm), .FALSE.,&
-          Radial, swap)
+      eind = Bmesh1 % Elements(e) % ElementIndex
+      eindM = Bmesh2 % Elements(em) % ElementIndex
 
-      ! We flip if the system is AntiPeriodic OR the edge basis are opposite, not both!
-      PerFlip(n0+2*eind-1) = XOR( AntiPer, swap(4+1)<0 )
-      PerFlip(n0+2*eind-0) = XOR( AntiPer, swap(4+2)<0 )
+      Face => Mesh % Faces(eind)
+      FaceM => Mesh % Faces(eindm)
+
+      eind = Face % ElementIndex
+      eindM = FaceM % ElementIndex
       
-      PerPerm(n0+2*eind-1) = n0 + 2*(eindm-1)+ABS(swap(4+1))
-      PerPerm(n0+2*eind-0) = n0 + 2*(eindm-1)+ABS(swap(4+2))
+      n = Face % TYPE % NumberOfNodes
+      edofs = n
+      fdofs = 0
+      IF( n == 4 ) THEN
+        IF(Piola) fdofs = 2
+      ELSE IF( n == 3 ) THEN
+        CONTINUE
+      ELSE
+        CALL Fatal(Caller,'Invalid number of elements: '//TRIM(I2S(n)))
+      END IF
+        
+      CALL CheckFaceBasisDirections(Face, FaceM, edofs, fdofs, .FALSE., Radial, swap)
 
-      minuscount = minuscount + COUNT(swap(5:6)<0)
+      !PRINT *,'Swap:',e,em,Swap(1:6)
+      
+      ! We flip if the system is AntiPeriodic OR the edge basis are opposite, not both!
+      IF(.TRUE.) THEN
+        DO i=1,edofs
+          j = Face % EdgeIndexes(i)
+          cnts(1) = cnts(1) + 1
+          IF( XOR(PerFlip(ne0+j), XOR( AntiPer, swap(i)<0 )) ) cnts(2) = cnts(2) + 1
+          IF( PerPerm(ne0+j) /= ne0 + FaceM % EdgeIndexes(ABS(swap(i)))) cnts(3) = cnts(3) + 1
+          !PRINT *,'CheckEdge:',PerFlip(ne0+j), XOR( AntiPer, swap(i)<0 ), &
+          !    PerPerm(ne0+j), ne0 + FaceM % EdgeIndexes(ABS(swap(i)))          
+          !PerFlip(ne0+j) = XOR( AntiPer, swap(i)<0 )
+          !PerPerm(ne0+j) = ne0 + FaceM % EdgeIndexes(ABS(swap(i)))
+        END DO
+      END IF
+
+      IF( fdofs == 2 ) THEN
+        PerFlip(nf0+2*eind-1) = XOR( AntiPer, swap(edofs+1)<0 )
+        PerFlip(nf0+2*eind-0) = XOR( AntiPer, swap(edofs+2)<0 )        
+        PerPerm(nf0+2*eind-1) = nf0 + 2*(eindm-1)+ABS(swap(edofs+1))
+        PerPerm(nf0+2*eind-0) = nf0 + 2*(eindm-1)+ABS(swap(edofs+2))
+      END IF
+      
+      minuscount = minuscount + COUNT(swap(1:edofs+fdofs)<0)
     END DO
 
+    PRINT *,'Periodic Perm counts:',cnts
+    
     IF( minuscount == 0 ) THEN
       CALL Info(Caller,'All faces in conforming projector have consistent sign!',Level=8)
     ELSE
@@ -7665,9 +7706,7 @@ CONTAINS
     END IF
 
     
-    DEALLOCATE( FaceInds, FaceX, FaceY ) 
-    DEALLOCATE( FaceIndsM, FaceMX, FaceMY )
-    DEALLOCATE( PeriodicFace )
+    DEALLOCATE( FaceX, FaceY, FaceMX, FaceMY, PeriodicFace )
 
     
   CONTAINS 
@@ -7676,18 +7715,19 @@ CONTAINS
     ! directions relate to each other. They depend on the numbering in a complex way
     ! use this routine to do the checking and returm +/-1 and +/-2 hopefully. 
     !------------------------------------------------------------------------------
-    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, QuadraticApproximation, &
+    SUBROUTINE CheckFaceBasisDirections(Element, ElementB, edofs, fdofs, QuadraticApproximation, &
         Radial, swap)
       !------------------------------------------------------------------------------
       TYPE(Element_t), TARGET :: Element  !< The boundary element handled
       TYPE(Element_t), TARGET :: ElementB  !< The boundary element handled
+      INTEGER :: edofs, fdofs
       LOGICAL :: QuadraticApproximation    !< Use second-order edge element basis
       LOGICAL :: Radial 
-      INTEGER :: Swap(6)
+      INTEGER :: Swap(:)
       !------------------------------------------------------------------------------
       TYPE(Nodes_t), SAVE :: Nodes
       LOGICAL :: Lstat
-      INTEGER :: i,j,p,n,DOFs,BasisDegree,Edofs, Fdofs,elem,k,imax,jmax
+      INTEGER :: i,j,p,n,DOFs,BasisDegree,elem,k,imax,jmax,kmin,kmax
       REAL(KIND=dp) :: Basis(6)
       REAL(KIND=dp), TARGET :: EdgeBasis(6,3),EdgeBasisB(6,3)
       REAL(KIND=dp) :: v,s,DetJ,uvw(3),phi,smax,r1(3),r2(3)
@@ -7701,30 +7741,26 @@ CONTAINS
         BasisDegree = 1
       END IF
       
-      IF( Element % TYPE % NumberOfNodes == 4 ) THEN
-        EDOFS = 4
-        FDOFS = 2
-      ELSE
-        EDOFS = 3
-        FDOFS = 0
-      END IF
-      n = EDOFS 
-
-      DO k=1,5
+      n = edofs 
+      kmax = edofs
+      uvw = 0.0_dp
+      swap = 0 
+      
+      DO k=0,kmax
 
         ! Use different points to check different equations
         ! The 1st point is the center used to set the face edges
         ! The following points are related to node dofs. 
-        IF(k==1) THEN
-          uvw = 0.0_dp
-        ELSE IF(k==2) THEN
+        IF(k==0) THEN
+          CONTINUE
+        ELSE IF(k==1) THEN
           uvw(1) = -1.0_dp
-        ELSE IF(k==3) THEN
+        ELSE IF(k==2) THEN
           uvw(1) = 1.0_dp
-        ELSE IF(k==4) THEN
+        ELSE IF(k==3) THEN
           uvw(1) = 0.0_dp
           uvw(2) = -1.0_dp
-        ELSE IF(k==5) THEN
+        ELSE IF(k==4) THEN
           uvw(2) = 1.0_dp
         END IF
        
@@ -7741,7 +7777,7 @@ CONTAINS
 
           CALL CopyElementNodesFromMesh( Nodes, Mesh, n, pElement % NodeIndexes)      
 
-          IF( k==1 ) THEN
+          IF( k==0 ) THEN
             r2(1) = SUM( Nodes % x(1:n)) / n
             r2(2) = SUM( Nodes % y(1:n)) / n
             r2(3) = SUM( Nodes % z(1:n)) / n            
@@ -7758,7 +7794,7 @@ CONTAINS
 
           ! Rotate the edge basis to reference angle and 
           ! normalize the edge basis to unity.
-          DO i=1,EDOFs+FDOFS
+          DO i=1,edofs+fdofs
             IF( Radial ) THEN
               x1 = pEdgeBasis(i,1)
               y1 = pEdgeBasis(i,2)
@@ -7771,7 +7807,7 @@ CONTAINS
 
             ! Mark the edge for which this point gets maximum norm
             ! and therefore we check the projection for.
-            IF(s>smax .AND. i<=EDOFS .AND. elem==1) THEN
+            IF(s>smax .AND. i<=edofs .AND. elem==1) THEN
               imax = i
               smax = s
             END IF
@@ -7780,12 +7816,11 @@ CONTAINS
 
         
         ! Hope that the dot product is either +1 or -1. 
-        IF(k==1) THEN
+        IF(k==0 .AND. fdofs == 2) THEN
           ! Check the direction of the two face edges
-          swap = 0
-          DO i=EDOFS+1,EDOFS+FDOFS
-            DO j=1,FDOFS
-              s = SUM(EdgeBasis(i,:)*EdgeBasisB(EDOFS+j,:))
+          DO i=edofs+1,edofs+fdofs
+            DO j=1,fdofs
+              s = SUM(EdgeBasis(i,:)*EdgeBasisB(edofs+j,:))
               IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
                 !PRINT *,'EdgeProd plus:',s,i-edofs,j,EdgeBasis(i,:),EdgeBasis(edofs+j,:)
                 swap(i) = j
@@ -7798,8 +7833,8 @@ CONTAINS
             END DO
           END DO
           
-          IF( SUM(ABS(Swap(5:6))) /= 3 ) THEN
-            DO i=EDOFs+1,EDOFs+FDOFS
+          IF( SUM(ABS(Swap(edofs+1:edofs+fdofs))) /= 3 ) THEN
+            DO i=edofs+1,edofs+fdofs
               PRINT *,'EdgeBasis:',i,EdgeBasis(i,:)
               PRINT *,'EdgeBasisB:',i,EdgeBasisB(i,:)
             END DO
@@ -7809,7 +7844,7 @@ CONTAINS
         ELSE
           ! Check the direction of edge "imax" 
           i=imax
-          DO j=1,EDOFS
+          DO j=1,edofs
             s = SUM(EdgeBasis(i,:)*EdgeBasisB(j,:))
             IF( ABS(s-1.0_dp) < 1.0e-2 ) THEN
               swap(i) = j
@@ -7833,12 +7868,11 @@ CONTAINS
     
     ! Create face centers for the mapping routines.
     !------------------------------------------------------------------------------
-    SUBROUTINE CreateFaceCenters( Mesh, FaceMesh, nofaces, FaceInds, FaceX, FaceY ) 
+    SUBROUTINE CreateFaceCenters( Mesh, FaceMesh, nofaces, FaceX, FaceY ) 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Mesh_t), POINTER :: FaceMesh
       INTEGER :: nofaces
-      INTEGER, ALLOCATABLE :: FaceInds(:)
       REAL(KIND=dp), ALLOCATABLE :: FaceX(:), FaceY(:)
 
       INTEGER :: ind, n, i 
@@ -7849,25 +7883,17 @@ CONTAINS
       nofaces = FaceMesh % NumberOfBulkElements
 
       CALL Info(Caller,'Allocating stuff for faces',Level=20)
-      ALLOCATE( FaceInds(nofaces), FaceX(nofaces), FaceY(nofaces) )
-      FaceInds = 0
+      ALLOCATE( FaceX(nofaces), FaceY(nofaces) )
       FaceX = 0.0_dp
       FaceY = 0.0_dp
 
       DO ind=1,FaceMesh % NumberOfBulkElements
-
         Face => FaceMesh % Elements(ind)
         Indexes => Face % NodeIndexes
         n = Face % Type % NumberOfNodes
 
         FaceX(ind) = SUM( FaceMesh % Nodes % x(Indexes(1:n)) ) / n
         FaceY(ind) = SUM( FaceMesh % Nodes % y(Indexes(1:n)) ) / n
-
-        !PRINT *,'Center:',ind,n,FaceX(ind),FaceY(ind),&
-        !    Face % ElementIndex
-
-        ! CreateInterfaceMeshes has already the ElementIndex set to point to the Mesh % Faces
-        FaceInds(ind) = Face % ElementIndex
       END DO
 
     END SUBROUTINE CreateFaceCenters
@@ -10270,7 +10296,6 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
       CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeakGeneric"
 
-
       
       CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
@@ -10284,7 +10309,7 @@ CONTAINS
       symmX = ListGetLogical( BC,'Projector symmetry x',Found )
       symmY = LIstGetLogical( BC,'Projector symmetry y',Found )
       IF(symmY) CALL Fatal(Caller,'Symmetry in y not implemented yet!')
-      
+
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
 
@@ -10388,8 +10413,7 @@ CONTAINS
           END IF
         END DO
       END IF
-        
-
+       
               
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -10525,8 +10549,9 @@ CONTAINS
           IF( Naxial > 1 ) PRINT *,'Alpha: ',Alpha(1:n)
         END IF
 
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-        IP = GaussPoints( Element ) 
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )        
+        IP = GaussPoints( Element )
+          
         RefArea = detJ * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
 
@@ -10983,7 +11008,8 @@ CONTAINS
           NoGaussPoints = ListGetInteger( BC,'Mortar BC Gauss Points',Found ) 
           IF(.NOT. Found ) NoGaussPoints = ElementT % Type % GaussPoints2
           IP = GaussPoints( ElementT, NoGaussPoints )
-            
+
+          
           DO k=1,kmax-2                         
             
             ! This check over area also automatically elimiates redundant nodes

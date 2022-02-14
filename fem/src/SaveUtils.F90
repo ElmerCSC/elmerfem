@@ -552,14 +552,16 @@ CONTAINS
 
     END DO
 
-    CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-        ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=7)
-    
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
-    
-    CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-        ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
-
+    IF( NumberOfElements == 0 ) THEN
+      CALL Info(Caller,'No active elements forthis mask',Level=12)
+    ELSE
+      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
+          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)      
+      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
+          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
+    END IF
+      
   END SUBROUTINE GenerateSaveMask
     
   

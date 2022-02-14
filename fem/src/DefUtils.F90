@@ -1084,9 +1084,9 @@ CONTAINS
 
      REAL(KIND=dp) :: r,xx,yy,zz
 
-     xx = 0
-     yy = 0
-     zz = 0
+     xx = 0.0_dp
+     yy = 0.0_dp
+     zz = 0.0_dp
      IF ( PRESENT( x ) ) xx = x
      IF ( PRESENT( y ) ) yy = y
      IF ( PRESENT( z ) ) zz = z
@@ -4750,7 +4750,9 @@ CONTAINS
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
-
+     LOGICAL, ALLOCATABLE :: BlockDir(:)
+     LOGICAL :: BlockAny
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: name
 
      SAVE gInd, lInd, STIFF, Work
@@ -4792,6 +4794,8 @@ CONTAINS
        ALLOCATE(A % Dvalues(A % NumberOfRows))
        A % Dvalues = 0._dp
      END IF
+
+       
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
@@ -4808,6 +4812,12 @@ CONTAINS
           CALL Fatal('DefUtils::DefaultDirichletBCs','Memory allocation failed.' )
      END IF
 
+     BlockAny = ListCheckPrefixAnyBC(CurrentModel, 'block '//TRIM(x % name)//' {e}')
+     IF( BlockAny ) THEN
+       CALL Info('DefaultDirichletBCs','Getting ready to block some Dirichlet BCs!',Level=7)
+       ALLOCATE( BlockDir( SIZE( A % DValues ) ) )
+       BlockDir = .FALSE.
+     END IF
 
      IF ( x % DOFs > 1 ) THEN
        CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
@@ -4816,25 +4826,22 @@ CONTAINS
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=6)
      
+
+
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
      ! ----------------------------------------------------------------------
-     ConstantValue = .FALSE.
      DO DOF=1,x % DOFs
         name = x % name
         IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
 
         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
         
-        CALL Info('DefUtils::DefaultDirichletBCs', &
-            'p-element preparations: '//TRIM(name), Level=15)
-        
-        ! Clearing for p-approximation dofs associated with faces & edges:
         SaveElement => GetCurrentElement() 
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
+           
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
@@ -5060,6 +5067,75 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+
+
+     ! BLOCK
+     !------------------------------------
+     QuadraticApproximation = ListGetLogical(Solver % Values, 'Quadratic Approximation', Found)
+     SecondKindBasis = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+     DO DOF=1,x % DOFs
+       IF(.NOT. BlockAny) CYCLE
+       
+       name = x % name
+       IF (x % DOFs>1) name=ComponentName(name,DOF)
+
+       IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, 'block '//TRIM(Name)//' {e}') ) CYCLE
+
+       CALL Info('SetDefaultDirichlet','Blocking edge dofs',Level=15)
+
+       SaveElement => GetCurrentElement()
+       DO i=1,Solver % Mesh % NumberOfBoundaryElements
+         Element => GetBoundaryElement(i)
+         
+         BC => GetBC()
+         IF ( .NOT.ASSOCIATED(BC) ) CYCLE
+         IF ( .NOT. ListGetLogical(BC, 'block '//TRIM(Name)//' {e}', Found ) ) CYCLE
+         
+         ! Get parent element:
+         ! -------------------
+         Parent => Element % BoundaryInfo % Left
+         IF ( .NOT. ASSOCIATED( Parent ) ) THEN
+           Parent => Element % BoundaryInfo % Right
+         END IF
+         IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
+         np = Parent % TYPE % NumberOfNodes
+         
+         IF(.NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
+         SELECT CASE(GetElementFamily())
+             
+         CASE(3,4)
+           CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+
+           IF (.NOT. ASSOCIATED(Face)) CYCLE
+           IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+           DO l=1,Face % TYPE % NumberOfEdges
+             Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+             EDOFs = Edge % BDOFs
+             IF (EDOFs == 0) CYCLE
+
+             n = GetElementDOFs(gInd,Edge)
+
+             IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+               n_start = Edge % NDOFs
+             ELSE
+               n_start = 0
+             END IF
+
+             DO j=1,EDOFs
+               k = n_start + j
+               nb = x % Perm(gInd(k))
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs*(nb-1) + DOF
+               BlockDir(nb) = .TRUE.
+             END DO
+           END DO
+         END SELECT
+       END DO
+       SaveElement => SetCurrentElement(SaveElement)
+     END DO
+     
+     
      !
      ! Apply special couple loads for 3-D models of solids:
      !
@@ -5397,7 +5473,21 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
-
+     IF( BlockAny) THEN
+       IF( InfoActive(10) ) THEN
+         k = COUNT( A % ConstrainedDOF ) 
+         PRINT *,'Original number of of Dirichlet BCs:',k       
+         k = COUNT( BlockDir )
+         PRINT *,'Marked number of Dirichlet BCs not to set:',k       
+         k = COUNT( BlockDir .AND. A % ConstrainedDOF )
+         PRINT *,'Releasing number of Dirichlet BCs:',k
+       END IF         
+       WHERE( BlockDir )
+         A % ConstrainedDOF = .FALSE.
+       END WHERE
+     END IF
+                
+     
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
@@ -5516,9 +5606,15 @@ CONTAINS
     END IF
 
     ! Get the nodes of the boundary and parent elements:
-    CALL GetElementNodes(Nodes, Element)
-    CALL GetElementNodes(PNodes, Parent)
-
+    !CALL GetElementNodes(Nodes, Element)
+    !CALL GetElementNodes(PNodes, Parent)
+    !Remove references to DefUtils
+    CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        n, Element % NodeIndexes)
+    CALL CopyElementNodesFromMesh(PNodes, CurrentModel % Solver % Mesh, &
+        np, Parent % NodeIndexes)
+    
+    
     ReverseSign = .FALSE.
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
     DO i=1,SIZE(EdgeMap,1)
@@ -5668,7 +5764,10 @@ CONTAINS
     Mass = 0.0d0
     Force = 0.0d0
 
-    CALL GetElementNodes(Nodes, Element)
+    ! Remove dependencies to DefUtils
+    CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        n, Element % NodeIndexes)
+    !CALL GetElementNodes(Nodes, Element)
 
     i = LEN_TRIM(Name)
     VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
@@ -5796,8 +5895,10 @@ CONTAINS
       ELSE
         ElementCopy => Element
       END IF
-      CALL GetElementNodes(Nodes, ElementCopy)
-
+      !CALL GetElementNodes(Nodes, ElementCopy)
+      CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
+      
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
@@ -5872,8 +5973,11 @@ CONTAINS
         ElementCopy => Element
       END IF
 
-      CALL GetElementNodes(Nodes, ElementCopy)
+      !CALL GetElementNodes(Nodes, ElementCopy)
+      CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
 
+      
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
