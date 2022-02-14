@@ -4750,8 +4750,8 @@ CONTAINS
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
-     LOGICAL, ALLOCATABLE :: BlockDir(:)
-     LOGICAL :: BlockAny
+     LOGICAL, ALLOCATABLE :: ReleaseDir(:)
+     LOGICAL :: ReleaseAny
      
      CHARACTER(LEN=MAX_NAME_LEN) :: name
 
@@ -4812,11 +4812,11 @@ CONTAINS
           CALL Fatal('DefUtils::DefaultDirichletBCs','Memory allocation failed.' )
      END IF
 
-     BlockAny = ListCheckPrefixAnyBC(CurrentModel, 'block '//TRIM(x % name)//' {e}')
-     IF( BlockAny ) THEN
+     ReleaseAny = ListCheckPrefixAnyBC(CurrentModel, 'release '//TRIM(x % name)//' {e}')
+     IF( ReleaseAny ) THEN
        CALL Info('DefaultDirichletBCs','Getting ready to block some Dirichlet BCs!',Level=7)
-       ALLOCATE( BlockDir( SIZE( A % DValues ) ) )
-       BlockDir = .FALSE.
+       ALLOCATE( ReleaseDir( SIZE( A % DValues ) ) )
+       ReleaseDir = .FALSE.
      END IF
 
      IF ( x % DOFs > 1 ) THEN
@@ -5074,14 +5074,14 @@ CONTAINS
      QuadraticApproximation = ListGetLogical(Solver % Values, 'Quadratic Approximation', Found)
      SecondKindBasis = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
      DO DOF=1,x % DOFs
-       IF(.NOT. BlockAny) CYCLE
+       IF(.NOT. ReleaseAny) CYCLE
        
        name = x % name
        IF (x % DOFs>1) name=ComponentName(name,DOF)
 
-       IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, 'block '//TRIM(Name)//' {e}') ) CYCLE
+       IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, 'release '//TRIM(Name)//' {e}') ) CYCLE
 
-       CALL Info('SetDefaultDirichlet','Blocking edge dofs',Level=15)
+       CALL Info('SetDefaultDirichlet','Release edge dofs from intersecting BCs',Level=15)
 
        SaveElement => GetCurrentElement()
        DO i=1,Solver % Mesh % NumberOfBoundaryElements
@@ -5089,7 +5089,7 @@ CONTAINS
          
          BC => GetBC()
          IF ( .NOT.ASSOCIATED(BC) ) CYCLE
-         IF ( .NOT. ListGetLogical(BC, 'block '//TRIM(Name)//' {e}', Found ) ) CYCLE
+         IF ( .NOT. ListGetLogical(BC, 'release '//TRIM(Name)//' {e}', Found ) ) CYCLE
          
          ! Get parent element:
          ! -------------------
@@ -5127,7 +5127,7 @@ CONTAINS
                nb = x % Perm(gInd(k))
                IF ( nb <= 0 ) CYCLE
                nb = Offset + x % DOFs*(nb-1) + DOF
-               BlockDir(nb) = .TRUE.
+               ReleaseDir(nb) = .TRUE.
              END DO
            END DO
          END SELECT
@@ -5473,16 +5473,16 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
-     IF( BlockAny) THEN
+     IF( ReleaseAny) THEN
        IF( InfoActive(10) ) THEN
          k = COUNT( A % ConstrainedDOF ) 
          PRINT *,'Original number of of Dirichlet BCs:',k       
-         k = COUNT( BlockDir )
+         k = COUNT( ReleaseDir )
          PRINT *,'Marked number of Dirichlet BCs not to set:',k       
-         k = COUNT( BlockDir .AND. A % ConstrainedDOF )
-         PRINT *,'Releasing number of Dirichlet BCs:',k
+         k = COUNT( ReleaseDir .AND. A % ConstrainedDOF )
+         PRINT *,'Ignoring number of Dirichlet BCs:',k
        END IF         
-       WHERE( BlockDir )
+       WHERE( ReleaseDir )
          A % ConstrainedDOF = .FALSE.
        END WHERE
      END IF

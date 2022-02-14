@@ -2,9 +2,9 @@
 ! The rotational interface is assumed to be always mortars but the radial
 ! interfaces may be also conforming. For the case of Piola transformed
 ! edge elements we can also deal with skew. Also there is a special BC
-! option to block setting Dirichlet BCs for the rotating BC. 
+! option to release Dirichlet BCs set for edges of the the rotating BC. 
 !
-! P.R. 9.2.2022
+! P.R. 14.2.2022
 
 
 $skew=10.0 
@@ -17,7 +17,7 @@ $conf=1
 $piola="True"
 $anti="True"
 $tag="a"
-$block="True"
+$release="True"
 
 Header
   CHECK KEYWORDS Warn
@@ -270,8 +270,7 @@ Boundary Condition 2
   Target Boundaries(1) = 4
   Name = "Mortar Outside"
 
-  block AV {e} = Logical $block
-!  AV {e} = 0.0
+  release AV {e} = Logical $release
 End
 
 Boundary Condition 3
@@ -282,7 +281,7 @@ Boundary Condition 3
   Rotational Projector = Logical True
   Galerkin Projector = True
   Antisymmetric BC = $anti
-  block AV {e} = Logical $block
+  release AV {e} = Logical $release
 End
 
 Boundary Condition 4
