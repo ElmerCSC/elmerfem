@@ -37,7 +37,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = 1.0
-  Output Intervals = 2
+  Output Intervals = 1
   Timestep Intervals = 1
 
   Extruded Mesh Layers = 10
