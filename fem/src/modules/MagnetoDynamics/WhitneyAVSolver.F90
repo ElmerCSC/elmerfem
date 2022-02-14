@@ -2919,7 +2919,7 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
+SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -2961,7 +2961,7 @@ SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
     END IF
   END DO
 !------------------------------------------------------------------------------
-END SUBROUTINE HelmholtzProjectorT_Init
+END SUBROUTINE HelmholtzProjectorT_Init0
 !------------------------------------------------------------------------------
 
 
