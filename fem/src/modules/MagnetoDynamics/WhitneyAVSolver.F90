@@ -2930,6 +2930,30 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjectorT_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
   INTEGER :: i,j
   TYPE(ValueList_t), POINTER :: SolverParams
 !------------------------------------------------------------------------------
@@ -2953,7 +2977,6 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
   CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
   CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
 
-  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   DO j=1,Model % NumberOfBCs
     IF ( ListCheckPrefix( Model % BCs(j) % Values, &
                TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' {e}' ) ) THEN
@@ -2961,7 +2984,7 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
     END IF
   END DO
 !------------------------------------------------------------------------------
-END SUBROUTINE HelmholtzProjectorT_Init0
+END SUBROUTINE HelmholtzProjectorT_Init
 !------------------------------------------------------------------------------
 
 
