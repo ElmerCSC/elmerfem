@@ -4,14 +4,13 @@
 ! and outer part which are meshed independently. Moreover, the vector potential
 ! variable is made unique in an iterated manner (the nonlinear iteration is 
 ! employed for this purpose) by performing the Helmholtz projection after 
-! solving the A-V solution candidate. For a similar verification case see the 
-! test ../mgdyn_faraday_disc_transient/.
+! solving the A-V solution candidate. Here this is activated by using the 
+! command "Helmholtz Projection = True". For a similar verification case see 
+! the test ../mgdyn_faraday_disc_transient/.
 !
-! TO DO: Check the discrepancy between the computed eddy current power
-!        with Helmholtz Projection = True/False
-!
-! Here a metallic disc rotates and is subject to a uniform magnetic field 
-! parallel to the disc axis. When the disc is put to rotate, the mobile charges
+! Here a metallic wheel rotates and is subject to a magnetic field parallel to 
+! the wheel axis (here we generate the magnetic field by prescribing the vector
+! potential on boundaries). When the wheel is put to rotate, the mobile charges
 ! of the conductor start to feel a radial force due to the Lorentz term v x B
 ! and hence accumulate on the insulated rim surface. As a consequence of charge
 ! separation a radial electric field E is produced. The process of charge 
@@ -43,6 +42,8 @@
 !
 ! The author of this setup: Mika Malinen
 !
+! TO DO: Check the discrepancy between the computed eddy current power
+!        with Helmholtz Projection = True/False
 
 
 
@@ -69,7 +70,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = $ dt
-  Timestep Intervals = 5
+  Timestep Intervals = 40
   Output Intervals = 1
 End
 
@@ -210,6 +211,7 @@ Boundary Condition 2
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
+  AV = 0.0
 End
 
 ! The outer face of the outer ring:
@@ -237,6 +239,6 @@ End
 !  AV = 0
 !End
 
-Solver 2 :: Reference Norm = Real 1.58829369E-02
+Solver 2 :: Reference Norm = Real 0.22413622E-01
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 
