@@ -2454,6 +2454,30 @@ END BLOCK
 
 
 !------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  DO i=1,Model % NumberOfSolvers
+    IF (ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
@@ -2493,7 +2517,6 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
   CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
 
-  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   DO j=1,Model % NumberOfBCs
     IF ( ListCheckPrefix( Model % BCs(j) % Values, &
                TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' re {e}' ) ) THEN
