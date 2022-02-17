@@ -2032,7 +2032,7 @@ CONTAINS
       ELSE
         m = n
       END IF
-      s = SUM(x(1:n)**2)
+      s = SUM(x(1:m)**2)
     END IF
           
     stot = ParallelReduction(s)
@@ -2865,9 +2865,12 @@ CONTAINS
     n = ipar(3)
     
     IF( InfoActive(20) ) THEN
-      nrm = CompNorm(u(1:n),n)
-      WRITE( Message,'(A,ES12.5)') 'U start norm: ',nrm
-      CALL Info('BlockMatrixPrec',Message,Level=10)
+
+! This is commented out as u may be uninitialized:
+!      
+!      nrm = CompNorm(u(1:n),n)
+!      WRITE( Message,'(A,ES12.5)') 'U start norm: ',nrm
+!      CALL Info('BlockMatrixPrec',Message,Level=10)
       
       nrm = CompNorm(v(1:n),n)
       WRITE( Message,'(A,ES12.5)') 'V start norm: ',nrm
@@ -2989,7 +2992,9 @@ CONTAINS
       END IF
 
       IF( InfoActive(25) ) THEN
-        nrm = CompNorm(b,offset(i+1)-offset(i),npar=l)
+        ! l is uninitialized!
+        !nrm = CompNorm(b,offset(i+1)-offset(i),npar=l)
+        nrm = CompNorm(b,offset(i+1)-offset(i))
         WRITE( Message,'(A,ES12.5)') 'Rhs '//TRIM(I2S(i))//' norm: ',nrm
         CALL Info('BlockMatrixPrec',Message,Level=10)
       END IF
