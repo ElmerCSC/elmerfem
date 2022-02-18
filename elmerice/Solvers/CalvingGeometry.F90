@@ -7606,14 +7606,16 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: NullSolver => NULL()
     INTEGER, POINTER :: LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
-    INTEGER :: i,j,k, counter, NBulk, NBdry, NNodes, LNNodes, RNNodes, group, &
-          FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, GroupConstraint
+    INTEGER :: i,j,k,l, counter, NBulk, NBdry, NNodes, LNNodes, RNNodes, group, &
+          FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, GroupConstraint, &
+          NNeighbours
     INTEGER, ALLOCATABLE :: GroupCounts(:), ElNodes(:), PartGroups(:), PartGroupCounts(:), &
-          GroupToPart(:), NeighbourList(:), SecNeighbourList(:), TotalGroupCounts(:)
+          GroupToPart(:), NeighbourList(:), TotalGroupCounts(:), &
+          GDOFs(:), PartGDOFs(:), PNNeighbours(:), Order(:), WorkInt(:)
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL :: NoNewNodes, NewGroup, NoNewParts
     LOGICAL, ALLOCATABLE :: UsedElem(:), FoundNode(:), IsNeighbour(:,:), &
-          PartNeighbours(:), GroupOnPart(:,:), Grouper(:,:), PartGrouper(:,:), GroupElems(:,:)
+          PartNeighbours(:,:), GroupNeighbours(:,:), Grouper(:,:), PartGrouper(:,:), GroupElems(:,:)
     CHARACTER(MAX_NAME_LEN) :: LeftMaskName, RightMaskName
 
     Mesh => Model % Mesh
@@ -7627,7 +7629,7 @@ CONTAINS
     CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
       .FALSE., LeftPerm, LNNodes)
     CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
-         .FALSE., RightPerm, RNNodes)
+      .FALSE., RightPerm, RNNodes)
 
     ! first step is to isolate any unconnected elements
     ! two sweep allocate then fill
@@ -7640,13 +7642,14 @@ CONTAINS
 
     ALLOCATE(UsedElem(NBulk + NBdry), GroupCounts(10), ElNodes(3),&
               FoundNode(NNodes), IsNeighbour(10,ParEnv % PEs), &
-              GroupElems(10, NBulk+NBdry))
+              GroupElems(10, NBulk+NBdry), GDOFs(10), Order(10))
     UsedElem = .FALSE.
     FoundNode = .FALSE.
     GroupElems = .FALSE.
     IsNeighbour = .FALSE.
     GroupCounts = 0
     group = 1
+    NNeighbours=0
 
     NoNewNodes = .TRUE.
     DO WHILE(COUNT(UsedElem) < FNElm)
@@ -7679,7 +7682,16 @@ CONTAINS
           Neighbours => Mesh % ParallelInfo % NeighbourList(ElNodes(j)) % Neighbours
           DO k=1, SIZE(Neighbours)
             IF(Neighbours(k) == ParEnv % MyPE) CYCLE
-            IsNeighbour(group, Neighbours(k)+1) = .TRUE.
+            IF(.NOT. IsNeighbour(group, Neighbours(k)+1)) THEN
+              IsNeighbour(group, Neighbours(k)+1) = .TRUE.
+              NNeighbours = NNeighbours + 1
+              IF(SIZE(GDOFs) < NNeighbours) THEN
+                 CALL DoubleIntVectorSize(GDOFs)
+                 CALL DoubleIntVectorSize(Order)
+              END IF
+              GDOFs(NNeighbours) = Mesh % ParallelInfo % GlobalDOFs(ElNodes(j))
+              Order(NNeighbours) = Neighbours(k)+1
+            END IF
           END DO
         END DO
 
@@ -7702,10 +7714,36 @@ CONTAINS
     !overshoot by 1
     group = group-1
 
+    !order GDOFs into rank order
+    ALLOCATE(WorkInt(NNeighbours))
+    counter=0
+    l=0
+    DO i=1, group
+      DO j=1, ParEnv % PEs
+        IF(.NOT. IsNeighbour(i,j)) CYCLE
+        counter=counter+1
+        DO k=l+1, l+COUNT(IsNeighbour(i,:))
+          IF(Order(k) == j) THEN
+            WorkInt(counter) = GDOFs(k)
+            EXIT
+          END IF
+        END DO
+      END DO
+      l=l+COUNT(IsNeighbour(i,:))
+    END DO
+
+    DEALLOCATE(GDOFs)
+    ALLOCATE(GDOFs(NNeighbours))
+    GDOFs = WorkInt
+    DEALLOCATE(WorkInt)
+
     ! gather number of groups on each proc
     ALLOCATE(PartGroups(ParEnv % PEs))
     CALL MPI_ALLGATHER(group, 1, MPI_INTEGER, &
         PartGroups, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+    ALLOCATE(PNNeighbours(ParEnv % PEs))
+    CALL MPI_ALLGATHER(NNeighbours, 1, MPI_INTEGER, &
+        PNNeighbours, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
     NGroups = SUM(PartGroups)
     ALLOCATE(GroupToPart(NGroups))
@@ -7717,32 +7755,9 @@ CONTAINS
       END DO
     END DO
 
-    ALLOCATE(PartNeighbours(NGroups * ParEnv % PEs), PartGroupCounts(NGroups))
-    PartNeighbours = .FALSE.
-    PartGroupCounts=0
+    ! only ranks that have front elements beyond this
     IF(group /= 0) THEN
-      counter=0
-      DO i=1, ParEnv % PEs
-        proc = i-1
-        IF(proc==ParEnv % MyPE) THEN
-          DO j=1,group
-            PartNeighbours(counter+1:counter+ParEnv % PEs) = IsNeighbour(j,:)
-            counter=counter+ParEnv % PEs
-          END DO
-          CYCLE
-        END IF
-        IF(PartGroups(i) == 0) CYCLE
-        DO j=1, group
-          CALL MPI_BSEND(IsNeighbour(j,:), ParEnv % PEs, MPI_LOGICAL, &
-              proc,9000+j, ELMER_COMM_WORLD, ierr )
-        END DO
-        DO j=1, PartGroups(i)
-          CALL MPI_RECV( PartNeighbours(counter+1:counter + ParEnv % PEs), &
-              ParEnv % PEs, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
-          counter = counter + ParEnv % PEs
-        END DO
-      END DO
-
+      ALLOCATE(PartGroupCounts(NGroups))
       counter=0
       DO i=1, ParEnv % PEs
         proc = i-1
@@ -7759,12 +7774,108 @@ CONTAINS
         counter = counter + PartGroups(i)
       END DO
 
-      ALLOCATE(TotalGroupCounts(NGroups))
+      ALLOCATE(PartGDOFs(SUM(PNNeighbours)))
+      counter=0
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          PartGDOFs(counter+1:counter+NNeighbours) = GDOFs(:NNeighbours)
+          counter=counter+NNeighbours
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        CALL MPI_BSEND(GDOFs(:NNeighbours), NNeighbours, MPI_INTEGER, &
+            proc,9200, ELMER_COMM_WORLD, ierr )
+        CALL MPI_RECV( PartGDOFs(counter+1:counter+PNNeighbours(i)), PNNeighbours(i), MPI_INTEGER,&
+            proc, 9200, ELMER_COMM_WORLD, status, ierr )
+        counter = counter + PNNeighbours(i)
+      END DO
+
+      ALLOCATE(PartNeighbours(NGroups, ParEnv % PEs))
+      PartNeighbours = .FALSE.
+      counter=1
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          DO j=1,group
+            PartNeighbours(counter,:) = IsNeighbour(j,:)
+            counter=counter+1
+          END DO
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        DO j=1, group
+          CALL MPI_BSEND(IsNeighbour(j,:), ParEnv % PEs, MPI_LOGICAL, &
+              proc,9000+j, ELMER_COMM_WORLD, ierr )
+        END DO
+        DO j=1, PartGroups(i)
+          CALL MPI_RECV( PartNeighbours(counter,:), &
+              ParEnv % PEs, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
+          counter = counter + 1
+        END DO
+      END DO
+
+      ALLOCATE(GroupNeighbours(group, NGroups))
+      GroupNeighbours = .FALSE.
+      DO i=1, group
+        DO j=1, NGroups
+          IF(j==1) THEN
+            counter=0
+          ELSE
+            counter = SUM(PNNeighbours(1:GroupToPart(j)-1))
+            IF(PartGroups(GroupToPart(j))>1) THEN
+              DO k=1,j-1
+                IF(GroupToPart(j) /= GroupToPart(k)) CYCLE
+                counter = counter + COUNT(PartNeighbours(k,:))
+              END DO
+            END IF
+          END IF
+          IF(.NOT. IsNeighbour(i,GroupToPart(j))) CYCLE
+          NeighbourList = PACK( (/ (k, k=1, ParEnv % PEs) /), PartNeighbours(j,:))
+          DO k=1, SIZE(NeighbourList)
+            counter=counter+1
+            !check gdof present in group
+            IF(NeighbourList(k)-1 /= ParEnv % MyPE) CYCLE
+            DO l=NBulk+1, NBulk + NBdry
+              IF(.NOT. GroupElems(i, l)) CYCLE
+              Element => Mesh % Elements(l)
+              ElNodes = Element % NodeIndexes
+              IF(.NOT. ANY(Mesh % ParallelInfo % GlobalDOFs(ElNodes) == PartGDOFs(Counter))) CYCLE
+              GroupNeighbours(i,j) = .TRUE.
+              EXIT
+            END DO
+          END DO
+        END DO
+      END DO
+
+      DEALLOCATE(PartNeighbours)
+      ALLOCATE(PartNeighbours(NGroups, NGroups))
+      PartNeighbours = .FALSE.
+      counter=1
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          DO j=1,group
+            PartNeighbours(counter,:) = GroupNeighbours(j,:)
+            counter=counter+1
+          END DO
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        DO j=1, group
+          CALL MPI_BSEND(GroupNeighbours(j,:), NGroups, MPI_LOGICAL, &
+              proc,9000+j, ELMER_COMM_WORLD, ierr )
+        END DO
+        DO j=1, PartGroups(i)
+          CALL MPI_RECV( PartNeighbours(counter,:), &
+              NGroups, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
+          counter = counter + 1
+        END DO
+      END DO
+
+      ALLOCATE(TotalGroupCounts(NGroups), Grouper(group, NGroups))
       TotalGroupCounts = PartGroupCounts
       counter=0
-      ALLOCATE(GroupOnPart(group,ParEnv % PEs), Grouper(group, NGroups))
-      GroupOnPart = IsNeighbour(:group,:)
-      GroupOnPart(:,ParEnv % MyPE+1) = .TRUE.
       Grouper = .FALSE.
       DO i=1, NGroups
         IF(GroupToPart(i) == ParEnv % MyPE + 1) THEN
@@ -7780,17 +7891,10 @@ CONTAINS
           NoNewParts = .TRUE.
           DO j=1, NGroups
             IF(.NOT. Grouper(i,j)) CYCLE
-            NeighbourList = PACK((/ (k,k=1,ParEnv % PEs) /), &
-                PartNeighbours((j-1)*ParEnv % PEs+1:j*ParEnv % PEs))
             DO k=1, NGroups
-              IF(ANY(NeighbourList == GroupToPart(k))) THEN
-                !check this group neighbours this part
-                SecNeighbourList = PACK((/ (proc,proc=1,ParEnv % PEs) /), &
-                    PartNeighbours((k-1)*ParEnv % PEs+1:k*ParEnv % PEs))
-                IF(.NOT. ANY(SecNeighbourList == GroupToPart(j))) CYCLE ! this groups doesn't neighbour
-                IF(.NOT. Grouper(i,k)) NoNewParts = .FALSE.
-                Grouper(i,k) = .TRUE.
-              END IF
+              IF(.NOT. PartNeighbours(j,k)) CYCLE
+              IF(.NOT. Grouper(i,k)) NoNewParts = .FALSE.
+              Grouper(i,k) = .TRUE.
             END DO
           END DO
         END DO
