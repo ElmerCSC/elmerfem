@@ -1818,7 +1818,7 @@ CONTAINS
            CALL Warn(Caller,'Rotational and normal projectors should only work with N-T coordinates!')
          END IF
        ELSE
-         CALL Fatal(Caller,'Projector must be current either flat, plane, cylinder or rotational!')
+         CALL Fatal(Caller,'Projector must be current either flat, plane, cylindrical or rotational!')
        END IF
       
 
@@ -2154,8 +2154,8 @@ CONTAINS
          END IF
        END DO
 
-       PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
-       PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
+       !PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
+       !PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
                      
      END SUBROUTINE PickLagrangeMultiplier
 
@@ -3192,8 +3192,8 @@ CONTAINS
            'Contact Depth Offset',Found)
 
        
-       PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
-           Projector % NumberOfRows
+       !PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
+       !    Projector % NumberOfRows
            
 
        
@@ -3284,7 +3284,7 @@ CONTAINS
          CALL Info(Caller,Message,Level=6)
        END IF
 
-       PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
+       !PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
 
 
      END SUBROUTINE NormalContactSet

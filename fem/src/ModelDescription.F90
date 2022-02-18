@@ -3451,7 +3451,7 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
     SAVE SaveCoordinates
-
+    
 !------------------------------------------------------------------------------
 !   If first time here, count number of variables
 !------------------------------------------------------------------------------
@@ -3473,7 +3473,7 @@ CONTAINS
     END IF
           
     FName = FileName
-    IF ( .NOT. FileNameQualified(FileName) ) THEN
+    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
       IF ( LEN_TRIM(OutputPath) > 0 ) THEN
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
@@ -3484,8 +3484,7 @@ CONTAINS
 
     IF( ParEnv % PEs > 1 ) THEN
       Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
-    END IF
-        
+    END IF        
     PosName = TRIM(FName) // ".pos"
 
     CALL Info(Caller,'-----------------------------------------',Level=5)
