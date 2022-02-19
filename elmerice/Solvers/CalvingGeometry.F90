@@ -7768,9 +7768,9 @@ CONTAINS
         END IF
         IF(PartGroups(i) == 0) CYCLE
         CALL MPI_BSEND(GroupCounts(:group), group, MPI_INTEGER, &
-            proc,9100, ELMER_COMM_WORLD, ierr )
+            proc,9000, ELMER_COMM_WORLD, ierr )
         CALL MPI_RECV( PartGroupCounts(counter+1:counter+PartGroups(i)), PartGroups(i), MPI_INTEGER, &
-            proc, 9100, ELMER_COMM_WORLD, status, ierr )
+            proc, 9000, ELMER_COMM_WORLD, status, ierr )
         counter = counter + PartGroups(i)
       END DO
 
@@ -7785,9 +7785,9 @@ CONTAINS
         END IF
         IF(PartGroups(i) == 0) CYCLE
         CALL MPI_BSEND(GDOFs(:NNeighbours), NNeighbours, MPI_INTEGER, &
-            proc,9200, ELMER_COMM_WORLD, ierr )
+            proc,9001, ELMER_COMM_WORLD, ierr )
         CALL MPI_RECV( PartGDOFs(counter+1:counter+PNNeighbours(i)), PNNeighbours(i), MPI_INTEGER,&
-            proc, 9200, ELMER_COMM_WORLD, status, ierr )
+            proc, 9001, ELMER_COMM_WORLD, status, ierr )
         counter = counter + PNNeighbours(i)
       END DO
 
@@ -7806,11 +7806,11 @@ CONTAINS
         IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(IsNeighbour(j,:), ParEnv % PEs, MPI_LOGICAL, &
-              proc,9000+j, ELMER_COMM_WORLD, ierr )
+              proc,9100+j, ELMER_COMM_WORLD, ierr )
         END DO
         DO j=1, PartGroups(i)
           CALL MPI_RECV( PartNeighbours(counter,:), &
-              ParEnv % PEs, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
+              ParEnv % PEs, MPI_LOGICAL, proc, 9100+j, ELMER_COMM_WORLD, status, ierr )
           counter = counter + 1
         END DO
       END DO
@@ -7864,11 +7864,11 @@ CONTAINS
         IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(GroupNeighbours(j,:), NGroups, MPI_LOGICAL, &
-              proc,9000+j, ELMER_COMM_WORLD, ierr )
+              proc,9200+j, ELMER_COMM_WORLD, ierr )
         END DO
         DO j=1, PartGroups(i)
           CALL MPI_RECV( PartNeighbours(counter,:), &
-              NGroups, MPI_LOGICAL, proc, 9000+j, ELMER_COMM_WORLD, status, ierr )
+              NGroups, MPI_LOGICAL, proc, 9200+j, ELMER_COMM_WORLD, status, ierr )
           counter = counter + 1
         END DO
       END DO
@@ -7914,11 +7914,11 @@ CONTAINS
         IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(Grouper(j,:), NGroups, MPI_LOGICAL, &
-                proc,9100+j, ELMER_COMM_WORLD, ierr )
+                proc,9300+j, ELMER_COMM_WORLD, ierr )
         END DO
         DO j=1, PartGroups(i)
           CALL MPI_RECV( PartGrouper(counter,:), &
-              NGroups, MPI_LOGICAL, proc, 9100+j, ELMER_COMM_WORLD, status, ierr )
+              NGroups, MPI_LOGICAL, proc, 9300+j, ELMER_COMM_WORLD, status, ierr )
           counter=counter+1
         END DO
       END DO
@@ -7966,11 +7966,11 @@ CONTAINS
         IF(PartGroups(i) == 0) CYCLE
         DO j=1, group
           CALL MPI_BSEND(GroupConstraint(j), 1, MPI_LOGICAL, &
-                proc,9300+j, ELMER_COMM_WORLD, ierr )
+                proc,9400+j, ELMER_COMM_WORLD, ierr )
         END DO
         DO j=1, PartGroups(i)
           CALL MPI_RECV( PartConstraint(counter), &
-              1, MPI_LOGICAL, proc, 9300+j, ELMER_COMM_WORLD, status, ierr )
+              1, MPI_LOGICAL, proc, 9400+j, ELMER_COMM_WORLD, status, ierr )
           counter=counter+1
         END DO
       END DO
