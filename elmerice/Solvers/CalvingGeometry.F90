@@ -7607,11 +7607,11 @@ CONTAINS
     TYPE(Solver_t), POINTER :: NullSolver => NULL()
     INTEGER, POINTER :: LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
     INTEGER :: i,j,k,l, counter, NBulk, NBdry, NNodes, LNNodes, RNNodes, group, &
-          FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, GroupConstraint, &
+          FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, &
           NNeighbours
     INTEGER, ALLOCATABLE :: GroupCounts(:), ElNodes(:), PartGroups(:), PartGroupCounts(:), &
-          GroupToPart(:), NeighbourList(:), TotalGroupCounts(:), &
-          GDOFs(:), PartGDOFs(:), PNNeighbours(:), Order(:), WorkInt(:)
+          GroupToPart(:), NeighbourList(:), TotalGroupCounts(:), GroupConstraint(:), &
+          GDOFs(:), PartGDOFs(:), PNNeighbours(:), Order(:), WorkInt(:), PartConstraint(:)
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL :: NoNewNodes, NewGroup, NoNewParts
     LOGICAL, ALLOCATABLE :: UsedElem(:), FoundNode(:), IsNeighbour(:,:), &
@@ -7927,31 +7927,72 @@ CONTAINS
         TotalGroupCounts(i) = SUM(PartGroupCounts, PartGrouper(i,:))
       END DO
 
-      counter=0
-      ALLOCATE(ElemConstraint(Nbdry+ NBulk))
-      ElemConstraint = 0
-      DO i=1, NGroups
-        IF(GroupToPart(i)-1 /= ParEnv % MyPE) CYCLE
-        counter= counter+1
-        IF(MAXVAL(TotalGroupCounts) == TotalGroupCounts(i)) CYCLE
-        PRINT*, ParENv % MyPE, 'suppressing calving group:', Counter
-        IF(ANY(GroupElems(Counter,:))) THEN ! find new constraint eg closest lateral boundary
-          FoundNode = .FALSE.
-          DO j=NBulk+1, NBulk + NBdry
-            Element => Mesh % Elements(j)
-            ElNodes = Element % NodeIndexes
-            FoundNode(ElNodes) = .TRUE.
+      !find lateral margin tag
+      ALLOCATE(GroupConstraint(group))
+      GroupConstraint=0
+      DO i=1, group
+        FoundNode = .FALSE.
+        DO j=NBulk+1, NBulk+Nbdry
+          IF(.NOT. GroupElems(i,j)) CYCLE
+          Element => Mesh % Elements(j)
+          ElNodes = Element % NodeIndexes
+          FoundNode(ElNodes) = .TRUE.
+        END DO
+        !check if any node indexes are also on lateral boundaries
+        DO j=1, NNodes
+          IF(.NOT. FoundNode(j)) CYCLE
+          IF(RightPerm(j) /= 0) THEN
+            GroupConstraint(i) = RightConstraint
+            EXIT
+          END IF
+          IF(LeftPerm(j) /= 0) THEN
+            GroupConstraint(i) = LeftConstraint
+            EXIT
+          END IF
+        END DO
+      END DO
+
+      ALLOCATE(PartConstraint(NGroups))
+      counter=1
+      DO i=1, ParEnv % PEs
+        proc = i-1
+        IF(proc==ParEnv % MyPE) THEN
+          DO j=1, group
+            PartConstraint(counter) = GroupConstraint(j)
+            counter=counter+1
           END DO
-          !check if any node indexes are also on lateral boundaries
-          DO j=1, NNodes
-            IF(.NOT. FoundNode(j)) CYCLE
-            IF(RightPerm(j) /= 0) GroupConstraint = RightConstraint
-            IF(LeftPerm(j) /= 0) GroupConstraint = LeftConstraint
+          CYCLE
+        END IF
+        IF(PartGroups(i) == 0) CYCLE
+        DO j=1, group
+          CALL MPI_BSEND(GroupConstraint(j), 1, MPI_LOGICAL, &
+                proc,9300+j, ELMER_COMM_WORLD, ierr )
+        END DO
+        DO j=1, PartGroups(i)
+          CALL MPI_RECV( PartConstraint(counter), &
+              1, MPI_LOGICAL, proc, 9300+j, ELMER_COMM_WORLD, status, ierr )
+          counter=counter+1
+        END DO
+      END DO
+
+      ALLOCATE(ElemConstraint(NBdry+NBulk))
+      ElemConstraint=0
+      DO i=1, group
+        IF(GroupConstraint(i) == 0) THEN
+          DO j=1, NGroups
+            IF(.NOT. Grouper(i,j)) CYCLE
+            IF(PartConstraint(j) == 0) CYCLE
+            IF(MAXVAL(TotalGroupCounts) == TotalGroupCounts(j)) CYCLE
+            GroupConstraint(i) = PartConstraint(j)
           END DO
         END IF
 
-        DO j=NBulk+1, NBulk + NBdry
-          IF(GroupElems(Counter,j)) ElemConstraint(j) = GroupConstraint
+        DO j=1, NGroups
+          IF(GroupToPart(j)-1 /= ParEnv % MyPE) CYCLE
+          IF(MAXVAL(TotalGroupCounts) == TotalGroupCounts(j)) CYCLE
+          DO k=NBulk+1, NBulk + NBdry
+            IF(GroupElems(i,k)) ElemConstraint(k) = GroupConstraint(i)
+          END DO
         END DO
 
       END DO
