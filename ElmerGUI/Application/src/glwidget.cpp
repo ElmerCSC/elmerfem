@@ -2090,7 +2090,7 @@ This is a public function to be called from ObjectBrowser.
   for(int i = 0; i < n; i++){
     if(tmp1[i] && nElement[i] > 0){
     visibility = ((double) nVisibleElement[i]) / nElement[i];
-cout << i << " visibility=" << visibility << " (" << nVisibleElement[i] << "/" << nElement[i] << ")" << endl; 
+//cout << i << " visibility=" << visibility << " (" << nVisibleElement[i] << "/" << nElement[i] << ")" << endl; 
       if(visibility > max){
 		max = visibility;
 		selected = i;
@@ -2099,6 +2099,6 @@ cout << i << " visibility=" << visibility << " (" << nVisibleElement[i] << "/" <
   }
   delete[] nElement;
   delete[] nVisibleElement;
-cout << "selected: " << selected << endl;  
+//cout << "selected: " << selected << endl;  
   return selected;
 }
