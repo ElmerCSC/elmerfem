@@ -1041,11 +1041,16 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 	  count++;
 	  found = i;
 	}
+//	cout << i << ": tmp1,2= " << tmp1[i] << "," << tmp2[i] << endl; 
       }
       
       if((count == 1) && (found >= 0))
 	currentlySelectedBody = found;
-      
+    else if((count > 1)){
+	  int m = mostVisibleBody(MAX_BULK_INDEX, tmp1);
+	  if(m >=0) currentlySelectedBody = m;
+	}
+     
       delete [] tmp1;
       delete [] tmp2;
     }
@@ -2042,4 +2047,58 @@ void GLWidget::setMeshVisibility(bool stateDrawSurfaceMesh, bool stateDrawVolume
       l->setVisible(stateDrawSharpEdges);
 	}
   }
+}
+
+int GLWidget::mostVisibleBody(int n, bool* tmp1){
+/*
+This function is called in GLWidget::mouseDoubleClickEvent(QMouseEvent *event) to
+identify the most visible body when the double-clicked surface is shared by multiple bodies.
+This is a public function to be called from ObjectBrowser. 
+*/
+
+  long *nElement = new long[n];
+  long *nVisibleElement = new long[n];
+  for(int i = 0; i < n; i++){
+    nElement[i] = 0;
+    nVisibleElement[i] = 0;
+  }
+
+  for(int i = 0; i < getLists(); i++) {
+    list_t *l2 = getList(i);
+	if(l2->getNature() == PDE_BOUNDARY && l2->getType() == SURFACELIST) {
+      for(int j = 0; j < mesh->getSurfaces(); j++) {
+	    surface_t *surf = mesh->getSurface(j);
+	    if(surf->getIndex() == l2->getIndex()) { 
+	      for(int k = 0; k < surf->getElements(); k++) {
+		    int l = surf->getElementIndex(k);
+ 		    if(l < 0) 
+		      break;
+		    element_t *elem = mesh->getElement(l);
+		    if((elem->getIndex() < 0) || (elem->getIndex() >= n))
+		      break;
+		  	nElement[elem->getIndex()]++;
+		    if(l2->isVisible())nVisibleElement[elem->getIndex()]++;
+          }
+		}
+      }
+    }
+  }
+  
+  double max = -1.0;
+  int selected = -1;
+  double visibility = -2.0;
+  for(int i = 0; i < n; i++){
+    if(tmp1[i] && nElement[i] > 0){
+    visibility = ((double) nVisibleElement[i]) / nElement[i];
+//cout << i << " visibility=" << visibility << " (" << nVisibleElement[i] << "/" << nElement[i] << ")" << endl; 
+      if(visibility > max){
+		max = visibility;
+		selected = i;
+	  }
+    }
+  }
+  delete[] nElement;
+  delete[] nVisibleElement;
+//cout << "selected: " << selected << endl;  
+  return selected;
 }
