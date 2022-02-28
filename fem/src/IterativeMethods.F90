@@ -592,7 +592,7 @@ CONTAINS
 
     ! Variables related to robust mode
     LOGICAL :: Robust 
-    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    INTEGER :: BestIter,BadIterCount,MaxBadIter, RobustStart
     REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
     REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
 
@@ -638,6 +638,7 @@ CONTAINS
       RobustStep = HUTI_ROBUST_STEPSIZE
       RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
       MaxBadIter = HUTI_ROBUST_MAXBADIT
+      RobustStart = HUTI_ROBUST_START
       BestNorm = SQRT(HUGE(BestNorm))
       BadIterCount = 0
       BestIter = 0      
@@ -1094,18 +1095,20 @@ CONTAINS
         END IF
         
         IF( Robust ) THEN
-          IF( errorInd < RobustStep * BestNorm ) THEN
-            BestIter = Round
-            BestNorm = errorInd
-            Bestx = x
-            BadIterCount = 0
-          ELSE
-            BadIterCount = BadIterCount + 1
-          END IF
+          IF (Round>=RobustStart ) THEN
+            IF( errorInd < RobustStep * BestNorm ) THEN
+              BestIter = Round
+              BestNorm = errorInd
+              Bestx = x
+              BadIterCount = 0
+            ELSE
+              BadIterCount = BadIterCount + 1
+            END IF
 
-          IF( BestNorm <  RobustTol .AND. &
-              ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
-            EXIT
+            IF( BestNorm <  RobustTol .AND. &
+                  ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
+              EXIT
+            END IF
           END IF
         END IF
                
@@ -1417,22 +1420,18 @@ CONTAINS
            WRITE( Message,'(A,I0,A,ES12.3)') 'Iterated residual norm after ',k,' iters:', rnorm
            CALL Info('IterMethod_GCR', Message, Level=i)
            WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
-           CALL Info('IterMethod_GCR', Message, Level=i)                       
+           CALL Info('IterMethod_GCR', Message, Level=i)            
+
+           IF( InfoActive(20) ) THEN
+             ksum = ksum + k
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+           END IF
+           
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
         
       END DO
-
-      IF( InfoActive(20) ) THEN
-        ksum = ksum + k
-        IF( Converged ) THEN
-          CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
-        ELSE
-          IF(k>Rounds) ksum = ksum-1
-          CALL Info('IterMethod_GCR','Total number of GCR iterations (diverged): '//TRIM(I2S(ksum)))           
-        END IF
-      END IF
       
       DEALLOCATE( R, T1, T2 )
       IF ( m > 1 ) DEALLOCATE( S, V)
