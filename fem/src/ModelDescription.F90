@@ -3467,7 +3467,7 @@ CONTAINS
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
-      FileInd = MODULO( Mesh % SavesDone, FileCycle ) 
+      FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1 
     ELSE
       InitFile = ( Mesh % SavesDone == 0 )
     END IF
@@ -3703,6 +3703,24 @@ CONTAINS
       CLOSE( OutputUnit )
     END IF
 
+
+    IF( FileCycle > 0 .AND. ParEnv % MyPe == 0 ) THEN
+      FName = FileName
+      IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
+        IF ( LEN_TRIM(OutputPath) > 0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(FileName)
+        END IF
+      END IF
+      Fname = TRIM(Fname)//'_last_nc'
+
+      OPEN( OutputUnit,File=FName,STATUS='UNKNOWN' )
+      WRITE( OutputUnit,'("!File created at: ",A)' ) TRIM(DateStr)
+      WRITE( OutputUnit,'(A)') '!Last Saved File Cycle:'
+      WRITE( OutputUnit,'(I0)') FileInd
+      CLOSE( OutputUnit ) 
+    END IF
+      
+       
     CALL Info(Caller,'Done writing results file',Level=5)
     CALL Info(Caller,'-----------------------------------------',Level=5)
 
@@ -3939,15 +3957,35 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
-    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
-
+    
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
       ResList => CurrentModel % Solvers(SolverId) % Values
     ELSE
       ResList => CurrentModel % Simulation
     END IF
+
+    j = ListGetInteger( ResList,'Restart File Cycle',Found )
+    IF( Found ) THEN
+      IF( j == 0 ) THEN
+        IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
+            LEN_TRIM(OutputPath)>0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+        ELSE
+          FName = RestartFile
+        END IF
+        FName = TRIM(FName)//'_last_nc'
+        OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, *, IOSTAT=iostat ) j                
+        CLOSE( RestartUnit)
+        CALL Info(Caller,'Using latest saved data for restart: '//TRIM(I2S(j)),Level=6)
+      END IF
+      RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(j))//'nc'
+    END IF
     
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
     
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
@@ -3979,8 +4017,9 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    ! Check the output directory for the data
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. LEN_TRIM(OutputPath)>0 ) THEN
+    ! Check the output directory for the data    
+    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
+        LEN_TRIM(OutputPath)>0 ) THEN
       FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
     ELSE
       FName = RestartFile

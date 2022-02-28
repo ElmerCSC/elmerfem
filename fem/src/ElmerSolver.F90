@@ -2464,6 +2464,17 @@
          sSliceRatio = ( iSlice + 0.5_dp ) / nSlices - 0.5_dp
          sSliceWeight = 1.0_dp / nSlices 
        END IF
+
+       BLOCK
+         REAL :: z_min, z_max
+         z_min = ListGetConstReal(CurrentModel % Simulation,'Extruded Min Coordinate',GotIt)
+         z_max = ListGetConstReal(CurrentModel % Simulation,'Extruded Max Coordinate',GotIt)
+         IF( GotIt .AND. nSlices > 1) THEN
+           CALL Info(Caller,'Moving parallel slices in z-direction!',Level=6)
+           i = CurrentModel % Mesh % NumberOfNodes 
+           CurrentModel % Mesh % Nodes % z(1:i) = z_min + (z_max-z_min) * sSliceRatio(1)  
+         END IF
+       END BLOCK
      END IF
 
      IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN

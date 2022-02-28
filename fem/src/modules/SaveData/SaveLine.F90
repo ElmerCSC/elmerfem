@@ -272,10 +272,13 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
  
   SkipBoundaryInfo = ListGetLogical(Params,'Skip Boundary Info',GotIt)
 
-  ! Open files for saving
+  ! Open just the directory for saving so tha it is create for sure!
   !------------------------------------------------------------------------------
-  !CALL OpenLineFile()
-
+  CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+  IF( Solver % TimesVisited == 0 ) THEN
+    i = 1; i = ParallelReduction(i)
+  END IF
+  
   ! Search existing boundary to save if any
   !------------------------------------------------------------------------------
   CALL SaveExistingLines()
@@ -591,7 +594,6 @@ CONTAINS
     IF(FileIsOpen) RETURN
     FileIsOpen = .TRUE.    
     
-    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
     IF( ParEnv % PEs > 1 ) THEN

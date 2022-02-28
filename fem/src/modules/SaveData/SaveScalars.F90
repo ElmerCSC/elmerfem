@@ -54,15 +54,15 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd, LineInd, MarkerUnit, i
+  INTEGER :: LineInd, MarkerUnit, i
   LOGICAL :: GotIt, MarkFailed, AvoidFailed
   CHARACTER(LEN=MAX_NAME_LEN) :: Name
   
   
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
-  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
-  IF( NormInd > 0 ) THEN
+  IF ( ListCheckPresent( Solver % Values,'Show Norm Index') .OR. &
+      ListCheckPresent( Solver % Values,'Show Norm Name') ) THEN
     Name = ListGetString( Solver % Values, 'Equation',GotIt)
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
       CALL ListAddString( Solver % Values,'Variable',&
@@ -233,6 +233,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
     
     CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
+    ! Make parallel reduction to ensure that the output directory has been created
+    IF( Solver % TimesVisited == 0 ) THEN
+      i = 1; i = ParallelReduction(i)
+    END IF
+    
     ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
     
     Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
@@ -1506,7 +1511,23 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! For consistency checks one may print out a value imitating ComputeChange
   !------------------------------------------------------------------------------
-  NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
+  NormInd = 0
+  Name = ListGetString( Params,'Show Norm Name',GotIt)
+  IF(GotIt) THEN
+    DO No=1,NoValues
+      IF( TRIM(Name) == TRIM(ValueNames(No)) ) THEN
+        NormInd = No
+        CALL Info(Caller,'Associating scalar '//TRIM(I2S(No))//' to norm!',Level=8)
+        EXIT
+      END IF
+    END DO
+    IF(NormInd == 0 ) THEN
+      CALL Warn(Caller,'Could not find scalar for norm: '//TRIM(Name))
+    END IF
+  ELSE
+    NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
+  END IF
+  
   IF( NormInd > 0 .AND. NormInd <= NoValues ) THEN
     Norm = Values( NormInd )
     Solver % Variable % Values = Values( NormInd )
