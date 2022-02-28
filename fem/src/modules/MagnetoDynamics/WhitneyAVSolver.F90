@@ -198,7 +198,7 @@ INTEGER, POINTER :: ActiveSolvers(:)
 
     Eq =  ListGetString( SolverParams, 'Equation' )
 
-    CALL ListAddIntegerArray( SolverParams, 'Nonlinear Post Solvers', 2, [n+1,n+2] )
+    CALL ListAddIntegerArray( SolverParams, 'Post Solvers', 2, [n+1,n+2] )
 
     CALL ListAddString( Model % Solvers(n+1) % Values, 'Procedure', &
               'MagnetoDynamics HelmholtzProjectorT', CaseConversion=.FALSE. )
@@ -2931,13 +2931,28 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   LOGICAL :: Found
   INTEGER :: i
-  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(ValueList_t), POINTER :: SolverParams, SParams
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
   DO i=1,Model % NumberOfSolvers
     IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
   END DO
-  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+
+  IF (i<=Model % NumberOfSolvers) THEN
+    SParams => Model % Solvers(i) % Values
+    IF( GetLogical( SParams, 'Apply Mortar BCs', Found) ) THEN
+      CALL ListAddLogical( SolverParams, 'Apply Mortar BCs', .TRUE. )
+    END IF
+    IF( GetLogical( SParams, 'Apply Conforming BCs', Found) ) THEN
+      CALL ListAddLogical( SolverParams, 'Apply Conforming BCs', .TRUE. )
+    END IF
+    IF( GetLogical( SParams, 'Mortar BCs Additive', Found) ) THEN
+      CALL ListAddLogical( SolverParams, 'Mortar BCs Additive', .TRUE. )
+    END IF
+    CALL ListAddLogical( SolverParams, 'Projector Skip Edges', .TRUE. )
+
+    CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE HelmholtzProjectorT_Init0
 !------------------------------------------------------------------------------
@@ -2959,7 +2974,7 @@ SUBROUTINE HelmholtzProjectorT_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
 
   SolverParams => GetSolverParams()
-  CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+! CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
   CALL ListAddString( SolverParams, 'Variable', 'P' )
 ! CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
@@ -3231,7 +3246,7 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Found, PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
-  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+! CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
 ! Kernel Variable = String "P"
 ! Potential Variable = String "AV"
