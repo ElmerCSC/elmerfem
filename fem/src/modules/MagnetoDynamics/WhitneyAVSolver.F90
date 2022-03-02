@@ -2940,6 +2940,7 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
 
   IF (i<=Model % NumberOfSolvers) THEN
     SParams => Model % Solvers(i) % Values
+#if 0
     IF( GetLogical( SParams, 'Apply Mortar BCs', Found) ) THEN
       CALL ListAddLogical( SolverParams, 'Apply Mortar BCs', .TRUE. )
     END IF
@@ -2950,6 +2951,7 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
       CALL ListAddLogical( SolverParams, 'Mortar BCs Additive', .TRUE. )
     END IF
     CALL ListAddLogical( SolverParams, 'Projector Skip Edges', .TRUE. )
+#endif
 
     CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   END IF
@@ -3135,6 +3137,8 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
   ! -----------------------------------------
   IF( TransientSimulation ) THEN
     DO i=1,Solver % Mesh % NumberOfNodes
+      IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
+
       j = Solver % Variable % Perm(i)
       IF(j==0) CYCLE
 
@@ -3143,6 +3147,7 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
         CALL Fatal('HelmholtzProjector', &
           'The variable and potential permutations are nonmatching?')
       END IF
+
 
       SolverPtr % Variable % Values(k) = SolverPtr % Variable % Values(k) + &
         (Solver % Variable % Values(j) - Solver % Variable % PrevValues(j,1))/ dt
@@ -3274,12 +3279,15 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
     PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
     SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
 
+    
+    CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
+    CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
+
     IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
       CALL Warn("RemoveKernelComponent_Init0", &
            "Quadratic Approximation requested without Use Piola Transform " &
            //"Setting Use Piola Transform = True.")
       PiolaVersion = .TRUE.
-      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
     END IF
 
     IF (SecondOrder) THEN
@@ -3467,6 +3475,8 @@ SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
   n = SIZE(Solver % Variable % Perm(:))
   IF (n ==  SIZE(SolverPtr % Variable % Perm(:))) THEN
     DO i=Solver % Mesh % NumberOfNodes+1,n
+      IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
+
       j = Solver % Variable % Perm(i)
       IF (j<=0) CYCLE
 
