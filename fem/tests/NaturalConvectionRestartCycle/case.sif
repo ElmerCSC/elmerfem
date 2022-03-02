@@ -36,10 +36,11 @@ Simulation
 !  Output File = case.result
 !  Binary Output = Logical True
 
-  Restart File = ../init_asc.result2
+  Restart File = init_asc.result
 !  Restart File = ../init_bin.result
 !  Restart File = ../old.result
-  Restart Position = 0
+!  Restart Position = 0
+  Restart File Cycle = Integer 0
 
 ! This can prohibit creation of variables
 !  Restart Create Variables = False

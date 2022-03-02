@@ -1818,7 +1818,7 @@ CONTAINS
            CALL Warn(Caller,'Rotational and normal projectors should only work with N-T coordinates!')
          END IF
        ELSE
-         CALL Fatal(Caller,'Projector must be current either flat, plane, cylinder or rotational!')
+         CALL Fatal(Caller,'Projector must be current either flat, plane, cylindrical or rotational!')
        END IF
       
 
@@ -2154,8 +2154,8 @@ CONTAINS
          END IF
        END DO
 
-       PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
-       PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
+       !PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
+       !PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
                      
      END SUBROUTINE PickLagrangeMultiplier
 
@@ -3192,8 +3192,8 @@ CONTAINS
            'Contact Depth Offset',Found)
 
        
-       PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
-           Projector % NumberOfRows
+       !PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
+       !    Projector % NumberOfRows
            
 
        
@@ -3284,7 +3284,7 @@ CONTAINS
          CALL Info(Caller,Message,Level=6)
        END IF
 
-       PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
+       !PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
 
 
      END SUBROUTINE NormalContactSet
@@ -13562,7 +13562,7 @@ END FUNCTION SearchNodeL
     IF( ListGetLogical( Params,'Linear System Nullify Guess',GotIt ) ) THEN
       x(1:n) = 0.0_dp
     END IF
-
+    
     Method = ListGetString(Params,'Linear System Solver',GotIt)
 
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN
@@ -13623,7 +13623,6 @@ END FUNCTION SearchNodeL
       CALL VectorValuesRange(pv,SIZE(pv),'x')
     END IF
     
-    
 110 IF( AndersonAcc .AND. AndersonScaled )  THEN
       CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
     END IF
@@ -13649,7 +13648,7 @@ END FUNCTION SearchNodeL
     IF (PRESENT(BulkMatrix)) THEN
       IF (ASSOCIATED(BulkMatrix) ) Aaid=>BulkMatrix
     END IF
-    
+
     NodalLoads => VariableGet( Solver % Mesh % Variables, &
         GetVarName(Solver % Variable) // ' Loads' )
     IF( ASSOCIATED( NodalLoads ) ) THEN
@@ -15425,10 +15424,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
        MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
      END IF
+
+     IF( InfoActive( 20 ) ) THEN
+       CALL VectorValuesRange(MultVar % Values,SIZE(MultVar % Values),'LagrangeMultiplier')       
+     END IF
           
      MultiplierValues => MultVar % Values
 
-     IF (j>SIZE(MultiplierValues)) THEN
+     IF (j > SIZE(MultiplierValues)) THEN
        CALL Info(Caller,'Increasing Lagrange multiplier size to: '//TRIM(I2S(j)),Level=8)
        ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp       
        MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values     
