@@ -7911,7 +7911,7 @@ CONTAINS
     LOGICAL, POINTER, OPTIONAL :: PerFlip(:)
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !----------------------------------------------------------------------
-    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount, doubleusecount
+    INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount, doubleusecount, hitcount
     REAL(KIND=dp) :: x1, y1, z1, x2, y2, z2
     REAL(KIND=dp) :: ss, minss, maxminss
     LOGICAL, ALLOCATABLE :: NodeUsed(:)
@@ -7936,7 +7936,8 @@ CONTAINS
     maxminss = 0.0_dp
     samecount = 0
     doubleusecount = 0
-
+    hitcount = 0
+    
     ALLOCATE( NodeUsed(BMesh2 % NumberOfNodes) )
     NodeUsed = .FALSE.
     
@@ -7977,6 +7978,7 @@ CONTAINS
         doubleusecount = doubleusecount + 1
       ELSE
         NodeUsed(mini) = .TRUE.
+        hitcount = hitcount + 1
       END IF
         
       PerPerm(j1) = BMesh2 % InvPerm(mini)
@@ -7992,8 +7994,10 @@ CONTAINS
       CALL Info(Caller,'Number of nodes are the same: '//TRIM(I2S(samecount)),Level=8)
     END IF
 
+    CALL Info(Caller,'Number of conforming nodes found: '//TRIM(I2S(hitcount)),Level=8)
+
     WRITE(Message,'(A,ES12.4)') 'Maximum minimum deviation in node coords:',SQRT(maxminss)
-    CALL Info(Caller,Message,Level=8)
+    CALL Info(Caller,Message,Level=10)
 
     IF( doubleusecount > 0 ) THEN
       CALL Fatal(Caller,'This is not conforming! Number of nodes used twice: '//TRIM(I2S(doubleusecount)))
@@ -14651,7 +14655,7 @@ CONTAINS
     IF( Plane ) CALL Info('PeriodicPermutation','Enforcing > Plane Projector <',Level=12)
 
     DoNodes = .TRUE.
-    IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) DoNodes = .FALSE.    
+    !IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) DoNodes = .FALSE.    
     IF( ListGetLogical( BC,'Projector Skip Nodes',GotIt) ) DoNodes = .FALSE.
 
     ! We are conservative here since there may be edges in 2D which 
@@ -14667,7 +14671,7 @@ CONTAINS
       END IF
     END IF
         
-    IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) DoEdges = .FALSE.
+    !IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) DoEdges = .FALSE.
     IF( ListGetLogical( BC,'Projector Skip Edges',GotIt) ) DoEdges = .FALSE.
       
     ! Make the two meshes to coincide using rotation, translation scaling.

@@ -619,7 +619,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   END IF
 
   CALL DefaultFinish()
-  
+
   CALL Info('WhitneyAVSolver','All done',Level=8 )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
 
@@ -2940,6 +2940,7 @@ SUBROUTINE HelmholtzProjectorT_Init0(Model, Solver, dt, Transient)
 
   IF (i<=Model % NumberOfSolvers) THEN
     SParams => Model % Solvers(i) % Values
+    CALL ListAddNewInteger( SolverParams,'Mortar BC Master Solver',i)
 #if 0
     IF( GetLogical( SParams, 'Apply Mortar BCs', Found) ) THEN
       CALL ListAddLogical( SolverParams, 'Apply Mortar BCs', .TRUE. )
@@ -3041,16 +3042,18 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp), POINTER :: SaveRHS(:), SOL(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: PotName
 
-  TYPE(Variable_t), POINTER :: v
-
   SAVE Stiff, Force, PotSol, AllocationsDone
+
 !------------------------------------------------------------------------------
+  CALL Info( 'HelmholtzProjector', '--------------------------------------------------',Level=12 )
+  CALL Info( 'HelmholtzProjector', 'Computing fixing potential for the vector potential',Level=12 )
+
   CALL DefaultStart()
 
   dim = CoordinateSystemDimension()
   SolverParams => GetSolverParams()
   Mesh => GetMesh()
-
+  
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   IF (.NOT. AllocationsDone) THEN
@@ -3096,7 +3099,7 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
 
   IF (PiolaVersion) CALL Info('HelmholtzProjector', &
       'Using Piola-transformed finite elements', Level=5)
-
+  
   !-----------------------
   ! System assembly:
   !----------------------
@@ -3137,17 +3140,18 @@ SUBROUTINE HelmholtzProjectorT(Model, Solver, dt, TransientSimulation)
   ! -----------------------------------------
   IF( TransientSimulation ) THEN
     DO i=1,Solver % Mesh % NumberOfNodes
-      IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
+      IF( ASSOCIATED( Solver % Mesh % PeriodicPerm ) ) THEN
+        IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
+      END IF
 
       j = Solver % Variable % Perm(i)
       IF(j==0) CYCLE
 
-      k = SolverPtr % Variable % Perm(i)
+      k = SolverPtr % Variable % Perm(i)        
       IF (k == 0) THEN
         CALL Fatal('HelmholtzProjector', &
           'The variable and potential permutations are nonmatching?')
       END IF
-
 
       SolverPtr % Variable % Values(k) = SolverPtr % Variable % Values(k) + &
         (Solver % Variable % Values(j) - Solver % Variable % PrevValues(j,1))/ dt
@@ -3269,16 +3273,19 @@ SUBROUTINE RemoveKernelComponentT_Init0(Model, Solver, dt, Transient)
   DO i=1,Model % NumberOfSolvers
     IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
   END DO
+  IF(i<=Model % NumberOfSolvers ) THEN
+    CALL ListAddNewInteger( SolverParams,'Mortar BC Master Solver',i)
+  END IF
+    
   AVname = ListGetString( Model % Solvers(i) % Values, 'Variable' )
   
   j = index(AVname, '[')
   IF(j>0) AVname = AVname(1:j-1)
-  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
+  CALL ListAddString( SolverParams, 'Potential Variable', AVName )
 
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
     PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
     SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
-
     
     CALL ListAddLogical(SolverParams, 'Use Piola Transform', PiolaVersion )
     CALL ListAddLogical(SolverParams, 'Quadratic Approximation', SecondOrder )
@@ -3346,7 +3353,6 @@ SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
 
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: Found
-! LOGICAL :: SecondFamily
   LOGICAL :: PiolaVersion, SecondOrder
   LOGICAL :: ConstantBulkMatrix
 
@@ -3358,14 +3364,14 @@ SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
                     SOL(:), F(:)
   REAL(KIND=dp) :: Norm
   CHARACTER(LEN=MAX_NAME_LEN) :: PotName, Name
-
   REAL(KIND=dp), POINTER :: SaveRHS(:)
-
-
   TYPE(Variable_t), POINTER :: v
 
   SAVE Stiff, Force, PhiSol, AllocationsDone
-!------------------------------------------------------------------------------
+
+  CALL Info( 'RemoveKernelComponent', '--------------------------------------------------',Level=12 )
+  CALL Info( 'RemoveKernelComponent', 'Making the vector potential to be divergence free!',Level=12 )
+  
   CALL DefaultStart()
 
   dim = CoordinateSystemDimension()
@@ -3468,15 +3474,16 @@ SUBROUTINE RemoveKernelComponentT(Model, Solver, dt, TransientSimulation)
   CALL DefaultDirichletBCs()
   Norm = DefaultSolve()  
 
-
   !
   ! Finally, redefine the potential variable:
   !
   n = SIZE(Solver % Variable % Perm(:))
   IF (n ==  SIZE(SolverPtr % Variable % Perm(:))) THEN
     DO i=Solver % Mesh % NumberOfNodes+1,n
-      IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
-
+      IF( ASSOCIATED( Solver % Mesh % PeriodicPerm ) ) THEN
+        IF( Solver % Mesh % PeriodicPerm(i) > 0 ) CYCLE
+      END IF
+      
       j = Solver % Variable % Perm(i)
       IF (j<=0) CYCLE
 
