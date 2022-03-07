@@ -1117,18 +1117,20 @@ CONTAINS
         IF( Converged .OR. Diverged) EXIT    
       END DO
 
-100   IF(OutputInterval /= HUGE(OutputInterval)) THEN
-        WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
-      END IF
-      
-      IF( Robust ) THEN
+100   IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,Round
           x = Bestx
+        END IF
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
+              MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
         END IF
       END IF
             
@@ -1851,9 +1853,16 @@ CONTAINS
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,iter
           x = Bestx
+        END IF        
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
+              iter, BestNorm, BestIter, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
+              iter, errorind
         END IF
       END IF
       
