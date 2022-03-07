@@ -1775,10 +1775,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
            ! No losses to add if loss coefficient is not given
            IF( Found ) THEN
+             Coeff = 0.0_dp
+             Coeff2 = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
-               Coeff = s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               Coeff2 = s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
+               Coeff = Coeff + s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
+               Coeff2 = Coeff2 + s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
                ComponentLoss(1,l) = ComponentLoss(1,l) + Coeff
                BodyLoss(1,BodyId) = BodyLoss(1,BodyId) + Coeff 
                ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
