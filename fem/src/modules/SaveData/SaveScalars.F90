@@ -319,14 +319,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   PointIndex => ListGetIntegerArray( Params,'Save Points',GotIt)
   IF ( gotIt ) THEN    
     NoPoints = SIZE(PointIndex)
-    IF( ASSOCIATED( Mesh % Elements(1) % DGIndexes ) ) THEN
-      ALLOCATE( DGIndex(NoPoints) )
-      DO i=1,NoPoints
-        DGIndex(i) = NodeToDGIndex(Mesh,PointIndex(i)) 
-      END DO
-    END IF
   END IF
-  
+
   NoCoordinates = 0
   NoElements = 0
   PointCoordinates => ListGetConstRealArray(Params,'Save Coordinates',gotIt)
@@ -389,6 +383,21 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  n = NoPoints + NoCoordinates
+  IF( n > 0 ) THEN  
+    IF( ASSOCIATED( Mesh % Elements(1) % DGIndexes ) ) THEN
+      ALLOCATE( DGIndex(n) )       
+      DO i=1,n
+        IF( i<= NoPoints ) THEN
+          DGIndex(i) = NodeToDGIndex(Mesh,PointIndex(i))
+        ELSE
+          DGIndex(i) = NodeToDGIndex(Mesh,ClosestIndex(i-NoPoints))
+        END IF
+      END DO
+    END IF
+  END IF
+    
+  
 !------------------------------------------------------------------------------
 
   n = Mesh % MaxElementNodes 
@@ -1014,7 +1023,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
             Ind = Var % Perm(DGIndex(k))
-          ELSE          
+          ELSE
             IF(ASSOCIATED(Var % Perm)) Ind = Var % Perm(l)
           END IF
         END IF
