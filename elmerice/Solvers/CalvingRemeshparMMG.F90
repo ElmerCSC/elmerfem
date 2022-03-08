@@ -69,7 +69,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
   LOGICAL :: Transient
   !--------------------------------------
   TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
-  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(ValueList_t), POINTER :: SolverParams, MeshParams
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
@@ -95,8 +95,8 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
 
   SolverParams => GetSolverParams()
-  SolverName = "CalvingRemeshMMG"
-  Debug=.FALSE.
+  SolverName = "CalvingRemeshParMMG"
+  Debug=.TRUE.
   Mesh => Model % Mesh
   NNodes = Mesh % NumberOfNodes
   NBulk = Mesh % NumberOfBulkElements
@@ -304,7 +304,8 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
   IF(My_Calv_Front>0) THEN
 
     ! assume currently only one calving front
-    my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
+    !my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
+    my_cboss = 0
     nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
     IF(Debug) PRINT *,MyPe,' debug calving boss: ',my_cboss
     ImBoss = MyPE == my_cboss
@@ -875,48 +876,33 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
         CalveVolume = PreCalveVolume - PostCalveVolume
 
         PRINT*, 'CalveVolume', CalveVolume
+      END IF
+    END IF
 
-        !remesh?
-        !! assume no other failures do we remesh after calving
-        ! always remesh firsttime step
-        IF(Time == 1) Remesh=.TRUE.
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-        ! then remesh every nth term
-        IF(INT((Time-1)/remeshtimestep)*remeshtimestep == Time-1) Remesh=.TRUE.
+    PRINT*, ParEnv % MyPE, 'check'
+    !CALL FATAL('mack', 'zack')
 
-        IF(Remesh) THEN
-          CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+    IF(ImBoss) CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
           !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-          CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+    MeshParams => GetMaterial(Model % Mesh % Elements(1))
+    CALL SequentialRemeshParMMG(Model, NewMeshR, NewMeshRR, ImBoss, REdgePairs, &
+              RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
+    IF(ImBoss) THEN
           CALL ReleaseMesh(NewMeshR)
           NewMeshR => NewMeshRR
           NewMeshRR => NULL()
-        END IF
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+        CALL ReleaseMesh(GatheredMesh)
+        ! CALL ReleaseMesh(NewMeshR)
+        GatheredMesh => NewMeshR
+        NewMeshR => NULL()
+        NewMeshRR => NULL()
+    END IF
 
-      ELSE IF (DoAniso) THEN
-         ! remeshing but no calving
-        CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., REdgePairs, RPairCount)
-        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(Model, GatheredMesh, NewMeshR,REdgePairs, RPairCount,NodeFixed=fixed_node, ElemFixed=fixed_elem)
-                !Update parallel info from old mesh nodes (shared node neighbours)
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
-
-      ELSE ! Not DoAniso
-
-        !Update parallel info from old mesh nodes (shared node neighbours)
-        IF (CalvingOccurs) CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
-
-      END IF
-
-      CALL ReleaseMesh(GatheredMesh)
-      ! CALL ReleaseMesh(NewMeshR)
-      GatheredMesh => NewMeshR
-      NewMeshR => NULL()
-      NewMeshRR => NULL()
-   END IF ! ImBoss
 
    !Wait for all partitions to finish
    IF(My_Calv_Front>0) THEN
@@ -965,10 +951,11 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
    ! then do the redistribution
    !-------------------------------
 
-   CALL Zoltan_Interface( Model, GatheredMesh )
+   CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
+   PRINT*, 'check mesh quality'
    CALL CheckMeshQuality(FinalMesh)
 
    FinalMesh % Name = TRIM(Mesh % Name)
