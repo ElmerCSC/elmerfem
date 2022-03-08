@@ -52,7 +52,21 @@ MODULE SParIterComm
 
   IMPLICIT NONE
 
+#ifdef HAVE_PARMMG
+#include "parmmg/libparmmgf.h"
+  INTEGER :: PMMGPARAM_hausd = PMMG_DPARAM_hausd
+  INTEGER :: PMMGPARAM_hmin = PMMG_DPARAM_hmin
+  INTEGER :: PMMGPARAM_hmax = PMMG_DPARAM_hmax
+  INTEGER :: PMMGPARAM_iso = PMMG_IPARAM_iso
+  INTEGER :: PMMGPARAM_hgrad = PMMG_DPARAM_hgrad
+  INTEGER :: PMMGPARAM_angle = PMMG_IPARAM_angle
+  INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
+  INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
+  INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
+  INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
+#else
   INCLUDE "mpif.h"
+#endif
 
   TYPE Buff_t
     REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
