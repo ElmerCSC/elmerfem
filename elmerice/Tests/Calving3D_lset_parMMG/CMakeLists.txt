@@ -2,6 +2,8 @@ IF(HAVE_PARMMG AND HAVE_ZOLTAN)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
   CONFIGURE_FILE(calvingParMMG.sif calvingParMMG.sif COPYONLY)
+  CONFIGURE_FILE(LeftRail.xy LeftRail.xy COPYONLY)
+  CONFIGURE_FILE(RightRail.xy RightRail.xy COPYONLY)
 
   ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG bedrockfunction_3d ./PROG/bedrockfunction_3D.F90)
   ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG DummySolver ./PROG/DummySolver.F90)
