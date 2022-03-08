@@ -84,19 +84,20 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel
+  CHARACTER(*), PARAMETER :: Caller = 'ReynoldsSolver'
 
   SAVE ElementNodes, Viscosity, GapHeight, Velocity, NormalVelocity, &
       Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, PrevElemPressure, &
       AllocationsDone
 
 
-  CALL Info('ReynoldsSolver','---------------------------------------',Level=5)
+  CALL Info(Caller,'---------------------------------------',Level=5)
   IF(TransientSimulation) THEN
-    CALL Info('ReynoldsSolver','Solving the transient Reynolds equation',Level=5)
+    CALL Info(Caller,'Solving the transient Reynolds equation',Level=5)
   ELSE
-    CALL Info('ReynoldsSolver','Solving the steady-state Reynolds equation',Level=5)    
+    CALL Info(Caller,'Solving the steady-state Reynolds equation',Level=5)    
   END IF
-  CALL Info('ReynoldsSolver','---------------------------------------',Level=5)
+  CALL Info(Caller,'---------------------------------------',Level=5)
 
   CALL DefaultStart()
   
@@ -109,7 +110,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF(Solver % Variable % Dofs /= 1) THEN
-    CALL Fatal('ReynoldsSolver','Impossible number of dofs! (should be 1)')    
+    CALL Fatal(Caller,'Impossible number of dofs! (should be 1)')    
   END IF
   Pressure     => Solver % Variable % Values
   PressurePerm => Solver % Variable % Perm
@@ -147,7 +148,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         ElemPressure(N), &
         PrevElemPressure(N), &
         STAT=istat )
-    IF ( istat /= 0 ) CALL FATAL('ReynoldsSolver','Memory allocation error')
+    IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')
 
     AllocationsDone = .TRUE.
   END IF
@@ -159,14 +160,14 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   
   mat_idold = 0
 
-  CALL Info('ReynoldsSolver','-------------------------------------------------',Level=5)
+  CALL Info(Caller,'-------------------------------------------------',Level=5)
 
   DO iter = 1,NoIterations
 
     LinearModel = ( iter == 1 ) .AND. ListGetLogical( Params,'Linear First Iteration',GotIt)
     
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
-    CALL Info('ReynoldsSolver',Message,Level=5)
+    CALL Info(Caller,Message,Level=5)
 
     CALL DefaultInitialize()
 
@@ -193,7 +194,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   END DO
   
   IF( ListGetLogical( Params,'Gap Sensitivity', GotIt ) ) THEN
-    CALL Info('ReynoldsSolver','Computing FilmPressure sentivity to gap height',Level=5)
+    CALL Info(Caller,'Computing FilmPressure sentivity to gap height',Level=5)
 
     CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter', GotIt )
@@ -201,7 +202,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     
     SensVar => VariableGet( Model % Variables,'FilmPressure Gap Sensitivity')
     IF( .NOT. ASSOCIATED( SensVar ) ) THEN
-      CALL Fatal('ReynoldsSolver','> Filmpressure gap sensitivity < should exist!')
+      CALL Fatal(Caller,'> Filmpressure gap sensitivity < should exist!')
     END IF
     SaveVar => Solver % Variable 
     Solver % Variable => SensVar
@@ -223,7 +224,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish() 
 
-  CALL Info('ReynoldsSolver','-------------------------------------------------',Level=5)
+  CALL Info(Caller,'-------------------------------------------------',Level=5)
   
 CONTAINS  
 
@@ -246,7 +247,7 @@ CONTAINS
       Element => GetActiveElement(t)
 
       IF( Element % TYPE % ElementCode > 500 ) THEN
-        CALL Fatal('ReynoldsSolver','This is a reduced dimensional solver for 1D and 2D only!')
+        CALL Fatal(Caller,'This is a reduced dimensional solver for 1D and 2D only!')
       END IF
       
       n  = GetElementNOFNodes()
@@ -330,7 +331,7 @@ CONTAINS
             ViscosityType = Viscosity_Rarefied
             mfp0 = GetCReal(Material,'Mean Free Path')            
           ELSE
-            CALL Warn('ReynoldsSolver','Unknown viscosity model')
+            CALL Warn(Caller,'Unknown viscosity model')
           END IF
         ELSE
           ViscosityType = Viscosity_Newtonian          
@@ -354,7 +355,7 @@ CONTAINS
               HeatRatio = GetCReal( Material, 'Specific Heat Ratio')
               ReferencePressure = GetCReal( Material,'Reference Pressure')                      
             ELSE
-              CALL Warn('ReynoldsSolver','Unknown compressibility model')
+              CALL Warn(Caller,'Unknown compressibility model')
             END IF
           END IF
         END IF
@@ -640,7 +641,7 @@ CONTAINS
         Parent => ELement % BoundaryInfo % Right            
         stat = ASSOCIATED( Parent )
         IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
-        IF ( .NOT. stat )  CALL Fatal( 'ReynoldsSolver', &
+        IF ( .NOT. stat )  CALL Fatal( Caller, &
             'No proper parent element available for specified boundary' )
       END IF
       
@@ -856,6 +857,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Viscosity(:), GapHeight(:), &
       Velocity(:,:), ElemPressure(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, PressureName
+  CHARACTER(*), PARAMETER :: Caller = 'ReynoldsPostprocess'
 
 
   SAVE ElementNodes, Viscosity, Velocity, &
@@ -866,9 +868,9 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 !    Check if version number output is requested
 !------------------------------------------------------------------------------
 
-  CALL Info('ReynoldsPostprocess','--------------------------------------------------',Level=5)
-  CALL Info('ReynoldsPostprocess','Computing postprocessing fields from film pressure',Level=5)
-  CALL Info('ReynoldsPostprocess','--------------------------------------------------',Level=5)
+  CALL Info(Caller,'--------------------------------------------------',Level=5)
+  CALL Info(Caller,'Computing postprocessing fields from film pressure',Level=5)
+  CALL Info(Caller,'--------------------------------------------------',Level=5)
 
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
@@ -878,7 +880,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF(Solver % Variable % Dofs /= 1) THEN
-    CALL Fatal('ReynoldsPostprocess','Impossible number of dofs! (should be 1)')    
+    CALL Fatal(Caller,'Impossible number of dofs! (should be 1)')    
   END IF
 
   PressureName = GetString(Params,'Reynolds Pressure Variable Name',GotIt)
@@ -888,7 +890,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   
   PressureVar => VariableGet( Solver % Mesh % Variables, PressureName)
   IF(.NOT. ASSOCIATED(PressureVar)) THEN
-    CALL Warn('ReynoldsPostprocess','Could not get variable: '//TRIM(PressureName))
+    CALL Warn(Caller,'Could not get variable: '//TRIM(PressureName))
     RETURN
   END IF
 
@@ -916,7 +918,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         ElemPressure(N), &
         STAT=istat )
 
-    IF ( istat /= 0 ) CALL FATAL('ReynoldsPostprocess','Memory allocation error')    
+    IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')    
 
     AllocationsDone = .TRUE.
   END IF 
@@ -945,11 +947,11 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
   SolverVar => Solver % Variable
   IF( .NOT. ASSOCIATED( SolverVar ) ) THEN
-    CALL Fatal('ReynoldsPostprocess','Solver Variable not associated')
+    CALL Fatal(Caller,'Solver Variable not associated')
   END IF
 
 
-  CALL Info('ReynoldsPostprocess','Primary variable name: '//TRIM( Solver % variable % Name) )
+  CALL Info(Caller,'Primary variable name: '//TRIM( Solver % variable % Name) )
 
    
   DO Mode = 1, 3  
@@ -1038,7 +1040,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
               ViscosityType = Viscosity_Rarefied
               mfp0 = GetCReal(Material,'Mean Free Path')            
             ELSE
-              CALL Warn('ReynoldsPostprocess','Unknown viscosity model')
+              CALL Warn(Caller,'Unknown viscosity model')
             END IF
           ELSE
             ViscosityType = Viscosity_Newtonian          
@@ -1062,7 +1064,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
       ! There could be some beriodic BCs hence the BCs
       !-----------------------------------------------
       CALL DefaultDirichletBCs()
-      CALL Info( 'ReynoldsPostprocess', 'Dirichlet conditions done', Level=4 )
+      CALL Info( Caller, 'Dirichlet conditions done', Level=4 )
       
       ! Solve the system and we are done:
       !------------------------------------
@@ -1077,25 +1079,25 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     IF( Mode == 1 ) THEN
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Pressure force ',i,' (N):',Pforce(i)
-        CALL Info('ReynoldsPostprocess',Message,Level=5)
+        CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Pressure force '&
             //TRIM(I2S(i)),Pforce(i))
       END DO
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Sliding force ',i,' (N):',Vforce(i)
-        CALL Info('ReynoldsPostprocess',Message,Level=5)
+        CALL Info(Caller,Message,Level=5)
         CALL ListAddConstReal( Model % Simulation,'res: Sliding force '&
             //TRIM(I2S(i)),Vforce(i))
       END DO
       TotForce = SQRT( SUM((Pforce + Vforce)**2) )
       WRITE(Message,'(A,T35,ES15.4)') 'Reynolds force (N): ',TotForce
-      CALL Info('ReynoldsPostprocess',Message,Level=5)
+      CALL Info(Caller,Message,Level=5)
       CALL ListAddConstReal( Model % Simulation,'res: Reynolds force',TotForce)
 
       IF( CalculateMoment ) THEN
         DO i=1,3
           WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Reynolds moment ',i,' (Nm):',Moment(i)
-          CALL Info('ReynoldsPostprocess',Message,Level=5)
+          CALL Info(Caller,Message,Level=5)
           CALL ListAddConstReal( Model % Simulation,'res: Reynolds moment '&
               //TRIM(I2S(i)),Moment(i))
         END DO
@@ -1108,11 +1110,11 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     ELSE
       HeatTotal = HeatPres + HeatSlide
       WRITE(Message,'(A,T35,ES15.4)') 'Pressure heating (W): ',HeatPres
-      CALL Info('ReynoldsPostprocess',Message,Level=5)
+      CALL Info(Caller,Message,Level=5)
       WRITE(Message,'(A,T35,ES15.4)') 'Sliding heating (W): ',HeatSlide
-      CALL Info('ReynoldsPostprocess',Message,Level=5)
+      CALL Info(Caller,Message,Level=5)
       WRITE(Message,'(A,T35,ES15.4)') 'Reynolds heating (W): ',HeatTotal
-      CALL Info('ReynoldsPostprocess',Message,Level=5)
+      CALL Info(Caller,Message,Level=5)
       CALL ListAddConstReal( Model % Simulation,'res: Reynolds heating',HeatTotal)
     END IF
 
@@ -1315,6 +1317,8 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Found, Calculate
     INTEGER :: Dim,GivenDim,dofs
+    CHARACTER(*), PARAMETER :: Caller = 'ReynoldsPostprocess_init'
+
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
     Dim = CoordinateSystemDimension()
@@ -1326,7 +1330,7 @@ CONTAINS
       CALL ListAddString( Params,'Variable', &
           'FilmPressure Heating' )
     ELSE IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
-      CALL Info('ReynoldsPostprocess_init','Defaulting field name to: ReynoldsPost')
+      CALL Info(Caller,'Defaulting field name to: ReynoldsPost')
       CALL ListAddString( Params,'Variable', &
           '-nooutput ReynoldsPost' )      
     END IF
@@ -1343,7 +1347,7 @@ CONTAINS
       ELSE
         dofs = 3
       END IF
-      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Force with '&
+      CALL Info(Caller,'Creating FilmPressure Force with '&
           //TRIM(I2S(dofs))//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
           '-dofs '//TRIM(I2S(dofs))//' FilmPressure Force' )
@@ -1360,7 +1364,7 @@ CONTAINS
       ELSE
         dofs = 3
       END IF
-      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Flux with '&
+      CALL Info(Caller,'Creating FilmPressure Flux with '&
           //TRIM(I2S(dofs))//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
           '-dofs '//TRIM(I2S(dofs))//' FilmPressure Flux' )
