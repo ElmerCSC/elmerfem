@@ -60,7 +60,7 @@ MMG5_DATA_PTR_T :: mmgLs
 #endif
 
 #ifdef HAVE_PARMMG
-!#include "parmmg/libparmmgf.h"
+#include "parmmg/libparmmgtypesf.h"
 #endif
 
 #ifdef HAVE_PARMMG
@@ -1214,87 +1214,138 @@ END SUBROUTINE RemeshMMG3D
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
 
   TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
-  TYPE(ValueList_t), POINTER, OPTIONAL :: Params
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Boss
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
+  LOGICAL :: Success
   !-----------
   TYPE(Mesh_t), POINTER :: WorkMesh
   TYPE(ValueList_t), POINTER :: FuncParams, Material
+  TYPE(Variable_t), POINTER :: TimeVar
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
-  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL()
-  REAL(KIND=dp) :: hsiz(3)
+  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:),hminarray(:),hausdarray(:)
+  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL(), WorkArray(:,:) => NULL()
+  REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd,RemeshMinQuality,Quality
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
-       nBCs,NodeNum(1),hmin,hmax,hgrad,hausd
-  LOGICAL :: Debug, Parallel, AnisoFlag
+       nBCs,NodeNum(1), MaxRemeshIter, mmgloops, &
+       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter, Time
+  INTEGER, ALLOCATABLE :: TetraQuality(:)
+  LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
+       premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
 
-  SAVE :: WorkReal
+  SAVE :: WorkReal,WorkArray
 
 #ifdef HAVE_PARMMG
 
   Debug = .TRUE.
   Parallel = ParEnv % PEs > 1
-  FuncName = "RemeshParMMG3D"
+  FuncName = "RemeshSeqParMMG3D"
 
-  !Optionally pass valuelist, by default use the Simulation section
-  IF(PRESENT(Params)) THEN
-    FuncParams => Params
-  ELSE
-    FuncParams => GetMaterial(InMesh % Elements(1)) !TODO, this is not generalised
-  END IF
+  TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
+  Time = INT(TimeVar % Values(1))
+
+  ! params must be provided as not a global mesh
+  FuncParams => Params
 
   !Get parameters from valuelist
   !hausd, hmin, hmax, hgrad, anisoflag, the metric
   !Scalar, vector, tensor metric?
 
-  hmin = ListGetInteger(FuncParams, "RemeshParMMG3D Hmin",  Default=20)
-  hmax = ListGetInteger(FuncParams, "RemeshParMMG3D Hmax",  Default=4000)
-  hgrad = ListGetInteger(FuncParams,"RemeshParMMG3D Hgrad", Default=2)
-  hausd = ListGetInteger(FuncParams, "RemeshParMMG3D Hausd",Default=20)
-  AnisoFlag = ListGetLogical(FuncParams, "RemeshParMMG3D Anisotropic", Default=.TRUE.)
+  WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
+  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  MaxRemeshIter= SIZE(WorkArray(:,1))
+  ALLOCATE(hminarray(MaxRemeshIter))
+  hminarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
+  hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  Default=4000.0_dp)
+  hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", Default=0.5_dp)
+  WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
+  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(FuncName, 'The number of hmin options &
+            must equal the number of hausd options')
+  ALLOCATE(hausdarray(MaxRemeshIter))
+  hausdarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
+  RemeshMinQuality = ListGetConstReal(FuncParams, "RemeshMMG3D Min Quality",Default=0.0001_dp)
+  AnisoFlag = ListGetLogical(FuncParams, "RemeshMMG3D Anisotropic", Default=.TRUE.)
+  SaveMMGMeshes = ListGetLogical(FuncParams,"Save RemeshMMG3D Meshes", Default=.FALSE.)
+  SaveMMGSols = ListGetLogical(FuncParams,"Save RemeshMMG3D Sols", Default=.FALSE.)
+  IF(SaveMMGMeshes) THEN
+    premmg_meshfile = ListGetString(FuncParams, "Pre RemeshMMG3D Mesh Name", UnfoundFatal = .TRUE.)
+    mmg_meshfile = ListGetString(FuncParams, "RemeshMMG3D Output Mesh Name", UnfoundFatal = .TRUE.)
+  END IF
+  IF(SaveMMGSols) THEN
+    premmg_solfile = ListGetString(FuncParams, "Pre RemeshMMG3D Sol Name", UnfoundFatal = .TRUE.)
+    mmg_solfile = ListGetString(FuncParams, "RemeshMMG3D Output Sol Name", UnfoundFatal = .TRUE.)
+  END IF
 
-  NNodes = InMesh % NumberOfNodes
-  NBulk = InMesh % NumberOfBulkElements
-  NBdry = InMesh % NumberOfBoundaryElements
 
-  IF(AnisoFlag) THEN
+  IF(Boss) THEN
+    NNodes = InMesh % NumberOfNodes
+    NBulk = InMesh % NumberOfBulkElements
+    NBdry = InMesh % NumberOfBoundaryElements
 
-    WorkMesh => Model % Mesh
-    Model % Mesh => InMesh
+    IF(AnisoFlag) THEN
 
-    SolType = MMG5_Tensor
-    !Upper triangle of symmetric tensor: 11,12,13,22,23,33
-    ALLOCATE(Metric(NNodes,6))
-    Metric = 0.0
-    DO i=1,NNodes
-      NodeNum = i
+      WorkMesh => Model % Mesh
+      Model % Mesh => InMesh
 
-      CALL ListGetRealArray(FuncParams,"RemeshParMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
+      SolType = MMG5_Tensor
+      !Upper triangle of symmetric tensor: 11,12,13,22,23,33
+      ALLOCATE(Metric(NNodes,6))
+      Metric = 0.0
+      DO i=1,NNodes
+        NodeNum = i
 
-      !Metric = 1.0/(edge_length**2)
-      Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
-      Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
-      Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
+        CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
+
+        !Metric = 1.0/(edge_length**2)
+        Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
+        Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
+        Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
+
+      END DO
+
+      Model % Mesh => WorkMesh
+      WorkMesh => NULL()
+
+    ELSE
+
+      SolType = MMG5_Scalar
+      ALLOCATE(Metric(NNodes, 1))
+      DO i=1,NNodes
+        NodeNum = i
+        Metric(i,:) = ListGetReal(FuncParams,"RemeshMMG3D Target Length", 1, NodeNum, UnfoundFatal=.TRUE.)
+      END DO
+
+    END IF
+
+    body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
+    nBCs = CurrentModel % NumberOfBCs
+    DO i=1,InMesh % NumberOfBulkElements
+      InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
     END DO
 
-    Model % Mesh => WorkMesh
-    WorkMesh => NULL()
 
-  ELSE
+    mmgloops=0
+    Success=.TRUE.
 
-    SolType = MMG5_Scalar
-    ALLOCATE(Metric(NNodes, 1))
-    DO i=1,NNodes
-      NodeNum = i
-      Metric(i,:) = ListGetReal(FuncParams,"RemeshParMMG3D Target Length", 1, NodeNum, UnfoundFatal=.TRUE.)
-    END DO
+10 CONTINUE
+
+    mmgloops = mmgloops+1
+    hmin = hminarray(mmgloops)
+    Hausd = hausdarray(mmgloops)
+
+    WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
+    CALL INFO(FuncName, Message)
 
   END IF
 
@@ -1311,144 +1362,326 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Node
   ! Model % NumberOfBCs + 1, then afterwards we
   ! delete all the extra BC elems & revert the bodyID
   !----------------------------------
-  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-  nBCs = CurrentModel % NumberOfBCs
-  DO i=1,InMesh % NumberOfBulkElements
-    InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
-  END DO
+  PRINT*, 'Initiating parmmg mesh', 'My PE', ParEnv % MyPE
 
-  !CALL PMMG_Init_parMesh(PMMG_ARG_start, &
-  !    PMMG_ARG_ppParMesh,pmmgMesh, PMMG_ARG_pMesh,PMMG_ARG_pMet, &
-  !    PMMG_ARG_dim,3,PMMG_ARG_MPIComm,MPI_COMM_WORLD, &
-  !    PMMG_ARG_end)
+  CALL PMMG_Init_parMesh(PMMG_ARG_start, &
+      PMMG_ARG_ppParMesh,pmmgMesh, PMMG_ARG_pMesh,PMMG_ARG_pMet, &
+      PMMG_ARG_dim,%val(3),PMMG_ARG_MPIComm,%val(ELMER_COMM_WORLD), &
+      PMMG_ARG_end)
 
-  CALL PMMG_Init_parameters(pmmgMesh, MPI_COMM_WORLD)
-
-  IF (Present(PairCount)) THEN
-    CALL SET_MMG3D_MESH(InMesh,Parallel,EdgePairs,PairCount)
-  ELSE
-    CALL SET_MMG3D_MESH(InMesh,Parallel)
-  END IF
-
-  !Set the metric values at nodes
-  CALL PMMG_Set_MetSize(pmmgMesh, MMG5_Vertex, NNodes, SolType,ierr)
-  IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set solution size.")
-
-  DO i=1,NNodes
-    IF(AnisoFlag) THEN
-      IF(Debug) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
-      CALL PMMG_Set_TensorMet(pmmgMesh,Metric(i,1),Metric(i,2),Metric(i,3),&
-           Metric(i,4),Metric(i,5),Metric(i,6),i,ierr)
-      IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set tensor solution at vertex")
+  IF(Boss) THEN
+    PRINT*, 'Setting mesh ....'
+    IF (Present(PairCount)) THEN
+      CALL SET_ParMMG_MESH(InMesh,Parallel,EdgePairs,PairCount)
     ELSE
-      CALL PMMG_Set_ScalarMet(pmmgMesh,Metric(i,1),i,ierr)
-      IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
+      CALL SET_ParMMG_MESH(InMesh,Parallel)
     END IF
-  END DO
+    PRINT*, 'Finished setting mesh ....', pmmgMesh
 
-  IF(ParEnv % MyPE == 0) THEN
-    PRINT *,ParEnv % MyPE,' hmin: ',hmin
-    PRINT *,ParEnv % MyPE,' hmax: ',hmax
-    PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
-    PRINT *,ParEnv % MyPE,' hausd: ',hausd
+    PRINT*, 'Setting met size', pmmgMesh
+    !Set the metric values at nodes
+    CALL PMMG_Set_MetSize(pmmgMesh, MMG5_Vertex, NNodes, SolType,ierr)
+    IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set solution size.")
+
+    PRINT*, 'Set met size', pmmgMesh
+
+    DO i=1,NNodes
+      IF(AnisoFlag) THEN
+        IF(Debug) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
+        CALL PMMG_Set_TensorMet(pmmgMesh,Metric(i,1),Metric(i,2),Metric(i,3),&
+            Metric(i,4),Metric(i,5),Metric(i,6),i,ierr)
+        IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set tensor solution at vertex")
+      ELSE
+        CALL PMMG_Set_ScalarMet(pmmgMesh,Metric(i,1),i,ierr)
+        IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
+      END IF
+    END DO
   END IF
 
   !Turn on debug (1)
-  !CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_debug, &
-  !1,ierr)
+  CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_debug, &
+       1,ierr)
    
-  !CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hmin,&
-  !     hmin,ierr)
-  !CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hmax,&
-  !     hmax,ierr)
-  !CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hausd,&
-  !     hausd,ierr)
-  !CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgrad,&
-  !     hgrad,ierr)
-  
-  ! pmmg currently doesn't allow surface modifications
+  CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hmin,&
+       hmin,ierr)
+  CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hmax,&
+       hmax,ierr)
+  CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hausd,&
+       hausd,ierr)
+  CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgrad,&
+       hgrad,ierr)
   ! allow surface modifications
-  !CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosurf,&
-  !     0,ierr)
+  CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_nosurf,&
+       0,ierr)
 
   !Turn off sharp angle detection (0)   
-  !CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle, &
-  !     0,ierr)
+  CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle, &
+       0,ierr)
   !Option to set angle detection threshold:
   !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
   !      85.0_dp,ierr)
 
-
-  !Take care of fixed nodes/elements if requested
-  IF(PRESENT(NodeFixed)) THEN
-    DO i=1,NNodes
-      IF(NodeFixed(i)) THEN
-        CALL PMMG_SET_REQUIREDVERTEX(pmmgMesh,i,ierr)
-      END IF
-    END DO
-  END IF
-
-  IF(PRESENT(ElemFixed)) THEN
-    DO i=1,NBulk + NBdry
-      IF(ElemFixed(i)) THEN
-        IF(i <= NBulk) THEN
-          CALL PMMG_SET_REQUIREDTETRAHEDRON(pmmgMesh,i,ierr)
-        ELSE
-          CALL PMMG_SET_REQUIREDTRIANGLE(pmmgMesh,i-NBulk,ierr)
+  IF(Boss) THEN
+    !Take care of fixed nodes/elements if requested
+    IF(PRESENT(NodeFixed)) THEN
+      DO i=1,NNodes
+        IF(NodeFixed(i)) THEN
+          CALL PMMG_SET_REQUIREDVERTEX(pmmgMesh,i,ierr)
         END IF
-      END IF
-    END DO
+      END DO
+    END IF
+
+    IF(PRESENT(ElemFixed)) THEN
+      DO i=1,NBulk + NBdry
+        IF(ElemFixed(i)) THEN
+          IF(i <= NBulk) THEN
+            CALL PMMG_SET_REQUIREDTETRAHEDRON(pmmgMesh,i,ierr)
+          ELSE
+            CALL PMMG_SET_REQUIREDTRIANGLE(pmmgMesh,i-NBulk,ierr)
+          END IF
+        END IF
+      END DO
+    END IF
+
+    IF(SaveMMGMeshes) THEN
+      WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+      CALL PMMG_SaveMesh_Centralized(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+    END IF
+    IF(SaveMMGSols) THEN
+      WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+      CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
+    END IF
+    IF (DEBUG) PRINT *,'--**-- SET PMMG3D PARAMETERS '
+    ! CALL SET_MMG3D_PARAMETERS(SolverParams)
   END IF
 
-  CALL PMMG_SaveMesh_Centralized(pmmgMesh,"PMMG3D_preremesh.mesh",LEN(TRIM("PMMG3D_preremesh.mesh")),ierr)
-  CALL PMMG_SaveMet_Centralized(pmmgMesh,"PMMG3D_preremesh.sol",LEN(TRIM("PMMG3D_preremesh.sol")),ierr)
-  IF (DEBUG) PRINT *,'--**-- SET PMMG3D PARAMETERS '
-  ! CALL SET_MMG3D_PARAMETERS(SolverParams)
-
+  CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
   CALL PMMG_parmmglib_centralized(pmmgMesh,ierr)
-  !IF ( ierr == PMMG_STRONGFAILURE ) THEN
-  !  PRINT*,"BAD ENDING OF PMMGLIB: UNABLE TO SAVE MESH"
-  !  STOP PMMG_STRONGFAILURE
-  !ELSE IF ( ierr == PMMG_LOWFAILURE ) THEN
-  !  PRINT*,"BAD ENDING OF PMMGLIB"
-  !ENDIF
+  IF ( ierr == PMMG_STRONGFAILURE .OR. ierr == PMMG_LOWFAILURE ) THEN
+    PRINT*,"BAD ENDING OF PMMGLIB: UNABLE TO SAVE MESH"
+    !! Release mmg mesh
+    CALL PMMG_Free_all ( PMMG_ARG_start,     &
+        PMMG_ARG_ppParMesh,pmmgMesh,         &
+        PMMG_ARG_end)
+    WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
+    CALL WARN(FuncName, Message)
+    IF(mmgloops==MaxRemeshIter) THEN
+      Success=.FALSE.
+      GO TO 20
+    ELSE
+      GO TO 10
+    END IF
+    !STOP MMG5_STRONGFAILURE
+  ENDIF
+
   IF (DEBUG) PRINT *,'--**-- PMMG_parmmglib_centralized DONE'
 
-  CALL PMMG_SaveMesh_Centralized(pmmgMesh,"PMMG_remesh.mesh",LEN(TRIM("PMMG_remesh.mesh")),ierr)
-  CALL PMMG_SaveMet_Centralized(pmmgMesh,"PMMG_remesh.sol",LEN(TRIM("PMMG_remesh.sol")),ierr)
+  IF(Boss) THEN
+    IF(SaveMMGMeshes) THEN
+      WRITE(MeshName, '(A,i0,A)') TRIM(mmg_meshfile), time, '.mesh'
+      CALL PMMG_SaveMesh_Centralized(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+    END IF
+    IF(SaveMMGSols) THEN
+      WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
+      CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
+    END IF
 
-  !! GET THE NEW MESH
-  CALL GET_ParMMG_MESH(OutMesh,Parallel)
+    CALL PMMG_Get_meshSize(pmmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 
+    !! GET THE NEW MESH
+    PRINT*, 'Recovering mesh'
+    CALL GET_ParMMG_MESH(OutMesh,Parallel)
+  END IF
+
+  PRINT*, 'Releasing mesh'
   !! Release mmg mesh
-  !CALL PMMG_Free_all ( PMMG_ARG_start,     &
-  !     PMMG_ARG_ppParMesh,pmmgMesh,         &
-  !     PMMG_ARG_end);
+  CALL PMMG_Free_all ( PMMG_ARG_start,     &
+       PMMG_ARG_ppParMesh,pmmgMesh,         &
+       PMMG_ARG_end)
 
   NBulk = OutMesh % NumberOfBulkElements
   NBdry = OutMesh % NumberOfBoundaryElements
 
-  !Reset the BodyIDs (see above)
-  DO i=1,NBulk
-    OutMesh % Elements(i) % BodyID = OutMesh % Elements(i) % BodyID - body_offset
-  END DO
+  IF(Boss) THEN
+    !Reset the BodyIDs (see above)
+    DO i=1,NBulk
+      OutMesh % Elements(i) % BodyID = OutMesh % Elements(i) % BodyID - body_offset
+    END DO
 
-  !And delete the unneeded BC elems
-  ALLOCATE(RmElement(NBulk+NBdry))
-  RmElement = .FALSE.
-  DO i=NBulk+1,NBulk+NBdry
-    Element => OutMesh % Elements(i)
-    IF(Element % BoundaryInfo % Constraint > nBCs) THEN
-      RmElement(i) = .TRUE.
+    !And delete the unneeded BC elems
+    ALLOCATE(RmElement(NBulk+NBdry))
+    RmElement = .FALSE.
+    DO i=NBulk+1,NBulk+NBdry
+      Element => OutMesh % Elements(i)
+      IF(Element % BoundaryInfo % Constraint > nBCs) THEN
+        RmElement(i) = .TRUE.
+      END IF
+    END DO
+    CALL CutMesh(OutMesh, RmElem=RmElement)
+  END IF
+
+20 CONTINUE
+
+  IF(Boss) THEN
+    ! if remeshing has failed need to reset body ids
+    IF(.NOT. Success) THEN
+      DO i=1,InMesh % NumberOfBulkElements
+        InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID - body_offset
+      END DO
     END IF
-  END DO
-  CALL CutMesh(OutMesh, RmElem=RmElement)
+  END IF
 
 #else
   CALL Fatal(FuncName, "Remeshing utility PMMG has not been installed")
 #endif
 
 END SUBROUTINE SequentialRemeshParMMG
+
+SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+
+  TYPE(Mesh_t), POINTER :: Mesh
+  LOGICAL :: Parallel
+  INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
+  INTEGER, OPTIONAL :: PairCount
+
+#ifdef HAVE_MMG
+  TYPE(Element_t),POINTER :: Element
+  INTEGER, POINTER :: NodeIndexes(:)
+
+  INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
+  INTEGER, ALLOCATABLE :: NodeRefs(:)
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.TRUE.,Elem202
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_ParMMG_Mesh"
+  IF(CoordinateSystemDimension() /= 3) CALL Fatal("ParMMG","Only works for 3D meshes!")
+
+  ALLOCATE(NodeRefs(6))
+
+  IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
+       "Parallel sim but no ParallelInfo % GlobalDOFs")
+
+  nverts = Mesh % NumberOfNodes
+  ntetras = 0
+  nprisms = 0
+  ntris = 0
+  nquads = 0
+  nedges = 0
+  IF(Present(PairCount)) NEdges= PairCount
+
+  nbulk = Mesh % NumberOfBulkElements
+  nbdry = Mesh % NumberOfBoundaryElements
+
+  !Cycle mesh elements gathering type count
+  DO i=1,nbulk+nbdry
+    Element => Mesh % Elements(i)
+    SELECT CASE(Element % TYPE % ElementCode)
+    CASE(101)
+      Warn101 = .TRUE.
+    CASE(202)
+      Warn202 = .TRUE.
+    CASE(303)
+      NTris = NTris + 1
+    CASE(404)
+      NQuads = NQuads + 1
+    CASE(504)
+      NTetras = NTetras + 1
+    CASE(605)
+      CALL Fatal("MMG3D","can't handle pyramid elements (605)")
+    CASE(706)
+      NPrisms = NPrisms + 1
+    CASE(808)
+      CALL Fatal("MMG3D","can't handle brick/hexahedral elements (808)")
+    CASE DEFAULT
+      PRINT *,'Bad element type: ',Element % TYPE % ElementCode
+      CALL Fatal("MMG3D","Unsupported element type")
+    END SELECT
+  END DO
+
+  IF(Warn101) CALL Warn("MMG3D","101 elements detected - these won't be remeshed")
+  IF(Warn202) CALL Warn("MMG3D","202 elements detected - these won't be remeshed")
+
+  !args: mesh, nvertices, ntetra, nprisms, ntriangless, nquads, nedges
+  CALL PMMG_Set_meshSize(pmmgMesh,nverts,ntetras,nprisms,ntris,nquads,nedges,ierr)
+  PRINT*, 'Set MEsh SIze', ParEnv % MyPE, nverts
+  IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+       'CALL TO MMG3D_Set_meshSize FAILED')
+  IF (DEBUG) PRINT *,'--**-- MMG3D_Set_meshSize DONE'
+
+  ref = 0
+  DO i=1,NVerts
+    ! ref = GDOF + 10 to avoid an input ref of 10 being confused
+    ! with mmg output ref of 10 which occurs on some new nodes
+    ! GDOF = ref - 10
+    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i) + 10
+    !IF(pmmgMesh % myroot == pmmgMesh % info % root) &
+    PRINT*, ParEnv % MyPE, 'add verts', i
+    CALL PMMG_Set_vertex(pmmgMesh, Mesh%Nodes%x(i), &
+         Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
+!         Mesh%Nodes%y(i),Mesh%Nodes%z(i), 0, Mesh % ParallelInfo % GlobalDOFs(i), ierr)
+    !PRINT *,'debug: mesh point: ',Mesh%Nodes%x(i), &
+    !     Mesh%Nodes%y(i),Mesh%Nodes%z(i), i
+
+    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+         'CALL TO MMG3D_Set_vertex FAILED')
+  END DO
+  IF (DEBUG) PRINT *,'--**-- MMG3D_Set_vertex DONE'
+
+  ntetras = 0
+  nprisms = 0
+  ntris = 0
+  nquads = 0
+  nedges = 0
+
+  !Cycle mesh elements, sending them to MMG3D
+  DO i=1,nbulk+nbdry
+    Element => Mesh % Elements(i)
+    NNodes = Element % TYPE % NumberOfNodes
+
+    NodeIndexes => Element % NodeIndexes
+    NodeRefs(1:NNodes) = NodeIndexes(1:NNodes)
+!    NodeRefs(1:NNodes) = Mesh % ParallelInfo % GlobalDOFs(NodeIndexes(1:NNodes))
+
+!    PRINT *,'debug, elem ',i,' noderefs: ',NodeRefs(1:NNodes)
+    SELECT CASE(Element % TYPE % ElementCode)
+    CASE(303)
+      ntris = ntris + 1
+      CALL PMMG_Set_triangle(pmmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
+           Element % BoundaryInfo % Constraint, ntris, ierr)
+    CASE(404)
+      nquads = nquads + 1
+      CALL PMMG_Set_quadrilateral(pmmgMesh,  NodeRefs(1), NodeRefs(2), NodeRefs(3), &
+           NodeRefs(4),  Element % BoundaryInfo % Constraint, nquads,ierr)
+    CASE(504)
+      ntetras = ntetras + 1
+      CALL PMMG_Set_tetrahedron(pmmgMesh,NodeRefs(1), NodeRefs(2), NodeRefs(3), &
+           NodeRefs(4),  Element % BodyID, ntetras,ierr)
+    CASE(706)
+      nprisms = nprisms + 1
+      CALL PMMG_Set_Prism(pmmgMesh, NodeRefs(1), NodeRefs(2), NodeRefs(3), &
+           NodeRefs(4), NodeRefs(5), NodeRefs(6), Element % BodyID, nprisms,ierr)
+    CASE DEFAULT
+    END SELECT
+  END DO
+  IF (DEBUG) PRINT *,'--**-- MMG3D - Set elements DONE'
+
+  !! use element pairs '202' elements
+  Elem202 = (PRESENT(EdgePairs))
+  IF (Elem202) THEN
+    DO i=1, PairCount
+      NEdges = NEdges + 1
+      CALL PMMG_Set_edge(pmmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)
+      CALL PMMG_Set_ridge(pmmgMesh, nedges, ierr)
+      !CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
+    END DO
+  END IF
+
+  IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
+
+#else
+     CALL FATAL('Set_MMG3D_Mesh',&
+        'Remeshing utility MMG3D has not been installed')
+#endif
+
+END SUBROUTINE Set_ParMMG_Mesh
 
 SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
@@ -1468,6 +1701,8 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   INTEGER :: parent,ied
   INTEGER :: i,ii,kk,NoBCs
   LOGICAL :: Found, Debug
+
+  Debug= .TRUE.
 
   !Set up a map of BoundaryInfo % Constraint to % BodyID
   NoBCs = CurrentModel % NumberOfBCs
@@ -1573,7 +1808,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
     CALL AllocateVector(Element % NodeIndexes, 3)
     NodeIndexes => Element % NodeIndexes
-    CALL PMMG_Get_triangle(mmgMesh, &
+    CALL PMMG_Get_triangle(pmmgMesh, &
          NodeIndexes(1), &
          NodeIndexes(2), &
          NodeIndexes(3), &
@@ -1592,18 +1827,21 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     IF(PRESENT(FixedElems)) FixedElems(kk) = required > 0
   END DO
 
-  !kk=NewMesh % NumberOfBulkElements
-  !DO ii=1,NTris
-  !  kk = kk + 1
-  !
-  !  CALL MMG3D_GET_TetFromTria(mmgMesh, &
-  !       ii,parent,ied,ierr)
-  !
-  !  IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
-  !       'CALL TO  MMG3D_Get_TetFromTria FAILED')
-  !  Element => NewMesh % Elements(kk)
-  !  Element % BoundaryInfo % Left => NewMesh % Elements(parent) !TODO - parent ID offset?
-  !END DO
+  IF (DEBUG) PRINT *,'ParMMG_Get_triangle DONE'
+
+  ! currently segfaults as no parmmg routine to recover parent id
+  kk=NewMesh % NumberOfBulkElements
+  DO ii=1,NTris
+    kk = kk + 1
+
+    CALL MMG3D_GET_TetFromTria(pmmgMesh, &
+         ii,parent,ied,ierr)
+
+    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+         'CALL TO  MMG3D_Get_TetFromTria FAILED')
+    Element => NewMesh % Elements(kk)
+    Element % BoundaryInfo % Left => NewMesh % Elements(parent) !TODO - parent ID offset?
+  END DO
 #else
      CALL FATAL('Get_ParMMG_Mesh',&
         'Remeshing utility ParMMG has not been installed')
