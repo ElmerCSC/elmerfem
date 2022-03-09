@@ -3475,15 +3475,18 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
 
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
-        send_size(:), perm(:), neigh(:)
+        send_size(:), perm(:), neigh(:), Replications(:)
   !*********************************************************************
   n = ParEnv % NumOfNeighbours
   IF ( n<= 0 ) RETURN
 
-  oper = 0 ! 0=sum, 1=min, 2=max
+  oper = 0 ! 0=sum, 1=min, 2=max, 3=mean
   IF ( PRESENT(op) ) oper=op
 
   ALLOCATE( neigh(n) )
+
+  ALLOCATE( Replications(SIZE(SourceVec)) )
+  Replications = 1
 
   n = 0
   DO i=1,ParEnv % PEs
@@ -3616,11 +3619,16 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
                SourceVec(Ind) = MIN(SourceVec(Ind),recv_buf(i) % vec(j))
              CASE(2)
                SourceVec(Ind) = MAX(SourceVec(Ind),recv_buf(i) % vec(j))
+             CASE(3)
+               SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
+               Replications(Ind) = Replications(Ind) + 1
              END SELECT
           END IF
        END IF
     END DO
   END DO
+
+  SourceVec = SourceVec / Replications
 
   DO i=1,n
     IF (send_size(i)>0) DEALLOCATE(send_buf(i) % Ind, send_buf(i) % Vec)
