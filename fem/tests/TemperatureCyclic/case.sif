@@ -6,7 +6,7 @@
 
 Header
   CHECK KEYWORDS Warn
-  Mesh DB "." "angle"
+  Mesh DB "." "square"
   Include Path ""
   Results Directory ""
 End
@@ -147,7 +147,7 @@ Boundary Condition 1
   Temperature = 0.0
 End
 
-Solver 1 :: Reference Norm = 7.05000119E-03
-Solver 3 :: Reference Norm = 1.08291301E-02
+Solver 1 :: Reference Norm = 1.43373393E-02
+Solver 3 :: Reference Norm = 1.64456025E-02
 
 !End Of File

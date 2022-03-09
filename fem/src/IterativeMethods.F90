@@ -592,7 +592,7 @@ CONTAINS
 
     ! Variables related to robust mode
     LOGICAL :: Robust 
-    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    INTEGER :: BestIter,BadIterCount,MaxBadIter, RobustStart
     REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
     REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
 
@@ -638,6 +638,7 @@ CONTAINS
       RobustStep = HUTI_ROBUST_STEPSIZE
       RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
       MaxBadIter = HUTI_ROBUST_MAXBADIT
+      RobustStart = HUTI_ROBUST_START
       BestNorm = SQRT(HUGE(BestNorm))
       BadIterCount = 0
       BestIter = 0      
@@ -1094,18 +1095,20 @@ CONTAINS
         END IF
         
         IF( Robust ) THEN
-          IF( errorInd < RobustStep * BestNorm ) THEN
-            BestIter = Round
-            BestNorm = errorInd
-            Bestx = x
-            BadIterCount = 0
-          ELSE
-            BadIterCount = BadIterCount + 1
-          END IF
+          IF (Round>=RobustStart ) THEN
+            IF( errorInd < RobustStep * BestNorm ) THEN
+              BestIter = Round
+              BestNorm = errorInd
+              Bestx = x
+              BadIterCount = 0
+            ELSE
+              BadIterCount = BadIterCount + 1
+            END IF
 
-          IF( BestNorm <  RobustTol .AND. &
-              ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
-            EXIT
+            IF( BestNorm <  RobustTol .AND. &
+                  ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
+              EXIT
+            END IF
           END IF
         END IF
                
@@ -1114,18 +1117,20 @@ CONTAINS
         IF( Converged .OR. Diverged) EXIT    
       END DO
 
-100   IF(OutputInterval /= HUGE(OutputInterval)) THEN
-        WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
-      END IF
-      
-      IF( Robust ) THEN
+100   IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,Round
           x = Bestx
+        END IF
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
+              MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
         END IF
       END IF
             
@@ -1252,7 +1257,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,ksum=0
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
       REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
@@ -1309,7 +1314,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar,pcondlsubr )
+         CALL C_lpcond( T1, r, ipar, pcondlsubr )
          CALL C_matvec( T1, T2, ipar, matvecsubr )
 
          !--------------------------------------------------------------
@@ -1403,17 +1408,27 @@ CONTAINS
          ! the iterated residual:
          !-----------------------------------------------------------------
          IF (Converged ) THEN
-            CALL C_matvec( x, trueres, ipar, matvecsubr )
-            trueres(1:n) = b(1:n) - trueres(1:n)
-            TrueResNorm = normfun(n, trueres, 1)
-            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
-            IF ( NormErr > 1.0d-1 ) THEN
-               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
-               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
-               CALL Info('WARNING', Message, Level=2)
-               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
-               CALL Info('WARNING', Message, Level=2)   
-            END IF
+           CALL C_matvec( x, trueres, ipar, matvecsubr )
+           trueres(1:n) = b(1:n) - trueres(1:n)
+           TrueResNorm = normfun(n, trueres, 1)
+           NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
+           
+           IF ( NormErr > 1.0d-1 ) THEN
+             CALL Warn('IterMethod_GCR','Iterated GCR solution may not be accurate')
+             i = 4
+           ELSE
+             i = 8
+           END IF
+           WRITE( Message,'(A,I0,A,ES12.3)') 'Iterated residual norm after ',k,' iters:', rnorm
+           CALL Info('IterMethod_GCR', Message, Level=i)
+           WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
+           CALL Info('IterMethod_GCR', Message, Level=i)            
+
+           IF( InfoActive(20) ) THEN
+             ksum = ksum + k
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+           END IF
+           
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
@@ -1605,7 +1620,6 @@ CONTAINS
 
       ! Define P(n,s) and kappa
 #if 1
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(P)
 #else
       ! this is alternative generation of initial basis vectors
@@ -1839,9 +1853,16 @@ CONTAINS
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,iter
           x = Bestx
+        END IF        
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
+              iter, BestNorm, BestIter, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
+              iter, errorind
         END IF
       END IF
       
@@ -2464,7 +2485,6 @@ CONTAINS
       IF ( Converged .OR. Diverged ) RETURN
 
       ! Define P and kappa 
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(Pr)
       CALL RANDOM_NUMBER(Pi)
       P = Pr + (0.,1.)*Pi

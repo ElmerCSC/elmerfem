@@ -17,7 +17,6 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = "case.vtu"
 End
 
 Constants
@@ -74,6 +73,19 @@ Solver 3
   Operator 1 = max
   Show Norm Index = 1
 End 
+
+Solver 4
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True	
+  !
+  ! Use high-order Lagrange interpolation to visualize the solution:
+  !
+  Lagrange Element Degree = Integer 2
+  Save Geometry Ids = True
+End
 
 Material 1
   Name = "Material1"

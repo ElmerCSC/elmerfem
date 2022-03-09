@@ -31,11 +31,11 @@ Run Control
 ! Here are the parameters related to the search method. 
   Optimization Method = String "secant"
   Optimization Tolerance = Real 1.0e-10
-  Initial Step Size = Real 1.0e-3
-  Max Step Size = Real 1.0
+  Initial Stepsize = Real 1.0e-3
+  Max Stepsize = Real 1.0
 ! For this linear case we would find the optimum with one shot.
 ! This would be more useful in nonlinear cases...
-  Step Size Relaxation Factor = Real 0.8
+  Stepsize Relaxation Factor = Real 0.8
 
 ! This is a design task with the goal flx=1.0
 ! So this is not a minimization task, rather a design task.

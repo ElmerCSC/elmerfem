@@ -317,7 +317,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
             'Capacitance calculation requested without any > Capacitance Body <')
       END IF
 
-      nsize = SIZE( Potential )
+      nsize = Mesh % NumberOfNodes
       !$omp parallel shared(nsize, CapBodies) private(istat) default(none)
       ALLOCATE(CapBodyIndex(nsize), &
           Charges(nsize), &

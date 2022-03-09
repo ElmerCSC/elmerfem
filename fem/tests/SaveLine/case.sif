@@ -65,7 +65,7 @@ Solver 2
   Show Norm Index = 1
 
   Polyline Coordinates(2,3) = 0.0 0.0 0.0 1.0 1.0 1.0
-  Polyline Intervals(1) = Integer 20
+  Polyline Divisions(1) = Integer 20
 
   Variable 1 = Temperature
 End

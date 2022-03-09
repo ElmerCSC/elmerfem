@@ -114,7 +114,7 @@
        PrevSolution(:), HC(:), Hwrk(:,:,:),MeshVelocity(:), XX(:), YY(:),ForceHeater(:),&
        RealWork(:,:)
 
-     REAL(KIND=dp), ALLOCATABLE :: vals(:)
+     REAL(KIND=dp), ALLOCATABLE :: vals(:), RadiatorPowers(:)
      REAL(KIND=dp) :: Jx,Jy,Jz,JAbs, Power, MeltPoint, IntHeatSource
 
      INTEGER, ALLOCATABLE, SAVE :: Indexes(:), SaveIndexes(:)
@@ -188,6 +188,8 @@
 !    Newton lineariarization option is needed only when there is radiation.
 !------------------------------------------------------------------------------
      IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
+     IsRadiation = IsRadiation .OR. ListCheckPresentAnyBC( Model,'Radiator BC')
+
      IF( IsRadiation ) THEN
        CALL RadiationFactors( Solver, .FALSE.)
      END IF
@@ -1067,6 +1069,23 @@ END BLOCK
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
+BLOCK
+      REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+      TYPE(ValueList_t), POINTER :: RadList
+      
+      IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+          RadList => SolverParams
+      
+      CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
+      IF(Found) THEN
+        n = SIZE(RadiatorCoords,1)
+        ALLOCATE( RadiatorPowers(n))
+        DO i=1,n
+          RadiatorPowers(i) = GetCReal( RadList, 'Radiator Power '//TRIM(I2S(i)), Found)
+        END DO
+      END IF
+END BLOCK
+
       DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -1090,6 +1109,7 @@ END BLOCK
         HeatFluxBC = GetLogical( BC, 'Heat Flux BC', Found )
         IF ( Found .AND. .NOT. HeatFluxBC ) CYCLE
 
+
         HeatGapBC = ListGetLogical( BC, 'Heat Gap', Found )
         CALL AddHeatFluxBC()
 
@@ -1102,7 +1122,10 @@ END BLOCK
         END IF
 
       END DO   ! Neumann & Newton BCs
+
+      IF( ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers )
 !------------------------------------------------------------------------------
+
 
       IF ( TransientSimulation .AND. ConstantBulk ) CALL AddGlobalTime()
 
@@ -1352,6 +1375,7 @@ CONTAINS
       RadiationFlag = GetString( BC, 'Radiation', Found )
 
       IF ( Found .AND. RadiationFlag /= 'none' ) THEN
+
         NodalEmissivity(1:n) = GetReal(BC, 'Emissivity', Found)
         IF(.NOT. Found) THEN
            NodalEmissivity(1:n) = GetParentMatProp( 'Emissivity' )
@@ -1379,6 +1403,9 @@ CONTAINS
             AText(1:n) = Text
           END IF
         END IF
+
+!       IF (ALLOCATED(Element % BoundaryInfo % Radiators) ) &
+!         Atext(1:n) = Atext(1:n) + SUM(Element % BoundaryInfo % Radiators)
 !------------------------------------------------------------------------------
 !       Add our own contribution to surface temperature (and external
 !       if using linear type iteration or idealized radiation)
@@ -1390,10 +1417,11 @@ CONTAINS
           IF ( .NOT. HeatGapBC .AND. NewtonLinearization ) THEN
              HeatTransferCoeff(j) = Emissivity * 4*Temperature(k)**3 * &
                                StefanBoltzmann
+
              LOAD(j) = Emissivity*(3*Temperature(k)**4+Text**4) * &
                                StefanBoltzmann
           ELSE
-             HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 + &
+             HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 +   &
              Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
                                StefanBoltzmann 
              LOAD(j) = HeatTransferCoeff(j) * Text
@@ -1458,6 +1486,17 @@ CONTAINS
         HeatConductivityIso(1:n) = GetParentMatProp('Heat Conductivity',Element,GotIt)
         IF(.NOT. GotIt) THEN
           CALL Fatal( 'HeatSolver','Could not find > Heat Conductivity < for parent!' )           
+        END IF
+      END IF
+
+
+!------------------------------------------------------------------------------
+!     BC: -k@T/@n = radiative sources
+!------------------------------------------------------------------------------
+
+      IF( ListGetLogical( BC,'Radiator BC', Found ) ) THEN
+        IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+          LOAD(1:n)=LOAD(1:n)+SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
         END IF
       END IF
 

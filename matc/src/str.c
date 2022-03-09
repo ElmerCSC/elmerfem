@@ -82,7 +82,7 @@ VARIABLE *str_sprintf(var) VARIABLE *var;
   }
   else 
   {
-    sprintf(str_pstr, fmt);
+    sprintf(str_pstr, fmt, NULL);
   }
 
   FREEMEM(fmt);

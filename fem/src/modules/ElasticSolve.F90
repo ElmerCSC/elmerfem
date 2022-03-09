@@ -339,7 +339,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
   LOGICAL, ALLOCATABLE :: UmatInitDone(:)
-  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta
+  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
   REAL(KIND=dp) :: RayleighAlpha, RayleighBeta  
   
   CHARACTER(*), PARAMETER :: Caller = 'ElasticSolver'
@@ -394,7 +394,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   CALL Info( Caller, '----------------------------------',Level=5)
   CALL Info( Caller, 'Starting Elasticity Solver', Level=5 )
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
+  
   SolverParams => GetSolverParams()
   Mesh => GetMesh()
   dim = CoordinateSystemDimension()
@@ -404,7 +404,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   IF ( .NOT. ( CoordinateSystem == Cartesian .OR. AxialSymmetry) ) THEN
     CALL Fatal(Caller, 'Unsupported coordinate system')
   END IF
-  
+
   Parallel = ParEnv % PEs > 1
   Scanning = ListGetString(Model % Simulation, 'Simulation Type', GotIt) == 'scanning'
 
@@ -442,6 +442,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        'Displace Mesh', GotIt )
   IF ( .NOT. GotIt ) MeshDisplacementActive = .TRUE.
 
+  ! Sometimes we might want to use this solver to provide also eigenmode or harmonic analysis.
+  ! Then we need to add also the mass even though the system is not transient.
+  IF( TransientSimulation ) THEN
+    NeedMass = .FALSE.
+  ELSE
+    NeedMass = EigenOrHarmonicAnalysis() .OR.  & 
+        getLogical( SolverParams, 'Harmonic Analysis', GotIt ) .OR. &
+        getLogical( SolverParams,'Harmonic Mode',GotIt ) 
+  END IF
+    
+  
   IF ( AllocationsDone .AND. MeshDisplacementActive ) THEN
      CALL DisplaceMesh( Mesh, Displacement, -1, StressPerm, STDOFs, UpdateDirs=dim )
   END IF
@@ -688,7 +699,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   NonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT. GotIt ) NonlinearIter = 1
-  NonlinTol = GetConstReal(SolverParams, 'Nonlinear System Convergence Tolerance')
+  IF( NonlinearIter > 1 ) THEN
+    NonlinTol = GetConstReal(SolverParams, 'Nonlinear System Convergence Tolerance')
+  END IF
   MinNonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Min Iterations', GotIt )
 
@@ -969,6 +982,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         !------------------------------------------------------------------------------
         CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
         !------------------------------------------------------------------------------
+
+        IF( NeedMass ) THEN
+          CALL DefaultUpdateMass( LocalMassMatrix )
+          IF( AnyDamping ) CALL DefaultUpdateDamp( LocalDampMatrix )
+        END IF
+        
+
      END DO
 
      CALL DefaultFinishBulkAssembly()

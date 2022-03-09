@@ -115,6 +115,65 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
+#if 0
+   SUBROUTINE OrderPermByMortars(Mesh,Perm)
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: Perm(:)
+     
+     INTEGER :: SlaveTag, MasterTag, DefaultTag, i,j,k,n
+     INTEGER, ALLOCATABLE :: NodeTag(:)
+     LOGICAL, ALLOCATABLE :: SlaveBC(:), MasterBC(:)
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Found
+     
+     n = CurrentModel % NumberOfBCs
+     ALLOCATE(SlaveBC(n), MasterBC(n) )
+     SlaveBC = .FALSE.; MasterBC = .FALSE.
+
+     DO i=1,CurrentModel % NumberOfBCs
+       j = ListGetInteger( Currentmodel % BCs(i) % Values,'Mortar BC', Found )
+       IF(Found ) THEN
+         SlaveBC(i) = .TRUE.
+         MasterBC(j) = .TRUE.
+       END IF
+     END DO
+
+     IF(.NOT. ANY(SlaveBC)) RETURN
+
+     ! Tags should have values 1,2,3
+     SlaveTag = ListGetInteger( CurrentModel % Solver % Values,'Slave Tag',UnfoundFatal=.TRUE.)
+     MasterTag = ListGetInteger( CurrentModel % Solver % Values,'Master Tag',UnfoundFatal=.TRUE.)     
+     DefaultTag = 6 - SlaveTag - MasterTag
+
+     ALLOCATE( NodeTag( Mesh % NumberOfNodes ) )
+     NodeTag = DefaultTag     
+     
+     DO i=Mesh % NumberOfBulkElements+1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+       Element => Mesh % Elements(i)
+       IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
+       j = Element % BoundaryInfo % Constraint
+       
+       IF(SlaveBC(j)) NodeTag(Element % NodeIndexes) = SlaveTag
+       IF(MasterBC(j)) NodeTag(Element % NodeIndexes) = MasterTag
+     END DO
+     
+     k = 0
+     ! Here we go trough cases 1,2,3
+     DO j=1,3
+       DO i=1, Mesh % NumberOfNodes
+         IF(Perm(i)==0) CYCLE
+         IF(NodeTag(i) == j) THEN
+           k = k + 1
+           Perm(i) = k
+         END IF
+       END DO
+     END DO
+     
+   END SUBROUTINE OrderPermByMortars
+#endif
+
+   
 !-------------------------------------------------------------------------------
 !> Subroutine for reordering variables for bandwidth and/or gaussian elimination
 !> fillin optimization. Also computes node to element connections (which

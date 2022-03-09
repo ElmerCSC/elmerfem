@@ -739,7 +739,7 @@ INCLUDE "mpif.h"
 !
       NCV = ListGetInteger( Solver % Values, 'Eigen System Lanczos Vectors', stat )
       IF ( .NOT. stat ) NCV = MIN( 3*NEIG + 1, pn )
-      NCV = NINT(ParallelReduction(1._dp*NCV,1))
+      NCV = ParallelReduction(NCV,1)
 
       IF ( NCV <=  NEIG ) THEN
          CALL Fatal( 'EigenSolve', & 

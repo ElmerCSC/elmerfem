@@ -243,7 +243,7 @@ Boundary Condition 3
   Level Projector Generic = Logical True
   
 !  Save Projector = Logical True
-!  Level Projector Save Element Index = Integer 1
+!  Projector Save Element Index = Integer 1
 End
 
 Boundary Condition 4

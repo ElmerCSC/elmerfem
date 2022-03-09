@@ -93,7 +93,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
     END SELECT
   END IF
 
-  CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
+  CALL ListAddNewLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
   
   ! Add scalar variable if not present, and get its name
   CALL ListAddNewString(SolverPars,'Potential Variable','mixedpot' )
@@ -115,6 +115,11 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
 
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars), TRIM(VarName))
+
+
+  CALL ListAddNewString( SolverPars,'Element Integration Points',&
+      '-tri 3 -quad 9 -tetra 4 -brick 64')
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_Init0
 !------------------------------------------------------------------------------
@@ -136,14 +141,11 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Element
-
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: Found, InitHandles, SecondFamily
-
   INTEGER :: dim, n, nb, nd, t, istat, active
-
-  REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Mass(:,:), Force(:), Load(:,:)
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Mass(:,:), Force(:)
+  REAL(KIND=dp) :: Norm, Cond
 
 
   SAVE Stiff, Mass, Force, AllocationsDone
@@ -173,6 +175,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   active = GetNOFActive()
   CALL DefaultInitialize()
 
+  InitHandles = .TRUE.
   DO t=1,active
     Element => GetActiveElement(t)
     n  = GetElementNOFNodes() ! Nodes count corresponding to the background mesh
@@ -184,7 +187,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, SecondFamily, &
-        TransientSimulation)
+        TransientSimulation, InitHandles )
 
     IF (TransientSimulation) CALL Default1stOrderTime(Mass, Stiff, Force)  
 
@@ -203,7 +206,9 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     IF (ActiveBoundaryElement()) THEN
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
-      CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
+
+      Cond = SUM(GetReal(GetBC(), GetVarName(Solver % Variable)//' Condition', Found))/n
+      IF(Cond >= 0) CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
     END IF
   END DO
 
@@ -218,7 +223,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, &
-      SecondFamily, NeedMass)
+      SecondFamily, NeedMass, InitHandles )
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils, ONLY : GetTensor
 
@@ -229,24 +234,34 @@ CONTAINS
     INTEGER :: nb  ! The number of elementwise DOFs (for the scalar and flux variables)
     INTEGER :: dim
     LOGICAL :: SecondFamily
-    LOGICAL :: NeedMass    
+    LOGICAL :: NeedMass
+    LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MaxFaceBasisDim = 48
-
-    TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-
-    LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource, Convection
-    LOGICAL :: TensorValuedPar
-
-    INTEGER :: t, i, j, p, q, np
-
-    REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim), MatPar, f
-    REAL(KIND=dp) :: Velo(dim,n), v(dim), tmp(dim)
+    LOGICAL :: Stat, Found
+    INTEGER :: t, i, j, p, q, np, mu_rank
+    REAL(KIND=dp), POINTER :: mu_tensor(:,:)
+    REAL(KIND=dp) :: a, f, v(dim), tmp(dim), mu
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(n), DetJ, s
+    TYPE(ValueHandle_t), SAVE :: SourceField_h, ConvVelo_h, MatPar_h, MatTensor_h
+    
 !------------------------------------------------------------------------------
+    IF(InitHandles ) THEN
+      CALL ListInitElementKeyword( SourceField_h, 'Body Force','Source Field')
+
+      ! The original implementation uses inverse for material parameter, but not for material tensor?
+      ! Hence we need to separate the two!
+      CALL ListInitElementKeyword( MatPar_h,'Material','Material Parameter',DefRValue=1.0_dp)
+      CALL ListInitElementKeyword( MatTensor_h,'Material','Material Tensor')
+      
+      CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
+      InitHandles = .FALSE.
+    END IF
+
+
     CALL GetElementNodes( Nodes )
 
     Stiff = 0.0d0
@@ -258,41 +273,36 @@ CONTAINS
     ! so we need to switch to using a quadrature which would not be used 
     ! otherwise
     !------------------------------------------------------------------------
-    SELECT CASE( GetElementFamily(Element) )
-    CASE(3)
-      IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
-    CASE(4)
-      IP = GaussPointsQuad(9)
-    CASE(5)
-      IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
-    CASE(8)
-      IP = GaussPointsBrick(64)
-    CASE DEFAULT
-      CALL Fatal('MixedPoisson', 'A non-supported element type')
-    END SELECT
-
-    !----------------------------------------------------------------
-    ! A material parameter and source:
-    !----------------------------------------------------------------
-    Material => GetMaterial()
-    mu = GetTensor(Element, n, dim, 'Material Tensor', 're', TensorValuedPar)
-    IF (.NOT. TensorValuedPar) THEN
-      a_parameter(1:n) = GetReal(Material, 'Material Parameter', EvaluateMatPar)
-      IF (.NOT. EvaluateMatPar) MatPar = 1.0_dp
+    IF( .FALSE. ) THEN
+      ! This rule should be ok, but there seems to be two sets of IPs for
+      ! reference element. 
+      IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    ELSE
+      SELECT CASE( GetElementFamily(Element) )
+      CASE(3)
+        IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+      CASE(4)
+        IP = GaussPointsQuad(9)
+      CASE(5)
+        IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+      CASE(8)
+        IP = GaussPointsBrick(64)
+      CASE DEFAULT
+        CALL Fatal('MixedPoisson', 'A non-supported element type')
+      END SELECT
     END IF
 
-    Convection = .FALSE.
-    Velo = 0.0d0
-    DO i=1,dim
-      Velo(i,1:n) = GetReal(Material, &
-          'Convection Velocity '//TRIM(I2S(i)), Found)
-      Convection = Convection .OR. Found
-    END DO
-
-    BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
-        Load(1:n) = GetReal(BodyForce, 'Source Field', EvaluateSource)
-
+#if 0
+    IF( Element % ElementIndex == 2 ) THEN
+      n = IP % n
+      PRINT *,'IP:',Element % TYPE % ElementCode, n
+      PRINT *,'IP u:',IP % u(1:n)
+      PRINT *,'IP v:',IP % v(1:n)
+      PRINT *,'IP w:',IP % w(1:n)
+      PRINT *,'IP s:',IP % s(1:n)
+    END IF
+#endif
+    
     ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
     np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
 
@@ -301,18 +311,6 @@ CONTAINS
           IP % W(t), detF=detJ, Basis=Basis, FBasis=FaceBasis, &
           DivFBasis=DivFaceBasis, BDM=SecondFamily, ApplyPiolaTransform=.TRUE.)
 
-      IF (TensorValuedPar) THEN
-        DO i=1,dim
-          DO j=1,dim
-            K(i,j) = SUM(Basis(1:n) * mu(i,j,1:n))
-          END DO
-        END DO
-      ELSE
-        IF (EvaluateMatPar) MatPar = 1.0_dp/SUM(Basis(1:n) * a_parameter(1:n))
-      END IF
-
-      IF (EvaluateSource) f = SUM(Basis(1:n) * Load(1:n))
-      IF (Convection) v(:) = MATMUL(Velo(:,1:n), Basis(1:n))
 
       s = detJ * IP % s(t)
 
@@ -335,27 +333,54 @@ CONTAINS
       !--------------------------------------------------------------
       ! The contribution from the variation with the flux variable q
       !---------------------------------------------------------------
-      IF (TensorValuedPar) THEN
-        DO p = 1,nd-np-1
-          i = np + p
-          DO q = 1,nd-np-1
-            j = np + q
-            tmp = MATMUL(K,FaceBasis(q,1:dim))
-            Stiff(i,j) = Stiff(i,j) + & 
-                SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
+      mu = ListGetElementReal( MatTensor_h, Basis, Element, Found, GaussPoint = t, &
+          Rdim = mu_rank, Rtensor = mu_tensor)
+      ! Note that if mu is scalar then mu=1/a.
+      IF( Found ) THEN
+        IF( mu_rank == 0 ) THEN
+          DO p = 1,nd-np-1
+            i = np + p
+            DO q = 1,nd-np-1
+              j = np + q
+              Stiff(i,j) = Stiff(i,j) + mu * &
+                  SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s           
+            END DO
           END DO
-        END DO
+        ELSE IF (mu_rank == 1 ) THEN
+          DO p = 1,nd-np-1
+            i = np + p
+            DO q = 1,nd-np-1
+              j = np + q
+              tmp = SUM(mu_tensor(1:dim,1)*FaceBasis(q,1:dim))
+              Stiff(i,j) = Stiff(i,j) + & 
+                  SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
+            END DO
+          END DO
+        ELSE IF (mu_rank == 2 ) THEN
+          DO p = 1,nd-np-1
+            i = np + p
+            DO q = 1,nd-np-1
+              j = np + q
+              tmp = MATMUL(mu_tensor(1:dim,1:dim),FaceBasis(q,1:dim))
+              Stiff(i,j) = Stiff(i,j) + & 
+                  SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
+            END DO
+          END DO
+        END IF
       ELSE
+        ! If this is not given then it is defaulted to one.
+        a = ListGetElementReal( MatPar_h, Basis, Element, Found, GaussPoint = t )      
         DO p = 1,nd-np-1
           i = np + p
           DO q = 1,nd-np-1
             j = np + q
-            Stiff(i,j) = Stiff(i,j) + MatPar * &
+            Stiff(i,j) = Stiff(i,j) + (1.0_dp / a ) * &
                 SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s           
           END DO
         END DO
       END IF
 
+        
       DO p = 1,nd-np-1
         i = np + p
         DO q = nd,nd
@@ -373,7 +398,10 @@ CONTAINS
         END DO
       END DO
 
-      IF (Convection) THEN
+      ! Contribution of convection
+      !-----------------------------------------------------
+      v = ListGetElementReal3D( ConvVelo_h, Basis, Element, Found, GaussPoint = t )      
+      IF ( Found ) THEN
         DO p = nd,nd
           DO q = 1,nd-np-1
             j = np + q
@@ -381,8 +409,11 @@ CONTAINS
           END DO
         END DO
       END IF
-      
-      IF (EvaluateSource) THEN
+
+      ! Contribution of source term
+      !-----------------------------------------------------
+      f = ListGetElementReal( SourceField_h, Basis, Element, Found, GaussPoint = t )      
+      IF ( Found ) THEN
         DO p = nd,nd
           Force(p) = Force(p) - f * 1.0d0 * s 
         END DO
@@ -417,7 +448,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Element_t), POINTER :: Parent, Face
-    TYPE(ValueHandle_t) :: ScalarField
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: ReverseSign(6), stat, AssembleForce, OrientationsMatch
@@ -426,12 +456,13 @@ CONTAINS
     INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4)
     INTEGER :: FDofMap(6,4)
     INTEGER :: OriginalIndices(4)
-    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
+    INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, FDOFs
     INTEGER :: ParentFamily
     REAL(KIND=dp) :: Force(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
     REAL(KIND=dp) :: detJ, s, u, v, w, g
-
-    SAVE ScalarField, Nodes
+    TYPE(ValueHandle_t), SAVE :: ScalarField_h
+ 
+    SAVE Nodes
 !------------------------------------------------------------------------------
     Family = GetElementFamily(Element)
     IF (Family == 1) RETURN
@@ -440,11 +471,11 @@ CONTAINS
     IF (.NOT. ASSOCIATED(BC)) RETURN
 
     IF (InitHandles) THEN
-      CALL ListInitElementKeyword(ScalarField, 'Boundary Condition', &
+      CALL ListInitElementKeyword(ScalarField_h, 'Boundary Condition', &
           'Scalar Field')
       InitHandles = .FALSE.
     END IF
-    IF (ScalarField % NotPresentAnywhere) RETURN
+    IF (ScalarField_h % NotPresentAnywhere) RETURN
 
     ! 
     ! The sign reversion of basis will be checked via the parent element:
@@ -482,9 +513,9 @@ CONTAINS
         !
         FaceMap => GetEdgeMap(GetElementFamily(Parent))
         IF (ReverseSign(ActiveFaceId)) THEN
-          OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
+          OrientationsMatch = ( Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2)) )
         ELSE
-          OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
+          OrientationsMatch = ( Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1)) )
         END IF
 
       CASE(3)
@@ -610,7 +641,7 @@ CONTAINS
       END SELECT
 
       w = IP % s(t) ! NOTE: No need to multiply with DetJ
-      g = ListGetElementReal(ScalarField, Basis, Element, AssembleForce)
+      g = ListGetElementReal(ScalarField_h, Basis, Element, AssembleForce)
 
       IF (AssembleForce) THEN
         DO p = 1,nd-np
@@ -713,74 +744,67 @@ CONTAINS
 
   SUBROUTINE GetFlux( n, nval,vals )
 
-      INTEGER :: n, nval
-      REAL(KIND=dp) :: MASS(n,n), FORCE_x(n), FORCE_y(n), FORCE_z(n), vals(:)
-
-      INTEGER, PARAMETER :: MaxFaceBasisDim = 48
-
-      TYPE(GaussIntegrationPoints_t) :: IP
-      TYPE(Nodes_t), SAVE :: Nodes
-
-      LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource, Convection
-      LOGICAL :: TensorValuedPar
-
-      INTEGER :: t, i, j, p, q, np
-
-      REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim), MatPar, f
-      REAL(KIND=dp) :: Velo(dim,n), v(dim), tmp(dim)
-      REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
-      REAL(KIND=dp) :: Basis(n), DetJ, s
+    INTEGER :: n, nval
+    REAL(KIND=dp) :: vals(:)
+    !------------------------------------------------------------------------   
+    REAL(KIND=dp) :: MASS(n,n), FORCE_x(n), FORCE_y(n), FORCE_z(n)
+    INTEGER, PARAMETER :: MaxFaceBasisDim = 48
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: Stat, Found
+    INTEGER :: t, i, j, p, q, np
+    REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
+    REAL(KIND=dp) :: Basis(n), DetJ, s
 
 
-      !------------------------------------------------------------------------
-      ! The reference element is chosen to be that used for p-approximation,
-      ! so we need to switch to using a quadrature which would not be used 
-      ! otherwise
-      !------------------------------------------------------------------------
-      SELECT CASE( GetElementFamily(Element) )
-      CASE(3)
-        IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
-      CASE(4)
-        IP = GaussPointsQuad(9)
-      CASE(5)
-        IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
-      CASE(8)
-        IP = GaussPointsBrick(64)
-      CASE DEFAULT
-        CALL Fatal('MixedPoisson', 'A non-supported element type')
-      END SELECT
+    !------------------------------------------------------------------------
+    ! The reference element is chosen to be that used for p-approximation,
+    ! so we need to switch to using a quadrature which would not be used 
+    ! otherwise
+    !------------------------------------------------------------------------
+    SELECT CASE( GetElementFamily(Element) )
+    CASE(3)
+      IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+    CASE(4)
+      IP = GaussPointsQuad(9)
+    CASE(5)
+      IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+    CASE(8)
+      IP = GaussPointsBrick(64)
+    CASE DEFAULT
+      CALL Fatal('MixedPoisson', 'A non-supported element type')
+    END SELECT
 
-      CALL GetElementNodes(Nodes)
+    CALL GetElementNodes(Nodes)
 
-      MASS = 0._dp
-      FORCE_x = 0._dp
-      FORCE_y = 0._dp
-      FORCE_z = 0._dp
-      ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
-      np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+    MASS = 0._dp
+    FORCE_x = 0._dp
+    FORCE_y = 0._dp
+    FORCE_z = 0._dp
+    ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
 
-      DO t=1,IP % n
-        stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detF=detJ, Basis=Basis, FBasis=FaceBasis, &
-            DivFBasis=DivFaceBasis, BDM=SecondFamily, ApplyPiolaTransform=.TRUE.)
+    DO t=1,IP % n
+      stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detF=detJ, Basis=Basis, FBasis=FaceBasis, &
+          DivFBasis=DivFaceBasis, BDM=SecondFamily, ApplyPiolaTransform=.TRUE.)
 
-        s = IP % s(t) * DetJ
+      s = IP % s(t) * DetJ
 
-        DO i=1,n
-         DO j=1,n
-           MASS(i,j) = MASS(i,j) + s * Basis(i)*Basis(j)
-         END DO
-         FORCE_x(i) = FORCE_x(i) + s * SUM(FaceBasis(1:nval,1) * vals(1:nval)) * Basis(i)
-         FORCE_y(i) = FORCE_y(i) + s * SUM(FaceBasis(1:nval,2) * vals(1:nval)) * Basis(i)
-         FORCE_z(i) = FORCE_z(i) + s * SUM(FaceBasis(1:nval,3) * vals(1:nval)) * Basis(i)
+      DO i=1,n
+        DO j=1,n
+          MASS(i,j) = MASS(i,j) + s * Basis(i)*Basis(j)
         END DO
+        FORCE_x(i) = FORCE_x(i) + s * SUM(FaceBasis(1:nval,1) * vals(1:nval)) * Basis(i)
+        FORCE_y(i) = FORCE_y(i) + s * SUM(FaceBasis(1:nval,2) * vals(1:nval)) * Basis(i)
+        FORCE_z(i) = FORCE_z(i) + s * SUM(FaceBasis(1:nval,3) * vals(1:nval)) * Basis(i)
       END DO
+    END DO
 
-
-      CALL InvertMatrix(MASS,n)
-      Flux_x(1:n) = MATMUL(MASS, FORCE_x)
-      Flux_y(1:n) = MATMUL(MASS, FORCE_y)
-      Flux_z(1:n) = MATMUL(MASS, FORCE_z)
+    CALL InvertMatrix(MASS,n)
+    Flux_x(1:n) = MATMUL(MASS, FORCE_x)
+    Flux_y(1:n) = MATMUL(MASS, FORCE_y)
+    Flux_z(1:n) = MATMUL(MASS, FORCE_z)
 
   END SUBROUTINE GetFlux
 

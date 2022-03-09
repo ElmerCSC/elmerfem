@@ -1,0 +1,120 @@
+! Test case for radiatior heat sources
+! - without diffuse grey radiation
+! - with open boundary
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "slab"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 250.0
+End
+
+
+Material 1
+   Density = 1.0
+   Heat Conductivity = 1.0
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU
+
+  Nonlinear System Newton After Tolerance = 1.0e-9
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 1
+  NonLinear System Convergence Tolerance = 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Radiator Coordinates(2,3) = Real \
+          0.15 0.15 0.3 \
+          0.85 0.85 0.3
+
+  Radiator Power 1 = Real 1.0e4
+  Radiator Power 2 = Real 2.0e4
+
+  Viewfactor area tolerance   = 0.001
+  Viewfactor factor tolerance = 0.001
+  Viewfactor number Of Rays = 8
+
+!  Optimize Bandwidth = False
+  Calculate Loads = True
+End
+
+
+Solver 2
+  Equation = "SaveTotalFlux"
+  Procedure = "SaveData" "SaveScalars"
+
+  Operator 1 = boundary sum
+  Variable 1 = Temperature Loads
+!  Filename = f.dat
+
+  Show Norm Index = 1 
+End 
+
+
+Equation 1
+  Active Solvers = 1
+End
+
+Boundary Condition 1
+  Name = "sides"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "Bot"
+  Target Boundaries(1) = 2
+  Temperature = 0
+
+  Save Scalars = True
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+  Radiator BC = Logical True
+
+  Radiation Boundary Open = Logical True
+End
+
+
+
+Solver 1 :: Reference Norm = 6.01227251E+02
+Solver 1 :: Reference Norm Tolerance = 1.0e-4
+Solver 2 :: Reference Norm = 6.83046770E+03  ! about 23% absorbed
+Solver 2 :: Reference Norm Tolerance = 1.0e-4

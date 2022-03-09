@@ -1,0 +1,378 @@
+! Test case involving mortar BC's and conforming BC's using the AV solver.
+! The rotational interface is assumed to be always mortars but the radial
+! interfaces may be also conforming. For the case of Piola transformed
+! edge elements we can also deal with skew. Also there is a special BC
+! option to release Dirichlet BCs set for edges of the the rotating BC. 
+!
+! P.R. 14.2.2022
+
+
+$skew=10.0 
+$omega=31.7 
+$phi=0.0
+$t0=0
+
+! Here we can nicely test out different strategies
+$conf=1
+$piola="True"
+$anti="True"
+$tag="a"
+$release="True"
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cylinders"
+  Include Path ""
+  Results Directory "results"
+End
+   
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 1.0
+  Output Intervals = 1
+  Timestep Intervals = 1
+
+  Extruded Mesh Layers = 10
+  Extruded Mesh Slices = Logical True
+  Single Mesh = True
+
+  Extruded Min Coordinate = 0.0
+  Extruded Max Coordinate = 1.0
+  Enforce Parallel = Logical True
+
+  Simulation Timing = Logical True
+End  
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Stator"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Target Bodies(2) = 2 4
+  Name = "Rotor"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "CurrDens"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 1
+End
+
+
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+End
+
+
+Solver 2
+  Equation = "MGDynamics"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Use Elemental CoilCurrent = Logical True
+  Fix Input Current Density = Logical False
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = BiCGStabl
+  BicGStabL Polynomial Degree = 4
+  Idrs Parameter = 6
+  Linear System GCR Restart = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1e-09
+
+  Use Piola Transform = $piola
+  Quadratic Approximation = False
+
+  Optimize Bandwidth = False
+
+  Edge Basis = Logical True
+  Apply Mortar BCs = True
+  Apply Conforming BCs = True
+  Mortar BCs Additive = False
+
+  Export Lagrange Multiplier = True
+End
+
+Solver 3
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+!  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+End
+
+
+Solver 4
+! Settings mainly for timing and verification
+!  Exec Solver = never
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Variable 1 = av
+  Operator 1 = dofs
+  Operator 2 = min
+  Operator 3 = max
+  Operator 4 = norm
+  Operator 5 = cpu time
+  Operator 6 = wall time
+
+!  File Append = Logical True
+
+! Reduce just to one file when parallel
+  Parallel Reduce = Logical True
+  Default Parallel Operator = String max
+  Parallel Operator 1 = String sum
+End 
+
+
+Solver 5
+  Exec Solver = never
+
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = line.dat
+
+! Put all data in the same file
+!  File Append = True
+
+! Number the files [1,2,...] starting from 1st free number
+  Filename Numbering = True
+
+  Coordinate Transformation = String "cartesian to cylindrical"
+  Coordinate Transformation Use Degrees = Logical True
+  Polyline Coordinates(2,3) = 0.99 -360.0 0.5 0.99 360.0 0.5
+End
+
+
+Solver 6
+!  Exec Solver = never
+  Equation = VtuOutput
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_$tag$
+  Vtu Format = True
+  Single Precision = False
+  Save Geometry Ids = True
+  Save Bulk Only = True
+  Vtu Part Collection = Logical True
+End 
+
+
+Solver 7
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-12
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1e-06
+
+  Linear System Abort Not Converged = False
+
+  Coil Closed = Logical False
+  Desired Coil Current = Real 1.0
+  Nonlinear System Consistent Norm = True
+
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = False
+
+  Exec Solver = before timestep 
+End
+
+
+Equation 1
+  Name = "MagFields"
+  Active Solvers(3) = 2 3 6
+End
+
+Equation 2
+  Name = "MagFields and Coil"
+  Active Solvers(4) = 2 3 6 7
+End
+
+
+
+
+Material 1
+  Reluctivity  = Real 1.0
+!  Electric Conductivity = Real 0.0
+End
+
+Body Force 1
+  Name = "CurrDens"
+  Mesh Rotate 3 = Variable time, Coordinate 3 
+    Real MATC "phi+omega*tx(0)+skew*tx(1)"
+End 
+
+Body Force 2
+  Name = "CurrDens"
+  Mesh Rotate 3 = Variable time, Coordinate 3 
+    Real MATC "phi+omega*tx(0)+skew*tx(1)"
+!  Current Density 3 = 1.0
+End 
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Ambient"
+  AV {e} = Real 0
+!  AV {e} 3 = Real 1.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Mortar Outside"
+
+  release AV {e} = Logical $release
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 5 9
+  Name = "Mortar Inside"
+
+  Mortar BC =  Integer 2
+  Rotational Projector = Logical True
+  Galerkin Projector = True
+  Antisymmetric BC = $anti
+  release AV {e} = Logical $release
+End
+
+Boundary Condition 4
+  Name = "Periodic Rotor Master"
+  Target Boundaries(1) = 8
+
+  $ if( conf ) { "Conforming BC = 5" } \
+      else     { "Mortar BC = 5" }
+
+  Radial Projector = True
+  Galerkin Projector = True
+  Antisymmetric BC = $anti
+  Mortar BC Static = True
+  jfix = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "Periodic Rotor Target"
+  Target Boundaries(1) = 6
+End
+
+Boundary Condition 6
+  Name = "Periodic Stator Master"
+  Target Boundaries(1) = 1
+
+  $ if( conf ) { "Conforming BC = 7" } \
+      else     { "Mortar BC = 7" }
+      
+  Radial Projector = True
+  Galerkin Projector = True
+  Antisymmetric BC = $anti
+  Mortar BC Static = True
+  jfix = Real 0.0
+End
+
+Boundary Condition 7
+  Name = "Periodic Stator Target"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 8
+  Target Boundaries(2) = 7 10
+  Name = "InternalBC"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 9
+  Name = "StartZ"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 10
+  Name = "StartZ"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 11
+  Name = "StartZ"
+  AV {e} = Real 0
+  Coil End = True
+End 
+
+Boundary Condition 12
+  Name = "StartZ"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 13
+  Name = "EndZ"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 14
+  Name = "EndZ"
+  AV {e} = Real 0
+  Coil Start = Logical True
+End 
+
+Boundary Condition 15
+  Name = "EndZ"
+  AV {e} = Real 0
+End 
+
+Boundary Condition 16
+  Name = "EndZ"
+  AV {e} = Real 0
+End 
+
+
+
+Solver 2 :: Reference Norm = 4.22134445E-03
+Solver 3 :: Reference Norm = 6.66996883E-02
+Solver 7 :: Reference Norm = 5.92002332E-01
+

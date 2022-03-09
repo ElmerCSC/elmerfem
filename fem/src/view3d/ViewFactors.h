@@ -353,6 +353,9 @@ double LinearLength(Geometry_t *,int);
 double LinearIntegrateDiffToArea(Geometry_t *,double,double,double,double,double,double);
 void LinearSubdivide(Geometry_t *,int,int);
 void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int,int );
+void LinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
+void BiLinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
+void TriangleComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
 
 
 static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
@@ -381,6 +384,7 @@ static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 
 EXT double (*AreaCompute[MAX_GEOMETRY_TYPES])(Geometry_t *);
 EXT void (*ViewFactorCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,Geometry_t *,int, int);
+EXT void (*RadiatorFactorsCompute[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,int);
 EXT void (*Subdivide[MAX_GEOMETRY_TYPES])(Geometry_t *,int,int);
 EXT double (*IntegrateDiffToArea[MAX_GEOMETRY_TYPES])(Geometry_t *,double,double,double,double,double,double);
 

@@ -50,6 +50,8 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion, SecondOrder
+  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
+
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -60,16 +62,17 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
     END IF
 
-    IF (PiolaVersion) THEN    
-       IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
-       ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-       END IF
+    IF (PiolaVersion) THEN          
+      IF (SecondOrder) THEN
+        ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
+      ELSE
+        ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
+      END IF
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      ElemType = "n:1 e:1"
     END IF
+    CALL Info('WhitneyHarmonicSolver_Init0','Setting element type to: "'//TRIM(ElemType)//'"',Level=6)
+    CALL ListAddString( SolverParams, "Element", TRIM(ElemType) )
   END IF
 
   CALL ListAddNewLogical( SolverParams, 'Linear System Complex', .TRUE. )
@@ -78,6 +81,72 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
   CALL ListAddNewString( SolverParams,'Variable','AV[AV re:1 AV im:1]')
+
+
+  IF(ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
+
+BLOCK
+TYPE(Solver_t), POINTER :: Solvers(:)
+INTEGER :: i,j,k,n
+CHARACTER(LEN=MAX_NAME_LEN) :: eq
+INTEGER, POINTER :: ActiveSolvers(:)
+
+    Solvers => Model % Solvers
+    n = Model % NumberOfSolvers
+    Model % NumberOfSolvers = n+2
+
+    ALLOCATE(Model % Solvers(Model % NumberOfSolvers))
+    Model % Solvers(1:n) = Solvers
+
+    DO i=n+1,n+2
+      Model % Solvers(i) % PROCEDURE = 0
+      NULLIFY( Model % Solvers(i) % Matrix )
+      NULLIFY( Model % Solvers(i) % Mesh )
+      NULLIFY( Model % Solvers(i) % Variable )
+      NULLIFY( Model % Solvers(i) % ActiveElements )
+      Model % Solvers(i) % NumberOfActiveElements = 0
+    END DO
+
+    DO i=1,Model % NumberOfSolvers
+      IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
+         Model % Solvers(i) % Values => ListAllocate()
+    END DO
+
+    Eq =  ListGetString( SolverParams, 'Equation' )
+
+    CALL ListAddIntegerArray( SolverParams, 'Post Solvers', 2, [n+1,n+2] )
+
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Procedure', &
+              'MagnetoDynamics HelmholtzProjector', CaseConversion=.FALSE. )
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Equation', 'HP' )
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Exec Solver', 'Never' )
+
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Procedure', &
+              'MagnetoDynamics RemoveKernelComponent',CaseConversion=.FALSE. )
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Equation', 'RMC' )
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Exec Solver', 'Never' )
+
+    DO i=1,Model % NumberOFEquations
+      IF ( ListGetLogical( Model % Equations(i) % Values, Eq, Found ) ) THEN
+        CALL ListAddLogical( Model % Equations(i) % Values, 'HP', .TRUE. )
+        CALL ListAddLogical( Model % Equations(i) % Values, 'RMC' , .TRUE.)
+      ELSE
+        ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(i) % Values, &
+                              'Active Solvers', Found )
+        IF ( Found ) THEN
+          DO k=1,SIZE(ActiveSolvers)
+            IF ( ActiveSolvers(k) == Solver % SolverId ) THEN
+              CALL ListAddLogical( Model % Equations(i) % Values, 'HP', .TRUE. )
+              CALL ListAddLogical( Model % Equations(i) % Values, 'RMC', .TRUE. )
+              EXIT
+            END IF
+          END DO
+        END IF
+      END IF
+    END DO
+END BLOCK
+  END IF
+
     
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
@@ -305,7 +374,7 @@ CONTAINS
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
     INTEGER :: i,j,k,n,nd,t
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -345,13 +414,14 @@ CONTAINS
        CompParams => GetComponentParams( Element )
        CoilType = ''
        RotM = 0._dp
+       ConstraintActive = .TRUE.
        IF (ASSOCIATED(CompParams)) THEN
          CoilType = GetString(CompParams, 'Coil Type', Found)
          IF (Found) THEN
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              CALL GetElementRotM(Element, RotM, n)
+              !CALL GetElementRotM(Element, RotM, n)
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -361,6 +431,9 @@ CONTAINS
               CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
            END SELECT
          END IF
+         ConstraintActive = GetLogical( CompParams, 'Activate Constraint', Found)
+!        IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
+         IF(.NOT.Found ) ConstraintActive = .FALSE.
        END IF
 
        LaminateStack = .FALSE.
@@ -421,7 +494,7 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
+          LamCond, CoilBody, CoilType, RotM, ConstraintActive, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -549,6 +622,70 @@ CONTAINS
       ! temporary fix to some scaling problem (to be resolved)...
       CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
+
+
+BLOCK
+! Automatic BC for massive,foil coils outer boundaries, when "Activate Constraint" on!!
+
+    TYPE(Element_t), POINTER :: Parent
+    LOGICAL :: AutomaticBC
+    INTEGER, POINTER :: Electrodes(:)
+
+    A => GetMatrix()
+
+    IF (.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+
+    IF(.NOT.ALLOCATED(A % DValues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+
+    Active = GetNOFBoundaryElements()
+    DO t = 1, Active
+      Element => GetBoundaryElement(t)
+
+      Parent => Element % BoundaryInfo % Right
+      IF(ASSOCIATED(Parent)) CYCLE
+
+      IF(ParEnv % PEs>1) THEN
+        ! Assuming here that this is an internal boundary, if all elements nodes are
+        ! interface nodes. Not foolproof i guess, but quite safe (?)
+        IF (ALL(Solver % Mesh % ParallelInfo % NodeInterface(Element % NodeIndexes))) CYCLE
+      END IF
+ 
+      Parent => Element % BoundaryInfo % Left
+      IF(.NOT.ASSOCIATED(Parent)) CYCLE
+
+      CompParams => GetComponentParams(Parent)
+      IF (.NOT. ASSOCIATED(CompParams)) CYCLE
+
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF(CoilType/='massive' .AND. CoilType/='foil winding') CYCLE
+
+      ConstraintActive = GetLogical(CompParams,'Activate Constraint',Found )
+      IF( .NOT. ConstraintActive ) CYCLE
+
+      AutomaticBC = GetLogical( CompParams, 'Automatic electrode BC', Found )
+      IF(.NOT.Found) AutomaticBC = .TRUE.
+
+      IF(.NOT.AutomaticBC) CYCLE
+
+      Electrodes =>  ListGetIntegerArray( CompParams, &
+             'Electrode Boundaries', Found )
+
+      IF(ASSOCIATED(Electrodes)) THEN
+        IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
+      END IF
+
+      DO i=1,Element % Type % NumberOfNodes
+        j = 2*(Solver % Variable % Perm(Element % NodeIndexes(i))-1)+1
+        A % ConstrainedDOF(j:j+1) = .TRUE.
+      END DO
+    END DO
+END BLOCK
 
     CALL DefaultDirichletBCs()
 
@@ -1059,14 +1196,14 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
-            PiolaVersion, SecondOrder )
+            LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
+             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    LOGICAL :: LaminateStack, CoilBody
+    LOGICAL :: LaminateStack, CoilBody, ConstraintActive
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
     REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
@@ -1328,9 +1465,9 @@ CONTAINS
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       ! If we calculate a coil, the nodal degrees of freedom are not used:
-       ! ------------------------------------------------------------------
-       NONCOIL_CONDUCTOR: IF (.NOT. CoilBody .AND. SUM(ABS(C)) > AEPS ) THEN
+       ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
+       ! --------------------------------------------------------------------------------------------
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. SUM(ABS(C)) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -2270,3 +2407,738 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE WhitneyAVHarmonicSolver
 !------------------------------------------------------------------------------
+
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+! *
+! *  Utilities written as solvers to compute the Helmholtz projection P(A)
+! *  of a curl-conforming vector field A. The projection can be obtained as 
+! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
+! *  grad Phi, with Phi being a H1-regular scalar field.
+! * 
+! *  This file contains harmonic version of the transformation and also applies the
+! *  correction to the V field within conducting regions.
+! *
+! *
+! *  Authors: Mika Malinen, Juha Ruokolainen
+! *  Email:   mika.malinen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: March 20, 2020
+! *  Last Modifed: June 18, 2021, Juha
+! *
+!******************************************************************************
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  DO i=1,Model % NumberOfSolvers
+    IF (ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i,j
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+  SolverParams => GetSolverParams()
+  CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+  CALL ListAddString( SolverParams, 'Variable', 'pd' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListAddString( SolverParams, 'Potential Variable', GetVarName(Model % Solvers(i) % Variable))
+
+  ! Solver is using a single linear system to solve complex components,
+  ! assing storage for final complex result.
+  ! -------------------------------------------------------------------
+  CALL ListAddString( SolverParams, 'Exported Variable 1', 'P[P re:1 P im:1]' )
+
+  CALL ListAddLogical( SolverParams, 'Linear System Symmetric', .TRUE. )
+  CALL ListAddString(  SolverParams, 'Linear System Solver', 'Iterative' )
+  CALL ListAddString(  SolverParams, 'Linear System Preconditioning', 'ILU' )
+  CALL ListAddInteger( SolverParams, 'Linear System Residual Output', 25 )
+  CALL ListAddInteger( SolverParams, 'Linear System Max Iterations', 2000 )
+  CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
+  CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+
+  DO j=1,Model % NumberOfBCs
+    IF ( ListCheckPrefix( Model % BCs(j) % Values, &
+               TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' re {e}' ) ) THEN
+      CALL ListAddConstReal( Model % BCs(j) % Values, 'Pd', 0._dp )
+    END IF
+  END DO
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Compute a H1-regular scalar field to obtain the Helmholtz projection P(A)
+!> of a curl-conforming vector field A. Given the solution field Phi of this 
+!> solver, the projection can be evaluated as P(A) = A - grad Phi.
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables:
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: SolverPtr
+  TYPE(Element_t), POINTER :: Element
+
+  LOGICAL :: AllocationsDone = .FALSE.
+  LOGICAL :: Found
+  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix
+
+  INTEGER :: i, j,k,l,n, n_pot, nd_pot, t
+  INTEGER :: dim, PotDOFs
+  INTEGER :: istat, active
+
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: Stiff(:,:), Force(:,:), PotSol(:,:), F(:,:)
+  REAL(KIND=dp) :: Norm, Omega
+  REAL(KIND=dp), POINTER :: SaveRHS(:), SOL(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: PotName
+
+  TYPE(Variable_t), POINTER :: v
+
+  SAVE Stiff, Force, PotSol, AllocationsDone
+!------------------------------------------------------------------------------
+  CALL DefaultStart()
+
+  dim = CoordinateSystemDimension()
+  SolverParams => GetSolverParams()
+  Mesh => GetMesh()
+
+  ! Allocate some permanent storage, this is done first time only:
+  !---------------------------------------------------------------
+  IF (.NOT. AllocationsDone) THEN
+    n = Mesh % MaxElementDOFs
+
+    ALLOCATE( FORCE(2,n), STIFF(n,n), PotSol(2,n), STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'HelmholtzProjector', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
+
+  !
+  ! Find the variable which is projected:
+  !
+  PotName = GetString(SolverParams, 'Potential Variable', Found)
+  IF (.NOT. Found ) PotName = 'av'
+  Found = .FALSE.
+  DO i=1,Model % NumberOfSolvers
+    SolverPtr => Model % Solvers(i)
+    IF (PotName == GetVarName(SolverPtr % Variable)) THEN
+      Found = .TRUE.
+      EXIT
+    END IF
+  END DO
+
+  IF (.NOT. Found ) THEN
+    CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
+        //TRIM(PotName)//' < not found!')
+  END IF
+
+  !
+  ! Find some parameters to inherit the vector FE basis as defined in 
+  ! the primary solver:
+  !
+  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
+
+  IF (SecondOrder) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
+  END IF
+
+  IF (PiolaVersion) CALL Info('HelmholtzProjector', &
+      'Using Piola-transformed finite elements', Level=5)
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(F(n,2)); F=0
+
+  !-----------------------
+  ! System assembly:
+  !----------------------
+  active = GetNOFActive()
+  CALL DefaultInitialize(Solver)
+
+  SaveRHS => Solver % Matrix % RHS
+
+  DO t=1,active
+    Element => GetActiveElement(t)
+    !
+    ! This solver relies on getting basis functions by calling a routine
+    ! which returns a curl-conforming basis. It is thus assumed that
+    ! the background mesh defines the number of Lagrange basis functions.
+    !
+    n = GetElementNOFNodes()
+   
+    ! The DOF counts for the potential (target) variable: 
+    n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
+    nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
+
+    CALL GetVectorLocalSolution(PotSol, PotName, USolver=SolverPtr)
+
+    ! Get element local matrix and rhs vector:
+    !----------------------------------------
+    CALL LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
+        SecondOrder, n_pot, nd_pot, PotSol )
+    
+    ! Update global matrix and rhs vector from local matrix & vector:
+    !---------------------------------------------------------------
+    Solver % Matrix % RHS => F(:,1)
+    CALL DefaultUpdateForce(FORCE(1,:))
+
+    Solver % Matrix % RHS => F(:,2)
+    CALL DefaultUpdateEquations(STIFF, FORCE(2,:))
+  END DO
+
+  CALL DefaultFinishBulkAssembly()
+  CALL DefaultDirichletBCs()
+
+  v => VariableGet( Mesh % Variables, 'P'  )
+  SOL => v % Values
+
+  Solver % Matrix % RHS => F(:,1)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(1::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => F(:,2)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(2::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => SaveRHS
+
+
+  omega = GetAngularFrequency()
+
+  !
+  ! Finally, redefine the potential variable:
+  ! -----------------------------------------
+  DO i=1,Solver % Mesh % NumberOfNodes
+    j = Solver % Variable % Perm(i)
+    IF(j==0) CYCLE
+
+    k = SolverPtr % Variable % Perm(i)
+    IF (k == 0) THEN
+      CALL Fatal('HelmholtzProjector', &
+        'The variable and potential permutations are nonmatching?')
+    END IF
+
+    SolverPtr % Variable % Values(2*k-1) = SolverPtr % Variable % Values(2*k-1) - &
+        omega * SOL(2*j)
+
+    SolverPtr % Variable % Values(2*k) = SolverPtr % Variable % Values(2*k) + &
+        omega * SOL(2*j-1)
+  END DO
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
+               SecondOrder, n_pot, nd_pot, PotSol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Stiff(:,:), Force(:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n   ! The number of background element nodes
+    INTEGER :: dim
+    LOGICAL :: PiolaVersion, SecondOrder
+    INTEGER :: n_pot, nd_pot      ! The size parameters of target field
+    REAL(KIND=dp) :: PotSol(:,:)  ! The values of target field DOFS
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    LOGICAL :: Stat
+
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
+    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: WBasis(nd_pot-n_pot,3), CurlWBasis(nd_pot-n_pot,3)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes)
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2  
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      EdgeBasisDegree = 1
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+
+    DO t=1,IP % n
+
+      u = IP % U(t)
+      v = IP % V(t)
+      w = IP % W(t)
+
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
+            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
+        IF( dim == 3 ) THEN
+          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
+        ELSE
+          CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
+        END IF
+      END IF
+      s = detJ * IP % s(t)
+
+      A = MATMUL(PotSol(:,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,:))
+
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(q,1:dim) * dBasisdx(p,1:dim)) * s
+        END DO
+      END DO
+
+      DO p=1,n
+        FORCE(1,p) = FORCE(1,p) + SUM(A(1,:) * dBasisdx(p,:)) * s
+        FORCE(2,p) = FORCE(2,p) + SUM(A(2,:) * dBasisdx(p,:)) * s
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  INTEGER :: i,j
+  CHARACTER(LEN=MAX_NAME_LEN) :: Avname
+  LOGICAL :: Found, PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+
+! ! Solver is using a single linear system to solve complex components,
+! ! the final result is the (Hcurl) imaginary component...
+! ! -------------------------------------------------------------------
+
+! Linear System Symmetric = True
+! Linear System Solver = "Iterative"
+! Linear System Preconditioning = None
+! Linear System Residual Output = 25
+! Linear System Max Iterations = 2000
+! Linear System Iterative Method = CG
+! Linear System Convergence Tolerance = 1.0e-9
+
+  CALL ListAddString( SolverParams, 'Variable', 'avm' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+  
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
+  
+  j = index(AVname, '[')
+  IF(j>0) AVname = AVname(1:j-1)
+  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
+
+  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
+    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
+    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
+
+    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
+      CALL Warn("RemoveKernelComponent_Init0", &
+           "Quadratic Approximation requested without Use Piola Transform " &
+           //"Setting Use Piola Transform = True.")
+      PiolaVersion = .TRUE.
+      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
+    END IF
+
+    IF (SecondOrder) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE
+      IF (PiolaVersion) THEN
+        CALL ListAddString(SolverParams, "Element", &
+            "n:0 e:1 -brick b:3 -quad_face b:2")
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
+      END IF
+    END IF
+  END IF
+
+  ! Solver is using a single linear system to solve complex components,
+  ! assing storage for final complex result.
+  ! -------------------------------------------------------------------
+  CALL ListAddString( SolverParams, 'Kernel Variable', 'P' )
+
+  CALL ListAddLogical( SolverParams, 'Linear System Symmetric', .TRUE. )
+  CALL ListAddString(  SolverParams, 'Linear System Solver', 'Iterative' )
+  CALL ListAddString(  SolverParams, 'Linear System Preconditioning', 'ILU' )
+  CALL ListAddInteger( SolverParams, 'Linear System Residual Output', 25 )
+  CALL ListAddInteger( SolverParams, 'Linear System Max Iterations', 2000 )
+  CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
+  CALL ListAddConstReal( SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+  CALL ListAddLogical( SolverParams,"Hcurl Basis",.TRUE.)
+
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'RemoveKernelComponent:')
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE RemoveKernelComponent_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!>  Apply the Helmholtz projection on a curl-conforming vector field A
+!>  when the kernel component grad phi of A (with respect to the curl operator)
+!>  has been computed by using the subroutine HelmholtzProjector. This solver
+!>  generates the representation W of grad phi in terms of the curl-conforming
+!>  basis and finally redefines A := A - W, with W = grad phi. 
+!------------------------------------------------------------------------------
+SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables:
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: SolverPtr, KerSolverPtr
+  TYPE(Element_t), POINTER :: Element
+
+  LOGICAL :: AllocationsDone = .FALSE.
+  LOGICAL :: Found
+! LOGICAL :: SecondFamily
+  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix
+
+  INTEGER :: dim, PotDOFs
+  INTEGER :: i, j, k, n, nd, n_pot, nd_pot, t
+  INTEGER :: istat, active
+
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: Stiff(:,:), Force(:,:), PhiSol(:,:), &
+                    SOL(:), F(:,:)
+  REAL(KIND=dp) :: Norm
+  CHARACTER(LEN=MAX_NAME_LEN) :: PotName, Name
+
+  REAL(KIND=dp), POINTER :: SaveRHS(:)
+
+
+  TYPE(Variable_t), POINTER :: v
+
+  SAVE Stiff, Force, PhiSol, AllocationsDone
+!------------------------------------------------------------------------------
+  CALL DefaultStart()
+
+  dim = CoordinateSystemDimension()
+  SolverParams => GetSolverParams()
+  Mesh => GetMesh()
+
+  ! Allocate some permanent storage, this is done first time only:
+  !---------------------------------------------------------------
+  IF (.NOT. AllocationsDone) THEN
+    n = Mesh % MaxElementDOFs
+    ALLOCATE(FORCE(2,n),STIFF(n,n),PhiSol(2,n),STAT=istat)
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'RemoveKernelComponent', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
+
+  !
+  ! Find the variable which is projected:
+  !
+  PotName = GetString(SolverParams, 'Potential Variable', Found)
+  IF (.NOT. Found ) PotName = 'av'
+
+  Found = .FALSE.
+  DO i=1,Model % NumberOfSolvers
+    SolverPtr => Model % Solvers(i)
+    IF (PotName == GetVarName(SolverPtr % Variable)) THEN
+      Found = .TRUE.
+      EXIT
+    END IF
+  END DO
+
+  IF (.NOT. Found ) THEN
+    CALL Fatal('RemoveKernelComponent', 'Solver associated with potential variable > '&
+        //TRIM(PotName)//' < not found!')
+  END IF
+
+  PotDOFs = SolverPtr % Variable % DOFs
+  IF (PotDOFs < 2) CALL Fatal('RemoveKernelComponent', 'A complex-valued potential expected')
+
+  !
+  ! Find the variable which defines the kernel component:
+  !
+  Name = GetString(SolverParams, 'Kernel Variable', Found)
+  IF (.NOT. Found ) Name = 'phi'
+  V => VariableGet( Mesh % Variables, Name )
+
+  Found = ASSOCIATED(v)
+   
+  IF (.NOT. Found ) THEN
+    CALL Fatal('RemoveKernelComponent', 'Solver associated with kernel variable > '&
+        //TRIM(Name)//' < not found!')
+  END IF
+  
+  !
+  ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
+  !
+  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
+
+  IF (SecondOrder) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
+  END IF
+
+  IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
+      'Using Piola-transformed finite elements', Level=5)
+
+!  SecondFamily = GetLogical(SolverPtr % Values, 'Second Kind Basis', Found)
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(F(n,2)); F=0
+  SaveRHS => Solver % Matrix % RHS
+
+  !-----------------------
+  ! System assembly:
+  !----------------------
+  active = GetNOFActive()
+  CALL DefaultInitialize(Solver)
+
+  DO t=1,active
+    Element => GetActiveElement(t)
+
+    n = GetElementNOFNodes()
+    nd = GetElementNOFDOFs()
+   
+    ! The DOF counts for the potential variable: 
+    n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
+    nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
+
+    IF (nd /= nd_pot-n_pot) CALL Fatal('RemoveKernelComponent', &
+     'Potential variable DOFs count /= the solver DOFs count')
+
+    CALL GetLocalSolution(PhiSol, Name)
+
+    ! Get element local matrix and rhs vector:
+    !----------------------------------------
+    CALL LocalMatrix( STIFF, FORCE, Element, n, nd, dim, PiolaVersion, &
+                SecondOrder, PhiSol )
+    
+    ! Update global matrix and rhs vector from local matrix & vector:
+    !---------------------------------------------------------------
+    Solver % Matrix % RHS => F(:,1)
+    CALL DefaultUpdateForce(FORCE(1,:))
+
+    Solver % Matrix % RHS => F(:,2)
+    CALL DefaultUpdateEquations(STIFF, FORCE(2,:))
+  END DO
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(SOL(2*n))
+
+  Solver % Matrix % RHS => F(:,1)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(1::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => F(:,2)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(2::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => SaveRHS
+
+  !
+  ! Finally, redefine the potential variable:
+  !
+  n = SIZE(Solver % Variable % Perm(:))
+  IF (n ==  SIZE(SolverPtr % Variable % Perm(:))) THEN
+    DO i=Solver % Mesh % NumberOfNodes+1,n
+      j = Solver % Variable % Perm(i)
+      IF (j<=0) CYCLE
+
+      k = SolverPtr % Variable % Perm(i)
+      IF (k<=0) THEN
+        CALL Fatal('RemoveKernelComponent', &
+          'The variable and potential permutations are nonmatching?')
+      END IF
+
+      SolverPtr % Variable % Values(2*k-1) = SolverPtr % Variable % Values(2*k-1) - &
+          SOL(2*j-1)
+
+      SolverPtr % Variable % Values(2*k) = SolverPtr % Variable % Values(2*k) - &
+          SOL(2*j)
+    END DO
+  ELSE
+    CALL Fatal('RemoveKernelComponent', 'The variable and potential permutations differ')  
+  END IF
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
+              SecondOrder, PhiSol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd, dim
+    REAL(KIND=dp) :: PhiSol(:,:)
+    LOGICAL :: PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    LOGICAL :: Stat
+
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
+    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes)
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2  
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      EdgeBasisDegree = 1
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+
+    DO t=1,IP % n
+      u = IP % U(t)
+      v = IP % V(t)
+      w = IP % W(t)
+
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
+            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
+        IF( dim == 3 ) THEN
+          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
+        ELSE
+          CALL Fatal('RemoveKernelComponent', 'Use Piola Transform = True needed in 2D')
+        END IF
+      END IF
+
+      s = detJ * IP % s(t)
+      DO p=1,nd
+        DO q=1,nd
+          STIFF(p,q) = STIFF(p,q) + s * SUM(WBasis(q,:) * WBasis(p,:))
+        END DO
+      END DO
+
+      A = MATMUL( PhiSol(:,1:n), dBasisdx(1:n,:) )
+      DO q=1,nd
+        FORCE(1,q) = FORCE(1,q) + s * SUM(A(1,:) * WBasis(q,:))
+        FORCE(2,q) = FORCE(2,q) + s * SUM(A(2,:) * WBasis(q,:))
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+END SUBROUTINE RemoveKernelComponent
+!------------------------------------------------------------------------------
+

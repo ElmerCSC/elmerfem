@@ -24,7 +24,6 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 ! Output File = "elasticity.result"
-!  Post File = "mixed.vtu"
 End
 
 Body 1
@@ -85,6 +84,22 @@ Solver 2
   Procedure = "SaveData" "SaveScalars"
 !  Filename = f.dat
   Save Coordinates(1,3) = 48.0 60.0 0.0
+End
+
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = mixed
+  Vtu Format = Logical True
+!  Ascii Output = True
+  !
+  ! The following keyword enables the visualization of the p-solution by using 
+  ! the second-order Lagrange element basis:
+  !
+  Lagrange Element Degree = Integer 2
+  Save Geometry Ids = True
+!  Save Bulk Only = True
 End
 
 Equation 1

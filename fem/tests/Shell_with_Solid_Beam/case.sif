@@ -23,7 +23,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 8
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -81,15 +81,16 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = Logical True
   Linear System Solver = Iterative
-  Linear System Iterative Method = GCR
+  Linear System Iterative Method = idrs 
   Linear System GCR Restart = 400
   Linear System Preconditioning = Ilu2
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1e-6
 !  Linear System Solver = direct
 !  Linear System Direct Method = MUMPS
-  Linear System Scaling = True
+  Linear System Scaling = False
   Optimize Bandwidth = True
+  Linear System Residual Output = 20
 
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
@@ -102,7 +103,7 @@ Solver 1
   Linear System Block Mode = Logical True
 
 ! Use linear system scalings in the solution of block system: 
-  Block Scaling = true
+  Block Scaling = False
 
 ! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
@@ -142,11 +143,12 @@ Solver 2
 !  Linear System Direct Method = MUMPS
 
   Linear System Solver = Iterative
-  Linear System Iterative Method = GCR
+  Linear System Iterative Method = idrs 
   Linear System GCR Restart = 400
   Linear System Preconditioning = Ilu2
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1e-6
+  Linear System Residual Output = 20
 
   Steady State Convergence Tolerance = 1e-09
   Nonlinear System Convergence Tolerance = 1e-8

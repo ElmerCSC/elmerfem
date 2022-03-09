@@ -1,0 +1,129 @@
+! This is a test case for RigidMeshMapper with smooth transition.
+! The analytical catenary curve is enforced as a shape for the
+! interface separating two materials.
+!
+! P.R. 20.10.2021
+
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "rectangles"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+
+! These parameters define a catenary between two points
+  Catenary Start = Real 1.0
+  Catenary End = Real 4.0
+  Catenary Height = Real 0.3
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Deform and Heat"
+  Active Solvers(2) = 1 2
+End
+
+
+Body Force 1
+!  Mesh Translate 2 = Variable "Coordinate 1"
+!    Real MATC "0.1*sin(tx)"
+  Mesh Translate 2 = Variable "time"
+    Real Procedure "CatenaryCurve" "CatenaryCurve"
+End
+
+Material 1
+  Name = "Insulator"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+ 
+Material 2
+  Name = "Conductor"
+  Heat Conductivity = 100.0
+  Density = 1.0
+End 
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a computed relaxation field [0,1] computed from a Laplace equation.
+
+  Exec Solver = Before all
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical True
+
+  Variable = MeshRelax
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+End
+
+Solver 2
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+End 
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+! Special keyword when solving the MeshRelax field
+  Fixed Boundary = Logical True
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+! Special keyword when solving the MeshRelax field
+  Moving Boundary = Logical True
+  Heat Flux = 1.0
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+! Special keyword when solving the MeshRelax field
+  Fixed Boundary = Logical True
+  Temperature = 0.0
+End
+
+
+
+Solver 1 :: Reference Norm = 5.64843004E-01
+Solver 2 :: Reference Norm = 6.38514022E-03

@@ -130,7 +130,8 @@ CONTAINS
     INTEGER, POINTER :: OutputMask(:)
     INTEGER :: i
     LOGICAL :: GotIt
-    
+    CHARACTER(LEN=1024) :: InfoFileName 
+   
 
     MinOutputLevel = ListGetInteger( OutputList, &
         'Min Output Level', GotIt )
@@ -164,6 +165,7 @@ CONTAINS
 
     ! By default only on partition is used to show the results
     ! For debugging it may be useful to show several.
+    MinOutputPE = 0
     MaxOutputPE = ListGetInteger( OutputList, &
         'Max Output Partition', GotIt )    
     IF( GotIt ) THEN
@@ -180,6 +182,22 @@ CONTAINS
       END IF
     END IF
 
+    IF( .NOT. InfoToFile ) THEN 
+      IF( ListGetLogical( OutputList,'Output To File', GotIt ) ) THEN
+        InfoToFile = .TRUE.
+      END IF
+      IF( InfoToFile ) THEN
+        IF( MinOutputPE == MaxOutputPE ) THEN
+          InfoFileName = 'InfoFile.txt'
+        ELSE
+          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+        END IF
+        InfoOutUnit = InfoToFileUnit
+        OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
+      END IF
+    END IF
+
+    
   END SUBROUTINE InitializeOutputLevel
 
 
@@ -541,10 +559,14 @@ CONTAINS
       LineCount = LineCount + 1
       
       IF( SEQL(Section,'run control') ) THEN
-        ! "Run Control" section has already been read, just cycle it.
-        CALL SectionContents( Model, Model % Control, CheckAbort, FreeNames, &
-            Section, InFileUnit, .TRUE., Echo )
-        CYCLE
+        ! "Run Control" section has been read but to a different Model structure
+        IF( .NOT. ScanOnly ) THEN
+          ArrayN = 1
+          IF(.NOT.ASSOCIATED(Model % Control)) &
+              Model % Control => ListAllocate()
+          List => Model % Control
+        END IF
+
       ELSE IF ( SEQL(Section, 'constants') ) THEN
         IF ( .NOT. ScanOnly ) THEN
           ArrayN = 1
@@ -1009,7 +1031,7 @@ CONTAINS
       IF ( .NOT. ScanOnly .AND. ArrayN == 0 ) CYCLE
 
       CALL SectionContents( Model, List, CheckAbort, FreeNames, &
-          Section, InFileUnit, ScanOnly, Echo )
+           Section, InFileUnit, ScanOnly, Echo )
       
 !------------------------------------------------------------------------------
     END DO
@@ -1562,20 +1584,24 @@ CONTAINS
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
+      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
           Cubic, AllInt, Monotone, Stat
 
       INTEGER(KIND=AddrInt) :: Proc
-      INTEGER :: i,j,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
-          abuflen=0, maxbuflen=0, iostat
+
+      INTEGER :: i,j,j0,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
+          abuflen=0, maxbuflen=0, partag, iostat
+      LOGICAL :: disttag
+      
+      CHARACTER(*), PARAMETER :: Caller = 'SectionContents'
 
       ALLOCATE( ATt(1), ATx(1,1,1), IValues(1) )
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Name)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Depname)
-
+      
 
       Name = ''
       DO WHILE( ReadAndTrim( InFileUnit,Name,Echo ) )
@@ -1588,7 +1614,7 @@ CONTAINS
         IF ( SEQL(Name,'include') ) THEN
           OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',IOSTAT=iostat)
           IF( iostat /= 0 ) THEN
-            CALL Fatal( 'SectionContents','Cannot find include file: '//TRIM(Name(9:)))
+            CALL Fatal( Caller,'Cannot find include file: '//TRIM(Name(9:)))
           END IF
             
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
@@ -1604,7 +1630,7 @@ CONTAINS
         SizeUnknown = .FALSE.
         
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
-
+          
           IF ( string_literal ) THEN
             ReturnType = .TRUE.
             CALL CheckKeyWord( Name, TypeString, CheckAbort,FreeNames,Section,ReturnType )
@@ -1617,9 +1643,13 @@ CONTAINS
             END IF
           END IF
 
+          ! Optional parameter tag
+          partag = 0
+          disttag = .FALSE.
+          
 20        CONTINUE
 
-          slen = LEN_TRIM(str)
+          slen = LEN_TRIM(str)          
           j = slen
           DO i=1,slen
             IF ( str(i:i)==' ') EXIT
@@ -1631,7 +1661,7 @@ CONTAINS
           SELECT CASE(Keyword)
             
           CASE('real')
-             CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
+            CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
 
              Proc = 0
              IF ( SEQL(str(str_beg:),'procedure ') ) THEN
@@ -1677,9 +1707,10 @@ CONTAINS
    
                   CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+
                     IF ( SizeGiven ) THEN
                       CALL ListAddDepRealArray( List,Name,Depname,1,ATt, &
-                            N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
+                          N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
                     ELSE
                       CALL ListAddDepReal( List,Name,Depname,1,ATt,ATx, &
                                   Proc, str(str_beg+5:) )
@@ -1695,37 +1726,40 @@ CONTAINS
                IF ( .NOT. ScanOnly ) THEN 
                  SELECT CASE ( TYPE )
                  CASE (LIST_TYPE_CONSTANT_SCALAR )
-                   CALL Fatal('SectionContents', 'Constant expressions are not supported with Lua. &
+                   CALL Fatal(Caller, 'Constant expressions are not supported with Lua. &
                        Please provide at least a dummy argument.')
 
                    IF ( SizeGiven ) THEN
                      CALL ListAddConstRealArray( List, Name, N1, N2, &
                          ATx(1:N1,1:N2,1), Proc, str(str_beg+4:) )
                    ELSE
-                     CALL ListAddConstReal(List, Name, Val, Proc, &
-                         str(str_beg+4:))
+                     CALL ListAddConstReal(List, Name, Val, Proc, str(str_beg+4:))
                    END IF
 
                  CASE( LIST_TYPE_VARIABLE_SCALAR )
                    BLOCK
                      TYPE(ValueListEntry_t), POINTER :: v_ptr
-                     CHARACTER(len=:, kind=c_char), pointer :: lua_fname
+                     CHARACTER(len=:, kind=c_char), allocatable :: lua_fname
                      INTEGER :: fname_len, lstat
+
                      !$OMP PARALLEL default(shared)
                      !$OMP CRITICAL
                      lstat = lua_dostring(LuaState, &
-                         'return create_new_fun("'//trim(name)//'", "' // &
+                       'return create_new_fun("'//trim(name)//'", "' // &
                          TRIM(str(str_beg+4:)) // '")'// c_null_char, 1)
-                     lua_fname => lua_popstring(LuaState, fname_len)
+                       lua_fname = lua_popstring(LuaState, fname_len)
                      !$OMP END CRITICAL
                      !$OMP END PARALLEL
+
+
                      IF ( SizeGiven ) THEN 
                        CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
-                           N1, N2, Atx(1:N1, 1:N2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                           n1, n2, Atx(1:n1, 1:n2, 1:n), proc, lua_fname(1:fname_len) // c_null_char )
                      ELSE
                        CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
-                           Proc, lua_fname(1:fname_len) // c_null_char)
+                           Proc, lua_fname(1:fname_len) // c_null_char )
                      END IF
+
                      v_ptr => ListFind(list, name)
                      v_ptr % LuaFun = .TRUE.
                    END BLOCK
@@ -1765,7 +1799,7 @@ CONTAINS
                         IF (.NOT.ScanOnly ) THEN
                           READ( str(k:),*,iostat=iostat ) ATx(i,j,1)
                           IF( iostat /= 0 ) THEN
-                            CALL Fatal('SectionContents','Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
+                            CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
                           END IF
                         END IF
                      END DO
@@ -1773,8 +1807,7 @@ CONTAINS
  
 11                IF ( .NOT. ScanOnly ) THEN
                     IF ( SizeGiven ) THEN
-                      CALL ListAddConstRealArray( List,Name,N1,N2, &
-                          ATx(1:N1,1:N2,1) )
+                      CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
                     ELSE
                       CALL ListAddConstReal( List,Name,ATx(1,1,1) )
                     END IF
@@ -1797,7 +1830,7 @@ CONTAINS
                    monotone = SEQL(str(str_beg:),'monotone')
                    IF( Monotone ) THEN
                      Cubic = SEQL(str(str_beg+9:),'cubic')
-                     IF( .NOT. Cubic ) CALL Warn('SectionContents','Monotone curves only applicable to cubic splines!')
+                     IF( .NOT. Cubic ) CALL Warn(Caller,'Monotone curves only applicable to cubic splines!')
                    END IF
                  END IF
 
@@ -1813,7 +1846,7 @@ CONTAINS
 
                      READ( str,*,iostat=iostat ) ATt(n)
                      IF( iostat /= 0 ) THEN
-                       CALL Fatal('SectionContents','Problem reading real keyword: '//TRIM(Name)//': '//str) 
+                       CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str) 
                      END IF
 
                    ELSE
@@ -1849,7 +1882,7 @@ CONTAINS
                        IF ( .NOT. ScanOnly ) THEN
                          READ( str(k:),*,iostat=iostat ) ATx(i,j,n)
                          IF( iostat /= 0 ) THEN
-                           CALL Fatal('SectionContents','Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
+                           CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
                          END IF
                        END IF
 
@@ -1860,12 +1893,12 @@ CONTAINS
 
 12               IF( .NOT. ScanOnly ) THEN
                    IF( n == 0 ) THEN
-                     CALL Fatal('SectionContents','Table dependence has zero size: '//TRIM(Name))
+                     CALL Fatal(Caller,'Table dependence has zero size: '//TRIM(Name))
                    END IF
                    
                    IF ( SizeGiven ) THEN
                      CALL ListAddDepRealArray( List,Name,Depname,n,ATt(1:n), &
-                              N1,N2,ATx(1:N1,1:N2,1:n) )
+                              n1,n2,ATx(1:n1,1:n2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
                          ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
@@ -1874,6 +1907,18 @@ CONTAINS
                  MaxBufLen = MAX(MaxBuflen, Abuflen)
                END SELECT
              END IF
+
+             ! Add tag so we know how to make variation to this keyword
+             IF( partag > 0 ) THEN
+               CALL Info(Caller,'Adding parameter tag '&
+                   //TRIM(I2S(partag))//' to keyword: '//TRIM(Name),Level=7)
+               IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
+             END IF
+             ! Add tag so we know to divide this keyword by the entity integral 
+             IF( disttag ) THEN               
+               IF(.NOT. ScanOnly ) CALL ListDistTagKeyword( List, Name )
+             END IF             
+                          
              EXIT
 
           CASE('logical')
@@ -1888,7 +1933,7 @@ CONTAINS
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
-                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
+                 CALL Fatal(Caller,'Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
                END IF
             END IF
             EXIT
@@ -1943,7 +1988,7 @@ CONTAINS
                    IF ( .NOT. ScanOnly ) THEN
                      READ( str(k:),*,iostat=iostat ) IValues(i)
                      IF( iostat /= 0 ) THEN
-                       CALL Fatal('SectionContents','Problem reading integer keyword: '//TRIM(Name)//': '//str(k:)) 
+                       CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(k:)) 
                      END IF
                    END IF
 
@@ -1953,7 +1998,7 @@ CONTAINS
                ELSE IF (.NOT.ScanOnly) THEN
                  READ( str(str_beg:),*,iostat=iostat ) k 
                  IF( iostat /= 0 ) THEN
-                   CALL Fatal('SectionContents','Problem reading integer keyword: '//TRIM(Name)//': '//str(str_beg:)) 
+                   CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(str_beg:)) 
                  END IF                 
                  CALL ListAddInteger( List,Name,k )
                END IF
@@ -1976,11 +2021,12 @@ CONTAINS
             EXIT
 
           CASE('variable')
-
+            
             DO k=LEN(str),1,-1
               IF ( str(k:k) /= ' ' ) EXIT 
             END DO
 
+            n = 1
             Depname = str(str_beg:k)
 
             TYPE = LIST_TYPE_VARIABLE_SCALAR
@@ -2062,13 +2108,30 @@ CONTAINS
 
             SizeGiven = .TRUE.
 
+          CASE('-rpar')              
+            ! Tag parameters that can be varied in the code
+            j = str_beg
+            DO WHILE( j <= slen )
+              j = j + 1
+              IF ( str(j:j) == ' ') EXIT
+            END DO                                    
+            READ( str(str_beg:j),*,iostat=iostat ) partag
+            str = str(j+1:slen)
+            GOTO 20
+
+          CASE('-distribute')              
+            ! Tag paramaters that will be divided by the entity area/volume
+            disttag = .TRUE. 
+            str = str(str_beg:slen)
+            GOTO 20
+                       
           CASE('-remove')
 
             IF ( .NOT. ScanOnly ) CALL ListRemove( List, Name )
             EXIT
 
           CASE DEFAULT
-
+            
             ReturnType = .TRUE.
             CALL CheckKeyWord( Name, TypeString, CheckAbort, &
                      FreeNames,Section,ReturnType )
@@ -2078,6 +2141,7 @@ CONTAINS
             END IF
             CALL SyntaxError( Section, Name,str )
           END SELECT
+
 !------------------------------------------------------------------------------
         END DO
 !------------------------------------------------------------------------------
@@ -2295,7 +2359,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2399,7 +2463,13 @@ CONTAINS
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
-
+    ! These are here to provide possibility to create tags for keywords
+    ! using suffixes. The new way would be to use prefix -dist.
+    ! The idea is to have a generic way to determine which keywords
+    ! are normalized by their entity integrals. 
+    CALL ListTagKeywords( Model,'normalize by area',.TRUE., Found ) 
+    CALL ListTagKeywords( Model,'normalize by volume',.TRUE., Found ) 
+           
     CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
     
     CALL InitializeOutputLevel( Model % Simulation )
@@ -2439,7 +2509,6 @@ CONTAINS
             EXIT
           END IF
         END DO
-
         IF ( GotMesh ) THEN
           MeshCount = MeshCount + 1
           MeshNames(MeshCount) = Name
@@ -2597,21 +2666,34 @@ CONTAINS
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
           CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
-          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
-            DEALLOCATE( SerialMesh % RePartition ) 
-          END IF
+          
+          !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+          !  DEALLOCATE( SerialMesh % RePartition ) 
+          !END IF
           Model % Meshes => SerialMesh
         END IF
 
         CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Single = ListGetLogical( Model % Simulation,'Single Mesh', GotIt ) 
+
+        ModuloMesh = ListGetInteger( Model % Simulation,'Parallel Mesh Modulo',GotIt)
+        IF(GotIt) THEN
+          IF( MODULO( numprocs, ModuloMesh ) /= 0 ) THEN
+            CALL Fatal('LoadMesh','Number of partitions should divisible with mesh modulo!')
+          END IF
+        END IF
+        
         IF( Single ) THEN
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','Whole primary mesh will be read for each partition!',Level=7)
           END IF
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, 1, mype, Def_Dofs )
+        ELSE IF( ModuloMesh > 0 ) THEN
+          Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+              BoundariesOnly, ModuloMesh, MODULO( mype, ModuloMesh) , Def_Dofs )
+          CALL SetMeshPartitionOffset( Model % Meshes, ModuloMesh ) 
         ELSE
           Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
               BoundariesOnly, numprocs, mype, Def_Dofs )
@@ -2743,6 +2825,7 @@ CONTAINS
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
         CALL Info('LoadModel',Message,Level=7)
 
+
         single=.FALSE.
       
         IF ( SEQL(Name, '-single ') ) THEN
@@ -2836,7 +2919,6 @@ CONTAINS
             CYCLE
           END IF
         END IF
-         
         Def_Dofs = -1
         DO k=1,Model % NumberOfSolvers
           IF(MeshSolvers(MeshI,k)) THEN
@@ -2846,7 +2928,7 @@ CONTAINS
               END DO
             END DO
           END IF
-        END DO 
+        END DO
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
@@ -3087,7 +3169,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
-    LOGICAL :: Found, Flag
+    LOGICAL :: Found, Flag, DoIt, DoItB
     CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
     REAL(KIND=dp) :: Tol = 1.0e-8
     INTEGER, POINTER :: TmpInts(:)
@@ -3205,12 +3287,22 @@ CONTAINS
     ! This hack is of course prone to errors if the underlaying assumptions change. 
     DO i=1,Model % NumberOfSolvers
       List => Model % Solvers(i) % Values
-      IF( ListGetLogical( List,'Automated Structure-Structure Coupling',Found) ) THEN
-        ! Ok, we need to set automated coupling
-        CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
-        CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+            
+      DoIt =  ListGetLogical( List,'Automated Structure-Structure Coupling',Found) 
+      DoItB =  ListGetLogical( List,'Automated Fluid-Structure Coupling',Found) 
 
-        CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+      IF( DoIt .OR. DoItB ) THEN
+        ! Ok, we need to set automated coupling
+        IF( DoIt ) THEN
+          CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
+          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+        ELSE
+          CALL Info('CompleteModelKeywords','Setting automated fsi coupling!')
+          CALL Info('CompleteModelKeywords','Fluid solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Fluid-Structure Coupling',.TRUE.)
+        END IF
+          
         CALL ListAddLogical( List,'Linear System Block Mode',.TRUE.) 
         CALL ListAddNewLogical( List,'Block Monolithic',.TRUE.)
         Flag = .FALSE.
@@ -3224,8 +3316,10 @@ CONTAINS
           IF( Flag ) EXIT
         END DO
         
-        IF(.NOT. Flag) THEN
-          CALL Fatal('CompleteModelKeywords','Cannot find the other structure solver!')
+        IF(Flag) THEN
+          CALL ListAddNewInteger( List,'Structure Solver Index',j)
+        ELSE
+          CALL Fatal('CompleteModelKeywords','Cannot find the structure solver!')
         END IF
         CALL Info('CompleteModelKeywords','Slave structure solver has index: '//TRIM(I2S(j)),Level=6)
 
@@ -3238,12 +3332,86 @@ CONTAINS
         CALL ListAddInteger(List,'Pre Solvers',j)
         CALL ListAddString(ListB,'Exec Solver','never')
         CALL ListAddLogical(ListB,'Linear System Solver Disabled',.TRUE.)                
+
+        ! Make allocations for eigen analysis follow the primary solver
+        Flag = ListGetLogical(List,'Eigen Analysis',Found )
+        IF( Found ) CALL ListAddLogical(ListB,'Eigen Analysis',Flag)
+        j = ListGetInteger(List,'Eigen System Values',Found )
+        IF( Found ) CALL ListAddInteger(ListB,'Eigen System Values',j)
+        
         EXIT
       END IF
     END DO
+
+
+    ! Enable the use of "master bodies name" and "master boundaries name" for components.
+    ! This makes it possible to have circuits without reference to entity numbering.
+    BLOCK
+      LOGICAL :: BcMode
+      INTEGER, POINTER :: MasterIndexes(:)
+      INTEGER :: phase
       
+      DO i=1,Model % NumberOfComponents
+        List => Model % Components(i) % Values
+
+        BcMode = .FALSE.
+        Name = ListGetString( List,'Master Bodies Name',Found )     
+        IF( .NOT. Found ) THEN
+          Name = ListGetString( List,'Master Boundaries Name',Found ) 
+          BcMode = .TRUE.
+        END IF
+        IF(.NOT. Found) CYCLE
+
+        IF( BCMode ) THEN
+          n = Model % NumberOfBCs
+        ELSE
+          n = Model % NumberOfBodies
+        END IF
+
+        DO phase=0,1
+          j = 0
+          DO k=1,n
+            IF( BcMode ) THEN
+              NameB = ListGetString( Model % BCs(k) % Values,'Name',Found )
+            ELSE            
+              NameB = ListGetString( Model % Bodies(k) % Values,'Name',Found )
+            END IF
+            IF(.NOT. Found) CYCLE
+            IF(Name == NameB) THEN
+              j = j + 1
+              IF(phase==1) MasterIndexes(j) = k
+            END IF
+          END DO
+          IF(j==0) EXIT
+          IF(phase==0) THEN
+            NULLIFY( MasterIndexes )
+            ALLOCATE( MasterIndexes(j) )
+            MasterIndexes = 0
+          END IF
+        END DO
+
+        IF(j>0) THEN
+          IF( BCMode ) THEN
+            CALL ListAddIntegerArray( List,'Master Boundaries',j,MasterIndexes)
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          ELSE
+            CALL ListAddIntegerArray( List,'Master Bodies',j,MasterIndexes)         
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Bodies" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          END IF
+        ELSE
+          IF( BCMode ) THEN
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Boundaries" with name: '//TRIM(Name))
+          ELSE
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Bodies" with name: '//TRIM(Name))
+          END IF
+        END IF
+      END DO
+    END BLOCK
       
-    
 
   END SUBROUTINE CompleteModelKeywords
   
@@ -3280,7 +3448,7 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
     SAVE SaveCoordinates
-
+    
 !------------------------------------------------------------------------------
 !   If first time here, count number of variables
 !------------------------------------------------------------------------------
@@ -3296,13 +3464,13 @@ CONTAINS
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
-      FileInd = MODULO( Mesh % SavesDone, FileCycle ) 
+      FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1 
     ELSE
       InitFile = ( Mesh % SavesDone == 0 )
     END IF
           
     FName = FileName
-    IF ( .NOT. FileNameQualified(FileName) ) THEN
+    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
       IF ( LEN_TRIM(OutputPath) > 0 ) THEN
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
@@ -3313,8 +3481,7 @@ CONTAINS
 
     IF( ParEnv % PEs > 1 ) THEN
       Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
-    END IF
-        
+    END IF        
     PosName = TRIM(FName) // ".pos"
 
     CALL Info(Caller,'-----------------------------------------',Level=5)
@@ -3533,6 +3700,24 @@ CONTAINS
       CLOSE( OutputUnit )
     END IF
 
+
+    IF( FileCycle > 0 .AND. ParEnv % MyPe == 0 ) THEN
+      FName = FileName
+      IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
+        IF ( LEN_TRIM(OutputPath) > 0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(FileName)
+        END IF
+      END IF
+      Fname = TRIM(Fname)//'_last_nc'
+
+      OPEN( OutputUnit,File=FName,STATUS='UNKNOWN' )
+      WRITE( OutputUnit,'("!File created at: ",A)' ) TRIM(DateStr)
+      WRITE( OutputUnit,'(A)') '!Last Saved File Cycle:'
+      WRITE( OutputUnit,'(I0)') FileInd
+      CLOSE( OutputUnit ) 
+    END IF
+      
+       
     CALL Info(Caller,'Done writing results file',Level=5)
     CALL Info(Caller,'-----------------------------------------',Level=5)
 
@@ -3728,7 +3913,7 @@ CONTAINS
     INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
+    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,NewName,FullName,PosName
     CHARACTER(LEN=:), ALLOCATABLE :: Row
     CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
@@ -3769,15 +3954,35 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
-    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
-
+    
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
       ResList => CurrentModel % Solvers(SolverId) % Values
     ELSE
       ResList => CurrentModel % Simulation
     END IF
+
+    j = ListGetInteger( ResList,'Restart File Cycle',Found )
+    IF( Found ) THEN
+      IF( j == 0 ) THEN
+        IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
+            LEN_TRIM(OutputPath)>0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+        ELSE
+          FName = RestartFile
+        END IF
+        FName = TRIM(FName)//'_last_nc'
+        OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, *, IOSTAT=iostat ) j                
+        CLOSE( RestartUnit)
+        CALL Info(Caller,'Using latest saved data for restart: '//TRIM(I2S(j)),Level=6)
+      END IF
+      RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(j))//'nc'
+    END IF
     
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
     
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
@@ -3809,8 +4014,9 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    ! Check the output directory for the data
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. LEN_TRIM(OutputPath)>0 ) THEN
+    ! Check the output directory for the data    
+    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
+        LEN_TRIM(OutputPath)>0 ) THEN
       FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
     ELSE
       FName = RestartFile
@@ -3823,7 +4029,7 @@ CONTAINS
       FileCount = 0
     END IF
  
-    FileCount = NINT( ParallelReduction( 1.0_dp * FileCount ) )
+    FileCount = ParallelReduction( FileCount ) 
     IF( FileCount == 0 ) THEN
       CALL Error( Caller,'=======================================' )
       CALL Error( Caller,'' )
@@ -3912,7 +4118,7 @@ CONTAINS
     ! Components are:
     ! FieldSize, PermSize, Load?, SolverId
     IF(ALLOCATED( FileVariableInfo) ) DEALLOCATE( FileVariableInfo)
-    ALLOCATE( FileVariableInfo(TotalDofs,3) )
+    ALLOCATE( FileVariableInfo(TotalDofs,4) )
     FileVariableInfo = 0
        
     ! Find the start of dof definition part
@@ -4090,14 +4296,25 @@ CONTAINS
           END IF
         END DO        
         IF(.NOT. LoadThis ) CYCLE
+
+        NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
+        IF( Found ) THEN
+          CALL Info(Caller,'Renaming variable "'//TRIM(VarName)//'" when reading to: '//TRIM(NewName))
+          FileVariableInfo(DofCount,4) = j 
+          FullName = NewName
+        ELSE
+          NewName = VarName 
+        END IF
+      ELSE
+        NewName = VarName
       END IF
         
       ! Check whether a variable exists or not. If it does not exist then 
       ! create the variable so that it can be filled with the data.
       !------------------------------------------------------------------
-      Var => VariableGet( Mesh % Variables, VarName,.TRUE. )                  
+      Var => VariableGet( Mesh % Variables, NewName,.TRUE. )                  
       IF ( ASSOCIATED(Var) ) THEN
-        CALL Info(Caller,'Using existing variable: '//TRIM(VarName),Level=12)
+        CALL Info(Caller,'Using existing variable: '//TRIM(NewName),Level=12)
 
         IF( Dofs /= Var % Dofs ) THEN
           CALL Fatal(Caller,'Fields have different number of components ('&
@@ -4123,7 +4340,7 @@ CONTAINS
               //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
         END IF
       ELSE IF( CreateVariables ) THEN
-        CALL Info(Caller,'Creating variable: '//TRIM(VarName),Level=6)
+        CALL Info(Caller,'Creating variable: '//TRIM(NewName),Level=6)
 
         ALLOCATE( Var )
           
@@ -4135,7 +4352,7 @@ CONTAINS
           Var % Perm = 0
         END IF
 
-        IF ( SEQL(VarName, 'flow solution ') ) THEN
+        IF ( SEQL(NewName, 'flow solution ') ) THEN
 !------------------------------------------------------------------------------
 !         First add components to the variable list separately...
 !         (must be done this way for the output routines to work properly...)
@@ -4250,12 +4467,13 @@ CONTAINS
          EXIT
       END IF
 
-      TimeVar  => VariableGet( Mesh % Variables, 'Time' )
-      tStepVar => VariableGet( Mesh % Variables, 'Timestep' )
-
-      IF ( ASSOCIATED( TimeVar ) )  TimeVar % Values(1)  = Time
-      IF ( ASSOCIATED( tStepVar ) ) tStepVar % Values(1) = Timestep
-
+      IF(.NOT. ListGetLogical( ResList,'Restart Time Ignore',Found ) ) THEN
+        TimeVar  => VariableGet( Mesh % Variables, 'Time' )
+        tStepVar => VariableGet( Mesh % Variables, 'Timestep' )        
+        IF ( ASSOCIATED( TimeVar ) )  TimeVar % Values(1)  = Time
+        IF ( ASSOCIATED( tStepVar ) ) tStepVar % Values(1) = Timestep
+      END IF
+        
       WRITE( Message,'(A,ES12.3)') 'Reading time sequence: ',Time
       CALL Info( Caller,Message, Level=4)
 
@@ -4311,9 +4529,18 @@ CONTAINS
           END IF
           CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
 
-          Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
+          ! If we are renaming the variable also then do it
+          j = FileVariableInfo(i,4) 
+          IF( j > 0 ) THEN
+            NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
+          ELSE
+            NewName = Row
+          END IF
+          
+          Var => VariableGet( Mesh % Variables,Newname, ThisOnly=.TRUE. )
+          
           IF ( .NOT. ASSOCIATED(Var) ) THEN
-            CALL Fatal(Caller,'Variable is not present for reading: '//TRIM(Row))
+            CALL Fatal(Caller,'Variable is not present for reading: '//TRIM(NewName))
           END IF
 
           FieldSize2 = SIZE( Var % Values )
@@ -4333,7 +4560,7 @@ CONTAINS
           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
           IF( ASSOCIATED( Var % Solver ) ) THEN
             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
-              CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+              CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(NewName),Level=6)
               Var % Solver % DoneTime = Var % Solver % Order
             END IF
           END IF
@@ -4361,8 +4588,8 @@ CONTAINS
             PRINT *,'LoadRestartFile range:',TRIM(VarName), &
                 ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
           END IF
-
-          CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
+          
+          CALL InvalidateVariable( CurrentModel % Meshes, Mesh, NewName )
         ELSE
           ! Just cycle the values, do not even try to be smart
           DO j=1, FieldSize
@@ -5613,7 +5840,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % INTERFACE) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))
@@ -5909,7 +6136,7 @@ END SUBROUTINE GetNodalElementSize
  SUBROUTINE SetRealParametersMATC(NoParam,Param)
 
    INTEGER :: NoParam
-   REAL(KIND=dp), ALLOCATABLE :: Param(:)
+   REAL(KIND=dp) :: Param(:)
 
    INTEGER :: i,j,tj
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
@@ -5928,6 +6155,30 @@ END SUBROUTINE GetNodalElementSize
 
  END SUBROUTINE SetRealParametersMATC
 
+
+
+ !------------------------------------------------------------------------------
+ !> This routine add ths parameters as coefficients for the keywords in the sif
+ !> file referred to as "-rpar 1", "-rpar 2", etc. 
+ !-----------------------------------------------------------------------------
+ SUBROUTINE SetRealParametersKeywordCoeff(NoParam,Param,count)
+
+   INTEGER :: NoParam
+   REAL(KIND=dp) :: Param(:)
+   INTEGER :: count
+   
+   INTEGER :: i
+   LOGICAL :: Found
+
+   count = 0
+   DO i=1,NoParam
+     CALL ListSetParameters( CurrentModel, i, Param(i),.FALSE., Found )
+     IF(Found) count = count + 1
+   END DO
+
+ END SUBROUTINE SetRealParametersKeywordCoeff
+
+ 
  !------------------------------------------------------------------------------
  !> This routine makes it possible to refer to the parameters
  !> in the .sif file by rpar(0), rpar(1),...
@@ -5935,7 +6186,7 @@ END SUBROUTINE GetNodalElementSize
  SUBROUTINE SetIntegerParametersMATC(NoParam,Param)
 
    INTEGER :: NoParam
-   INTEGER, ALLOCATABLE :: Param(:)
+   INTEGER :: Param(:)
 
    INTEGER :: i,j,tj
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
@@ -5953,1122 +6204,7 @@ END SUBROUTINE GetNodalElementSize
    END DO
 
  END SUBROUTINE SetIntegerParametersMATC
- 
- 
-!------------------------------------------------------------------------------
-!> Adds parameters used in the simulation either predefined or from run control.
-!> The idea is to make parametrized simulations more simple to perform. 
-!------------------------------------------------------------------------------
- SUBROUTINE ControlParameters(Params,piter,GotParams,FinishEarly,PostSimulation)
-
-   IMPLICIT NONE
-   
-   TYPE(ValueList_t), POINTER :: Params
-   INTEGER :: piter
-   LOGICAL :: GotParams,FinishEarly
-   LOGICAL, OPTIONAL :: PostSimulation
-
-
-   LOGICAL :: DoOptim, OptimalFinish, OptimalStart
-   INTEGER :: NoParam, NoValues
-   REAL(KIND=dp), ALLOCATABLE :: Param(:), BestParam(:)
-   REAL(KIND=dp) :: Cost = HUGE( Cost ) 
-   LOGICAL :: Found, GotCost, MinCost
-   CHARACTER(*), PARAMETER :: Caller = 'ControlParameters'
-
-   SAVE Cost, Param, BestParam
-   
-   CALL Info(Caller, '-----------------------------------------', Level=5 )
-   CALL Info(Caller, 'Setting sweeping parameters for simulation',Level=4 )
-
-   FinishEarly = .FALSE.
-
-   NoParam = ListGetInteger( Params,'Parameter Count',Found )
-   IF(.NOT. Found ) THEN
-     NoParam = ListGetInteger( Params,'Number of Parameters',Found)
-   END IF
-   IF(NoParam == 0 ) THEN
-     CALL Info(Caller,'No parameters to set in "Run Control" loop!',Level=4)
-     RETURN
-   END IF
-   
-   DoOptim = ListCheckPresent( Params,'Optimization Method')
-
-   OptimalStart = ListGetLogical(Params,'Optimal Restart',Found )
-
-   OptimalFinish = ListGetLogical( Params,'Parameter Optimal Finish',Found ) 
-   NoValues = ListGetInteger( Params,'Run Control Iterations')
-
-   IF( .NOT. ALLOCATED( Param ) ) THEN
-     ALLOCATE( Param(NoParam), BestParam(NoParam) )
-   END IF
-   
-   ! Visit this after simulation and register the parameters
-   ! and cost function if present. We use same subroutine so
-   ! we can take use of local data. 
-   !----------------------------------------------------------
-   IF( PRESENT( PostSimulation ) ) THEN
-     IF( PostSimulation ) THEN
-       CALL GetCostFunction(Params,Cost,GotCost)
-       IF( GotCost ) CALL RegisterCurrentOptimum(Params,Cost) 
-       CALL SaveParameterHistory()
-       RETURN
-     END IF
-   END IF
-      
-   ! Here we set the parameters in different ways.
-   ! They may be predefined or set by some optimization method. 
-   !-------------------------------------------------------------------
-   IF( OptimalStart .AND. piter == 1 ) THEN
-     CALL GetSavedOptimum()  
-   ELSE IF( OptimalFinish .AND. piter == NoValues ) THEN
-     CALL Info(Caller,'Performing the last step with the best so far')
-     Param = BestParam
-   ELSE IF( DoOptim ) THEN
-     CALL SetOptimizationParameters(Params,piter,GotParams,FinishEarly,&
-         NoParam,Param,Cost)
-   ELSE
-     CALL SetTabulatedParameters(Params,piter,GotParams,FinishEarly,&
-         NoParam,Param)
-   END IF
-
-   IF( InfoActive(20) ) THEN
-     PRINT *,'Parameters:',NoParam,Param
-   END IF
-
-   ! Set parameters to be accessible to the MATC preprocessor when reading sif file.
-   CALL SetRealParametersMATC(NoParam,Param)
-
-   CALL Info(Caller, '-----------------------------------------', Level=5 )
-
-
- CONTAINS
-
-
-   ! Obtains cost function value that has must be given
-   ! by a keyword usually calling a user defined function.
-   !-------------------------------------------------------
-   SUBROUTINE GetCostFunction(OptList,Cost,GotCost)
-
-     TYPE(ValueList_t), POINTER :: OptList
-     REAL(KIND=dp) :: Cost
-     LOGICAL :: GotCost
-     
-     REAL(KIND=dp) :: CostTarget
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
-     LOGICAL :: GotIt
-     
-     Cost = ListGetCReal(OptList,'Cost Function',GotCost)
-
-     IF(.NOT. GotCost) THEN
-       Name = ListGetString(OptList,'Cost Function Name',GotIt)
-       IF(.NOT. GotIt ) THEN
-         Cost = ListGetCReal(OptList,Name,GotCost)
-       END IF
-     END IF
-
-     IF(.NOT. GotCost ) RETURN
-     
-     ! Whether to perform search rather than optimization. 
-     ! In this case reduce the goal so that the target will always be zero.
-     !----------------------------------------------------------------------
-     CostTarget = ListGetConstReal( OptList,'Cost Function Target',GotIt)    
-     IF( GotIt ) Cost = Cost - CostTarget 
-     
-     ! The cost function could be the absolute value
-     ! or we could transfer a maximization problem into minimization.
-     !----------------------------------------------------------------
-     IF( ListGetLogical( OptList,'Cost Function Absolute',GotIt)) THEN
-       Cost = ABS( Cost )
-     ELSE IF( ListGetLogical( OptList,'Cost Function Maximize',GotIt)) THEN
-       Cost = -Cost
-     END IF
-   
-     WRITE( Message, '(A,ES15.6E3)' ) 'Last evaluated cost: ',Cost    
-     CALL Info(Caller,Message,Level=5)
-     
-   END SUBROUTINE GetCostFunction
-
-
-   ! We may register the current optimum and save it for later use.
-   ! Then when starting over we may continue from the best so far.
-   !----------------------------------------------------------------
-   SUBROUTINE RegisterCurrentOptimum(OptList,Cost) 
-     TYPE(ValueList_t), POINTER :: OptList
-     REAL(KIND=dp) :: Cost
-     
-     REAL(KIND=dp) :: MinCost = HUGE(MinCost)
-     INTEGER :: NoBetter = 0, i, IOUnit
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
-     LOGICAL :: GotIt
-     
-     SAVE MinCost , NoBetter
-     
-     IF( ABS( Cost ) > ABS( MinCost ) ) RETURN
-          
-     ! Found a new best parameter combination
-     !---------------------------------------
-     MinCost = Cost
-     BestParam(1:NoParam) = Param(1:NoParam)
-     NoBetter = NoBetter + 1
-     
-     WRITE(Message,'(A,ES15.6E3)') 'Found New Minimum Cost:',MinCost
-     CALL Info(Caller,Message,Level=4)
-     
-     Name = ListGetString(OptList,'Parameter Best File',GotIt )
-     IF( GotIt ) THEN
-       OPEN( NEWUNIT=IOUnit, FILE=Name, STATUS='UNKNOWN')
-       WRITE (IOUnit,'(A,ES17.8E3)') 'Cost: ',Cost
-       WRITE (IOUnit,'(A,I0)') 'Improvements: ',NoBetter
-       WRITE (IOUnit,'(A,I0)') 'Iterations: ',piter
-       WRITE (IOUnit,'(A,I0)') 'NoParam: ',NoParam
-       DO i=1,NoParam
-         WRITE (IOUnit,'(ES17.8E3)') Param(i)
-       END DO
-       CLOSE(IOUnit)
-     END IF
-        
-     WRITE( Message, '(A,ES15.6E3)' ) 'Lowest cost so far: ',MinCost
-     CALL Info(Caller,Message,Level=5)
-
-   END SUBROUTINE RegisterCurrentOptimum
-
-
-   ! It may be interesting to follow the convergence history of the optimization.
-   ! This file may include the parameters and the cost function if given.
-   !-----------------------------------------------------------------------------
-   SUBROUTINE SaveParameterHistory()
-     
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
-     LOGICAL :: DoAppend
-     INTEGER :: IOunit
-     LOGICAL :: GotIt
-     
-     ! Save the results to a file
-     !---------------------------
-     Name = ListGetString(Params,'Parameter History File',GotIt )
-     IF(.NOT. GotIt ) RETURN
-
-     DoAppend = ListGetLogical(Params,'Parameter History Append',GotIt )
-          
-     IF(piter == 1 .AND. .NOT. DoAppend ) THEN
-       OPEN (NEWUNIT=IOUnit, FILE=Name)
-     ELSE
-       OPEN (NEWUNIT=IOUnit, FILE=Name,POSITION='APPEND')
-     END IF
-
-     IF( GotCost ) THEN
-       WRITE (IOUnit,*) piter, Cost, Param(1:NoParam)
-     ELSE
-       WRITE (IOUnit,*) piter, Param(1:NoParam)
-     END IF
-     CLOSE(IOUnit)
-
-   END SUBROUTINE SaveParameterHistory
-
-
-   !> This subroutine may be used to continue the optimization from the previous best value.
-   !--------------------------------------------------------------------------------------
-   SUBROUTINE GetSavedOptimum( )
-     !------------------------------------------------------------------------------
-     INTEGER :: i,n
-     REAL(KIND=dp) :: parami
-     REAL(KIND=dp), ALLOCATABLE :: guessparam(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
-     LOGICAL :: fileis, GotIt
-     INTEGER :: IOUnit
-
-     Name = ListGetString(Params,'Parameter Restart File',GotIt )
-     IF(.NOT. GotIt) RETURN
-     
-     INQUIRE (FILE=Name, EXIST=fileis)
-
-     IF(.NOT. fileis ) THEN
-       CALL Warn(Caller,'Previous optimum was not found in: '//TRIM(Name))
-       RETURN
-     END IF
-     
-     OPEN(NEWUNIT=IOUnit,FILE=Name)
-     READ (IOUnit,*) n
-     ALLOCATE (guessparam(n))
-     DO i=1,n
-       READ (IOUnit,*) guessparam(i)
-     END DO
-     CLOSE(IOUnit)
-
-     n = MIN( n, SIZE( param) )
-     param(1:n) = guessparam(1:n)
-
-   END SUBROUTINE GetSavedOptimum
-      
- END SUBROUTINE ControlParameters
-
- !--------------------------------------------------------------------------------
- !> This subroutine sets tabulated parameters given in space separated ascii file
- !> or alternative in Dakota format file. 
- !------------------------------------------------------------------------------
- SUBROUTINE SetTabulatedParameters(Params,piter,GotParams,&
-     FinishEarly,NoParam,Param)
-   !-----------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ValueList_t), POINTER :: Params
-    INTEGER :: piter
-    LOGICAL :: GotParams,FinishEarly
-    INTEGER :: NoParam
-    REAL(KIND=dp), ALLOCATABLE :: Param(:)
-
-    CHARACTER(LEN=MAX_NAME_LEN) :: FileName
-    LOGICAL :: Found, HaveFile, HaveArray
-    REAL(KIND=dp), POINTER :: PArray(:,:)
-    TYPE(Variable_t), POINTER :: PVar
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: LineCounter = 0
-    CHARACTER(*), PARAMETER :: Caller = 'SetTabulatedParameters'
-
-        
-    GotParams = .FALSE.
-    FinishEarly = .FALSE.
     
-    Parray => ListGetConstRealArray( Params,'Parameter Array',HaveArray)
-    FileName = ListGetString( Params,'Parameter File',HaveFile)
-    
-    IF(.NOT. (HaveFile .OR. HaveArray) ) RETURN 
-    
-    CALL Info(Caller,'Trying to set simulation parameters')
-    
-    ! a) use given vector of simulation parameters
-    IF( HaveArray ) THEN      
-      CALL Info(Caller,'Setting parameters using constant array!',Level=6)
-      IF( piter > SIZE(Parray,1) ) THEN
-        FinishEarly = .TRUE.
-      ELSE
-        IF( SIZE(Parray,2) < NoParam ) THEN
-          CALL Fatal(Caller,'Given "Parameter Array" has too few parameters!')
-        END IF
-        Param(1:NoParam) = Parray(piter,1:NoParam)
-      END IF
-    END IF
-    
-    ! b) read a row from file
-    IF( HaveFile ) THEN
-      CALL Info(Caller,'Setting parameters using external file!',Level=6)
-      CALL ReadTabulatedParameters()
-    END IF
-    
-    IF( FinishEarly ) THEN
-      CALL Warn(Caller,'Parameters exhausted already: '//TRIM(I2S(piter)))  
-      RETURN
-    END IF
-        
-    GotParams = .TRUE.
-    
-  CONTAINS
-
-    
-    SUBROUTINE ReadTabulatedParameters()
-
-      INTEGER :: FileUnit, Line, NOffset, FileTypeInd, FileRow, iostat, i, j, k
-      CHARACTER(LEN=MAX_NAME_LEN) :: FileType, readstr 
-      REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
-          
-      FileType = ListGetString( Params,'Parameter Filetype',Found )
-      FileTypeInd = 0
-      IF( Found ) THEN
-        SELECT CASE( FileType )
-        CASE('table')
-          FileTypeInd = 0
-        CASE('dakota')
-          FileTypeInd = 1
-        CASE DEFAULT
-          CALL Fatal(Caller,'Unkonown filetype: '//TRIM(FileType))
-        END SELECT
-      END IF
-
-      FileRow = ListGetInteger( Params,'Parameter Row Offset',Found ) 
-      FileRow = FileRow + piter
-      
-      OPEN(NEWUNIT=FileUnit,FILE=FileName,IOSTAT=iostat)
-      IF( iostat /= 0 ) THEN
-        CALL Fatal(Caller,'Could not open file: '//TRIM(FileName))
-      END IF
-        
-      IF( FileTypeInd == 1 ) THEN
-        Noffset = 2
-        DO WHILE(.TRUE.) 
-          READ( FileUnit,'(A)',IOSTAT=iostat) readstr
-          IF( iostat /= 0 ) THEN
-            CALL Fatal(Caller,'Could not read dummy line: '//TRIM(I2S(Line)))
-          END IF
-          i = INDEX( readstr,'RUN NO.') 
-          IF( i > 0 ) THEN
-            CALL Info(Caller,'Parameter lines start after line: '//TRIM(readstr),Level=6)
-            EXIT
-          END IF
-          i = INDEX( readstr,'Number of Variables =' )
-          IF( i > 0 ) THEN
-            j = MAX_NAME_LEN
-            READ( readstr(i+21:j),*,IOSTAT=iostat) k
-            IF( iostat /= 0 ) THEN
-              CALL Fatal(Caller,'Could not read parameters from line: '//TRIM(readstr))
-            END IF
-            CALL Info(Caller,'Number of parameters in DAKOTA file: '&
-                //TRIM(I2S(k)),Level=6)
-            IF( k < NoParam ) THEN
-              CALL Fatal(Caller,'Dakota file has too few parameters!')
-            END IF
-          END IF
-        END DO
-      ELSE
-        Noffset = ListGetInteger( Params,'Parameter Column Offset',Found ) 
-      END IF
-
-      Line = 0
-      DO WHILE(.TRUE.)
-        Line = Line + 1
-        READ( FileUnit,'(A)',IOSTAT=iostat) readstr
-        IF( iostat /= 0 ) THEN
-          CALL Warn(Caller,'Could not read parameter line: '//TRIM(I2S(Line)))
-          CLOSE(FileUnit)
-          FinishEarly = .TRUE.
-          RETURN
-        END IF
-        IF( Line == FileRow ) THEN
-          CALL Info(Caller,'Read parameter line: '//TRIM(I2S(Line)),Level=7)
-          EXIT
-        END IF
-      END DO
-      CLOSE(FileUnit)
-      
-      ALLOCATE( TmpValues(Noffset+NoParam) )
-      READ(readstr,*,IOSTAT=iostat) TmpValues(1:Noffset+NoParam)
-      IF( iostat /= 0 ) THEN
-        CALL Warn(Caller,'Could not read parameters from: '//TRIM(readstr))
-        FinishEarly = .TRUE.
-        RETURN
-      END IF
-            
-      Param(1:NoParam) = TmpValues(NOffset+1:Noffset+NoParam)
-      
-      CALL Info(Caller,'Parameters read from file',Level=8)
-      
-    END SUBROUTINE ReadTabulatedParameters
-        
-!------------------------------------------------------------------------------
-  END SUBROUTINE SetTabulatedParameters
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-!> This routine allows optimization within single ElmerSolver execution.
-!> Several simple algorithms are provided but for more complex ones look elsewhere.
-!------------------------------------------------------------------------------
-  SUBROUTINE SetOptimizationParameters(OptList,piter,GotParams,FinishEarly, &
-      NoParam,Param,Cost)
-    
-    IMPLICIT NONE
-    
-    TYPE(ValueList_t), POINTER :: OptList
-    INTEGER :: piter
-    LOGICAL :: GotParams, FinishEarly
-    INTEGER :: NoParam
-    REAL(KIND=dp) :: Param(:)
-    REAL(KIND=dp) :: ParamCost    
-    
-    LOGICAL :: gotIt, GotIt2, GotInit, InternalHistory, Visited = .FALSE.
-    LOGICAL, ALLOCATABLE :: FixedParam(:)
-    INTEGER :: i,j,k,l,NoValues, NoFreeParam, NoOpt, &
-        Direction=1, NoImprovements=0, OptimizationsDone
-    REAL(KIND=dp), ALLOCATABLE :: MinParam(:), MaxParam(:), dParam(:), PrevParam(:,:), &
-        PrevCost(:), BestParam(:), InitParam(:)
-    REAL(KIND=dp) :: Cost, MinCost, x(10), c(10), minv, maxv, OptTol
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name, ParamStr, Method
-    CHARACTER(LEN=MAX_NAME_LEN) :: BestFile
-    TYPE(Variable_t),POINTER :: Var
-    INTEGER :: IOUnit
-    CHARACTER(*), PARAMETER :: Caller = 'SetOptimizationParameters'
-
-    
-    SAVE MinParam, MaxParam, PrevParam, &
-        Method, Direction, x, c, PrevCost, &
-        FixedParam, NoFreeParam, MinCost, BestParam, NoValues, &
-        InternalHistory, dParam, &
-        NoImprovements, OptTol, Visited
-
-    GotParams = .TRUE.
-    
-    !------------------------------------------------------------------------------
-    ! In the 1st round perform initializations 
-    !------------------------------------------------------------------------------
-    IF(.NOT. Visited ) THEN
-      CALL Info(Caller,'Initializing solver for optimization')
-
-      NoValues = ListGetInteger( OptList,'Run Control Iterations')
-
-      OptTol = ListGetConstReal( OptList,'Optimization Tolerance',GotIt)
-
-      ALLOCATE( MinParam(NoParam), BestParam(NoParam), MaxParam(NoParam), &
-          dParam(NoParam), FixedParam(NoParam), InitParam(NoParam))
-
-      MinParam = -HUGE( MinParam ) 
-      BestParam = 0.0_dp
-      MaxParam = HUGE( MaxParam ) 
-      dParam = 0.0_dp
-      FixedParam = .FALSE.
-      MinCost = HUGE(MinCost)
-
-      NoFreeParam = 0
-      DO i=1,NoParam
-        WRITE( ParamStr,'(A,I0)') 'Parameter ',i
-
-        FixedParam(i) = ListGetLogical(OptList,'Fixed '//TRIM(ParamStr),GotIt)
-        InitParam(i) = ListGetConstReal(OptList,'Initial '//TRIM(ParamStr),GotInit)
-
-        IF(.NOT. ( FixedParam(i) ) ) THEN
-          minv = ListGetConstReal(OptList,'Min '//TRIM(ParamStr),GotIt)
-          maxv = ListGetConstReal(OptList,'Max '//TRIM(ParamStr),GotIt2)
-
-          IF( GotIt ) MinParam(i) = minv
-          IF( GotIt2 ) MaxParam(i) = maxv
-
-          ! if both min and max given then the 1st set of parameters are
-          ! the average, otherwise either extremum. 
-          IF( .NOT. GotInit ) THEN
-            IF( GotIt .AND. GotIt2 ) THEN
-              InitParam(i) = 0.5_dp * ( minv + maxv ) 
-            ELSE IF( GotIt ) THEN
-              InitParam(i) = minv 
-            ELSE IF( GotIt2 ) THEN
-              InitParam(i) = maxv 
-            END IF
-          END IF
-        END IF
-        dParam(i) = ListGetConstReal(OptList,'Scale '//TRIM(ParamStr),GotIt)
-        IF(.NOT. GotIt) dParam(i) = 1.0_dp
-      END DO
-
-      NoFreeParam = NoParam - COUNT(FixedParam)
-      IF( NoFreeParam == 0 ) THEN
-        CALL Warn(Caller,'All parameters are fixed, no optimization!')
-        RETURN
-      END IF
-
-      Method = ListGetString(OptList,'Optimization Method')
-      
-      ! Internal history could be used in more complicated optimization routines
-      !--------------------------------------------------------------------------
-      InternalHistory = ListGetLogical( OptList,'Internal History',GotIt)    
-      IF( Method == 'bisect') InternalHistory = .TRUE.
-      IF( InternalHistory ) THEN
-        ALLOCATE( PrevParam(NoValues,NoParam), PrevCost(NoValues))
-      END IF
-
-      Visited = .TRUE.
-    END IF
-
-    IF( piter == 1 ) THEN
-      Param(1:NoParam) = InitParam(1:NoParam)
-    END IF
-
-    IF( InternalHistory ) THEN
-      OptimizationsDone = OptimizationsDone + 1
-      PrevParam(OptimizationsDone,1:NoParam) = Param(1:NoParam)
-      PrevCost(OptimizationsDone) = Cost
-    END IF
-            
-    WRITE( Message, '(A,I0,A,A)' ) 'Manipulating ',NoFreeParam,' parameters using ',TRIM(Method) 
-    CALL Info(Caller, Message, Level=4 )
-
-
-    SELECT CASE(Method)
-
-    CASE ('random')
-      CALL RandomParameter()
-
-    CASE ('scanning')
-      CALL ScanParameter()
-
-    CASE ('secant')
-      CALL SecantSearch()
-
-    CASE ('genetic')
-      CALL GeneticOptimize(NoParam, Param, Cost)
-
-    CASE ('bisect')    
-      CALL BisectOptimize()
-
-    CASE ('simplex')    
-      CALL SimplexOptimize( NoParam, Param, Cost, MinParam, MaxParam, dParam )
-
-    CASE DEFAULT
-      CALL Fatal(Caller,'Unknown method')
-
-    END SELECT
-
-    IF(.FALSE.) THEN
-      DO i=1,NoParam 
-        IF( FixedParam(i) ) CYCLE
-        Param(i) = MAX(MinParam(i),Param(i))
-        Param(i) = MIN(MaxParam(i),Param(i))
-      END DO
-    END IF
-    
-  CONTAINS
-
-    !-------------------------------------------------------------------------------
-
-    FUNCTION rnd(n)
-      IMPLICIT NONE
-      INTEGER, INTENT(IN) :: n
-      REAL(KIND=dp), DIMENSION(n) :: rnd
-      CALL RANDOM_NUMBER(rnd)
-    END FUNCTION rnd
-
-    !-------------------------------------------------------------------------------
-
-    INTEGER FUNCTION idx(n)
-      IMPLICIT NONE
-      INTEGER, INTENT(IN) :: n
-      REAL(KIND=dp) :: x
-      CALL RANDOM_NUMBER(x)
-      idx = n*x + 1
-    END FUNCTION idx
-
-    !-------------------------------------------------------------------------------
-    !> Choose next parameter set from genetic optimization procedure
-    !-------------------------------------------------------------------------------
-
-    SUBROUTINE GeneticOptimize(parsize, parameters, func)
-
-      INTEGER :: parsize, no = 0
-      REAL (KIND=dp) :: parameters(parsize), func
-
-      INTEGER :: popsize, i0, i1, i2, i3 
-      REAL(KIND=dp) :: popcoeff, popcross
-      REAL(KIND=dp), ALLOCATABLE :: pars(:,:), vals(:) ,rnds(:)
-      LOGICAL, ALLOCATABLE :: mask(:)
-
-      SAVE no, i0, pars, vals, rnds, mask, popsize, popcoeff, popcross
-
-
-      no = no + 1
-
-      IF(no == 1) THEN
-        popsize = ListGetInteger(OptList,'Population Size',GotIt)
-        IF(.NOT. GotIt) popsize = 5 * parsize
-        popcoeff = ListGetConstReal(OptList,'Population Coefficient',GotIt)
-        IF(.NOT. GotIt) popcoeff = 0.7
-        popcross = ListGetConstReal(OptList,'Population Crossover',GotIt)
-        IF(.NOT. GotIt) popcross = 0.1
-        ALLOCATE(pars(parsize,popsize),vals(popsize),mask(parsize),rnds(parsize))
-        IF(.FALSE.) THEN
-          PRINT *,'popsize',popsize,'parsize',parsize
-          PRINT *,'popcoeff',popcoeff,'popcross',popcross
-        END IF
-      END IF
-
-      ! Read the cases into the population
-      IF(no <= popsize) THEN
-        pars(1:parsize,no) = parameters(1:parsize)
-        vals(no) = func
-      ELSE   
-        IF(func < vals(i0)) THEN
-          pars(1:parsize,i0) = parameters(1:parsize) 
-          vals(i0) = func
-        END IF
-      END IF
-
-      ! The first cases are just random
-      IF(no < popsize) THEN
-        pars(1:parsize,no) = parameters(1:parsize)
-        vals(no) = func
-        Param = MinParam + (MaxParam-MinParam) * rnd(parsize)
-      END IF
-
-      ! Here use genetic algorithms 
-      IF(no >= popsize) THEN
-        ! Find the three vectors to recombine 
-        i0 = MOD(no,popsize) + 1 
-        DO
-          i1 = idx(popsize)
-          IF (i1 /= i0) EXIT
-        END DO
-        DO
-          i2 = idx(popsize)
-          IF (i2 /= i0.AND. i2 /= i1) EXIT
-        END DO
-        DO
-          i3 = idx(popsize)
-          IF (ALL(i3 /= (/i0,i1,i2/))) EXIT
-        END DO
-
-        rnds = rnd(parsize)
-        mask = (rnds < popcross)
-
-        WHERE (mask)
-          parameters = pars(:,i3) + popcoeff*(pars(:,i1)-pars(:,i2))
-        ELSEWHERE
-          parameters = pars(:,i0)
-        END WHERE
-
-        parameters = MAX( parameters, MinParam ) 
-        parameters = MIN( parameters, MaxParam ) 
-
-      END IF
-
-    END SUBROUTINE GeneticOptimize
-
-    !-------------------------------------------------------------------------------
-    !> Choose next parameter set from even random distribution
-    !-------------------------------------------------------------------------------
-
-    SUBROUTINE RandomParameter()
-
-      INTEGER :: i
-      REAL(KIND=dp) :: Extent
-
-      DO i=1,NoParam
-        CALL RANDOM_NUMBER(Extent)
-        Param(i) = MinParam(i) + (MaxParam(i)-MinParam(i)) * Extent
-      END DO
-
-    END SUBROUTINE RandomParameter
-
-    !-------------------------------------------------------------------------------
-    !> Choose next parameter from 1D parameter scanning
-    !-------------------------------------------------------------------------------
-
-    SUBROUTINE ScanParameter()
-
-      INTEGER :: no, maxno, i,j
-      REAL(KIND=dp) :: Extent
-
-      SAVE no, i, maxno
-
-      IF( no == 0 ) THEN
-        IF(NoFreeParam /= 1) CALL Fatal(Caller,&
-            'Option scan implemented only for one parameter')
-        DO i=1,NoParam
-          IF(.NOT. FixedParam(i)) EXIT
-        END DO
-        CALL Info(Caller,'Applying scanning to parameter '//TRIM(I2S(i)),Level=5)
-        maxno = NoValues 
-      END IF
-
-      Extent = no * 1.0_dp/(maxno-1)
-      Param(i) = MinParam(i) + (MaxParam(i)-MinParam(i)) * Extent
-      no = no + 1
-
-    END SUBROUTINE ScanParameter
-
-    !-------------------------------------------------------------------------------
-    !> Choose next parameter set from 1D bisection search
-    !-------------------------------------------------------------------------------
-
-    SUBROUTINE BisectOptimize()
-
-      INTEGER :: j, no = 0
-      REAL(KIND=dp) :: step 
-
-      SAVE j, no, step
-
-      IF(NoFreeParam /= 1) CALL Fatal(Caller,&
-          'Option bisect implemented only for one parameter')
-      IF( no == 0 ) THEN
-        DO j=1,NoParam
-          IF(.NOT. FixedParam(j)) EXIT
-        END DO
-        CALL Info(Caller,'Applying bisection search to parameter '//TRIM(I2S(j)),Level=7)
-      END IF
-
-      no = no + 1
-
-      IF(no == 1) THEN
-        step = ListGetConstReal(OptList,'Initial Step Size',GotIt)
-        IF(.NOT. GotIt) step = (MaxParam(j)-Param(j))/2.0
-        step = MIN((MaxParam(j)-Param(j))/2.0,step)
-      END IF
-
-      IF(no <= 3) THEN
-        Param(j) = Param(j) + step
-        RETURN
-      END IF
-
-      IF(no == 4) THEN
-        x(1) = PrevParam(1,j)
-        x(2) = PrevParam(2,j)
-        x(3) = PrevParam(3,j)
-        c(1) = PrevCost(1)
-        c(2) = PrevCost(2)
-        c(3) = PrevCost(3)
-      ELSE
-        x(3) = Param(j)
-        c(3) = Cost
-      END IF
-
-      ! Order the previous points so that x1 < x2 < x3
-      DO k=1,2 
-        DO i=k+1,3
-          IF(x(i) < x(k)) THEN
-            x(4) = x(k)
-            x(k) = x(i)
-            x(i) = x(4)
-            c(4) = c(k)
-            c(k) = c(i)
-            c(i) = c(4)
-          END IF
-        END DO
-      END DO
-
-      ! Monotonic line segment
-      IF( (c(2)-c(1))*(c(3)-c(2)) > 0.0) THEN
-        IF(c(3) < c(1)) THEN
-          Param(j) = x(3) + SIGN(step,x(3)-x(1))
-          c(1) = c(3)
-          x(1) = x(3)
-        ELSE
-          Param(j) = x(1) + SIGN(step,x(1)-x(3))
-        END IF
-      ELSE IF(c(2) < c(1) .OR. c(2) < c(3)) THEN 
-        IF(c(3) < c(1)) THEN
-          c(1) = c(3)
-          x(1) = x(3)
-        END IF
-        step = (x(2)-x(1))/2.0d0
-        Param(j) = x(1) + SIGN(step,x(2)-x(1))
-      ELSE
-        CALL Fatal(Caller,'Bisection method cannot handle local maxima')
-      END IF
-
-    END SUBROUTINE BisectOptimize
-
-    !-------------------------------------------------------------------------------
-    !> Choose next parameter set from secant method
-    !> This only works for design problems where the target cost is known.
-    !-------------------------------------------------------------------------------
-    SUBROUTINE SecantSearch()
-
-      INTEGER :: j, no = 0
-      REAL(KIND=dp) :: step, maxstep, relax
-      REAL(KIND=dp) :: x0=0.0,x1=0.0,x2=0.0,f0=0.0,f1=0.0,dx
-
-      SAVE j, no, step, maxstep, relax, x0,x1,x2,f0,f1
-
-      IF(NoFreeParam /= 1) CALL Fatal(Caller,&
-          'Secant search implemented only for one parameter')
-      IF( no == 0 ) THEN
-        DO j=1,NoParam
-          IF(.NOT. FixedParam(j)) EXIT
-        END DO
-        CALL Info(Caller,'Applying secant search to parameter '//TRIM(I2S(j)),Level=7)
-      END IF
-
-      no = no + 1
-
-      IF(no == 1) THEN
-        maxstep = ListGetConstReal(OptList,'Max Step Size',GotIt)
-        step = ListGetConstReal(OptList,'Initial Step Size',GotIt)
-        IF(.NOT. GotIt) step = 1.0d-3*(MaxParam(j)-MinParam(j))
-        relax = ListGetConstReal(OptList,'Step Size Relaxation Factor',GotIt)
-        IF(.NOT. GotIt) Relax = 1.0_dp
-      END IF
-
-      x0 = x1
-      x1 = x2
-      f0 = f1 
-      f1 = Cost
-
-      IF(no <= 2) THEN
-        x2 = Param(j) + (no-1)*step
-      ELSE IF( ABS(f1) < OptTol ) THEN
-        CALL Info(Caller,'Secent search tolerance reached, doing nothing')
-        x2 = x1
-      ELSE
-        dx = relax * f1 * (x1-x0) / (f1-f0)      
-        IF( ABS( dx ) > maxstep ) THEN
-          dx = SIGN( maxstep, dx )
-        END IF
-        x2 = x1 - dx 
-      END IF
-
-      Param(j) = x2
-
-    END SUBROUTINE SecantSearch
-
-
-    !--------------------------------------------------------------------------------------
-    !> Find the optimum using the Simplex method (Nelder-Mead algorithm)
-    !> Note that constraint box is taken into account only when creating the initial simplex.
-    !--------------------------------------------------------------------------------------
-    SUBROUTINE SimplexOptimize( nx, x, cost, minx, maxx, diffx )
-
-      INTEGER :: nx
-      REAL (KIND=dp) :: cost,x(:),minx(:),maxx(:),diffx(:)
-      !------------------------------------------------------------------------------
-      INTEGER :: i,j,il,ih,is,no = 0, nomax, mode = 0, submode = 0
-      LOGICAL :: Found, AllocationsDone
-      REAL(KIND=dp) :: lambda, fl,fh,fs,fr,fe,ratio=0.0, maxratio
-      REAL(KIND=dp) :: alpha=1.0_dp,beta=0.5_dp,gamma=2.0_dp,delta=0.5_dp
-      REAL(KIND=dp), POINTER :: eig(:,:), ls(:), xall(:,:), f(:), x0(:), xr(:),xc(:)
-
-      SAVE no,eig,ls,xall,f,x0,xr,xc,mode,submode,ih,il,is,fr,fs,fe,fh,fl,&
-          nomax,ratio,maxratio,AllocationsDone
-
-      no = no + 1
-
-      !    PRINT *,'Simplex: ',no,mode,maxratio,Cost,ratio
-
-      ! Initialize the unit vectors
-      !-----------------------------
-      IF(.NOT. AllocationsDone ) THEN
-        ALLOCATE(eig(nx,nx),ls(nx),xall(nx+1,nx),f(nx+1),x0(nx),xr(nx),xc(nx))
-
-        lambda = ListGetConstReal(OptList,'Simplex Relative Length Scale',Found)
-        IF(.NOT. Found ) lambda = 0.01_dp
-        DO i=1,nx
-          IF( ABS( diffx(i) ) > TINY(diffx(i)) ) THEN
-            ls(i) = lambda * diffx(i)
-          ELSE
-            IF( maxx(i) - x(i) > x(i) - minx(i) ) THEN
-              ls(i) = lambda * (maxx(i) - x(i))
-            ELSE
-              ls(i) = lambda * (minx(i) - x(i)) 
-            END IF
-          END IF
-        END DO
-
-        eig = 0.0
-        DO i=1,nx
-          eig(i,i) = 1.0_dp
-        END DO
-
-        nomax = ListGetInteger(OptList,'Simplex Restart Interval',Found)
-        maxratio = ListGetConstReal(OptList,'Simplex Restart Convergence Ratio',Found)      
-        IF(.NOT. Found) maxratio = 1.0_dp
-        AllocationsDone = .TRUE.
-      END IF
-
-      IF( nomax > 0 .AND. no > nomax .AND. ratio > maxratio ) THEN
-        CALL Info(Caller,'Making a restart in simplex')
-        ratio = 0.0_dp
-        ls = 0.1 * ls
-
-        !PRINT *,'Simplex: coeff',ls
-        no = 1
-      END IF
-
-      ! Memorize the 1st simplex
-      !--------------------------
-      IF( no > 1 .AND. no <= nx + 2 ) THEN
-        xall(no-1,:) = x
-        f(no-1) = cost
-      END IF
-
-
-      ! Create the 1st simplex
-      !---------------------------
-      IF( no <= nx + 1) THEN
-        IF( no == 1 ) THEN
-          x0 = x
-        ELSE
-          x = x0 + ls(no-1) * eig(no-1,:)
-        END IF
-        RETURN
-      END IF
-
-      IF( mode <= 1 ) THEN
-        ! Find the minimum and maximum nodes in the simplex
-        !--------------------------------------------------
-
-        fl = HUGE(fl)  ! best
-        fh = -HUGE(fh) ! worst   
-        fs = -HUGE(fs) ! second worst   
-
-        DO i=1,nx+1
-          IF( f(i) < fl ) THEN
-            il = i
-            fl = f(i)
-          END IF
-          IF( f(i) > fh ) THEN
-            ih = i
-            fh = f(i)
-          END IF
-        END DO
-        DO i=1,nx+1
-          IF(i == ih) CYCLE
-          IF(i == il) CYCLE
-          IF( f(i) > fs ) THEN
-            is = i
-            fs = f(i)
-          END IF
-        END DO
-
-        ! Minpoint neglecting the worst point
-        !------------------------------------
-        xc = 0.0_dp
-        DO i=1,nx+1
-          IF( i == ih ) CYCLE
-          xc = xc + xall(i,:) 
-        END DO
-        xc = xc / nx
-
-      END IF
-
-
-      ! mode
-      ! 0 - undecided
-      ! 1 - reflection
-      ! 2 - expansion
-      ! 3 - contraction
-      ! 4 - shrinkage
-      ! 5 - finished
-
-      Found = .FALSE.
-      IF( mode == 0 ) THEN
-        mode = 1
-      ELSE IF( mode == 1) THEN
-        fr = cost
-        xr = x
-        IF( fr <= fs .AND. fr >= fl ) THEN
-          Found = .TRUE.
-        ELSE IF( fr < fl ) THEN
-          mode = 2
-        ELSE IF(fr > fs) THEN
-          mode = 3
-          IF( fr < fh ) THEN
-            submode = 1
-          ELSE
-            submode = 2
-          END IF
-        END IF
-
-      ELSE IF(mode == 2) THEN
-        fe = cost
-        IF( fe >= fr ) THEN
-          x = xr
-          cost = fr
-        END IF
-        Found = .TRUE.
-      ELSE IF(mode == 3) THEN
-        IF( submode == 1 .AND. cost < fr ) THEN
-          Found = .TRUE.
-        ELSE IF( submode == 2 .AND. cost < fh ) THEN
-          Found = .TRUE.
-        ELSE
-          mode = 4
-          submode = 0
-        END IF
-      ELSE IF( mode == 4) THEN
-        CALL Warn(Caller,'Srink mode not ok yet!')
-        IF( submode == nx ) THEN
-          mode = 1
-          submode = 0
-        END IF
-      END IF
-
-
-      IF( Found ) THEN
-        xall(ih,:) = x 
-
-        ratio = cost / f(ih)
-
-        f(ih) = cost
-        mode = 1
-        submode = 0
-
-        ! Find the minimum and maximum nodes in the simplex
-        !--------------------------------------------------
-
-        fl = HUGE(fl)  ! best
-        fh = -HUGE(fh) ! worst   
-        fs = -HUGE(fs) ! second worst   
-        DO i=1,nx+1
-          IF( f(i) < fl ) THEN
-            il = i
-            fl = f(i)
-          END IF
-          IF( f(i) > fh ) THEN
-            ih = i
-            fh = f(i)
-          END IF
-        END DO
-        DO i=1,nx+1
-          IF(i == ih) CYCLE
-          IF( f(i) > fs ) THEN
-            is = i
-            fs = f(i)
-          END IF
-        END DO
-
-        ! Minpoint neglecting the worst point
-        !------------------------------------
-        xc = 0.0_dp
-        DO i=1,nx+1
-          IF( i == ih ) CYCLE
-          xc = xc + xall(i,:) 
-        END DO
-        xc = xc / nx
-      END IF
-
-
-      IF( mode == 1 ) THEN
-        x = xc + alpha*(xc - xall(ih,:))
-      ELSE IF( mode == 2 ) THEN
-        x = xc + gamma*(xc - xall(ih,:))
-      ELSE IF(mode == 3 ) THEN
-        IF( submode == 1 ) THEN
-          x = xc + beta*(xr - xc)        
-        ELSE
-          x = xc + beta*(xall(ih,:) - xc)        
-        END IF
-      ELSE IF(mode == 4) THEN
-        submode = submode + 1 
-        i = submode 
-        IF( submode >= il ) i = i + 1
-        x = xall(il,:) + delta*(xall(i,:)-xall(il,:))
-        xall(i,:) = x
-      END IF
-
-    END SUBROUTINE SimplexOptimize
-
-    
-  END SUBROUTINE SetOptimizationParameters
-
-!------------------------------------------------------------------------------
-!> Optionally we may revert to initial coordinates when using "Run Control".
-!------------------------------------------------------------------------------
- SUBROUTINE ControlResetMesh(Params,piter)
-
-   IMPLICIT NONE
-   
-   TYPE(ValueList_t), POINTER :: Params
-   INTEGER :: piter
-
-   LOGICAL :: Found
-   TYPE(Nodes_t) :: Nodes0
-   TYPE(Nodes_t), POINTER :: Nodes
-   INTEGER :: n
-
-   SAVE Nodes0
-   
-   IF( ListGetLogical( Params,'Reset Mesh Coordinates',Found ) ) THEN
-     Nodes => CurrentModel % Mesh % Nodes
-     n = SIZE( Nodes % x )
-     IF( piter == 1 ) THEN
-       ALLOCATE( Nodes0 % x(n), Nodes0 % y(n), Nodes0 % z(n) )
-       Nodes0 % x = Nodes % x
-       Nodes0 % y = Nodes % y
-       Nodes0 % z = Nodes % z
-     ELSE
-       Nodes % x = Nodes0 % x
-       Nodes % y = Nodes0 % y
-       Nodes % z = Nodes0 % z
-     END IF
-   END IF
-
-   
- END SUBROUTINE ControlResetMesh
-   
 
 END MODULE ModelDescription
 

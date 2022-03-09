@@ -19,8 +19,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = 0.1
-  Timestep Intervals = 20
-!80
+  Timestep Intervals = 10
   Output Intervals = 0
 !  Post File = mortar.ep
 !  Output File = case.result
@@ -65,7 +64,6 @@ End
 
 
 Solver 1
-!  Exec Solver = Before all
   Exec Solver = Before Timestep
   Equation = MeshDeform
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
@@ -77,25 +75,18 @@ End
 Solver 2
   Equation = Heat Equation
   Procedure = "HeatSolve" "HeatSolver"
-  Variable = -dofs 1 Temperature
-  Exec Solver = Always
-  Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
-  Optimize Bandwidth = True
+  Variable = Temperature
   Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
-  Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
 
+  Nonlinear System Max Iterations = 1
   Nonlinear System Relaxation Factor = 1.0  
+  Nonlinear System Consistent Norm = True
+
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabl
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU0
-  Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
@@ -104,8 +95,6 @@ Solver 2
 
   Apply Mortar BCs = Logical True
   Export Lagrange Multiplier = Logical True
-
-!  No Explicit Constrained Matrix = Logical True
 
   Linear System Timing = Logical True
   Solver Timing = Logical True
@@ -144,7 +133,7 @@ Solver 4
   Exec Solver = after timestep
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
+  Output File Name = case_a
   Vtu Format = Logical True
   Single Precision = Logical True
 End 
@@ -196,16 +185,11 @@ End
 Boundary Condition 3
   Target Boundaries(4) = 1 2 3 4
   Name = "Mortar Inside"
-!  Temperature = 1
 
-  Mortar BC =  Integer 2
-
-!  Mortar Projector Radius = Real 1.0
-!  Periodic BC = 2
-!  Periodic BC Translate(3) =  4 0 0
-!  Periodic BC Temperature = Logical True
+  Mortar BC = 2
+  Rotational Projector = True
 End
 
 
-Solver 2 :: Reference Norm = Real 7.8664243183134586
-RUN
+Solver 2 :: Reference Norm = 6.93769175
+

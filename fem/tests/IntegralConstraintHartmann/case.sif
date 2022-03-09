@@ -1,0 +1,156 @@
+! Hartmann problem test case for MHD. 
+! We use integral constraint BCs to define the unknown velocity profile. 
+! Iteration converges only with enough relaxation.
+!
+! This case was based on forum discussion initiated by Andrea_P.
+!
+! P.R. 15.6.2021
+
+! Ha is the dimensionless number defining the effect of magnetic field.
+$ Ha=10
+$ visc = 3.925e-4
+
+! Average velocity and width of inlet
+$ vave=1.0
+$ dy=0.03
+
+! This relaxation factor needs to be pretty small to converge with large values of Ha.
+! The larger the value, the smaller the relaxation factor.  
+$ relax=0.2
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 500
+  Output Intervals = 0
+  Solver Input File = ycase.sif
+  Post File = case.vtu
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial condition = 1
+End
+
+Solver 2
+  Equation = Navier-Stokes
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Procedure = "FlowSolve" "FlowSolver"
+  Stabilize = True
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 0.0
+  Nonlinear System Relaxation Factor = $relax  
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
+  Apply Integral BCs = Logical True
+End
+
+Solver 1
+  Equation = "Magnetic field solver"
+  Variable = Magnetic Field
+  Procedure = "MagneticSolve" "MagneticSolver"
+
+! There is no 2D formulation, this equation always assumed 3D problem.
+  Variable DOFs = 3
+  Exported Variable 1 = -dofs 3 lorentz force
+  Optimize Bandwidth = True
+  
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = $relax
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 2000
+  Linear System Convergence Tolerance = 1.0e-4
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 3
+  Equation = SaveLine
+  Exec Solver = after all
+  Procedure = "SaveData" "SaveLine"
+  Filename = f.dat
+End 
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(2) = 1 2
+End
+
+Body Force 1
+  Lorentz Force = Logical True
+End
+
+Material 1
+  Name = "ViscousFluid"
+  Viscosity = $visc
+  Density = 9926
+  Magnetic Permeability = 1e-6
+  Electric Conductivity = 8000
+  Applied Magnetic Field 2 = Real $ Ha/(0.015*sqrt(8000/visc)) 
+End
+
+Initial Condition 1
+  Name = "InitialCondition 1"
+  Velocity 2 = 0
+  Velocity 1 = 0
+End
+
+Boundary Condition 1
+  Target Boundaries(2) = 1 3
+  Name = "walls"
+  Noslip Wall BC = True
+  Magnetic Field 1 = Real 0
+  Magnetic Field 2 = Real 0
+  Magnetic Field 3 = Real 0  
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "inlet"
+
+  Integral BC = Logical True
+  Integral BC Velocity 1 = Real $vave*dy
+  Velocity 2 = 0.0
+  
+  Save Line = True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 2
+  Name = "outlet"
+  Velocity 2 = 0
+End
+
+
+Solver 1 :: Reference Norm = 5.29208635E-07
+Solver 2 :: Reference Norm = 6.00803071E-01

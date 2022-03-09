@@ -344,7 +344,7 @@ CONTAINS
       ALLOCATE( MaskPerm( Model % NumberOfNodes ) ) 
       CALL MakePermUsingMask( Model,Solver,Mesh,Str, &
           .FALSE., MaskPerm, NumberOfNodes, MaskOnBulk )
-      ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfNodes ) )
+      ParallelNodes = ParallelReduction( NumberOfNodes ) 
       IF( ParallelNodes == 0 ) THEN
         CALL Fatal('SaveGridData','Given mask not active: '//TRIM(Str) )
       ELSE

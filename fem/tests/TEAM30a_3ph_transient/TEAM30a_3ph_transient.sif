@@ -1,0 +1,332 @@
+!--------------------------------------------------------------
+! Induction Motor Analyses International TEAM Workshop Problem 30
+! - 3 phase problems
+! - this one starts from a harmonic solution at 300 Hz and computes transient solution
+! - the idea is to show that the solutions are consistent
+!   
+!
+! J.V. & P.R. 7.10.21
+!--------------------------------------------------------------
+Check Keywords "Warn"
+!---------------------------------------------------------
+!MESH DATA  
+!---------------------------------------------------------
+Header
+  Mesh DB "." "TEAM30a_3ph"
+End
+!---------------------------------------------------------
+
+
+!---------------------------------------------------------
+!Parameters
+!---------------------------------------------------------
+$Je=sqrt(2)*310.0e4  ! Note: the TEAM case defines RMS, we use peak. 
+$freq = 60
+$omega = 2*pi*freq
+$wrot=300
+$stepsPerPeriod = 60
+$periods = 0.5
+$nsteps = periods*stepsPerPeriod
+$stepsize=1/(freq*stepsPerPeriod)
+
+
+!---------------------------------------------------------
+!SIMULATION CONFIGURATION 
+!---------------------------------------------------------
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2d"
+  Simulation Type = "transient"
+  TimeStep Intervals(1) = $nsteps
+  TimeStep Sizes(1) = $stepsize
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Use Mesh Names = True
+
+  Angular Frequency = $omega
+
+! This keyword makes the "Mesh Rotate" keywords expect radians!! Dangerous!
+  Rotate in Radians = Logical True
+
+! Settings for restart
+  Restart Position = 0
+  Restart File = "harmonic.dat"
+
+! Load only the needed information and redirect it to the fields of the transient solver
+  Restart Variable 1 = "az re"
+  Target Variable 1 = String "az"
+  Restart Variable 2 = "lagrangemultiplier re"
+  Target Variable 2 = String "lagrangemultiplier"
+
+! To be on the safe side we ignore the time to start from zero
+  Restart Time Ignore = True
+End
+!---------------------------------------------------------
+
+Constants
+  Permittivity of Vacuum = 8.8542e-12
+  Permeability of Vacuum = 1.256e-6
+End
+
+!---------------------------------------------------------
+
+Body 1
+  Name = Rotor_Steel
+  Material = 2
+  Equation = 2
+End
+
+Body 2
+  Name = Rotor_Aluminum
+  Material = 3
+  Equation = 2
+End
+
+Body 3
+  Name = Rotor_side_Airgap
+  Material = 1
+  Equation = 2
+
+  ! Torque Calculation Method 1:
+  ! Arkkio's Method
+  ! Only valid in uniformly meshed airgaps
+  r inner = Real 3e-2
+  r outer = Real 3.2e-2
+End
+
+Body 4
+  Name = Stator_side_Airgap
+  Material = 1
+  Equation = 1
+End
+
+Body 5
+  Name = Stator_Air
+  Material = 1
+  Equation = 1
+End
+
+Body 6
+  Name = Stator_Steel
+  Material = 4
+  Equation = 1
+End
+
+Body 7
+  Name = Winding_1_plus
+  Material = 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body 8
+  Name = Winding_1_minus
+  Material = 1
+  Equation = 1
+  Body Force = 4
+End
+
+Body 9
+  Name = Winding_2_plus
+  Material = 1
+  Equation = 1
+  Body Force = 2
+End
+
+Body 10
+  Name = Winding_2_minus
+  Material = 1
+  Equation = 1
+  Body Force = 5
+End
+
+Body 11
+  Name = Winding_3_plus
+  Material = 1
+  Equation = 1
+  Body Force = 3
+End
+
+Body 12
+  Name = Winding_3_minus
+  Material = 1
+  Equation = 1
+  Body Force = 6
+End
+
+!---------------------------------------------------------
+! Boundary conditions
+!---------------------------------------------------------
+
+Boundary Condition 1
+  Name = Infinity
+  Az = Real 0
+End
+
+Boundary Condition 2
+  Name = Stator_side_Mortar_Boundary
+
+  Rotational Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC = Integer 3
+
+! Note: we rotate the stator with negative sign since the definition needs to be
+! in the master section. 
+  Mesh Rotate 3 = Variable "time"
+    Real MATC "-wrot*tx"
+End
+
+Boundary Condition 3
+  Name = Rotor_side_Mortar_Boundary
+End
+
+
+! Torque Calculation Method 2:
+! Rotor Component for torque calculation using
+! the sum of nodal forces in rotating domains
+! The postprocessing quantity is obtained via the CalcFields Solver
+! Note: this is active only if CalcFields solver is turned on!
+Component 1
+  Name = String "Rotating_Domains"
+  Master Bodies(2) = Integer 1 2  
+  Calculate Magnetic Torque = Logical true
+End
+
+
+!---------------------------------------------------------
+! Material Properties 
+!---------------------------------------------------------
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0.0
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+End
+
+Material 2
+  Name = "Rotor_Steel"
+  Electric Conductivity = 1.6e6
+  Relative Permittivity = 1.0
+  Relative Permeability = 30.0
+End
+
+Material 3
+  Name = "Rotor_Aluminum"
+  Electric Conductivity = 3.72e7
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+End
+
+Material 4
+  Name = "Stator_Steel"
+  Electric Conductivity = 0.0
+  Relative Permittivity = 1.0
+  Relative Permeability = 30.0
+End
+
+
+!---------------------------------------------------------
+! Solver Configuration
+!---------------------------------------------------------
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = MgDyn2D
+  Variable = Az
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  ! Needed for strong coupling with circuits
+  Export Lagrange Multiplier = True
+  Apply Mortar BCs = Logical True
+
+!  Exec Solver = never
+End 
+
+Solver 2
+  Equation = CalcFields
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Calculate Current Density = True 
+  Calculate Magnetic Flux Density = True
+  Calculate Nodal Fields = False
+  Calculate Elemental Fields = True
+  Calculate Nodal Forces = True
+
+! Eliminated for testing 
+!  Exec Solver = never
+End
+
+
+Solver 3
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = after saving 
+  Output File Name = TEAM30A_3ph
+  Output Directory = res
+  Save Geometry Ids = Logical True
+  Vtu Format = Logical True
+  Gmsh Format = Logical True
+
+  Discontinuous Bodies = True
+
+! Eliminated for the test
+  Exec Solver = never
+End 
+
+
+Solver 4
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+  Filename = g.dat
+  Save Component Results = True 
+  Variable 1 = time
+
+! Plot torque in octave/matlab:
+! load f.dat
+! plot(f(:,7),f(:,4))
+
+! Reference norm is torque computed from nodal forces
+  Show Norm Index = 7
+End
+
+
+!---------------------------------------------------------
+! Current sources
+!---------------------------------------------------------
+Body Force 1
+  Current Density  = Variable "time"
+    Real MATC "-Je*cos(omega*tx)"
+End
+Body Force 2
+  Current Density  = Variable "time"
+    Real MATC "-Je*cos(omega*tx+2*pi/3)"
+End
+Body Force 3
+  Current Density  = Variable "time"
+    Real MATC "-Je*cos(omega*tx-2*pi/3)"
+End
+Body Force 4
+  Current Density  = Variable "time"
+    Real MATC "Je*cos(omega*tx)"
+End
+Body Force 5
+  Current Density  = Variable "time"
+    Real MATC "Je*cos(omega*tx+2*pi/3)"
+End
+Body Force 6
+  Current Density  = Variable "time"
+    Real MATC "Je*cos(omega*tx-2*pi/3)"
+End
+
+
+Solver 1 :: Reference Norm = 7.22008510E+03
+Solver 4 :: Reference Norm = 6.76459951292
+
