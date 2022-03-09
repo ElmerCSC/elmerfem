@@ -881,7 +881,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-    IF(AnisoFlag) THEN
+    IF(DoAniso) THEN
       ! remeshing but no calving
       IF(ImBoss .AND. .NOT. CalvingOccurs) NewMeshR => GatheredMesh
 
