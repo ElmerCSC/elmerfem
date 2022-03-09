@@ -727,6 +727,7 @@
                 Phi0(i) = Snn(i) + Phim(i) 
                 IF (.NOT.NeglectH) THEN
                   k = ThickPerm(j)
+                  IF ( ThickPerm(j) == 0)  CYCLE 
                   Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
                 END IF
                 Afactor(i) = CCt(i) * CCw(i) * WaterDensity
@@ -750,12 +751,16 @@
               
               ! Local matrix assembly in cartesian coords
               !------------------------------------------
-              CALL ChannelCompose( MASS, STIFF, FORCE, &
-                  ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
-                  HydPot(HydPotPerm(Edge % NodeIndexes(1:N))), ChannelArea, &
-                  ChannelConductivity, alphac, betac, Phi0, Phim, Ac, lc, ng, &
-                  SheetConductivity, alphas, betas, Afactor, Bfactor, EdgeTangent, &
-                  Edge, n, EdgeNodes )
+
+              IF ( (ThickPerm(Edge % NodeIndexes(1)).NE.0) .AND. &
+                   (ThickPerm(Edge % NodeIndexes(2)).NE.0) ) THEN
+                 CALL ChannelCompose( MASS, STIFF, FORCE, &
+                      ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
+                      HydPot(HydPotPerm(Edge % NodeIndexes(1:N))), ChannelArea, &
+                      ChannelConductivity, alphac, betac, Phi0, Phim, Ac, lc, ng, &
+                      SheetConductivity, alphas, betas, Afactor, Bfactor, EdgeTangent, &
+                      Edge, n, EdgeNodes )
+              END IF
 
               !To stop weird channel instability where some channels grow
               !exponentially to stupid levels and eventually mess up whole
@@ -1200,13 +1205,16 @@
 
 ! Compute the force term to evolve the channels area
 ! Equation of the form dS/dt = S x ALPHA + BETA
-                 CALL GetEvolveChannel( ALPHA, BETA, Qc, ChannelArea, &
-                     HydPot(HydPotPerm(Edge % NodeIndexes(1:n))), &
-                     ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
-                     alphac, betac, ChannelConductivity, Phi0, Phim, Ac, lc, ng, &
-                     SheetConductivity, alphas, betas, Afactor, Bfactor, &
-                     EdgeTangent, Edge, n, EdgeNodes )
-
+                 IF ( (ThickPerm(Edge % NodeIndexes(1)).NE.0) .AND. &
+                      (ThickPerm(Edge % NodeIndexes(2)).NE.0) ) THEN
+                    CALL GetEvolveChannel( ALPHA, BETA, Qc, ChannelArea, &
+                         HydPot(HydPotPerm(Edge % NodeIndexes(1:n))), &
+                         ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
+                         alphac, betac, ChannelConductivity, Phi0, Phim, Ac, lc, ng, &
+                         SheetConductivity, alphas, betas, Afactor, Bfactor, &
+                         EdgeTangent, Edge, n, EdgeNodes )
+                 END IF
+              
                  SELECT CASE(methodChannels)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
@@ -1355,11 +1363,14 @@
           ! Go for all nodes of the element
           DO i=1,n
              Discharge = 0.0_dp
-             CALL SheetDischargeCompute( & 
-                   HydPot(HydPotPerm(Element % NodeIndexes(1:n))), &
-                   ThickSolution(ThickPerm(Element % NodeIndexes(i))), &
-                   SheetConductivity(i), alphas(i), betas(i), & 
-                   Discharge, Element, n, ElementNodes, i ) 
+             IF ( (ThickPerm(Edge % NodeIndexes(1)).NE.0) .AND. &
+                  (ThickPerm(Edge % NodeIndexes(2)).NE.0) ) THEN
+                CALL SheetDischargeCompute( & 
+                     HydPot(HydPotPerm(Element % NodeIndexes(1:n))), &
+                     ThickSolution(ThickPerm(Element % NodeIndexes(i))), &
+                     SheetConductivity(i), alphas(i), betas(i), & 
+                     Discharge, Element, n, ElementNodes, i ) 
+             END IF
 
              ! One more value for that node          
              DO j=1,dimSheet
