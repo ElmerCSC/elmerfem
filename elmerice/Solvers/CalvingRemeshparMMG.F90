@@ -881,8 +881,6 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-    PRINT*, ParEnv % MyPE, 'check'
-    !CALL FATAL('mack', 'zack')
 
     IF(ImBoss) CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
           !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
@@ -955,7 +953,6 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
-   PRINT*, 'check mesh quality'
    CALL CheckMeshQuality(FinalMesh)
 
    FinalMesh % Name = TRIM(Mesh % Name)
