@@ -881,26 +881,30 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
+    IF(AnisoFlag) THEN
+      ! remeshing but no calving
+      IF(ImBoss .AND. .NOT. CalvingOccurs) NewMeshR => GatheredMesh
 
-    IF(ImBoss) CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
-          !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-    MeshParams => GetMaterial(Model % Mesh % Elements(1))
-    CALL SequentialRemeshParMMG(Model, NewMeshR, NewMeshRR, ImBoss, REdgePairs, &
-              RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
-    IF(ImBoss) THEN
-          CALL ReleaseMesh(NewMeshR)
-          NewMeshR => NewMeshRR
+      !remeshing for calvign and no calving
+      IF(ImBoss) CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+            !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+      MeshParams => GetMaterial(Model % Mesh % Elements(1))
+      CALL SequentialRemeshParMMG(Model, NewMeshR, NewMeshRR, ImBoss, REdgePairs, &
+                RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
+      IF(ImBoss) THEN
+            CALL ReleaseMesh(NewMeshR)
+            NewMeshR => NewMeshRR
+            NewMeshRR => NULL()
+
+          !Update parallel info from old mesh nodes (shared node neighbours)
+          CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+          CALL ReleaseMesh(GatheredMesh)
+          ! CALL ReleaseMesh(NewMeshR)
+          GatheredMesh => NewMeshR
+          NewMeshR => NULL()
           NewMeshRR => NULL()
-
-        !Update parallel info from old mesh nodes (shared node neighbours)
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
-        CALL ReleaseMesh(GatheredMesh)
-        ! CALL ReleaseMesh(NewMeshR)
-        GatheredMesh => NewMeshR
-        NewMeshR => NULL()
-        NewMeshRR => NULL()
+      END IF
     END IF
-
 
    !Wait for all partitions to finish
    IF(My_Calv_Front>0) THEN
