@@ -2515,7 +2515,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
            END IF
            ! Sum channel flux over valid edges
            IF (ValidEdge) THEN
-              IF (Mesh % ParallelInfo % EdgeInterface(ee)) THEN 
+              IF (Solver % Mesh % ParallelInfo % EdgeInterface(ee)) THEN 
                  ! halve value for edges at partition boundaries because these will be 
                  ! counted twice 
                  volFluxChannel = volFluxChannel + 0.5*channelVals(channelPerm(numNodes+ee))
