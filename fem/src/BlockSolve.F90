@@ -1734,8 +1734,12 @@ CONTAINS
       DO j=C % Rows(i), C % Rows(i+1)-1
         k = C % Cols(j)
         IF( ABS( C % Values(j) ) < EPSILON( Eps ) ) CYCLE  
-        IF ( SIZE(A % ParallelInfo % NeighbourList(i) % Neighbours) > 1 ) Coupled = .TRUE.
-        IF ( SIZE(B % ParallelInfo % NeighbourList(k) % Neighbours) > 1 ) Coupled = .TRUE.
+        IF ( ASSOCIATED(A % ParallelInfo % NeighbourList(i) % Neighbours) ) THEN
+          IF ( SIZE(A % ParallelInfo % NeighbourList(i) % Neighbours) > 1 ) Coupled = .TRUE.
+        END IF
+        IF ( ASSOCIATED(B % ParallelInfo % NeighbourList(k) % Neighbours) ) THEN       
+          IF ( SIZE(B % ParallelInfo % NeighbourList(k) % Neighbours) > 1 ) Coupled = .TRUE.
+        END IF
         IF( Coupled ) EXIT
       END DO
     END DO
@@ -3668,7 +3672,8 @@ CONTAINS
         DO NoCol = 1,NoVar
           A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
           IF(.NOT. ASSOCIATED(A) ) CYCLE
-         
+          IF(.NOT. ASSOCIATED(A % Values) ) CYCLE
+
           IF(InfoActive(20)) THEN
             CALL VectorValuesRange(A % Values,SIZE(A % Values),'A'//TRIM(I2S(10*NoRow+NoCol)))       
             IF( ASSOCIATED( A % MassValues ) ) THEN
@@ -3760,7 +3765,8 @@ CONTAINS
             DO NoCol = 1,NoVar
               A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
               IF( .NOT. ASSOCIATED( A ) ) CYCLE
-
+              IF( .NOT. ASSOCIATED( A % Rows ) ) CYCLE
+              
               DO j=A % Rows(i),A % Rows(i+1)-1
                 ! If we have the imaginary row add the multiplier of imaginary value first
                 IF( c == 2 ) THEN
@@ -3806,7 +3812,9 @@ CONTAINS
           DO NoCol = 1,NoVar
             A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
             IF( .NOT. ASSOCIATED( A ) ) CYCLE
-            IF( SIZE(A % Rows) < i+1 ) CYCLE 
+            IF( .NOT. ASSOCIATED( A % Rows ) ) CYCLE
+            IF( SIZE(A % Rows) < i+1 ) CYCLE
+            
             DO j=A % Rows(i),A % Rows(i+1)-1
               k = k + 1
               CollMat % Values(k) = A % Values(j)

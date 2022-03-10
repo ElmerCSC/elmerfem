@@ -1400,9 +1400,9 @@ CONTAINS
         jumps(i+1) = jumps(i) + m 
       END DO
 
-      IF( ParEnv % MyPe == 1 ) THEN
-        PRINT *,'offsets for parallel info:',jumps
-      END IF
+      !IF( ParEnv % MyPe == 0 ) THEN
+      !  PRINT *,'offsets for parallel info:',jumps
+      !END IF
       
       ALLOCATE( A % ParallelInfo )
       P => A % ParallelInfo
