@@ -1845,7 +1845,11 @@ CONTAINS
           IF( errorInd < RobustStep * BestNorm ) THEN
             BestIter = iter
             BestNorm = errorInd
-            Bestx = x
+            IF (Smoothing) THEN
+              Bestx = x_s
+            ELSE
+              Bestx = x
+            END IF
             BadIterCount = 0
           ELSE
             BadIterCount = BadIterCount + 1
