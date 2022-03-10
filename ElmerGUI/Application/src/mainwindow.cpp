@@ -2502,10 +2502,12 @@ void MainWindow::loadProject(QString projectDirName) {
 
       // following 3 lines were moved into if() block to avoid doubled "Solver
       // specific options" tabs (Nov 2019 by TS)
-      spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
+	  // The argument "index" in the following two functions is changed from "id" to avoid
+	  // crossed parameters (Mar 2022 by TS) See http://www.elmerfem.org/forum/viewtopic.php?t=7696
+      spe->generalOptions->setupTabs(elmerDefs, "Solver", index);
       spe->generalOptions->populateHash(&item);
       spe->ui.solverControlTabs->insertTab(
-          0, spe->generalOptions->tabWidget->widget(id),
+          0, spe->generalOptions->tabWidget->widget(index),
           "Solver specific options");
     }
   }
