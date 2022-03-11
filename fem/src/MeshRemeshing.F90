@@ -1759,7 +1759,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     IF ( ierr == 0 ) CALL FATAL('ParMMGSolver',&
          'CALL TO  ParMMG_Get_vertex FAILED')
     IF(Parallel) THEN
-      IF(required > 0) THEN
+      IF(required > 0 .AND. ref > 10) THEN
         ! ref = GDOF + 10 to avoid an input ref of 10 being confused
         ! with mmg output ref of 10 which occurs on some new nodes
         ! GDOF = ref - 10
@@ -1769,7 +1769,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
         NewMesh % ParallelInfo % GlobalDOFs(ii) = 0
       END IF
     END IF
-    IF(PRESENT(FixedNodes)) FixedNodes(ii) = required > 0
+    IF(PRESENT(FixedNodes)) FixedNodes(ii) = required > 0 .AND. ref > 10
   End do
 
   IF (DEBUG) PRINT *,'ParMMG_Get_vertex DONE'
@@ -1834,7 +1834,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   DO ii=1,NTris
     kk = kk + 1
 
-    CALL MMG3D_GET_TetFromTria(pmmgMesh, &
+    CALL PMMG_GET_TetFromTria(pmmgMesh, &
          ii,parent,ied,ierr)
 
     IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
