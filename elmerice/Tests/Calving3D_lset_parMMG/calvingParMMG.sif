@@ -38,7 +38,7 @@ Constants
   Bottom Surface Name = String "Zs Bottom"
   Water Density = Real $RhoWS
 
-  Front Orientation(3) = Real 0 -1.0 0.0
+  !Front Orientation(3) = Real 0 -1.0 0.0
 End
 
 Simulation
@@ -57,7 +57,7 @@ Simulation
   Steady State Max Iterations = 1 !20
   Steady State Min Iterations = 1
   Set Dirichlet BCs By BC Numbering = Logical True
-  max output level = 40
+  max output level = 10
   Output Intervals = 1
   Output File = "$namerun".result" !"
   Output Coordinates = Logical True
@@ -147,10 +147,10 @@ Material 1
   Min Zs Bottom = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
 
-  RemeshMMG3D Hmin = Real 40.0
-  RemeshMMG3D Hmax = Real 400.0
-  RemeshMMG3D Hgrad = Real 1.0
-  RemeshMMG3D Hausd = Real 100.0
+  RemeshMMG3D Hmin = Real 50.0
+  RemeshMMG3D Hmax = Real 500.0
+  RemeshMMG3D Hgrad = Real 2.5
+  RemeshMMG3D Hausd = Real 50.0
   RemeshMMG3D Anisotropic = Logical True
   RemeshMMG3D Target Length(3) = Variable Coordinate 1
     Real Procedure "ElmerIceUSF" "GlacierMeshMetricAniso"
@@ -320,25 +320,17 @@ Solver 19
   Exported Variable 1 DOFs = 1
 
   Calving Search Distance = Real 3000.0
-  Calving Mesh Min LC = Real 30.0
-  Calving Mesh Max LC = Real 100.0
-  Calving Mesh LC Min Dist = Real 500.0
-  Calving Mesh LC Max Dist = Real 1500.0
+  PlaneMesh Grid Size = Real 40.0
 
   Calving Append Name = String "$namerun"" !"
 
+  Lateral Calving Margins = Logical True
+
+  Crevasse Penetration = Real 1.00
+
   Project Calving Equation Name = String "CalvingProjection"
   Isosurface Equation Name = String "Calving Isosurface"
-  Crevasse Penetration Threshold = Real 0.2 !this is the upper limit of average intact ice
-  Minimum Calving Event Size = Real 1.0 !minimum front displacement length
-  Pause Solvers Minimum Iceberg Volume = Real 1.0E6
-
-  Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations  = 2000
-  Linear System Preconditioning = ILU1
-  Linear System Convergence Tolerance = 1.0e-9
-  Linear System Abort Not Converged = False
+  Remesh Equation Name = String "Remesh"
 End
 
 Solver 8
@@ -469,8 +461,8 @@ End
 
 Solver 12
   Equation = "Front Advance"
-  Procedure =  File "ElmerIceSolvers" "FrontAdvance3D"
-  Exec Solver = "Never"
+  Procedure =  File "ElmerIceSolvers" "GlacierAdvance3D"
+  Exec Solver = "After Timestep"
   Variable = -dofs 3 "FrontAdvance"
 
   Normal Vector Variable Name = String "Front Normal Vector"
@@ -483,6 +475,9 @@ Solver 12
   Column Max Longitudinal Range = Real 350.0
   Maximum Node Displacement = Real 1.0E4
 
+  Left Rail Number Nodes = Integer 12
+  Right Rail Number Nodes = Integer 12
+
   Exported Variable 1 = "Tangled"
 End
 
@@ -491,7 +486,7 @@ Solver 13
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
   Procedure =  File "MeshSolve" "MeshSolver"
-  Exec Solver = "Never"
+  Exec Solver = "After Timestep"
   Solver Timing = Logical True
 
   Variable = Longitudinal Mesh Update
@@ -504,6 +499,7 @@ Solver 13
   Linear System Abort Not Converged = False
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-06
+  First TIme Non-Zero = Logical True
 End
 
 
@@ -511,7 +507,7 @@ Solver 16
   Equation = "Vertical Mesh Update"
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
-  Exec Solver = "Never"
+  Exec Solver = "After TimeStep"
   Procedure =  File "MeshSolve1" "MeshSolver"
   Solver Timing = Logical True
 
@@ -772,9 +768,9 @@ Boundary Condition 3
   Slip Coefficient 3 = Variable Coordinate 2
     Real MATC "if(tx<0){0.0}else{100*tx}"
 
-  Longitudinal Mesh Update 1 = Real 0.0
-  Longitudinal Mesh Update 2 = Real 0.0
-  Longitudinal Mesh Update 3 = Real 0.0
+  Longitudinal Mesh Update 1 = Equals FrontAdvance 1
+  Longitudinal Mesh Update 2 = Equals FrontAdvance 2
+  Longitudinal Mesh Update 3 = Equals FrontAdvance 3
 
   Zs Bottom = Equals Reference Zs Bottom
 
@@ -793,7 +789,6 @@ Boundary Condition 4
   Mass Consistent Normals = Logical True
 
   Velocity 1 = Real 0.0
-  Velocity 1 = Real 0.0
   ! Velocity 2 = Real 0.0
   ! Velocity 3 = Real 0.0
   Slip Coefficient 2 = Variable Coordinate 2
@@ -801,9 +796,9 @@ Boundary Condition 4
   Slip Coefficient 3 = Variable Coordinate 2
     Real MATC "if(tx<0){0.0}else{100*tx}"
 
-  Longitudinal Mesh Update 1 = Real 0.0
-  Longitudinal Mesh Update 2 = Real 0.0
-  Longitudinal Mesh Update 3 = Real 0.0
+  Longitudinal Mesh Update 1 = Equals FrontAdvance 1
+  Longitudinal Mesh Update 2 = Equals FrontAdvance 2
+  Longitudinal Mesh Update 3 = Equals FrontAdvance 3
 
   Zs Bottom = Equals Reference Zs Bottom
 
