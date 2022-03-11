@@ -68,10 +68,10 @@ Solver 1
   Nonlinear System Max Iterations = 100
   Nonlinear System Convergence Tolerance = 1e-5
 
-  Linear System Solver = Direct
+  Linear System Solver = Iterative
   Linear System Preconditioning = ILU2
   Linear System Max Iterations = 1000
-  Linear System Normwise Backward Error = Logical True
+  Linear System Componentwise Backward Error = Logical True
   Linear System Convergence Tolerance = 1e-7
   Linear System Iterative Method = GCR
   Linear System GCR Restart = 300
