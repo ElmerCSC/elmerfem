@@ -7605,10 +7605,10 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: NullSolver => NULL()
-    INTEGER, POINTER :: LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
+    INTEGER, POINTER :: LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), TopPerm(:)=>NULL(), BottomPerm(:)=>NULL()
     INTEGER :: i,j,k,l, counter, NBulk, NBdry, NNodes, LNNodes, RNNodes, group, &
           FNElm, ierr, status(MPI_STATUS_SIZE), proc, Neighbour, NGroups, &
-          NNeighbours
+          NNeighbours, dummyint
     INTEGER, ALLOCATABLE :: GroupCounts(:), ElNodes(:), PartGroups(:), PartGroupCounts(:), &
           GroupToPart(:), NeighbourList(:), TotalGroupCounts(:), GroupConstraint(:), &
           GDOFs(:), PartGDOFs(:), PNNeighbours(:), Order(:), WorkInt(:), PartConstraint(:)
@@ -7616,7 +7616,7 @@ CONTAINS
     LOGICAL :: NoNewNodes, NewGroup, NoNewParts
     LOGICAL, ALLOCATABLE :: UsedElem(:), FoundNode(:), IsNeighbour(:,:), &
           PartNeighbours(:,:), GroupNeighbours(:,:), Grouper(:,:), PartGrouper(:,:), GroupElems(:,:)
-    CHARACTER(MAX_NAME_LEN) :: LeftMaskName, RightMaskName
+    CHARACTER(MAX_NAME_LEN) :: LeftMaskName, RightMaskName, TopMaskName, BottomMaskName
 
     Mesh => Model % Mesh
     NBulk = Mesh % NumberOfBulkElements
@@ -7625,11 +7625,17 @@ CONTAINS
 
     LeftMaskName = "Left Sidewall Mask"
     RightMaskName = "Right Sidewall Mask"
+    TopMaskName = "Top Surface Mask"
+    BottomMaskName = "Bottom Surface Mask"
     !Generate perms to quickly get nodes on each boundary
     CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
       .FALSE., LeftPerm, LNNodes)
     CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
       .FALSE., RightPerm, RNNodes)
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, TopMaskName, &
+      .FALSE., TopPerm, dummyint)
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, BottomMaskName, &
+      .FALSE., BottomPerm, dummyint)
 
     ! first step is to isolate any unconnected elements
     ! two sweep allocate then fill
@@ -7679,6 +7685,8 @@ CONTAINS
         counter= counter + 1
         ! do any nodes have neighbours?
         DO j=1, SIZE(ElNodes)
+          IF(TopPerm(ElNodes(j)) /= 0) CYCLE
+          IF(BottomPerm(ElNodes(j)) /= 0) CYCLE
           Neighbours => Mesh % ParallelInfo % NeighbourList(ElNodes(j)) % Neighbours
           DO k=1, SIZE(Neighbours)
             IF(Neighbours(k) == ParEnv % MyPE) CYCLE
@@ -8002,7 +8010,7 @@ CONTAINS
       ElemConstraint = 0
     END IF
 
-    DEALLOCATE(LeftPerm, RightPerm)
+    DEALLOCATE(LeftPerm, RightPerm, TopPerm, BottomPerm)
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
