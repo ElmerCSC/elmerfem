@@ -3675,9 +3675,11 @@ CONTAINS
           IF(.NOT. ASSOCIATED(A % Values) ) CYCLE
 
           IF(InfoActive(20)) THEN
-            CALL VectorValuesRange(A % Values,SIZE(A % Values),'A'//TRIM(I2S(10*NoRow+NoCol)))       
+            CALL VectorValuesRange(A % Values,SIZE(A % Values),&
+                'A'//TRIM(I2S(10*NoRow+NoCol)),.TRUE.)       
             IF( ASSOCIATED( A % MassValues ) ) THEN
-              CALL VectorValuesRange(A % MassValues,SIZE(A % MassValues),'M'//TRIM(I2S(10*NoRow+NoCol)))       
+              CALL VectorValuesRange(A % MassValues,SIZE(A % MassValues),&
+                  'M'//TRIM(I2S(10*NoRow+NoCol)),.TRUE.)       
             END IF
           END IF
           
@@ -3859,9 +3861,9 @@ CONTAINS
     IF(InfoActive(20)) THEN
       !CALL CRS_CheckSymmetricTopo(CollMat)
       !CALL CRS_CheckComplexTopo(CollMat)
-      CALL VectorValuesRange(CollMat % Values,SIZE(CollMat % Values),'Atot')
+      CALL VectorValuesRange(CollMat % Values,SIZE(CollMat % Values),'Atot',.TRUE.)
       IF( ASSOCIATED( CollMat % MassValues ) ) THEN
-        CALL VectorValuesRange(CollMat % MassValues,SIZE(CollMat % MassValues),'Mtot')
+        CALL VectorValuesRange(CollMat % MassValues,SIZE(CollMat % MassValues),'Mtot',.TRUE.)
       END IF
     END IF
           
