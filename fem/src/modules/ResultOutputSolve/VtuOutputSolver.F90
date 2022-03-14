@@ -1503,8 +1503,8 @@ CONTAINS
           CurrentElement => Model % Elements(i)
 
           IF( i <= Mesh % NumberOfBulkElements ) THEN
-            j = CurrentElement % BodyId 
-            j = GeometryBodyMap( j )
+            j = CurrentElement % BodyId
+            IF (j>=1 .AND. j<= SIZE(GeometryBodyMap)) j = GeometryBodyMap( j )     
           ELSE
             j = GetBCId( CurrentElement )
             IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) THEN
