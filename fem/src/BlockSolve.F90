@@ -2859,7 +2859,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
     REAL(KIND=dp) :: nrm
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DoDiagScaling, UsePrecMat, Trans, Isolated
+        IsComplex, BlockScaling, DoDiagScaling, UsePrecMat, Trans, &
+        Isolated, NoNestedScaling
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
@@ -2918,12 +2919,15 @@ CONTAINS
     IF( DoDiagScaling .AND. BlockScaling ) THEN
       CALL Warn('BlockMatrixPrec','It is not recommended to use two outer scalings at same time')
     END IF
-
-    IF( DoDiagScaling .OR. BlockScaling ) THEN
-      ! This turned out to be a bad idea...
-      !CALL Info('BlockMatrixPrec',&
-      !    'Only using outer level scaling, skipping scaling on block level!',Level=10)
-      !CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
+    
+    NoNestedScaling = ListGetLogical( Params,'Eliminate Nested Scaling',Found ) 
+    !IF(.NOT. Found) NoNestedScaling = .TRUE.
+    
+    IF( NoNestedScaling ) THEN
+      IF( DoDiagScaling .OR. BlockScaling ) THEN
+        CALL Info('BlockMatrixPrec','Eliminating scaling for blocks as outer scaling already done!')
+        CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.)
+      END IF
     END IF
       
     ! Always treat the inner iterations as truly complex if they are
@@ -3191,8 +3195,8 @@ CONTAINS
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.FALSE.)
     CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
-    !CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.) 
-
+    
+    IF(NoNestedScaling) CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.)
       
     Solver => Solver_save
     Solver % Matrix => mat_save
@@ -3534,10 +3538,6 @@ CONTAINS
     ! arithmetics only at the inner level.
     CALL ListAddLogical( Params,'Linear System Skip Complex',.TRUE.) 
 
-    ! Skip the scaling for block level system as the default routines
-    ! would not perform it properly.
-    CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.) 
-     
     IF(ASSOCIATED(SolverMatrix)) THEN
       A => SolverMatrix
     ELSE
