@@ -1544,7 +1544,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
 
-#ifdef HAVE_MMG
+#ifdef HAVE_PARMMG
   TYPE(Element_t),POINTER :: Element
   INTEGER, POINTER :: NodeIndexes(:)
 
@@ -1677,8 +1677,8 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
 
 #else
-     CALL FATAL('Set_MMG3D_Mesh',&
-        'Remeshing utility MMG3D has not been installed')
+     CALL FATAL('Set_ParMMG_Mesh',&
+        'Remeshing utility ParMMG has not been installed')
 #endif
 
 END SUBROUTINE Set_ParMMG_Mesh
