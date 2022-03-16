@@ -231,7 +231,8 @@ MODULE ComponentUtils
 
            ! Calculate torque around an axis
            IF( PRESENT( Torque ) ) THEN
-             v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             !v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
              Torque = Torque + SUM(Axis*v2)        
            END IF
