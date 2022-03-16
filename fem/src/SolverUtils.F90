@@ -17793,9 +17793,11 @@ CONTAINS
                         !PRINT *,'fs:',ifluid,jstruct,MultFS,val
                       ELSE
                         ! Ensure correct matrix structure
-                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*0.001)
                       END IF
                     END IF
+                  ELSE
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)                  
                   END IF
                 END IF
               END DO
@@ -17984,12 +17986,6 @@ CONTAINS
           CALL Warn(Caller,'Both models should have MassValues if one has!')
         END IF
 
-        !IF(.NOT. ASSOCIATED(A_f % DampValues ) ) THEN
-        !  ALLOCATE( A_f % DampValues( SIZE( A_f % MassValues ) ) )
-        !END IF
-        !A_f % DampValues = A_f % MassValues
-        !A_f % MassValues = 0.0_dp
-
         IF( InfoActive(20) ) THEN
           PRINT *,'f sum:',SUM(A_f % Values), SUM( ABS( A_f % Values ) )
           !PRINT *,'f damp sum:',SUM(A_f % DampValues), SUM( ABS( A_f % DampValues ) )
@@ -18010,7 +18006,7 @@ CONTAINS
         CALL Info(Caller,'Looping again over the FSI boundary, now for mass values!',Level=10)      
         GOTO 100 
       END IF
-    ELSE IF( DoMass ) THEN
+    ELSE 
       ! We repointed the values in order to use the AddToMatrixElement subroutine.
       ! Now let's revert to the original vectors. 
       CALL Info(Caller,'Mass values assembled for the coupling matrices!',Level=10)
