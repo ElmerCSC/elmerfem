@@ -3707,7 +3707,9 @@ CONTAINS
 
       DampedEigen = ListGetLogical(Solver % Values,'Eigen System Complex',Found )  
       IF( DampedEigen ) THEN
-        CALL Info(Caller,'Creating complex system for eigen values!')
+        CALL Info(Caller,'Creating complex system for eigen values!',Level=6)
+      ELSE
+        CALL Info(Caller,'Creating real valued system for eigen values!',Level=8)        
       END IF
       
       SaveImag = ListGetLogical(Solver % Values,'Pick Im Component',Found )  

@@ -235,7 +235,7 @@ CONTAINS
           ! The 2nd time derivative:
           ! ------------------------------
           MASS(p,q) = MASS(p,q) + Weight * &
-              1.0_dp/ c**2  * Basis(q) * Basis(p)
+              (1.0_dp/ c**2)  * Basis(q) * Basis(p)
 
         END DO
       END DO
@@ -244,7 +244,7 @@ CONTAINS
           FORCE(1:nd) = FORCE(1:nd) - Weight * LoadAtIP * Basis(1:nd)
     END DO
     
-    IF( TransientSimulation) THEN
+    IF( TransientSimulation .OR. NeedMass ) THEN
       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
     ELSE IF( NeedMass ) THEN
       CALL DefaultUpdateMass( MASS )
@@ -332,7 +332,7 @@ CONTAINS
 
     END DO
 
-    IF( TransientSimulation) THEN
+    IF( TransientSimulation .OR. NeedMass ) THEN
       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
     END IF
 
