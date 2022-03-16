@@ -18130,7 +18130,7 @@ CONTAINS
     CALL Info(Caller,'Master structure dofs '//TRIM(I2S(ns))//&
         ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
     CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
-        ' active dimensions',Level=10)   
+        ' active mesh dimensions',Level=10)   
 
     n = COUNT( FPerm>0 .AND. SPerm>0 ) 
     IF( n == 0 ) THEN
@@ -18217,7 +18217,7 @@ CONTAINS
         NodeHits = 0
         InterfacePerm = 0
 
-        ! First, in the basic case zero the rows related to directional derivative dofs, 
+        ! First, in the basic case, zero the rows related to directional derivative dofs, 
         ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
         !
         InterfaceN = 0
@@ -18278,20 +18278,19 @@ CONTAINS
         ALLOCATE( EdgeShellCount(EdgeCount), EdgeSolidCount(EdgeCount) )
         
         ! Go through shell elements that are at solid-shell interface.
-        ! Count how many times each node is associated to such shell element.
+        ! Count how many times a mesh edge is associated with such shell element.
 
         DO Phase = 0,1         
           EdgeShellCount = 0                  
           NoFound = 0
-          NoFound2 = 0
           
-          DO t=1,Mesh % NumberOfBulkElements ! Mesh % NumberOfBoundaryElements
+          DO t=1,Mesh % NumberOfBulkElements
             
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
             
             n = Element % TYPE % ElementCode
-            ! Shell element must be a triable or quadrilateral
+            ! Shell element must be a triangle or quadrilateral
             IF( n > 500 .OR. n < 300 ) CYCLE
             
             ! We must have at least two interface nodes
@@ -18304,16 +18303,13 @@ CONTAINS
             ! We should not have the shell immersed in solid
             IF(ALL( SPerm(Indexes) /= 0 ) ) CYCLE 
           
-            ! Ok, now register the shell element to the edge that it is associated to
+            ! Ok, now associate the shell element with the mesh edge
 
-!          ! This does not work since the edges are only defined where there are also faces!
-           DO i = 1, Element % TYPE % NumberOfEdges
-             j = Element % EdgeIndexes(i)
+            DO i = 1, Element % TYPE % NumberOfEdges
+              j = Element % EdgeIndexes(i)
 
-!           ! This does work but is N^2
-!           DO j=1,Mesh % NumberOfEdges
-              
-              IF( EdgePerm(j) == 0 ) CYCLE
+              k = EdgePerm(j)
+              IF( k == 0 ) CYCLE
               Edge => Mesh % Edges(j)
               
               ! Edge is defined by two nodes only!
@@ -18321,8 +18317,6 @@ CONTAINS
               IF( ALL( Indexes /= Edge % NodeIndexes(2) ) ) CYCLE
               
               ! Ok, we have an edge
-              k = EdgePerm(j)
-
               NoFound = NoFound + 1
               
               IF( Phase == 0 ) THEN
@@ -18332,10 +18326,6 @@ CONTAINS
                 EdgeShellTable(k,EdgeShellCount(k)) = t
               END IF
             END DO
-                                          
-            IF( t == Mesh % NumberOfBulkElements + 1 ) THEN                        
-              IF( NoFound > 0 ) EXIT
-            END IF
 
           END DO
 
@@ -18361,7 +18351,7 @@ CONTAINS
  
        
         ! Go through solid elements that are at solid-shell interface.
-        ! Count how many times each node is associated to such shell element.
+        ! Count how many times a mesh edge and its nodes are associated with such solid element.
         !--------------------------------------------------------------------
         DO Phase = 0,1
           EdgeSolidCount = 0
@@ -18381,7 +18371,7 @@ CONTAINS
             ! We must have solid equation present everywhere 
             IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE 
             
-            ! Ok, now register the solid element to the edge that it is associated to it
+            ! Ok, now associate the solid element with the mesh edge
             DO i = 1, Element % Type % NumberOfEdges
               j = Element % EdgeIndexes(i)
 
@@ -18452,7 +18442,7 @@ CONTAINS
               DO i=2,3
                 IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              ! This is not good, but maybe not bad enough to through the whole analysis away...
+              ! This is not good, but maybe not bad enough to throw the whole analysis away...
               IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
                 WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
                     NormalDir,': ',Director(NormalDir)
@@ -18460,7 +18450,7 @@ CONTAINS
               END IF
             END IF
         
-            ! Then go through the each solid element associated with the interface and
+            ! Then go through each solid element associated with the interface and
             ! create matrix entries defining the interaction conditions for the
             ! directional derivatives and corresponding forces. 
             DO e2 = 1, MaxEdgeSolidCount
@@ -18491,7 +18481,7 @@ CONTAINS
                 Weight = 1.0_dp / NodeHits(i) 
 
                 ! It is not self-evident how we should sum up conditions where several
-                ! shell elements are related to single edge. This way the weights at least
+                ! shell elements are related to single edge. In this way the weights at least
                 ! sum up to unity. 
                 weight = weight0 * weight
                 
