@@ -427,9 +427,9 @@ void GetElementSide(int element,int side,int normal,
       ind[2] = elemind[(side+1)%3+3];
       ind[3] = elemind[side+3];  
       ind[4] = elemind[6+side];
-      ind[5] = elemind[12+(side+1)%3];
-      ind[6] = elemind[9+side];
-      ind[7] = elemind[12+side];      
+      ind[5] = elemind[9+(side+1)%3];
+      ind[6] = elemind[12+side];
+      ind[7] = elemind[9+side];      
     }
     else if (side < 5) {
       *sideelemtype = 306;          

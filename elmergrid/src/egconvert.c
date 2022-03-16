@@ -218,7 +218,7 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
 	if(indx[data->topology[elemind][i]]) nohits++;
       if(!nohits) continue;
 
-      if(elemtype > 600 ) 
+      if(elemtype > 800 ) 
 	minhits = 4;
       else if( elemtype > 500 )
 	minhits = 3;
