@@ -102,20 +102,17 @@ Solver 1
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
 
-! The index of master structure is assumed to "1" and the
-! other solver is defined here:
-  Shell Solver Index = Integer 2
-
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
 ! Use linear system scalings in the solution of block system: 
 !  Block Scaling = true
 
-! Define the solvers that build the block system:
+! Define the solvers that build the block system. The first entry in the list
+! refers to this solver section in order to define the (1,1)-block:
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot:
+! Call the assembly for the 2nd solver using the pre-solvers slot:
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
