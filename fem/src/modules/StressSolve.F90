@@ -660,7 +660,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        at0 = RealTime()
 
        IF( MaxIter > 1 ) THEN
-         CALL Info( 'StressSolve','Displacemet iteration: '//TRIM(I2S(iter)),Level=4)
+         CALL Info( 'StressSolve','Displacement iteration: '//TRIM(I2S(iter)),Level=4)
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------

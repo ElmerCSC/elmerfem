@@ -60,6 +60,7 @@
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
     CALL ListAddLogical( SolverParams, 'Shell Solver', .TRUE. )
+    CALL ListAddLogical( SolverParams, 'Drilling DOFs', .TRUE. )
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
