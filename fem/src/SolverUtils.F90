@@ -66,21 +66,6 @@ MODULE SolverUtils
    
    IMPLICIT NONE
 
-   !INTERFACE CondensateP
-   !  MODULE PROCEDURE CondensatePR, CondensatePC
-   !END INTERFACE CondensateP
-
-   CHARACTER(LEN=MAX_NAME_LEN), PRIVATE :: NormalTangentialName
-   INTEGER, PRIVATE :: NormalTangentialNOFNodes
-   INTEGER, POINTER, PRIVATE :: NTelement(:,:)
-   LOGICAL, POINTER, PRIVATE :: NTzeroing_done(:,:)
-   INTEGER, POINTER, PRIVATE :: BoundaryReorder(:)
-   REAL(KIND=dp), POINTER, PRIVATE :: BoundaryNormals(:,:),  &
-                                      BoundaryTangent1(:,:), &
-                                      BoundaryTangent2(:,:)
-
-   SAVE BoundaryReorder, NormalTangentialNOFNodes, BoundaryNormals, &
-              BoundaryTangent1, BoundaryTangent2, NormalTangentialName
 
 CONTAINS
 
@@ -94,6 +79,8 @@ CONTAINS
      INTEGER :: i,dim
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      TYPE(Solver_t), POINTER :: Solver
+     TYPE(NormalTangential_t), POINTER :: NT
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
      
      CALL Info('InitializeToZero','Initializing the linear system to zero',Level=12)
@@ -131,18 +118,16 @@ CONTAINS
      ForceVector = 0.0d0
      Solver => CurrentModel % Solver
 
-     NormalTangentialNOFNodes = 0
      IF ( Solver % Variable % DOFs <= 1 ) RETURN
 
-     NormalTangentialName = 'Normal-Tangential'
+     str = 'Normal-Tangential'
      IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
-       NormalTangentialName = TRIM(NormalTangentialName) // ' Velocity'
+       str = TRIM(str) // ' Velocity'
      ELSE
-       NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
-                   GetVarName(Solver % Variable)
+       str = TRIM(str) // ' ' // GetVarName(Solver % Variable)
      END IF
+     AnyNT = ListGetLogicalAnyBC( CurrentModel, str )
 
-     AnyNT = ListGetLogicalAnyBC( CurrentModel, NormalTangentialName ) 
      AnyProj =  ListGetLogicalAnyBC( CurrentModel, 'Mortar BC Nonlinear')
      IF( .NOT. (AnyNT .OR. AnyProj ) ) RETURN
 
@@ -155,13 +140,16 @@ CONTAINS
 
      IF( AnyNT ) THEN
        dim = CoordinateSystemDimension()
-       CALL CheckNormalTangentialBoundary( CurrentModel, NormalTangentialName, &
-           NormalTangentialNOFNodes, BoundaryReorder, &
-           BoundaryNormals, BoundaryTangent1, BoundaryTangent2, dim )
+       NT => CurrentModel % Solver % NormalTangential
+       NT % NormalTangentialNOFNodes = 0
+       NT % NormalTangentialName = str
+       CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
+           NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+           NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
        
-       CALL AverageBoundaryNormals( CurrentModel, NormalTangentialName, &
-           NormalTangentialNOFNodes, BoundaryReorder, &
-           BoundaryNormals, BoundaryTangent1, BoundaryTangent2, &
+       CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
+           NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
+           NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
            dim )
      END IF
 
@@ -739,6 +727,7 @@ CONTAINS
      INTEGER :: i,j,k,np,dim, NormalIndexes(n), pIndexes(64)
      LOGICAL :: Rotate
      TYPE(Element_t), POINTER :: Element
+     TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 !    Update global matrix and rhs vector....
 !------------------------------------------------------------------------------
@@ -756,16 +745,24 @@ CONTAINS
      Rotate = .TRUE.
      IF ( PRESENT(RotateNT) ) Rotate = RotateNT
 
-     dim = CoordinateSystemDimension()	
-     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs >= dim) THEN
+     dim = CoordinateSystemDimension()
+     IF( ndofs < dim ) Rotate = .FALSE.
+
+     IF( Rotate ) THEN
+       NT => CurrentModel % Solver % NormalTangential
+       Rotate = ( NT % NormalTangentialNOFNodes > 0 )
+     END IF
+
+     
+     IF ( Rotate ) THEN
        NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       NormalIndexes(1:np) = BoundaryReorder(pIndexes(1:np))
+       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
        
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
-          NormalIndexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+          NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
      END IF
 !------------------------------------------------------------------------------
      IF ( ASSOCIATED( StiffMatrix ) ) THEN
@@ -823,7 +820,8 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Rotate
      LOGICAL :: ColouredAssembly, NeedMasking
-
+     TYPE(NormalTangential_t), POINTER :: NT
+     
      IF (PRESENT(UElement)) THEN
        Element => UElement
      ELSE
@@ -839,16 +837,23 @@ CONTAINS
 
      dim = CoordinateSystemDimension()
 
-     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+     IF(ndofs < dim) Rotate = .FALSE.
+
+     IF( Rotate ) THEN
+       NT => CurrentModel % Solver % NormalTangential
+       Rotate = ( NT % NormalTangentialNOFNodes > 0 )
+     END IF
+     
+     IF ( Rotate ) THEN
        Ind = 0
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       Ind(1:np) = BoundaryReorder(pIndexes(1:np))
+       Ind(1:np) = NT % BoundaryReorder(pIndexes(1:np))
        
        ! TODO: See that RotateMatrix is vectorized
-       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, BoundaryNormals, &
-                    BoundaryTangent1, BoundaryTangent2 )
+       CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, NT % BoundaryNormals, &
+                    NT % BoundaryTangent1, NT % BoundaryTangent2 )
 
        !IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
        !  CALL Fatal('UpdateGlobalEquationsVec', &
@@ -947,6 +952,7 @@ CONTAINS
      INTEGER :: i,j,k,np,dim,NormalIndexes(n),pIndexes(64)
      LOGICAL :: Rotate
      REAL(KIND=dp) :: LocalStiffMatrix(n*NDOFs,n*NDOFs), LForce(n*NDOFs)
+     TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 !    Update global matrix and rhs vector....
 !------------------------------------------------------------------------------
@@ -960,18 +966,22 @@ CONTAINS
 
      Rotate = .TRUE.
      IF ( PRESENT(RotateNT) ) Rotate=RotateNT
-
-     IF ( Rotate .AND. NormalTangentialNOFNodes>0 ) THEN
+     IF( Rotate ) THEN
+       NT => CurrentModel % Solver % NormalTangential
+       Rotate = ( NT % NormalTangentialNOFNodes > 0 )
+     END IF
+            
+     IF ( Rotate ) THEN
        dim = CoordinateSystemDimension()
 
        NormalIndexes = 0
 
        np = mGetElementDOFs(pIndexes,Element)
        np = MIN(np,n)
-       NormalIndexes(1:np) = BoundaryReorder(pIndexes(1:np))
+       NormalIndexes(1:np) = NT % BoundaryReorder(pIndexes(1:np))
 
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
-          NormalIndexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+          NormalIndexes, NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2 )
      END IF
 
      DO i=1,n
@@ -1662,6 +1672,7 @@ CONTAINS
      INTEGER, TARGET :: pIndexes(12)
      TYPE(Variable_t), POINTER :: UseLoadVar
      LOGICAL :: UseLagrange
+     TYPE(NormalTangential_t), POINTER :: NT
      
      
      SAVE FirstTime
@@ -1672,9 +1683,10 @@ CONTAINS
      Var => Solver % Variable
      VarName = GetVarName( Var ) 
      Mesh => Solver % Mesh
-
+     NT => Model % Solver % NormalTangential
+     
      ! Is any boundary rotated or not
-     AnyRotatedContact = ( NormalTangentialNOFNodes > 0 ) 
+     AnyRotatedContact = ( NT % NormalTangentialNOFNodes > 0 ) 
 
      ! The variable to be constrained by the contact algorithm
      ! Here it is assumed to be some "displacement" i.e. a vector quantity
@@ -2043,7 +2055,7 @@ CONTAINS
        RotatedField = Var % Values
 
        n = SIZE( FieldPerm ) 
-       m = SIZE( BoundaryReorder )
+       m = SIZE( NT % BoundaryReorder )
        IF( n > m ) THEN
          i = COUNT(FieldPerm(m+1:n) > 0 )
          IF( i > 0 ) THEN
@@ -2054,7 +2066,7 @@ CONTAINS
        DO i=1,SIZE(FieldPerm)
          j = FieldPerm(i)
          IF( j == 0 ) CYCLE
-         m = BoundaryReorder(i)
+         m = NT % BoundaryReorder(i)
          IF( m == 0 ) CYCLE
          
          RotVec = 0._dp
@@ -4476,6 +4488,10 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: CandNodes(:)
     INTEGER, POINTER :: PlaneInds(:)
     LOGICAL :: Parallel
+
+    TYPE(NormalTangential_t), POINTER :: NT
+    LOGICAL, ALLOCATABLE, SAVE :: NTzeroing_done(:,:)
+    INTEGER, ALLOCATABLE, SAVE :: NTelement(:,:)
     
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -4500,6 +4516,25 @@ CONTAINS
     Mesh => Model % Mesh
     ALLOCATE( Indexes(Mesh % MaxElementDOFs) )
 
+    NT => Model % Solver % NormalTangential
+    n = NT % NormalTangentialNOFNodes 
+    IF( n > 0 ) THEN
+      ! We need to have these available for different components of the same vector.
+      ! Hence a dirty compromise between localility and saving values. 
+      m = 0
+      IF( ALLOCATED( NTElement ) ) THEN
+        m = SIZE( NTElement, 1 )
+      END IF
+      IF( m /= n .AND. m > 0 ) THEN
+        DEALLOCATE( NTzeroing_done, NTelement )
+      END IF
+      IF( m /= n ) THEN      
+        ALLOCATE( NTzeroing_done(n,3), NTelement(n,3) )
+        NTZeroing_done = .FALSE.
+        NTelement = 0
+      END IF
+    END IF
+    
     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
     
 !------------------------------------------------------------------------------
@@ -4598,7 +4633,7 @@ CONTAINS
     ! check and set some flags for nodes belonging to n-t boundaries
     ! getting set by other bcs:
     ! --------------------------------------------------------------
-    IF ( NormalTangentialNOFNodes>0 ) THEN
+    IF ( NT % NormalTangentialNOFNodes>0 ) THEN
       IF ( OrderByBCNumbering ) THEN
         DO i=1,Model % NumberOfBCs
           BC = i
@@ -4673,7 +4708,7 @@ CONTAINS
           Element => Model % Elements(t)
           n = Element % TYPE % NumberOfNodes
           DO j=1,n
-            k = BoundaryReorder(Element % NodeIndexes(j))
+            k = NT % BoundaryReorder(Element % NodeIndexes(j))
             IF (k>0) THEN
               NTelement(k,:)=0
               NTzeroing_done(k,:) = .FALSE.
@@ -5453,9 +5488,11 @@ CONTAINS
       dim = CoordinateSystemDimension()
 
       IF ( DOF <= 0 ) RETURN
-      IF ( ALL(BoundaryReorder(Indexes(1:n))<1) ) RETURN
+      
+      IF ( NT % NormalTangentialNOFNodes == 0 ) RETURN
+      IF ( ALL(NT % BoundaryReorder(Indexes(1:n))<1) ) RETURN
       IF ( .NOT. ListCheckPresent(ValueList, Name) ) RETURN
-      IF ( ListGetLogical(ValueList,NormalTangentialName,Found) ) RETURN
+      IF ( ListGetLogical(ValueList,NT % NormalTangentialName,Found) ) RETURN
 
       IF ( Conditional ) THEN
         Condition(1:n) = ListGetReal( ValueList, CondName, n, Indexes, gotIt )
@@ -5470,7 +5507,7 @@ CONTAINS
         k = Perm(Indexes(j))
         IF ( k > 0 ) THEN          
           k = k + OffSet
-          m = BoundaryReorder(Indexes(j))
+          m = NT % BoundaryReorder(Indexes(j))
           IF ( m>0 ) THEN
             RotVec = 0._dp
             RotVec(DOF) = 1._dp
@@ -5529,10 +5566,10 @@ CONTAINS
         ! many BCs. 
         ! -------------------------------------------------------------------
         CheckNT = .FALSE.
-        IF ( NormalTangentialNOFNodes>0 .AND. DOF>0 ) THEN
+        IF ( NT % NormalTangentialNOFNodes>0 .AND. DOF>0 ) THEN
           CheckNT = .TRUE.
-          IF ( ALL(BoundaryReorder(Indexes(1:n))<1) ) CheckNT = .FALSE.
-          IF ( ListGetLogical(ValueList,NormalTangentialName,Found)) CheckNT=.FALSE.
+          IF ( ALL(NT % BoundaryReorder(Indexes(1:n))<1) ) CheckNT = .FALSE.
+          IF ( ListGetLogical(ValueList,NT % NormalTangentialName,Found)) CheckNT=.FALSE.
         END IF
         
         DO j=1,n
@@ -5543,7 +5580,7 @@ CONTAINS
             
             IF ( DOF>0 ) THEN
               m = 0
-              IF ( NormalTangentialNOFNodes>0 ) m=BoundaryReorder(Indexes(j))
+              IF ( NT % NormalTangentialNOFNodes>0 ) m = NT % BoundaryReorder(Indexes(j))
               IF ( m>0 .AND. CheckNT ) THEN
                 RotVec = 0._dp
                 RotVec(DOF) = 1._dp
@@ -5560,7 +5597,6 @@ CONTAINS
 
                 lmax = NDOFs * (Perm(Indexes(j))-1) + kmax
                 IF ( .NOT. NTZeroing_done(m,kmax) ) THEN
-                  NTZeroing_done(m,kmax) = .TRUE.
                   b(lmax) = 0._dp
 
                   IF( .NOT. OffDiagonal ) THEN
@@ -5577,6 +5613,7 @@ CONTAINS
                       CALL SetMatrixElement( A,lmax,l,RotVec(k) )
                     END DO
                   END IF
+
                   NTZeroing_done(m,kmax)   = .TRUE.
                   A % ConstrainedDOF(lmax) = .FALSE.
                 END IF
@@ -7963,8 +8000,8 @@ CONTAINS
 !> vectors.
 !------------------------------------------------------------------------------
    SUBROUTINE CheckNormalTangentialBoundary( Model, VariableName, &
-     NumberOfBoundaryNodes, BoundaryReorder, BoundaryNormals,     &
-        BoundaryTangent1, BoundaryTangent2, dim )
+       NumberOfBoundaryNodes, BoundaryReorder, BoundaryNormals,     &
+       BoundaryTangent1, BoundaryTangent2, dim )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     CHARACTER(LEN=*) :: VariableName
@@ -8201,28 +8238,28 @@ CONTAINS
     
 !------------------------------------------------------------------------------
 
-    IF ( NumberOfBoundaryNodes == 0 ) THEN
-!     DEALLOCATE( BoundaryReorder )
-!     NULLIFY( BoundaryReorder, BoundaryNormals,BoundaryTangent1, &
-!                        BoundaryTangent2)
-    ELSE
-      IF ( ASSOCIATED(BoundaryNormals) ) THEN
-        DEALLOCATE( BoundaryNormals, BoundaryTangent1, &
-                    BoundaryTangent2, NTelement, NTzeroing_done)
-      END IF
-
-      ALLOCATE( NTelement(NumberOfBoundaryNodes,3) )
-      ALLOCATE( NTzeroing_done(NumberOfBoundaryNodes,3) )
-      ALLOCATE( BoundaryNormals(NumberOfBoundaryNodes,3)  )
-      ALLOCATE( BoundaryTangent1(NumberOfBoundaryNodes,3) )
-      ALLOCATE( BoundaryTangent2(NumberOfBoundaryNodes,3) )
-
-      BoundaryNormals  = 0.0d0
-      BoundaryTangent1 = 0.0d0
-      BoundaryTangent2 = 0.0d0
+    n = 0
+    IF( ASSOCIATED( BoundaryNormals ) ) THEN
+      n = SIZE( BoundaryNormals, 1)
     END IF
 
+    IF( n > 0 .AND. NumberOfBoundaryNodes /= n ) THEN
+      DEALLOCATE( BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+    END IF
 
+    IF ( NumberOfBoundaryNodes == 0 ) THEN        
+      DEALLOCATE( BoundaryReorder ) 
+    ELSE
+      IF( n /= NumberOfBoundaryNodes ) THEN
+        ALLOCATE( BoundaryNormals(NumberOfBoundaryNodes,3), & 
+            BoundaryTangent1(NumberOfBoundaryNodes,3), &
+            BoundaryTangent2(NumberOfBoundaryNodes,3) )
+      END IF
+
+      BoundaryNormals  = 0.0_dp
+      BoundaryTangent1 = 0.0_dp
+      BoundaryTangent2 = 0.0_dp
+    END IF
     
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckNormalTangentialBoundary
@@ -9204,32 +9241,35 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k, dim
      REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
+     TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 
-     IF ( NormalTangentialNOFNodes <= 0 ) RETURN
+     NT => CurrentModel % Solver % NormalTangential
      
-     IF( NodeNumber > SIZE( BoundaryReorder ) ) THEN
+     IF ( NT % NormalTangentialNOFNodes <= 0 ) RETURN
+     
+     IF( NodeNumber > SIZE( NT % BoundaryReorder ) ) THEN
        CALL Fatal('RotateNTSystem',&
-           'Index '//TRIM(I2S(NodeNumber))//' beyond BoundaryReorder size '//TRIM(I2S(SIZE(BoundaryReorder))))
+           'Index '//TRIM(I2S(NodeNumber))//' beyond BoundaryReorder size '//TRIM(I2S(SIZE(NT % BoundaryReorder))))
      END IF
      
-     k = BoundaryReorder(NodeNumber)
+     k = NT % BoundaryReorder(NodeNumber)
      IF ( k <= 0 ) RETURN
 
      dim = CoordinateSystemDimension()
      IF ( dim < 3 ) THEN
        Bu = Vec(1)
        Bv = Vec(2)
-       Vec(1) =  BoundaryNormals(k,1)*Bu + BoundaryNormals(k,2)*Bv
-       Vec(2) = -BoundaryNormals(k,2)*Bu + BoundaryNormals(k,1)*Bv
+       Vec(1) =  NT % BoundaryNormals(k,1)*Bu + NT % BoundaryNormals(k,2)*Bv
+       Vec(2) = -NT % BoundaryNormals(k,2)*Bu + NT % BoundaryNormals(k,1)*Bv
      ELSE
        Bu = Vec(1)
        Bv = Vec(2)
        Bw = Vec(3)
 
-       RM(:,1) = BoundaryNormals(k,:)
-       RM(:,2) = BoundaryTangent1(k,:)
-       RM(:,3) = BoundaryTangent2(k,:)
+       RM(:,1) = NT % BoundaryNormals(k,:)
+       RM(:,2) = NT % BoundaryTangent1(k,:)
+       RM(:,3) = NT % BoundaryTangent2(k,:)
 
        Vec(1) = RM(1,1)*Bu + RM(2,1)*Bv + RM(3,1)*Bw
        Vec(2) = RM(1,2)*Bu + RM(2,2)*Bv + RM(3,2)*Bw
@@ -9249,15 +9289,19 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k, dim
     REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
+    TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 
-    IF ( NormalTangentialNOFNodes <= 0 ) RETURN
+    NT => CurrentModel % Solver % NormalTangential
+
+    IF ( NT % NormalTangentialNOFNodes <= 0 ) RETURN
 
     dim = CoordinateSystemDimension()    
     IF( ndofs < dim ) RETURN
 
-    DO i=1,SIZE(BoundaryReorder)
-       k = BoundaryReorder(i)
+    
+    DO i=1,SIZE(NT % BoundaryReorder)
+       k = NT % BoundaryReorder(i)
        IF ( k <= 0 ) CYCLE
        j = Perm(i)
        IF ( j <= 0 ) CYCLE
@@ -9266,17 +9310,17 @@ END FUNCTION SearchNodeL
           Bu = Solution(NDOFs*(j-1)+1)
           Bv = Solution(NDOFs*(j-1)+2)
 
-          Solution(NDOFs*(j-1)+1) = BoundaryNormals(k,1)*Bu + BoundaryNormals(k,2)*Bv
-          Solution(NDOFs*(j-1)+2) = -BoundaryNormals(k,2)*Bu + BoundaryNormals(k,1)*Bv
+          Solution(NDOFs*(j-1)+1) = NT % BoundaryNormals(k,1)*Bu + NT % BoundaryNormals(k,2)*Bv
+          Solution(NDOFs*(j-1)+2) = -NT % BoundaryNormals(k,2)*Bu + NT % BoundaryNormals(k,1)*Bv
 
        ELSE
           Bu = Solution(NDOFs*(j-1)+1)
           Bv = Solution(NDOFs*(j-1)+2)
           Bw = Solution(NDOFs*(j-1)+3)
  
-          RM(:,1) = BoundaryNormals(k,:)
-          RM(:,2) = BoundaryTangent1(k,:)
-          RM(:,3) = BoundaryTangent2(k,:)
+          RM(:,1) = NT % BoundaryNormals(k,:)
+          RM(:,2) = NT % BoundaryTangent1(k,:)
+          RM(:,3) = NT % BoundaryTangent2(k,:)
 
           Solution(NDOFs*(j-1)+1) = RM(1,1)*Bu + RM(2,1)*Bv + RM(3,1)*Bw
           Solution(NDOFs*(j-1)+2) = RM(1,2)*Bu + RM(2,2)*Bv + RM(3,2)*Bw
@@ -9298,15 +9342,19 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k, dim
      REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
+     TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 
-     IF ( NormalTangentialNOFNodes <= 0 ) RETURN
+     NT => CurrentModel % Solver % NormalTangential
+
+     IF ( NT % NormalTangentialNOFNodes <= 0 ) RETURN
 
      dim = CoordinateSystemDimension()
      IF ( ndofs < dim ) RETURN
 
-     DO i=1,SIZE(BoundaryReorder)
-       k = BoundaryReorder(i)
+     
+     DO i=1,SIZE(NT % BoundaryReorder)
+       k = NT % BoundaryReorder(i)
        IF ( k <= 0 ) CYCLE
        j = Perm(i)
        IF ( j <= 0 ) CYCLE
@@ -9315,19 +9363,19 @@ END FUNCTION SearchNodeL
          Bu = Solution(NDOFs*(j-1)+1)
          Bv = Solution(NDOFs*(j-1)+2)
 
-         Solution(NDOFs*(j-1)+1) = BoundaryNormals(k,1) * Bu - &
-                         BoundaryNormals(k,2) * Bv
+         Solution(NDOFs*(j-1)+1) = NT % BoundaryNormals(k,1) * Bu - &
+                         NT % BoundaryNormals(k,2) * Bv
 
-         Solution(NDOFs*(j-1)+2) = BoundaryNormals(k,2) * Bu + &
-                         BoundaryNormals(k,1) * Bv
+         Solution(NDOFs*(j-1)+2) = NT % BoundaryNormals(k,2) * Bu + &
+                         NT % BoundaryNormals(k,1) * Bv
        ELSE
          Bu = Solution(NDOFs*(j-1)+1)
          Bv = Solution(NDOFs*(j-1)+2)
          Bw = Solution(NDOFs*(j-1)+3)
 
-         RM(1,:) = BoundaryNormals(k,:)
-         RM(2,:) = BoundaryTangent1(k,:)
-         RM(3,:) = BoundaryTangent2(k,:)
+         RM(1,:) = NT % BoundaryNormals(k,:)
+         RM(2,:) = NT % BoundaryTangent1(k,:)
+         RM(3,:) = NT % BoundaryTangent2(k,:)
 
          Solution(NDOFs*(j-1)+1) = RM(1,1)*Bu + RM(2,1)*Bv + RM(3,1)*Bw
          Solution(NDOFs*(j-1)+2) = RM(1,2)*Bu + RM(2,2)*Bv + RM(3,2)*Bw
@@ -9347,28 +9395,31 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: A(3,3)
 !------------------------------------------------------------------------------
     INTEGER :: k,dim
+    TYPE(NormalTangential_t), POINTER :: NT
 !------------------------------------------------------------------------------
 
     A = 0._dp
     k = 0 
 
-    IF (NormalTangentialNOFNodes > 0) THEN
-      k = BoundaryReorder(n)
+    NT => CurrentModel % Solver % NormalTangential
+    
+    IF (NT % NormalTangentialNOFNodes > 0) THEN
+      k = NT % BoundaryReorder(n)
     END IF
       
     IF (k > 0) THEN
       Rotated = .TRUE.
       dim = CoordinateSystemDimension()
       IF (dim==2) THEN
-        A(1,1) = BoundaryNormals(k,1)
-        A(1,2) = -BoundaryNormals(k,2)
-        A(2,1) = BoundaryNormals(k,2)
-        A(2,2) = BoundaryNormals(k,1)
+        A(1,1) = NT % BoundaryNormals(k,1)
+        A(1,2) = -NT % BoundaryNormals(k,2)
+        A(2,1) = NT % BoundaryNormals(k,2)
+        A(2,2) = NT % BoundaryNormals(k,1)
         A(3,3) = 1._dp
       ELSE
-        A(:,1) = BoundaryNormals(k,:)
-        A(:,2) = BoundaryTangent1(k,:)
-        A(:,3) = BoundaryTangent2(k,:)
+        A(:,1) = NT % BoundaryNormals(k,:)
+        A(:,2) = NT % BoundaryTangent1(k,:)
+        A(:,3) = NT % BoundaryTangent2(k,:)
       END IF
     ELSE
       Rotated = .FALSE.

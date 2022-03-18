@@ -754,6 +754,17 @@ MODULE Types
 
 !------------------------------------------------------------------------------
 
+   TYPE NormalTangential_t     
+     CHARACTER(LEN=MAX_NAME_LEN) :: NormalTangentialName
+     INTEGER :: NormalTangentialNOFNodes = 0
+     INTEGER, POINTER :: BoundaryReorder(:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryTangent1(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryTangent2(:,:) => NULL()
+   END TYPE NormalTangential_t
+
+
+   
    TYPE Mesh_t
      CHARACTER(MAX_NAME_LEN) :: Name
      TYPE(Mesh_t), POINTER   :: Next,Parent,Child
@@ -798,7 +809,6 @@ MODULE Types
      LOGICAL :: HaveHalo = .FALSE.
 
      LOGICAL :: SingleMesh = .FALSE.
-     
    END TYPE Mesh_t
 
    TYPE Graph_t
@@ -874,6 +884,8 @@ MODULE Types
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
       LOGICAL :: Parallel = .FALSE.
+
+      TYPE(NormalTangential_t) :: NormalTangential      
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
