@@ -22136,6 +22136,177 @@ CONTAINS
          
    END SUBROUTINE StoreCyclicProjector
 
+
+   ! Set the friction for a vector field in an implicit manner by copying matrix rows of
+   ! the normal component to matrix rows of the tangential component multiplied by friction
+   ! coefficient and direction vector. If the direction is the velocity/displacement field
+   ! this means that the amplitude is treated implicitely while the force direction is
+   ! explicit. This should be called after assembling the finite element matrices but
+   ! before setting the Dirichlet BCs. 
+   !---------------------------------------------------------------------------------------
+   SUBROUTINE SetImplicitFriction(Model, Solver, FrictionName, DirectionName )
+     TYPE(Model_t) :: Model                       !< Complele model structure
+     TYPE(Solver_t) :: Solver                     !< Solver for which to set the friction
+     CHARACTER(LEN=*) :: FrictionName             !< Name of the friction coefficient
+     CHARACTER(LEN=*), OPTIONAL :: DirectionName  !< Name of the friction coefficient
+         
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Matrix_t), POINTER :: A
+     TYPE(Variable_t), POINTER :: FlowVar     
+     TYPE(Nodes_t), SAVE :: Nodes
+     TYPE(ValueList_t), POINTER :: BC
+     REAL(KIND=dp), POINTER :: Values(:)
+     INTEGER, POINTER :: FlowPerm(:)
+     LOGICAL, ALLOCATABLE :: NodeDone(:)
+     REAL(KIND=dp) :: Coeff, Normal(3), LocalNormal(3), LocalT1(3), LocalT2(3), NTT(3,3)
+     TYPE(Element_t), POINTER :: Element
+     INTEGER, POINTER :: NodeIndexes(:)
+     INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t
+     INTEGER :: dofN, dofT1, dofT2, bc_id, dim, dofs
+     LOGICAL :: Rotated, Found
+     REAL(KIND=dp), POINTER :: VeloDir(:,:)
+     REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
+     CHARACTER(*), PARAMETER :: Caller = 'SetImplicitFriction'
+ 
+     IF(.NOT. ListCheckPresentAnyBC( Model, FrictionName ) ) RETURN
+
+     CALL Info(Caller,'Setting fluid friction for boundaries on matrix level!',Level=7)
+
+     Mesh => Model % Mesh
+     FlowVar => Solver % Variable 
+     FlowPerm => FlowVar % Perm
+     A => Solver % Matrix        
+
+     dofs = FlowVar % dofs
+     dim = CoordinateSystemDimension()
+               
+     ALLOCATE( NodeDone( SIZE( FlowPerm ) ) )
+     NodeDone = .FALSE.
+     
+     DO t = Mesh % NumberOfBulkElements+1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+       Element => Mesh % Elements(t)
+
+       DO bc_id = 1,Model % NumberOfBCs
+         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+       END DO
+       IF( bc_id > Model % NumberOfBCs ) CYCLE      
+       BC => Model % BCs(bc_id) % Values
+
+       IF( .NOT. ListCheckPresent( BC, FrictionName ) ) CYCLE
+
+       ! Ok we have an active element for friction
+       Model % CurrentElement => Element
+       NodeIndexes => Element % NodeIndexes
+       n = Element % TYPE % NumberOfNodes
+
+       ! Normal vector may be needed if this is not all normal-tangential nodes
+       CALL CopyElementNodesFromMesh( Nodes, Mesh, n, NodeIndexes)
+       Normal = NormalVector( Element, Nodes )
+                     
+       DO i = 1, n
+         j = Nodeindexes(i) 
+
+         IF( NodeDone( j ) ) CYCLE
+         IF( FlowPerm( j ) == 0 ) CYCLE
+
+         NodeDone( j ) = .TRUE.         
+         Coeff = ListGetRealAtNode( BC, FrictionName, j, Found )
+
+         ! There is no point of setting too small friction coefficient
+         IF(ABS(Coeff) < 1.0d-10) CYCLE
+
+         Rotated = GetSolutionRotation(NTT, j )
+         IF( Rotated ) THEN
+           ! Get the normal-tangential coordinate system
+           LocalNormal = NTT(:,1)
+           LocalT1 = NTT(:,2)
+           LocalT2 = NTT(:,3)
+           DofN = 1
+           DofT1 = 2
+           DofT2 = 3
+         ELSE
+           ! Use the standard cartesian coordinate system.
+           ! We need to know to which direction the normal is associated to.
+           LocalNormal = Normal
+           DofN = 1
+           DO k=2,dim
+             IF( ABS( Normal(k) ) > ABS( Normal(DofN) ) ) DofN = k
+           END DO
+           IF( ABS(Normal(dofN)) < 0.99 ) THEN
+             CALL Warn(Caller,'No normal-tangential system for implicit friction!')            
+           END IF           
+           IF( DofN == 1 ) THEN
+             DofT1 = 2
+           ELSE
+             DofT1 = 1
+           END IF
+           DofT2 = 6 - DofT1 - DofN           
+           CALL TangentDirections(LocalNormal, LocalT1, LocalT2 )
+         END IF
+
+         VeloCoeff = 0.0_dp           
+
+         Found = .FALSE.
+         IF( PRESENT( DirectionName ) ) THEN
+           VeloDir => ListGetConstRealArray( BC, DirectionName, Found)
+         END IF
+         IF( Found ) THEN
+           VeloCoeff(DofT1) = SUM( VeloDir(1:dim,1) * LocalT1 )
+           IF( dim == 3 ) VeloCoeff(DofT2) = SUM( VeloDir(1:dim,1) * LocalT2 )
+         ELSE
+           VeloCoeff(DofT1) = FlowVar % Values(Dofs*(k-1)+DofT1) 
+           IF(dim==3) VeloCoeff(DofT2) = FlowVar % Values(Dofs*(k-1)+DofT2) 
+         END IF
+
+         ! Normalize coefficient to unity so that it only represents the direction of the force
+         AbsVeloCoeff = SQRT( SUM( VeloCoeff**2 ) )
+         IF( AbsVeloCoeff > TINY(AbsVeloCoeff) ) THEN
+           VeloCoeff = VeloCoeff / AbsVeloCoeff
+         ELSE
+           CYCLE
+         END IF
+
+         ! Add the friction coefficient 
+         VeloCoeff = Coeff * VeloCoeff 
+
+         ! Matrix component associated to normal direction
+         j = FlowPerm( j ) 
+         k = DOFs * (j-1) + DofN 
+
+         ! Matrix components associated to the two tangent directions
+         k2 = DOFs * (j-1) + DofT1 
+         A % Rhs(k2) = A % Rhs(k2) - VeloCoeff(DofT1) * A % Rhs(k)
+
+         IF( Dofs == 3 ) THEN
+           k3 = DOFs * (j-1) + DofT2
+           A % Rhs(k3) = A % Rhs(k3) - VeloCoeff(DofT2) * A % Rhs(k)             
+         END IF
+
+         DO l = A % Rows(k),A % Rows(k+1)-1
+           DO l2 = A % Rows(k2), A % Rows(k2+1)-1
+             IF( A % Cols(l2) == A % Cols(l) ) EXIT
+           END DO
+
+           A % Values(l2) = A % Values(l2) - VeloCoeff(DofT1) * A % Values(l)
+
+           IF( Dofs == 3 ) THEN
+             DO l3 = A % Rows(k3), A % Rows(k3+1)-1
+               IF( A % Cols(l3) == A % Cols(l) ) EXIT
+             END DO
+             A % Values(l3) = A % Values(l3) - VeloCoeff(DofT2) * A % Values(l)
+           END IF
+         END DO
+       END DO
+     END DO
+
+     n = COUNT( NodeDone ) 
+     CALL Info(Caller,'Number of friction nodes set: '//TRIM(I2S(n)),Level=10)
+
+     DEALLOCATE( NodeDone )
+
+   END SUBROUTINE SetImplicitFriction
+
    
 END MODULE SolverUtils
 
