@@ -3,7 +3,7 @@
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
-! Increse number of extruded layers for better accuracy. 
+! Increase number of extruded layers for better accuracy. 
 !
 ! This test case uses a generic projector which does not make 
 ! any assumptions on the characteristics of the 2D mesh.
@@ -27,7 +27,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient

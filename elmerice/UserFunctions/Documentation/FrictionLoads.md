@@ -5,7 +5,7 @@
 - **Required Input Variable(s):** None
 
 ## General Description
-The function getFrictionLoads replaces the old function getFrictionHeat, which still remains in the svn because of compability issues (from **revision 6834** on). It is recommended to switch to this newer version. The two user functions are however different since getFrictionLoads gives a result in W whereas getFrictionHeat gives a result in W/m2. Therefore, they have to be used in a different way (see the sif example).
+The function getFrictionLoads replaces the old function getFrictionHeat, which still remains in the svn because of compatibility issues (from **revision 6834** on). It is recommended to switch to this newer version. The two user functions are however different since getFrictionLoads gives a result in W whereas getFrictionHeat gives a result in W/m2. Therefore, they have to be used in a different way (see the sif example).
 This approach is based on the coupling of surface heat production to the residual of the Stokes solver - the first three components of the residual represent the nodal forces acting on the surface. This is the natural way of coupling in FEM.
 Note, in the case of a restart-run, the (Navier-)Stokes Solver needs to exist in the sif-file (option Exec Solver = Never is sufficient), otherwise the Loads are not found.
 Note, the function has not yet been tested in the case of basal melting, but should be working.

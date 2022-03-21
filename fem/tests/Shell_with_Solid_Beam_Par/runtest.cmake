@@ -1,0 +1,5 @@
+include(test_macros)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 solid.grd)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 shell.grd -translate 0.0 0.0 0.025)
+execute_process(COMMAND ${ELMERGRID_BIN} 2 2 solid -in shell -unite -merge 1.0e-6 -out beam)
+RUN_ELMER_TEST()

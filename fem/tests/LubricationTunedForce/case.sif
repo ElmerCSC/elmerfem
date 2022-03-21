@@ -2,6 +2,7 @@ Header
   Mesh DB "." "bump"
 End
 
+
 Constants
 End
 
@@ -58,12 +59,12 @@ Solver 1
   Cost Function Target = Real -1.0e-3
 
   Optimization Method = String "secant"
-  Step Size = Real 1.0e-8
-  Max Step Size = Real 1.0e-7
+  Step size = Real 1.0e-8
+  Max Step size = Real 1.0e-7
   Relaxation Factor = Real 0.7
 End
 
-
+ 
 Solver 2
 ! The solver adapts the geometry to accommodate for the moving boundary
 

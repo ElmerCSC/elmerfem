@@ -5,4 +5,4 @@ CONFIGURE_FILE(fine.sif fine.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle_coarse angle_fine.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(NonconformingRestart)
+ADD_ELMER_TEST(NonconformingRestart LABELS restart)

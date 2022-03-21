@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE edf>
+<edf version="1.0">
+    <PDE Name="AdvReact">
+        <Name>Advection-Reaction</Name>
+        <Equation>
+            <Parameter Widget="Label">
+                <Name> Options </Name>
+            </Parameter>
+            <Parameter Widget="Combo">
+                <Name>Convection</Name>
+                <Type> String </Type>
+                <Item>
+                    <Name>None</Name>
+                </Item>
+                <Item>
+                    <Name>Computed</Name>
+                </Item>
+                <Item>
+                    <Name>Constant</Name>
+                </Item>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </Equation>
+        <Solver>
+            <Parameter Widget="Label">
+                <Name> Advection-Reaction</Name>
+            </Parameter>
+            <Parameter Widget="Edit" Enabled="True">
+                <Name> Procedure </Name>
+                <DefaultValue>"AdvectionReaction" "AdvectionReactionSolver" </DefaultValue>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name> Options </Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name> Equation </Name>
+                <Type> String </Type>
+                <DefaultValue> "Advection-Reaction" </DefaultValue>
+                <Whatis> The name of the equation. </Whatis>
+                <StatusTip></StatusTip>
+            </Parameter>
+            <Parameter Widget="CheckBox" Enabled="False">
+                <Name> Discontinuous Galerkin </Name>
+                <Type> Logical </Type>
+                <DefaultValue>True</DefaultValue>
+                <Whatis></Whatis>
+                <StatusTip> Needs to be set to true. </StatusTip>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name> Variable </Name>
+                <Type> String </Type>
+                <DefaultValue> "Tracer" </DefaultValue>
+                <Whatis> The name of the variable.</Whatis>
+                <StatusTip></StatusTip>
+            </Parameter>
+            <Parameter Widget="CheckBox" Enabled="True">
+                <Name> Calculate Nodal Average </Name>
+                <Type> Logical </Type>
+                <Whatis>Project DG field to nodal field?</Whatis>
+                <StatusTip> Project DG field to nodal field? </StatusTip>
+            </Parameter>
+            <Parameter Widget="CheckBox">
+                <Name> Limit Solution </Name>
+                <Type> Logical </Type>
+                <Whatis> Assumes the variational inequality method to apply, if set to true. </Whatis>
+                <StatusTip></StatusTip>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </Solver>
+        <BodyForce>
+            <Parameter Widget="Label">
+                <Name>Tracer Source</Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Tracer Source</Name>
+                <Type> Real </Type>
+                <Whatis> defines the volumetric source for variable c </Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the BodyForce-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the BodyForce-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </BodyForce>
+        <Material>
+            <Parameter Widget="Label">
+                <Name> Convection Velocity</Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Convection Velocity 1</Name>
+                <Type> Real </Type>
+                <Whatis> Convection velocity i= 1 for the constant convection model. </Whatis>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Convection Velocity 2</Name>
+                <Type> Real </Type>
+                <Whatis> Convection velocity i= 2 for the constant convection model. </Whatis>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Convection Velocity 3</Name>
+                <Type> Real </Type>
+                <Whatis> Convection velocity i= 3 for the constant convection model. </Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name> Tracer soft limiters</Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Tracer Upper Limit</Name>
+                <Type> Real </Type>
+                <Whatis> The upper limit, cmax, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true. </Whatis>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Tracer Lower Limit</Name>
+                <Type> Real </Type>
+                <Whatis> The upper limit, cmin, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true. </Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name> Tracer Gamma </Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Tracer Gamma</Name>
+                <Type> Real </Type>
+                <Whatis> defines the reaction rate, Γ </Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </Material>
+        <InitialCondition>
+            <Parameter Widget="Edit">
+                <Name>Tracer</Name>
+                <Type> Real </Type>
+                <Whatis>Sets the initial value for the scalar.</Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the InitialCondition-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the InitialCondition-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </InitialCondition>
+        <BoundaryCondition>
+            <Parameter Widget="Label">
+                <Name> Tracer </Name>
+            </Parameter>
+            <Parameter Widget="Edit">
+                <Name>Tracer</Name>
+                <Type> Real </Type>
+                <Whatis> sets the value for c at inflow boundaries </Whatis>
+            </Parameter>
+            <Parameter Widget="Label">
+                <Name>Free text input</Name>
+            </Parameter>
+            <Parameter Widget="TextEdit" Enabled="True">
+                <Name> Free text </Name>
+                <Type> String </Type>
+                <Whatis> Free text is copied into the BoundaryCondition-block of the SIF as such. </Whatis>
+                <StatusTip> Free text is copied into the BoundaryCondition-block of the SIF as such. </StatusTip>
+            </Parameter>
+        </BoundaryCondition>
+    </PDE>
+</edf>

@@ -49,7 +49,7 @@ Solver
   
   Bounding Box dx = Real 1.0e3  
   ! will take only the data points that are within Max/Min mesh corrdinates + the real Value
-  ! can be usefull in parallel if all the data are stored in one file
+  ! can be useful in parallel if all the data are stored in one file
   ! (Default) no bounding box
   
   CheckNaN = Logical True ! Default True; check is interpolation method gives NaN 

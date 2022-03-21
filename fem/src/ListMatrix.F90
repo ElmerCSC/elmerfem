@@ -211,7 +211,7 @@ CONTAINS
       P => L(i) % Head
       DO WHILE(ASSOCIATED(P))
         j = j + 1
-        Cols(j) = P % Index
+        Cols(j)   = P % Index
         Values(j) = P % Value
         P => P % Next
       END DO
@@ -255,11 +255,17 @@ CONTAINS
     A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
 
     DO i=1,A % NumberOfRows
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
+
+      IF(A % Rows(i) == A % Rows(i+1)) THEN
+        A % ListMatrix(i) % Head => Null()
+        CYCLE
+      END IF
+
       ALLOCATE(A % ListMatrix(i) % Head)
       Clist => A % ListMatrix(i) % Head
       Clist % Next => Null()
-      A % ListMatrix(i) % Level  = 0
-      A % ListMatrix(i) % Degree = 0
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
@@ -308,6 +314,11 @@ CONTAINS
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
+
+    A % Rows => Null()  
+    A % Cols => Null()  
+    A % Diag => Null()  
+    A % Values => Null()  
     CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix

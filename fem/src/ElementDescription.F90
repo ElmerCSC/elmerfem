@@ -1074,7 +1074,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Element_t) :: element        !< element structure
       REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
       REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1121,7 +1121,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1213,17 +1213,16 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the second partial derivatives with
-!>   respect to local coordinates of a quantity x given at element nodes at local
-!>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   Given an element structure return the second partial derivatives of 
+!>   a quantity x given at the element nodes with respect to the local coordinates
+!>   u,v of the element. The element basis functions are used to compute the value. 
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
-     TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
-     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< value of the quantity ddx = @^2x(u,v)/@v^2
+     TYPE(Element_t) :: element        !< Element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivatives
+     REAL(KIND=dp), DIMENSION(:) :: x  !< The nodal values of the quantity to differentiate
+     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< The second partial derivatives of x
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1299,7 +1298,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1903,19 +1902,20 @@ CONTAINS
 !>  p-element, the values of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w)
+   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w, USolver)
 !------------------------------------------------------------------------------
      INTEGER :: n                 !< The number of (background) element nodes
      REAL(KIND=dp) :: Basis(:)    !< The values of reference element basis
      TYPE(Element_t) :: element   !< The element structure
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 
      dim = Element % TYPE % DIMENSION
 
-     IF ( isActivePElement(Element) ) THEN
+     IF ( isActivePElement(Element, USolver) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalBasisFunctions1D( Basis, element, u )
@@ -1977,19 +1977,20 @@ CONTAINS
 !>  of p-element, the gradients of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
+   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w, USolver )
 !------------------------------------------------------------------------------
      INTEGER :: n                    !< The number of (background) element nodes
      REAL(KIND=dp) :: dLBasisdx(:,:) !< The gradient of reference element basis functions
      TYPE(Element_t) :: element      !< The element structure
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
 
-     IF ( IsActivePElement(Element) ) THEN
+     IF ( IsActivePElement(Element, USolver ) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
@@ -2501,13 +2502,13 @@ CONTAINS
      REAL(KIND=dp) :: Basis(:)                      !< Basis function values at p=(u,v,w)
      REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)       !< Global first derivatives of basis functions at (u,v,w)
      REAL(KIND=dp), OPTIONAL :: ddBasisddx(:,:,:)   !< Global second derivatives of basis functions at (u,v,w) if requested
+     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
+     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 	                                                !! May be used with P element basis functions
-     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
-     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
-     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
@@ -2570,16 +2571,21 @@ CONTAINS
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element) ) THEN
+     IF ( isActivePElement(element,USolver) ) THEN
+
+      pSolver => CurrentModel % Solver
+      IF (PRESENT(USolver)) THEN
+        IF (ASSOCIATED(USolver)) pSolver => USolver
+      END IF
 
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
@@ -2625,7 +2631,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge calculate the value of edge basis function
            DO i=1,3
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Get local number of edge start and endpoint nodes
               tmp(1:2) = getTriangleEdgeMap(i)
@@ -2695,7 +2701,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge begin node calculate values of edge functions 
            DO i=1,4
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Choose correct parity by global edge dofs
               tmp(1:2) = getQuadEdgeMap(i)
@@ -2773,7 +2779,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN   
            ! For each edge calculate value of edge functions
            DO i=1,6
-              Edge => CurrentModel % Solver % Mesh % Edges (Element % EdgeIndexes(i))
+              Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
 
               ! Do not solve edge DOFS if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -2797,7 +2803,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes )) THEN
            ! For each face calculate value of face functions
            DO F=1,4
-              Face => CurrentModel % Solver % Mesh % Faces (Element % FaceIndexes(F))
+              Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
 
               ! Do not solve face DOFs if there is not any
               IF (Face % BDOFs <= 0) CYCLE
@@ -2857,7 +2863,7 @@ CONTAINS
         IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in wedge, calculate values of edge functions
            DO i=1,8
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -2893,7 +2899,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in pyramid, calculate values of face functions
            DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
@@ -2981,7 +2987,7 @@ CONTAINS
         IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in wedge, calculate values of edge functions
            DO i=1,9
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -3022,7 +3028,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in wedge, calculate values of face functions
            DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
               ! Do not solve face dofs, if there is not any
               IF ( Face % BDOFs <= 0) CYCLE
@@ -3123,7 +3129,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
            ! For each edge in brick, calculate values of edge functions 
            DO i=1,12
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Do not solve edge dofs, if there is not any
               IF (Edge % BDOFs <= 0) CYCLE
@@ -3167,7 +3173,7 @@ CONTAINS
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in brick, calculate values of face functions
            DO F=1,6
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
                           
               ! Do not calculate face values if no dofs
               IF (Face % BDOFs <= 0) CYCLE
@@ -4354,28 +4360,38 @@ END BLOCK
 
      SELECT CASE ( family )
        
-       CASE ( 1 )
+       CASE ( 1 ) ! node
          DetJ = 1.0_dp
          RETURN
 
-       CASE ( 2 )
+       CASE ( 2 ) ! line
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 3 )
+       CASE ( 3 ) ! tri
          u = 0.5_dp
          v = 0.5_dp
          
-       CASE ( 4 )
+       CASE ( 4 ) ! quad
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 5 )
+       CASE ( 5 ) ! tet
          u = 0.5_dp
          v = 0.5_dp
          w = 0.5_dp
 
-       CASE ( 8 ) 
+       CASE ( 6 ) ! pyramid
+         u = 0.0_dp
+         v = 0.0_dp
+         w = 0.0_dp
+
+       CASE ( 7 ) ! wedge
+         u = 0.5_dp
+         v = 0.5_dp
+         w = 0.0_dp
+
+       CASE ( 8 ) ! hex
          u = 0.0_dp
          v = 0.0_dp
          w = 0.0_dp
@@ -4448,7 +4464,7 @@ END BLOCK
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        !--------------------------------------------------------------------
        ! Check whether BDM or dual basis functions should be created and 
@@ -5218,7 +5234,7 @@ SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -5446,7 +5462,7 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -5762,7 +5778,7 @@ END SUBROUTINE PickActiveFace
 !----------------------------------------------------------------------------------------------------------
 
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        stat = .TRUE.
        Basis = 0.0d0
@@ -9963,7 +9979,7 @@ END SUBROUTINE PickActiveFace
 !---------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1       
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
        SignVec = 1.0d0
        Ind => Element % Nodeindexes
@@ -10125,7 +10141,7 @@ END SUBROUTINE PickActiveFace
      INTEGER, POINTER :: EdgeMap(:,:)
 !------------------------------------------------------------------------
      Mesh => CurrentModel % Solver % Mesh
-     Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
 
      IF (Element % TYPE % BasisFunctionDegree>1) THEN
        CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
@@ -11474,6 +11490,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 
 
+  
 
 !------------------------------------------------------------------------------
 !>     Figure out if given point x,y,z is inside a triangle, whose node
@@ -11850,7 +11867,7 @@ END SUBROUTINE PickActiveFace
 
     INTEGER :: LMat,RMat,n,k
 
-    REAL(KIND=dp) :: x1,y1,z1
+    REAL(KIND=dp) :: u,v,w,dCoord(3)
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
     LOGICAL :: LPassive
 !------------------------------------------------------------------------------
@@ -11905,35 +11922,36 @@ END SUBROUTINE PickActiveFace
     SELECT CASE( Element % TYPE % ElementCode / 100 )
 
     CASE(2,4,8)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 0.0d0 )
+      u = 0.0_dp
+      v = 0.0_dp
+      w = 0.0_dp
     CASE(3)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE(5)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      u = 1.0d0/4
+      v = 1.0d0/4
+      w = 1.0d0/4
     CASE(6)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 1.0d0/3 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 1.0d0/3 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 1.0d0/3 )
+      u = 0.0
+      v = 0.0
+      w = 1.0d0/3
     CASE(7)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE DEFAULT
-       CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
-
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
+      
     END SELECT
-    x1 = x1 - x
-    y1 = y1 - y
-    z1 = z1 - z
 
+    dCoord(1) = InterpolateInElement( Element, nx, u, v, w ) - x
+    dCoord(2) = InterpolateInElement( Element, ny, u, v, w ) - y
+    dCoord(3) = InterpolateInElement( Element, nz, u, v, w ) - z
+  
     IF ( PRESENT(turn) ) turn = .FALSE.
-    IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
+    IF ( SUM( dCoord * Normal ) > 0 ) THEN
        IF ( Element % BodyId /= k ) THEN
           Normal = -Normal
           IF ( PRESENT(turn) ) turn = .TRUE.

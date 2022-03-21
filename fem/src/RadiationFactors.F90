@@ -72,7 +72,7 @@
      TYPE(Element_t), POINTER :: Element
      TYPE(Matrix_t), POINTER :: Amatrix
      TYPE(Factors_t), POINTER :: GebhardtFactors, ViewFactors(:)
-
+          
      INTEGER :: i,j,k,l,t,n,n2,istat,Colj,j0,couplings, sym 
 
      REAL (KIND=dp) :: SimulationTime,dt,MinFactor,MaxOmittedFactor, ConsideredSum
@@ -83,8 +83,8 @@
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:), RowSums(:), &
              Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
-         ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
-         GeometryFixedTol, BackScale(3), Coord(3)
+         ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, Tol, &
+         BackScale(3), Coord(3)
      REAL (KIND=dp) :: at, at0, st
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces, GeometryFixedAfter, &
          Row,Col,MatrixElements, MatrixFormat, maxind, TimesVisited=0, &
@@ -96,18 +96,22 @@
          InvElementNumbers(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag, GebhardtFactorsFile, &
-         ViewFactorsFile,OutputName, OutputName2, SolverType 
+         ViewFactorsFile,OutputName, OutputName2, SolverType , RadiatorFactorsFile
      CHARACTER(LEN=100) :: cmd
 
      LOGICAL :: GotIt, SaveFactors, UpdateViewFactors, UpdateGebhardtFactors, &
          ComputeViewFactors, OptimizeBW, TopologyTest, TopologyFixed, &
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
-         ConstantEmissivity, Found, Debug, gSymm, gTriv, BinaryMode
+         ConstantEmissivity, Found, Debug, gSymm, gTriv, BinaryMode, UpdateRadiatorFactors, &
+            ComputeRadiatorFactors, RadiatorsFound, DiffuseGrayRadiationFound
      LOGICAL, POINTER :: ActiveNodes(:)
      LOGICAL :: DoScale
      INTEGER, PARAMETER :: VFUnit = 10
 
      TYPE(ValueList_t), POINTER :: Params, BC
+     TYPE(Variable_t), POINTER :: Var
+
+     TYPE(BoundaryInfo_t), POINTER :: BoundaryInfo
      
      SAVE TimesVisited 
 
@@ -115,14 +119,20 @@
 
      Model => CurrentModel
 
+
      Found = .FALSE.
+     RadiatorsFound = .FALSE.
+     DiffuseGrayRadiationFound = .FALSE.
+     
      DO i=1,Model % NumberOfBCs
-       RadiationFlag = GetString( Model % BCs(i) % Values, 'Radiation', GotIt )
-        IF (GotIt) THEN
-          IF ( RadiationFlag == 'diffuse gray' ) Found = .TRUE.
-        END IF
+       BC => Model % BCs(i) % Values
+       RadiatorsFound = RadiatorsFound .OR. GetLogical( BC, 'Radiator BC', Gotit )
+
+       RadiationFlag = GetString( BC, 'Radiation', GotIt )
+       IF ( RadiationFlag == 'diffuse gray' ) DiffuseGrayRadiationFound = .TRUE.
      END DO
-     IF(.NOT. Found) RETURN
+     IF(.NOT. DiffuseGrayRadiationFound .AND. .NOT. RadiatorsFound) RETURN
+
 
      Mesh => TSolver % Mesh
      CALL SetCurrentMesh( Model, Mesh )
@@ -148,28 +158,43 @@
        IF(GeometryFixedAfter < TimesVisited) UpdateViewFactors = .FALSE.
        IF(TimesVisited > 1 ) THEN
          SteadyChange = TSolver % Variable % SteadyChange
-         GeometryFixedTol = GetConstReal( Params, 'View Factors Fixed Tolerance',GotIt)
-         IF(GotIt .AND. SteadyChange < GeometryFixedTol) UpdateViewFactors = .FALSE.
+         Tol = GetConstReal( Params, 'View Factors Fixed Tolerance',GotIt)
+         IF(GotIt .AND. SteadyChange < Tol) UpdateViewFactors = .FALSE.
        END IF
      END IF 
 
      UpdateGebhardtFactors = GetLogical( Params, 'Update Gebhardt Factors',GotIt )
 
-     FactorsFixedAfter = GetInteger( Params, &
+     IF( UpdateGebhardtFactors ) THEN       
+       FactorsFixedAfter = GetInteger( Params, &
          'Gebhardt Factors Fixed After Iterations',GotIt)
-     IF(.NOT. GotIt) FactorsFixedAfter = HUGE(FactorsFixedAfter)
-
-     IF( UpdateGebhardtFactors ) THEN
-       IF(FactorsFixedAfter < TimesVisited) UpdateGebhardtFactors = .FALSE.
-       IF(TimesVisited > 1 ) THEN
-         SteadyChange = TSolver % Variable % SteadyChange
-         FactorsFixedTol = ListGetConstReal(TSolver % Values, &
+       IF( GotIt ) THEN       
+         IF(FactorsFixedAfter < TimesVisited) UpdateGebhardtFactors = .FALSE.
+       END IF
+       
+       FactorsFixedAfter = GetInteger( Params, &
+         'Gebhardt Factors Fixed After Nonlinear Iterations',GotIt)
+       IF( GotIt ) THEN                
+         Var => VariableGet( Mesh % Variables, 'nonlin iter' )
+         IF( ASSOCIATED( Var ) ) THEN
+           k = NINT( Var % Values(1) ) 
+           IF(FactorsFixedAfter < k ) UpdateGebhardtFactors = .FALSE.
+         END IF
+       END IF
+      
+       Tol = ListGetConstReal(TSolver % Values, &
            'Gebhardt Factors Fixed Tolerance',GotIt)
-         IF( GotIt .AND. SteadyChange < FactorsFixedTol) UpdateGebhardtFactors = .FALSE.
+       IF( GotIt ) THEN
+         IF(TimesVisited > 1 ) THEN
+           SteadyChange = TSolver % Variable % SteadyChange
+           IF( SteadyChange < Tol) UpdateGebhardtFactors = .FALSE.
+         END IF
        END IF
      END IF
 
-     IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhardtFactors)) THEN
+     UpdateRadiatorFactors = GetLogical( Params, 'Update Radiator Factors',GotIt )
+
+     IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhardtFactors .OR. UpdateRadiatorFactors)) THEN
        RETURN
      END IF
 
@@ -182,7 +207,8 @@
      CALL Info('RadiationFactors','Computing radiation factors for heat transfer',       Level=5)
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
 
-     ConstantEmissivity = FirstTime .AND. ( UpdateGebhardtFactors .OR. UpdateViewFactors )
+     ConstantEmissivity = FirstTime .AND. &
+            ( UpdateGebhardtFactors .OR. UpdateViewFactors .OR. UpdateRadiatorFactors )
 
      IF(GeometryFixedAfter == TimesVisited) THEN
        x0(1) = 1.0
@@ -210,6 +236,7 @@
      END IF
        
      ComputeViewFactors = GetLogical( Params, 'Compute View Factors',GotIt )
+     ComputeRadiatorFactors = GetLogical( Params, 'Compute Radiator Factors',GotIt )
 
 !------------------------------------------------------------------------------
 !    Compute the number of elements at the surface and check if the 
@@ -228,40 +255,49 @@
        Element => Model % Elements(t)
        k = Element % BoundaryInfo % Constraint
        
-       IF ( Element % TYPE % ElementCode /= 101 ) THEN
-         DO i=1,Model % NumberOfBCs
-           IF ( Model % BCs(i) % Tag == k ) THEN
-             RadiationFlag = GetString( Model % BCs(i) % Values, 'Radiation', GotIt )
-             IF ( RadiationFlag == 'diffuse gray' ) THEN
-               l = MAX(1, GetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
-               MaxRadiationBody = MAX(l, MaxRadiationBody)
+       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
 
-               NodeIndexes =>  Element % NodeIndexes
-               n = Element % TYPE % NumberOfNodes
+       DO i=1,Model % NumberOfBCs
 
-               ActiveNodes(NodeIndexes) = .TRUE.
-               RadiationSurfaces = RadiationSurfaces + 1
+         IF ( Model % BCs(i) % Tag == k ) THEN
+
+           BC => Model % BCs(i) % Values
+
+           RadiationFlag = GetString( BC, 'Radiation', GotIt )
+
+           IF ( RadiationFlag == 'diffuse gray' .OR. GetLogical(BC, 'Radiator BC', Found) ) THEN
+             l = MAX(1, GetInteger( BC,'Radiation Boundary',GotIt) )
+             MaxRadiationBody = MAX(l, MaxRadiationBody)
+
+             NodeIndexes =>  Element % NodeIndexes
+             n = Element % TYPE % NumberOfNodes
+
+             ActiveNodes(NodeIndexes) = .TRUE.
+             RadiationSurfaces = RadiationSurfaces + 1
                  
-               IF(GeometryFixedAfter == TimesVisited) THEN
-                 MeshU(1:n) = GetReal(Model % BCs(i) % Values, 'Mesh Update 1',GotIt, Element)
-                 IF(.NOT. GotIt) THEN
-                   WRITE (Message,'(A,I3)') 'Freezing Mesh Update 1 for bc',i
-                   CALL Info('RadiationFactors',Message)
-                   CALL ListAddDepReal( Model % BCs(i) % Values,'Mesh Update 1', &
-                       'Mesh Update 1',1, x0, y0 )
-                 END IF
-                 MeshU(1:n) = GetReal(Model % BCs(i) % Values,'Mesh Update 2',GotIt, Element)
-                 IF(.NOT. GotIt) THEN
-                   WRITE (Message,'(A,I3)') 'Freezing Mesh Update 2 for bc',i
-                   CALL Info('RadiationFactors',Message)
-                   CALL ListAddDepReal( Model % BCs(i) % Values,'Mesh Update 2', &
-                       'Mesh Update 2',1, x0, y0 )
-                 END IF
+             IF(GeometryFixedAfter == TimesVisited) THEN
+               MeshU(1:n) = GetReal(BC, 'Mesh Update 1',GotIt, Element)
+               IF(.NOT. GotIt) THEN
+                 WRITE (Message,'(A,I3)') 'Freezing Mesh Update 1 for bc',i
+                 CALL Info('RadiationFactors',Message)
+                 CALL ListAddDepReal(BC,'Mesh Update 1', 'Mesh Update 1',1, x0, y0 )
+               END IF
+               MeshU(1:n) = GetReal(BC,'Mesh Update 2',GotIt, Element)
+               IF(.NOT. GotIt) THEN
+                 WRITE (Message,'(A,I3)') 'Freezing Mesh Update 2 for bc',i
+                 CALL Info('RadiationFactors',Message)
+                 CALL ListAddDepReal( BC,'Mesh Update 2', 'Mesh Update 2',1, x0, y0 )
+               END IF
+               MeshU(1:n) = GetReal(BC,'Mesh Update 3',GotIt, Element)
+               IF(.NOT. GotIt) THEN
+                 WRITE (Message,'(A,I3)') 'Freezing Mesh Update 3 for bc',i
+                 CALL Info('RadiationFactors',Message)
+                 CALL ListAddDepReal( BC, 'Mesh Update 3', 'Mesh Update 3',1, x0, y0 )
                END IF
              END IF
            END IF
-         END DO
-       END IF
+         END IF
+       END DO
      END DO
 
      IF ( RadiationSurfaces == 0 ) THEN
@@ -274,7 +310,7 @@
      END IF
 
      ! Check that the geometry has really changed before computing the viewfactors 
-     IF(.NOT. FirstTime .AND. UpdateViewFactors) THEN
+     IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
 
        ! This is a dirty thrick where the input file is stampered
        CALL Info('RadiationFactors','Checking changes in mesh.nodes file!',Level=5)
@@ -317,6 +353,7 @@
 
        IF(.NOT. GotIt) THEN
          UpdateViewFactors = .TRUE.        
+         UpdateRadiatorFactors = .TRUE.        
          CALL Info('RadiationFactors','Mismatch in coordinates compared to file: '//TRIM(OutputName))
        ELSE
          WRITE(Message,'(A,E15.5)') 'Maximum geometry alteration on radiation BCs:',maxds
@@ -328,6 +365,7 @@
          IF(maxds <= refds * x) THEN
            CALL Info('RadiationFactors','Geometry change is neglected and old view factors are used')
            UpdateViewFactors = .FALSE.
+           UpdateRadiatorFactors = .FALSE.
          ELSE
            CALL Info('RadiationFactors','Geometry change requires recomputation of view factors')
          END IF
@@ -337,49 +375,74 @@
      DEALLOCATE(ActiveNodes)
 
      ! If the geometry has not changed and Gebhardt factors are fine return
-     IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhardtFactors)) THEN
+     IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhardtFactors .OR. UpdateRadiatorFactors)) THEN
        RETURN
      END IF     
 
 !------------------------------------------------------------------------------
 !    Check that the needed files exist if os assumed, if not recompute view factors
 !------------------------------------------------------------------------------
-
-     FilesExist = .TRUE.
-     DO RadiationBody = 1, MaxRadiationBody 
-
-       ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
+     IF( DiffuseGrayRadiationFound ) THEN 
+       FilesExist = .TRUE.
+       DO RadiationBody = 1, MaxRadiationBody 
+         ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
        
-       IF ( .NOT.GotIt ) THEN
-         ViewFactorsFile = 'ViewFactors.dat'
-       END IF
+         IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        
-       IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
-             // '/' // TRIM(ViewFactorsFile)
-       ELSE
-         OutputName = TRIM(ViewFactorsFile)
-       END IF
-       IF(RadiationBody > 1) THEN
-         OutputName2 = OutputName
-         WRITE(OutputName,'(A,I1)') TRIM(OutputName2),RadiationBody
-       END IF
-       INQUIRE(FILE=TRIM(OutputName),EXIST=GotIt)
-       IF(.NOT. GotIt) FilesExist = .FALSE.
-     END DO
-     IF(.NOT. FilesExist) ComputeViewFactors = .TRUE.
+         IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
+           OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
+                   // '/' // TRIM(ViewFactorsFile)
+         ELSE
+           OutputName = TRIM(ViewFactorsFile)
+         END IF
+         IF(RadiationBody > 1) THEN
+             OutputName2 = OutputName
+           WRITE(OutputName,'(A,I1)') TRIM(OutputName2),RadiationBody
+         END IF
+         INQUIRE(FILE=TRIM(OutputName),EXIST=GotIt)
+         IF(.NOT. GotIt) FilesExist = .FALSE.
+       END DO
+       IF(.NOT. FilesExist) ComputeViewFactors = .TRUE.
+     END IF
+
+     IF( RadiatorsFound ) THEN
+       FilesExist = .TRUE.
+       DO RadiationBody = 1, MaxRadiationBody 
+         RadiatorFactorsFile = GetString(Model % Simulation,'Radiator Factors',GotIt)
+       
+         IF ( .NOT.GotIt ) RadiatorFactorsFile = 'RadiatorFactors.dat'
+       
+         IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
+           OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
+                   // '/' // TRIM(RadiatorFactorsFile)
+         ELSE
+           OutputName = TRIM(RadiatorFactorsFile)
+         END IF
+         IF(RadiationBody > 1) THEN
+           OutputName2 = OutputName
+           WRITE(OutputName,'(A,I1)') TRIM(OutputName2),RadiationBody
+         END IF
+         INQUIRE(FILE=TRIM(OutputName),EXIST=GotIt)
+         IF(.NOT. GotIt) FilesExist = .FALSE.
+       END DO
+
+       IF(.NOT. FilesExist) ComputeRadiatorFactors = .TRUE.
+     END IF
 
 !------------------------------------------------------------------------------
 !    Rewrite the nodes for view factor computations if they have changed
 !    and compute the ViewFactors with an external function call.
 !------------------------------------------------------------------------------
 
-     IF(ComputeViewFactors .OR. (.NOT. FirstTime .AND. UpdateViewFactors)) THEN
+     IF(ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
+           (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))) THEN
+
        
        ! This is a dirty thrick where the input mesh is scaled after loading.
        ! We need to perform scaling and backscaling then here too. 
+
        IF(.NOT. FirstTime) THEN
-         CALL Info('RadiationFactors','Temporarely updating the mesh.nodes file!',Level=5)
+         CALL Info('RadiationFactors','Temporarily updating the mesh.nodes file!',Level=5)
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
@@ -410,7 +473,17 @@
        END IF
        
        ! Compute the factors using an external program call
-       CALL SystemCommand( 'ViewFactors' )
+       IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
+         cmd = 'ViewFactors '//TRIM(GetSifName())
+         CALL SystemCommand( cmd )
+       END IF
+
+       IF( RadiatorsFound ) THEN
+         IF (ComputeRadiatorFactors .OR.  .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
+           cmd = 'Radiators '//TRIM(GetSifName())
+           CALL SystemCommand( cmd )
+         END IF
+       END IF
        
        ! Set back the original node coordinates to prevent unwanted user errors
        IF(.NOT. FirstTime) THEN
@@ -423,7 +496,6 @@
          CALL Rename(OutputName, OutputName2)
        END IF
      END IF
-
 
 !------------------------------------------------------------------------------
 !    Load the different view factors
@@ -461,7 +533,7 @@
        IF(.NOT.ASSOCIATED(BC)) CYCLE
 
        RadiationFlag = GetString( BC, 'Radiation', GotIt )
-       IF ( RadiationFlag == 'diffuse gray' ) THEN
+       IF ( RadiationFlag == 'diffuse gray' .OR. GetLogical( BC, 'Radiator BC', Found) ) THEN
          l = MAX(1, GetInteger( BC,'Radiation Boundary',GotIt) )
          n = GetElementNOFNodes(Element)
          IF(l == RadiationBody) THEN
@@ -493,12 +565,115 @@
        InvElementNumbers(ElementNumbers(i)-j0) = i
      END DO
 
+
+!-----------------------------------------------
+
+     IF( RadiatorsFound .AND. (FirstTime .OR. UpdateRadiatorFactors) ) THEN
+       CALL Info('RadiationFactors','Loading radiator factors!',Level=7)
+       
+       RadiatorFactorsFile = GetString(Model % Simulation,'Radiator Factors',GotIt)       
+       IF ( .NOT.GotIt ) RadiatorFactorsFile = 'RadiatorFactors.dat'
+       
+       IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
+         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
+                 '/' // TRIM(RadiatorFactorsFile)
+       ELSE
+            OutputName = TRIM(RadiatorFactorsFile)
+       END IF
+       IF(RadiationBody > 1) THEN
+         OutputName2 = OutputName
+         WRITE(OutputName,'(A,I1)') TRIM(OutputName2),RadiationBody
+       END IF
+
+       INQUIRE(FILE=TRIM(OutputName),EXIST=GotIt)
+       IF(.NOT. GotIt) THEN
+         WRITE(Message,*) 'Radiator Factors File does NOT exist:',TRIM(OutputName)
+         CALL Info('RadiationFactors','Message')
+         GOTO 30
+       END IF
+
+       BinaryMode = ListGetLogical( Params,'Radiatorfactor Binary Output',Found ) 
+       IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         
+       IF( BinaryMode ) THEN
+         CALL Info('RadiationFactors','Loading radiator factors from binary file: '//TRIM(OutputName),Level=5)
+         OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+             ACCESS = 'stream', STATUS='old', ACTION='read' )         
+         READ( VFUnit ) n
+         IF( n /= RadiationSurfaces ) THEN
+           CALL Fatal('RadiationFactors','Mismatch in radiation factor file size: '&
+               //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
+         END IF
+       ELSE
+         CALL Info('RadiationFactors','Loading radiator factors from ascii file: '//TRIM(OutputName),Level=5)
+         OPEN( VFUnit,File=TRIM(OutputName) )
+       END IF
+
+
+BLOCK
+
+       REAL(KIND=dp), ALLOCATABLE :: Vals(:)
+       INTEGER, ALLOCATABLE ::  Cols(:)
+       INTEGER :: NofRadiators
+       REAL(KIND=dp), POINTER :: Radiators(:,:)
+       TYPE(ValueList_t), POINTER :: RadList
+       
+       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+           RadList => Params
+
+       CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
+       IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
+
+       NofRadiators = SIZE(Radiators,1)
+     
+       ! Read in the ViewFactors
+       DO i=1,NofRadiators
+         IF( BinaryMode ) THEN
+           READ( VFUnit ) n
+         ELSE
+           READ( VFUnit,* ) n
+         END IF
+           
+         ALLOCATE( Vals(n), Cols(n) )
+	 Vals = 0; Cols = 0
+  
+         DO j=1,n
+           IF( BinaryMode ) THEN
+             READ(VFUnit) Cols(j),Vals(j)         
+           ELSE
+             READ(VFUnit,*) t,Cols(j),Vals(j)         
+           END IF
+           Vals(j) = Vals(j) / Areas(Cols(j))
+           Cols(j) = ElementNumbers(Cols(j))
+         END DO
+
+
+         DO j=1,n
+           BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
+           IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
+             ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
+             BoundaryInfo % Radiators = 0
+           END IF
+
+           BoundaryInfo % Radiators(i) = Vals(j)
+         END DO
+
+         DEALLOCATE( Cols, Vals )
+       END DO
+       CLOSE(VFUnit)
+END BLOCK
+     END IF
+
+!--------------------------------------------------
+
+     IF( .NOT. DiffuseGrayRadiationFound ) RETURN
+
      ViewFactors => TSolver % Mesh % ViewFactors
      ! Open the file for ViewFactors
 
-     
      IF( FirstTime .OR. UpdateViewFactors ) THEN
-
+       CALL Info('RadiationFactors','Loading view factors!',Level=7)
+       
        IF ( .NOT.ASSOCIATED(ViewFactors) ) THEN
          ALLOCATE( ViewFactors(RadiationSurfaces), STAT=istat )
          IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 4.')
@@ -514,13 +689,12 @@
             IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 5.')
          END IF
        END IF
-       TSOlver % Mesh % ViewFactors => ViewFactors
+
+       TSolver % Mesh % ViewFactors => ViewFactors
 
        ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
        
-       IF ( .NOT.GotIt ) THEN
-         ViewFactorsFile = 'ViewFactors.dat'
-       END IF
+       IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
@@ -544,7 +718,7 @@
        BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
        IF( BinaryMode ) THEN
-         CALL Info('RadiationFactors','Loading view factors in binary mode',Level=5)
+         CALL Info('RadiationFactors','Loading view factors from binary file: '//TRIM(OutputName),Level=5)
 
          OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read' )         
@@ -554,6 +728,7 @@
                //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
          END IF
        ELSE
+         CALL Info('RadiationFactors','Loading view factors from ascii file: '//TRIM(OutputName),Level=5)
          OPEN( VFUnit,File=TRIM(OutputName) )
        END IF
                 
@@ -567,14 +742,15 @@
            
          IF(FirstTime) THEN
            ViewFactors(i) % NumberOfFactors = n
-           ALLOCATE( ViewFactors(i) % Elements(n) )
-           ALLOCATE( ViewFactors(i) % Factors(n) )
+           ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n), STAT=istat )
+           IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 6.')
          ELSE 
 	   n2 = SIZE( ViewFactors(i) % Factors) 
 	   IF(n /=  n2 ) THEN
              IF(ASSOCIATED(ViewFactors(i) % Elements)) DEALLOCATE( ViewFactors(i) % Elements )
 	     IF(ASSOCIATED(ViewFactors(i) % Factors))  DEALLOCATE( ViewFactors(i) % Factors )
-             ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n) )
+             ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n), STAT=istat )
+             IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 7.')
            END IF
            ViewFactors(i) % NumberOfFactors = n
          END IF
@@ -615,16 +791,18 @@
      END DO
      MatrixElements = SUM(RowSpace(1:RadiationSurfaces))
 
+
+
      ALLOCATE( RHS(RadiationSurfaces), SOL(RadiationSurfaces),&
          Fac(RadiationSurfaces), FacPerm(RadiationSurfaces), STAT=istat )
-     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 6.')
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 8.')
 
      ! The coefficient matrix 
      CALL Info('RadiationFactors','Computing factors...',Level=5)
 
      IF(FullMatrix) THEN
        ALLOCATE(GFactorFull(RadiationSurfaces,RadiationSurfaces),STAT=istat)
-       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 7.')
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 9.')
        GFactorFull = 0.0_dp
      ELSE 
        ! Assembly the matrix form
@@ -657,7 +835,9 @@
      MatrixEntries = 0
      ImplicitEntries = 0
 
-     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces))
+     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
+  
      Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
      IF(.NOT. GotIt) Emissivity = 0.5_dp
      Reflectivity = 1-Emissivity
@@ -684,7 +864,10 @@
      END IF
 
 
-     ALLOCATE(Diag(RadiationSurfaces)); Diag=0
+     ALLOCATE(Diag(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 11.')
+
+     Diag = 0
 
      ! Fill the matrix for gebhardt factors
      ! Scale by (1-Emissivity) to get a symmetric system, if all emissivities are not equal to unity anywhere
@@ -747,7 +930,9 @@
      RHS = 0.0D0
      SOL = 1.0D-4
 
-     ALLOCATE(RowSums(RadiationSurfaces))
+     ALLOCATE(RowSums(RadiationSurfaces), STAT=istat)
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 12.')
+ 
      RowSums=0
           
      st = RealTime()
@@ -878,7 +1063,8 @@
        IF(FirstTime) THEN
          GebhardtFactors % NumberOfFactors = n
          GebhardtFactors % NumberOfImplicitFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 13.')
        ELSE IF(ImplicitLimitIs) THEN 
          IF( TopologyFixed ) THEN
            CALL Warn('RadiationFactors','Matrix topology cannot be fixed with implicit Gebhardt factors')
@@ -887,13 +1073,16 @@
          TopologyTest = .FALSE.
          DEALLOCATE( GebhardtFactors % Elements, GebhardtFactors % Factors )
          GebhardtFactors % NumberOfFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 14.')
          GebhardtFactors % NumberOfImplicitFactors = 0
        ELSE IF(GebhardtFactors % NumberOfFactors /= n .AND. .NOT. TopologyFixed) THEN         
          TopologyTest = .FALSE.
          DEALLOCATE( GebhardtFactors % Elements, GebhardtFactors % Factors )
-         GebhardtFactors % NumberOfFactors = n
-         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n) )
+         GebhardtFactors % NumberOfFactors = n         
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 15.')
+
          GebhardtFactors % NumberOfImplicitFactors = n
        END IF
        
@@ -1050,7 +1239,9 @@
        CALL Info('RadiationFactors','Creating new matrix topology')
 
        IF ( OptimizeBW ) THEN
-         ALLOCATE( NewPerm( SIZE(Tsolver % Variable % Perm)) )
+         ALLOCATE( NewPerm( SIZE(Tsolver % Variable % Perm)), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 15.')
+         
          TempPerm => Tsolver % Variable % Perm         
        ELSE
          NewPerm => Tsolver % Variable % Perm
@@ -1087,12 +1278,15 @@
        AMatrix % Symmetric = ListGetLogical( Params, 'Linear System Symmetric', GotIt )       
        
        n = AMatrix % NumberOFRows
-       ALLOCATE( AMatrix % RHS(n) )
+       ALLOCATE( AMatrix % RHS(n), STAT=istat)
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 16.')
+
 
        ! Transient case additional allocations:
        ! --------------------------------------
        IF ( ListGetString( CurrentModel % Simulation,'Simulation Type' ) == 'transient' ) THEN
-         ALLOCATE( Amatrix % Force(n, TSolver % TimeOrder+1) )
+         ALLOCATE( Amatrix % Force(n, TSolver % TimeOrder+1), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 17.')         
          Amatrix % Force = 0.0d0
        END IF
 
@@ -1142,7 +1336,9 @@
                 'Linear System Max Iterations', Found )
        IF(.NOT.Found) HUTI_MAXIT = 100
        
-       ALLOCATE( work(wsize,n) )
+       ALLOCATE( work(wsize,n), STAT=istat )
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 17.')
+
        
        IF ( ALL(x == 0.0) ) THEN
          HUTI_INITIALX = HUTI_RANDOMX
@@ -1223,3 +1419,4 @@
 
 !> \}   
    
+

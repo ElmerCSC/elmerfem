@@ -12,7 +12,7 @@ Constants 1
    Permittivity of Vacuum = 8.8542e-12
 End
 Simulation 1
-   Max Output Level = 3
+   Max Output Level = 5
    Coordinate System = Cartesian 3D
    Coordinate Mapping(3) = 1 2 3
    Coordinate Scaling = 0.001
@@ -39,8 +39,8 @@ End
 Solver 2
    Exec Solver = Always
    Equation = Circuits
-   Variable = X
-   No Matrix = Logical True
+!   Variable = X
+!   No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
 End
 Solver 3
@@ -174,9 +174,7 @@ Boundary Condition 3
    A re {e} = Real 0
    A im {e} = Real 0
 End
-Solver 3 :: Reference Norm = Real 3.80171554E-05
-Solver 3 :: Reference Norm Tolerance = Real 1e-03 
-Solver 4 :: Reference Norm = Real 3.39871615E+04
-Solver 4 :: Reference Norm Tolerance = Real 1e-03 
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 3 :: Reference Norm = 3.80175357E-05
+Solver 3 :: Reference Norm Tolerance = 1e-03 
+Solver 4 :: Reference Norm = 3.40716288E+04
+Solver 4 :: Reference Norm Tolerance = 1e-03 

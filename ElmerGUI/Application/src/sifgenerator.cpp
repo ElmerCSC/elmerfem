@@ -177,17 +177,25 @@ void SifGenerator::makeSimulationBlock()
 	     ui.simulationTypeCombo->currentText().trimmed());
   addSifLine("  Steady State Max Iterations = ",
 	     ui.steadyStateMaxIterEdit->text().trimmed());
-  addSifLine("  Output Intervals = ",
-	     ui.outputIntervalsEdit->text().trimmed());
-  addSifLine("  Timestepping Method = ",
-	     ui.timesteppingMethodCombo->currentText().trimmed());
-  addSifLine("  BDF Order = ",
-	     ui.bdfOrderCombo->currentText().trimmed());
-  addSifLine("  Timestep intervals = ",
-	     ui.timeStepIntervalsEdit->text().trimmed());
-  addSifLine("  Timestep Sizes = ",
-	     ui.timestepSizesEdit->text().trimmed());
+  //Modify Output intervals size according to the number of values entered
+  QString qs = ui.outputIntervalsEdit->text().simplified();
+  addSifLine("  Output Intervals(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
 
+  if( ui.simulationTypeCombo->currentText().trimmed() != "Steady state") {
+    //Modify Timestep intervals size according to the number of values entered
+    qs = ui.timeStepIntervalsEdit->text().simplified();
+    addSifLine("  Timestep intervals(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
+    if( ui.simulationTypeCombo->currentText().trimmed() == "Transient") {
+      //Modify Timestep Sizes size according to the number of values entered
+      qs = ui.timestepSizesEdit->text().simplified();
+      addSifLine("  Timestep Sizes(" + QString::number(qs.count(' ') + 1) + ") = ", qs);
+      addSifLine("  Timestepping Method = ",
+		 ui.timesteppingMethodCombo->currentText().trimmed());
+      addSifLine("  BDF Order = ",
+		 ui.bdfOrderCombo->currentText().trimmed());
+    }
+  }
+  
   addSifLine("  Coordinate Scaling = ",
 	     ui.coordinateScalingEdit->text().trimmed());
   addSifLine("  Angular Frequency = ",
@@ -198,7 +206,7 @@ void SifGenerator::makeSimulationBlock()
   addSifLine("  Post File = ", 
 	     ui.postFileEdit->text().trimmed());
 
-  QString qs = ui.simulationFreeTextEdit->toPlainText();
+  qs = ui.simulationFreeTextEdit->toPlainText();
 
   if(!qs.isEmpty())
     te->append(qs);
@@ -220,6 +228,8 @@ void SifGenerator::makeConstantsBlock()
 	     ui.stefanBoltzmannEdit->text().trimmed());
   addSifLine("  Permittivity of Vacuum = ",
 	     ui.vacuumPermittivityEdit->text().trimmed());
+  addSifLine("  Permeability of Vacuum = ",
+	     ui.vacuumPermeabilityEdit->text().trimmed());
   addSifLine("  Boltzmann Constant = ",
 	     ui.boltzmannEdit->text().trimmed());
   addSifLine("  Unit Charge = ",
@@ -616,21 +626,22 @@ void SifGenerator::makeMaterialBlocks()
 	
 	QWidget *widget = entry.widget;
 
-	QDomElement elem;
+	QDomElement elem;	
+	
         if ( widget->isEnabled() ) {
           elem = entry.elem;
-	  
+ 	    
           if(elem.attribute("Widget", "") == "CheckBox") 
-	   handleCheckBox(elem, widget);
+	    handleCheckBox(elem, widget);
 	
-	 if(elem.attribute("Widget", "") == "Edit")
-	   handleLineEdit(elem, widget);
+	  if(elem.attribute("Widget", "") == "Edit")
+	    handleLineEdit(elem, widget);
 	
-	 if(elem.attribute("Widget", "") == "Combo")
-	   handleComboBox(elem, widget);
+	  if(elem.attribute("Widget", "") == "Combo")
+	    handleComboBox(elem, widget);
 
-	 if(elem.attribute("Widget", "") == "TextEdit")
-	   handleTextEdit(elem, widget);
+	  if(elem.attribute("Widget", "") == "TextEdit")
+	    handleTextEdit(elem, widget);
         }
       }
       te->append("End\n");
@@ -996,9 +1007,14 @@ void SifGenerator::parseExecSolverTab(Ui::solverParameterEditor ui)
 //-----------------------------------------------------------------------------
 void SifGenerator::parseNumericalTechniquesTab(Ui::solverParameterEditor ui)
 {
+  if(ui.lumpedMassCheck->isChecked())
+    addSifLineBool("  Lumped Mass Matrix = ", ui.lumpedMassCheck->isChecked());
+
   addSifLineBool("  Stabilize = ", ui.stabilizeCheck->isChecked());
-  addSifLineBool("  Bubbles = ", ui.bubblesCheck->isChecked());
-  addSifLineBool("  Lumped Mass Matrix = ", ui.lumpedMassCheck->isChecked());
+
+  if(ui.bubblesCheck->isChecked())
+    addSifLineBool("  Bubbles = ", ui.bubblesCheck->isChecked());
+
   addSifLineBool("  Optimize Bandwidth = ", ui.optimizeBandwidthCheck->isChecked());
 }
 

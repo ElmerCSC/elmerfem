@@ -64,12 +64,11 @@ Header
 End
 
 Simulation
-  Max Output Level = 35
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File = "case1.vtu"
 End
 
 Body 1
@@ -119,6 +118,23 @@ Solver 1
   Linear System GCR Restart = 100
   Linear System Abort Not Converged = False
   Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  !
+  ! Use high-order Lagrange interpolation to visualize the solution
+  ! 
+
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case1
+
+  Vtu Format = Logical True
+  Ascii Output = True
+
+  Lagrange Element Degree = Integer 8
+  Save Bulk Only = True
 End
 
 ! Symmetry at y2 = 0:

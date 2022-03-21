@@ -41,7 +41,7 @@
 !> Initialization for the primary solver: ShellSolver
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellSolver_Init( Model,Solver,dt,Transient )
+  SUBROUTINE ShellSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
 
@@ -58,8 +58,11 @@
       CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
     END IF
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
+
+    CALL ListAddLogical( SolverParams, 'Shell Solver', .TRUE. )
+    CALL ListAddLogical( SolverParams, 'Drilling DOFs', .TRUE. )
 !------------------------------------------------------------------------------
-  END SUBROUTINE ShellSolver_Init
+  END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
 
  
@@ -124,8 +127,6 @@
           LamRF, Nvector(3), NtenMaterial(2,2), MtenMaterial(2,2), ss
 
      LOGICAL :: GotIt, GotForceBC
-
-     LOGICAL :: Isotropic = .FALSE.
 
      TYPE(ValueList_t), POINTER :: SolverParams, Material, BodyForce, BC
 
@@ -210,7 +211,6 @@
 !    -------------------------------------------------
      at  = CPUTime()
      at0 = RealTime()
-     Isotropic = .TRUE.
 
 !----------------------------------------------------------------------------------------
 !     Non-linear iteration etc.
@@ -323,52 +323,54 @@
 
 !    Solve the system and we are done:
 !    ---------------------------------
-     st = CPUTime()
+     IF (.NOT. GetLogical(SolverParams, 'Linear System Solver Disabled', GotIt)) THEN
+       st = CPUTime()
 
-     PrevNorm = Norm
-     PrevUNorm = Unorm
+       PrevNorm = Norm
+       PrevUNorm = Unorm
 
-!    First iterate is a special case, solving for Lamda=1:
-!    -----------------------------------------------------
-     Norm = DefaultSolve()
+!      First iterate is a special case, solving for Lamda=1:
+!      -----------------------------------------------------
+       Norm = DefaultSolve()
 
 
-     Unorm = 0.0d0
-     DO i = 1, Solver % Mesh % NumberOfNodes
-        j = DeflectionPerm(i)
-        IF(j < 1) CYCLE
-        Unorm = MAX(Unorm, SQRT( Deflection(6*j-5)**2 + &
+       Unorm = 0.0d0
+       DO i = 1, Solver % Mesh % NumberOfNodes
+         j = DeflectionPerm(i)
+         IF(j < 1) CYCLE
+         Unorm = MAX(Unorm, SQRT( Deflection(6*j-5)**2 + &
              Deflection(6*j-4)**2 + Deflection(6*j-3)**2) )
-        Maxcomponent = MAX( Unorm, MAX(MAX(Deflection(6*j-5), &
+         Maxcomponent = MAX( Unorm, MAX(MAX(Deflection(6*j-5), &
              Deflection(6*j-4)),Deflection(6*j-3)) )
-     END DO
-     !PRINT *,'Max deflection =',Unorm
-     MaximumDeflection = Unorm
+       END DO
+       !PRINT *,'Max deflection =',Unorm
+       MaximumDeflection = Unorm
 
-     Unorm = 0.0d0
-     DO i = 1, Solver % Mesh % NumberOfNodes
-        j = DeflectionPerm(i)
-        IF(j < 1) CYCLE
-        Unorm = Unorm + Deflection(6*j-5)**2 + &
-              Deflection(6*j-4)**2 + Deflection(6*j-3)**2
-     END DO
-     Unorm = SQRT( Unorm )
+       Unorm = 0.0d0
+       DO i = 1, Solver % Mesh % NumberOfNodes
+         j = DeflectionPerm(i)
+         IF(j < 1) CYCLE
+         Unorm = Unorm + Deflection(6*j-5)**2 + &
+             Deflection(6*j-4)**2 + Deflection(6*j-3)**2
+       END DO
+       Unorm = SQRT( Unorm )
 
-     IF( ABS(Norm + PrevNorm) > 1.0e-8 )  RelChange = &
-         ABS(Norm - PrevNorm)/ABS(Norm + PrevNorm)
+       IF( ABS(Norm + PrevNorm) > 1.0e-8 )  RelChange = &
+           ABS(Norm - PrevNorm)/ABS(Norm + PrevNorm)
 
-     IF( ABS(UNorm + PrevUNorm) > 1.0e-8) RelUChange = &
-       ABS(UNorm - PrevUnorm)/ABS(UNorm + PrevUNorm)
+       IF( ABS(UNorm + PrevUNorm) > 1.0e-8) RelUChange = &
+           ABS(UNorm - PrevUnorm)/ABS(UNorm + PrevUNorm)
 
-     st = CPUTime() - st
+       st = CPUTime() - st
 
-     WRITE(Message,'(a,F8.2)') 'Solve: (s)', st
-     CALL Info('ShellSolve',Message)
+       WRITE(Message,'(a,F8.2)') 'Solve: (s)', st
+       CALL Info('ShellSolve',Message)
 
-     WRITE(Message,'(a,2F8.3)') 'Relative Change = ',RelChange, RelUChange 
-     CALL Info('ShellSolve',Message)
+       WRITE(Message,'(a,2F8.3)') 'Relative Change = ',RelChange, RelUChange 
+       CALL Info('ShellSolve',Message)
 
-     IF( RelChange < NonlinConvTol ) EXIT
+       IF( RelChange < NonlinConvTol ) EXIT
+     END IF
   END DO    ! NonLinIter
 
   StressComputation = GetLogical( SolverParams, 'Stress Computation', GotIt )
@@ -387,6 +389,12 @@
 !-----------------------------------------------------------------------------
    SUBROUTINE BulkAssembly
 !-----------------------------------------------------------------------------
+     LOGICAL :: MassAssembly
+
+     MassAssembly = EigenOrHarmonicAnalysis(Solver) .OR. &
+         GetLogical(SolverParams, 'Harmonic Mode', GotIt) .OR. &
+         GetLogical(SolverParams, 'Harmonic Analysis', GotIt)
+
      CALL StartAdvanceOutput('ShellSolve', 'Assembly:')
      DO t=1,Solver % NumberOfActiveElements
 !-----------------------------------------------------------------------------
@@ -452,22 +460,23 @@
 
        Density(1:n) = GetReal( Material, 'Density', GotIt )
        IF( .NOT.GotIt ) THEN
-          Density = 0.0d0
-          IF( TransientSimulation .OR. (Solver % NOfEigenvalues > 0) ) &
-               CALL Fatal( 'ShellSolver', 'Density required' )
+         IF( TransientSimulation .OR. MassAssembly) &
+             CALL Fatal( 'ShellSolver', 'Density required' )
        END IF
 
        Poisson(1:n) = GetReal( Material, 'Poisson ratio', GotIt )
-       IF( Isotropic .AND. (.NOT.GotIt) ) &
-                     CALL Fatal( 'ShellSolver', 'Poisson ratio undefined' )
+       IF( .NOT.GotIt ) &
+           CALL Fatal( 'ShellSolver', 'Poisson ratio undefined' )
 
        Young(1:n) = GetReal( Material, 'Youngs modulus', GotIt )
-       IF( Isotropic .AND. (.NOT.GotIt) ) &
-                     CALL Fatal( 'ShellSolver', 'Youngs modulus undefined' )
+       IF( .NOT.GotIt ) &
+           CALL Fatal( 'ShellSolver', 'Youngs modulus undefined' )
 
        Thickness(1:n) = GetReal( Material, 'Thickness', GotIt )
-       IF( Isotropic .AND. (.NOT.GotIt) ) &
-                     CALL Fatal( 'ShellSolver', 'Thickness undefined' )
+       IF( .NOT.GotIt ) THEN
+         Thickness(1:n) = GetReal( Material, 'Shell Thickness', GotIt )
+         IF( .NOT.GotIt ) CALL Fatal( 'ShellSolver', 'Shell Thickness/Thickness undefined' )
+       END IF
 
        Tension(1:n) = GetReal( Material, 'Tension', GotIt )
        IF( .NOT. GotIt ) Tension = 0.0d0
@@ -481,18 +490,16 @@
             StabilityAnalysis, Nvector )
 
        IF( TransientSimulation ) THEN
-          CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+         CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+       ELSE IF ( MassAssembly ) THEN
+         CALL DefaultUpdateMass( MASS )
+         CALL DefaultUpdateDamp( DAMP )
        END IF
 
 !      Update global matrix and rhs vector from local matrix & vector:
 !      ---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
 
-       IF ( EigenOrHarmonicAnalysis() .OR. GetLogical(SolverParams, &
-           'Harmonic Mode', GotIt) ) THEN
-         CALL DefaultUpdateMass( MASS )
-         CALL DefaultUpdateDamp( DAMP )
-       END IF
      END DO
 !-----------------------------------------------------------------------------
     END SUBROUTINE BulkAssembly
@@ -1422,9 +1429,7 @@
                    + rho * h**3/12.0d0 *  Basis(p) * Basis(q) * s
              END DO
            END DO
-         END IF
-
-         IF( StabilityAnalysis ) THEN
+         ELSE
             DO p = 1,n
                GradTest(1:2) = dBasisdx(p,1:2)
                DO q = 1,n

@@ -954,7 +954,7 @@ MODULE NavierStokesCylindrical
 
    REAL(KIND=dp) :: Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
    REAL(KIND=dp) :: u,v,w,s,x,y,z
-   REAL(KIND=dp) :: TangentForce(3), Force(4),Alpha,Normal(3),Tangent(3), &
+   REAL(KIND=dp) :: TangentForce(3), Force(4),Alpha,ExtPressure,Normal(3),Tangent(3), &
                      Tangent2(3), Vect(3), SlipCoeff
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
 
@@ -991,7 +991,7 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
 !
    DO t=1,N_Integ
-
+     
      u = U_Integ(t)
      v = V_Integ(t)
      w = W_Integ(t)
@@ -999,8 +999,7 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
 !     Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-     stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
-                Basis,dBasisdx )
+     stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx )
 !
 !------------------------------------------------------------------------------
 !    Coordinatesystem dependent info
@@ -1029,20 +1028,18 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
      Force = 0.0d0
      DO i=1,c
-        Force(i) = Force(i) + SUM( LoadVector(i,1:n)*Basis(1:n) )
+       Force(i) = Force(i) + SUM( LoadVector(i,1:n)*Basis(1:n) )
      END DO
 
 !------------------------------------------------------------------------------
 !    Add to load: given force in normal direction
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element, Nodes, u,v,.TRUE. )
-     Alpha = SUM( NodalExtPressure(1:n)*Basis(1:n) )
+     ExtPressure = SUM( NodalExtPressure(1:n)*Basis(1:n) )
      IF ( NormalTangential ) THEN
-       Force(1) = Force(1) + Alpha
+       Force(1) = Force(1) + ExtPressure
      ELSE
-       DO i=1,dim
-          Force(i) = Force(i) + Alpha * Normal(i)
-       END DO
+       Force(1:dim) = Force(1:dim) + ExtPressure * Normal(1:dim)
      END IF
 !------------------------------------------------------------------------------
 
@@ -1050,73 +1047,74 @@ MODULE NavierStokesCylindrical
 !
 
      SELECT CASE( Element % TYPE % DIMENSION )
-        CASE(1)
-           Tangent(1) =  Normal(2)
-           Tangent(2) = -Normal(1)
-           Tangent(3) =  0.0_dp
-           Tangent2   =  0.0_dp
-        CASE(2)
-           CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+     CASE(1)
+       Tangent(1) =  Normal(2)
+       Tangent(2) = -Normal(1)
+       Tangent(3) =  0.0_dp
+       Tangent2   =  0.0_dp
+     CASE(2)
+       CALL TangentDirections( Normal, Tangent, Tangent2 ) 
      END SELECT
 
-     IF ( ANY( NodalSlipCoeff(:,:) /= 0.0d0 ) ) THEN
-        DO p=1,n
-          DO q=1,n
-            DO i=1,DIM
+     IF ( ANY( NodalSlipCoeff(1:dim,1:n) /= 0.0d0 ) ) THEN
+       DO p=1,n
+         DO q=1,n
+           DO i=1,DIM
 
-              SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
-              IF ( NormalTangential ) THEN
-                 SELECT CASE(i)
-                    CASE(1)
-                      Vect = Normal
-                    CASE(2)
-                      Vect = Tangent
-                    CASE(3)
-                      Vect = Tangent2
-                 END SELECT
+             SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
+             IF ( NormalTangential ) THEN
+               SELECT CASE(i)
+               CASE(1)
+                 Vect = Normal
+               CASE(2)
+                 Vect = Tangent
+               CASE(3)
+                 Vect = Tangent2
+               END SELECT
 
-                 DO j=1,dim
-                    DO k=1,dim
-                       BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) = &
-                          BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) + &
-                           s * SlipCoeff * Basis(q) * Basis(p) * Vect(j) * Vect(k)
-                    END DO
+               DO j=1,dim
+                 DO k=1,dim
+                   BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) = &
+                       BoundaryMatrix( (p-1)*c+j,(q-1)*c+k ) + &
+                       s * SlipCoeff * Basis(q) * Basis(p) * Vect(j) * Vect(k)
                  END DO
-              ELSE
-                  BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) = &
-                     BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) + &
-                         s * SlipCoeff * Basis(q) * Basis(p)
-              END IF
-            END DO
-          END DO
-        END DO
+               END DO
+             ELSE
+               BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) = &
+                   BoundaryMatrix( (p-1)*c+i,(q-1)*c+i ) + &
+                   s * SlipCoeff * Basis(q) * Basis(p)
+             END IF
+           END DO
+         END DO
+       END DO
      END IF
 
      DO q=1,N
        DO i=1,dim
-          k = (q-1)*c + i
-          IF ( NormalTangential ) THEN
-             SELECT CASE(i)
-                CASE(1)
-                  Vect = Normal
-                CASE(2)
-                  Vect = Tangent
-                CASE(3)
-                  Vect = Tangent2
-             END SELECT
+         k = (q-1)*c + i
+         IF ( NormalTangential ) THEN
+           SELECT CASE(i)
+           CASE(1)
+             Vect = Normal
+           CASE(2)
+             Vect = Tangent
+           CASE(3)
+             Vect = Tangent2
+           END SELECT
 
-             DO j=1,dim
-                l = (q-1)*c + j
-                BoundaryVector(l) = BoundaryVector(l) +  &
-                             s * Basis(q) * Force(i) * Vect(j)
-             END DO
-          ELSE
-             BoundaryVector(k) = BoundaryVector(k) + s * Basis(q) * Force(i)
-          END IF
-          BoundaryVector(k) = BoundaryVector(k) - s * Alpha * dBasisdx(q,i)
-          BoundaryVector(k) = BoundaryVector(k) + s * TangentForce(i) * Basis(q)
+           DO j=1,dim
+             l = (q-1)*c + j
+             BoundaryVector(l) = BoundaryVector(l) +  &
+                 s * Basis(q) * Force(i) * Vect(j)
+           END DO
+         ELSE
+           BoundaryVector(k) = BoundaryVector(k) + s * Basis(q) * Force(i)
+         END IF
+         BoundaryVector(k) = BoundaryVector(k) - s * Alpha * dBasisdx(q,i)
+         BoundaryVector(k) = BoundaryVector(k) + s * TangentForce(i) * Basis(q)
        END DO
        k = (q-1)*c + 1
+       
        BoundaryVector(k) = BoundaryVector(k) - s * Alpha * Basis(q) * Symb(3,1,3)
      END DO
    END DO

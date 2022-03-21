@@ -34,7 +34,8 @@ End
 $fileid="a"
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 10
+!  Max Output Partition = 10
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -44,7 +45,7 @@ Simulation
 
   Post File = case_$fileid$.vtu
 
-  Mesh Levels = 2
+  Mesh Levels = 1
 
 ! The ElasticSolver does not really like the Dirichlet conditions at the start 
 ! of the nonlinear iteration. 
@@ -54,7 +55,7 @@ Simulation
   Partition Mesh = Logical True
   Partitioning Method = String "Zoltan"
   Partition Connected BCs = Logical True
-  Number of partitions = Integer 4
+!  Number of partitions = Integer 4
 End
 
 !Constants
@@ -198,5 +199,5 @@ Boundary Condition 6
 End
 
 
-Solver 1 :: Reference Norm = 6.693448E-03
+Solver 1 :: Reference Norm = 6.89475395E-03
 Solver 1 :: Reference Norm Tolerance = 1.0e-6

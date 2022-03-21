@@ -69,6 +69,8 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
 
+  Nonlinear System Consistent Norm = Logical True
+
   Linear System Symmetric = True
   Linear System Solver = Iterative
   Linear System Iterative Method = GCR
@@ -93,6 +95,8 @@ Solver 2
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
+
+  Nonlinear System Consistent Norm = Logical True
 
   Linear System Symmetric = True
   Linear System Solver = Iterative

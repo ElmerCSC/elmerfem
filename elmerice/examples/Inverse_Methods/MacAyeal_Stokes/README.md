@@ -8,7 +8,7 @@ Optimisation of the basal friction coefficient.
 
 - RUN_TWIN_DISC.sh:
 	- twin experiment using the discrete cost function
-	- Be carefull the data file in DATA has been generated with the SSA Solver so the cost will not converge to 0.
+	- Be careful the data file in DATA has been generated with the SSA Solver so the cost will not converge to 0.
 
 
 

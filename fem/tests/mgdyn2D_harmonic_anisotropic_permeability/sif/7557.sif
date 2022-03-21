@@ -121,5 +121,6 @@ Boundary Condition 1
    Magnetic Flux Density 2 = 1
 End
 
-Solver 3 :: Reference Norm = Real 2.956909E+01
+Solver 2 :: Reference Norm = 2.47638418E-01
+Solver 3 :: Reference Norm = 8.42932876E+03
 

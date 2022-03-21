@@ -1,0 +1,154 @@
+!--------------------------------------------------------------------
+! A test case for Dirichlet-Neumann process for solving 
+! a heat equation on two conforming meshes. 
+! The case is not intended to be used as a real strategy for linear
+! systems. 
+!
+! Peter Råback / 12.1.2014
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "internal_slope"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 15
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 100
+
+  Output Intervals = 0
+  Post File = "case_b.vtu"
+
+! These are the internal partitioning commands
+  Partition Mesh = Logical True
+  Partitioning Method = String "Zoltan"
+  Partition Connected BCs = Logical True
+!  Number of partitions = Integer 3
+
+  Partition Equation Balance = Logical True
+  
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 2
+  Material = 2
+End
+
+
+Equation 1
+  Name = "LowerHeat"
+  Active Solvers(1) = 2
+End
+
+Equation 2
+  Name = "UpperHeat"
+  Active Solvers(1) = 1
+End
+
+
+Solver 2
+  Equation = "HeatA"
+  Variable = "TempA"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+
+! some relaxation is necessary for convergence
+! the level of relxation depends on the setup. 
+  Nonlinear System Relaxation Factor = 0.4
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Consistent Norm = True
+End
+
+Solver 1
+  Equation = "HeatB"
+  Variable = "TempB"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Consistent Norm = True
+
+! This solver is fed with Dirichlet conditions and it returns 
+! the nodal fluxes that must be computed with this keyword. 
+  Calculate Loads = Logical True
+End
+
+
+Material 1
+  Name = "LowerMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Material 2
+  Name = "UpperMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 1
+
+  TempA = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries = 2
+
+  TempB = Equals "Coordinate 2"
+End
+
+Boundary Condition 3
+  Name = "Interface"
+  Target Boundaries = 3
+
+  TempB = Equals TempA 
+  TempA Load = Opposes "TempB Loads"
+
+  Partition Set = Integer 1
+End
+
+
+
+Solver 2 :: Reference Norm = Real 0.62281193251726608
+RUN
+!End Of File

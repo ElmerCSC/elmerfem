@@ -41,8 +41,10 @@ Solver 1
   Calculate Electric Field = True
   Calculate Electric Flux = False
   Linear System Solver = Direct
-  Linear System Direct Method = umfpack
+  Linear System Direct Method = mumps 
   Nonlinear System Max Iterations = 1
+
+  Nonlinear System Consistent Norm = True
 End
 
 Material 1
@@ -87,8 +89,6 @@ End
 !End
 
 Solver 1 :: Reference Norm = Real 3.57232600383
-RUN
-
 
 !End Of File
 

@@ -11,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady
 !  Simulation Type = Scanning
@@ -43,7 +43,7 @@ Equation 1 :: Active Solvers(1) = 1
 
 ! -------------------------------------------------------------------------
 ! Note that there is no surface tractions applied and we adjust the stopping
-! criterion for the linear solver (cf. Linear System Normwise Backward Error)
+! criterion for the linear solver (cf. Linear System Componentwise Backward Error)
 ! so that the smallness of the norm of the RHS vector does not cause troubles 
 ! in getting the convergence.
 !---------------------------------------------------------------------------
@@ -59,8 +59,8 @@ Solver 1
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU2
   Linear System Max Iterations = 1000
-  Linear System Normwise Backward Error = Logical True
-  Linear System Convergence Tolerance = 1e-9
+  Linear System Componentwise Backward Error = True
+  Linear System Convergence Tolerance = 1e-7
   Linear System Iterative Method = GCR
   Linear System GCR Restart = 100
   Linear System Abort Not Converged = False
@@ -153,5 +153,5 @@ Boundary Condition 5
   U 3 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 3.99380251E-03
+Solver 1 :: Reference Norm = Real 3.99256879E-03
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

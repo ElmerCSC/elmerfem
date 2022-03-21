@@ -235,7 +235,7 @@ CONTAINS
           IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
           proc = i-1
           ! extract those of the missing nodes that are within the other
-          ! partions bounding box:
+          ! partitions bounding box:
           ! --------------------------------------------------------
           myBB = BB(:,i) !Actually theirBB, but saves var names...
           npart = 0

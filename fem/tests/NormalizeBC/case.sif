@@ -12,7 +12,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 20
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = "Steady State"
@@ -92,10 +92,13 @@ Boundary Condition 2
   Name = "Right"
   Target Boundaries(1) = 2 
 
-  Heat Flux = 1.0
+! This is the new syntax!
+  Heat Flux = -distribute 1.0
 ! This together with the previous causes a division 
 ! by the volume (in 2D angle equal to 2). 
-  Heat Flux Normalize by Area = Logical True
+
+! This is the old syntax!
+!  Heat Flux Normalize by Area = Logical True
 End
 
 Boundary Condition 3
@@ -109,5 +112,5 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = Real 1.5355156
-RUN
+
 !End Of File

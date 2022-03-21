@@ -170,4 +170,6 @@
 
 #cmakedefine HAVE_ZOLTAN
 
+#cmakedefine HAVE_EXTOPTIM 
+
 #endif

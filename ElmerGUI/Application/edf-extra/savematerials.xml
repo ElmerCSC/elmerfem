@@ -1,0 +1,113 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Save Materials" >
+      <Name>SaveMaterials</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "SaveData" "SaveMaterials" </DefaultValue>
+         </Parameter>
+
+          <Parameter Widget="Edit">
+            <Name> Variable </Name>
+            <Type> String </Type>
+            <Whatis> A dummy variable for the solver that does not show up. </Whatis>
+         </Parameter>
+		 
+         <Parameter Widget="Edit">
+            <Name> Variable DOFs  </Name>
+            <Whatis> A dummy variable DOFs. </Whatis>
+         </Parameter>		 
+		 
+         <Parameter Widget="CheckBox" Enabled="True" Visible="False">
+           <Name> No Matrix Equation </Name>  
+           <DefaultValue> True </DefaultValue>
+         </Parameter>
+		 
+         <Parameter Widget="Edit">
+            <Name> Parameter 1 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 2 </Activate>
+            <Whatis> The name of the 1st material property to save. </Whatis>
+         </Parameter> 
+		 
+         <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 2 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 3 </Activate>
+            <Whatis> The name of the 2nd material property to save. </Whatis>
+         </Parameter> 
+		 
+         <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 3 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 4 </Activate>
+            <Whatis> The name of the 3d material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 4 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 5 </Activate>
+            <Whatis> The name of the 4th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 5 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 6 </Activate>
+            <Whatis> The name of the 5th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 6 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 7 </Activate>
+            <Whatis> The name of the 6th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 7 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 8 </Activate>
+            <Whatis> The name of the 7th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 8 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 9 </Activate>
+            <Whatis> The name of the 8th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 9 </Name>
+            <Type> String </Type>
+            <Activate> /SaveMaterials/Solver/Parameter 10 </Activate>
+            <Whatis> The name of the 9th material property to save. </Whatis>
+         </Parameter> 
+		 
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Parameter 10 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 10th material property to save. </Whatis>
+         </Parameter> 
+
+		 <Parameter Widget="TextEdit" Enabled="True">
+		 <Name> Free text </Name>
+		 <Type> String </Type>
+		 <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+		 <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+		 </Parameter>
+      </Solver>
+
+   </PDE>
+</edf>
+
+
+
+
+
+
+

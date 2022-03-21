@@ -9,7 +9,7 @@ Simulation
   Angular Frequency = 1
   Simulation Type = Steady
   Steady State Max Iterations = 1
-  Max Output Level = 7
+  Max Output Level = 5
 End
 
 Constants

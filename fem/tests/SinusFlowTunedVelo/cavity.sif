@@ -1,0 +1,163 @@
+! This test case shows how to control one single parameter value
+! on the "Run Control" level in order to tune the cost function to the
+! desired value. Here the cost function is flux over boundary in a
+! Stokes flow case. 
+!
+! P.R. 15.2.2021
+
+
+check keywords warn
+
+Header
+  Mesh DB "." "sinus0"
+End
+
+Run Control 
+! Here are the parameters related to the control task.
+! We optimize one parameter only using 10 iterations.
+! The history and best results are saved.
+! The parameter is a MATC entity called "rpar". 
+  Run Control Iterations = Integer 10
+  Parameter Count = Integer 1
+  Parameter History File = File "optimize-history.dat"
+  Parameter Best File = File "optimize-best.dat"
+
+! This sets the range and initial guess for parameter rpar(0)
+  Min Parameter 1 = Real -1000.0
+  Max Parameter 1 = Real  1000.0
+  Initial Parameter 1 = Real 0.1
+
+! For search of one variable with smooth cost function 
+! Here are the parameters related to the search method. 
+  Optimization Method = String "secant"
+  Optimization Tolerance = Real 1.0e-10
+  Initial Stepsize = Real 1.0e-3
+  Max Stepsize = Real 1.0
+! For this linear case we would find the optimum with one shot.
+! This would be more useful in nonlinear cases...
+  Stepsize Relaxation Factor = Real 0.8
+
+! This is a design task with the goal flx=1.0
+! So this is not a minimization task, rather a design task.
+  Cost Function = Equals "flx"
+  Cost Function Target = Real 1.0
+
+! We may have higher output level for this section as this must be
+! read before other sections. 
+  Max Output Level = 5 
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System  = Cartesian 2D 
+  
+  Set Dirichlet BCs by BC Numbering = Logical True
+
+  Simulation Type ="Steady State"
+  Timestep Intervals =  1   
+  Output Intervals = 1  
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Post File = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Pressure = Real 0.0
+End
+
+Material 1
+  Density = Real 1.0
+  Viscosity = Real 1.0
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Stabilization Method = String P2P1
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance  = 1.0e-9
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Newton After Tolerance = 1.0e-04
+  Nonlinear System Relaxation Factor = 1.0 
+
+  Steady State Convergence Tolerance = Real 1.0e-4
+End
+
+Solver 2
+  Equation = "SaveScalars"
+    Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Show Norm = True
+  Show Norm Index = 1
+
+  Variable 1 = Velocity 1 
+  Operator 1 = "Boundary Int"
+  Variable 2 = Velocity  
+  Operator 2 = "convective flux"
+
+! Create and associate the operator 1 to variable "flx"
+! The variable is then directly used to tune the force in "Run Control".
+  Exported Variable 1 = "-global flx"
+  Target Variable 1 = "flx" 
+End 
+
+
+Equation 1
+  Active Solvers = 1
+  NS Convect = Logical False
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 1
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+End
+
+!!! BC Outflow   
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC Pressure = Logical True
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+
+  Save Scalars = Logical True
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 3
+  Pressure 2 = Real -1000.0
+
+! The design variable is a MATC entity called "rpar".
+! It is interpreted every time so we can use the dollar syntax.
+  Velocity 1 = $rpar(0)
+End
+
+!!! BC Inflow   
+Boundary Condition 4
+  Name = "Left"
+  Target Boundaries = 4
+End
+
+Solver 1 :: Reference Norm = 6.83132890E-01
+

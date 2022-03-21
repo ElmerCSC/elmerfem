@@ -5,11 +5,15 @@
 ! ../mgdyn_faraday_disc. Here transient analysis is performed using a sequence
 ! of instantaneous configurations. As explained in the following, this case is 
 ! also instructive to understand how Elmer treats Maxwell's equations in the 
-! case of a moving body. NOTE: The basic sif file of this case is 
+! case of a moving body. 
+!
+! NOTE: The basic sif file of this case is 
 ! disc_transient.sif. This sif file is an alternate where the vector potential
 ! variable is made unique in an iterated manner (the nonlinear iteration is
 ! employed for this purpose) by performing the Helmholtz projection after 
-! solving the A-V solution candidate.
+! solving the A-V solution candidate. Now the same iterated gauge condition can
+! also be obtained with the input file disc_transient.sif by using the keyword 
+! "Helmholtz Projection".
 !
 ! Here a metallic disc rotates and is subject to a uniform magnetic field
 ! parallel to the disc axis. When the disc is put to rotate, the mobile charges
@@ -64,7 +68,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Simulation Type = Transient
 !  Timestepping Method = crank-nicolson
   Timestepping Method = BDF

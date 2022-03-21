@@ -5,5 +5,5 @@ of the same problem.
 The default shell model which takes into account the straining of the shell 
 director may not be convenient in cases where the director field is not
 smooth. Here a drilling rotation formulation is used instead in order to handle
-the discontinuity of the shell field.
+the discontinuity of the director field.
 

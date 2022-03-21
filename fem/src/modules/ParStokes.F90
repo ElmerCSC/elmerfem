@@ -34,6 +34,172 @@
 ! *
 ! *****************************************************************************/
 
+
+!
+! The following module should contain the definition of anisotropic viscosity 
+! models. This could be contained within MaterialModels module. 
+! NOTE: This module of material models is still under construction
+!
+MODULE AnisotropicMaterialModels
+
+  USE DefUtils
+  USE MaterialModels, ONLY: SecondInvariant
+  USE StressLocal, ONLY: RotateElasticityMatrix3D, Rotate4IndexTensor
+
+  IMPLICIT NONE
+
+CONTAINS
+
+  !------------------------------------------------------------------------------
+  !> Returns effective anisotropic viscosity for Navier-Stokes equation.
+  !> Note: Based on the EffectiveViscosity function in MaterialModels.f90
+  !------------------------------------------------------------------------------
+  FUNCTION AnisotropicEffectiveViscosity( Viscosity,Density,Ux,Uy,Uz,Element, &
+      Nodes,n,nd,u,v,w, muder, LocalIP ) RESULT(mu_tensor)
+  !------------------------------------------------------------------------------
+
+     USE ModelDescription
+
+     REAL(KIND=dp)  :: Viscosity,Density,u,v,w,mu,Ux(:),Uy(:),Uz(:)
+     REAL(KIND=dp), OPTIONAL :: muder
+     TYPE(Nodes_t)  :: Nodes
+     INTEGER :: n,nd
+     INTEGER, OPTIONAL :: LocalIP
+     TYPE(Element_t),POINTER :: Element
+
+     !------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
+     REAL(KIND=dp) :: ss,s,SqrtMetric,SqrtElementMetric,Velo(3)
+     REAL(KIND=dp) :: Metric(3,3), dVelodx(3,3), CtrMetric(3,3), &
+          Symb(3,3,3), dSymb(3,3,3,3) 
+
+     INTEGER :: i,j,k
+     LOGICAL :: stat,GotIt,UseEUsrf=.FALSE.
+
+     CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag, TemperatureName, EnhcmntFactFlag
+     TYPE(ValueList_t), POINTER :: Material
+     REAL(KIND=dp) :: x, y, z, c1n(n), c2n(n), c3n(n), c4n(n), &
+          c1, c2, c3, c4, UnitNorm, TransformMatrix(3,3), mu_tensor(6,6) 
+
+     REAL(KIND=dp), POINTER :: Uwrk(:,:)
+
+
+     !------------------------------------------------------------------------------
+     mu = Viscosity
+
+     k = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values, 'Material', &
+          minv=1, maxv=CurrentModel % NumberOFMaterials )
+
+     Material => CurrentModel % Materials(k) % Values
+
+     ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt)
+
+     IF(.NOT. gotIt) RETURN
+     !------------------------------------------------------------------------------
+     !    Basis function values & derivatives at the calculation point
+     !------------------------------------------------------------------------------
+     stat = ElementInfo( Element,Nodes,u,v,w, &
+          SqrtElementMetric, Basis,dBasisdx )
+     !------------------------------------------------------------------------------
+     !   Coordinate system dependent information
+     !------------------------------------------------------------------------------
+     x = SUM( Nodes % x(1:n) * Basis(1:n) )
+     y = SUM( Nodes % y(1:n) * Basis(1:n) )
+     z = SUM( Nodes % z(1:n) * Basis(1:n) )
+     CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
+     !------------------------------------------------------------------------------
+     DO j=1,3
+        dVelodx(1,j) = SUM( Ux(1:nd)*dBasisdx(1:nd,j) )
+        dVelodx(2,j) = SUM( Uy(1:nd)*dBasisdx(1:nd,j) )
+        dVelodx(3,j) = SUM( Uz(1:nd)*dBasisdx(1:nd,j) )
+     END DO
+
+     Velo(1) = SUM( Basis(1:nd) * Ux(1:nd) )
+     Velo(2) = SUM( Basis(1:nd) * Uy(1:nd) )
+     Velo(3) = SUM( Basis(1:nd) * Uz(1:nd) )
+
+     ! This is the square of shearrate which results to 1/2 in exponent
+     ! Also the derivative is taken with respect to the square
+     !-------------------------------------------------------------------
+     ss = 0.5_dp * SecondInvariant(Velo,dVelodx,Metric,Symb)
+
+     SELECT CASE( ViscosityFlag )
+
+     CASE('orthotropic non linear')
+        ! Read Fluidity Prefactor
+        c1n = ListGetReal( Material, 'Fluidity', n, Element % NodeIndexes )
+        c1 = SUM( Basis(1:n) * c1n(1:n) )
+
+        ! Read Power Law Exponent
+        c2n = ListGetReal( Material, 'Power law Exponent', n, Element % NodeIndexes )
+        c2 = SUM( Basis(1:n) * c2n(1:n) )
+        
+        ! Read Critical Shear Rate and set the limit if needed
+        c3n = ListGetReal( Material, 'Critical Shear Rate',n, Element % NodeIndexes,gotIt )
+        IF (GotIt) THEN
+           c3 = SUM( Basis(1:n) * c3n(1:n) )
+           IF(ss < c3**2) THEN
+              ss = c3**2
+           END IF
+        END IF
+
+        ! Read Anisotropy parameter
+        c4n = ListGetReal( Material, 'Anisotropy Parameter', n, Element % NodeIndexes )
+        c4 = SUM( Basis(1:n) * c4n(1:n) )
+
+
+        ! Read Transform Matrix based on the Material Coordinates Unit Vectors
+        DO i=1,3
+          IF( i == 1 ) THEN
+            CALL GetConstRealArray( Material, UWrk, &
+                'Material Coordinates Unit Vector 1', stat, Element )
+          ELSE IF( i == 2 ) THEN
+            CALL GetConstRealArray( Material, UWrk, &
+                'Material Coordinates Unit Vector 2', stat, Element )
+          ELSE                
+            CALL GetConstRealArray( Material, UWrk, &
+                'Material Coordinates Unit Vector 3', stat, Element )
+          END IF
+          IF( stat ) THEN
+            UnitNorm = SQRT( SUM( Uwrk(1:3,1)**2 ) )
+            IF( UnitNorm < EPSILON( UnitNorm ) ) THEN
+              CALL Fatal('AnisotropicEffectiveViscosity','Given Material Coordinate Unit Vector too short!')
+            END IF
+            TransformMatrix(i,1:3) = Uwrk(1:3,1) / UnitNorm
+          END IF
+        END DO
+
+        ! Compute equivalent Viscosity prefactor
+        mu = (1.0_dp/c1)**(1.0_dp/c2)
+
+        ! Create Viscosity tensor in the grain frame and with Voigt Notation
+        ! Taken from Gagliardini and Meyissonnier 1999 
+        mu_tensor = 0.0_dp
+        mu_tensor(1,1) = mu * c4
+        mu_tensor(2,2) = mu * c4
+        mu_tensor(3,3) = mu * c4
+        mu_tensor(4,4) = mu * c4  ! Not a "real" Voigt Notation as there is no factor two on the stresses
+        mu_tensor(5,5) = mu       ! Not a "real" Voigt Notation as there is no factor two on the stresses 
+        mu_tensor(6,6) = mu       ! Not a "real" Voigt Notation as there is no factor two on the stresses
+
+        ! Rotate to general frame
+        CALL RotateElasticityMatrix3D(mu_tensor,TransformMatrix)
+
+        ! Multiply by strain rate invariant for non-linearity
+        mu_tensor = mu_tensor * ss**(((1.0_dp/c2) -1.0_dp)/2.0_dp)
+
+     CASE DEFAULT
+        CALL WARN('AnisotropicEffectiveViscosity','Unknown material model')
+
+     END SELECT
+
+!------------------------------------------------------------------------------
+   END FUNCTION AnisotropicEffectiveViscosity
+!------------------------------------------------------------------------------
+END MODULE AnisotropicMaterialModels
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
 SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
@@ -112,6 +278,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
   USE ElementUtils
   USE MaterialModels
+  USE AnisotropicMaterialModels
   USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
@@ -1210,18 +1377,34 @@ CONTAINS
     REAL(KIND=dp) :: LinBasis(nd)
     REAL(KIND=dp), POINTER :: A(:,:), F(:), Jac(:,:)
     REAL(KIND=dp), TARGET :: JacM(nd*(dim+1),nd*(dim+1)), Sol(nd*(dim+1)) 
-    LOGICAL :: Stat, ViscNewtonLin
+    LOGICAL :: Stat, ViscNewtonLin, Anisotropy
     INTEGER :: t, i, j, k, l, p, q, nlin
     INTEGER :: LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: mu = 1.0d0, s, &
-         a1, a2, muder, muder0, Strain(dim,dim)
+         a1, a2, muder, muder0, Strain(dim,dim), &
+         mu_tensor(6,6), mu_iso, SymGrad(3,3), TestTuple(6), TrialTuple(6)
 
     TYPE(Nodes_t) :: Nodes
+    CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
+
     SAVE Nodes, PressureElement
     !------------------------------------------------------------------------------
-    
+
+    ViscosityFlag = ListGetString(Material, 'Viscosity Model', Stat)
+    !
+    ! Check for anisotropic material laws which need to treat the viscosity as 
+    ! a higher-order tensor. Now this is checked by the names of material models.
+    ! TO DO: Check the names so that the need for anisotropic viscosity is decided 
+    ! correctly. 
+    !
+    Anisotropy = ViscosityFlag == 'orthotropic non linear'
+    IF (Anisotropy) THEN
+      IF (DiagonalA) CALL Fatal('ParStokes', 'Set Block Diagonal A = False for anisotropy')
+      IF (Newton) CALL Fatal('ParStokes', 'Anisotropy prevents the Newton linearization')
+    END IF
+
     IF (P2P1) THEN
       IF ( .NOT. ASSOCIATED(PressureElement) ) PressureElement => AllocateElement()
       k = GetElementFamily()
@@ -1270,18 +1453,52 @@ CONTAINS
        ViscAtIP  = SUM( Basis(1:n) * Nodalmu(1:n) )
        RhoAtIP = SUM( Basis(1:n) * Nodalrho(1:n) )
        
-       IF ( SkipPowerLaw ) THEN
-          mu = ViscAtIP
+       IF (Anisotropy) THEN
+
+         IF ( SkipPowerLaw ) THEN
+           !
+           ! Create a viscosity tensor for the case of a scalar viscosity.
+           ! Note that the diagonal entries are not equal, since mu_tensor
+           ! acts on the vectorized representation of the symmetric part of
+           ! the velocity gradient, i.e. [D11,D22,D33,2*D12,2*D13,2*D23].
+           !
+           mu_tensor = 0.0_dp
+           DO i=1,3
+             mu_tensor(i,i) = 2.0_dp * ViscAtIP
+             mu_tensor(i+3,i+3) = ViscAtIP
+           END DO
+         ELSE       
+           ! Compute the effective anisotropic viscosity
+           mu_tensor = AnisotropicEffectiveViscosity(ViscAtIP, RhoAtIP, Vx, Vy, Vz, &
+               Element, Nodes, n, n, IP % U(t), IP % V(t), &
+               IP % W(t), muder0, LocalIP=t)
+         END IF
+
+         ! The trace of the viscosity tensor (this should yield the same trace as defined for
+         ! the fourth-order tensor)
+         mu_iso = 0
+         DO i=1,3
+           mu_iso = mu_iso + 0.5_dp*mu_tensor(i,i) + mu_tensor(i+3,i+3)
+         END DO
+
+         ! Normalize so that the case of a scalar viscosity can also be handled as a special case:
+         mu_iso = mu_iso / 6.0_dp
+
        ELSE
-          IF( ListCheckPresent( Material, 'Viscosity Model' ) ) THEN
+         IF ( SkipPowerLaw ) THEN
+           mu = ViscAtIP
+         ELSE
+           IF( ListCheckPresent( Material, 'Viscosity Model' ) ) THEN
              mu = EffectiveViscosity( ViscAtIP, RhoAtIp, Vx, Vy, Vz, &
-                  Element, Nodes, n, n, IP % U(t), IP % V(t), &
-                  IP % W(t), muder0, LocalIP=t )
+                 Element, Nodes, n, n, IP % U(t), IP % V(t), &
+                 IP % W(t), muder0, LocalIP=t )
              ViscNewtonLin = Newton .AND. muder0/= 0.0d0
              IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
-          ELSE
+           ELSE
              mu = ViscAtIP
-          END IF
+           END IF
+         END IF
+         mu_iso = mu
        END IF
 
        IF (Convect) THEN
@@ -1298,8 +1515,43 @@ CONTAINS
        !----------------------------------------------------------------------------------
        ! The system matrix with linear pressure approximation
        !---------------------------------------------------------------------------------
-       DO p=1,nd
-          DO q=1,nd
+       TENSOR_VISCOSITY: IF (Anisotropy) THEN
+         DO p=1,nd
+           DO i=1,dim
+             SymGrad = 0.0d0
+             SymGrad(i,:) = dBasisdx(p,:)
+             SymGrad = (SymGrad+TRANSPOSE(SymGrad))/2.0_dp
+             DO j=1,3
+               TestTuple(j) = SymGrad(j,j)
+             END DO
+             TestTuple(4) = SymGrad(1,2) + SymGrad(2,1)
+             TestTuple(5) = SymGrad(1,3) + SymGrad(3,1)
+             TestTuple(6) = SymGrad(2,3) + SymGrad(3,2)
+
+             ! Apply the constitutive tensor via a transposed version: 
+             TestTuple = MATMUL(TRANSPOSE(mu_tensor),TestTuple)
+
+             DO q=1,nd
+               DO j=1,dim
+                 SymGrad = 0.0d0
+                 SymGrad(j,:) = dBasisdx(q,:)
+                 SymGrad = (SymGrad+TRANSPOSE(SymGrad))/2.0_dp
+                 DO k=1,3
+                   TrialTuple(k) = SymGrad(k,k)
+                 END DO
+                 TrialTuple(4) = SymGrad(1,2) + SymGrad(2,1)
+                 TrialTuple(5) = SymGrad(1,3) + SymGrad(3,1)
+                 TrialTuple(6) = SymGrad(2,3) + SymGrad(3,2)
+
+                 Stiff((dim+1)*(p-1)+i,(dim+1)*(q-1)+j) = &
+                     Stiff((dim+1)*(p-1)+i,(dim+1)*(q-1)+j) + SUM(TrialTuple * TestTuple) * s
+               END DO
+             END DO
+           END DO
+         END DO
+       ELSE
+         DO p=1,nd
+           DO q=1,nd
              i = (dim+1) * (p-1) + 1
              j = (dim+1) * (q-1) + 1
              A => STIFF(i:i+dim,j:j+dim)
@@ -1327,68 +1579,79 @@ CONTAINS
                  A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
                  A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
                END DO
-
-               ! Only linear pressure approximation is used...
-               IF (P2P1) THEN
-                 IF (q <= nlin) &
-                     A(i,dim+1) = A(i,dim+1) - s * LinBasis(q) * dBasisdx(p,i)
-                 IF (p <= nlin) &
-                     A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * LinBasis(p)
-               ELSE
-                 IF (q <= n) &
-                     A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
-
-                 IF (p <= n) &   
-                     A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * Basis(p)
-               END IF
              END DO
 
              IF (DiagonalA) THEN
                DO i=1,dim
                  DO j = 1,dim
-                   
+
                    VeloBlock( dim*(p-1)+i, dim*(q-1)+i ) = VeloBlock( dim*(p-1)+i, dim*(q-1)+i ) + &
                        s * mu * dBasisdx(q,j) * dBasisdx(p,j)
-                   
+
                  END DO
                END DO
              END IF
+           END DO
+         END DO
+       END IF TENSOR_VISCOSITY
 
-             IF (Convect) THEN
-                A(1,1) = A(1,1) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
-                A(1,1) = A(1,1) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
-                A(2,2) = A(2,2) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
-                A(2,2) = A(2,2) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
+       !
+       ! The rest which doesn't depend on the viscosity model:
+       !
+       DO p=1,nd
+         DO q=1,nd
+           i = (dim+1) * (p-1) + 1
+           j = (dim+1) * (q-1) + 1
+           A => STIFF(i:i+dim,j:j+dim)
 
-                IF (dim > 2) THEN
-                   A(1,1) = A(1,1) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
-                   A(2,2) = A(2,2) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
-                   A(3,3) = A(3,3) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
-                   A(3,3) = A(3,3) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
-                   A(3,3) = A(3,3) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
-                END IF
+           DO i=1,dim
 
+             ! Only linear pressure approximation is used...
+             IF (P2P1) THEN
+               IF (q <= nlin) &
+                   A(i,dim+1) = A(i,dim+1) - s * LinBasis(q) * dBasisdx(p,i)
+               IF (p <= nlin) &
+                   A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * LinBasis(p)
+             ELSE
+               IF (q <= n) &
+                   A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
+                 
+               IF (p <= n) &   
+                   A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * Basis(p)
              END IF
-             
+           END DO
+           
+           IF (Convect) THEN
+             A(1,1) = A(1,1) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
+             A(1,1) = A(1,1) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
+             A(2,2) = A(2,2) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
+             A(2,2) = A(2,2) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
 
-          END DO
+             IF (dim > 2) THEN
+               A(1,1) = A(1,1) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
+               A(2,2) = A(2,2) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
+               A(3,3) = A(3,3) + s * RhoAtIP * w1 * dBasisdx(q,1) * Basis(p)
+               A(3,3) = A(3,3) + s * RhoAtIP * w2 * dBasisdx(q,2) * Basis(p)
+               A(3,3) = A(3,3) + s * RhoAtIP * w3 * dBasisdx(q,3) * Basis(p)
+             END IF
+           END IF
+         END DO
 
-          i = (dim+1) * (p-1) + 1
-          F => FORCE(i:i+dim)
-          F = F + s * RhoAtIP * LoadAtIP * Basis(p)
-
+         i = (dim+1) * (p-1) + 1
+         F => FORCE(i:i+dim)
+         F = F + s * RhoAtIP * LoadAtIP * Basis(p)
        END DO
 
        IF (P2P1) THEN
          DO p=1,nlin
            DO q=1,nlin       
-             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu * Basis(p) * Basis(q)            
+             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)            
            END DO
          END DO
        ELSE
          DO p=1,n
            DO q=1,n       
-             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu * Basis(p) * Basis(q)            
+             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu_iso * Basis(p) * Basis(q)            
            END DO
          END DO
        END IF

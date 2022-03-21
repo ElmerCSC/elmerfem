@@ -1,0 +1,106 @@
+!---------------------------------------------------------
+! Reference case for solving two displacement equations as coupled.
+!
+! P.R. 2.9.2019
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = ref.vtu
+  vtu: Eigen Analysis = Logical True
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1 
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1 
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Name = "Load"
+!  Stress BodyForce 2 = -1.0e7
+End 
+
+
+Solver 1
+  Equation = LinElast
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = smallest magnitude
+
+  Displace Mesh = False
+End 
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+!  Filename = f.dat
+!  Parallel Reduce = Logical True
+
+  Save Eigenvalues = True
+  Show Norm Index = 7
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 2
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+
+Solver 2:: Reference Norm = 2.74498900E+06
