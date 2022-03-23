@@ -14738,6 +14738,19 @@ CONTAINS
     LOGICAL :: Found, NeedFaces
     INTEGER, POINTER :: PerPerm(:)
     LOGICAL, POINTER :: PerFlip(:)
+
+    TYPE(Mesh_t), POINTER :: sMesh
+    TYPE(Solver_t), POINTER :: sSolver
+ 
+! set these to satisfy possible call to EdgeElementInfo() - and restore later. Maybe not very
+! beautiful, but seems to work for now.
+! x
+    sSolver => Model % Solver
+    Model % Solver => Model % Solvers(1)
+    sMesh => Model % Solver % Mesh
+    Model % Solver % Mesh => Mesh
+! x
+
     
     DO i = 1,Model % NumberOfBCs
       k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', Found )
@@ -14797,6 +14810,9 @@ CONTAINS
       IF(nocyclic>0) CALL Info('GeneratePeriodicProjectors','Number of cyclic maps: '//TRIM(I2S(nocyclic)),Level=8)
       IF(noflip>0) CALL Info('GeneratePeriodicProjectors','Number of periodic flips: '//TRIM(I2S(noflip)),Level=8)
     END IF
+
+    Model % Solver % Mesh => sMesh
+    Model % Solver => sSolver
 
     
   END SUBROUTINE GeneratePeriodicProjectors
