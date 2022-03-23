@@ -19880,7 +19880,7 @@ CONTAINS
            IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
                DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
            Mesh % Elements(i) % NodeIndexes => NULL()
-           
+
            IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
               DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
            Mesh % Elements(i) % EdgeIndexes => NULL()
@@ -25036,6 +25036,788 @@ CONTAINS
     
   END FUNCTION NodeToDGIndex
 
+
+
+!------------------------------------------------------------------------------
+!> Split a mesh at zero levelset by adding new nodes at the interface.
+!> The idea is to be able to better represent shapes that are not initially
+!> presented by body fitted finite element mesh. 
+!------------------------------------------------------------------------------
+  FUNCTION SplitMeshLevelset(Mesh,Vlist) RESULT( NewMesh )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Vlist    
+    TYPE(Mesh_t), POINTER :: NewMesh
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: phi(:)
+    INTEGER, ALLOCATABLE :: EdgeSplit(:)
+    LOGICAL, ALLOCATABLE :: CutNode(:)
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: SplitReady    
+    REAL(KIND=dp), POINTER :: u(:),v(:),w(:),x(:),y(:),z(:)
+    REAL(KIND=dp) :: Eps
+    INTEGER, POINTER :: NodeIndexes(:), EdgeIndexes(:)    
+    INTEGER :: i, j, j2, j3, k, k2, k3, l, l2, l3, m, n, &
+        n_old, n_new, n_cut, n_split, n_neg, n_pos
+    INTEGER :: NoHits, NewElCnt, BCCnt, prevl, &
+        NodeCnt, FaceCnt, Node, ParentId 
+    LOGICAL :: Found, EdgesPresent
+    TYPE(Element_t), POINTER :: Enew,Eold,Edge,Eptr,Parent 
+    CHARACTER(LEN=MAX_NAME_LEN) :: str       
+    INTEGER, POINTER :: Child(:,:)
+    REAL(KIND=dp) :: h1,h2,hprod,r,s1,s2 
+    REAL(KIND=dp), POINTER :: stime(:)
+    INTEGER :: ierr, ParTmp(6), ParSizes(6)
+    INTEGER :: BodyOffset, SgnNode, BodyCount, LevelsetBC
+    LOGICAL :: PosOffset, BulkParent, Parallel
+    CHARACTER(*), PARAMETER :: Caller = 'SplitMeshLevelset'
+        
+!------------------------------------------------------------------------------
+    CALL Info( Caller, 'Splitting finite element mesh at zero levelset!', Level = 5 )
+
+    IF ( .NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Warn(Caller,'Original mesh not associated!')
+      RETURN
+    END IF
+        
+    CALL ResetTimer(Caller)
+    
+    DO i=1,Mesh % NumberOfBulkElements
+      n = Mesh % Elements(i) % TYPE % ElementCode 
+      IF( n /= 303 .AND. n /= 504 ) THEN
+        CALL Fatal(Caller,'Only linear triangles and tets can be split: '//TRIM(I2S(n)))
+      END IF
+    END DO
+    
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh )
+        
+    CALL Info( Caller, '******** Old mesh ********', Level = 6 )
+    WRITE( Message, * ) 'Nodes             : ',Mesh % NumberOfNodes
+    CALL info( Caller, Message, Level=6 )
+    WRITE( Message, * ) 'Bulk elements     : ',Mesh % NumberOfBulkElements
+    CALL info( Caller, Message, Level=6 )
+    WRITE( Message, * ) 'Boundary elements : ',Mesh % NumberOfBoundaryElements
+    CALL info( Caller, Message, Level=6 )
+    WRITE( Message, * ) 'Edges             : ',Mesh % NumberOfEdges
+    CALL info( Caller, Message, Level=6 )
+    WRITE( Message, * ) 'Faces             : ',Mesh % NumberOfFaces
+    CALL info( Caller, Message, Level=6 )
+
+    ! At this stage the coordinates have not been added as variable.
+    ! We cannot use the UDF's if these are not available. Also time
+    ! is needed by default in some calls. 
+    Var => VariableGet( Mesh % Variables,'time')
+    IF(.NOT. ASSOCIATED( Var ) ) THEN
+      CALL VariableAdd( Mesh % Variables, Mesh, &
+          Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )   
+      CALL VariableAdd(Mesh % Variables,Mesh, &
+          Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )    
+      CALL VariableAdd(Mesh % Variables,Mesh, &
+          Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )    
+      ALLOCATE(stime(1)); stime(1) = 0.0_dp
+      CALL VariableAdd( Mesh % Variables, Mesh, &
+          Name='Time',DOFs=1, Values=sTime )
+      CurrentModel % Variables => Mesh % Variables
+    END IF
+    
+    ! Initialize the levelset function for all nodes
+    n_old = Mesh % NumberOfNodes
+    ALLOCATE( Phi(n_old) )
+    
+    str = ListGetString( Vlist,'Levelset Variable', Found)
+    IF( Found ) THEN
+      Var => VariableGet(Mesh % Variables, str)
+      IF(.NOT. ASSOCIATED(Var) ) THEN
+        CALL Fatal(Caller,'"Levelset Variable" requested, but not available: '//TRIM(str))
+      END IF
+      Phi = 1.0_dp
+      ! We revert to nodal indexes since it will be easier in the future!
+      DO i=1,n_old
+        j = Var % Perm(i)
+        IF(j>0) Phi(i) = Var % Values(j)
+      END DO
+    ELSE      
+      DO i=1,n_old
+        Phi(i) = ListGetRealAtNode(Vlist,'Levelset Function', i, Found)
+        IF(.NOT. Found ) THEN
+          CALL Fatal(Caller,'"Levelset Function" needed to enrich the mesh!')             
+        END IF
+      END DO
+    END IF
+    
+    Eps = ListGetCReal( Vlist,'Levelset Epsilon',Found )
+    IF(.NOT. Found ) Eps = 1.0e-3
+    
+    n_pos = COUNT( Phi > 0.0 )
+    n_neg = COUNT( Phi < 0.0 ) 
+        
+    BodyOffset = ListGetInteger( Vlist,'Levelset Body Offset',Found ) 
+    PosOffset = ListGetLogical( Vlist,'Levelset Offset Positive',Found ) 
+    LevelsetBC = ListGetInteger( Vlist,'Levelset Boundary',Found )
+    IF(.NOT. Found) LevelsetBC = CurrentModel % NumberOfBCs
+    
+    IF( Parallel ) THEN
+      n_pos = ParallelReduction(n_pos) 
+      n_neg = ParallelReduction(n_neg)
+    END IF
+    
+    CALL Info(Caller,'Positive and negative values: '&
+        //TRIM(I2S(n_pos))//' vs. '//TRIM(I2S(n_neg)),Level=7)    
+    
+    IF( n_pos == 0 .OR. n_neg == 0 ) THEN
+      CALL Warn(Caller,'Nothing to do, no zero levelset available!')
+      RETURN
+    END IF
+       
+    ! We need edges in order to do the splitting!
+    EdgesPresent = ASSOCIATED(Mesh % Edges)
+    IF(.NOT. EdgesPresent) CALL FindMeshEdges( Mesh )
+        
+    ALLOCATE( EdgeSplit(Mesh % NumberOfEdges), CutNode(n_old) )
+    EdgeSplit = 0
+    CutNode = .FALSE.
+        
+    j = 0
+    DO i=1, Mesh % NumberOfEdges
+      NodeIndexes => Mesh % Edges(i) % NodeIndexes
+      h1 = Phi(NodeIndexes(1))
+      h2 = Phi(NodeIndexes(2))
+      hprod = h1*h2
+      IF( hprod < 0.0_dp ) THEN
+        r = ABS(h2)/(ABS(h1)+ABS(h2))
+        IF( r <= Eps ) THEN
+          CutNode(NodeIndexes(2)) = .TRUE.
+        ELSE IF(1.0-r < Eps ) THEN
+          CutNode(NodeIndexes(1)) = .TRUE.
+        ELSE
+          j = j+1 
+          EdgeSplit(i) = j
+        END IF
+      ELSE IF( ABS(hprod) < 1.0d-20 ) THEN
+        IF(ABS(h1) < 1.0e-20) CutNode(NodeIndexes(1)) = .TRUE. 
+        IF(ABS(h2) < 1.0e-20) CutNode(NodeIndexes(2)) = .TRUE.
+      END IF
+    END DO
+    
+    n_new = j
+    CALL Info(Caller,'Number of additional nodes: '//TRIM(I2S(n_new)),Level=6)
+
+    j = COUNT( CutNode )
+    CALL Info(Caller,'Number of cut nodes: '//TRIM(I2S(j)),Level=6)
+    
+!   Update nodal coordinates:
+!   -------------------------
+    NodeCnt = n_old + n_new 
+
+!   Create the new mesh
+!   -------------------------------
+    NewMesh => AllocateMesh()    
+    NewMesh % SingleMesh = Mesh % SingleMesh
+    NewMesh % Name = Mesh % Name   
+
+    CALL AllocateVector( NewMesh % Nodes % x, NodeCnt )
+    CALL AllocateVector( NewMesh % Nodes % y, NodeCnt )
+    CALL AllocateVector( NewMesh % Nodes % z, NodeCnt )
+
+!   shortcuts (u,v,w) old mesh  nodes,
+!   (x,y,z) new mesh nodes:
+!   ----------------------------------
+    u => Mesh % Nodes % x
+    v => Mesh % Nodes % y
+    w => Mesh % Nodes % z
+
+    x => NewMesh % Nodes % x
+    y => NewMesh % Nodes % y
+    z => NewMesh % Nodes % z
+!
+!   new mesh includes old mesh nodes:
+!   ----------------------------------
+    x(1:n_old) = u
+    y(1:n_old) = v
+    z(1:n_old) = w
+
+!   add new nodes where edges are split:
+!   ------------------------------------
+    DO i=1, Mesh % NumberOfEdges
+      NodeIndexes => Mesh % Edges(i) % NodeIndexes
+      j = EdgeSplit(i)
+      IF( j > 0 ) THEN
+        j = j + n_old
+        h1 = Phi(NodeIndexes(1))
+        h2 = Phi(NodeIndexes(2))
+        r = ABS(h2)/(ABS(h1)+ABS(h2))
+        x(j) = r*u(NodeIndexes(1)) + (1-r)*u(NodeIndexes(2))
+        y(j) = r*v(NodeIndexes(1)) + (1-r)*v(NodeIndexes(2))
+        z(j) = r*w(NodeIndexes(1)) + (1-r)*w(NodeIndexes(2))
+      END IF
+    END DO
+
+    CALL Info(Caller,'Added new nodes on the splitted edges.', Level=10 )  
+
+    
+!   Update new mesh node count:
+!   ---------------------------
+    NewMesh % NumberOfEdges = 0
+    NewMesh % NumberOfFaces = 0
+    NewMesh % MaxBDOFs = Mesh % MaxBDOFs
+    NewMesh % MinEdgeDOFs = Mesh % MinEdgeDOFs
+    NewMesh % MinFaceDOFs = Mesh % MinFaceDOFs
+    NewMesh % MaxEdgeDOFs = Mesh % MaxEdgeDOFs
+    NewMesh % MaxFaceDOFs = Mesh % MaxFaceDOFs
+    NewMesh % MaxElementDOFs = Mesh % MaxElementDOFs
+    NewMesh % MeshDim = Mesh % MeshDim
+
+    NewMesh % NumberOfNodes = NodeCnt
+    NewMesh % Nodes % NumberOfNodes = NodeCnt
+
+!   Update bulk elements:
+!   =====================
+!
+!   First count maximum number of new elements:
+!   -------------------------------------------
+    NewElCnt = 0
+    BodyCount = 0
+    DO i=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Eold => Mesh % Elements(i)
+      j = 1
+
+      Found = .FALSE.
+      IF( ASSOCIATED( Eold % EdgeIndexes ) ) THEN
+        Found = ANY(EdgeSplit(Eold % EdgeIndexes) > 0 )
+      ELSE IF( Eold % Type % ElementCode == 202 ) THEN
+        ! For element type 202 create the edge such that we can use the
+        ! routines similarly for 202, 303 and 504 elements. 
+        Parent => Eold % BoundaryInfo % Left
+        IF(.NOT. ASSOCIATED( Parent ) ) THEN
+          Parent => Eold % BoundaryInfo % Right
+        END IF
+        Edge => Find_Edge(Mesh,Parent,Eold)
+        IF(.NOT. ASSOCIATED( Edge) ) THEN
+          CALL Fatal(Caller,'Could not find 2D edge element among edges!')
+        END IF
+        ALLOCATE( Eold % EdgeIndexes(1) )
+        Eold % EdgeIndexes = Edge % ElementIndex
+        Found = ( EdgeSplit(Edge % ElementIndex) > 0 ) 
+      ELSE
+        CALL Fatal(Caller,'No edges for element: '//TRIM(I2S(i)))
+      END IF
+      
+      IF( Found ) THEN
+        SELECT CASE( Eold % TYPE % ElementCode/100 )                
+        CASE(2)
+          j = 2
+        CASE(3)
+          j = 3
+        CASE(5)
+          j = 6
+        END SELECT
+        ! There will also be additional BC elements on the cut!
+        j = j + 1
+      END IF
+      NewElCnt = NewElCnt + j
+    END DO
+
+    CALL Info( Caller,'Maximum estimated count of new elements: '//TRIM(I2S(NewElCnt)), Level=10 )
+
+    CALL AllocateVector( NewMesh % Elements, NewElCnt )
+    CALL Info(Caller,'New mesh allocated.', Level=20 )
+
+    CALL AllocateArray( Child, Mesh % NumberOfBulkElements, 6 )
+    CALL Info(Caller,'Array for bulk elements allocated.', Level=20 )
+    
+    NewElCnt = 0
+    NodeCnt = Mesh % NumberOfNodes
+
+!   Now update all new mesh elements:
+!   ---------------------------------
+    DO i=1,Mesh % NumberOfBulkElements
+
+       Eold => Mesh % Elements(i)
+       NodeIndexes => Eold % NodeIndexes       
+       n = Eold % TYPE % NumberOfNodes                
+       n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )
+
+       ! We continue splitting until the element is exhausted
+       SplitReady = .FALSE.
+
+       ! Split elements to no more than 6 pieces
+       DO m = 1,6
+         NewElCnt = NewElCnt + 1
+         Child(i,m) = NewElCnt
+         Enew => NewMesh % Elements(NewElCnt)
+
+         Enew = Eold
+         Enew % TYPE => Eold % TYPE
+         Enew % BodyId = Eold % BodyId
+         Enew % PartIndex = Eold % PartIndex
+         Enew % ElementIndex = NewElCnt
+         Enew % NDOFs = Eold % NDOFs
+         Enew % EdgeIndexes => NULL()
+         Enew % FaceIndexes => NULL()
+         Enew % BoundaryInfo => NULL()
+         
+         CALL AllocateVector( ENew % NodeIndexes, n)
+         
+         IF( n_split == 0 ) THEN
+           Enew % NodeIndexes = NodeIndexes
+           DO j=1,n
+             IF(.NOT. CutNode(NodeIndexes(j)) ) THEN
+               ! This is a representative node that is used to determine the sign of the
+               ! new elements in order to decide whether to add offset for body or not. 
+               SgnNode = j
+               EXIT
+             END IF
+           END DO
+           
+           SplitReady = .TRUE.
+         ELSE           
+           n_cut = COUNT( CutNode(NodeIndexes) )
+       
+           IF ( Eold % TYPE % ElementCode == 303 ) THEN         
+             ! Split triangle to four triangles split on one or two edges
+             !-----------------------------------------------------------
+             IF( n_split == 2 ) THEN
+               DO j=1,3
+                 IF( EdgeSplit( Eold % EdgeIndexes(j) ) == 0 ) EXIT
+               END DO
+               j2 = MODULO(j,3)+1
+               j3 = MODULO(j+1,3)+1
+
+               IF( m == 1 ) THEN
+                 ! There are two ways to split the triangle.
+                 ! Choose the one with shorter diameter.
+                 s1 = (x(NodeIndexes(j)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+                     (y(NodeIndexes(j)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+                     (z(NodeIndexes(j)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2
+                 s2 = (x(NodeIndexes(j2)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+                     (y(NodeIndexes(j2)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+                     (z(NodeIndexes(j2)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2
+                 Enew % NodeIndexes(1) = NodeIndexes(j)
+                 Enew % NodeIndexes(2) = NodeIndexes(j2)                 
+                 IF( s1 < s2 ) THEN
+                   Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+                 ELSE
+                   Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                   
+                 END IF
+                 SgnNode = j
+               ELSE IF(m==2) THEN
+                 IF( s1 < s2 ) THEN
+                   Enew % NodeIndexes(1) = NodeIndexes(j)
+                   SgnNode = j
+                 ELSE
+                   Enew % NodeIndexes(1) = NodeIndexes(j2)                   
+                   SgnNode = j2
+                 END IF
+                 Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+                 Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                
+               ELSE IF(m==3) THEN
+                 Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))
+                 Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+                 Enew % NodeIndexes(3) = NodeIndexes(j3)
+                 SgnNode = j3
+                 SplitReady = .TRUE.
+               END IF
+
+             ELSE IF( n_split == 1 ) THEN
+               DO j=1,3
+                 IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) EXIT
+               END DO
+               j2 = MODULO(j,3)+1
+               j3 = MODULO(j+1,3)+1
+
+               ! One cut result to splitted elements only if the opposing node is cut through
+               IF( .TRUE. .OR. CutNode(NodeIndexes(j3)) ) THEN
+                 IF(m==1) THEN
+                   Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
+                   Enew % NodeIndexes(2) = NodeIndexes(j2)
+                   Enew % NodeIndexes(3) = NodeIndexes(j3)
+                   IF( CutNode(NodeIndexes(j3)) ) THEN
+                     SgnNode = j2
+                   ELSE
+                     SgnNode = j3
+                   END IF
+                 ELSE IF(m==2) THEN
+                   Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
+                   Enew % NodeIndexes(2) = NodeIndexes(j3)
+                   Enew % NodeIndexes(3) = NodeIndexes(j)
+                   IF( CutNode(NodeIndexes(j3)) ) THEN
+                     SgnNode = j
+                   ELSE
+                     SgnNode = j3
+                   END IF 
+                   SplitReady = .TRUE.
+                 END IF
+               ELSE
+                 Enew % NodeIndexes = NodeIndexes
+                 SgnNode = j3
+                 SplitReady = .TRUE.
+               END IF
+             ELSE
+               CALL Fatal(Caller,'Triangle can only deal with 1 and 2 splits!')
+             END IF
+           ELSE              
+             CALL Fatal(Caller,'Element type '//TRIM(I2S(Eold % TYPE % ElementCode))//&
+                 ' not supported by the levelset splitter.')
+           END IF
+         END IF
+
+         ! Set offset for inside/outside elements of the zero levelset.
+         ! The SgnNode is a representative node the sign of which tells whether we are inside
+         ! or outside. 
+         IF( PosOffset ) THEN
+           IF( Phi(NodeIndexes(SgnNode)) > 0.0 )  THEN
+             Enew % BodyId = Enew % BodyId + BodyOffset
+             BodyCount = BodyCount + 1
+           END IF
+         ELSE
+           IF( Phi(NodeIndexes(SgnNode)) < 0.0 )  THEN
+             Enew % BodyId = Enew % BodyId + BodyOffset            
+             BodyCount = BodyCount + 1
+           END IF
+         END IF
+         IF( SplitReady ) EXIT
+       END DO
+     END DO
+     
+!   Update new mesh element counts:
+!   -------------------------------
+    NewMesh % NumberOfBulkElements = NewElCnt
+    
+    CALL Info(Caller,'Number of elements inside: '//TRIM(I2S(BodyCount)),Level=7)
+    
+   
+!   Update boundary elements:
+!   ---------------------------------------------------
+
+    BCCnt = 0
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      IF( i == Mesh % NumberOfBulkElements + 1 ) THEN
+        CALL Info(Caller,'Number of boundary elements from bulk cuts: '//TRIM(I2S(BCCnt)))           
+        BCCnt = 0
+      END IF
+     
+      Eold => Mesh % Elements(i)
+      NodeIndexes => Eold % NodeIndexes             
+      BulkParent = ( i <= Mesh % NumberOfBulkElements )
+      n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )
+      n_cut = COUNT( CutNode(NodeIndexes) )
+
+      ! Elements created from bulk cuts require some splits or cuts.
+      ! Existing boundary elements remain even without cuts.
+      IF( BulkParent ) THEN
+        IF( n_split + n_cut <= 1 ) CYCLE
+      END IF
+  
+      SplitReady = .FALSE.
+      
+      ! Each existing boundary element may be cut to several pieces
+      ! For triangles this is just max two!
+      DO m=1,10          
+        BCCnt = BCCnt + 1
+        NewElCnt = NewElCnt + 1
+        IF( NewElCnt > SIZE( NewMesh % Elements ) ) THEN
+          CALL Fatal(Caller,'Too few elements allocated: '//TRIM(I2S(NewElCnt)))
+        END IF
+       
+        Enew => NewMesh % Elements(NewElCnt)
+        
+        ALLOCATE(Enew % BoundaryInfo)         
+        Enew % PartIndex = Eold % PartIndex
+        Enew % ElementIndex = NewElCnt
+        
+        n = 2
+        Enew % TYPE => GetElementType(202)
+        CALL AllocateVector( ENew % NodeIndexes, n)
+        Enew % NDOFs = n
+        Enew % EdgeIndexes => NULL()
+        Enew % FaceIndexes => NULL()
+                
+        IF( BulkParent ) THEN
+          ! There are the new boundary elements that come from splitting the mesh
+          ! at zero levelset. Give the boundary a new index. 
+          Enew % BoundaryInfo % Constraint = LevelsetBC
+          
+          IF ( Eold % TYPE % ElementCode == 303 ) THEN         
+            IF( n_split == 2 ) THEN
+              DO j=1,3
+                IF( EdgeSplit( Eold % EdgeIndexes(j) ) == 0 ) EXIT
+              END DO
+              j2 = MODULO(j,3)+1
+              j3 = MODULO(j+1,3)+1
+              Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+              Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                   
+            ELSE IF( n_split == 1 .AND. n_cut == 1) THEN
+              DO j=1,3
+                IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) EXIT
+              END DO
+              !j2 = MODULO(j,3)+1
+              !j3 = MODULO(j+1,3)+1                        
+              Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
+              DO j2=1,3
+                IF( CutNode(NodeIndexes(j2)) ) EXIT
+              END DO
+              Enew % NodeIndexes(2) = NodeIndexes(j2)
+            ELSE IF( n_cut == 2) THEN
+              DO j=1,3
+                IF( .NOT. CutNode(NodeIndexes(j) ) ) EXIT
+              END DO
+              j2 = MODULO(j,3)+1
+              j3 = MODULO(j+1,3)+1                        
+              Enew % NodeIndexes(1) = NodeIndexes(j2)
+              Enew % NodeIndexes(2) = NodeIndexes(j3)
+            ELSE
+              CALL Fatal(Caller,'Can only deal with 2 or 1+1 splits!')
+            END IF
+          ELSE              
+            CALL Fatal(Caller,'Element type '//TRIM(I2S(Eold % TYPE % ElementCode))//&
+                ' not supported by the levelset splitting.')
+          END IF          
+          SplitReady = .TRUE.
+          
+        ELSE
+          ! Each existing boundary element may be cut to several pieces
+          Enew % BoundaryInfo = Eold % BoundaryInfo
+          
+          IF( n_split == 0 ) THEN
+            ! If no edge is split the element stays as is
+            Enew % NodeIndexes = Eold % NodeIndexes
+            SplitReady = .TRUE.
+            
+          ELSE IF( Eold % TYPE % ElementCode == 202 ) THEN
+            IF(m==1) THEN
+              Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+              Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(1))
+            ELSE IF(m==2) THEN
+              Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(1))
+              Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+              SplitReady = .TRUE.
+            END IF
+          ELSE
+            CALL Fatal(Caller,'Cannot do this elemeny yet!')
+          END IF
+        END IF
+
+         
+        prevl = 0
+        DO k=1,2
+          ! Pointer to the found left/right bulk element
+          Eptr => NULL()
+
+          IF( BulkParent ) THEN
+            ! If the boundary results from splitting existing elements then
+            ! the parent is the existing bulk elements. 
+            Parent => Mesh % Elements(i)
+          ELSE
+            ! If boundary results from existing boundary elements then the potential
+            ! parents are the children of the old parents. 
+            IF( k==1 ) THEN
+              Parent => Eold % BoundaryInfo % Left
+            ELSE            
+              Parent => Eold % BoundaryInfo % Right
+            END IF
+            IF(.NOT. ASSOCIATED(Parent)) CYCLE
+          END IF
+
+          ! Find the correct parent among the splitted children of the
+          ! initial bulk elements. There may be 1 or several children. 
+          DO k2 = 1, 6            
+            l = Child( Parent % ElementIndex, k2 )
+            NoHits = 0
+                        
+            IF( BulkParent ) THEN
+              IF( k==2 .AND. l == prevl ) CYCLE
+            END IF
+
+            IF(l==0) THEN
+            ! This is left for debugging...
+#if 0
+              PRINT *,'Child:',m,n_split,n_cut,k2,BulkParent
+              PRINT *,'Parent index:',i,Parent % ElementIndex
+              PRINT *,'Parents children',Child( Parent % ElementIndex, :)
+              PRINT *,'Parent indexes:',Parent % NodeIndexes
+              PRINT *,'Enew:',Enew % NodeIndexes
+              PRINT *,'Eold:',Eold % NodeIndexes
+              PRINT *,'Eold edges:',Eold % EdgeIndexes
+              PRINT *,'Eold edge node indexes:',Mesh % Edges(Eold % EdgeIndexes(1) ) % NodeIndexes
+              DO l2=1,6
+                IF(Child( Parent % ElementIndex, l2) == 0 ) EXIT
+                PRINT *,'Parent:',l2,NewMesh % &
+                    Elements(Child( Parent % ElementIndex,l2)) %  NodeIndexes
+              END DO
+              PRINT *,'old node indexes:',Mesh % Elements(Parent % ElementIndex) %  NodeIndexes
+              PRINT *,'old edge indexes:',Mesh % Elements(Parent % ElementIndex) %  EdgeIndexes
+              PRINT *,'old cut indexes:',CutNode(Mesh % Elements(Parent % ElementIndex) %  NodeIndexes)
+              PRINT *,'old split indexes:',EdgeSplit(Mesh % Elements(Parent % ElementIndex) %  EdgeIndexes)
+#endif
+              EXIT
+            END IF
+            Eptr => NewMesh % Elements(l)
+
+            DO l2 = 1,Enew % Type % NumberOfNodes 
+              DO l3 = 1, Eptr % TYPE % NumberOfNodes
+                IF( Enew % NodeIndexes(l2) == Eptr % NodeIndexes(l3) ) THEN
+                  NoHits = NoHits + 1
+                  EXIT
+                END IF
+              END DO
+            END DO
+            
+            IF( NoHits == n ) EXIT
+          END DO
+          
+          IF( NoHits == n ) THEN
+            IF( k==1) THEN
+              prevl = l
+              Enew % BoundaryInfo % Left => Eptr
+            ELSE
+              Enew % BoundaryInfo % Right => Eptr
+            END IF
+          ELSE
+            IF(k==1) CALL Warn(Caller,'Could not find even 1 parant!')
+          END IF
+            
+        END DO
+       
+       ! When we have created all the new boundary elements resulting from splitting
+       ! the master element then proceed to next element. 
+       IF(SplitReady) EXIT
+     END DO
+   END DO
+
+
+!   Update new mesh element counts:
+!   -------------------------------
+   CALL Info(Caller,'Number of total elements: '//TRIM(I2S(NewElCnt)),Level=7)
+    
+!   Update new mesh boundary element counts:
+!   ----------------------------------------
+   NewMesh % NumberOfBoundaryElements = NewElCnt - &
+       NewMesh % NumberOfBulkElements
+   NewMesh % MaxElementDOFs  = Mesh % MaxElementDOFs
+   NewMesh % MaxElementNodes = Mesh % MaxElementNodes
+   
+    
+   CALL Info( Caller, '******** New mesh ********', Level=6 )
+   WRITE( Message, * ) 'Nodes             : ',NewMesh % NumberOfNodes
+   CALL Info( Caller, Message, Level=6 )
+   WRITE( Message, * ) 'Bulk elements     : ',NewMesh % NumberOfBulkElements
+   CALL Info( Caller, Message, Level=6 )
+   WRITE( Message, * ) 'Boundary elements : ',NewMesh % NumberOfBoundaryElements
+   CALL Info( Caller, Message, Level=6 )
+
+
+   ! Information of the new system size, also in parallel
+   !----------------------------------------------------------------------
+   ParTmp(1) = Mesh % NumberOfNodes
+   ParTmp(2) = Mesh % NumberOfBulkElements
+   ParTmp(3) = Mesh % NumberOfBoundaryElements
+   ParTmp(4) = NewMesh % NumberOfNodes
+   ParTmp(5) = NewMesh % NumberOfBulkElements
+   ParTmp(6) = NewMesh % NumberOfBoundaryElements
+   
+   IF( .FALSE. .AND. Parallel ) THEN
+     CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+     
+     CALL Info(Caller,'Information on parallel mesh sizes')
+     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(1),' nodes'
+     CALL Info(Caller,Message)
+     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(2),' bulk elements'
+     CALL Info(Caller,Message)
+     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(3),' boundary elements'
+     CALL Info(Caller,Message)
+     WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(4),' nodes'
+      CALL Info(Caller,Message)
+      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(5),' bulk elements'
+      CALL Info(Caller,Message)
+      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(6),' boundary elements'
+      CALL Info(Caller,Message)
+    END IF
+
+    
+!   Update structures needed for parallel execution:
+    !   ------------------------------------------------
+    IF( Parallel ) THEN
+      CALL UpdateParallelInfo( Mesh, NewMesh )
+    END IF
+
+!   Finalize:
+!   ---------
+    IF(.NOT.EdgesPresent) THEN
+      CALL ReleaseMeshEdgeTables( Mesh )
+      CALL ReleaseMeshFaceTables( Mesh )
+    ELSE
+      CALL FindMeshEdges( NewMesh )
+    END IF
+
+    CALL CheckTimer(Caller,Delete=.TRUE.)
+
+    CALL Info(Caller,'Mesh was enriched with zero levelset',Level=8)
+    
+  CONTAINS
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE UpdateParallelInfo( Mesh, NewMesh )
+!------------------------------------------------------------------------------
+      TYPE(Mesh_t), POINTER :: Mesh, NewMesh
+!------------------------------------------------------------------------------
+      TYPE(Element_t), POINTER :: Edge
+      INTEGER :: i,j1,j2,n,n0,m,istat
+      LOGICAL :: Found
+!------------------------------------------------------------------------------
+!
+!      Update mesh interfaces for parallel execution.
+!      ==============================================
+       n = NewMesh % NumberOfNodes
+       ALLOCATE( NewMesh % ParallelInfo % NeighbourList(n), stat=istat )
+       IF ( istat /= 0 ) CALL Fatal( Caller, 'Allocate error.' )
+       DO i=1,n
+         NULLIFY( NewMesh % ParallelInfo % NeighbourList(i) % Neighbours )
+       END DO
+
+       CALL AllocateVector( NewMesh % ParallelInfo % NodeInterface,n  )       
+       NewMesh % ParallelInfo % NodeInterface = .FALSE.
+
+       CALL AllocateVector( NewMesh % ParallelInfo % GlobalDOFs,n )
+       NewMesh % ParallelInfo % GlobalDOFs = 0
+
+       ! Inherit the old parallel data
+       n = Mesh % NumberOfNodes
+       NewMesh % ParallelInfo % NodeInterface(1:n) = Mesh % ParallelInfo % NodeInterface
+       NewMesh % ParallelInfo % GlobalDOFs(1:n) = Mesh % ParallelInfo % GlobalDOFs
+       DO i=1,n
+         m = SIZE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) 
+         ALLOCATE( NewMesh % ParallelInfo % NeighbourList(i) % Neighbours(m) )
+         NewMesh % ParallelInfo % NeighbourList(i) % Neighbours = &
+             Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+       END DO
+
+       n0 = ParallelReduction(MAXVAL(Mesh % ParallelInfo % GlobalDofs),2)       
+       CALL Info(Caller,'Offset for parallel numbering of new nodes: '//TRIM(I2S(n0)))
+
+       ! We need global numbering for the edges that we use for the unique numbering of new nodes
+       CALL SParEdgeNumbering(Mesh)
+       
+       DO i=1,Mesh % NumberOfEdges
+         j = EdgeSplit(i)
+         IF(j==0) CYCLE
+         Edge => Mesh % Edges(j)
+
+         ! Make a unique parallel number for the new nodes introduced at split edges
+         NewMesh % ParallelInfo % GlobalDOFs(n+j) = n0 + Edge % GElementIndex         
+
+         j1 = Edge % NodeIndexes(1)
+         j2 = Edge % NodeIndexes(2)
+         m = CountSameIntegers(Mesh % ParallelInfo % NeighbourList(j1) % Neighbours, &
+             Mesh % ParallelInfo % NeighbourList(j2) % Neighbours, &
+             NewMesh % ParallelInfo % NeighbourList(n+j) % Neighbours ) 
+         NewMesh % ParallelInfo % NodeInterface(n+j) = (m>1)
+       END DO
+       
+    END SUBROUTINE UpdateParallelInfo
+    
+  END FUNCTION SplitMeshLevelset
+!------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
