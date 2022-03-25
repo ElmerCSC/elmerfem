@@ -25045,12 +25045,16 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION SplitMeshLevelset(Mesh,Vlist) RESULT( NewMesh )
 !------------------------------------------------------------------------------
+    USE PElementMaps, ONLY : getTetraEdgeMap, getTetraFaceMap
+    IMPLICIT NONE
+
+
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Vlist    
     TYPE(Mesh_t), POINTER :: NewMesh
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: phi(:)
-    INTEGER, ALLOCATABLE :: EdgeSplit(:)
+    INTEGER, ALLOCATABLE :: EdgeSplit(:),EdgeBase(:)
     LOGICAL, ALLOCATABLE :: CutNode(:)
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: SplitReady    
@@ -25058,7 +25062,7 @@ CONTAINS
     REAL(KIND=dp) :: Eps
     INTEGER, POINTER :: NodeIndexes(:), EdgeIndexes(:)    
     INTEGER :: i, j, j2, j3, k, k2, k3, l, l2, l3, m, n, &
-        n_old, n_new, n_cut, n_split, n_neg, n_pos
+        n_old, n_new, n_cut, n_split, n_neg, n_pos, dim
     INTEGER :: NoHits, NewElCnt, BCCnt, prevl, &
         NodeCnt, FaceCnt, Node, ParentId 
     LOGICAL :: Found, EdgesPresent
@@ -25123,6 +25127,8 @@ CONTAINS
     ! Initialize the levelset function for all nodes
     n_old = Mesh % NumberOfNodes
     ALLOCATE( Phi(n_old) )
+
+    dim = Mesh % MeshDim
     
     str = ListGetString( Vlist,'Levelset Variable', Found)
     IF( Found ) THEN
@@ -25172,7 +25178,7 @@ CONTAINS
     ! We need edges in order to do the splitting!
     EdgesPresent = ASSOCIATED(Mesh % Edges)
     IF(.NOT. EdgesPresent) CALL FindMeshEdges( Mesh )
-        
+
     ALLOCATE( EdgeSplit(Mesh % NumberOfEdges), CutNode(n_old) )
     EdgeSplit = 0
     CutNode = .FALSE.
@@ -25253,7 +25259,6 @@ CONTAINS
     END DO
 
     CALL Info(Caller,'Added new nodes on the splitted edges.', Level=10 )  
-
     
 !   Update new mesh node count:
 !   ---------------------------
@@ -25293,13 +25298,27 @@ CONTAINS
         END IF
         Edge => Find_Edge(Mesh,Parent,Eold)
         IF(.NOT. ASSOCIATED( Edge) ) THEN
-          CALL Fatal(Caller,'Could not find 2D edge element among edges!')
+          CALL Fatal(Caller,'Could not find edge element among edges!')
         END IF
         ALLOCATE( Eold % EdgeIndexes(1) )
         Eold % EdgeIndexes = Edge % ElementIndex
         Found = ( EdgeSplit(Edge % ElementIndex) > 0 ) 
-      ELSE
-        CALL Fatal(Caller,'No edges for element: '//TRIM(I2S(i)))
+      END IF
+
+      ! Add faceindex to boundary elements so that we can track them
+      IF( Eold % TYPE % ElementCode == 303 ) THEN
+        IF(.NOT. ASSOCIATED(Eold % FaceIndexes) ) THEN
+          Parent => Eold % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED( Parent ) ) THEN
+            Parent => Eold % BoundaryInfo % Right
+          END IF
+          Face => Find_Face(Mesh,Parent,Eold)
+          IF(.NOT. ASSOCIATED( Face) ) THEN
+            CALL Fatal(Caller,'Could not find face element among faces!')
+          END IF
+          ALLOCATE( Eold % FaceIndexes(1) )
+          Eold % FaceIndexes = Face % ElementIndex
+        END IF
       END IF
       
       IF( Found ) THEN
@@ -25328,6 +25347,157 @@ CONTAINS
     NewElCnt = 0
     NodeCnt = Mesh % NumberOfNodes
 
+
+    ! Create table telling the base node 
+    IF( dim == 3 ) THEN
+      IF(.NOT. ASSOCIATED( Mesh % Faces ) ) CALL FindMeshFaces( Mesh ) 
+      ALLOCATEB( EdgeBase(Mesh % NumberOfEdges ) )
+      EdgeBases = 0
+
+      ! You could do parallel elements first so that they are optimal
+      IF( ParEnv % PEs > 1 ) THEN
+        DO i=1,Mesh % NumberOfFaces          
+          Eold => Mesh % Faces(i)
+          n = Eold % TYPE % NumberOfNodes                
+          n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )          
+          IF( n_split /= 2 ) CYCLE        
+          
+                 
+        END DO
+      END IF
+
+      ! Then do BCs 
+      DO i=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Eold => Mesh % Elements(i)
+        n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )          
+        IF( n_split /= 2 ) CYCLE        
+
+      END DO
+        
+      ! Finally do 3D elements
+      DO i=1, Mesh % NumberOfBulkElements 
+        Eold => Mesh % Elements(i)
+        n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )          
+        IF( n_split < 2 ) CYCLE        
+
+        DO j=1, Eold % NumberOfFaces
+          Face => Mesh % Faces(Eold % FaceIndexes(j))
+          n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )          
+          IF( n_split /= 2 ) CYCLE        
+          
+          
+        END DO        
+      END DO
+    END IF
+      
+
+
+      
+
+        
+        Found = .FALSE.
+        IF( ASSOCIATED( Eold % EdgeIndexes ) ) THEN
+        Found = ANY(EdgeSplit(Eold % EdgeIndexes) > 0 )
+      ELSE IF( Eold % Type % ElementCode == 202 ) THEN
+        ! For element type 202 create the edge such that we can use the
+        ! routines similarly for 202, 303 and 504 elements. 
+        Parent => Eold % BoundaryInfo % Left
+        IF(.NOT. ASSOCIATED( Parent ) ) THEN
+          Parent => Eold % BoundaryInfo % Right
+        END IF
+        Edge => Find_Edge(Mesh,Parent,Eold)
+        IF(.NOT. ASSOCIATED( Edge) ) THEN
+          CALL Fatal(Caller,'Could not find 2D edge element among edges!')
+        END IF
+        ALLOCATE( Eold % EdgeIndexes(1) )
+        Eold % EdgeIndexes = Edge % ElementIndex
+
+
+
+      
+      ! You could do parallel elements first so that they are optimal
+      IF( ParEnv % PEs > 1 ) THEN
+        DO i=1,Mesh % NumberOfFaces          
+          Eold => Mesh % Faces(i)
+          n = Eold % TYPE % NumberOfNodes                
+          n_split = COUNT( EdgeSplit(Eold % EdgeIndexes) > 0 )          
+          IF( n_split /= 2 ) CYCLE        
+
+        END DO
+      END IF
+    
+        
+
+
+
+      
+      
+      
+        
+        
+       ! We continue splitting until the element is exhausted
+       SplitReady = .FALSE.
+
+       ! Split elements to no more than 6 pieces
+       DO m = 1,6
+         NewElCnt = NewElCnt + 1
+         Child(i,m) = NewElCnt
+         Enew => NewMesh % Elements(NewElCnt)
+
+         Enew = Eold
+         Enew % TYPE => Eold % TYPE
+         Enew % BodyId = Eold % BodyId
+         Enew % PartIndex = Eold % PartIndex
+         Enew % ElementIndex = NewElCnt
+         Enew % NDOFs = Eold % NDOFs
+         Enew % EdgeIndexes => NULL()
+         Enew % FaceIndexes => NULL()
+         Enew % BoundaryInfo => NULL()
+
+         
+
+            OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      DO j=1,3
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) == 0 ) EXIT
+      END DO
+      j2 = MODULO(j,3)+1
+      j3 = MODULO(j+1,3)+1
+
+
+      IF( m == 1 ) THEN
+        ! There are two ways to split the triangle.
+        ! Choose the one with shorter diameter.
+        s1 = (x(NodeIndexes(j)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+            (y(NodeIndexes(j)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+            (z(NodeIndexes(j)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2
+        s2 = (x(NodeIndexes(j2)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+            (y(NodeIndexes(j2)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+            (z(NodeIndexes(j2)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2
+        NewInds(1) = NodeIndexes(j)
+        NewInds(2) = NodeIndexes(j2)                 
+        IF( s1 < s2 ) THEN
+          NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+        ELSE
+          NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                   
+        END IF
+        SgnNode = j
+      ELSE IF(m==2) THEN
+        IF( s1 < s2 ) THEN
+          NewInds(1) = NodeIndexes(j)
+          SgnNode = j
+
+
+
+
+
+    END IF
+      
+
+
+
+    
 !   Now update all new mesh elements:
 !   ---------------------------------
     DO i=1,Mesh % NumberOfBulkElements
@@ -25371,91 +25541,32 @@ CONTAINS
            
            SplitReady = .TRUE.
          ELSE           
-           n_cut = COUNT( CutNode(NodeIndexes) )
-       
+           n_cut = COUNT( CutNode(NodeIndexes) )      
            IF ( Eold % TYPE % ElementCode == 303 ) THEN         
-             ! Split triangle to four triangles split on one or two edges
-             !-----------------------------------------------------------
+             ! Split triangle up to three triangles split on one or two edges
+             !----------------------------------------------------------------
              IF( n_split == 2 ) THEN
-               DO j=1,3
-                 IF( EdgeSplit( Eold % EdgeIndexes(j) ) == 0 ) EXIT
-               END DO
-               j2 = MODULO(j,3)+1
-               j3 = MODULO(j+1,3)+1
-
-               IF( m == 1 ) THEN
-                 ! There are two ways to split the triangle.
-                 ! Choose the one with shorter diameter.
-                 s1 = (x(NodeIndexes(j)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
-                     (y(NodeIndexes(j)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
-                     (z(NodeIndexes(j)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2
-                 s2 = (x(NodeIndexes(j2)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
-                     (y(NodeIndexes(j2)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
-                     (z(NodeIndexes(j2)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2
-                 Enew % NodeIndexes(1) = NodeIndexes(j)
-                 Enew % NodeIndexes(2) = NodeIndexes(j2)                 
-                 IF( s1 < s2 ) THEN
-                   Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
-                 ELSE
-                   Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                   
-                 END IF
-                 SgnNode = j
-               ELSE IF(m==2) THEN
-                 IF( s1 < s2 ) THEN
-                   Enew % NodeIndexes(1) = NodeIndexes(j)
-                   SgnNode = j
-                 ELSE
-                   Enew % NodeIndexes(1) = NodeIndexes(j2)                   
-                   SgnNode = j2
-                 END IF
-                 Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
-                 Enew % NodeIndexes(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                
-               ELSE IF(m==3) THEN
-                 Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))
-                 Enew % NodeIndexes(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
-                 Enew % NodeIndexes(3) = NodeIndexes(j3)
-                 SgnNode = j3
-                 SplitReady = .TRUE.
-               END IF
-
+               CALL TriangleSplit2( Eold, Enew, m, SplitReady )               
              ELSE IF( n_split == 1 ) THEN
-               DO j=1,3
-                 IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) EXIT
-               END DO
-               j2 = MODULO(j,3)+1
-               j3 = MODULO(j+1,3)+1
-
-               ! One cut result to splitted elements only if the opposing node is cut through
-               IF( .TRUE. .OR. CutNode(NodeIndexes(j3)) ) THEN
-                 IF(m==1) THEN
-                   Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
-                   Enew % NodeIndexes(2) = NodeIndexes(j2)
-                   Enew % NodeIndexes(3) = NodeIndexes(j3)
-                   IF( CutNode(NodeIndexes(j3)) ) THEN
-                     SgnNode = j2
-                   ELSE
-                     SgnNode = j3
-                   END IF
-                 ELSE IF(m==2) THEN
-                   Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
-                   Enew % NodeIndexes(2) = NodeIndexes(j3)
-                   Enew % NodeIndexes(3) = NodeIndexes(j)
-                   IF( CutNode(NodeIndexes(j3)) ) THEN
-                     SgnNode = j
-                   ELSE
-                     SgnNode = j3
-                   END IF 
-                   SplitReady = .TRUE.
-                 END IF
-               ELSE
-                 Enew % NodeIndexes = NodeIndexes
-                 SgnNode = j3
-                 SplitReady = .TRUE.
-               END IF
+              CALL TriangleSplit1( Eold, Enew, m, SplitReady )                
              ELSE
-               CALL Fatal(Caller,'Triangle can only deal with 1 and 2 splits!')
+               CALL Fatal(Caller,'Invalid number of splits for triangle: '//TRIM(I2S(n_split)))
              END IF
-           ELSE              
+           ELSE IF( Eold % TYPE % ElementCode == 504 ) THEN
+             
+            IF( n_split == 4 ) THEN
+              CALL TetraSplit4( Eold, Enew, m, SplitReady )               
+            ELSE IF( n_split == 3 ) THEN
+              CALL TetraSplit3( Eold, Enew, m, SplitReady )                
+            ELSE IF( n_split == 2 ) THEN
+              CALL TetraSplit2( Eold, Enew, m, SplitReady )               
+            ELSE IF( n_split == 1 ) THEN
+              CALL TetraSplit1( Eold, Enew, m, SplitReady )                              
+            ELSE
+              CALL Fatal(Caller,'Invalid number of splits for tetrahedron: '//TRIM(I2S(n_split)))
+            END IF
+
+           ELSE
              CALL Fatal(Caller,'Element type '//TRIM(I2S(Eold % TYPE % ElementCode))//&
                  ' not supported by the levelset splitter.')
            END IF
@@ -25551,8 +25662,6 @@ CONTAINS
               DO j=1,3
                 IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) EXIT
               END DO
-              !j2 = MODULO(j,3)+1
-              !j3 = MODULO(j+1,3)+1                        
               Enew % NodeIndexes(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
               DO j2=1,3
                 IF( CutNode(NodeIndexes(j2)) ) EXIT
@@ -25755,6 +25864,495 @@ CONTAINS
     CALL Info(Caller,'Mesh was enriched with zero levelset',Level=8)
     
   CONTAINS
+
+
+    
+    FUNCTION TriangleSplitPreference(Triangle,m,TriInds) RESULT ( ind ) 
+      TYPE(Element_t), POINTER :: Triangle
+      INTEGER, OPTIONAL :: m, TriInds(3)
+      INTEGER :: ind
+      
+      INTEGER :: j1,j2,e1,e2
+      LOGICAL :: Swap 
+
+      REAL(KIND=dp) :: s1,s2
+      INTEGER :: k1,k2
+
+
+      ! We have an existing hit 
+      k = EdgeBase(Triangle % ElementIndex) 
+      IF( k > 0 ) THEN
+        ind = 0
+        DO j=1,3
+          IF( Triangle % NodeIndexes(j) == k ) THEN
+            ind  = j
+          END IF
+        END DO
+        RETURN
+      END IF
+        
+      ! Find the two edges being split: e1, e2
+      e1 = 0; e2 = 0
+      DO j=1,6
+        IF( EdgeSplit( Triangle % EdgeIndexes(j) ) > 0 ) THEN
+          IF( e1==0 ) THEN
+            e1 = j
+          ELSE IF( e2==0 ) THEN
+            e2 = j
+            EXIT
+          END IF
+        END IF
+      END DO
+      IF(e2 == 0) CALL Fatal(Caller,'Could not find the edges being split!')
+      
+      ! Find the not-shared nodes of the two edges
+      ! The two edges and two nodes make a quadrilateral
+      Found = .FALSE.
+      DO j=1,2
+        DO k=1,2
+          IF( Mesh % Edges(e1) % NodeIndexes(j) == Mesh % Edges(e2) % NodeIndexes(k) ) THEN
+            j1 = Mesh % Edges(e1) % NodeIndexes(3-j)
+            j2 = Mesh % Edges(e2) % NodeIndexes(3-k)           
+            Found = .TRUE.
+            EXIT
+          END IF
+        END DO
+      END DO
+      k1 = n_old + EdgeSplit(Traingle % EdgeIndexes(e1))
+      k2 = n_old + EdgeSplit(Triangle % EdgeIndexes(e2))
+
+      k = EdgeBase(Triangle % ElementIndex) 
+      
+      ! There are two ways to split the triangle.
+      ! Choose the one with shorter diameter.            
+      IF( k == 0 ) THEN        
+        s1 = (x(j1) - x(k2))**2 + (y(j1) - y(k2))**2 + (z(j1) - z(k2))**2
+        s2 = (x(j2) - x(k1))**2 + (y(j2) - y(k1))**2 + (z(j2) - z(k1))**2
+        IF( s1 < s2 ) THEN
+          k = j1
+        ELSE
+          k = j2
+        END IF            
+        EdgeBase(Triangle % ElementIndex) = k
+      END IF
+        
+      ind = 0
+      DO j=1,3
+        IF( Triangle % NodeIndexes(j) == k ) THEN
+          ind  = j
+        END IF
+      END DO
+      
+      IF( PRESENT( m ) ) THEN
+        IF( k == j1 ) THEN
+          IF(m==1) THEN
+            TriInds = [j1 k1 k2]
+          ELSE
+            TriInds = [j1 j2 k2]
+          END IF
+        ELSE IF( k == j2 ) THEN
+          IF(m==2) THEN
+            TriInds = [j2 k2 k1]
+          ELSE
+            TriInds = [j2 k1 j1]
+          END IF
+        END IF
+      END IF
+       
+      
+    END FUNCTION TriangleSplitPreference
+
+
+    
+    SUBROUTINE TetraSplit1(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+      INTEGER :: e1,e2
+      INTEGER :: j1,j2,j3,j4
+
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      ! Find the only edge being split
+      DO e1=1,6
+        IF( EdgeSplit( Eold % EdgeIndexes(e1) ) > 0 ) EXIT
+      END DO
+
+      ! Choose the opposing edge 
+      SELECT CASE(e1)
+      CASE(1,6)
+        e2 = 7-e1
+      CASE(2,4)
+        e2 = 6-e1
+      CASE(3,5)
+        e2 = 8-e1
+      END SELECT
+
+      ! Find the two nodes on the opposing edge
+      j1 = Mesh % Edges( Eold % EdgeIndexes(e2) ) % NodeIndexes(1)
+      j2 = Mesh % Edges( Eold % EdgeIndexes(e2) ) % NodeIndexes(2)
+
+      ! The face is the basis 
+      NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+      NewInds(2) = OldInds(j1)
+      NewInds(3) = OldInds(j2)
+
+      j3 = 0; j4=0
+      DO j=1,4
+        IF(j/=j1 && j/=j2 && j3==0) j3 = j
+        IF(j/=j1 && j/=j2 && j/=j3) j4 = j
+      END DO
+
+      IF(m==1) THEN
+        NewInds(4) = OldInds(j3)
+        SgnNode = j3
+      ELSE
+        NewInds(4) = OldInds(j4)
+        SgnNode = j4
+      END IF
+      SplitReady = (m==2)
+    END SUBROUTINE TetraSplit1
+
+
+    
+    SUBROUTINE TetraSplit2(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+
+      INTEGER :: j1,j2,j3,j4
+      INTEGER :: e1,e2
+      INTEGER :: e1inds(2),e2inds(2)
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      ! Find the two edges being split: e1, e2
+      e1 = 0; e2 = 0
+      DO j=1,6
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) THEN
+          IF( e1==0 ) THEN
+            e1 = j
+          ELSE IF( e2==0 ) THEN
+            e2 = j
+            EXIT
+          END IF
+        END IF
+      END DO
+
+      ! Get the local indexes of these edges
+      e1inds = GetTetraEdgeMap(e1)
+      e2inds = GetTetraEdgeMap(e2)              
+                 
+      ! Choose the one node not associated to these split edges
+      DO j=1,4
+        IF( ALL(e1inds /= j) .AND. ALL(e2inds /= j) ) THEN
+          j1 = j
+        END IF
+      END DO
+
+      ! Choose the one node that is common to these split edges
+      DO j=1,2
+        DO k=1,2
+          IF( e1inds(j) == e2inds(k) ) THEN
+            j2 = e1inds(j)
+            j3 = e1inds(3-j)
+            j4 = e2inds(3-k)
+          END IF
+        END DO
+      END DO
+              
+      ! The lone tetraheron
+      IF( m == 1 ) THEN
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = OldInds(j1)
+        NewInds(4) = OldInds(j2)
+      ELSE IF( m == 2 ) THEN
+        
+        CALL TriangleSplitPreference(Triangle,m,TriInds) RESULT ( ind ) 
+
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = OldInds(j1)
+        NewInds(4) = OldInds(j3)
+      ELSE IF( m == 3 ) THEN
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(2) = OldInds(j1)
+        NewInds(3) = OldInds(j3)
+        NewInds(4) = OldInds(j4)
+      END IF
+
+      SplitReady = (m==3)
+
+    END SUBROUTINE TetraSplit2
+
+
+
+    SUBROUTINE TetraSplit3(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+
+      INTEGER :: j1,j2,j3,j4
+      INTEGER :: e1,e2,e3
+      INTEGER :: e1inds(2),e2inds(2),e3inds(2)
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      ! Find the three edges being split: e1, e2, e3
+      e1 = 0; e2 = 0; e3 = 0
+      DO j=1,6
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) THEN
+          IF( e1==0 ) THEN
+            e1 = j
+          ELSE IF( e2==0 ) THEN
+            e2 = j
+          ELSE IF( e3==0 ) THEN
+            e3 = j
+            EXIT
+          END IF
+        END IF
+      END DO
+
+      ! Get the local indexes of these edges
+      e1inds = GetTetraEdgeMap(e1)
+      e2inds = GetTetraEdgeMap(e2)              
+      e3inds = GetTetraEdgeMap(e3)              
+      
+      ! Choose the one node not associated to these split edges
+      DO j=1,4
+        IF( ALL(e1inds /= j) .AND. ALL(e2inds /= j) .AND. ALL(e3inds /= j) ) THEN
+          j4 = j
+        END IF
+      END DO
+
+      DO j=1,2
+        IF( einds1(j) /= j4 ) j1 = j
+        IF( einds2(j) /= j4 ) j2 = j
+        IF( einds3(j) /= j4 ) j3 = j       
+      END DO
+      
+      IF( m == 1 ) THEN
+        ! The corner being cut off
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j4)
+      ELSE IF( m == 2 ) THEN        
+
+
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j1)
+      ELSE IF( m == 3 ) THEN
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j1)
+        NewInds(4) = OldInds(j2)
+      ELSE
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(2) = OldInds(j2)
+        NewInds(3) = OldInds(j3)
+        NewInds(4) = OldInds(j4)
+      END IF
+
+      SplitReady = (m==4)
+
+    END SUBROUTINE TetraSplit3
+
+
+
+    SUBROUTINE TetraSplit4(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+
+      INTEGER :: j1,j2,j3,j4
+      INTEGER :: e1,e2,e3,e4
+      INTEGER :: e1inds(2),e2inds(2),e3inds(2)
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      ! Find the four edges being split: e1, e2, e3, e4
+      e1 = 0; e2 = 0; e3 = 0; e4 = 0
+      DO j=1,6
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) THEN
+          IF( e1==0 ) THEN
+            e1 = j
+          ELSE IF( e2==0 ) THEN
+            e2 = j
+          ELSE IF( e3==0 ) THEN
+            e3 = j
+          ELSE IF( e4==0 ) THEN
+            e4 = j
+            EXIT
+          END IF
+        END IF
+      END DO
+
+      ! Get the local indexes of these edges
+      e1inds = GetTetraEdgeMap(e1)
+      e2inds = GetTetraEdgeMap(e2)              
+      e3inds = GetTetraEdgeMap(e3)              
+      
+      ! Choose the one node not associated to these split edges
+      DO j=1,4
+        IF( ALL(e1inds /= j) .AND. ALL(e2inds /= j) .AND. ALL(e3inds /= j) ) THEN
+          j4 = j
+        END IF
+      END DO
+
+      DO j=1,2
+        IF( einds1(j) /= j4 ) j1 = j
+        IF( einds2(j) /= j4 ) j2 = j
+        IF( einds3(j) /= j4 ) j3 = j       
+      END DO
+      
+      IF( m == 1 ) THEN
+        ! The corner being cut off
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j4)
+      ELSE IF( m == 2 ) THEN        
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e1))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j1)
+      ELSE IF( m == 3 ) THEN
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e2))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(4) = OldInds(j1)
+        NewInds(4) = OldInds(j2)
+      ELSE
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(e3))
+        NewInds(2) = OldInds(j2)
+        NewInds(3) = OldInds(j3)
+        NewInds(4) = OldInds(j4)
+      END IF
+
+      SplitReady = (m==4)
+
+    END SUBROUTINE TetraSplit3
+
+
+
+        
+    
+    SUBROUTINE TriangleSplit2(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      DO j=1,3
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) == 0 ) EXIT
+      END DO
+      j2 = MODULO(j,3)+1
+      j3 = MODULO(j+1,3)+1
+
+
+      IF( m == 1 ) THEN
+        ! There are two ways to split the triangle.
+        ! Choose the one with shorter diameter.
+        s1 = (x(NodeIndexes(j)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+            (y(NodeIndexes(j)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2 + &
+            (z(NodeIndexes(j)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j2))))**2
+        s2 = (x(NodeIndexes(j2)) - x(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+            (y(NodeIndexes(j2)) - y(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2 + &
+            (z(NodeIndexes(j2)) - z(n_old + EdgeSplit(Eold % EdgeIndexes(j3))))**2
+        NewInds(1) = NodeIndexes(j)
+        NewInds(2) = NodeIndexes(j2)                 
+        IF( s1 < s2 ) THEN
+          NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+        ELSE
+          NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                   
+        END IF
+        SgnNode = j
+      ELSE IF(m==2) THEN
+        IF( s1 < s2 ) THEN
+          NewInds(1) = NodeIndexes(j)
+          SgnNode = j
+        ELSE
+          NewInds(1) = NodeIndexes(j2)                   
+          SgnNode = j2
+        END IF
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+        NewInds(3) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))                
+      ELSE IF(m==3) THEN
+        NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j3))
+        NewInds(2) = n_old + EdgeSplit(Eold % EdgeIndexes(j2))
+        NewInds(3) = NodeIndexes(j3)
+        SgnNode = j3
+      END IF
+
+      SplitReady = (m==3)
+      
+    END SUBROUTINE TriangleSplit2
+
+
+    SUBROUTINE TriangleSplit1(Eold, Enew, m, SplitReady)
+      TYPE(Element_t), POINTER :: Eold, Enew
+      INTEGER :: m
+      LOGICAL SplitReady
+      INTEGER, POINTER :: OldInds(:), NewInds(:)
+
+      OldInds => Eold % NodeIndexes
+      NewInds => Enew % NodeIndexes
+      
+      DO j=1,3
+        IF( EdgeSplit( Eold % EdgeIndexes(j) ) > 0 ) EXIT
+      END DO
+      j2 = MODULO(j,3)+1
+      j3 = MODULO(j+1,3)+1
+
+      ! One cut result to splitted elements only if the opposing node is cut through
+      IF( .TRUE. .OR. CutNode(NodeIndexes(j3)) ) THEN
+        IF(m==1) THEN
+          NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
+          NewInds(2) = OldInds(j2)
+          NewInds(3) = OldInds(j3)
+          IF( CutNode(OldInds(j3)) ) THEN
+            SgnNode = j2
+          ELSE
+            SgnNode = j3
+          END IF
+          SplitReady = .FALSE.
+        ELSE IF(m==2) THEN
+          NewInds(1) = n_old + EdgeSplit(Eold % EdgeIndexes(j))
+          NewInds(2) = OldInds(j3)
+          NewInds(3) = OldInds(j)
+          IF( CutNode(OldInds(j3)) ) THEN
+            SgnNode = j
+          ELSE
+            SgnNode = j3
+          END IF
+          SplitReady = .TRUE.
+        END IF
+      ELSE
+        NewInds = OldInds
+        SgnNode = j3
+        SplitReady = .TRUE.
+      END IF
+
+    END SUBROUTINE TriangleSplit1
+    
+   
+
     
 !------------------------------------------------------------------------------
     SUBROUTINE UpdateParallelInfo( Mesh, NewMesh )
