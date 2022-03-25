@@ -22266,35 +22266,37 @@ CONTAINS
          ELSE
            CYCLE
          END IF
-
+         
          ! Add the friction coefficient 
          VeloCoeff = Coeff * VeloCoeff 
 
-         ! Matrix component associated to normal direction
+         ! Matrix row associated to normal direction
          j = FlowPerm( j ) 
          k = DOFs * (j-1) + DofN 
 
-         ! Matrix components associated to the two tangent directions
+         ! Matrix row associated to the two tangent directions
          k2 = DOFs * (j-1) + DofT1 
-         A % Rhs(k2) = A % Rhs(k2) - VeloCoeff(DofT1) * A % Rhs(k)
+         A % Rhs(k2) = A % Rhs(k2) + VeloCoeff(DofT1) * A % Rhs(k)
 
-         IF( Dofs == 3 ) THEN
+         IF( dim == 3 ) THEN
            k3 = DOFs * (j-1) + DofT2
-           A % Rhs(k3) = A % Rhs(k3) - VeloCoeff(DofT2) * A % Rhs(k)             
+           A % Rhs(k3) = A % Rhs(k3) + VeloCoeff(DofT2) * A % Rhs(k)             
          END IF
 
          DO l = A % Rows(k),A % Rows(k+1)-1
+           IF( Dofs > dim ) THEN
+             IF( MODULO(A % Cols(l),Dofs) == 0 ) CYCLE
+           END IF
            DO l2 = A % Rows(k2), A % Rows(k2+1)-1
              IF( A % Cols(l2) == A % Cols(l) ) EXIT
            END DO
+           A % Values(l2) = A % Values(l2) + VeloCoeff(DofT1) * A % Values(l)
 
-           A % Values(l2) = A % Values(l2) - VeloCoeff(DofT1) * A % Values(l)
-
-           IF( Dofs == 3 ) THEN
+           IF( dim == 3 ) THEN
              DO l3 = A % Rows(k3), A % Rows(k3+1)-1
                IF( A % Cols(l3) == A % Cols(l) ) EXIT
              END DO
-             A % Values(l3) = A % Values(l3) - VeloCoeff(DofT2) * A % Values(l)
+             A % Values(l3) = A % Values(l3) + VeloCoeff(DofT2) * A % Values(l)
            END IF
          END DO
        END DO
