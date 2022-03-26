@@ -1742,99 +1742,101 @@ CONTAINS
       END DO
     END IF
 
-    !Removing nodes implies shifting element nodeindexes
-    !Map pre -> post deletion node nums
-    ALLOCATE(Nodeno_map(NNodes))
-    Nodeno_map = 0
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      Nodeno_map(i) = counter
-    END DO
-
-    !Update the element nodeindexes
-    DO i=1,NBulk+NBdry
-      Element => Mesh % Elements(i)
-      IF(RmElement(i)) CYCLE
-      DO j=1,Element % TYPE % NumberOfNodes
-        Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
-        IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
-             "Programming error: mapped nodeno = 0")
-      END DO
-    END DO
-
-    !Clear out deleted nodes
-    Nodes => Mesh % Nodes
-    NewNNodes = COUNT(.NOT. RmNode)
-
-    ALLOCATE(work_x(NewNNodes),&
-         work_y(NewNNodes),&
-         work_z(NewNNodes))
-
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      work_x(counter) = Nodes % x(i)
-      work_y(counter) = Nodes % y(i)
-      work_z(counter) = Nodes % z(i)
-    END DO
-
-    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-    Nodes % x => work_x
-    Nodes % y => work_y
-    Nodes % z => work_z
-
-    Nodes % NumberOfNodes = NewNNodes
-    Mesh % NumberOfNodes = NewNNodes
-
-    !Clear out ParallelInfo
-    IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
-      ALLOCATE(work_pInt(NewNNodes))
+    IF(PRESENT(RmNode)) THEN
+      !Removing nodes implies shifting element nodeindexes
+      !Map pre -> post deletion node nums
+      ALLOCATE(Nodeno_map(NNodes))
+      Nodeno_map = 0
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        Nodeno_map(i) = counter
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
-      Mesh % ParallelInfo % GlobalDOFs => work_pInt
-      work_pInt => NULL()
-    END IF
 
-    !Get rid of NeighbourList
-    IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
-      ALLOCATE(work_neighlist(NewNNodes))
-      DO i=1,NNodes
-        IF(.NOT. RmNode(i)) CYCLE
-        IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-             DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+      !Update the element nodeindexes
+      DO i=1,NBulk+NBdry
+        Element => Mesh % Elements(i)
+        IF(RmElement(i)) CYCLE
+        DO j=1,Element % TYPE % NumberOfNodes
+          Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
+          IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
+              "Programming error: mapped nodeno = 0")
+        END DO
       END DO
+
+      !Clear out deleted nodes
+      Nodes => Mesh % Nodes
+      NewNNodes = COUNT(.NOT. RmNode)
+
+      ALLOCATE(work_x(NewNNodes),&
+          work_y(NewNNodes),&
+          work_z(NewNNodes))
 
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        work_x(counter) = Nodes % x(i)
+        work_y(counter) = Nodes % y(i)
+        work_z(counter) = Nodes % z(i)
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
-      Mesh % ParallelInfo % NeighbourList => work_neighlist
-      work_neighlist => NULL()
-    END IF
 
-    !Get rid of ParallelInfo % NodeInterface
-    IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
-      ALLOCATE(work_logical(NewNNodes))
-      counter = 0
-      DO i=1,NNodes
-        IF(RmNode(i)) CYCLE
-        counter = counter + 1
-        work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
-      END DO
-      DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
-      Mesh % ParallelInfo % NodeInterface => work_logical
-      work_logical => NULL()
+      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+      Nodes % x => work_x
+      Nodes % y => work_y
+      Nodes % z => work_z
+
+      Nodes % NumberOfNodes = NewNNodes
+      Mesh % NumberOfNodes = NewNNodes
+
+      !Clear out ParallelInfo
+      IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
+        ALLOCATE(work_pInt(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
+        Mesh % ParallelInfo % GlobalDOFs => work_pInt
+        work_pInt => NULL()
+      END IF
+
+      !Get rid of NeighbourList
+      IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
+        ALLOCATE(work_neighlist(NewNNodes))
+        DO i=1,NNodes
+          IF(.NOT. RmNode(i)) CYCLE
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+        Mesh % ParallelInfo % NeighbourList => work_neighlist
+        work_neighlist => NULL()
+      END IF
+
+      !Get rid of ParallelInfo % NodeInterface
+      IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
+        ALLOCATE(work_logical(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
+        Mesh % ParallelInfo % NodeInterface => work_logical
+        work_logical => NULL()
+      END IF
     END IF
 
     !TODO - Mesh % Edges - see ReleaseMeshEdgeTables
