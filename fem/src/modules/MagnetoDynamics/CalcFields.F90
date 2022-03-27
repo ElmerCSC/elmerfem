@@ -301,7 +301,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       ELSE
         CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
             "Current Density[Current Density re:3 Current Density im:3]" )
-      END IF      
+      END IF
     END IF
 
     IF ( GetLogical( SolverParams, 'Calculate Joule Heating', Found ) ) THEN
@@ -321,6 +321,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
         i = i + 1
         CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
             "Harmonic Loss Quadratic" )
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "Harmonic Loss Excess" )
       END IF
     END IF
 
@@ -473,6 +476,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
         i = i + 1
         CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
             "-dg Harmonic Loss Quadratic E" )
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "-dg Harmonic Loss Excess E" )
       END IF
     END IF
 
@@ -550,9 +556,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
-   REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
+   REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2, LossCoeff3
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
-   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: Coeff, Coeff2, Coeff3, TotalLoss(4), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    REAL(KIND=dp) :: R_ip, mu_r
 
@@ -568,9 +574,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, &
-                                JH, NJH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
+                                JH, NJH, VP, FWP, JXB, ML, ML2, ML3, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
-                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, &
+                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, EL_ML3, &
                                 EL_NF
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
@@ -732,6 +738,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    JXB => NULL(); EL_JXB => NULL();
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
+   ML3 => NULL(); EL_ML3 => NULL();
    NF => NULL(); EL_NF => NULL();
    NJH => NULL()
    
@@ -767,6 +774,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
      ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic')
      EL_ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic E')
+     ML3 => VariableGet( Mesh % Variables, 'Harmonic Loss Excess')
+     EL_ML3 => VariableGet( Mesh % Variables, 'Harmonic Loss Excess E')
    END IF
 
    JXB => VariableGet( Mesh % Variables, 'JxB')
@@ -788,7 +797,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! These have just one component even in complex equation
    IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH)) DOFs=DOFs+1   
    IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) DOFs=DOFs+1
-   IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
+   IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1
+   IF ( ASSOCIATED(ML3) .OR. ASSOCIATED(EL_ML3) ) DOFs=DOFs+1
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
    CALL Info('MagnetoDynamicsCalcFields',&
@@ -806,7 +816,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ASSOCIATED(NF) .OR. ASSOCIATED(NJH) .OR. &
        ASSOCIATED(JH) .OR. &
        ASSOCIATED(ML) .OR. &
-       ASSOCIATED(ML2) 
+       ASSOCIATED(ML2) .OR. &
+       ASSOCIATED(ML3)
    
    ElementalFields = &
        ASSOCIATED(EL_MFD) .OR. &
@@ -820,7 +831,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ASSOCIATED(EL_NF) .OR. & 
        ASSOCIATED(EL_JH) .OR. & 
        ASSOCIATED(EL_ML)  .OR. &
-       ASSOCIATED(EL_ML2) 
+       ASSOCIATED(EL_ML2)  .OR. &
+       ASSOCIATED(EL_ML3)
    
    IF(NodalFields ) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
@@ -834,7 +846,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
        .OR. ASSOCIATED( ML ) .OR. ASSOCIATED( EL_ML ) &
-       .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
+       .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) &
+       .OR. ASSOCIATED( ML3 ) .OR. ASSOCIATED( EL_ML3 )
 
    IF (LossEstimation) THEN
       FreqPower = GetCReal( SolverParams,'Harmonic Loss Linear Frequency Exponent',Found )
@@ -862,7 +875,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       END IF
 
       ComponentLoss = 0.0_dp
-      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
+      ALLOCATE( BodyLoss(4,Model % NumberOfBodies) )
       BodyLoss = 0.0_dp
    END IF
 
@@ -1758,9 +1771,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !
          END IF
 
-         IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+         IF(ALLOCATED(BodyLoss)) BodyLoss(4,BodyId) = BodyLoss(4,BodyId) + Coeff
          Power = Power + Coeff
-         IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH) ) THEN           
+         IF ( ASSOCIATED(JH) .OR. ASSOCIATED(EL_JH) .OR. ASSOCIATED(NJH) ) THEN
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
            jh_k = k
@@ -1771,8 +1784,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
-           LossCoeff = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
+           LossCoeff = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found )
            LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+
+           IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Excess Coefficient') ) THEN
+             LossCoeff3 = 0.0_dp
+           ELSE
+             LossCoeff3 = ListGetFun( Material,'Harmonic Loss Excess Coefficient',Freq,Found )
+           END IF
+
            ! No losses to add if loss coefficient is not given
            IF( Found ) THEN
              Coeff = 0.0_dp
@@ -1786,9 +1806,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
                BodyLoss(2,BodyId) = BodyLoss(2,BodyId) + Coeff2
              END DO
+             Coeff3 = s * Basis(p) * LossCoeff3 * ( Freq ** 1.5_dp ) * ( SUM( B(1:2,1:3) ** 2 ) ** 0.75_dp )
+             BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff3
            ELSE
              Coeff = 0.0_dp
              Coeff2 = 0.0_dp
+             Coeff3 = 0.0_dp
            END IF
 
            IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) THEN
@@ -1797,6 +1820,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
            IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) THEN
              FORCE(p,k+1) = FORCE(p,k+1) + Coeff2
+             k = k + 1
+           END IF
+           IF ( ASSOCIATED(ML3) .OR. ASSOCIATED(EL_ML3) ) THEN
+             FORCE(p,k+1) = FORCE(p,k+1) + Coeff3
              k = k + 1
            END IF
          END IF
@@ -1856,7 +1883,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        DO l=1,k
          Solver % Matrix % RHS => GForce(:,l)
          CALL DefaultUpdateForce(Force(:,l))
-       END DO       
+       END DO
        Solver % Matrix % RHS => Fsave
      END IF
 
@@ -1873,6 +1900,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML3,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
 
        ! This is a nodal quantity
@@ -2019,6 +2047,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      CALL GlobalSol(ML ,  1      , Gforce, Dofs, EL_ML)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs, EL_ML2)
+     CALL GlobalSol(ML3,  1      , Gforce, Dofs, EL_ML3)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs, EL_MST)
      IF (ASSOCIATED(NF)) THEN
        DO i=1,fdim
@@ -2150,7 +2179,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END DO
 
-       DO j=1,3
+       DO j=1,4
          DO i=1,Model % NumberOfBodies
            BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i))
          END DO
@@ -2191,7 +2220,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss quadratic',TotalLoss(2) )
-     CALL ListAddConstReal( Model % Simulation,'res: joule loss',TotalLoss(3) )
+     CALL ListAddConstReal( Model % Simulation,'res: harmonic loss excess',TotalLoss(3) )
+     CALL ListAddConstReal( Model % Simulation,'res: joule loss',TotalLoss(4) )
 
      DO k=1,2
        IF( k == 1 ) THEN
@@ -2207,12 +2237,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL Info('MagnetoDynamicsCalcFields',Message, Level=5 )
      END DO
 
-     DO k=1,3
+     DO k=1,4
        IF( TotalLoss(k) < TINY( TotalLoss(k) ) ) CYCLE
        IF( k == 1 ) THEN
          CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Linear by bodies',Level=6)
        ELSE IF( k == 2 ) THEN
          CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Quadratic by bodies',Level=6)
+       ELSE IF( k == 3 ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Excess by bodies',Level=6)
        ELSE
          CALL Info('MagnetoDynamicsCalcFields','Joule Loss by bodies',Level=6)
        END IF
@@ -2235,6 +2267,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              CALL ListAddConstReal( CompParams,'res: harmonic loss linear',val )
            ELSE IF( k == 2 ) THEN
              CALL ListAddConstReal( CompParams,'res: harmonic loss quadratic',val )
+           ELSE IF( k == 3 ) THEN
+             CALL ListAddConstReal( CompParams,'res: harmonic loss excess',val )
            ELSE
              CALL ListAddConstReal( CompParams,'res: joule loss',val )
            END IF
@@ -2248,8 +2282,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          OPEN(NEWUNIT=IOUnit, FILE=LossFile)
          WRITE(IOUnit,'(A)')  '!body_id   harmonic(1)      harmonic(2)      joule'
          DO j=1,Model % NumberOfBodies
-           IF( SUM(BodyLoss(1:3,j)) < TINY( TotalLoss(1) ) ) CYCLE
-           WRITE(IOUnit,'(I0,T10,3ES17.9)') j, BodyLoss(1:3,j)
+           IF( SUM(BodyLoss(1:4,j)) < TINY( TotalLoss(1) ) ) CYCLE
+           WRITE(IOUnit,'(I0,T10,3ES17.9)') j, BodyLoss(1:4,j)
          END DO
          CALL Info('MagnetoDynamicsCalsFields', &
              'Harmonic loss for bodies was saved to file: '//TRIM(LossFile),Level=6 )
