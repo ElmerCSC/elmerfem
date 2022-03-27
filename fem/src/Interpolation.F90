@@ -260,6 +260,13 @@ MODULE Interpolation
         sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) + MAX( -wg, 0.0 ) 
         sumdist = sumdist + MAX( ug + vg + wg - 1.0, 0.0 ) 
         
+      CASE(6)
+	sumdist = MAX( -wg, 0.0 )
+        sumdist = sumdist + MAX( ug + wg - 1.0_dp, 0.0 )
+        sumdist = sumdist + MAX( -ug + wg - 1.0_dp, 0.0 )
+        sumdist = sumdist + MAX( vg + wg - 1.0_dp, 0.0 )
+        sumdist = sumdist + MAX( -vg + wg - 1.0_dp, 0.0 )
+        
       CASE(7)
         sumdist = MAX( -ug, 0.0 ) + MAX( -vg, 0.0 ) 
         sumdist = sumdist + MAX( ug + vg - 1.0_dp, 0.0 ) 
