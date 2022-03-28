@@ -1649,7 +1649,7 @@ CONTAINS
     CHARACTER(LEN=*) :: Name
     REAL(KIND=dp) :: Val, ParVal
     LOGICAL, OPTIONAL :: ValueIsInteger
-    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: ParallelOperator
+    CHARACTER(LEN=*), OPTIONAL :: ParallelOperator
     !------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
@@ -1695,13 +1695,16 @@ CONTAINS
     n = n + 1
     Values(n) = Val
 
+    ! We save always in lower case as we may be doing string comparisons etc.
+    nlen = StringToLowerCase(str,Name)
+   
     ! If we have positive or negative operator then revert that back in the save name
     IF( PosOper ) THEN
-      ValueNames(n) = 'positive '//TRIM(Name)
+      ValueNames(n) = 'positive '//TRIM(str)
     ELSE IF( NegOper ) THEN
-     ValueNames(n) = 'negative '//TRIM(Name)
+     ValueNames(n) = 'negative '//TRIM(str)
     ELSE
-      ValueNames(n) = TRIM(Name)
+      ValueNames(n) = TRIM(str)
     END IF
       
     IF( PRESENT( ValueIsInteger ) ) THEN
