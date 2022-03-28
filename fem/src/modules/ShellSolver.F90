@@ -2726,6 +2726,7 @@ CONTAINS
     !BPrinc(1:2,1:2) = MATMUL(TRANSPOSE(T),MATMUL(b,T))
     !print *, 'pdir1 = ', GlobPDir1(:)
     !print *, 'pdir2 = ', GlobPDir2(:)
+    !print *, 'pdir3 = ', GlobPDir3(:)
     !print *, 'T11=', BPrinc(1,1)
     !print *, 'T12=', BPrinc(1,2)
     !print *, 'T21=', BPrinc(2,1)
@@ -2779,6 +2780,7 @@ CONTAINS
         LagrangeNodes(j,1) = DOT_PRODUCT(p,GlobPDir1)
         LagrangeNodes(j,2) = DOT_PRODUCT(p,GlobPDir2)
         LagrangeNodes(j,3) = DOT_PRODUCT(p,GlobPDir3)
+        ! print *, 'NODE, x1,x2,x3', LagrangeNodes(j,1), LagrangeNodes(j,2), LagrangeNodes(j,3)
       END DO
     END IF
 
@@ -3026,10 +3028,10 @@ CONTAINS
       CALL SetElementProperty('umbilical point', UmbilicalFlag, Element) 
     END IF
     
-    !print *, 'o=', o
-    !print *, 'e1=', e1
-    !print *, 'e2=', e2
-    !print *, 'e3=', e3
+    !print *, 'o=', X0(1:3)
+    !print *, 'e1=', GlobPDir1(:)
+    !print *, 'e2=', GlobPDir2(:)
+    !print *, 'e3=', GlobPDir3(:)
     !print *, 'difference of Taylor params=', ABS(APar-BPar)/MAX(ABS(APar),ABS(BPar))
     !print *, 'Umbilical=',Umbilical
     !print *, 'remainder=', maxval(ABS(TaylorParams(3:6))) * 2.0d0 * rK * LambdaMax
@@ -3192,6 +3194,7 @@ CONTAINS
       IF (.NOT. Converged) CALL Fatal('LinesOfCurvaturePatch', 'Nonlinear iteration fails')
       PatchNodes(i,1) = y1
       Patchnodes(i,2) = y2
+      !print *, 'NODE, y1,y2', i, y1,y2
     END DO
 
     IF (PRESENT(ZNodes)) THEN
@@ -3607,7 +3610,11 @@ CONTAINS
     Material => GetMaterial()
     PoissonRatio(1:n) = GetReal(Material, 'Poisson Ratio')
     YoungsMod(1:n) = GetReal(Material, 'Youngs Modulus')
-    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness')
+    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness', Found)
+    IF (.NOT. Found) THEN
+      ShellThickness(1:n) = GetReal(Material, 'Thickness', Found)
+      IF (.NOT. Found) CALL Fatal('ShellLocalMatrix', 'Shell Thickness/Thickness undefined')
+    END IF
 
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN
@@ -4866,7 +4873,7 @@ CONTAINS
         !
         ! The meaning of load components is now rather implicit as
         ! they follow the deformation of lines of curvature, with the first
-        ! component along the direction of the smallest curvature in the undeformed. 
+        ! component along the direction of the smallest curvature in the undeformed 
         ! configuration. In the case of ambiguity, the element mapping defines the orientation. 
         ! This is far from user-friendly. 
         ! TO DO: Improve by implementing normal-tangential components?
@@ -7038,7 +7045,11 @@ END SUBROUTINE RetrieveLocalFrame
     ! --------------------------------------------------------------------------
     PoissonRatio(1:n) = GetReal(Material, 'Poisson Ratio')
     YoungsMod(1:n) = GetReal(Material, 'Youngs Modulus')
-    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness')
+    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness', Found)
+    IF (.NOT. Found) THEN
+      ShellThickness(1:n) = GetReal(Material, 'Thickness', Found)
+      IF (.NOT. Found) CALL Fatal('ShellLocalMatrixCartesian', 'Shell Thickness/Thickness undefined')
+    END IF
 
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN

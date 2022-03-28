@@ -536,7 +536,7 @@ CONTAINS
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
      END IF
-      V => VariableGet( M1 % Variables, 'Periodic Cycle' )
+     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
      END IF
