@@ -92,11 +92,11 @@ MODULE StressLocal
      REAL(KIND=dp) :: M(3,3),D(3,3),HeatExpansion(3,3), A(4,4)
      REAL(KIND=dp) :: Temperature,Density, C(6,6), Damping,MeshVelo(3)
      REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd, NodalViscosity(n)
-     REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
+     REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6), StressLoadVE(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis,ind(3)
 
-     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), xPhi
+     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), xPhi, Ux(ntot), Uy(ntot), Uz(ntot)
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -115,8 +115,8 @@ MODULE StressLocal
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: ndim
      LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
-     REAL(KIND=dp) :: Pres, Pres0
-     REAL(KIND=dp) :: PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
+     REAL(KIND=dp) :: Pres, Pres0, dt
+     REAL(KIND=dp) :: QSOL(4,32), PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
      CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
@@ -216,10 +216,18 @@ MODULE StressLocal
 
        NodalViscosity(1:n) = GetReal( GetMaterial(), 'Viscosity', Found )
 
-       SOL = 0; PSOL = 0
+
+       SOL = 0; QSOL=0; PSOL = 0
        CALL GetVectorLocalSolution( SOL )
+       CALL GetVectorLocalSolution( QSOL, tStep=-1 )
        CALL GetVectorLocalSolution( PSOL, tStep=-2 )
-       PSOL = SOL - PSOL
+       PSOL = QSOL - PSOL
+
+       dt = GetTimeStepSize()
+       Ux = (SOL(1,1:n) - QSOL(1,1:n))/dt
+       Uy = (SOL(2,1:n) - QSOL(2,1:n))/dt
+       Uz = (SOL(3,1:n) - QSOL(3,1:n))/dt
+
        PrevStress = 0._dp
      END IF
 
@@ -439,8 +447,15 @@ MODULE StressLocal
 
        IF(MaxwellMaterial) THEN
          Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
+BLOCK
+REAL(KIND=dp) :: muder0
+
+         Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
+            Element, Nodes, n, n, u, v, w,  muder0, LocalIP=t )
+
          xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
          NeedPreStress = .TRUE.
+END BLOCK
        ELSE
          xPhi = 1
        END IF
@@ -674,12 +689,12 @@ CONTAINS
  FUNCTION ViscoElasticLoad(ve_stress, ip, StressLoad) RESULT(xPhi)
 !------------------------------------------------------------------------------
     TYPE(Variable_t) :: ve_stress
-    INTEGER :: ip
+    INTEGER :: ip, nonl
     REAL(KIND=dp) :: StressLoad(6), Xphi
 !------------------------------------------------------------------------------
     INTEGER :: i
     REAL(KIND=dp) :: StressTensor(3,3), PrevStress(3,3), Pres, Pres0, &
-           ShearModulus
+           ShearModulus, dt0 = -1
 
     StressTensor  = 0._dp
     CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
@@ -688,8 +703,8 @@ CONTAINS
 
     IF(Incompressible) THEN
       ShearModulus = Young / 3
-      Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
-      Pres0 = SUM( Basis(1:n) * (SOL(ndim,1:n) - PSOL(ndim,1:n)) )
+      Pres  = SUM( Basis(1:n) * QSOL(ndim,1:n) )
+      Pres0 = SUM( Basis(1:n) * (QSOL(ndim,1:n) - PSOL(ndim,1:n)) )
     ELSE
       Pres = 0._dp; Pres0 = 0._dp
       ShearModulus = Young / (2*(1+Poisson))
@@ -699,13 +714,15 @@ CONTAINS
 
     i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
     PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
-    PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
-    ve_stress % values(i+1:i+dim**2) = RESHAPE( PrevStress(1:dim,1:dim), [dim**2] )
+    IF ( GetNonlinIter()==1) THEN
+      PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
+      ve_stress % values(i+1:i+dim**2) = RESHAPE( PrevStress(1:dim,1:dim), [dim**2] )
+    END IF
 
     StressTensor  = 0._dp
     CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
         NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-        SOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+        QSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
 
     StressTensor = xPhi * (StressTensor - PrevStress - Pres * Ident)
             
