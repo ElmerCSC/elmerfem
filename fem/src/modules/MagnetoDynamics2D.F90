@@ -136,6 +136,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
   TYPE(TabulatedBasisAtIp_t), POINTER, SAVE :: BasisFunctionsAtIp(:)=>NULL()
   LOGICAL, SAVE :: BasisFunctionsInUse = .FALSE.
+  LOGICAL :: UseTorqueTol
+  REAL(KIND=dp) :: TorqueTol, TorqueErr, PrevTorque, Torque 
   
 !------------------------------------------------------------------------------
 
@@ -172,6 +174,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
 
+  TorqueTol = GetCReal(SolverParams,'Nonlinear System Torque Tolerance',UseTorqueTol)
+  IF(UseTorqueTol) CALL Info(Caller,'Using additional nonlinear tolerance for torque',Level=10)
+  Torque = 0.0_dp
+  
   NonlinIter = GetInteger(SolverParams,'Nonlinear System Max Iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
@@ -248,13 +254,39 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
     
     Norm = DefaultSolve()
- 
-    IF( DefaultConverged() ) EXIT
+
+    IF( UseTorqueTol ) THEN
+      PrevTorque = Torque 
+      CALL CalculateLumpedTransient(Torque)
+      IF( iter < 2 ) THEN
+        ! Cannot have torque tolerance with just one iteration
+        CYCLE
+      ELSE
+        TorqueErr = 2 * ABS(PrevTorque-Torque) / (ABS(PrevTorque)+ABS(Torque))
+        IF( TorqueErr > TorqueTol ) THEN
+          WRITE(Message,'(A,ES12.3)') 'Torque error at iteration '//TRIM(I2S(iter))//':',TorqueErr
+          CALL Info(Caller,Message,Level=6)
+        END IF
+      END IF
+    END IF
+    
+    IF( DefaultConverged() ) THEN
+      IF( UseTorqueTol ) THEN
+        IF( TorqueErr > TorqueTol ) THEN
+          CALL Info(Caller,'Nonlinear system tolerance ok after '&
+              //TRIM(I2S(iter))//' but torque still wobbly!',Level=7)
+          CYCLE
+        END IF
+      END IF
+      EXIT
+    END IF
   END DO
   
   ! For cylindrical symmetry the model lumping has not been implemented
   IF( .NOT. CSymmetry ) THEN
-    CALL CalculateLumpedTransient()
+    IF(.NOT. UseTorqueTol ) THEN
+      CALL CalculateLumpedTransient()
+    END IF
   END IF
 
   CALL DriveHysteresis(model, solver)
@@ -347,8 +379,10 @@ CONTAINS
 ! It is assumed that inertial moment is computed the 1st time only and it
 ! stays constant.
 !------------------------------------------------------------------------------
- SUBROUTINE CalculateLumpedTransient()
+ SUBROUTINE CalculateLumpedTransient(Torque)
 !------------------------------------------------------------------------------
+   REAL(KIND=dp), OPTIONAL :: Torque
+
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &
        rinner,router,rmean,rdiff,ctorq,detJ,Weight,&
        Bp,Br,Bx,By,x,y,r,rho
@@ -392,7 +426,11 @@ CONTAINS
    
    CalcPot = ListGetLogicalAnyBodyForce( Model,'Calculate Potential' )
    CalcInert = CalcTorque .AND. .NOT. Visited 
-   
+
+   IF( PRESENT(Torque) .AND. .NOT. CalcTorque ) THEN
+     CALL Fatal(Caller,'Torque tolerance requested, but torque not computed!')
+   END IF
+        
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
@@ -655,8 +693,10 @@ CONTAINS
      WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
      CALL Info(Caller,Message,Level=5)
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
+
+     IF(PRESENT(Torque)) Torque = Torq
    END IF
-   
+
    IF( CalcInert ) THEN
      IF( Parallel ) THEN
        IMoment = ParallelReduction(IMoment)

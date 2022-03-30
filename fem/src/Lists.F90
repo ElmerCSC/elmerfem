@@ -1311,9 +1311,6 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-         !GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
-         !      'Bubbles in Global System', Found)
-         !IF (.NOT.Found) GlobalBubbles=.TRUE.
         GlobalBubbles = Pvar % Solver % GlobalBubbles
         
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
@@ -4820,10 +4817,16 @@ use spariterglobals
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
-       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-       WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-       k = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k )
+#ifdef HAVE_LUA
+       IF ( .NOT. ptr % LuaFun ) THEN
+#endif
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
+         k = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k )
+#ifdef HAVE_LUA
+       END IF
+#endif
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
            VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )

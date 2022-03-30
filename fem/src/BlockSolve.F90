@@ -1914,7 +1914,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
-    LOGICAL :: DrillingDOFs, GotCoupling
+    LOGICAL :: DrillingDOFs
     TYPE(Solver_t), POINTER :: PSol
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingBlocks'
 
@@ -1929,57 +1929,45 @@ CONTAINS
     ! the 'Block Solvers' array.
     i = 1
     SVar => TotMatrix % Subvector(i) % Var
+    IF(.NOT. ASSOCIATED( SVar ) ) THEN
+      CALL Fatal(Caller,'Master structure variable not present!')
+    END IF
     A_s => TotMatrix % Submatrix(i,i) % Mat
     
     Nsol = SIZE( ConstituentSolvers )
-    GotCoupling = .FALSE.
 
     
     DO j = 1, Nsol
+      ! No need to couple to one self!
+      IF(j==1) CYCLE
+      IF (j > size(ConstituentSolvers)) CALL Fatal(Caller, &
+          'Solid/Plate/Shell/Beam Solver Index larger than Block Solvers array')
+
       k = ConstituentSolvers(j)
-      
       PSol => CurrentModel % Solvers(k)
       
       IsSolid = ListGetLogical( Psol % Values,'Solid Solver',IsSolid)
       IsPlate = ListGetLogical( Psol % Values,'Plate Solver',IsPlate)
       IsShell = ListGetLogical( Psol % Values,'Shell Solver',IsShell)
       IsBeam = ListGetLogical( Psol % Values,'Beam Solver',IsBeam)
-      
-      ! No need to couple to one self!
-      IF(j==1) CYCLE
-      
-      IF (GotBlockSolvers) THEN
-        IF (j > size(ConstituentSolvers)) CALL Fatal(Caller, &
-            'Solid/Plate/Shell/Beam Solver Index larger than Block Solvers array')
-        ind1 = ConstituentSolvers(i)
-        ind2 = ConstituentSolvers(j)
-        CALL Info(Caller,'Generating coupling between solvers '&
-            //TRIM(I2S(ind1))//' and '//TRIM(I2S(ind2)))
-      ELSE
-        IF (j > Solver % BlockMatrix % NoVar) CALL Fatal(Caller, &
-            'Solid/Plate/Shell/Beam Solver Index exceeds block matrix dimensions')
-            
-        CALL Info(Caller,'Generating coupling between solvers '&
-            //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
-      END IF
 
-      GotCoupling = .TRUE.
+      ind1 = ConstituentSolvers(i)
+      ind2 = ConstituentSolvers(j)
+      CALL Info(Caller,'Generating coupling between solvers '&
+          //TRIM(I2S(ind1))//' and '//TRIM(I2S(ind2)))
+
       
       A_fs => TotMatrix % Submatrix(j,i) % Mat
       A_sf => TotMatrix % Submatrix(i,j) % Mat
       
       !SVar => TotMatrix % Subvector(i) % Var
       FVar => TotMatrix % Subvector(j) % Var
-      
-      !A_s => TotMatrix % Submatrix(i,i) % Mat
-      A_f => TotMatrix % Submatrix(j,j) % Mat
-      
-      IF(.NOT. ASSOCIATED( SVar ) ) THEN
-        CALL Fatal(Caller,'Master structure variable not present!')
-      END IF
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
         CALL Fatal(Caller,'Slave structure variable not present!')
       END IF
+      
+      !A_s => TotMatrix % Submatrix(i,i) % Mat
+      A_f => TotMatrix % Submatrix(j,j) % Mat
 
       IF (IsShell) THEN
         ShellParams => Fvar % Solver % Values
@@ -2002,10 +1990,6 @@ CONTAINS
       END IF
 
     END DO
-
-    IF(.NOT. GotCoupling ) THEN
-      CALL Fatal(Caller,'Could not determine coupling blocks!')
-    END IF
     
   END SUBROUTINE StructureCouplingBlocks
   
