@@ -116,7 +116,7 @@ MODULE StressLocal
      INTEGER :: ndim
      LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
      REAL(KIND=dp) :: Pres, Pres0, dt
-     REAL(KIND=dp) :: QSOL(4,32), PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
+     REAL(KIND=dp) :: QSOL(4,ntot), PSOL(4,ntot), SOL(4,ntot), ShearModulus, Viscosity, PrevStress(3,3)
      CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
@@ -224,9 +224,9 @@ MODULE StressLocal
        PSOL = QSOL - PSOL
 
        dt = GetTimeStepSize()
-       Ux = (SOL(1,1:n) - QSOL(1,1:n))/dt
-       Uy = (SOL(2,1:n) - QSOL(2,1:n))/dt
-       Uz = (SOL(3,1:n) - QSOL(3,1:n))/dt
+       Ux = (SOL(1,1:ntot) - QSOL(1,1:ntot))/dt
+       Uy = (SOL(2,1:ntot) - QSOL(2,1:ntot))/dt
+       Uz = (SOL(3,1:ntot) - QSOL(3,1:ntot))/dt
 
        PrevStress = 0._dp
      END IF
@@ -451,7 +451,7 @@ BLOCK
 REAL(KIND=dp) :: muder0
 
          Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
-            Element, Nodes, n, n, u, v, w,  muder0, LocalIP=t )
+            Element, Nodes, n, ntot, u, v, w,  muder0, LocalIP=t )
 
          xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
          NeedPreStress = .TRUE.
