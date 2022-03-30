@@ -2780,6 +2780,16 @@ CONTAINS
       END DO
 
 
+      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset', GotIt) ) THEN
+        OldMesh => Model % Meshes      
+        NewMesh => SplitMeshLevelset(OldMesh,Model % Simulation)
+        IF(ASSOCIATED(NewMesh) ) THEN
+          CALL SetMeshMaxDofs(NewMesh)
+          CALL ReleaseMesh(OldMesh)
+          Model % Meshes => NewMesh
+        END IF
+      END IF
+
       IF ( OneMeshName ) THEN
          i = 0
       ELSE

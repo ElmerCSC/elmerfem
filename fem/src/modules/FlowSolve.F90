@@ -1259,6 +1259,9 @@
       END DO
 
       CALL DefaultFinishBoundaryAssembly()
+     
+      CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
+      
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------

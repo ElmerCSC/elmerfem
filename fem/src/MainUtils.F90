@@ -410,12 +410,14 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-   SUBROUTINE SwapMesh(Model,Mesh,Name)
+   SUBROUTINE SwapMesh(Model,Mesh,Name,ExtMesh)
 !------------------------------------------------------------------------------
-     CHARACTER(LEN=*) :: Name
      TYPE(Model_t) :: Model
-     TYPE(Mesh_t), POINTER :: Mesh, Newmesh, tmesh
+     TYPE(Mesh_t), POINTER :: Mesh
+     CHARACTER(LEN=*), OPTIONAL :: Name     
+     TYPE(Mesh_t), POINTER, OPTIONAL :: ExtMesh
 !------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Newmesh, tmesh
      INTEGER :: Def_Dofs(10,6), i,j,k
      LOGICAL :: Found, Transient
      TYPE(Solver_t), POINTER :: Solver
@@ -448,8 +450,14 @@ CONTAINS
        END DO
      END DO
 
-     Newmesh => LoadMesh2( Model, Name, Name, &
-       .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
+     IF( PRESENT( ExtMesh ) ) THEN
+       NewMesh => ExtMesh
+     ELSE              
+       Newmesh => LoadMesh2( Model, Name, Name, &
+           .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
+       NewMesh % Name = Name
+     END IF
+
      IF(.NOT.ASSOCIATED(NewMesh)) RETURN
 
      NewMesh % Next => Mesh % Next
@@ -465,7 +473,6 @@ CONTAINS
        END DO
      END IF
 
-     NewMesh % Name = Name
      CALL AddCoordAndTime(Mesh,NewMesh)
 
      DO i=1,Model % NumberOfSolvers
@@ -529,7 +536,7 @@ CONTAINS
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
      END IF
-      V => VariableGet( M1 % Variables, 'Periodic Cycle' )
+     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
      END IF
@@ -1502,7 +1509,7 @@ CONTAINS
                 Solver % Mesh % NumberOfBoundaryElements) )
           END IF
         END IF
-        
+
         IF( ListGetLogical( SolverParams,'Radiation Solver',Found ) ) THEN
           CALL RadiationFactors( Solver, .TRUE.)
         END IF

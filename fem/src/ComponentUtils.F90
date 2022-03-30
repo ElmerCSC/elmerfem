@@ -83,7 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode, IsParallel
+     LOGICAL :: BcMode, isParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -97,7 +97,7 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
-     IsParallel = CurrentModel % Solver % Parallel
+     isParallel = CurrentModel % Solver % Parallel
      
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
@@ -201,9 +201,11 @@ MODULE ComponentUtils
          ! Only compute the parallel reduction once
          IF( isParallel ) THEN
            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-           IF( VisitNodeOnlyOnce ) THEN           
-             IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-           END IF
+
+! This is (probably) not correct, the nodal forces is partial and should be summed --> comment out.
+!          IF( VisitNodeOnlyOnce ) THEN           
+!            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+!          END IF
          END IF
            
          F(1) = NF % Values( dofs*(k-1) + 1)
