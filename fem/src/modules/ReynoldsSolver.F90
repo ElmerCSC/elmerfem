@@ -85,7 +85,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
       ElemDensity(:),ElemArtif(:)
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel
+  CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel, varname
   CHARACTER(*), PARAMETER :: Caller = 'ReynoldsSolver'
 
   SAVE ElementNodes, Viscosity, GapHeight, ElemArtif, ElemDensity, Velocity, NormalVelocity, &
@@ -113,9 +113,10 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF(Solver % Variable % Dofs /= 1) THEN
     CALL Fatal(Caller,'Impossible number of dofs! (should be 1)')    
-  END IF
+  END IF  
   Pressure     => Solver % Variable % Values
   PressurePerm => Solver % Variable % Perm
+  Varname = TRIM(Solver % Variable % Name)
   IF( COUNT( PressurePerm > 0 ) <= 0) RETURN
 
 !------------------------------------------------------------------------------
@@ -212,9 +213,9 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter', GotIt )
     IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .FALSE. ) 
     
-    SensVar => VariableGet( Model % Variables,'FilmPressure Gap Sensitivity')
+    SensVar => VariableGet( Model % Variables,TRIM(Varname)//' Gap Sensitivity')
     IF( .NOT. ASSOCIATED( SensVar ) ) THEN
-      CALL Fatal(Caller,'> Filmpressure gap sensitivity < should exist!')
+      CALL Fatal(Caller,'> '//TRIM(Varname)//' gap sensitivity < should exist!')
     END IF
     SaveVar => Solver % Variable 
     Solver % Variable => SensVar
@@ -840,15 +841,16 @@ SUBROUTINE ReynoldsSolver_init( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, ManningModel
+  LOGICAL :: Found
   TYPE(ValueList_t), POINTER :: Params 
+  CHARACTER(LEN=MAX_NAME_LEN) :: Varname
 
   Params => GetSolverParams()
-  ManningModel = ListGetLogical( Params,'Manning Model',Found ) 
-  IF( ManningModel ) THEN
-    CALL ListAddNewString( Params, 'Variable','Hydraulic Pressure')  
-  ELSE
-    CALL ListAddNewString( Params, 'Variable', 'FilmPressure' )
+
+  VarName = ListGetString( Params,'Variable',Found)
+  IF(.NOT. Found ) THEN
+    Varname = 'FilmPressure'
+    CALL ListAddString( Params, 'Variable', VarName )
   END IF
     
 ! The new way with generic limiters is a library functionality.
@@ -859,7 +861,7 @@ SUBROUTINE ReynoldsSolver_init( Model,Solver,dt,TransientSimulation )
 
   IF( ListGetLogical( Params,'Gap Sensitivity', Found ) ) THEN
     CALL ListAddStrinG( Params,NextFreeKeyword('Exported Variable',Params),&
-        'FilmPressure Gap Sensitivity')
+        TRIM(VarName)//' Gap Sensitivity')
   END IF
 
 END SUBROUTINE ReynoldsSolver_init
@@ -943,14 +945,14 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   ManningModel = GetLogical(Params,'Manning Model',GotIt)
 
   PressureName = GetString(Params,'Reynolds Pressure Variable Name',GotIt)
-  IF(.NOT. GotIt) THEN
-    IF( ManningModel ) THEN
-      PressureName = 'Hybraulic Pressure'
-    ELSE
-      PressureName = 'FilmPressure'
-    END IF
+  IF(.NOT. GotIt) PressureName = 'FilmPressure'
+
+  PressureVar => VariableGet( Solver % Mesh % Variables, PressureName)
+  IF(.NOT. ASSOCIATED(PressureVar)) THEN
+    CALL Info(Caller,'Give pressure variable name with: "Reynolds Pressure Variable Name"',Level=3)
+    CALL Fatal(Caller,'Could not find primary variable: '//TRIM(PressureName))
   END IF
-    
+  
   IF( ManningModel ) THEN
     GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
     IF(.NOT. GotIt) GravityCoeff = 9.81
@@ -960,12 +962,6 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   
   AmbientPres = ListGetCReal( Params,'Ambient Pressure',GotIt)
   
-  PressureVar => VariableGet( Solver % Mesh % Variables, PressureName)
-  IF(.NOT. ASSOCIATED(PressureVar)) THEN
-    CALL Warn(Caller,'Could not get variable: '//TRIM(PressureName))
-    RETURN
-  END IF
-
   Pressure => PressureVar % Values
   PressurePerm => PressureVar % Perm
   IF( COUNT( PressurePerm > 0 ) <= 0) RETURN
@@ -1024,7 +1020,6 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     CALL Fatal(Caller,'Solver Variable not associated')
   END IF
 
-
   CALL Info(Caller,'Primary variable name: '//TRIM( Solver % variable % Name) )
 
    
@@ -1032,16 +1027,16 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
     IF( Mode == 0 ) THEN
       IF( .NOT. ManningModel ) CYCLE
-      VarResult => VariableGet( Solver % Mesh % Variables,'FilmPressure')
+      VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Corrected')
       IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     ELSE IF( Mode == 1 ) THEN
-      VarResult => VariableGet( Solver % Mesh % Variables,'FilmPressure Force')
+      VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Force')
       IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     ELSE IF( Mode == 2 ) THEN
-      VarResult => VariableGet( Solver % Mesh % Variables,'FilmPressure Flux')
+      VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Flux')
       IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     ELSE IF( Mode == 3 ) THEN
-      VarResult => VariableGet( Solver % Mesh % Variables,'FilmPressure Heating')
+      VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Heating')
       IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     END IF
     Components = VarResult % Dofs
@@ -1415,28 +1410,32 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Found, Calculate, ManningModel
     INTEGER :: Dim,GivenDim,dofs
+    CHARACTER(LEN=MAX_NAME_LEN) :: PressureName
     CHARACTER(*), PARAMETER :: Caller = 'ReynoldsPostprocess_init'
 
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
     Dim = CoordinateSystemDimension()
+
+    PressureName = GetString(Params,'Reynolds Pressure Variable Name',Found)
+    IF(.NOT. Found) PressureName = 'FilmPressure'
     
     ! If the heating is not computed use a temp variable for the scalar equations
     !-------------------------------------------------------------------
     Calculate = ListGetLogical(Params,'Calculate Heating',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,'Variable', &
-          'FilmPressure Heating' )
+          TRIM(PressureName)//' Heating' )
     ELSE IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
       CALL Info(Caller,'Defaulting field name to: ReynoldsPost')
       CALL ListAddString( Params,'Variable', &
           '-nooutput ReynoldsPost' )      
     END IF
 
-
     ManningModel = ListGetLogical( Params,'Manning Model',Found )
     IF( ManningModel ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'FilmPressure' )
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
+          TRIM(PressureName)//' corrected' )
     END IF
 
     ! The dofs of force is fixed by default to 3 since there is a normal component
@@ -1451,10 +1450,10 @@ CONTAINS
       ELSE
         dofs = 3
       END IF
-      CALL Info(Caller,'Creating FilmPressure Force with '&
+      CALL Info(Caller,'Creating "'//TRIM(PressureName)//'" Force with '&
           //TRIM(I2S(dofs))//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Force' )
+          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Force' )
     END IF
 
     ! The dofs of flux is fixed by default 3 since there can be leakage 
@@ -1468,10 +1467,10 @@ CONTAINS
       ELSE
         dofs = 3
       END IF
-      CALL Info(Caller,'Creating FilmPressure Flux with '&
+      CALL Info(Caller,'Creating "'//TRIM(PressureName)//' Flux" with '&
           //TRIM(I2S(dofs))//' components',Level=12)
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Flux' )
+          '-dofs '//TRIM(I2S(dofs))//' '//TRIM(PressureName)//' Flux' )
     END IF
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )
