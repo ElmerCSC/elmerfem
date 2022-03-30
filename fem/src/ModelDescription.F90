@@ -2780,7 +2780,7 @@ CONTAINS
       END DO
 
 
-      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset') ) THEN
+      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset'), GotIt) THEN
         OldMesh => Model % Meshes      
         NewMesh => SplitMeshLevelset(OldMesh,Model % Simulation)
         IF(ASSOCIATED(NewMesh) ) THEN
