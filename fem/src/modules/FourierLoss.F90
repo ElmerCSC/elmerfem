@@ -74,7 +74,7 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   
   SolverParams => GetSolverParams()
 
-  Pref = ListGetString( SolverParams,'Fourier Results Prefix',Found )
+  Pref = ListGetString( SolverParams,'Scalars Prefix',Found )
   IF(.NOT. Found) Pref = 'res:'
   
   VarName = ListGetString( SolverParams,'Target Variable',Found )
@@ -281,7 +281,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   
   at0 = RealTime()
   
-  Pref = ListGetString( SolverParams,'Fourier Results Prefix',Found )
+  Pref = ListGetString( SolverParams,'Scalars Prefix',Found )
   IF(.NOT. Found) Pref = 'res:'
   
   Ncomp = 0
