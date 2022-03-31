@@ -25818,6 +25818,125 @@ CONTAINS
     
   END FUNCTION SplitMeshLevelset
 !------------------------------------------------------------------------------
+
+
+  !> Create interface boundaries consisting of edges defined by the intersection of two higher
+  !> dimensional boundaries. This may be usefull for 3D meshes where 1D meshes have not been
+  !> create in advance.
+  !-------------------------------------------------------------------
+  SUBROUTINE CreateInterfaceBCs(Model, Mesh)
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Element_t), POINTER :: Element, Parent, Face, Face2, Enew
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,i2,j,j2,k,k2,e,e2,l,n,t,istat,newbcs,newcnt
+    TYPE(Element_t), POINTER :: NewElements(:)
+    INTEGER, ALLOCATABLE :: Face2Boundary(:), InterfaceBCs(:,:)
+    LOGICAL, ALLOCATABLE :: EdgeDone(:)
+    LOGICAL :: ElementsAllocated 
+    
+    IF( .NOT. ListCheckPresentAnyBC( Model,'Intersection BC') ) RETURN
+    
+
+    IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL FindMeshEdges( Mesh )
+    END IF
+
+    ALLOCATE( Face2Boundary(Mesh % NumberOfFaces) )
+    Face2Boundary = 0
+
+    DO t=1,Mesh % NumberOfBoundaryElements
+      k = Mesh % NumberOfBulkElements + t
+      Element => Mesh % Elements(t)
+      IF( Element % Type % ElementCode < 300 ) CYCLE
+
+      Face => NULL()
+      Parent => Element % BoundaryInfo % Left
+      IF(ASSOCIATED(Parent) ) THEN
+        Face => Find_Face( Mesh, Parent, Element )
+      END  IF
+      IF(.NOT. ASSOCIATED(Face) ) THEN
+        Parent => Element % BoundaryInfo % Right
+        IF(ASSOCIATED(Parent) ) THEN
+          Face => Find_Face( Mesh, Parent, Element )
+        END  IF
+      END IF
+      IF( ASSOCIATED( Face ) ) THEN
+        Face2Boundary(Face % ElementIndex) = k
+      END IF
+    END DO
+    
+    ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
+
+    ElementsAllocated = .FALSE.
+100 EdgeDone = .FALSE.
+    
+    DO t=1,Mesh % NumberOfBulkElements 
+      Element => Mesh % Elements(t)
+      
+      IF( Element % TYPE % ElementCode < 500 ) CYCLE
+
+      DO i=1,Element % TYPE % NumberOfFaces
+        j = Element % FaceIndexes(i)
+        Face => Mesh % Faces(j) 
+        k = Face2Boundary(j)
+        IF(ALL(InterfaceBCs(:,2) /= k )) CYCLE
+
+        DO i2=1,Element % TYPE % NumberOfFaces
+          IF(i2==i) CYCLE
+          j2 = Element % FaceIndexes(i2)
+          Face2 => Mesh % Faces(j2)
+          k2 = Face2Boundary(j2)
+          IF(ALL(InterfaceBCs(:,3) /= k2 )) CYCLE
+        
+          DO l=1,newbcs
+            IF( InterfaceBCs(l,2) == k .AND. InterfaceBCs(l,3) == k2 ) THEN              
+              DO e = 1,Face % TYPE % NumberOfEdges
+                IF( EdgeDone( Face % EdgeIndexes(e) ) ) CYCLE
+                DO e2 = 1,Face2 % TYPE % NumberOfEdges
+                  IF( Face % EdgeIndexes(e) == Face2 % EdgeIndexes(e2) ) THEN
+                    EdgeDone( Face % EdgeIndexes(e) ) = .TRUE.
+                    NewCnt = NewCnt + 1 
+                    IF( ElementsAllocated ) THEN
+                      Enew => Mesh % Elements(n+NewCnt)        
+                      ALLOCATE(Enew % BoundaryInfo)         
+                      Enew % PartIndex = Element % PartIndex
+                      Enew % ElementIndex = n + NewCnt
+                      Enew % TYPE => Mesh % Edges(e) % Type
+                      CALL AllocateVector( ENew % NodeIndexes, n)
+                      Enew % NDOFs = n
+                      Enew % EdgeIndexes => NULL()
+                      Enew % FaceIndexes => NULL()
+                      Enew % BoundaryInfo % Constraint = InterfaceBCs(l,1)
+                    END IF
+                    EXIT
+                  END IF
+                END DO
+              END DO
+            END IF
+          END DO
+        END DO
+      END DO
+    END DO
+
+    IF( NewCnt == 0 ) THEN
+      CALL Info('CreateInterfaceBCs','Could not find any additional interface elements!')
+    ELSE IF(.NOT. ElementsAllocated ) THEN
+      n = SIZE( Mesh % Elements ) 
+      ALLOCATE( NewElements(n + NewCnt ) )
+      CALL Info('CreateInterfaceBCs','Allocated for '//TRIM(I2S(NewCnt))//' new boundary elements!',Level=6)
+      NewElements(1:n) = Mesh % Elements
+      DEALLOCATE(Mesh % Elements)
+      Mesh % Elements => NewElements
+      ElementsAllocated = .TRUE.
+      GOTO 100 
+    END IF
+
+    CALL Info('CreateInterfaceBCs','All done!',Level=10)
+    
+  END SUBROUTINE CreateInterfaceBCs
+
   
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
