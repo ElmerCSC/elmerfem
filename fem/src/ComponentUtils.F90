@@ -202,7 +202,7 @@ MODULE ComponentUtils
          IF( isParallel ) THEN
            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
-! This is (probably) not correct, the nodal forces is partial and should be summed --> comment out.
+! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
 !          IF( VisitNodeOnlyOnce ) THEN           
 !            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
 !          END IF

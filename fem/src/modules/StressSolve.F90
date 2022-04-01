@@ -104,11 +104,18 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
     IF( MaxwellMaterial ) THEN
       CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
-      CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
+      CALL ListAddInteger(SolverParams, 'BDF Order', 1 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
+
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
           '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
+
+      i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
+      CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
+
+      i = GetInteger( SolverParams, 'Nonlinear System Max Iterations', Found )
+      CALL ListAddInteger( SolverParams, 'Nonlinear System Max Iterations', MAX(i,2) )
     END IF
     
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
