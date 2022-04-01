@@ -62,6 +62,9 @@ End
 Solver 1
   Equation = Navier-Stokes
 
+  Procedure = "FlowSolve" "FlowSolver"
+!  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+ 
   Stabilization Method = Stabilized
 
   Steady State Convergence Tolerance = 1.0e-5
@@ -84,6 +87,9 @@ Solver 1
   Linear System Preconditioning = ILU2
 
   Calculate Loads = True
+  Implicit Friction Exclude Pressure = Logical True
+
+
 End
 
 

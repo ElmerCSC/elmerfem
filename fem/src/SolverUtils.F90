@@ -22148,7 +22148,7 @@ CONTAINS
      TYPE(Model_t) :: Model                       !< Complele model structure
      TYPE(Solver_t) :: Solver                     !< Solver for which to set the friction
      CHARACTER(LEN=*) :: FrictionName             !< Name of the friction coefficient
-     CHARACTER(LEN=*), OPTIONAL :: DirectionName  !< Name of the friction coefficient
+     CHARACTER(LEN=*), OPTIONAL :: DirectionName  !< Name of the optional direction field that may be used to set the direction
          
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Matrix_t), POINTER :: A
@@ -22163,7 +22163,7 @@ CONTAINS
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t
      INTEGER :: dofN, dofT1, dofT2, bc_id, dim, dofs
-     LOGICAL :: Rotated, Found
+     LOGICAL :: Rotated, Found, ExcludePressure
      REAL(KIND=dp), POINTER :: VeloDir(:,:)
      REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
      CHARACTER(*), PARAMETER :: Caller = 'SetImplicitFriction'
@@ -22182,6 +22182,8 @@ CONTAINS
                
      ALLOCATE( NodeDone( SIZE( FlowPerm ) ) )
      NodeDone = .FALSE.
+
+     ExcludePressure = ListGetLogical( Solver % Values,'Implicit Friction Exclude Pressure',Found)
      
      DO t = Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -22284,7 +22286,7 @@ CONTAINS
          END IF
 
          DO l = A % Rows(k),A % Rows(k+1)-1
-           IF( Dofs > dim ) THEN
+           IF( Dofs > dim .AND. ExcludePressure ) THEN
              IF( MODULO(A % Cols(l),Dofs) == 0 ) CYCLE
            END IF
            DO l2 = A % Rows(k2), A % Rows(k2+1)-1
