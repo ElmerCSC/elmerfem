@@ -75,14 +75,15 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
-      UseVelocity, SideCorrection, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap
+      UseVelocity, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap, &
+      OpenSide,GotExt,GotFlux, AnyBC
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
-      mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap
+      mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap, MinGradPres
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TimeForce(:), &
       Viscosity(:), GapHeight(:), NormalVelocity(:), Velocity(:,:), &
       Admittance(:), Impedance(:), ElemPressure(:), PrevElemPressure(:),  &
-      ElemDensity(:),ElemArtif(:)
+      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),CoeffPres(:)
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel, varname
@@ -90,7 +91,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE ElementNodes, Viscosity, GapHeight, ElemArtif, ElemDensity, Velocity, NormalVelocity, &
       Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, PrevElemPressure, &
-      AllocationsDone
+      AllocationsDone, ExtPres, FluxPres, CoeffPres
 
 
   CALL Info(Caller,'---------------------------------------',Level=5)
@@ -129,9 +130,16 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     IF(.NOT. GotIt) GravityCoeff = 9.81
   END IF
     
-  SideCorrection = ListGetLogicalAnyBC( Model,'Open Side')
-
+  AnyBC = ListGetLogicalAnyBC( Model,'Open Side') .OR. &
+      ListCheckPresentAnyBC( Model,'Filmpressure Flux') .OR. &
+      ListCheckPresentAnyBC( Model,'Filmpressure Transfer Coefficient')
+     
   MinGap = ListGetCReal( Params,'Min Gap Height',GotMinGap)
+  
+  MinGradPres = ListGetCReal( Params,'Initial Pressure Gradient',GotIt)
+  IF(.NOT. GotIt .OR. AllocationsDone ) THEN
+    MinGradPres = EPSILON( MinGradPres )
+  END IF
   
   NoIterations = GetInteger( Params,'Nonlinear System Max Iterations',GotIt)
   IF(.NOT. GotIt) NoIterations = 1
@@ -149,6 +157,9 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         ElementNodes % z( N ),       &
         Viscosity( N ),              &
         GapHeight(N),          &
+        ExtPres(N), &
+        FluxPres(N), &
+        CoeffPres(N), &
         ElemArtif(N), &
         ElemDensity(N), &
         Velocity(3,N),         &
@@ -192,7 +203,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !    Neumann & Newton BCs:
 !------------------------------------------------------------------------------
-    IF(SideCorrection) THEN
+    IF(AnyBC) THEN
       CALL GlobalBoundaryAssemby()
     END IF
     
@@ -223,6 +234,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultInitialize()
     CALL GlobalBulkAssembly( 1 )
     CALL DefaultFinishBulkAssembly( )
+    
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs( Ux = SensVar )
 
@@ -333,7 +345,7 @@ CONTAINS
 
       GapHeight(1:n) = GetReal( Material,'Gap Height')
       IF(GotMinGap) GapHeight(1:n) = MAX(GapHeight(1:n),MinGap) 
-
+      
       Admittance(1:n) = GetReal( Material, 'Flow Admittance', GotIt)
       Viscosity(1:n) = GetReal( Material, 'Viscosity')
       
@@ -513,7 +525,7 @@ CONTAINS
       Pres = SUM(Basis(1:n) * ElemPressure(1:n))
       Gap = SUM(Basis(1:n) * GapHeight(1:n))
       TotPres = ReferencePressure + Pres
-
+      
       ! If we compute sensitivity of solution we need various derivatives of pressure
       !--------------------------------------------------------------------------------
       IF( SensMode > 0 ) THEN
@@ -585,6 +597,7 @@ CONTAINS
           GradPres(i) = SUM( dBasisdx(1:n,i) * ElemPressure(1:n) )
         END DO
         AbsGradPres = SQRT( SUM( GradPres**2 ) )
+        AbsGradPres = MAX( AbsGradPres, MinGradPres )
         MS = -SQRT(Density/(GravityCoeff*AbsGradPres)) * Gap**(5.0/3)  / (2**(2.0/3) * ManningCoeff) 
       ELSE
         MS = -Density * Gap**3 / (12 * Visc)
@@ -671,33 +684,39 @@ CONTAINS
       Element => GetBoundaryElement(t)
       IF ( .NOT. ActiveBoundaryElement() ) CYCLE
       
-      n  = GetElementNOFNodes()
-      nd = GetElementNOFDOFs()
-      IF ( GetElementFamily() == 1 ) CYCLE
-      
       BC => GetBC()
       IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
       
-      stat = GetLogical(BC,'Open Side',gotIt) 
-      IF(.NOT. stat) CYCLE
-!------------------------------------------------------------------------------
-      NodeIndexes => Element % NodeIndexes
+      OpenSide = GetLogical(BC,'Open Side',gotIt) 
+      FluxPres(1:n) = GetReal(BC,'Filmpressure Flux',GotFlux)
+      CoeffPres(1:n) = GetReal(BC,'Filmpressure Transfer Coefficient',GotIt)
+      ExtPres(1:n) = GetReal(BC,'External FilmPressure',GotExt)
+      IF(XOR(GotExt,GotIt)) THEN
+        CALL Fatal(Caller,'Give neither or both keywords for Robin BC!')
+      END IF
+
+      IF(.NOT. (OpenSide .OR. GotExt .OR. GotFlux) ) CYCLE
       
+!------------------------------------------------------------------------------
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()
+      IF ( GetElementFamily() == 1 ) CYCLE
+      NodeIndexes => Element % NodeIndexes
+         
       IF ( ANY( PressurePerm(NodeIndexes(1:n)) == 0 ) ) CYCLE
       
       Parent => Element % BoundaryInfo % Left
       stat = ASSOCIATED( Parent )
-      IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
+      IF ( stat ) stat = ALL(PressurePerm(Parent % NodeIndexes) > 0)
       
       IF(.NOT. stat) THEN
         Parent => ELement % BoundaryInfo % Right            
         stat = ASSOCIATED( Parent )
-        IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
+        IF ( stat ) stat = ALL(PressurePerm(Parent % NodeIndexes) > 0)
         IF ( .NOT. stat )  CALL Fatal( Caller, &
             'No proper parent element available for specified boundary' )
       END IF
       
-      Model % CurrentElement => Parent
       CALL GetElementNodes( ElementNodes )
       
       mat_id = GetInteger( Model % Bodies(Parent % BodyId) % Values,'Material')
@@ -707,6 +726,10 @@ CONTAINS
       IF(GotMinGap) GapHeight(1:n) = MAX( GapHeight(1:n), MinGap ) 
       
       Viscosity(1:n) = GetReal( Material, 'Viscosity')
+
+      IF( ManningModel ) THEN
+        ElemDensity(1:) = GetReal( Material,'Density')
+      END IF
       
       STIFF = 0.0d0
       MASS = 0.0d0
@@ -716,7 +739,7 @@ CONTAINS
 !             Get element local matrix and rhs vector
 !------------------------------------------------------------------------------
       CALL LocalBoundaryMatrix( MASS, STIFF, FORCE, Element, n, ElementNodes )
-                    
+      
 !------------------------------------------------------------------------------
 !             Update global matrix and rhs vector from local matrix & vector
 !------------------------------------------------------------------------------
@@ -745,7 +768,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ,U,V,W,S
     REAL(KIND=dp) :: Basis(n)
-    REAL(KIND=dp) :: Visc, dl, mfp, Kn, Damp, TotPres, Pres, Density, Gap, A
+    REAL(KIND=dp) :: Visc, dl, mfp, Kn, Damp, TotPres, Pres, Density, Gap, A, B
     LOGICAL :: Stat
     INTEGER :: i,p,q,t,DIM,CoordSys
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
@@ -808,14 +831,32 @@ CONTAINS
         
       END SELECT
 
+      IF(ManningModel) THEN
+        Density = Density * SUM( Basis(1:n) * ElemDensity(1:n) )
+      END IF
+
+      
 !------------------------------------------------------------------------------       
-       A = -Damp * Gap * Density
+      A = 0.0_dp
+      B = 0.0_dp
+      IF( GotExt ) THEN
+        A = -SUM(Basis(1:n) * CoeffPres(1:n) )
+        B = A * SUM( Basis(1:n) * ExtPres(1:n) )
+      END IF
+      IF( GotFlux ) THEN
+        B = B - SUM( Basis(1:n) * FluxPres(1:n) ) 
+      END IF
+      IF(OpenSide) THEN
+        A = A - Damp * Gap * Density
+      END IF
+                        
 !------------------------------------------------------------------------------
-       DO p=1,n
-         DO q=1,n
-           STIFF(p,q) = STIFF(p,q) + s * Basis(q) * Basis(p) * A
-         END DO
-       END DO
+      DO p=1,n
+        FORCE(p) = FORCE(p) + s * Basis(p) * B
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + s * Basis(q) * Basis(p) * A
+        END DO
+      END DO
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
@@ -919,8 +960,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   CHARACTER(*), PARAMETER :: Caller = 'ReynoldsPostprocess'
 
 
-  SAVE ElementNodes, Viscosity, Velocity, &
-      GapHeight, ElemDensity, BotHeight, FORCE, STIFF, ElemPressure, AllocationsDone
+  SAVE ElementNodes, Viscosity, Velocity, GapHeight, ElemDensity, BotHeight, &
+      FORCE, STIFF, ElemPressure, AllocationsDone
 
  
 !------------------------------------------------------------------------------
