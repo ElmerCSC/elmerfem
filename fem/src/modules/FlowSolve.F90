@@ -480,20 +480,12 @@
 
 !-----------------------------------------------------------------------------     
 
-     ImplicitFriction = ListGetLogical( Solver % Values, &
-          'Implicit Friction', GotIt )
-     IF ( .NOT. GotIt ) THEN
-       ImplicitFriction = .FALSE.
-     ELSE
-       CALL INFO('FlowSolve','Implicit Friction activated',Level=3)
-       WRITE(FrictionName,*) 'Implicit Friction Coefficient'
-       DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
-       IF (ImplicitFrictionDirection) THEN
-         WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName) 
-         CALL INFO('FlowSolve',Message)
-       END IF
+     DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
+     IF (ImplicitFrictionDirection) THEN
+       WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName) 
+       CALL INFO('FlowSolve',Message)
      END IF
-
+   
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
 !------------------------------------------------------------------------------
@@ -1225,7 +1217,6 @@
             CALL Default1stOrderTime( MASS, STIFF, FORCE )
           END IF
 
-          
 !------------------------------------------------------------------------------
 !         Add local stiffness matrix and force vector to
 !         global matrix & vector
@@ -1234,10 +1225,6 @@
 !------------------------------------------------------------------------------
         END IF
       END DO
-
-
-
-      
 !------------------------------------------------------------------------------
       !
       ! IMPLEMENT NOSLIP WALL BC CODE:
@@ -1260,7 +1247,17 @@
 
       CALL DefaultFinishBoundaryAssembly()
      
-      CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
+      !------------------------------------------------------------------------------
+      !     Implicit Friction Boundaries
+       !------------------------------------------------------------------------------     
+      IF (ImplicitFrictionDirection) THEN
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName=TRIM(DirectionName)  )
+      ELSE
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient' )
+      END IF
+      
+
+      
       
       CALL DefaultFinishAssembly()
 
@@ -1270,19 +1267,6 @@
       CALL DefaultDirichletBCs()
       CALL Info( 'FlowSolve', 'Dirichlet conditions done', Level=4 )
 
-
-!------------------------------------------------------------------------------
-!     Implicit Friction Boundaries
-!------------------------------------------------------------------------------     
-      IF (ImplicitFriction) THEN
-        IF (ImplicitFrictionDirection) THEN
-          CALL SetImplicitFriction(Model, Solver,TRIM(FrictionName), DirectionName=TRIM(DirectionName)  )
-        ELSE
-          CALL SetImplicitFriction(Model, Solver,TRIM(FrictionName) )
-        END IF
-      END IF
-
-      
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
