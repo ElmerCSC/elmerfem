@@ -2292,6 +2292,8 @@ CONTAINS
    !--------------------------------------------------------------------
    CALL CreateDiscontMesh(Model,Mesh)
 
+   CALL CreateIntersectionBCs(Model,Mesh)
+  
    ! Deallocate some stuff no longer needed
    !------------------------------------------------------------------
    CALL LoadMeshStep( 6 )
@@ -25824,118 +25826,239 @@ CONTAINS
   !> dimensional boundaries. This may be usefull for 3D meshes where 1D meshes have not been
   !> create in advance.
   !-------------------------------------------------------------------
-  SUBROUTINE CreateInterfaceBCs(Model, Mesh)
+  SUBROUTINE CreateIntersectionBCs(Model, Mesh)
 
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
-    TYPE(Element_t), POINTER :: Element, Parent, Face, Face2, Enew
-    INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,i2,j,j2,k,k2,e,e2,l,n,t,istat,newbcs,newcnt
+    TYPE(Element_t), POINTER :: Element, Element2, Enew, Face, Face2, Parent
+    INTEGER, POINTER :: NodeIndexes(:), NodeIndexes2(:), EdgeIndexes(:), EdgeIndexes2(:), ParentBCs(:)
+    INTEGER :: i,i2,j,j2,k,k2,e,e2,l,n,n2,m,nbc,nbulk,nold,t,t2,istat,newbcs,newcnt,bc_id
     TYPE(Element_t), POINTER :: NewElements(:)
-    INTEGER, ALLOCATABLE :: Face2Boundary(:), InterfaceBCs(:,:)
+    TYPE(ValueList_t), POINTER :: BC
+    INTEGER, ALLOCATABLE :: BoundaryId(:), IntersectionBCs(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
-    LOGICAL :: ElementsAllocated 
+    LOGICAL :: Found, Hit, ElementsAllocated 
     
-    IF( .NOT. ListCheckPresentAnyBC( Model,'Intersection BC') ) RETURN
-    
+    ! Count how many of the BCs are intersection BCs that we need to determine
+    j = 0
+    DO bc_id=1,Model % NumberOfBCs
+      BC => Model % BCs(bc_id) % Values
+      IF( ListCheckPresent( BC,'Intersection BC' ) ) j = j+1 
+    END DO
+    NewBCs = j
+    IF(NewBCs==0) RETURN
+
+    CALL Info('CreateIntersectionBCs',&
+        'Number of intersection BCs to determine: '//TRIM(I2S(NewBCs)),Level=5)
+
+    ! Create a fast look-up table that define the new BC indexes and the parent BCs
+    ALLOCATE(IntersectionBCs(j,4))
+    IntersectionBCs = 0
+    j = 0
+    DO bc_id=1,Model % NumberOfBCs
+      BC => Model % BCs(bc_id) % Values
+      ParentBCs => ListGetIntegerArray( BC,'Intersection BC',Found )
+      IF(.NOT. Found ) CYCLE
+      j = j + 1
+      IF(SIZE(ParentBCs) /= 2 ) CALL Fatal('CreateIntersectionBCs','Only available for two parents!')
+      IntersectionBCs(j,1) = Model % BCs(bc_id) % Tag
+      IntersectionBCs(j,2:3) = ParentBCs(1:2)
+    END DO
 
     IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
-      CALL FindMeshEdges( Mesh )
+      CALL FindMeshEdges( Mesh ) 
     END IF
 
-    ALLOCATE( Face2Boundary(Mesh % NumberOfFaces) )
-    Face2Boundary = 0
+    ElementsAllocated = .FALSE.
+    nbulk = Mesh % NumberOfBulkElements
+    nbc = Mesh % NumberOfBoundaryElements
+    nold = nbulk + nbc
 
-    DO t=1,Mesh % NumberOfBoundaryElements
-      k = Mesh % NumberOfBulkElements + t
-      Element => Mesh % Elements(t)
-      IF( Element % Type % ElementCode < 300 ) CYCLE
+    ALLOCATE( EdgeDone( Mesh % NumberOfEdges ), BoundaryId( nbc ) )
+    BoundaryId = 0
 
-      Face => NULL()
-      Parent => Element % BoundaryInfo % Left
-      IF(ASSOCIATED(Parent) ) THEN
-        Face => Find_Face( Mesh, Parent, Element )
-      END  IF
-      IF(.NOT. ASSOCIATED(Face) ) THEN
-        Parent => Element % BoundaryInfo % Right
-        IF(ASSOCIATED(Parent) ) THEN
-          Face => Find_Face( Mesh, Parent, Element )
-        END  IF
-      END IF
-      IF( ASSOCIATED( Face ) ) THEN
-        Face2Boundary(Face % ElementIndex) = k
+    DO t=1,nbc
+      Element => Mesh % Elements(nbulk+t)
+      
+      ! Only treat 2D boundary elements
+      IF( Element % TYPE % ElementCode < 300 ) CYCLE
+
+      DO bc_id=1,Model % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > Model % NumberOfBCs ) CYCLE
+
+      IF( ANY(IntersectionBCs(:,2)==bc_id .OR. IntersectionBCs(:,3)==bc_id)) THEN
+        BoundaryId(t) = bc_id
       END IF
     END DO
-    
-    ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
 
-    ElementsAllocated = .FALSE.
-100 EdgeDone = .FALSE.
-    
-    DO t=1,Mesh % NumberOfBulkElements 
-      Element => Mesh % Elements(t)
-      
-      IF( Element % TYPE % ElementCode < 500 ) CYCLE
-
-      DO i=1,Element % TYPE % NumberOfFaces
-        j = Element % FaceIndexes(i)
-        Face => Mesh % Faces(j) 
-        k = Face2Boundary(j)
-        IF(ALL(InterfaceBCs(:,2) /= k )) CYCLE
-
-        DO i2=1,Element % TYPE % NumberOfFaces
-          IF(i2==i) CYCLE
-          j2 = Element % FaceIndexes(i2)
-          Face2 => Mesh % Faces(j2)
-          k2 = Face2Boundary(j2)
-          IF(ALL(InterfaceBCs(:,3) /= k2 )) CYCLE
+    n = COUNT( BoundaryId > 0 )
+    CALL Info('CreateIntersectionBCs','Number of candidate intersection parents: '//TRIM(I2S(n)))
         
-          DO l=1,newbcs
-            IF( InterfaceBCs(l,2) == k .AND. InterfaceBCs(l,3) == k2 ) THEN              
-              DO e = 1,Face % TYPE % NumberOfEdges
-                IF( EdgeDone( Face % EdgeIndexes(e) ) ) CYCLE
-                DO e2 = 1,Face2 % TYPE % NumberOfEdges
-                  IF( Face % EdgeIndexes(e) == Face2 % EdgeIndexes(e2) ) THEN
-                    EdgeDone( Face % EdgeIndexes(e) ) = .TRUE.
-                    NewCnt = NewCnt + 1 
-                    IF( ElementsAllocated ) THEN
-                      Enew => Mesh % Elements(n+NewCnt)        
-                      ALLOCATE(Enew % BoundaryInfo)         
-                      Enew % PartIndex = Element % PartIndex
-                      Enew % ElementIndex = n + NewCnt
-                      Enew % TYPE => Mesh % Edges(e) % Type
-                      CALL AllocateVector( ENew % NodeIndexes, n)
-                      Enew % NDOFs = n
-                      Enew % EdgeIndexes => NULL()
-                      Enew % FaceIndexes => NULL()
-                      Enew % BoundaryInfo % Constraint = InterfaceBCs(l,1)
-                    END IF
-                    EXIT
-                  END IF
-                END DO
-              END DO
+    !DO i=1,10
+    !  PRINT *,'BCs of ind:',COUNT(BoundaryId == i)
+    !END DO
+
+    
+    ! Go the new boundary elements over two times.
+    ! On the 1st loop just count the number of new elements.
+    ! On the 2nd lopp add the new elements in the element list. 
+100 EdgeDone = .FALSE.
+    NewCnt = 0
+
+    DO t=1,nbc
+      j = BoundaryId(t) 
+      IF(j==0) CYCLE
+      Element => Mesh % Elements(nbulk+t)
+      NodeIndexes => Element % NodeIndexes
+      n = Element % Type % NumberOfNodes
+      
+      DO t2=t+1,nbc
+        j2 = BoundaryId(t2) 
+        IF(j2==0) CYCLE
+        Element2 => Mesh % Elements(nbulk+t2)
+        NodeIndexes2 => Element2 % NodeIndexes
+        n2 = Element2 % TYPE % NumberOfNodes
+
+        ! Do we have any common nodes. Some are required...
+        k = 0
+        DO i=1,n
+          IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) k = k+1
+        END DO
+        IF(k<2) CYCLE
+
+        DO l=1,newbcs
+          ! Do we have a suitable pair of indexes for the parents
+          IF( .NOT. ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
+              ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) CYCLE
+
+          EdgeIndexes => Element % EdgeIndexes
+          IF(ASSOCIATED(EdgeIndexes)) THEN
+            Face => Element
+          ELSE
+            Face => NULL()
+            IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+              Face => Find_Face(Mesh, Element % BoundaryInfo % Left, Element )
             END IF
+            IF(.NOT. ASSOCIATED(Face) ) THEN
+              IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+                Face => Find_Face(Mesh, Element % BoundaryInfo % Right, Element )
+              END IF
+            END IF
+            IF(ASSOCIATED( Face ) ) THEN
+              EdgeIndexes => Face % EdgeIndexes
+            ELSE
+              CALL Fatal('CreateIntersectionBCs','EdgeIndexes not associated!')
+            END IF
+          END IF
+
+          DO i=1,Face % TYPE % NumberOfEdges
+            e = EdgeIndexes(i)          
+            IF( EdgeDone(e) ) CYCLE
+
+            EdgeIndexes2 => Element2 % EdgeIndexes
+            IF(ASSOCIATED(EdgeIndexes2)) THEN
+              Face2 => Element2
+            ELSE
+              Face2 => NULL()
+              IF( ASSOCIATED( Element2 % BoundaryInfo % Left ) ) THEN
+                Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Left, Element2 )
+              END IF
+              IF(.NOT. ASSOCIATED(Face2) ) THEN
+                IF( ASSOCIATED( Element2 % BoundaryInfo % Right ) ) THEN
+                  Face2 => Find_Face(Mesh, Element2 % BoundaryInfo % Right, Element2 )
+                END IF
+              END IF
+              IF(ASSOCIATED( Face2 ) ) THEN
+                EdgeIndexes2 => Face2 % EdgeIndexes
+              ELSE
+                CALL Fatal('CreateIntersectionBCs','EdgeIndexes2 not associated!')
+              END IF
+            END IF
+
+            DO i2=1,Face2 % TYPE % NumberOfEdges
+              e2 = EdgeIndexes2(i2)
+
+              IF(e==e2) THEN
+                EdgeDone(e) = .TRUE.
+                NewCnt = NewCnt + 1
+
+                IF( ElementsAllocated ) THEN
+                  Enew => Mesh % Elements(nold+NewCnt)        
+                  ALLOCATE(Enew % BoundaryInfo)         
+                  Enew % PartIndex = Element % PartIndex
+                  Enew % ElementIndex = nold + NewCnt
+                  Enew % TYPE => Mesh % Edges(e) % TYPE
+
+                  m = Enew % TYPE % NumberOfNodes
+                  CALL AllocateVector( ENew % NodeIndexes, m)
+                  Enew % NodeIndexes = Mesh % Edges(e) % NodeIndexes
+                  Enew % NDOFs = m
+                  Enew % BoundaryInfo % Constraint = IntersectionBCs(l,1)
+                  Enew % BoundaryInfo % Left => Element
+                  Enew % BoundaryInfo % Right => Element2
+
+                  Enew % EdgeIndexes => NULL()
+                  Enew % FaceIndexes => NULL()
+                  Enew % PDefs => NULL()
+                  Enew % BubbleIndexes => NULL()
+
+                  IntersectionBCs(l,4) = IntersectionBCs(l,4) + 1
+                END IF
+
+                EXIT
+              END IF
+            END DO
+            
           END DO
         END DO
       END DO
     END DO
 
     IF( NewCnt == 0 ) THEN
-      CALL Info('CreateInterfaceBCs','Could not find any additional interface elements!')
+      CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')
+      RETURN
     ELSE IF(.NOT. ElementsAllocated ) THEN
-      n = SIZE( Mesh % Elements ) 
-      ALLOCATE( NewElements(n + NewCnt ) )
-      CALL Info('CreateInterfaceBCs','Allocated for '//TRIM(I2S(NewCnt))//' new boundary elements!',Level=6)
-      NewElements(1:n) = Mesh % Elements
+      ALLOCATE( NewElements(nold + NewCnt ) )
+      CALL Info('CreateIntersectionBCs','Allocated for '//TRIM(I2S(NewCnt))//' new boundary elements!',Level=6)
+
+      NewElements(1:nold) = Mesh % Elements(1:nold)
+
+      DO i=nbulk+1,nold
+        Element => Mesh % Elements(i)        
+        IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) CYCLE
+        
+        Parent => Element % BoundaryInfo % Left
+        IF(ASSOCIATED(Parent)) THEN
+          NewElements(i) % BoundaryInfo % Left => NewElements(Parent % ElementIndex)
+        END IF
+
+        Parent => Element % BoundaryInfo % Right
+        IF(ASSOCIATED(Parent)) THEN
+          NewElements(i) % BoundaryInfo % Right => NewElements(Parent % ElementIndex)
+        END IF
+      END DO
+
       DEALLOCATE(Mesh % Elements)
       Mesh % Elements => NewElements
+      Mesh % NumberOfBoundaryElements = nbc + NewCnt
       ElementsAllocated = .TRUE.
+
+      ! Redo the loop but this time also create the line element. 
       GOTO 100 
     END IF
 
-    CALL Info('CreateInterfaceBCs','All done!',Level=10)
+    IF( InfoActive(10) ) THEN
+      DO i=1,newbcs
+        CALL Info('CreateIntersectionBCs','New boundary '//TRIM(I2S(IntersectionBCs(i,1)))//&
+            ' with '//TRIM(I2S(IntersectionBCs(i,4)))//' elements')
+      END DO
+    END IF
     
-  END SUBROUTINE CreateInterfaceBCs
+    CALL Info('CreateIntersectionBCs','All done!',Level=10)
+    
+  END SUBROUTINE CreateIntersectionBCs
 
   
 !------------------------------------------------------------------------------
