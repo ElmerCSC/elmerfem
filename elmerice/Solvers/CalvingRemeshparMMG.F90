@@ -1084,12 +1084,6 @@ SUBROUTINE ParMMGRemeshing ( Model, Solver, dt, TransientSimulation )
   LOGICAL :: Parallel
   INTEGER :: i,j,k,n, PairCount
   !------------------------------------------------
-  INTEGER :: NoNeighbours, counter
-  LOGICAL, ALLOCATABLE :: IsNeighbour(:)
-  INTEGER, ALLOCATABLE :: NeighbourList(:), NSharedNodes(:), SharedNodes(:,:),&
-      SharedNodesGlobal(:,:)
-  INTEGER, POINTER :: Neighbours(:)
-
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = "ParMMGRemeshing"
 
 #ifdef HAVE_PARMMG
@@ -1132,9 +1126,6 @@ SUBROUTINE ParMMGRemeshing ( Model, Solver, dt, TransientSimulation )
   !Actually switch the model's mesh
   ! also releases old mesh
   CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
-
-  NoNeighbours = COUNT(IsNeighbour)
-  NeighbourList = PACK( (/ (i, i=1, ParEnv % PEs) /), IsNeighbour)
 
   CALL ReleaseMesh(OutMesh)
   !CALL ReleaseMesh(Mesh)
