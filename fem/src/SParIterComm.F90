@@ -64,6 +64,8 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
   INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
   INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
+  INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
+  INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
 #else
   INCLUDE "mpif.h"
 #endif
