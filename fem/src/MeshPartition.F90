@@ -232,6 +232,15 @@ CONTAINS
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
     END IF
+
+#ifdef HAVE_PARMETIS
+    CALL Info(FuncName, 'Using ParMetis for rebalancing')
+    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+    CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
+    CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
+    CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
+#else
+    CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
     CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
     CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
     CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
@@ -241,6 +250,8 @@ CONTAINS
     CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
     CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
     IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+#endif
+
     !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
     WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
     CALL ListAddNewString( PartParams,"zoltan: imbalance_tol",TRIM(ImbTolStr))
@@ -1982,7 +1993,7 @@ CONTAINS
          GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
     NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes, InitParallel = .TRUE.)    
-    
+
     ! 4) Finally unpack and glue the pieces on an existing mesh
     CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, minind, &
          maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
