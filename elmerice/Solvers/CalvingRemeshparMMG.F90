@@ -70,13 +70,13 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
   !--------------------------------------
   TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
   TYPE(ValueList_t), POINTER :: SolverParams, MeshParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh, DistributedMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
-       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss
+       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss, RNNodes, RNElems
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
@@ -88,7 +88,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, Remesh, HasNeighbour
+       RemeshOccurs,CheckFlowConvergence, Remesh, HasNeighbour, Distributed
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node
@@ -881,7 +881,8 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-    IF(DoAniso) THEN
+    Distributed = .TRUE.
+    IF(DoAniso .AND. .NOT. Distributed) THEN
       ! remeshing but no calving
       IF(ImBoss .AND. .NOT. CalvingOccurs) NewMeshR => GatheredMesh
 
@@ -904,6 +905,78 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
           NewMeshR => NULL()
           NewMeshRR => NULL()
       END IF
+    END IF
+
+    IF(DoAniso .AND. Distributed) THEN
+      ! remeshing but no calving
+      IF(ImBoss .AND. .NOT. CalvingOccurs) THEN
+        NewMeshR => GatheredMesh
+      !ELSE IF (ImBoss .AND. CalvingOccurs) THEN
+        !CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+        !DO i=1, NewMeshR % NumberOfNodes
+          !PRINT*, 'boss', i, NewMeshR % ParallelInfo % GlobalDOFs(i)
+          !NewMeshR % ParallelInfo % GlobalDOFs
+        !END DO
+      END IF
+
+      IF(.NOT. ImBoss) THEN
+        NewMeshR => AllocateMesh( 0, 0, 0, InitParallel = .TRUE.)
+        ALLOCATE( NewMeshR % ParallelInfo % GlobalDofs( 0 ))
+        !NewMeshR % ParallelInfo % GlobalDofs = 0
+      END IF
+
+      !IF(.NOT. ImBoss) PRINT*, ParEnv % MyPE, 'meshcheck', NewMeshR % ParallelInfo % GlobalDOFs
+      !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
+      !CALL RenumberGDOFs(Mesh, NewMeshR)
+
+      !and global element numbers
+      !CALL RenumberGElems(NewMeshR)
+
+
+      ! share fixed nodes
+      ! assumption here is globaldofs == nodenumber
+      !
+
+      IF (ImBoss) THEN
+        RNNodes = NewMeshR % NumberOfNodes
+        RNElems = NewMeshR % NumberOfBulkElements + NewMeshR % NumberOfBoundaryElements
+
+        DO i=1, RNNodes
+          NewMeshR % ParallelInfo % GlobalDOFs(i) = i
+        END DO
+        DO i=1, RNElems
+          NewMeshR % Elements(i) % GElementIndex = i
+        END DO
+      END IF
+      CALL MPI_BCAST(RNNodes, 1, MPI_INTEGER, my_cboss, ELMER_COMM_WORLD, ierr)
+      CALL MPI_BCAST(RNElems, 1, MPI_INTEGER, my_cboss, ELMER_COMM_WORLD, ierr)
+      IF(.NOT. ImBoss) ALLOCATE(new_fixed_node(RNNodes), new_fixed_elem(RNElems))
+      CALL MPI_BCAST(new_fixed_node,RNNodes,MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+      CALL MPI_BCAST(new_fixed_elem,RNElems, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
+
+      CALL Zoltan_Interface( Model, NewMeshR, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+
+      DistributedMesh => RedistributeMesh(Model, NewMeshR, .TRUE., .FALSE.)
+      CALL ReleaseMesh(NewMeshR)
+
+      !remeshing for calvign and no calving
+      !not sure if this works in parallel
+      CALL GetCalvingEdgeNodes(DistributedMesh, .FALSE., REdgePairs, RPairCount)
+      !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+      MeshParams => GetMaterial(Model % Mesh % Elements(1))
+      CALL DistributedRemeshParMMG(Model, DistributedMesh, NewMeshRR, REdgePairs, &
+                RPairCount,new_fixed_node,new_fixed_elem, MeshParams)
+      CALL ReleaseMesh(NewMeshR)
+      NewMeshR => NewMeshRR
+      NewMeshRR => NULL()
+
+      !Update parallel info from old mesh nodes (shared node neighbours)
+      CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+      CALL ReleaseMesh(GatheredMesh)
+      ! CALL ReleaseMesh(NewMeshR)
+      GatheredMesh => NewMeshR
+      NewMeshR => NULL()
+      NewMeshRR => NULL()
     END IF
 
    !Wait for all partitions to finish
@@ -983,3 +1056,91 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
    CALL ResetMeshUpdate(Model, Solver)
 
 END SUBROUTINE CalvingRemeshParMMG
+
+! test routine for parallel remeshing of a distributed mesh
+SUBROUTINE ParMMGRemeshing ( Model, Solver, dt, TransientSimulation )
+
+  USE MeshUtils
+  USE CalvingGeometry
+  USE MeshPartition
+  USE MeshRemeshing
+
+#ifdef HAVE_PARMMG
+#include "parmmg/libparmmgtypesf.h"
+#endif
+  IMPLICIT NONE
+
+!-----------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t), TARGET :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!-----------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh, OutMesh, FinalMesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  REAL(kind=dp), POINTER :: WorkReal(:)
+  INTEGER, POINTER :: WorkPerm(:)
+  INTEGER, ALLOCATABLE :: EdgePairs(:,:)
+  LOGICAL :: Parallel
+  INTEGER :: i,j,k,n, PairCount
+  !------------------------------------------------
+  INTEGER :: NoNeighbours, counter
+  LOGICAL, ALLOCATABLE :: IsNeighbour(:)
+  INTEGER, ALLOCATABLE :: NeighbourList(:), NSharedNodes(:), SharedNodes(:,:),&
+      SharedNodesGlobal(:,:)
+  INTEGER, POINTER :: Neighbours(:)
+
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = "ParMMGRemeshing"
+
+#ifdef HAVE_PARMMG
+
+  IF(ParEnv % PEs > 1) THEN
+      Parallel = .TRUE.
+  ELSE
+      CALL FATAL(Solvername, 'Needs to be run in parallel')
+  END IF
+
+  Mesh => Model % Mesh
+  SolverParams => GetSolverParams()
+
+  n = Mesh % NumberOfNodes
+  ALLOCATE(WorkPerm(n), WorkReal(n))
+  WorkReal = 0.0_dp
+  WorkPerm = [(i,i=1,n)]
+  CALL VariableAdd(Mesh % Variables, Mesh, Solver, "dummy", &
+        1, WorkReal, WorkPerm)
+  NULLIFY(WorkReal,WorkPerm)
+
+  CALL GetCalvingEdgeNodes(Mesh, .FALSE., EdgePairs, PairCount)
+
+  CALL DistributedRemeshParMMG(Model, Mesh,OutMesh, EdgePairs, PairCount,Params=SolverParams)
+
+  !Now each partition has GatheredMesh, we need to renegotiate globalDOFs
+  CALL RenumberGDOFs(Mesh, OutMesh)
+
+  !and global element numbers
+  CALL RenumberGElems(OutMesh)
+
+  CALL Zoltan_Interface( Model, OutMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+
+  FinalMesh => RedistributeMesh(Model, OutMesh, .TRUE., .FALSE.)
+
+  FinalMesh % Name = TRIM(Mesh % Name)
+  FinalMesh % OutputActive = .TRUE.
+  FinalMesh % Changed = .TRUE.
+
+  !Actually switch the model's mesh
+  ! also releases old mesh
+  CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
+
+  NoNeighbours = COUNT(IsNeighbour)
+  NeighbourList = PACK( (/ (i, i=1, ParEnv % PEs) /), IsNeighbour)
+
+  CALL ReleaseMesh(OutMesh)
+  !CALL ReleaseMesh(Mesh)
+
+#else
+  CALL FATAL(SolverName, 'ParMMG needs to be installed to use this solver!')
+#endif
+
+END SUBROUTINE ParMMGRemeshing
