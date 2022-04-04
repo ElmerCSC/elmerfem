@@ -4021,6 +4021,11 @@ CONTAINS
     !Loop through all DOFS with barrier before shared nodes 
     NodeCount = 0
     DO i=1, SIZE(FinalDOFs)
+      IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+        DO j=1, UnfoundCount
+          IF(UnfoundDOFS(j) == FinalDOFs(i)) nodecount = j
+        END DO
+      END IF
       ! no need for a mask since nodes in both arrays in ascending order
       IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
          ! ok to barrier since all parts enter loop and
@@ -4031,7 +4036,6 @@ CONTAINS
          !always finds correct translation from DOFs to process nodenumber since
          !all arrays in ascending order
          IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-            NodeCount = NodeCount + 1
             PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
             ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
             ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
@@ -4043,7 +4047,6 @@ CONTAINS
          END IF
       ! no need for a mask since nodes in both arrays in ascending order
       ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-         NodeCount = NodeCount + 1
          !nodenumber = UnfoundIndex(nodecount) since different on each process
          !always finds correct translation from DOFs to process nodenumber since
          !all arrays in ascending order
@@ -4613,7 +4616,7 @@ CONTAINS
       TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
       LOGICAL, POINTER :: UnfoundNodes(:)
       !----------------------------
-      INTEGER :: i, UnfoundCount, ClusterSize, ierr, CountDOFs, CountRepeats, min_val, max_val, &
+      INTEGER :: i,j, UnfoundCount, ClusterSize, ierr, CountDOFs, CountRepeats, min_val, max_val, &
           previous, NodeCount
       INTEGER, ALLOCATABLE :: PartUnfoundCount(:), UnfoundDOFS(:), UnfoundIndex(:),  disps(:), &
           AllUnfoundDOFS(:), unique(:), repeats(:), FinalDOFs(:), UnfoundShared(:)
@@ -4672,6 +4675,11 @@ CONTAINS
       !Loop through all DOFS with barrier before shared nodes
       NodeCount = 0
       DO i=1, SIZE(FinalDOFs)
+        IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+          DO j=1, UnfoundCount
+            IF(UnfoundDOFS(j) == FinalDOFs(i)) nodecount = j
+          END DO
+        END IF
         ! no need for a mask since nodes in both arrays in ascending order
         IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
            ! ok to barrier since all parts enter loop and
@@ -4682,7 +4690,6 @@ CONTAINS
            !always finds correct translation from DOFs to process nodenumber since
            !all arrays in ascending order
            IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-              NodeCount = NodeCount + 1
               PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
               ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
               ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
@@ -4694,7 +4701,6 @@ CONTAINS
            END IF
         ! no need for a mask since nodes in both arrays in ascending order
         ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-           NodeCount = NodeCount + 1
            !nodenumber = UnfoundIndex(nodecount) since different on each process
            !always finds correct translation from DOFs to process nodenumber since
            !all arrays in ascending order
