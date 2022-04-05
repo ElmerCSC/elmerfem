@@ -3,6 +3,7 @@
 # If libraries are already defined, do nothing
 IF(ParMetis_LIBRARIES AND ParMetis_INCLUDE_DIR)
   SET(ParMetis_FOUND TRUE)
+  MESSAGE(STATUS "Found ParMetis")
   RETURN()
 ENDIF()
 
