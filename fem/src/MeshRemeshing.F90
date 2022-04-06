@@ -1948,7 +1948,7 @@ END SUBROUTINE Get_ParMMG_Mesh
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params,Angle)
 
   TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
@@ -1956,6 +1956,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
+  REAL(KIND=dp), OPTIONAL :: Angle
   LOGICAL :: Success
   !-----------
   TYPE(Mesh_t), POINTER :: WorkMesh
@@ -2152,12 +2153,18 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   CALL PMMG_SET_IPARAMETER(pmmgMesh, PMMGPARAM_globalnum,&
        1, ierr)
 
-  !Turn off sharp angle detection (0)
-  CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle, &
-       0,ierr)
-  !Option to set angle detection threshold:
-  !CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_angleDetection,&
-  !      85.0_dp,ierr)
+  IF(PRESENT(Angle)) THEN
+    !Turn on sharp angle detection (1)
+    CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle, &
+    1,ierr)
+    !Option to set angle detection threshold:
+    CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_angleDetection,&
+      Angle,ierr)
+  ELSE
+    !Turn off sharp angle detection (0)
+    CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_angle, &
+        0,ierr)
+  END IF
 
   !Take care of fixed nodes/elements if requested
   IF(PRESENT(NodeFixed)) THEN
