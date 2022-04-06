@@ -1065,9 +1065,6 @@ SUBROUTINE ParMMGRemeshing ( Model, Solver, dt, TransientSimulation )
   USE MeshPartition
   USE MeshRemeshing
 
-#ifdef HAVE_PARMMG
-#include "parmmg/libparmmgtypesf.h"
-#endif
   IMPLICIT NONE
 
 !-----------------------------------------------
