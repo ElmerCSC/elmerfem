@@ -354,5 +354,104 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
     Vec(:,:,1:d(3)) = WorkVec
 
   END SUBROUTINE DoubleBdryArraySize
-
 END SUBROUTINE ParallelRemesh
+
+! Subroutine to create metric for anisotrophic remeshing
+! based off a levelset variable
+! currently a USF style subroutine as this is how the calving remeshing works
+! could change to a subroutine called with remeshing
+SUBROUTINE MeshMetricAniso(Model, nodenumber, y, TargetLength)
+
+  USE DefUtils
+
+  IMPLICIT NONE
+
+  TYPE(Model_t) :: Model
+  INTEGER :: nodenumber
+  REAL(KIND=dp) :: y, TargetLength(:)
+  !----------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Variable_t), POINTER :: TimeVar, LSetVar
+  TYPE(Solver_t), POINTER :: Solver
+  REAL(KIND=dp) :: t,told, Dist,lc_mindist, lc_maxdist, lc_min, lc_max,s,dx,dz, LevelSet
+  INTEGER, POINTER :: LSetPerm(:)
+  INTEGER :: i,NNodes
+  LOGICAL :: NewTime,FirstTime=.TRUE., Debug, ZInd, Found
+  REAL(KIND=dp), POINTER :: LSetValues(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="MeshMetricAniso", RemeshVarName
+
+  SAVE :: FirstTime, told, Mesh, NNodes, lc_maxdist, lc_mindist,&
+       lc_max, lc_min, dz, newtime, ZInd
+
+  Debug = .FALSE.
+  Timevar => VariableGet( Model % Variables,'Time')
+  t = TimeVar % Values(1)
+  Solver => Model % Solver
+  SolverParams => Solver % Values
+
+  IF (FirstTime) THEN
+    FirstTime = .FALSE.
+    NewTime = .TRUE.
+    told = t
+
+    Mesh => Model % Mesh
+
+    lc_maxdist = ListGetConstReal(SolverParams, "MeshMetric Max Distance",  Found)
+    IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Max Distance' not set")
+    lc_mindist = ListGetConstReal(SolverParams, "MeshMetric Min Distance",  Found)
+    IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Min Distance' not set")
+    lc_max = ListGetConstReal(SolverParams, "MeshMetric Max LC",  Found)
+    IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Max LC' not set")
+    lc_min = ListGetConstReal(SolverParams, "MeshMetric Min LC",  Found)
+    IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Min LC' not set")
+    ZInd = ListGetLogical(SolverParams, "MeshMetric Z Independent", Found, Default = .FALSE.)
+    IF(.NOT. Found) CALL INFO(FuncName, "Option 'MeshMetric Z Independent' not found. Default is FALSE")
+    IF(ZInd) THEN
+      dz = ListGetConstReal(SolverParams, "MeshMetric Vertical LC",  Found)
+      IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Vertical LC' not set")
+    END IF
+    RemeshVarName = ListGetString(SolverParams, "Remesh Variable Name", Found)
+    IF(.NOT. Found) THEN
+      CALL INFO(FuncName, "Remesh Variable Name not found default is Remesh Levelset")
+      RemeshVarName = TRIM("Remesh Levelset")
+    END IF
+  END IF
+
+  IF(t > told) NewTime = .TRUE. !TODO - replace this with Samuel's mesh counter logic
+  IF(NewTime) THEN
+    told = t
+    NewTime = .FALSE.
+
+    Mesh => Model % Mesh
+    NNodes = Mesh % NumberOfNodes
+
+    !mask is the most computationally expense element of this routine
+    IF(ASSOCIATED(LSetValues)) NULLIFY(LSetValues)
+    IF(ASSOCIATED(LSetPerm)) NULLIFY(LSetPerm)
+
+    LSetVar => VariableGet(Mesh % Variables, RemeshVarName, .TRUE., UnfoundFatal=.TRUE.)
+    LSetValues => LSetVar % Values
+    LSetPerm => LSetVar % Perm
+
+  END IF
+
+  ! absolute value of the levelset eg distance from zero contour
+  LevelSet = ABS(LSetValues(LSetPerm(nodenumber)))
+
+  !Apply caps to this distance:
+  Dist = MAX(LevelSet,lc_mindist)
+  Dist = MIN(LevelSet,lc_maxdist)
+
+  s = (Dist - lc_mindist) / (lc_maxdist - lc_mindist)
+  dx = s*lc_max + (1-s)*lc_min
+
+  IF(.NOT. ZInd) dz = dx
+
+  TargetLength(1) = dx
+  TargetLength(2) = dx
+  TargetLength(3) = dz
+
+  IF(Debug) PRINT *,'Node ',nodenumber,'TargetLength: ',TargetLength,' dist: ',Dist,' s: ',s
+
+END SUBROUTINE MeshMetricAniso

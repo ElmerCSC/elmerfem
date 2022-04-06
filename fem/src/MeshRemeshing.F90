@@ -1963,9 +1963,8 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Variable_t), POINTER :: TimeVar
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:),hminarray(:),hausdarray(:),&
-      WorkReal(:,:,:)
-  REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
+  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:),hminarray(:),hausdarray(:)
+  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL(), WorkArray(:,:) => NULL()
   REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd,RemeshMinQuality,Quality, TargetX
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
        nBCs,NodeNum(1), MaxRemeshIter, mmgloops, ElemBodyID, &
@@ -2039,19 +2038,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
     DO i=1,NNodes
       NodeNum = i
 
-      !CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
-
-      TargetX = TimeVar % Values(1) / 10
-      IF(ABS(InMesh % Nodes % x(i) - TargetX) < 0.1) THEN
-        WorkReal(1,1,1) = 0.03_dp
-      ELSE IF(ABS(InMesh % Nodes % x(i) - TargetX) < 0.3) THEN
-        WorkReal(1,1,1) = 0.1_dp - 0.07_dp * (ABS(ABS(InMesh % Nodes % x(i) - TargetX) - 0.3)/0.3)
-      ELSE
-        WorkReal(1,1,1) = 0.1_dp
-      END IF
-
-      WorkReal(2,1,1) = WorkReal(1,1,1)
-      WorkReal(3,1,1) = WorkReal(1,1,1)
+      CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
 
       Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
       Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
