@@ -227,12 +227,12 @@ MODULE StressLocal
 
        dt = GetTimeStepSize()
        Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
-       IF(dim>=1) THEN
+       IF(dim>=2) THEN
          Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
        ELSE
          Uy = 0._dp
        END IF
-       IF(dim>=2) THEN
+       IF(dim>=3) THEN
          Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
        ELSE
          Uz = 0._dp
