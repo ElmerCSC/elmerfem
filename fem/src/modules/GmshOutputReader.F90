@@ -220,7 +220,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       
       CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
           VarName, dofs = dofs, Perm = Perm )
-      Var => VariableGet( FromMesh % Variables, VarName )
+      Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
       
       DO i=1,NoNodes
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  
