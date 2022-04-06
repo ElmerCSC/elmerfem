@@ -116,7 +116,7 @@ MODULE StressLocal
      INTEGER :: ndim
      LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
      REAL(KIND=dp) :: Pres, Pres0, dt
-     REAL(KIND=dp) :: QSOL(4,ntot), PSOL(4,ntot), SOL(4,ntot), ShearModulus, Viscosity, PrevStress(3,3)
+     REAL(KIND=dp) :: PSOL(4,ntot), SOL(4,ntot), ShearModulus, Viscosity, PrevStress(3,3)
      CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
@@ -221,15 +221,22 @@ MODULE StressLocal
 
        NodalViscosity(1:n) = GetReal( GetMaterial(), 'Viscosity', Found )
 
-
-       SOL = 0; QSOL=0; PSOL = 0
+       SOL = 0; PSOL = 0
        CALL GetVectorLocalSolution( SOL )
        CALL GetVectorLocalSolution( PSOL, tStep=-1 )
 
        dt = GetTimeStepSize()
        Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
-       Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
-       Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
+       IF(dim>=1) THEN
+         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
+       ELSE
+         Uy = 0._dp
+       END IF
+       IF(dim>=2) THEN
+         Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
+       ELSE
+         Uz = 0._dp
+       END IF
 
        PrevStress = 0._dp
      END IF
