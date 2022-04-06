@@ -1656,13 +1656,14 @@ CONTAINS
 
   SUBROUTINE AddToSaveList(Name, Val, ValueIsInteger, ParallelOperator, CheckForDuplicates )
 
-    INTEGER :: n
     CHARACTER(LEN=*) :: Name
-    REAL(KIND=dp) :: Val, ParVal
+    REAL(KIND=dp) :: Val
     LOGICAL, OPTIONAL :: ValueIsInteger
     CHARACTER(LEN=*), OPTIONAL :: ParallelOperator
     LOGICAL, OPTIONAL :: CheckForDuplicates
     !------------------------------------------------------------------------
+    INTEGER :: i,n
+    REAL(KIND=dp) :: ParVal
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)

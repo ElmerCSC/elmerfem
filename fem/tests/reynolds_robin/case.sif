@@ -1,0 +1,116 @@
+! Test case for Robin type of condution in Reynolds equation.
+! P.R. 1.4.2022
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State 
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+
+Body 1
+  Name = "Fluid"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(2) = 1 2
+End 
+
+
+Solver 1
+  Equation = "Reynolds"
+
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+
+  Nonlinear System Max Iterations = 1
+End
+
+
+Solver 2
+  Equation = "ReynoldsPost"
+
+  Procedure = File "ReynoldsSolver" "ReynoldsPostprocess"
+  Calculate Heating = Logical True
+  Calculate Force = Logical True
+  Calculate Flux = Logical True
+
+! As the Reynolds eq. is 2D the results can only be 3D
+  Calculate Force Dim = Integer 3
+  Calculate Flux Dim = Integer 3
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+End 
+
+
+Solver 3
+  Equation = "SaveMaterial"
+  Procedure = File "SaveData" "SaveMaterials"
+  Parameter 1 = String "Gap Height"
+End
+
+
+Material 1
+  Name = "Viscous"
+  Density = 100.0
+  Viscosity = 1.0e-2
+  Gap Height = Variable "Coordinate 2"
+    Real MATC "1.0+0.2*sin(5.0*pi*tx/100)"
+End
+
+
+Boundary Condition 1
+  Name = "inlet"
+  Target Boundaries(1) = 1
+  External Filmpressure = Real 1.2345
+  Filmpressure Transfer Coefficient = Real 1.0
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2
+End
+
+
+Boundary Condition 3
+  Name = "outlet"
+  Target Boundaries(1) = 3
+  FilmPressure = 0.0
+End
+
+Boundary Condition 4
+  Name = "symmetry"
+  Target Boundaries(1) = 4
+End
+
+
+Solver 1 :: Reference Norm = 6.75498603E-01
+Solver 2 :: Reference Norm = 1.13751855E-03
+
+
+

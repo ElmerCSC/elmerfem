@@ -8312,7 +8312,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
     LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
-    INTEGER :: LhsConflicts, NormalConflicts
+    INTEGER :: LhsConflicts, NormalConflicts, ConflictCount
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
@@ -8362,10 +8362,11 @@ CONTAINS
 !------------------------------------------------------------------------------
       ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
       n_comp = 0
-
+      
       IF ( NumberOfBoundaryNodes>0 ) THEN
         BoundaryNormals = 0._dp
-        
+        ConflictCount = 0
+
         DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
                       Model % NumberOfBoundaryElements
           Element => Model % Elements(t)
@@ -8453,8 +8454,9 @@ CONTAINS
                       l = n_comp(Indexes(j))
                       n_comp(Indexes(j)) = l + 1
                       IF( l > 0 ) THEN
-                        IF( SUM( BoundaryNormals(k,:) * nrm ) < 0 ) THEN
-                          CALL Warn(Caller,'Node '//TRIM(I2S(Indexes(j)))//' has conflicting normal directions!')
+                        IF( SUM( BoundaryNormals(k,:) * nrm ) < -EPSILON(s) ) THEN
+                          ConflictCount = ConflictCount + 1
+                          !CALL Warn(Caller,'Node '//TRIM(I2S(Indexes(j)))//' has conflicting normal directions!')
                         END IF
                       END IF
 
@@ -8468,6 +8470,10 @@ CONTAINS
           DEALLOCATE(Condition)
         END DO
 
+        IF( ConflictCount > 0 ) THEN
+          CALL Warn(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!')
+        END IF
+        
         ! Here we go through the periodic projectors and average the normals
         ! such that the normals are the same where the nodes are the same.
         !--------------------------------------------------------------------
@@ -22257,6 +22263,7 @@ CONTAINS
            VeloCoeff(DofT1) = SUM( VeloDir(1:dim,1) * LocalT1 )
            IF( dim == 3 ) VeloCoeff(DofT2) = SUM( VeloDir(1:dim,1) * LocalT2 )
          ELSE
+           k = FlowPerm(j)
            VeloCoeff(DofT1) = FlowVar % Values(Dofs*(k-1)+DofT1) 
            IF(dim==3) VeloCoeff(DofT2) = FlowVar % Values(Dofs*(k-1)+DofT2) 
          END IF
