@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Module utilising ParMMG to perform parallel remeshing
+! *  Subroutine utilising ParMMG to perform parallel remeshing
 ! *
 ! ******************************************************************************
 ! *
@@ -34,12 +34,12 @@
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
-! *  Original Date:
+! *  Original Date: 6/4/22
 ! *
 ! *****************************************************************************/
 
-!------------------------------------------------------------------------------
-!> Initialization for the primary solver: StressSolver. 
+! Subroutine to remesh entire mesh in parallel
+! Uses MeshRemeshing ParMMG remeshing routines
 !------------------------------------------------------------------------------
 SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   LOGICAL, ALLOCATABLE :: Boundaries(:)
   INTEGER :: i,j,k,n, PairCount, ierr, parts, Time
   REAL(kind=dp) :: TimeReal, DetAngle
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = "ParMMGRemeshing", MeshDir, MeshName, tmp,&
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = "ParallelRemesh", MeshDir, MeshName, tmp,&
       SaveMeshName
 !------------------------------------------------
 
