@@ -1209,8 +1209,12 @@
 
        j = FindSolverByProcName(CurrentModel,'ResultOutputSolver')
        IF(j>0) THEN
-         CALL Warn('AddVtuOutputSolverHack','ResultOutputSolver instance already exists, doing nothing!')
-         RETURN
+         pSolver => CurrentModel % Solvers(j)
+         IF( ListGetLogical( pSolver % Values,'Vtu Format',Found) .OR. &
+             ListGetString(pSolver % Values,'Output Format',Found) == 'vtu' ) THEN
+           CALL Warn('AddVtuOutputSolverHack','ResultOutputSolver instance with VTU format already exists, doing nothing!')
+           RETURN
+         END IF
        END IF
               
        ! Remove the post file from the simulation list as it will be dealt by the solver section

@@ -4249,8 +4249,26 @@ use spariterglobals
                    EXIT
                  END IF
                END DO
-             ELSE
-               CALL Fatal('VarsToValuesOnNodes','DG field requires DGIndexes: '//TRIM(Var % Name))              
+             ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+               BLOCK
+                 TYPE(Element_t), POINTER :: Parent
+                 DO j=1,2
+                   IF(j==1) THEN
+                     Parent => Element % BoundaryInfo % Left
+                   ELSE
+                     Parent => Element % BoundaryInfo % Right
+                   END IF
+                   DO i=1,Parent % TYPE % NumberOfNodes
+                     IF( Parent % NodeIndexes(i) == ind) THEN
+                       k1 = Parent % DGIndexes(i)
+                       EXIT
+                     END IF
+                   END DO
+                   IF( k1 > 0 ) THEN
+                     IF(Var % Perm(k1) > 0) EXIT
+                   END IF
+                 END DO
+               END BLOCK
              END IF
              IF( k1 == 0 ) THEN
                CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&

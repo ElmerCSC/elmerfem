@@ -220,7 +220,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       
       CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
           VarName, dofs = dofs, Perm = Perm )
-      Var => VariableGet( FromMesh % Variables, VarName )
+      Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
       
       DO i=1,NoNodes
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  
@@ -231,7 +231,10 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
       READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
-      !PRINT *,'Var Range:',MINVAL( Var % Values ), MAXVAL( Var % Values ) 
+
+      IF( InfoActive(30) ) THEN
+        PRINT *,'Var Range:',TRIM(Var % Name), MINVAL( Var % Values ), MAXVAL( Var % Values )
+      END IF
     END IF ! NodeData
   END DO
 
@@ -288,7 +291,6 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     x1 = x1 + dx
   END IF
 
-  
   Str = ListGetString( SolverParams,'Mask Name',Found) 
   IF( Found ) THEN
     ALLOCATE( NewMaskPerm( ToMesh % NumberOfNodes ) )
@@ -306,7 +308,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   ELSE
     CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables )
   END IF
-
+  
+  
   CALL Info(Caller,'Interpolation complete')
   
 !------------------------------------------------------------------------------

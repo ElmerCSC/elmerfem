@@ -610,58 +610,61 @@
        END IF
 
 
-BLOCK
+       ! This is an add-on for including point like radiators into the system.
+       ! They act as heat sources with known total power that is distributed among the
+       ! surface elements that the point sees.
+       !----------------------------------------------------------------------------------
+       BLOCK
+         REAL(KIND=dp), ALLOCATABLE :: Vals(:)
+         INTEGER, ALLOCATABLE ::  Cols(:)
+         INTEGER :: NofRadiators
+         REAL(KIND=dp), POINTER :: Radiators(:,:)
+         TYPE(ValueList_t), POINTER :: RadList
 
-       REAL(KIND=dp), ALLOCATABLE :: Vals(:)
-       INTEGER, ALLOCATABLE ::  Cols(:)
-       INTEGER :: NofRadiators
-       REAL(KIND=dp), POINTER :: Radiators(:,:)
-       TYPE(ValueList_t), POINTER :: RadList
-       
-       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
-           RadList => Params
+         IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+             RadList => Params
 
-       CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
-       IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
+         CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
+         IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
 
-       NofRadiators = SIZE(Radiators,1)
-     
-       ! Read in the ViewFactors
-       DO i=1,NofRadiators
-         IF( BinaryMode ) THEN
-           READ( VFUnit ) n
-         ELSE
-           READ( VFUnit,* ) n
-         END IF
-           
-         ALLOCATE( Vals(n), Cols(n) )
-	 Vals = 0; Cols = 0
-  
-         DO j=1,n
+         NofRadiators = SIZE(Radiators,1)
+
+         ! Read in the ViewFactors
+         DO i=1,NofRadiators
            IF( BinaryMode ) THEN
-             READ(VFUnit) Cols(j),Vals(j)         
+             READ( VFUnit ) n
            ELSE
-             READ(VFUnit,*) t,Cols(j),Vals(j)         
-           END IF
-           Vals(j) = Vals(j) / Areas(Cols(j))
-           Cols(j) = ElementNumbers(Cols(j))
-         END DO
-
-
-         DO j=1,n
-           BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
-           IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
-             ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
-             BoundaryInfo % Radiators = 0
+             READ( VFUnit,* ) n
            END IF
 
-           BoundaryInfo % Radiators(i) = Vals(j)
-         END DO
+           ALLOCATE( Vals(n), Cols(n) )
+           Vals = 0; Cols = 0
 
-         DEALLOCATE( Cols, Vals )
-       END DO
-       CLOSE(VFUnit)
-END BLOCK
+           DO j=1,n
+             IF( BinaryMode ) THEN
+               READ(VFUnit) Cols(j),Vals(j)         
+             ELSE
+               READ(VFUnit,*) t,Cols(j),Vals(j)         
+             END IF
+             Vals(j) = Vals(j) / Areas(Cols(j))
+             Cols(j) = ElementNumbers(Cols(j))
+           END DO
+
+
+           DO j=1,n
+             BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
+             IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
+               ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
+               BoundaryInfo % Radiators = 0
+             END IF
+
+             BoundaryInfo % Radiators(i) = Vals(j)
+           END DO
+
+           DEALLOCATE( Cols, Vals )
+         END DO
+         CLOSE(VFUnit)
+       END BLOCK
      END IF
 
 !--------------------------------------------------
