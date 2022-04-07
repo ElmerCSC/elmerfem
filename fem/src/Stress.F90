@@ -226,17 +226,22 @@ MODULE StressLocal
        CALL GetVectorLocalSolution( PSOL, tStep=-1 )
 
        dt = GetTimeStepSize()
-       Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
-       IF(dim>=2) THEN
-         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
-       ELSE
+       SELECT CASE(dim)
+       CASE(1)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
          Uy = 0._dp
-       END IF
-       IF(dim>=3) THEN
-         Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
-       ELSE
          Uz = 0._dp
-       END IF
+       CASE(2)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
+         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
+         Uz = 0._dp
+       CASE(3)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
+         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
+         Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
+       CASE DEFAULT
+         CALL Fatal( 'StressCompose', 'Unkown coordinate system dimension' ) 
+       END SELECT
 
        PrevStress = 0._dp
      END IF
@@ -708,7 +713,7 @@ CONTAINS
 
     i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
 
-    IF ( GetNonlinIter()==1) THEN
+    IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
       ve_stress % prevvalues(1,i+1:i+dim**2) = ve_stress % values(i+1:i+dim**2)
     END IF
 
