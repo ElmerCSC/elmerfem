@@ -376,13 +376,12 @@ SUBROUTINE MeshMetricAniso(Model, nodenumber, y, TargetLength)
   TYPE(Solver_t), POINTER :: Solver
   REAL(KIND=dp) :: t,told, Dist,lc_mindist, lc_maxdist, lc_min, lc_max,s,dx,dz, LevelSet
   INTEGER, POINTER :: LSetPerm(:)
-  INTEGER :: i,NNodes
   LOGICAL :: NewTime,FirstTime=.TRUE., Debug, ZInd, Found
   REAL(KIND=dp), POINTER :: LSetValues(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="MeshMetricAniso", RemeshVarName
 
-  SAVE :: FirstTime, told, Mesh, NNodes, lc_maxdist, lc_mindist,&
-       lc_max, lc_min, dz, newtime, ZInd
+  SAVE :: FirstTime, told, Mesh, lc_maxdist, lc_mindist,&
+       lc_max, lc_min, dz, newtime, ZInd, RemeshVarName
 
   Debug = .FALSE.
   Timevar => VariableGet( Model % Variables,'Time')
@@ -424,24 +423,23 @@ SUBROUTINE MeshMetricAniso(Model, nodenumber, y, TargetLength)
     NewTime = .FALSE.
 
     Mesh => Model % Mesh
-    NNodes = Mesh % NumberOfNodes
 
     !mask is the most computationally expense element of this routine
     IF(ASSOCIATED(LSetValues)) NULLIFY(LSetValues)
     IF(ASSOCIATED(LSetPerm)) NULLIFY(LSetPerm)
 
-    LSetVar => VariableGet(Mesh % Variables, RemeshVarName, .TRUE., UnfoundFatal=.TRUE.)
-    LSetValues => LSetVar % Values
-    LSetPerm => LSetVar % Perm
-
   END IF
+
+  LSetVar => VariableGet(Mesh % Variables, RemeshVarName, .TRUE., UnfoundFatal=.TRUE.)
+  LSetValues => LSetVar % Values
+  LSetPerm => LSetVar % Perm
 
   ! absolute value of the levelset eg distance from zero contour
   LevelSet = ABS(LSetValues(LSetPerm(nodenumber)))
 
   !Apply caps to this distance:
   Dist = MAX(LevelSet,lc_mindist)
-  Dist = MIN(LevelSet,lc_maxdist)
+  Dist = MIN(Dist,lc_maxdist)
 
   s = (Dist - lc_mindist) / (lc_maxdist - lc_mindist)
   dx = s*lc_max + (1-s)*lc_min
