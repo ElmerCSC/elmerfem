@@ -558,7 +558,7 @@ CONTAINS
           dPdt = ( Pres - PrevPres ) / dt 
         ELSE 
           dPdt = 0.0_dp
-        END IF        
+        END IF
         DO i = 1,3
           GradPres(i) = SUM( dBasisdx(1:n,i) * ElemPressure(1:n) )
         END DO
@@ -1390,7 +1390,7 @@ CONTAINS
       Pres = SUM(Basis(1:n) * ElemPressure(1:n))
       TotPres = ReferencePressure + Pres
       Gap = SUM(Basis(1:n) * GapHeight(1:n))
-      DO i=1,dim
+      DO i=1,3
         GradPres(i) = SUM(dBasisdx(1:n,i) * ElemPressure(1:n))
       END DO
 
