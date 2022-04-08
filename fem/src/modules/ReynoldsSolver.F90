@@ -1140,28 +1140,38 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------
         !       Get velocities
         !------------------------------------------------------------------------------                
-        Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
-        Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
-        Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
-        UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
-        IF(.NOT. UseVelocity) THEN
-          Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
-          Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
-          Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+        UseVelocity = .FALSE.
+        GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
+        IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
+          Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
+          Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
+          Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
           UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+        END IF
+        IF(.NOT. UseVelocity) THEN
+          IF( ListCheckPrefix( Material,'Surface Velocity') ) THEN
+            Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
+            Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
+            Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+            UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+          END IF
         END IF
         
         IF(.NOT. UseVelocity) THEN
-          Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
-          Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
-          Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
-          IF(.NOT. (GotIt .OR. GotIt2 .OR. GotIt3)) THEN
-            Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
-            Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
-            Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+          IF( ListCheckPrefix( Equation,'Tangent Velocity') ) THEN
+            Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
+            Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
+            Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
+          END IF
+          IF(.NOT. (GotIt .OR. GotIt2 .OR. GotIt3 )) THEN
+            IF( ListCheckPrefix( Material,'Tangent Velocity') ) THEN            
+              Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
+              Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
+              Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+            END IF
           END IF
         END IF
-
+          
         !------------------------------------------------------------------------------
         !       Get material parameters
         !------------------------------------------------------------------------------                
@@ -1202,10 +1212,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         IF( Mode == 0 ) THEN
           ElemDensity(1:n) = GetReal( Material,'Density')
           BotHeight(1:n) = GetReal( Material,'Bedrock Elevation')
-          DO i = 1, n
-            VarResult % Values(VarResult % Perm(NodeIndexes)) = Pressure(PressurePerm(NodeIndexes)) &
-                - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
-          END DO
+          VarResult % Values(VarResult % Perm(NodeIndexes)) = Pressure(PressurePerm(NodeIndexes)) &
+              - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
           CYCLE
         END IF
         
@@ -1238,7 +1246,10 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     END DO
 
 
-    IF( Mode == 1 ) THEN
+    IF( Mode == 0) THEN
+      CONTINUE
+      
+    ELSE IF( Mode == 1 ) THEN
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Pressure force ',i,' (N):',Pforce(i)
         CALL Info(Caller,Message,Level=5)
@@ -1267,9 +1278,9 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
 
     ELSE IF( Mode == 2 ) THEN
-      
+      CONTINUE
 
-    ELSE
+    ELSE IF( Mode == 3 ) THEN
       HeatTotal = HeatPres + HeatSlide
       WRITE(Message,'(A,T35,ES15.4)') 'Pressure heating (W): ',HeatPres
       CALL Info(Caller,Message,Level=5)
@@ -1281,7 +1292,11 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     END IF
 
   END DO
+
   
+  CALL Info(Caller,'Finished computing postprocessing fields',Level=8)
+  CALL Info(Caller,'--------------------------------------------------',Level=8)
+
 
 CONTAINS
 
