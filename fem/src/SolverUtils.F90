@@ -18325,12 +18325,14 @@ CONTAINS
         NodeHits = 0
 
         !
-        ! If the user wants, we shall pre-examine interface edges to find whether a limitation of 
+        ! If the user does not prevent, we shall pre-examine interface edges to find whether a limitation of 
         ! implementation is met. Creating imperfect constraints can then be avoided by neglecting 
         ! problematic edges
         !
         Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
-            'Reject Imperfect Couplings', Found) .AND. DrillingDOFs
+            'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE. 
+        Reject_Imperfect = Reject_Imperfect .AND. DrillingDOFs
 
         DO Phase = 0,1         
           EdgeShellCount = 0                  
@@ -18526,6 +18528,7 @@ CONTAINS
 
         Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
             'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE.
 
         CheckWeights = .TRUE.
         IF (CheckWeights) THEN
