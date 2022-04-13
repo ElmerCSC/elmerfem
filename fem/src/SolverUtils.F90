@@ -18245,8 +18245,8 @@ CONTAINS
         INTEGER, ALLOCATABLE :: EdgePerm(:),EdgeShellCount(:),EdgeShellTable(:,:),&
             EdgeSolidCount(:),EdgeSolidTable(:,:)
         INTEGER :: MaxEdgeSolidCount, MaxEdgeShellCount, NoFound
-        INTEGER :: InterfaceN, hits, TotCount, EdgeCount, Phase
-        INTEGER :: p,lf,ls,ii,jj,m,t,l,e1,e2,k1,k2
+        INTEGER :: InterfaceN, EdgeCount, Phase, Interface_Edge_Id
+        INTEGER :: p,lf,ls,ii,jj,m,t,l,k1,k2
         INTEGER :: NormalDir
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -18325,12 +18325,14 @@ CONTAINS
         NodeHits = 0
 
         !
-        ! If the user wants, we shall pre-examine interface edges to find whether a limitation of 
+        ! If the user does not prevent, we shall pre-examine interface edges to find whether a limitation of 
         ! implementation is met. Creating imperfect constraints can then be avoided by neglecting 
         ! problematic edges
         !
         Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
-            'Reject Imperfect Couplings', Found) .AND. DrillingDOFs
+            'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE. 
+        Reject_Imperfect = Reject_Imperfect .AND. DrillingDOFs
 
         DO Phase = 0,1         
           EdgeShellCount = 0                  
@@ -18526,6 +18528,7 @@ CONTAINS
 
         Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
             'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE.
 
         CheckWeights = .TRUE.
         IF (CheckWeights) THEN
@@ -18534,8 +18537,64 @@ CONTAINS
           TestArray = 0.0_dp          
         END IF
 
-        DO t=1,Mesh % NumberOfEdges
-          IF( EdgePerm(t) == 0 ) CYCLE
+        ! Create weights for the averaging of constraints when the drilling DOFs
+        ! formulation is used. For the default shell formulation the counting of
+        ! contraints is more straightforward and the array NodeHits will serve
+        ! for the calculation of weights.
+        !
+        IF (DrillingDOFs) THEN
+          DO t=1,Mesh % NumberOfEdges
+            
+            Interface_Edge_Id = EdgePerm(t)
+            IF( Interface_Edge_Id == 0 ) CYCLE
+
+            Edge => Mesh % Edges(t)
+
+            DO k1 = 1, EdgeShellCount(Interface_Edge_Id)
+
+              ShellElement => Mesh % Elements( EdgeShellTable(Interface_Edge_Id,k1) )
+              
+              ! Get the director at the center of the interface edge
+              d(:) = 0.0_dp
+              DO ii = 1, Edge % Type % NumberOfNodes
+                DO jj = 1, ShellElement % TYPE % NumberOfNodes
+                  IF (ShellElement % NodeIndexes(jj) == Edge % NodeIndexes(ii)) EXIT
+                END DO
+                Director => GetElementalDirectorInt(Mesh, ShellElement, Node=jj)
+                d(1:3) = d(1:3) + Director(1:3)
+              END DO
+
+              d = 1.0_dp/SQRT(SUM(d**2)) * d
+              Director(1:3) = d(1:3)
+
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
+              END DO
+
+              DO k2 = 1, EdgeSolidCount(Interface_Edge_Id)        
+                DO ii = 1, 2
+                  i = Edge % NodeIndexes(ii)           
+                  jf = FPerm(i)      
+                  DO lf = 4, 6
+                    kf = fdofs*(jf-1)+lf
+
+                    IF( ConstrainedF(kf) ) CYCLE
+
+                    IF ((lf-3) /= NormalDir) THEN
+                      IF (CheckWeights) TestArray(kf) = TestArray(kf) + 1.0_dp
+                    END IF
+                  END DO
+                END DO
+              END DO
+            END DO
+          END DO
+        END IF
+
+        PICK_INTERFACE_EDGES: DO t=1,Mesh % NumberOfEdges
+
+          Interface_Edge_Id = EdgePerm(t)
+          IF( Interface_Edge_Id == 0 ) CYCLE         
 
           Edge => Mesh % Edges(t)
           Indexes => Edge % NodeIndexes          
@@ -18552,11 +18611,17 @@ CONTAINS
           ! elements may have different director definitions and then different constraints 
           ! may arise. The following loop is used to construct an average constraint.
           !
-          weight0 = 1.0_dp / EdgeShellCount(EdgePerm(t))
-          DO e1 = 1, EdgeShellCount(EdgePerm(t))
-            k1 = EdgeShellTable(EdgePerm(t),e1) 
+          ! The count of the different approximations of a rotation is 
+          ! EdgeShellCount(Interface_Edge_Id) per an edge. To get a single
+          ! approximation per an edge, we should assemble a fraction 
+          ! 1/EdgeShellCount(Interface_Edge_Id) per an edge to average. We shall
+          ! average the rotations at an edge as constants, so that the same
+          ! weighting works for the weighting of nodal rotations.
+          !
+          weight0 = 1.0_dp / EdgeShellCount(Interface_Edge_Id)
+          SHELLS_SHARING_INTERFACE_EDGE: DO k1 = 1, EdgeShellCount(Interface_Edge_Id)
 
-            ShellElement => Mesh % Elements(k1)
+            ShellElement => Mesh % Elements( EdgeShellTable(Interface_Edge_Id,k1) )
 
             ! Get the director at the center of the interface edge
             d(:) = 0.0_dp
@@ -18597,11 +18662,9 @@ CONTAINS
             ! create matrix entries defining the interaction conditions for the
             ! directional derivatives and corresponding forces. 
             !
-            DO e2 = 1, EdgeSolidCount(EdgePerm(t))
+            SOLIDS_SHARING_INTERFACE_EDGE: DO k2 = 1, EdgeSolidCount(Interface_Edge_Id)
 
-              k2 = EdgeSolidTable(EdgePerm(t),e2) 
-
-              Element => Mesh % Elements(k2)
+              Element => Mesh % Elements( EdgeSolidTable(Interface_Edge_Id,k2) )
               Indexes => Element % NodeIndexes 
 
               n = Element % TYPE % NumberOfNodes
@@ -18615,26 +18678,29 @@ CONTAINS
               ! Evaluate the basis functions for the solid at the center of the interface edge:
               stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
 
-              DO ii = 1, 2
+              NODES_ON_EDGE: DO ii = 1, 2
                 i = Edge % NodeIndexes(ii)           
                 jf = FPerm(i)      
 
-                IF( jf == 0 ) CALL Fatal(Caller,'jf should not be zero!')
-                IF( NodeHits(i) == 0 ) CALL Fatal(Caller,'NodeHits should not be zero!')
+                ! It is not self-evident how we should sum up conditions when several
+                ! shell and solid elements are related to a single edge. Ideally, only
+                ! one visit at a node would be sufficient to write a constraint. Now
+                ! we average by the count of alternative constraints which can be created
+                ! at the node, so that we end up to a direct expression for the nodal
+                ! rotation.
 
-                Weight = 1.0_dp / NodeHits(i) 
+                IF (.NOT. DrillingDOFs) THEN
+                  Weight = 1.0_dp / NodeHits(i) 
+                  weight = weight0 * weight
+                END IF
 
-                ! It is not self-evident how we should sum up conditions where several
-                ! shell elements are related to single edge. In this way the weights at least
-                ! sum up to unity. 
-                weight = weight0 * weight
-                
-                DO lf = 4, 6
+                ROTATION_DOFS: DO lf = 4, 6
                   kf = fdofs*(jf-1)+lf
 
                   IF( ConstrainedF(kf) ) CYCLE
 
-                  IF (DrillingDOFs) THEN
+                  DRILLING_OR_NOT: IF (DrillingDOFs) THEN
+                    Weight = 1.0_dp/TestArray(kf)
                     IF ((lf-3) /= NormalDir) THEN
 
                       DO p = 1,n
@@ -18686,6 +18752,9 @@ CONTAINS
                     ELSE
                       !
                       ! Return one row of deleted values to the shell matrix
+                      !
+                      ! TO DO: Check what happens when several shell elements
+                      ! with different directors share a node
                       !
                       DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                         A_f % Values(k) = A_f0(k)
@@ -18745,27 +18814,25 @@ CONTAINS
                         END IF
                       END DO
                     END DO
-                  END IF
+                  END IF DRILLING_OR_NOT
 
                   ! The diagonal entry should sum up to unity!
                   IF (DrillingDOFs) THEN
                     IF ((lf-3) /= NormalDir) THEN
-                      ! print *, 'UPDATING ENTRY, NODE,DOF,HITS', kf,i,lf,nodehits(i)
                       CALL AddToMatrixElement(A_f,kf,kf,weight)
-                      IF (CheckWeights) TestArray(kf) = TestArray(kf) + weight 
                     END IF
                   ELSE
                     CALL AddToMatrixElement(A_f,kf,kf,weight)
                     IF (CheckWeights) TestArray(kf) = TestArray(kf) + weight
                   END IF
 
-                END DO
-              END DO
-            END DO
-          END DO
-        END DO
+                END DO ROTATION_DOFS
+              END DO NODES_ON_EDGE
+            END DO SOLIDS_SHARING_INTERFACE_EDGE
+          END DO SHELLS_SHARING_INTERFACE_EDGE
+        END DO PICK_INTERFACE_EDGES
 
-        IF (CheckWeights) THEN
+        IF (.NOT. DrillingDOFs .AND. CheckWeights) THEN
           Found = .FALSE.
           DO i=1,SIZE(TestArray)
             IF (ABS(TestArray(i)) > 1.0d-8) THEN

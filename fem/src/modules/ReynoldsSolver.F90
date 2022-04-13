@@ -76,14 +76,15 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
       UseVelocity, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap, &
-      OpenSide,GotExt,GotFlux, AnyBC
+      OpenSide,GotExt,GotFlux, AnyBC, GotPseudoPressure
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap, MinGradPres
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TimeForce(:), &
       Viscosity(:), GapHeight(:), NormalVelocity(:), Velocity(:,:), &
       Admittance(:), Impedance(:), ElemPressure(:), PrevElemPressure(:),  &
-      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),CoeffPres(:)
+      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),CoeffPres(:), &
+      ElemPseudoPressure(:), PseudoPressure(:)
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel, varname
@@ -91,7 +92,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   SAVE ElementNodes, Viscosity, GapHeight, ElemArtif, ElemDensity, Velocity, NormalVelocity, &
       Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, PrevElemPressure, &
-      AllocationsDone, ExtPres, FluxPres, CoeffPres
+      AllocationsDone, ExtPres, FluxPres, CoeffPres, PseudoPressure, GotPseudoPressure, &
+      ElemPseudoPressure
 
 
   CALL Info(Caller,'---------------------------------------',Level=5)
@@ -143,7 +145,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   
   NoIterations = GetInteger( Params,'Nonlinear System Max Iterations',GotIt)
   IF(.NOT. GotIt) NoIterations = 1
-  
+
+
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -171,13 +174,28 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         TimeForce( 2*N ), &
         ElemPressure(N), &
         PrevElemPressure(N), &
+        ElemPseudoPressure(N), &
         STAT=istat )
     IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')
 
+    GotPseudoPressure = .FALSE.
+    DO k=1,Model % NumberOfMaterials
+      Material => Model % Materials(k) % Values
+      CompressibilityModel = ListGetString( Material,'Compressibility Model', GotIt)
+      IF (.NOT. GotIt ) CYCLE
+      IF( CompressibilityModel == 'artificial compressible') THEN
+        GotPseudoPressure = .TRUE.
+        ALLOCATE( PseudoPressure(SIZE(Pressure)),STAT=istat)
+        EXIT
+      END IF
+    END DO
+        
     AllocationsDone = .TRUE.
   END IF
 
-
+  IF(GotPseudoPressure) PseudoPressure = Pressure
+  
+  
 !------------------------------------------------------------------------------
 ! Iterate over any nonlinearity of material or source
 !------------------------------------------------------------------------------
@@ -287,6 +305,10 @@ CONTAINS
         END IF
       END IF
 
+      IF( GotPseudoPressure ) THEN
+        ElemPseudoPressure(1:n) = PseudoPressure( PressurePerm(Element % NodeIndexes))
+      END IF
+      
 
       body_id =  Element % Bodyid
 
@@ -449,15 +471,17 @@ CONTAINS
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: U, V, W, S, MS, MM, MA, L, A, B, HR, SL(3), SLR, SLL(3), F
     REAL(KIND=dp) :: Normal(3), Velo(3), NormalVelo, TangentVelo(3), Damp, Pres, PrevPres, &
-        TotPres, GradPres(3), AbsGradPres, dPdt, Gap, Visc, mfp, Kn, Density, DensityDer
-    LOGICAL :: Stat
+        TotPres, GradPres(3), AbsGradPres, dPdt, Gap, Visc, mfp, Kn, Density, DensityDer, &
+        PseudoPres
+    LOGICAL :: Stat, GotAC
     INTEGER :: i,p,q,t,DIM, NBasis, CoordSys
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
 
 !------------------------------------------------------------------------------
     DIM = CoordinateSystemDimension()
     CoordSys = CurrentCoordinateSystem()
-
+    GotAC = .FALSE.
+    
     Metric = 0.0_dp
     Metric(1,1) = 1.0_dp
     Metric(2,2) = 1.0_dp
@@ -525,7 +549,7 @@ CONTAINS
       Pres = SUM(Basis(1:n) * ElemPressure(1:n))
       Gap = SUM(Basis(1:n) * GapHeight(1:n))
       TotPres = ReferencePressure + Pres
-      
+
       ! If we compute sensitivity of solution we need various derivatives of pressure
       !--------------------------------------------------------------------------------
       IF( SensMode > 0 ) THEN
@@ -534,7 +558,7 @@ CONTAINS
           dPdt = ( Pres - PrevPres ) / dt 
         ELSE 
           dPdt = 0.0_dp
-        END IF        
+        END IF
         DO i = 1,3
           GradPres(i) = SUM( dBasisdx(1:n,i) * ElemPressure(1:n) )
         END DO
@@ -582,7 +606,8 @@ CONTAINS
       CASE (Compressibility_Artificial )
         Density = 1.0d0
         DensityDer = 0.0d0
-     
+        GotAC = .TRUE.
+        
       END SELECT
       
 !------------------------------------------------------------------------------
@@ -609,9 +634,11 @@ CONTAINS
 
       ! Multiplier of dp/dt in terms of artificial copressibility
       ! This is pseudotime, not real time...
-      MA = 0.0_dp
-      IF(CompressibilityType == Compressibility_Artificial ) THEN
+      IF( GotAC ) THEN
+        PseudoPres = SUM(Basis(1:n) * ElemPseudoPressure(1:n) )              
         MA = -Density * Gap * SUM( ElemArtif(1:n) * Basis(1:n) ) / dt
+      ELSE
+        MA = 0.0_dp        
       END IF
         
       ! Normal velocity: right-hand-side force vector
@@ -650,7 +677,8 @@ CONTAINS
          
         F = 0.0_dp
         IF( SensMode == 0 ) THEN
-          F = L + SLR + MA * Pres
+          F = L + SLR
+          IF(GotAC) F = F + MA * PseudoPres
         ELSE IF( SensMode == 1 ) THEN
           IF( TransientSimulation ) THEN
             F = -2.0 * DensityDer * dPdt
@@ -1112,28 +1140,38 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------
         !       Get velocities
         !------------------------------------------------------------------------------                
-        Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
-        Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
-        Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
-        UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
-        IF(.NOT. UseVelocity) THEN
-          Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
-          Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
-          Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+        UseVelocity = .FALSE.
+        GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
+        IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
+          Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
+          Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
+          Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
           UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+        END IF
+        IF(.NOT. UseVelocity) THEN
+          IF( ListCheckPrefix( Material,'Surface Velocity') ) THEN
+            Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
+            Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
+            Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+            UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+          END IF
         END IF
         
         IF(.NOT. UseVelocity) THEN
-          Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
-          Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
-          Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
-          IF(.NOT. (GotIt .OR. GotIt2 .OR. GotIt3)) THEN
-            Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
-            Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
-            Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+          IF( ListCheckPrefix( Equation,'Tangent Velocity') ) THEN
+            Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
+            Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
+            Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
+          END IF
+          IF(.NOT. (GotIt .OR. GotIt2 .OR. GotIt3 )) THEN
+            IF( ListCheckPrefix( Material,'Tangent Velocity') ) THEN            
+              Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
+              Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
+              Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+            END IF
           END IF
         END IF
-
+          
         !------------------------------------------------------------------------------
         !       Get material parameters
         !------------------------------------------------------------------------------                
@@ -1174,10 +1212,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         IF( Mode == 0 ) THEN
           ElemDensity(1:n) = GetReal( Material,'Density')
           BotHeight(1:n) = GetReal( Material,'Bedrock Elevation')
-          DO i = 1, n
-            VarResult % Values(VarResult % Perm(NodeIndexes)) = Pressure(PressurePerm(NodeIndexes)) &
-                - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
-          END DO
+          VarResult % Values(VarResult % Perm(NodeIndexes)) = Pressure(PressurePerm(NodeIndexes)) &
+              - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
           CYCLE
         END IF
         
@@ -1210,7 +1246,10 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     END DO
 
 
-    IF( Mode == 1 ) THEN
+    IF( Mode == 0) THEN
+      CONTINUE
+      
+    ELSE IF( Mode == 1 ) THEN
       DO i=1,3
         WRITE(Message,'(A,I1,A,T35,ES15.4)') 'Pressure force ',i,' (N):',Pforce(i)
         CALL Info(Caller,Message,Level=5)
@@ -1239,9 +1278,9 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
 
     ELSE IF( Mode == 2 ) THEN
-      
+      CONTINUE
 
-    ELSE
+    ELSE IF( Mode == 3 ) THEN
       HeatTotal = HeatPres + HeatSlide
       WRITE(Message,'(A,T35,ES15.4)') 'Pressure heating (W): ',HeatPres
       CALL Info(Caller,Message,Level=5)
@@ -1253,7 +1292,11 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
     END IF
 
   END DO
+
   
+  CALL Info(Caller,'Finished computing postprocessing fields',Level=8)
+  CALL Info(Caller,'--------------------------------------------------',Level=8)
+
 
 CONTAINS
 
@@ -1347,7 +1390,7 @@ CONTAINS
       Pres = SUM(Basis(1:n) * ElemPressure(1:n))
       TotPres = ReferencePressure + Pres
       Gap = SUM(Basis(1:n) * GapHeight(1:n))
-      DO i=1,dim
+      DO i=1,3
         GradPres(i) = SUM(dBasisdx(1:n,i) * ElemPressure(1:n))
       END DO
 
