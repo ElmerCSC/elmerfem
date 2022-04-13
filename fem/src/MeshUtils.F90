@@ -26103,10 +26103,11 @@ CONTAINS
 
         DO t2=t+1,nbc
           j2 = BoundaryId(t2) 
-          IF(j2==0) CYCLE
+          IF(j==j2 .OR. j2==0) CYCLE
           Element2 => Mesh % Elements(nbulk+t2)
           NodeIndexes2 => Element2 % NodeIndexes
           n2 = Element2 % TYPE % NumberOfNodes
+
           
           ! Do we have any common nodes. Some are required...
           k = 0
@@ -26119,10 +26120,14 @@ CONTAINS
           END DO
           IF(k/=1) CYCLE
 
+
           DO l=1,newbcs
+
             ! Do we have a suitable pair of indexes for the parents
-            IF( .NOT. ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
-                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) CYCLE
+
+            IF( .NOT. ( ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
+                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) ) CYCLE
+
             
             NodeDone(e) = .TRUE.
             NewCnt = NewCnt + 1
