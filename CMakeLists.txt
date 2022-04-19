@@ -103,6 +103,7 @@ SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
+SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -451,6 +452,29 @@ ELSE()
 ENDIF(MMG_FOUND)
 
 MESSAGE(STATUS "------------------------------------------------")
+
+# XIOS
+IF (WITH_XIOS)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for XIOS ")
+
+  FIND_PACKAGE(XIOS)
+
+  IF(XIOS_FOUND)
+    SET(HAVE_XIOS TRUE)
+    MARK_AS_ADVANCED(HAVE_XIOS)
+    INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
+    LINK_DIRECTORIES(${XIOS_LIBRARIES})
+    ADD_DEFINITIONS(-DHAVE_XIOS)
+    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
+    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
+    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "  XIOS not found ")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
