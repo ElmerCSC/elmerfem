@@ -1311,7 +1311,8 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-        GlobalBubbles = Pvar % Solver % GlobalBubbles
+        GlobalBubbles = .FALSE.
+        IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &

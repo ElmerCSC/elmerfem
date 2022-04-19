@@ -461,6 +461,13 @@
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
 
+
+!------------------------------------------------------------------------------
+!      Add coordinates such that if there is a solver that is run on creation
+!      the coordinates are already usable then.
+!------------------------------------------------------------------------------
+       IF ( FirstLoad ) CALL AddMeshCoordinates()
+
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
 !      memory for the dofs
@@ -473,11 +480,9 @@
        CALL InitializeIntervals()
 
 !------------------------------------------------------------------------------
-!      Add coordinates and simulation time to list of variables so that
-!      coordinate dependent parameter computing routines can ask for
-!      them...
+!      Add time and other global variables so that we can have dependence on these.
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
+       IF ( FirstLoad ) CALL AddTimeEtc()
 
 !------------------------------------------------------------------------------
 !      Initialize the random seeds so that all simulation depending on that
@@ -1303,50 +1308,89 @@
 
       ! This is a hack that sets Equation flags True for the "Active Solvers".
       ! The Equation flag is the legacy way of setting a Solver active and is still
-      ! used internally.
+      ! used internally. Also set WhenExec flag since we might want to call some
+      ! solvers immediately.
       !----------------------------------------------------------------------------
       DO i=1,CurrentModel % NumberOfSolvers
-
-        eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
-     
+        Solver => CurrentModel % Solvers(i)
+        
+        eq = ListGetString( Solver % Values,'Equation', Found )     
         IF ( Found ) THEN
           nlen = LEN_TRIM(eq)
           DO j=1,CurrentModel % NumberOFEquations
-             ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
-                                'Active Solvers', Found )
-             IF ( Found ) THEN
-                DO k=1,SIZE(ActiveSolvers)
-                   IF ( ActiveSolvers(k) == i ) THEN
-                      CALL ListAddLogical( CurrentModel % Equations(j) % Values, eq(1:nlen), .TRUE. )
-                      EXIT
-                   END IF
-                END DO
-             END IF
+            ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
+                'Active Solvers', Found )
+            IF ( Found ) THEN
+              DO k=1,SIZE(ActiveSolvers)
+                IF ( ActiveSolvers(k) == i ) THEN
+                  CALL ListAddLogical( CurrentModel % Equations(j) % Values, eq(1:nlen), .TRUE. )
+                  EXIT
+                END IF
+              END DO
+            END IF
           END DO
+        END IF
+
+        CALL AddExecWhenFlag( Solver ) 
+     END DO
+
+
+     ! Add the dynamically linked solver to be called later
+     ! First do the initialization for solvers that other solvers except
+     ! before initialization. 
+     !---------------------------------------------------------------------
+     DO i=1,CurrentModel % NumberOfSolvers
+       Solver => CurrentModel % Solvers(i)
+       IF ( Solver % SolverExecWhen /= SOLVER_EXEC_WHENCREATED ) CYCLE
+
+       eq = ListGetString( Solver % Values,'Equation', Found )
+       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+
+       InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
+       IF ( Found .AND. InitSolver ) THEN
+         CALL FreeMatrix( Solver % Matrix )
+         CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
+       END IF
+
+       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+         IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
+           Solver % Mesh => CurrentModel % Meshes
+         END IF
+         CurrentModel % Solver => Solver
+         CALL AddEquationBasics( Solver, eq, Transient )
+         CALL AddEquationSolution( Solver, Transient )
+         
+         IF ( Solver % SolverExecWhen == SOLVER_EXEC_WHENCREATED ) THEN
+           CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
+           CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
+         END IF
        END IF
      END DO
 
-     ! Add the dynamically linked solver to be called later
+     
+     ! And now do the other solvers
      !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
-        eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
-        CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       Solver => CurrentModel % Solvers(i)
+       IF ( Solver % SolverExecWhen == SOLVER_EXEC_WHENCREATED ) CYCLE
 
-        Solver => CurrentModel % Solvers(i)
-        InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
-        IF ( Found .AND. InitSolver ) THEN
-          CALL FreeMatrix( Solver % Matrix )
-          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
-        END IF
+       eq = ListGetString( Solver % Values,'Equation', Found )
+       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       
+       InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
+       IF ( Found .AND. InitSolver ) THEN
+         CALL FreeMatrix( Solver % Matrix )
+         CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
+       END IF
 
-        IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
-          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
-            Solver % Mesh => CurrentModel % Meshes
-          END IF
-          CurrentModel % Solver => Solver
-          CALL AddEquationBasics( Solver, eq, Transient )
-          CALL AddEquationSolution( Solver, Transient )
-        END IF
+       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+         IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
+           Solver % Mesh => CurrentModel % Meshes
+         END IF
+         CurrentModel % Solver => Solver
+         CALL AddEquationBasics( Solver, eq, Transient )
+         CALL AddEquationSolution( Solver, Transient )
+       END IF
      END DO
 
      CALL Info('AddSolvers','Setting up solvers done',Level=12)
@@ -1357,27 +1401,44 @@
 
 
 !------------------------------------------------------------------------------
+!> Adds coordinate as variables to the current mesh structure. 
+!------------------------------------------------------------------------------
+  SUBROUTINE AddMeshCoordinates()
+!------------------------------------------------------------------------------
+     CALL Info('AddMeshCoordinates','Setting mesh coordinates and time',Level=10)
+
+     Mesh => CurrentModel % Meshes 
+     DO WHILE( ASSOCIATED( Mesh ) )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+           Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
+       
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+           Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
+       
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+           Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
+       Mesh => Mesh % Next        
+     END DO
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddMeshCoordinates
+!------------------------------------------------------------------------------
+
+
+
+  !------------------------------------------------------------------------------
 !> Adds coordinate and time variables to the current mesh structure. 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddMeshCoordinatesAndTime()
+  SUBROUTINE AddTimeEtc()
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: DtVar
      
-     CALL Info('AddMeshCoordinatesAndTime','Setting mesh coordinates and time',Level=10)
+     CALL Info('AddTimeEtc','Setting time and other global variables',Level=10)
 
      NULLIFY( Solver )
 
      Mesh => CurrentModel % Meshes 
      DO WHILE( ASSOCIATED( Mesh ) )
-       CALL VariableAdd( Mesh % Variables, Mesh, &
-             Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
-
-       CALL VariableAdd(Mesh % Variables,Mesh, &
-             Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
-
-       CALL VariableAdd(Mesh % Variables,Mesh, &
-             Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
-
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep size', DOFs=1, Values=sSize )
@@ -1439,7 +1500,7 @@
            INTEGER, POINTER :: PartPerm(:)
            INTEGER :: i,n
            
-           CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
+           CALL Info('AddTimeEtc','Adding partitioning also as a field')
            
            n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -1459,7 +1520,7 @@
         
      END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE AddMeshCoordinatesAndTime
+   END SUBROUTINE AddTimeEtc
 !------------------------------------------------------------------------------
 
 

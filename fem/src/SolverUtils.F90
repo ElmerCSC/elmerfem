@@ -9865,17 +9865,19 @@ END FUNCTION SearchNodeL
       
     ELSE
       iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-      IterNo = NINT( iterVar % Values(1) )
-      Solver % Variable % NonlinIter = IterNo
+      IF( ASSOCIATED( iterVar ) ) THEN
+        IterNo = NINT( iterVar % Values(1) )
+        Solver % Variable % NonlinIter = IterNo
 
-      Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
-      IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
+        Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
+        IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
 
-      IF( .NOT. Solver % NewtonActive ) THEN
-        i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
-        IF( Stat .AND. i <= IterNo ) Solver % NewtonActive = .TRUE.
-      END IF     
-      
+        IF( .NOT. Solver % NewtonActive ) THEN
+          i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
+          IF( Stat .AND. i <= IterNo ) Solver % NewtonActive = .TRUE.
+        END IF
+      END IF
+        
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
 
       IF(Skip) THEN
