@@ -46,12 +46,12 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Found, AllocationsDone = .FALSE.
   
-  INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
+  INTEGER :: i,j,k,l,m,n,n1,n2,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
       MaxElemNodes, AlignCoord
   INTEGER :: GmshToElmerType(21), GmshIndexes(27) 
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
-  REAL(KIND=dp) :: x,y,z,GmshVer,dx
+  REAL(KIND=dp) :: x,y,z,GmshVer,dx,minx,maxx
   REAL(KIND=dp), POINTER :: x1(:), x2(:)
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
@@ -267,6 +267,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
   IF( Found ) THEN
     k = ABS( AlignCoord ) 
+
     IF( k == 1 ) THEN
       x1 => FromMesh % Nodes % x
       x2 => ToMesh % Nodes % x
@@ -280,17 +281,25 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//TRIM(I2S(AlignCoord)))
     END IF
       
+    n1 = FromMesh % NumberOfNodes
+    n2 = ToMesh % NumberOfNodes
+
     IF( AlignCoord > 0 ) THEN
-      dx = MINVAL( x2 ) - MAXVAL( x1 ) 
+      minx = MINVAL( x2(1:n2) )
+      maxx = MAXVAL( x1(1:n1) ) 
+      dx = minx - maxx
     ELSE
-      dx = MINVAL( x1 ) - MAXVAL( x2 ) 
+      minx = MINVAL( x1(1:n1) )
+      maxx = MAXVAL( x2(1:n2) ) 
+      dx = minx - maxx
     END IF
+    
     WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//TRIM(I2S(k))//' with: ',dx
     CALL Info(Caller,Message)
     
     x1 = x1 + dx
   END IF
-
+  
   Str = ListGetString( SolverParams,'Mask Name',Found) 
   IF( Found ) THEN
     ALLOCATE( NewMaskPerm( ToMesh % NumberOfNodes ) )

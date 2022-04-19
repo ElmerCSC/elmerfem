@@ -1337,7 +1337,7 @@
 
      ! Add the dynamically linked solver to be called later
      ! First do the initialization for solvers that other solvers except
-     ! before initialization. 
+     ! before initialization having the "when created" slot.  
      !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
        Solver => CurrentModel % Solvers(i)
@@ -1359,16 +1359,15 @@
          CurrentModel % Solver => Solver
          CALL AddEquationBasics( Solver, eq, Transient )
          CALL AddEquationSolution( Solver, Transient )
-         
-         IF ( Solver % SolverExecWhen == SOLVER_EXEC_WHENCREATED ) THEN
-           CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
-           CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
-         END IF
+
+         CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
+         CALL SetCurrentMesh( CurrentModel, Solver % Mesh )
+         CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
        END IF
      END DO
 
      
-     ! And now do the other solvers
+     ! And now initialize the other solvers
      !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
        Solver => CurrentModel % Solvers(i)

@@ -4626,8 +4626,8 @@ CONTAINS
        END IF
     END IF
 
-    bndry_start = Model % NumberOfBulkElements+1
-    bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
+    bndry_start = Mesh % NumberOfBulkElements+1
+    bndry_end   = bndry_start + Mesh % NumberOfBoundaryElements-1
     DirCount = 0
 
     ! check and set some flags for nodes belonging to n-t boundaries
@@ -4642,7 +4642,7 @@ CONTAINS
           Conditional = ActiveCond(BC)
 
           DO t = bndry_start, bndry_end
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                    Model % BCs(BC) % Tag ) CYCLE
 
@@ -4675,7 +4675,7 @@ CONTAINS
             IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
             Conditional = ActiveCond(BC)
           
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                  Model % BCs(BC) % Tag ) CYCLE
           
@@ -4705,7 +4705,7 @@ CONTAINS
 
       IF ( DOF<= 0 ) THEN
         DO t=bndry_start,bndry_end
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           n = Element % TYPE % NumberOfNodes
           DO j=1,n
             k = NT % BoundaryReorder(Element % NodeIndexes(j))
@@ -4730,7 +4730,7 @@ CONTAINS
           Conditional = ActiveCond(BC)
 
           DO t = bndry_start, bndry_end
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                 Model % BCs(BC) % Tag ) CYCLE
             Model % CurrentElement => Element
@@ -4761,7 +4761,7 @@ CONTAINS
             IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
             Conditional = ActiveCond(BC)
             
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                 Model % BCs(BC) % Tag ) CYCLE
             
@@ -4819,7 +4819,7 @@ CONTAINS
           
         ! Set the extruded BCs to zero. Note that only this value is available currently.
         DO t = bndry_start, bndry_end
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           IF(ANY(ChildBCs(1:m) == Element % BoundaryInfo % Constraint ) ) THEN          
             Model % CurrentElement => Element
             n = mGetElementDOFs( Indexes, Element, Model % Solver )            
@@ -4983,13 +4983,13 @@ CONTAINS
         ! check and set some flags for nodes belonging to n-t boundaries
         ! getting set by other bcs:
         ! --------------------------------------------------------------
-        DO t = 1, Model % NumberOfBulkElements+Model % NumberOfBoundaryElements
-          Element => Model % Elements(t)
+        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
           Model % CurrentElement => Element
           n = Element % TYPE % NumberOfNodes
           NodeIndexes => Element % NodeIndexes
           
-          IF( t > Model % NumberOfBulkElements ) THEN
+          IF( t > Mesh % NumberOfBulkElements ) THEN
             DO bc = 1,Model % NumberOfBCs
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
               ValueList => Model % BCs(BC) % Values
@@ -5200,8 +5200,8 @@ CONTAINS
         IF( bc <= Model % NumberOfBCs ) THEN
           IF(.NOT. AnySingleBC ) CYCLE
           ValueList => Model % BCs(BC) % Values
-          ElemFirst =  Model % NumberOfBulkElements + 1 
-          ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+          ElemFirst =  Mesh % NumberOfBulkElements + 1 
+          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         ELSE
           IF(.NOT. AnySingleBF ) CYCLE
           ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
@@ -5221,7 +5221,7 @@ CONTAINS
 
           ind = 0
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
 
             IF( bc <= Model % NumberOfBCs ) THEN
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
@@ -5276,7 +5276,7 @@ CONTAINS
         LumpedNodeSet(ind) = .TRUE.
 
         DO t = ElemFirst, ElemLast
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
 
           IF( bc <= Model % NumberOfBCs ) THEN
             IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
@@ -5363,8 +5363,8 @@ CONTAINS
         CALL List_toListMatrix(A)
       END IF
 
-      ElemFirst =  Model % NumberOfBulkElements + 1 
-      ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+      ElemFirst = Mesh % NumberOfBulkElements + 1 
+      ElemLast = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
       DO bc = 1,Model % NumberOfBCs 
 
@@ -5381,7 +5381,7 @@ CONTAINS
 
           ! Add nodes to the set that are associated with this BC only.
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)            
+            Element => Mesh % Elements(t)            
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
               NodeIndexes => Element % NodeIndexes
               CandNodes(NodeIndexes) = .TRUE.
@@ -5390,7 +5390,7 @@ CONTAINS
 
           ! Remove nodes from the set that may be set by other BCs also. 
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)            
+            Element => Mesh % Elements(t)            
             IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) THEN
               NodeIndexes => Element % NodeIndexes
               CandNodes(NodeIndexes) = .FALSE.
@@ -5414,7 +5414,7 @@ CONTAINS
         LumpedNodeSet(PlaneInds) = .TRUE.
 
         DO t = ElemFirst, ElemLast
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
 
           IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
             n = Element % TYPE % NumberOfNodes
@@ -6995,6 +6995,7 @@ END SUBROUTINE SetNodalSources
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActivePartAll(:), DoneLoad(:)
     LOGICAL :: NodesFound
     TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(*), PARAMETER :: Caller = 'SetNodalLoads'
 
     
@@ -7011,6 +7012,8 @@ END SUBROUTINE SetNodalSources
 ! Go through the boundaries
 !------------------------------------------------------------------------------
 
+    Mesh => Model % Mesh
+    
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
     DO BC=1,Model % NumberOfBCs
@@ -7028,10 +7031,10 @@ END SUBROUTINE SetNodalSources
       DO BC=1,Model % NumberOfBCs
         IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
 
-        DO t = Model % NumberOfBulkElements + 1, &
-          Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+        DO t = Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
           
           Model % CurrentElement => Element
@@ -7065,8 +7068,8 @@ END SUBROUTINE SetNodalSources
       IF(.NOT. ALLOCATED(DoneLoad)) ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )      
       DoneLoad = .FALSE.
 
-      DO t = 1, Model % NumberOfBulkElements 
-        Element => Model % Elements(t)
+      DO t = 1, Mesh % NumberOfBulkElements 
+        Element => Mesh % Elements(t)
         bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force', GotIt)
         
         IF(.NOT. GotIt) CYCLE

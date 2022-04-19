@@ -2340,14 +2340,9 @@ CONTAINS
 ! ListGetRealArray doesn t exist, so we READ it component by component
 ! naming them with suffixes " 1" etc.
        DO j=1,DIM
-         WRITE (Component, '(" ",I1.1)') j
-         IntegrandFunctionComponent = IntegrandFunctionName(1: &
-             LEN_TRIM(IntegrandFunctionName))
-         IntegrandFunctionComponent(LEN_TRIM(IntegrandFunctionName)+1: &
-             LEN_TRIM(IntegrandFunctionName)+2) = Component
+         IntegrandFunctionComponent = TRIM(IntegrandFunctionName)//' '//TRIM(I2S(j))
          IntegrandFunction(1:n,j) = ListGetReal( Model % Simulation, &
-          IntegrandFunctionComponent(1:LEN_TRIM(IntegrandFunctionComponent)), &
-          n, NodeIndexes )
+             IntegrandFunctionComponent, n, NodeIndexes )
        END DO
 
 !------------------------------------------------------------------------------
@@ -2496,14 +2491,9 @@ CONTAINS
 ! ListGetRealArray doesn t exist, so we READ it component by component
 ! naming them with suffixes " 1" etc.
        DO j=1,DIM
-         WRITE (Component, '(" ",I1.1)') j
-         IntegrandFunctionComponent = IntegrandFunctionName(1: &
-             LEN_TRIM(IntegrandFunctionName))
-         IntegrandFunctionComponent(LEN_TRIM(IntegrandFunctionName)+1: &
-             LEN_TRIM(IntegrandFunctionName)+2) = Component
+         IntegrandFunctionComponent = TRIM(IntegrandFunctionName)//' '//TRIM(I2S(j))
          IntegrandFunction(1:n,j) = ListGetReal( Model % Simulation, &
-          IntegrandFunctionComponent(1:LEN_TRIM(IntegrandFunctionComponent)), &
-          n, NodeIndexes )
+             IntegrandFunctionComponent, n, NodeIndexes )
        END DO
 
 !------------------------------------------------------------------------------
