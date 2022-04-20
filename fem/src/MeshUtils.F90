@@ -3415,7 +3415,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     CALL FindMeshEdges(Mesh)
-
+    
     AssignEdges = .FALSE.
     IF (PRESENT(NeedEdges)) AssignEdges = NeedEdges
     
@@ -3423,7 +3423,7 @@ CONTAINS
     ! all elements
     DO i=1,Mesh % NumberOFBulkElements
        Element => Mesh % Elements(i)
-
+       
        ! Iterate each edge of element
        DO j = 1,Element % TYPE % NumberOfEdges
           Edge => Mesh % Edges( Element % EdgeIndexes(j) ) 
@@ -25829,7 +25829,7 @@ CONTAINS
   SUBROUTINE CreateIntersectionBCs(Model, Mesh)
 
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t) :: Mesh
+    TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Element2, Enew, Face, Face2, Parent
     INTEGER, POINTER :: NodeIndexes(:), NodeIndexes2(:), EdgeIndexes(:), EdgeIndexes2(:), ParentBCs(:)
     INTEGER :: i,i2,j,j2,k,k2,e,e2,l,n,n2,m,nbc,nbulk,nold,t,t2,istat,newbcs,newcnt,bc_id
@@ -25837,7 +25837,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     INTEGER, ALLOCATABLE :: BoundaryId(:), IntersectionBCs(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:), NodeDone(:)
-    LOGICAL :: Found, Hit
+    LOGICAL :: Found, Hit, EdgesPresent 
     
     ! Count how many of the BCs are intersection BCs that we need to determine
     j = 0
@@ -25896,21 +25896,21 @@ CONTAINS
 
     n = COUNT( BoundaryId > 0 )
     CALL Info('CreateIntersectionBCs','Number of candidate intersection parents: '//TRIM(I2S(n)))
-
-
+    
     ! Go the new boundary elements over two times.
     ! On the 1st loop just count the number of new elements.
     ! On the 2nd lopp add the new elements in the element list.
     !-------------------------------------------------------------    
+    EdgesPresent = ASSOCIATED( Mesh % Edges )
     IF( Mesh % MeshDim == 3 ) THEN
-      IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
+      IF(.NOT. EdgesPresent ) THEN
         CALL FindMeshEdges( Mesh ) 
       END IF
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )       
       CALL CreateIntersection3D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
-        CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')
-        RETURN
+        CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')        
+        GOTO 1
       END IF
       CALL CreateIntersection3D(.FALSE.,NewCnt)
     ELSE
@@ -25918,7 +25918,7 @@ CONTAINS
       CALL CreateIntersection2D(.TRUE.,NewCnt)
       IF(NewCnt==0) THEN
         CALL Info('CreateIntersectionBCs','Could not find any additional interface elements!')
-        RETURN
+        GOTO 1
       END IF
       CALL CreateIntersection2D(.FALSE.,NewCnt)
     END IF
@@ -25934,12 +25934,20 @@ CONTAINS
             ' with '//TRIM(I2S(IntersectionBCs(i,4)))//' elements')
       END DO
     END IF
-    
+
+1   IF(Mesh % MeshDim == 3 .AND. .NOT. EdgesPresent ) THEN
+      CALL ReleaseMeshEdgeTables( Mesh )
+      CALL ReleaseMeshFaceTables( Mesh )
+    END IF
+      
     CALL Info('CreateIntersectionBCs','All done!',Level=10)
 
 
   CONTAINS
 
+    ! Find intersection between 2D boundaries i.e. the result will
+    ! be a new 1D boundary.
+    !-------------------------------------------------------------
     SUBROUTINE CreateIntersection3D(AllocateOnly,NewCnt)
       LOGICAL :: AllocateOnly
       INTEGER :: NewCnt
@@ -25957,6 +25965,7 @@ CONTAINS
         DO t2=t+1,nbc
           j2 = BoundaryId(t2) 
           IF(j2==0) CYCLE
+          IF(j==j2) CYCLE
           Element2 => Mesh % Elements(nbulk+t2)
           NodeIndexes2 => Element2 % NodeIndexes
           n2 = Element2 % TYPE % NumberOfNodes
@@ -25967,19 +25976,19 @@ CONTAINS
             IF( ANY(NodeIndexes(i) == NodeIndexes2(1:n2) ) ) k = k+1
           END DO
           IF(k<2) CYCLE
-
+          
           DO l=1,newbcs
             ! Do we have a suitable pair of indexes for the parents
-            IF( .NOT. ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
-                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) CYCLE
-
+            IF( .NOT. ( ( IntersectionBCs(l,2) == j .AND. IntersectionBCs(l,3) == j2 ) .OR. &
+                ( IntersectionBCs(l,2) == j2 .AND. IntersectionBCs(l,3) == j ) ) ) CYCLE
+            
             EdgeIndexes => Element % EdgeIndexes
             IF(ASSOCIATED(EdgeIndexes)) THEN
               Face => Element
             ELSE
               Face => NULL()
               IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-                Face => Find_Face(Mesh, Element % BoundaryInfo % Left, Element )
+                Face => Find_Face(Mesh, Element % BoundaryInfo % Left, Element )                
               END IF
               IF(.NOT. ASSOCIATED(Face) ) THEN
                 IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
@@ -25993,6 +26002,9 @@ CONTAINS
               END IF
             END IF
 
+            ! This is a probably candidate as we have two 2D elements of proper type
+            ! sharing at least two nodes. Just have to find for which edges the intersection
+            ! applies. It could sometimes be a false positive also. 
             DO i=1,Face % TYPE % NumberOfEdges
               e = EdgeIndexes(i)          
               IF( EdgeDone(e) ) CYCLE
@@ -26020,6 +26032,9 @@ CONTAINS
               DO i2=1,Face2 % TYPE % NumberOfEdges
                 e2 = EdgeIndexes2(i2)
 
+                ! Ok, we have a hit. Same edge appearing in the proper parent
+                ! boundary elements. Create the actual boundary element only if
+                ! we have already allocated for it. 
                 IF(e==e2) THEN
                   EdgeDone(e) = .TRUE.
                   NewCnt = NewCnt + 1
@@ -26044,6 +26059,7 @@ CONTAINS
                     Enew % PDefs => NULL()
                     Enew % BubbleIndexes => NULL()
 
+                    ! Just a simple counter for the new BCs of this type
                     IntersectionBCs(l,4) = IntersectionBCs(l,4) + 1
                   END IF
 
@@ -26055,7 +26071,8 @@ CONTAINS
           END DO
         END DO
       END DO
-      
+
+      ! There is nothing to do since no new elements will be created.
       IF( NewCnt == 0 ) RETURN
               
       IF(AllocateOnly) THEN
@@ -26087,6 +26104,9 @@ CONTAINS
     END SUBROUTINE CreateIntersection3D
 
 
+    ! Find intersection between 1D boundaries i.e. the result will
+    ! be a new 0D boundary (=node). 
+    !-------------------------------------------------------------
     SUBROUTINE CreateIntersection2D(AllocateOnly,NewCnt)
       LOGICAL :: AllocateOnly
       INTEGER :: NewCnt
