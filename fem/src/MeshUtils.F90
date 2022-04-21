@@ -2292,7 +2292,7 @@ CONTAINS
    !--------------------------------------------------------------------
    CALL CreateDiscontMesh(Model,Mesh)
 
-   CALL CreateIntersectionBCs(Model,Mesh)
+   !CALL CreateIntersectionBCs(Model,Mesh)
   
    ! Deallocate some stuff no longer needed
    !------------------------------------------------------------------
@@ -2691,6 +2691,8 @@ CONTAINS
      CALL SetMeshDimension( Mesh )
    END IF
    Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
+
+   CALL CreateIntersectionBCs(Model,Mesh)
    
    CALL NonNodalElements()
 
