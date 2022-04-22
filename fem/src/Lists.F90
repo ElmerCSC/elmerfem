@@ -9333,16 +9333,18 @@ use spariterglobals
       END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the given element...
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
       IF(PRESENT(UElement)) THEN
         Element => UElement
-        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-        w = 2 * PI * ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-        IF(.NOT. GotIt) w = ListGetCReal( &
-            CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF( GotIt ) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
       END IF
     END IF
 
@@ -9359,27 +9361,34 @@ use spariterglobals
         CurrentModel % Solver % Values,'Angular Frequency',GotIt)
 
     ! It seems that the equation section is used to allow compliance with ElmerGUI
+    ! If element given, don't do this as it has been done before already.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-       elem_id = CurrentModel % Solver % ActiveElements(1)
-       Element => CurrentModel % Elements(elem_id)
-       eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
-       w = 2 * PI * ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
-       IF(.NOT. GotIt) w = ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+        w = 2 * PI * ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the 1st element, if not element given.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-      elem_id = CurrentModel % Solver % ActiveElements(1)
-      Element => CurrentModel % Elements(elem_id)
-      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-      w = 2 * PI * ListGetCReal( &
-        CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF(GotIt) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
+      END IF
     END IF
 
     IF( PRESENT( Found ) ) THEN
