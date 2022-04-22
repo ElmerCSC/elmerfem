@@ -3300,81 +3300,79 @@
 !------------------------------------------------------------------------------
   SUBROUTINE SaveCurrent( CurrentStep )
 !------------------------------------------------------------------------------
-    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen
+    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt
-    CHARACTER(LEN=MAX_NAME_LEN) :: Simul
-    LOGICAL :: BinaryOutput, SaveAll
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    TYPE(ValueList_t), POINTER :: vList
+    TYPE(Solver_t), POINTER :: pSolver
     
-    Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
+    CALL Info('SaveCurrent','Saving information on current step',Level=20)
     
-    OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    ! There are currently global defintions that apply also for solver specific meshes
+    vList => CurrentModel % Simulation       
+    BinaryOutput = ListGetLogical( vList,'Binary Output',GotIt )      
+    SaveAll = .NOT. ListGetLogical( vList,'Omit unchanged variables in output',GotIt )
+    IF ( .NOT.GotIt ) SaveAll = .TRUE.
     
 
-    IF ( GotIt ) THEN
-      i = INDEX( OutputFile,'/')
-      IF( i > 0 ) THEN
-        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
-            //TRIM(OutputFile))
+    Mesh => CurrentModel % Meshes
+    DO WHILE( ASSOCIATED( Mesh ) ) 
+      
+      ! We want to be able to give the "output file" a different name for solver-specific
+      ! meshes. Otherwise we might write data on the same file. 
+      vList => CurrentModel % Simulation
+      OutputActive = Mesh % OutputActive 
+      m = Mesh % SolverId
+      IF( m > 0 ) THEN
+        pSolver => CurrentModel % Solvers(m)
+        IF( ListCheckPresent( pSolver % Values,'Output File') ) THEN
+          vList => pSolver % Values
+          OutputActive = ListGetLogical( vList,'Mesh Output',GotIt)
+          IF(.NOT. GotIt) OutputActive = Mesh % OutputActive
+        END IF
+      END IF
+
+      IF(.NOT. OutputActive ) THEN
+        Mesh => Mesh % Next
+        CYCLE
       END IF
       
-      !IF ( ParEnv % PEs > 1 ) THEN
-      !  DO i=1,MAX_NAME_LEN
-      !    IF ( OutputFile(i:i) == ' ' ) EXIT
-      !  END DO
-      !  OutputFile(i:i) = '.'
-      !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
-      !END IF
-      
-      BinaryOutput = ListGetLogical( CurrentModel % Simulation,'Binary Output',GotIt )
-      IF ( .NOT.GotIt ) BinaryOutput = .FALSE.
-      
-      SaveAll = .NOT.ListGetLogical( CurrentModel % Simulation,&
-          'Omit unchanged variables in output',GotIt )
-      IF ( .NOT.GotIt ) SaveAll = .TRUE.
-      
-      Mesh => CurrentModel % Meshes
-      DO WHILE( ASSOCIATED( Mesh ) ) 
-        IF ( Mesh % OutputActive ) THEN
-          nlen = LEN_TRIM(Mesh % Name )
-          IF ( nlen > 0 ) THEN
-            OutputName = Mesh % Name(1:nlen) // '/' // TRIM(OutputFile)
-          ELSE
-            OutputName = OutputFile
-          END IF
-          
-          EigAnal = .FALSE.
-          DO i=1,CurrentModel % NumberOfSolvers
-            IF ( ASSOCIATED( CurrentModel % Solvers(i) % Mesh, Mesh ) ) THEN
-              EigAnal = ListGetLogical( CurrentModel % Solvers(i) % Values, &
-                  'Eigen Analysis', GotIt )
-              EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % Solvers(i) % Values, &
-                  'Harmonic Analysis', GotIt )
-              
-              IF ( EigAnal ) THEN
-                Var => CurrentModel % Solvers(i) % Variable
-                IF ( ASSOCIATED(Var % EigenValues) ) THEN
-                  IF ( TotalTimesteps == 1 ) THEN
-                    DO j=1,CurrentModel % Solvers(i) % NOFEigenValues
-                      IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+      OutputFile = ListGetString( vList,'Output File',GotIt)                   
+      IF(GotIt) THEN
+        i = INDEX( OutputFile,'/')
+        IF( i > 0 ) THEN
+          CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+              //TRIM(OutputFile))
+        END IF
 
-                        n = SIZE(Var % Values)/Var % DOFs
-                        DO k=1,n
-                          DO l=1,Var % DOFs/2
-                            q = Var % DOFs*(k-1)
-                            Var % Values(q+l) = REAL(Var % EigenVectors(j,q/2+l))
-                            Var % Values(q+l+Var % DOFs/2) = AIMAG(Var % EigenVectors(j,q/2+l))
-                          END DO
-                        END DO
-                      ELSE
-                        Var % Values = REAL( Var % EigenVectors(j,:) )
-                      END IF
-                      SavedSteps = SaveResult( OutputName, Mesh, &
-                          j, sTime(1), BinaryOutput, SaveAll )
-                    END DO
-                  ELSE
-                    j = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
-                    IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+        !IF ( ParEnv % PEs > 1 ) THEN
+        !  DO i=1,MAX_NAME_LEN
+        !    IF ( OutputFile(i:i) == ' ' ) EXIT
+        !  END DO
+        !  OutputFile(i:i) = '.'
+        !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+        !END IF
+
+        ! Always write the output with respect to mesh file
+        nlen = LEN_TRIM(Mesh % Name )
+        IF ( nlen > 0 ) THEN
+          OutputName = Mesh % Name(1:nlen) // '/' // TRIM(OutputFile)
+        END IF
+        
+        EigAnal = .FALSE.
+        DO i=1,CurrentModel % NumberOfSolvers
+          pSolver => CurrentModel % Solvers(i)
+          IF ( ASSOCIATED( pSolver % Mesh, Mesh ) ) THEN
+            EigAnal = ListGetLogical( pSolver % Values,'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values,'Harmonic Analysis', GotIt )
+
+            IF ( EigAnal ) THEN
+              Var => pSolver % Variable
+              IF ( ASSOCIATED(Var % EigenValues) ) THEN
+                IF ( TotalTimesteps == 1 ) THEN
+                  DO j=1,pSolver % NOFEigenValues
+                    IF ( pSolver % Matrix % COMPLEX ) THEN
+
                       n = SIZE(Var % Values)/Var % DOFs
                       DO k=1,n
                         DO l=1,Var % DOFs/2
@@ -3384,34 +3382,44 @@
                         END DO
                       END DO
                     ELSE
-                      Var % Values = REAL(Var % EigenVectors(j,:))
+                      Var % Values = REAL( Var % EigenVectors(j,:) )
                     END IF
                     SavedSteps = SaveResult( OutputName, Mesh, &
-                        CurrentStep, sTime(1), BinaryOutput, SaveAll )
+                        j, sTime(1), BinaryOutput, SaveAll, vList = vList )
+                  END DO
+                ELSE
+                  j = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
+                  IF ( pSolver % Matrix % COMPLEX ) THEN
+                    n = SIZE(Var % Values)/Var % DOFs
+                    DO k=1,n
+                      DO l=1,Var % DOFs/2
+                        q = Var % DOFs*(k-1)
+                        Var % Values(q+l) = REAL(Var % EigenVectors(j,q/2+l))
+                        Var % Values(q+l+Var % DOFs/2) = AIMAG(Var % EigenVectors(j,q/2+l))
+                      END DO
+                    END DO
+                  ELSE
+                    Var % Values = REAL(Var % EigenVectors(j,:))
                   END IF
-                  Var % Values = 0.0d0
+                  SavedSteps = SaveResult( OutputName, Mesh, &
+                      CurrentStep, sTime(1), BinaryOutput, SaveAll, vList = vList )
                 END IF
+                Var % Values = 0.0d0
               END IF
             END IF
-          END DO
-          
-          IF ( .NOT. EigAnal ) THEN
-            SavedSteps = SaveResult( OutputName,Mesh, NINT(sStep(1)), &
-                sTime(1), BinaryOutput, SaveAll )
           END IF
+        END DO
+          
+        IF ( .NOT. EigAnal ) THEN
+          SavedSteps = SaveResult( OutputName,Mesh, NINT(sStep(1)), &
+              sTime(1), BinaryOutput, SaveAll, vList = vList )
         END IF
-        Mesh => Mesh % Next
-      END DO
-    ELSE
-      Mesh => CurrentModel % Meshes
-      DO WHILE( ASSOCIATED( Mesh ) ) 
-        IF ( Mesh % OutputActive ) &
-            Mesh % SavesDone=Mesh % SavesDone+1
-        Mesh => Mesh % Next
-      END DO
-    END IF
-! We want to separate saving of ElmerPost file and Result file.
-!    CALL SaveToPost(CurrentStep)
+      ELSE
+        Mesh % SavesDone = Mesh % SavesDone+1
+      END IF
+      Mesh => Mesh % Next
+    END DO
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveCurrent
 !------------------------------------------------------------------------------
@@ -3426,6 +3434,7 @@
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
     CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+    TYPE(Solver_t), POINTER :: pSolver
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
@@ -3501,34 +3510,24 @@
         EigAnal = .FALSE.
         timesteps = TotalTimeSteps
         DO i=1,CurrentModel % NumberOfSolvers
-          IF (ASSOCIATED(CurrentModel % Solvers(i) % Mesh, Mesh)) THEN
-            EigAnal = ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Eigen Analysis', GotIt )
-            
-            EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Harmonic Analysis', GotIt )
-            
-            IF ( EigAnal ) timesteps = MAX( timesteps, &
-                CurrentModel % Solvers(i) % NOFEigenValues )
+          pSolver => CurrentModel % Solvers(i)
+          IF (ASSOCIATED(pSolver % Mesh, Mesh)) THEN
+            EigAnal = ListGetLogical( pSolver % Values, 'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values, 'Harmonic Analysis', GotIt )            
+            IF ( EigAnal ) timesteps = MAX( timesteps, pSolver % NOFEigenValues )
           END IF
         END DO
 
         DO i=1,CurrentModel % NumberOfSolvers
-          IF (ASSOCIATED(CurrentModel % Solvers(i) % Mesh, Mesh)) THEN
-            EigAnal = ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Eigen Analysis', GotIt )
-            
-            EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Harmonic Analysis', GotIt )
+          pSolver => CurrentModel % Solvers(i)
+          IF (ASSOCIATED(pSolver % Mesh, Mesh)) THEN
+            EigAnal = ListGetLogical( pSolver % Values, 'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values, 'Harmonic Analysis', GotIt )
             
             IF ( EigAnal ) THEN
-              SaveWhich = ListGetString( CurrentModel % Solvers(i) % Values, &
-                  'Eigen and Harmonic Solution Output', Found )
-              
-              SavedEigenValues = CurrentModel % Solvers(i) % NOFEigenValues
-              IF( TotalTimesteps > 1 ) THEN
-!                SavedEiegnValues = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
-              END IF
+              SaveWhich = ListGetString( pSolver % Values, &
+                  'Eigen and Harmonic Solution Output', Found )              
+              SavedEigenValues = pSolver % NOFEigenValues
 
               DO j=1, SavedEigenValues
                 Var => Mesh % Variables
@@ -3538,7 +3537,7 @@
                     CYCLE
                   END IF
                   
-                  IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+                  IF ( pSolver % Matrix % COMPLEX ) THEN
                     IF(Var % DOFs==1) THEN
                       Var => Var % Next
                       CYCLE
@@ -3580,7 +3579,7 @@
                     END IF
                   END IF
                   CALL WritePostFile( PostName,OutputName, CurrentModel, &
-                      CurrentModel % Solvers(i) % NOFEigenValues, .TRUE. )
+                      pSolver % NOFEigenValues, .TRUE. )
                 END IF
               END DO
               EXIT
@@ -3593,7 +3592,7 @@
         IF ( .NOT. EigAnal .OR. CurrentStep == 0 ) THEN
           CALL WritePostFile( PostName, OutputName, CurrentModel, timesteps, .TRUE. )
         END IF
-
+        
         Var => Mesh % Variables
         DO WHILE(ASSOCIATED(Var))
           IF ( ASSOCIATED(Var % EigenValues) ) THEN
