@@ -81,11 +81,11 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   TYPE(Mesh_t), POINTER :: Mesh, ThisMesh, TargetMesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, pVar
-  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName, TargetName
   INTEGER :: i, j, k, l, dofs, n, m, NoVar, SolverInd, layers, maxperm
   INTEGER, POINTER :: pPerm(:)
   REAL(KIND=dp), POINTER :: pVals(:)
-  LOGICAL :: Found, CreateVar, LagrangeCopy
+  LOGICAL :: Found, CreateVar, LagrangeCopy, DoIt
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'ExtrudedRestart'
     
@@ -150,85 +150,83 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
       CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName))
     END IF
     dofs = Var % Dofs
-    maxperm = MAXVAL( Var % Perm ) 
 
     IF( InfoActive( 20 ) ) THEN
       CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(VarName))
     END IF
- 
-    pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+    
+    WRITE (Name,'(A,I0)') 'Extruded Variable ',i
+    TargetName = GetString( Params, Name, Found )  
+    IF(.NOT. Found) TargetName = VarName
+           
+    pVar => VariableGet( TargetMesh % Variables, TargetName, ThisOnly = .TRUE. )
     CreateVar = .NOT. ASSOCIATED(pVar)
-    
-    NULLIFY(pPerm,pVals)
-    IF(CreateVar) THEN
-      ALLOCATE(pPerm(m))
-      pPerm = 0
-      ALLOCATE(pVals(layers*SIZE(Var % Values)))      
-    ELSE
-      pPerm => pVar % Perm
-      pVals => pVar % Values
-    END IF
-    pVals = 0.0_dp
 
-    ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear on!!
-    n = ThisMesh % NumberOfNodes
-    DO j=0,layers-1
-      DO k=1,ThisMesh % NumberOfNodes
-        IF( Var % Perm(k) == 0 ) CYCLE
-        
-        IF( CreateVar ) THEN
-          pPerm(k+j*n) = Var % Perm(k) + j * maxperm        
-        END IF
-        DO l=1,dofs
-          pVals(dofs*(pPerm(k+j*n)-1)+l) = Var % Values(dofs*(Var % perm(k)-1)+l)
-        END DO        
-      END DO
-    END DO    
-    
-    IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(VarName)//' extruded')       
-    END IF
-    
-    IF( CreateVar ) THEN
-      CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
-          VarName,Var % Dofs,pVals,pPerm,VarType=Var % Type)  
-      pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )      
-      IF(.NOT. ASSOCIATED(pVar) ) THEN
-        CALL Fatal(Caller,'Failed to create variable: '//TRIM(VarName))
+    ! One intened use of this module is to extrude data from 2D electrical machine computation
+    ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
+    ! found in the Lagrange multiplier values not associated to any permutation. So there are
+    ! copies as one-to-one from 2D to 3D mesh. 
+    !------------------------------------------------------------------------------------------------
+    IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
+      n = SIZE(Var % Values)    
+      IF( CreateVar ) THEN
+        NULLIFY(pVals)
+        ALLOCATE(pVals(n))
+        pVals = 0.0_dp
+        CALL VariableAddVector( TargetMesh % Variables,TargetMesh,&
+            Model % Solvers(SolverInd),TargetName,Var % Dofs,pVals)        
+      ELSE
+        pVals => pVar % Values
       END IF
+      pVals = Var % Values
+      CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=8)      
+    ELSE      
+      maxperm = MAXVAL( Var % Perm )       
+      NULLIFY(pPerm,pVals)
+      IF(CreateVar) THEN
+        ALLOCATE(pPerm(m))
+        pPerm = 0
+        ALLOCATE(pVals(layers*SIZE(Var % Values)))      
+      ELSE
+        pPerm => pVar % Perm
+        pVals => pVar % Values
+      END IF
+      pVals = 0.0_dp
+
+      ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear on!!
+      n = ThisMesh % NumberOfNodes
+      DO j=0,layers-1
+        DO k=1,ThisMesh % NumberOfNodes
+          IF( Var % Perm(k) == 0 ) CYCLE
+
+          IF( CreateVar ) THEN
+            pPerm(k+j*n) = Var % Perm(k) + j * maxperm        
+          END IF
+          DO l=1,dofs
+            pVals(dofs*(pPerm(k+j*n)-1)+l) = Var % Values(dofs*(Var % perm(k)-1)+l)
+          END DO
+        END DO
+      END DO
+
+      IF( CreateVar ) THEN
+        CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
+            TargetName,Var % Dofs,pVals,pPerm,VarType=Var % TYPE)  
+        pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )      
+        IF(.NOT. ASSOCIATED(pVar) ) THEN
+          CALL Fatal(Caller,'Failed to create variable: '//TRIM(VarName))
+        END IF
+      END IF
+      CALL Info(Caller,'Extruded variable from 2D mesh to 3D mesh: '//TRIM(VarName),Level=8)      
     END IF
+
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(TargetName))
+    END IF    
+
   END DO
     
-  CALL Info(Caller,'Interpolated variables between meshes',Level=7)
+  CALL Info(Caller,'Interpolated '//TRIM(I2S(NoVar))//' variables between meshes',Level=7)
 
-
-  ! One intened use of this module is to extrude data from 2D electrical machine computation
-  ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
-  ! found in the Lagrange multiplier values. Hence we add this feature also here even though there
-  ! is nothing related to extrusion here.
-  !------------------------------------------------------------------------------------------------
-  IF( ListGetLogical( Params,'Copy Lagrange Multiplier', Found ) ) THEN
-    VarName = ListGetString( Params,'Lagrange Multiplier Name', Found )
-    IF(.NOT. Found) VarName = 'LagrangeMultiplier'
-    pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
-    IF(.NOT. ASSOCIATED(pVar) ) CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName)) 
-
-    n = SIZE(pVar % Values)
-    
-    NULLIFY(pVals)
-    ALLOCATE(pVals(n))
-    pVals = 0.0_dp
-
-    pVals = pVar % Values
-    IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(VarName))
-    END IF
-        
-    CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
-        VarName,1,pVals)
-    CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=7)
-  END IF    
-  
 END SUBROUTINE ExtrudedRestart
 
 
@@ -337,7 +335,6 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IF (.NOT. ASSOCIATED(ThisVar) ) THEN
     CALL Fatal(Caller, 'No variable associated to solver!')
   END IF
-  PRINT *,'this var name:',TRIM(ThisVar % Name)
   IF (ThisVar % Dofs /= 1) CALL Fatal(Caller, 'A real-valued potential expected')
   
   ! Find the variable which defines the nodal field to be mapped.
@@ -440,6 +437,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   EdgeVar => VariableGet( Mesh % Variables, Name ) 
   IF(ASSOCIATED( EdgeVar ) ) THEN
     n = SIZE(Solver % Variable % Perm(:))
+
     IF (n /=  SIZE(EdgeVar % Perm(:))) THEN
       CALL Fatal(Caller, 'The variable and potential permutations differ')  
     END IF
