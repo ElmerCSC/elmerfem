@@ -37,6 +37,7 @@ RUN git clone https://www.github.com/ElmerCSC/elmerfem elmer \
 		-DWITH_MPI:BOOL=TRUE -DWITH_Mumps:BOOL=TRUE \
 		-DWITH_Hypre:BOOL=FALSE -DWITH_Trilinos:BOOL=FALSE \
 		-DWITH_ELMERGUI:BOOL=FALSE -DWITH_ElmerIce:BOOL=TRUE \
+                -DWITH_LUA:BOOL=TRUE \
 	&& make \
 	&& make install \
 	&& rm -R /home/elmer
