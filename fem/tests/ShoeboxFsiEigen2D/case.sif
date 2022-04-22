@@ -138,5 +138,5 @@ Boundary Condition 4
 End
  
 
-Solver 1 :: reference norm = 1.35817343E-01
-Solver 3 :: reference norm = 4.80350183E+02
+Solver 1 :: reference norm = 1.64338946E-01
+Solver 3 :: reference norm = 4.80357948E+02

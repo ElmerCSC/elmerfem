@@ -109,9 +109,9 @@ END SUBROUTINE MeshSolver_Init
   INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-            GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
-            SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
-            SkipDisplace 
+      GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
+      SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
+      SkipDisplace, DoIt
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
@@ -293,46 +293,51 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-  DO t = 1, Solver % Mesh % NumberOfBoundaryElements
 
-    Element => GetBoundaryElement(t)
-    IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+  DoIt = ListCheckPresentAnyBC( Model,'Mesh Normal Force' ) .OR. &
+      ListCheckPrefixAnyBC( Model,'Mesh Force' )
+  
+  IF( DoIt ) THEN
+    DO t = 1, Solver % Mesh % NumberOfBoundaryElements
 
-    BC => GetBC()
-    IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+      Element => GetBoundaryElement(t)
+      IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+
+      BC => GetBC()
+      IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
 !------------------------------------------------------------------------------
 !        Force in given direction BC: \tau\cdot n = F
 !------------------------------------------------------------------------------
-     nd = GetElementNOFDOFs()
-     n  = GetElementNOFNodes()
-     nb = GetElementNOFBDOFs()
+      nd = GetElementNOFDOFs()
+      n  = GetElementNOFNodes()
+      nb = GetElementNOFBDOFs()
 
-     LOAD = 0.0D0
-     Alpha      = 0.0D0
-     Beta       = 0.0D0
+      LOAD = 0.0D0
+      Alpha      = 0.0D0
+      Beta       = 0.0D0
 
-     GotForceBC = .FALSE.
-     LOAD(1,1:n) =  GetReal( BC, 'Mesh Force 1', Found )
-     GotForceBC = GotForceBC.OR.Found
-     LOAD(2,1:n) =  GetReal( BC, 'Mesh Force 2', Found )
-     GotForceBC = GotForceBC.OR.Found
-     LOAD(3,1:n) =  GetReal( BC, 'Mesh Force 3', Found )
-     GotForceBC = GotForceBC.OR.Found
+      GotForceBC = .FALSE.
+      LOAD(1,1:n) =  GetReal( BC, 'Mesh Force 1', Found )
+      GotForceBC = GotForceBC.OR.Found
+      LOAD(2,1:n) =  GetReal( BC, 'Mesh Force 2', Found )
+      GotForceBC = GotForceBC.OR.Found
+      LOAD(3,1:n) =  GetReal( BC, 'Mesh Force 3', Found )
+      GotForceBC = GotForceBC.OR.Found
 
-     Beta(1:n) = GetReal( BC, 'Mesh Normal Force',Found )
-     GotForceBC = GotForceBC.OR.Found
+      Beta(1:n) = GetReal( BC, 'Mesh Normal Force',Found )
+      GotForceBC = GotForceBC.OR.Found
 
-     IF ( .NOT.GotForceBC ) CYCLE
+      IF ( .NOT.GotForceBC ) CYCLE
 
-     CALL MeshBoundary( STIFF,FORCE, LOAD,Alpha,Beta,Element,n,nd,nb )
+      CALL MeshBoundary( STIFF,FORCE, LOAD,Alpha,Beta,Element,n,nd,nb )
 
+      CALL DefaultUpdateEquations( STIFF, FORCE )
+    END DO
+  END IF
+    
 !------------------------------------------------------------------------------
-
-     CALL DefaultUpdateEquations( STIFF, FORCE )
-  END DO
-!------------------------------------------------------------------------------
-
+  
   CALL DefaultFinishAssembly()
   CALL Info( 'MeshSolve', 'Assembly done', Level=4 )
 

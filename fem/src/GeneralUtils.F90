@@ -2114,20 +2114,17 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( F(n), STAT=istat )
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
-          CALL Error( 'AllocateRealVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateRealVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateRealVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
+      CALL Error( 'AllocateRealVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateRealVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateRealVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateRealVector
@@ -2144,20 +2141,17 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
-          CALL Error( 'AllocateComplexVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateComplexVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateComplexVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element complex array.'
+      CALL Error( 'AllocateComplexVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateComplexVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateComplexVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateComplexVector
@@ -2174,20 +2168,17 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
-          CALL Error( 'AllocateIntegerVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateIntegerVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateIntegerVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
+      CALL Error( 'AllocateIntegerVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateIntegerVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateIntegerVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateIntegerVector
@@ -2204,20 +2195,17 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
-          CALL Error( 'AllocateLogicalVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateLogicalVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateLogicalVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element logical array.'
+      CALL Error( 'AllocateLogicalVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateLogicalVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateLogicalVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateLogicalVector
@@ -2234,10 +2222,9 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
-      WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
+      WRITE( Message, * )'Unable to allocate structured ', n, ' element array.'
       CALL Error( 'AllocateElementVector', Message )
       IF ( PRESENT( From ) ) THEN
         WRITE( Message, * )'Requested From: ', TRIM(From)
@@ -2262,9 +2249,8 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n1,n2), STAT=istat )
-    if ( istat /=  0 ) THEN
+    IF ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
       CALL Error( 'AllocateRealArray', Message )
       IF ( PRESENT( From ) ) THEN
@@ -2289,10 +2275,9 @@ INCLUDE "mpif.h"
     INTEGER :: istat
 !------------------------------------------------------------------------------
 
-    istat = -1
     ALLOCATE( f(n1,n2), STAT=istat )
-    if ( istat /=  0 ) THEN
-      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
+    IF ( istat /=  0 ) THEN
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element complex matrix.'
       CALL Error( 'AllocateComplexArray', Message )
       IF ( PRESENT( From ) ) THEN
         WRITE( Message, * )'Requested From: ', TRIM(From)
@@ -2353,7 +2338,7 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element logical matrix.'
       CALL Error( 'AllocateLogicalArray', Message )
       IF ( PRESENT( From ) ) THEN
         WRITE( Message, * )'Requested From: ', TRIM(From)
@@ -2515,6 +2500,49 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
 
+  ! This takes union of two integer vectors
+  ! and returns the number of common values. 
+  !---------------------------------------------
+  FUNCTION CountSameIntegers(v1,v2,vsame) RESULT ( n )
+    INTEGER, POINTER :: v1(:), v2(:)
+    INTEGER, POINTER, OPTIONAL :: vsame(:)
+    INTEGER :: n
+
+    INTEGER :: i1,i2
+
+    n = 0
+    IF(.NOT. ASSOCIATED(v1)) RETURN
+    IF(.NOT. ASSOCIATED(v2)) RETURN
+    
+    DO i1=1,SIZE(v1)
+      DO i2=1,SIZE(v2)
+        IF( v1(i1) == v2(i2) ) n = n+1
+      END DO
+    END DO
+
+    IF(n==0) RETURN
+    
+    IF( PRESENT(vsame) ) THEN
+      IF(.NOT. ASSOCIATED(vsame) ) THEN
+        ALLOCATE(vsame(n) )
+      END IF
+      vsame = 0
+      n = 0
+      
+      DO i1=1,SIZE(v1)
+        DO i2=1,SIZE(v2)
+          IF( v1(i1) == v2(i2) ) THEN
+            n = n+1
+            vsame(n) = v1(i1)
+          END IF
+        END DO
+      END DO
+    END IF    
+          
+  END FUNCTION CountSameIntegers
+
+
+  
   !---------------------------------------------------------<
   !> Returns values from a normal distribution to be used in 
   !> thermal velocity distribution, for example.
@@ -2842,7 +2870,7 @@ CONTAINS
     END DO
     
   END FUNCTION AscBinCompareNorm
-  
+   
   
 END MODULE AscBinOutputUtils
 

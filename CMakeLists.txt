@@ -88,7 +88,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 
-SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
+# SET(CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules;${PROJECT_SOURCE_DIR}/cmake/Modules")
+SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules;${CMAKE_ROOT}/Modules")
 
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
@@ -175,6 +176,10 @@ IF(WITH_LUA)
   ENDIF()
   SET(HAVE_LUA TRUE)
   MARK_AS_ADVANCED(HAVE_LUA)
+ENDIF()
+
+IF(WITH_EXTOPTIM)
+  SET(HAVE_EXTOPTIM TRUE)
 ENDIF()
 
 IF(WITH_OpenMP)
@@ -675,6 +680,13 @@ IF(HAVE_LUA)
   MESSAGE(STATUS "  Building Lua")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(HAVE_LUA)
+
+IF(HAVE_EXTOPTIM)
+  MESSAGE(STATUS "  Building with external optimization routines")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_EXTOPTIM)
+
+
 
 # Packaging
 if(NOT BYPASS_CPACK)

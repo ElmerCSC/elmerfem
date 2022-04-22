@@ -24,8 +24,8 @@ End
 
 Material 1
   Name = "Ideal"
-  Sound Speed = Real 1.0
-!  Wave Speed = Real 1.0
+  Sound Speed = 1.0
+  Density = 1.0
 End 
 
 Equation 1

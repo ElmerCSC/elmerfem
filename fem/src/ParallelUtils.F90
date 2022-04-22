@@ -46,6 +46,10 @@ MODULE ParallelUtils
 
      IMPLICIT NONE
 
+     INTERFACE ParallelReduction
+       MODULE PROCEDURE ParallelReductionR, ParallelReductionI
+     END INTERFACE ParallelReduction
+          
 CONTAINS
 
 #define PARALLEL_FOR_REAL
@@ -191,7 +195,7 @@ CONTAINS
          IF (.NOT.Found) GB = .TRUE.
 
          maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = NINT(ParallelReduction(1._dp*maxnode,2))
+         maxnode = ParallelReduction(maxnode,2)
 
          edofs = 0; fdofs = 0; maxedofs = 0; maxfdofs = 0
          maxedge = 0; maxface = 0
@@ -203,13 +207,13 @@ CONTAINS
            n = Mesh % NumberOfEdges
 
            edofs = Mesh % MaxEdgeDOFS
-           maxedofs = NINT(ParallelReduction(edofs*1._dp,2))
+           maxedofs = ParallelReduction(edofs,2)
 
            maxedge = 0
            DO i=1,n
              maxedge = MAX(maxedge, Mesh % Edges(i) % GElementindex)
            END DO
-           maxedge = NINT(ParallelReduction(1._dp*maxedge,2))
+           maxedge = ParallelReduction(maxedge,2)
 
            DO i=1,n
              Element => Mesh % Edges(i)
@@ -239,13 +243,13 @@ CONTAINS
            n = Mesh % NumberOfFaces
 
            fdofs = Mesh % MaxFaceDOFS
-           maxfdofs = NINT(ParallelReduction(fdofs*1._dp,2))
+           maxfdofs = ParallelReduction(fdofs,2)
 
            maxface = 0
            DO i=1,n
              maxface = MAX(maxface, Mesh % Faces(i) % GElementindex)
            END DO
-           maxface = NINT(ParallelReduction(1._dp*maxface,2))
+           maxface = ParallelReduction(maxface,2)
 
            DO i=1,n
              Element => Mesh % Faces(i)
@@ -273,7 +277,7 @@ CONTAINS
                    Mesh % NumberOfFaces*Mesh % MaxFaceDOFs
 
            g_beg = Maxnode +  maxedge*maxedofs + maxface*maxfdofs
-           maxbdofs = NINT(ParallelReduction(1._dp*Mesh % MaxBDOFs,2))
+           maxbdofs = ParallelReduction(Mesh % MaxBDOFs,2)
 
            DO i=1,Mesh % NumberOfBulkElements
              Element=>Mesh % Elements(i)
@@ -301,8 +305,8 @@ CONTAINS
          ! variables are assigned to task zero, and are assumed to be shared by
          ! all tasks (TODO: to be optimized if need be...)
          ! --------------------------------------------------------------------
-         g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
-         pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
+         g_beg = ParallelReduction(MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2)
+         pardofs_all = ParallelReduction(Matrix % ParallelDOFs,2)
 
          LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
          DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
@@ -518,7 +522,7 @@ CONTAINS
          ALLOCATE( MatrixPI % GlobalDOFs(n) ); MatrixPI % GlobalDOFs=0
 
          maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = NINT(ParallelReduction(1._dp*maxnode,2))
+         maxnode = ParallelReduction(maxnode,2)
 
          DGReduced = ListGetLogical(Solver % Values, 'DG Reduced Basis', Found )
 
@@ -684,6 +688,7 @@ CONTAINS
     END SUBROUTINE ParallelInitSolve
 !-------------------------------------------------------------------------------
 
+! Compute parallel sum (or optional min=1 or max=2)     
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelSumVector( Matrix, x, Op )
 !-------------------------------------------------------------------------------
@@ -698,6 +703,23 @@ CONTAINS
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelSumVector
+!-------------------------------------------------------------------------------
+
+! As the previous except for integer valued vectors.
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelSumVectorInt( Matrix, x, Op )
+!-------------------------------------------------------------------------------
+       TYPE(Matrix_t) :: Matrix
+       INTEGER, OPTIONAL :: op
+       INTEGER CONTIG :: x(:)
+!-------------------------------------------------------------------------------
+       ParEnv = Matrix % ParMatrix % ParEnv
+       ParEnv % ActiveComm = Matrix % Comm
+
+       CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
+              Matrix % ParallelInfo, x, op )
+!-------------------------------------------------------------------------------
+     END SUBROUTINE ParallelSumVectorInt
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -1174,8 +1196,10 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
+!---------------------------------------------------------------------------    
+! Computed a parallel sum (or min or max) for a real valued scalar.    
 !-------------------------------------------------------------------------------
-    FUNCTION ParallelReduction(R,oper_arg) RESULT(rsum)
+    FUNCTION ParallelReductionR(R,oper_arg) RESULT(rsum)
 !-------------------------------------------------------------------------------
       REAL(KIND=dp) :: R, rsum
       INTEGER, OPTIONAL :: oper_arg
@@ -1195,14 +1219,44 @@ CONTAINS
         IF (.NOT.ASSOCIATED(ParEnv % Active)) &
           CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
-
       END IF
 #endif
 !-------------------------------------------------------------------------------
-    END FUNCTION ParallelReduction
+    END FUNCTION ParallelReductionR
 !-------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! Same as previous byt for integer values.    
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelReductionI(i,oper_arg) RESULT(isum)
+!-------------------------------------------------------------------------------
+      INTEGER :: i, isum
+      INTEGER, OPTIONAL :: oper_arg
+!-------------------------------------------------------------------------------
+      INTEGER :: oper
+!-------------------------------------------------------------------------------
+      isum = i
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs>1) THEN
+        oper = 0
+        IF (PRESENT(oper_arg)) THEN
+          oper=oper_arg
+        ELSE
+          oper = 0
+        END IF
+
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
+            CALL ParallelActive(.TRUE.)
+        CALL SparActiveSUMInt(isum,oper)
+      END IF
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelReductionI
+!-------------------------------------------------------------------------------
+
+    
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelBarrier
 !-------------------------------------------------------------------------------
@@ -1342,13 +1396,13 @@ CONTAINS
         END IF
         
         n = n + ni         
-        m = NINT(ParallelReduction(1._dp*MAXVAL(Pi % GlobalDOFs),2))
+        m = ParallelReduction(MAXVAL(Pi % GlobalDOFs),2)
         jumps(i+1) = jumps(i) + m 
       END DO
 
-      IF( ParEnv % MyPe == 1 ) THEN
-        PRINT *,'offsets for parallel info:',jumps
-      END IF
+      !IF( ParEnv % MyPe == 0 ) THEN
+      !  PRINT *,'offsets for parallel info:',jumps
+      !END IF
       
       ALLOCATE( A % ParallelInfo )
       P => A % ParallelInfo

@@ -77,7 +77,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
-      CalculateVelocity,TranslateBeforeRotate
+      CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
   LOGICAL, POINTER :: NodeDone(:)
@@ -86,7 +86,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: BodyForce, PrevBodyForce
 
   
-  SAVE Xorig,Yorig,Zorig,Parray,Visited
+  SAVE Parray,Visited
    
   CALL Info( 'RigidMeshMapper','---------------------------------------',Level=4 )
   CALL Info( 'RigidMeshMapper','Performing analytic mesh mapping ',Level=4 )
@@ -98,11 +98,33 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   Cumulative = GetLogical( SolverParams,'Cumulative Displacements',Found)
   UseOriginalMesh = .NOT. Cumulative
 
+  StoreOriginalMesh = GetLogical( SolverParams,'Store Original Coordinates',Found )
+  
+  ! If using original mesh as a reference mesh it must be saved,
+  ! otherwise the analytic mapping does not require two meshes
+  !------------------------------------------------------------
+  IF(.NOT. Visited ) THEN
+    IF( UseOriginalMesh .OR. StoreOriginalMesh ) THEN
+      CALL Info('RigidMeshMapper','Storing original coordinates',Level=7)
+      CALL StoreOriginalCoordinates(Mesh)
+    END IF
+  END IF
+
   dim = CoordinateSystemDimension()
   
   Xnew => Mesh % Nodes % x
   Ynew => Mesh % Nodes % y
   Znew => Mesh % Nodes % z
+
+  IF( UseOriginalMesh ) THEN
+    Xorig => Mesh % NodesOrig % x
+    Yorig => Mesh % NodesOrig % y
+    Zorig => Mesh % NodesOrig % z
+  ELSE
+    Xorig => Xnew
+    Yorig => Ynew
+    Zorig => Znew
+  END IF
 
   NoNodes = Mesh % NumberOfNodes
   ALLOCATE( NodeDone(NoNodes) )
@@ -165,24 +187,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
      DO i=1,j
         RotateOrder(i) = IntArray(j+1-i) !reverse the order
      END DO
-  END IF
-
-  ! If using original mesh as a reference mesh it must be saved,
-  ! otherwise the analytic mapping does not require two meshes
-  !------------------------------------------------------------
-  IF( UseOriginalMesh ) THEN
-    IF( .NOT. Visited ) THEN
-      WRITE(Message,* ) 'Allocating new nodes of size: ',NoNodes
-      CALL Info('RigidMeshMapper',Message,Level=6)
-      ALLOCATE(Xorig(NoNodes),Yorig(NoNodes),Zorig(NoNodes))      
-      Xorig = Xnew(1:NoNodes)
-      Yorig = Ynew(1:NoNodes)
-      Zorig = Znew(1:NoNodes)
-    END IF
-  ELSE
-    Xorig => Xnew
-    Yorig => Ynew
-    Zorig => Znew
   END IF
 
 

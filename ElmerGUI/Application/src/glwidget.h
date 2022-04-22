@@ -237,6 +237,11 @@ private:
   void drawBgImage();
 
   void changeNormalDirection(double*, double*);
+ 
+  void setMeshVisibility(bool, bool, bool);
+
+public:  
+  int mostVisibleBody(int, bool*);
 };
 
 #endif

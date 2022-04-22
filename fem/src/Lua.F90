@@ -110,6 +110,12 @@ interface !
     type(c_ptr) :: s
   end function
 
+  subroutine lua_set_type(L, n) bind(C, name="lua_set_type_c")
+    import
+    type(c_ptr), value :: L
+    integer(kind=c_int), value :: n
+  end subroutine
+
   function luaL_checkinteger(L, n) result(r) bind(C, name="luaL_checkinteger")
     import
     type(c_ptr), value :: L
@@ -347,6 +353,7 @@ subroutine lua_exec_fun(L, fname, nin, nout)
   integer :: lstat
 
   CALL lua_getfield(L%L, LUA_GLOBALSINDEX, fname)
+  CALL lua_set_type(L%L, nin)
   lstat = lua_pcall(L%L, nin, nout, 0)
   call check_error(L, lstat)
 end subroutine
@@ -397,6 +404,7 @@ function lua_popstring(L, slen) result(s)
   type(LuaState_t) :: L
   character(kind=c_char, len=:), pointer :: s
   integer :: slen
+
   s => lua_tolstring(L%L, -1, slen)
   call lua_pop(L%L, 1)
 end function

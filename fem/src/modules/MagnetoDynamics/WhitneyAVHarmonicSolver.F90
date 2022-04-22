@@ -374,7 +374,7 @@ CONTAINS
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
     INTEGER :: i,j,k,n,nd,t
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -414,13 +414,14 @@ CONTAINS
        CompParams => GetComponentParams( Element )
        CoilType = ''
        RotM = 0._dp
+       ConstraintActive = .TRUE.
        IF (ASSOCIATED(CompParams)) THEN
          CoilType = GetString(CompParams, 'Coil Type', Found)
          IF (Found) THEN
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              CALL GetElementRotM(Element, RotM, n)
+              !CALL GetElementRotM(Element, RotM, n)
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -430,6 +431,9 @@ CONTAINS
               CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
            END SELECT
          END IF
+         ConstraintActive = GetLogical( CompParams, 'Activate Constraint', Found)
+!        IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
+         IF(.NOT.Found ) ConstraintActive = .FALSE.
        END IF
 
        LaminateStack = .FALSE.
@@ -490,7 +494,7 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
+          LamCond, CoilBody, CoilType, RotM, ConstraintActive, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -618,6 +622,70 @@ CONTAINS
       ! temporary fix to some scaling problem (to be resolved)...
       CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
+
+
+BLOCK
+! Automatic BC for massive,foil coils outer boundaries, when "Activate Constraint" on!!
+
+    TYPE(Element_t), POINTER :: Parent
+    LOGICAL :: AutomaticBC
+    INTEGER, POINTER :: Electrodes(:)
+
+    A => GetMatrix()
+
+    IF (.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+
+    IF(.NOT.ALLOCATED(A % DValues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+
+    Active = GetNOFBoundaryElements()
+    DO t = 1, Active
+      Element => GetBoundaryElement(t)
+
+      Parent => Element % BoundaryInfo % Right
+      IF(ASSOCIATED(Parent)) CYCLE
+
+      IF(ParEnv % PEs>1) THEN
+        ! Assuming here that this is an internal boundary, if all elements nodes are
+        ! interface nodes. Not foolproof i guess, but quite safe (?)
+        IF (ALL(Solver % Mesh % ParallelInfo % NodeInterface(Element % NodeIndexes))) CYCLE
+      END IF
+ 
+      Parent => Element % BoundaryInfo % Left
+      IF(.NOT.ASSOCIATED(Parent)) CYCLE
+
+      CompParams => GetComponentParams(Parent)
+      IF (.NOT. ASSOCIATED(CompParams)) CYCLE
+
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF(CoilType/='massive' .AND. CoilType/='foil winding') CYCLE
+
+      ConstraintActive = GetLogical(CompParams,'Activate Constraint',Found )
+      IF( .NOT. ConstraintActive ) CYCLE
+
+      AutomaticBC = GetLogical( CompParams, 'Automatic electrode BC', Found )
+      IF(.NOT.Found) AutomaticBC = .TRUE.
+
+      IF(.NOT.AutomaticBC) CYCLE
+
+      Electrodes =>  ListGetIntegerArray( CompParams, &
+             'Electrode Boundaries', Found )
+
+      IF(ASSOCIATED(Electrodes)) THEN
+        IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
+      END IF
+
+      DO i=1,Element % Type % NumberOfNodes
+        j = 2*(Solver % Variable % Perm(Element % NodeIndexes(i))-1)+1
+        A % ConstrainedDOF(j:j+1) = .TRUE.
+      END DO
+    END DO
+END BLOCK
 
     CALL DefaultDirichletBCs()
 
@@ -1128,14 +1196,14 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
-            PiolaVersion, SecondOrder )
+            LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
+             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    LOGICAL :: LaminateStack, CoilBody
+    LOGICAL :: LaminateStack, CoilBody, ConstraintActive
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
     REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
@@ -1397,9 +1465,9 @@ CONTAINS
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       ! If we calculate a coil, the nodal degrees of freedom are not used:
-       ! ------------------------------------------------------------------
-       NONCOIL_CONDUCTOR: IF (.NOT. CoilBody .AND. SUM(ABS(C)) > AEPS ) THEN
+       ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
+       ! --------------------------------------------------------------------------------------------
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. SUM(ABS(C)) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -2368,8 +2436,8 @@ CONTAINS
 ! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
 ! *  grad Phi, with Phi being a H1-regular scalar field.
 ! * 
-! *  This file contains harmonic version of the transormation and also applies the
-!    correction to the V field within conducting regions.
+! *  This file contains harmonic version of the transformation and also applies the
+! *  correction to the V field within conducting regions.
 ! *
 ! *
 ! *  Authors: Mika Malinen, Juha Ruokolainen
@@ -2384,6 +2452,30 @@ CONTAINS
 ! *
 !******************************************************************************
 
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  DO i=1,Model % NumberOfSolvers
+    IF (ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init0
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
@@ -2425,9 +2517,8 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
   CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
 
-  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
   DO j=1,Model % NumberOfBCs
-    IF ( ListCheckPresent( Model % BCs(j) % Values, &
+    IF ( ListCheckPrefix( Model % BCs(j) % Values, &
                TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' re {e}' ) ) THEN
       CALL ListAddConstReal( Model % BCs(j) % Values, 'Pd', 0._dp )
     END IF
@@ -2599,7 +2690,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
     k = SolverPtr % Variable % Perm(i)
     IF (k == 0) THEN
-      CALL Fatal('RemoveKernelComponent', &
+      CALL Fatal('HelmholtzProjector', &
         'The variable and potential permutations are nonmatching?')
     END IF
 
@@ -2710,14 +2801,35 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   SolverParams => GetSolverParams()
   CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
+
+! ! Solver is using a single linear system to solve complex components,
+! ! the final result is the (Hcurl) imaginary component...
+! ! -------------------------------------------------------------------
+
+! Linear System Symmetric = True
+! Linear System Solver = "Iterative"
+! Linear System Preconditioning = None
+! Linear System Residual Output = 25
+! Linear System Max Iterations = 2000
+! Linear System Iterative Method = CG
+! Linear System Convergence Tolerance = 1.0e-9
+
+  CALL ListAddString( SolverParams, 'Variable', 'avm' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+  
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
+  
+  j = index(AVname, '[')
+  IF(j>0) AVname = AVname(1:j-1)
+  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
+
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
-    !
-    ! Automatization is not perfect due to the early phase when this 
-    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
-    ! must be repeated in two solver sections.
-    !
-    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found)   
-    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
+    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
+    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
+
     IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
       CALL Warn("RemoveKernelComponent_Init0", &
            "Quadratic Approximation requested without Use Piola Transform " &
@@ -2738,35 +2850,6 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
       END IF
     END IF
   END IF
-
-
-! Kernel Variable = String "P"
-! Potential Variable = String "AV"
-
-! ! Solver is using a single linear system to solve complex components,
-! ! the final result is the (Hcurl) imaginary component...
-! ! -------------------------------------------------------------------
-
-! Linear System Symmetric = True
-! Linear System Solver = "Iterative"
-! Linear System Preconditioning = None
-! Linear System Residual Output = 25
-! Linear System Max Iterations = 2000
-! Linear System Iterative Method = CG
-! Linear System Convergence Tolerance = 1.0e-9
-
-  CALL ListAddString( SolverParams, 'Variable', 'avm' )
-  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
-  
-! Potential Variable = String "AV"
-  DO i=1,Model % NumberOfSolvers
-    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
-  END DO
-  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
-  
-  j = index(AVname, '[')
-  IF(j>0) AVname = AVname(1:j-1)
-  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
 
   ! Solver is using a single linear system to solve complex components,
   ! assing storage for final complex result.

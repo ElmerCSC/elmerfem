@@ -126,5 +126,5 @@ End
 
 Solver 1 :: Reference Norm = 1.58973752E-01
 Solver 1 :: Reference Norm Tolerance = 1e-4
-Solver 2 :: Reference Norm = 1.28567596E-04
+Solver 2 :: Reference Norm = 1.28807381E-04
 Solver 2 :: Reference Norm Tolerance = 1e-4

@@ -36,12 +36,17 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
 #include <math.h>
 
 #include "elmer_lua_iface.h"
+
+
+#include "lua.h"
+
+#include "lauxlib.h"
+#include "lualib.h"
+#include "lapi.h"
+#include "lstate.h"
 
 
 static void stackDump(lua_State *L) {
@@ -86,6 +91,14 @@ void lua_runfile(lua_State* L, const char* filename) {
 
 void lua_pop_c(lua_State* L, int n) {
   lua_pop(L, n);
+}
+
+void lua_set_type_c(lua_State *L, int nargs)
+{
+  StkId func;
+
+  func = L->top - (nargs+1);
+  ttype(func) = LUA_TFUNCTION;
 }
 
 /* static methods and structs for handling the tx array */

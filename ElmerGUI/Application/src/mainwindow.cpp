@@ -309,11 +309,13 @@ MainWindow::MainWindow() {
   // default size:
   int defW = egIni->value("width").toInt();
   int defH = egIni->value("height").toInt();
-  if (defW <= 200)
-    defW = 200;
-  if (defH <= 200)
-    defH = 200;
+  if (defW <= 300)
+    defW = 300;
+  if (defH <= 300)
+    defH = 300;
   this->resize(defW, defH);
+  sifWindow->resize(defW - 50, defH - 50);  
+  solverLogWindow->resize(defW - 50, defH - 50);
 
   loadSettings();
 }
@@ -1812,11 +1814,12 @@ void MainWindow::saveAsSlot() {
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(
+  QString dirName = QFileDialog::getExistingDirectory(
       this, tr("Open directory to save mesh"), defaultDirName);
 
-  if (!saveDirName.isEmpty()) {
-    logMessage("Output directory " + saveDirName);
+  if (!dirName.isEmpty()) {
+    logMessage("Output directory " + dirName);
+    saveDirName = dirName;
   } else {
     logMessage("Unable to save: directory undefined");
     return;
@@ -2499,10 +2502,12 @@ void MainWindow::loadProject(QString projectDirName) {
 
       // following 3 lines were moved into if() block to avoid doubled "Solver
       // specific options" tabs (Nov 2019 by TS)
-      spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
+	  // The argument "index" in the following two functions is changed from "id" to avoid
+	  // crossed parameters (Mar 2022 by TS) See http://www.elmerfem.org/forum/viewtopic.php?t=7696
+      spe->generalOptions->setupTabs(elmerDefs, "Solver", index);
       spe->generalOptions->populateHash(&item);
       spe->ui.solverControlTabs->insertTab(
-          0, spe->generalOptions->tabWidget->widget(id),
+          0, spe->generalOptions->tabWidget->widget(index),
           "Solver specific options");
     }
   }
@@ -8112,4 +8117,12 @@ void MainWindow::selectParaViewSlot(){
   selectElmerPostAct->setChecked(false);
   selectVtkPostAct->setChecked(false);
   selectParaViewAct->setChecked(true);
+}
+
+void MainWindow::rebuildGLLists(){
+  /*
+  This function is assumed to be called from ObjectBrowser to avoid a problem of 3D surface
+  mesh not shown correctly when project loading (typically, TemperatureGeneric sample)
+  */
+  glWidget->rebuildLists();
 }

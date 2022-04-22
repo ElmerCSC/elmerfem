@@ -2790,7 +2790,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics a block from matrix A to build matrix B. 
+!> Pics a block from matrix A to build matrix B. 
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
@@ -2810,7 +2810,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Blocks = SIZE( BlockStruct )
 
     IF(Blocks <= 1) THEN
-      CALL Fatal('CRS_BlockMatrixPick','No applicable to just one block!')
+      CALL Fatal('CRS_BlockMatrixPick2','Not applicable for just one block!')
       RETURN
     END IF
 
@@ -2834,7 +2834,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     END DO
 
     IF( Mrow == 0 .OR. Mcol == 0 ) THEN
-      CALL Fatal('CRS_BlockMatrixPick','Nothing to pick!')
+      CALL Fatal('CRS_BlockMatrixPick2','Nothing to pick!')
     END IF
 
     Nsub = N / Blocks
@@ -2892,18 +2892,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     
     IF( .NOT. Allocated ) THEN
       IF( kb == 1 ) THEN
-        CALL Warn('CRS_BlockMatrixPick','No matrix entries in submatrix')
+        CALL Warn('CRS_BlockMatrixPick2','No matrix entries in submatrix')
         RETURN
       END IF
 
       ALLOCATE(B % Rows(Mrow*nsub+1),B % Cols(kb-1), B % Values(kb-1),STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 1')
+      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 1')
       
       B % Rows(Mrow*Nsub+1) = kb
       
       IF( Diagonal ) THEN
         ALLOCATE( B % Diag(Mrow*nsub), B % rhs(Mrow*nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 2')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 2')      
       END IF
 
       IF( A % COMPLEX ) THEN
@@ -4323,7 +4323,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        DO i=1,A % NumberOfRows
-         b(i) = b(i) / A % Values( A % Diag(i) )
+         s = A % Values(A % Diag(i))
+         IF(s /= 0 ) b(i) = b(i) / s
        END DO
        RETURN
     END IF

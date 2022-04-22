@@ -24,7 +24,7 @@
 !/******************************************************************************
 ! *
 ! *  Authors: Peter Råback, Juha Ruokolainen, 
-!*            Samuel Cook, Fabien Gillet-Chaulet , Mondher Chekki 
+! *            Samuel Cook, Fabien Gillet-Chaulet , Mondher Chekki 
 ! *  Email:   elmeradm@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -796,7 +796,7 @@ END SUBROUTINE SaveGridData
       INTEGER, ALLOCATABLE,SAVE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:),Values(:),Values2(:),&
           Values3(:), Values4(:), Values5(:), Values6(:), Values7(:),&
-          Values8(:), Values9(:)
+          Values8(:), Values9(:), Basis(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
       REAL :: fvalue
       TYPE(Nodes_t),SAVE :: Nodes      
@@ -830,19 +830,18 @@ END SUBROUTINE SaveGridData
       IF (.NOT.AllocationDone) THEN
         Allocate(Array(nx,ny,nz))
         IF (Parallel) Allocate(Parray(nx,ny,nz))
-        n = Mesh % MaxElementNodes
-        ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+      n = Mesh % MaxElementNodes
+      ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-        n = Mesh % MaxElementDOFS
-        ALLOCATE( ElemInd(n), ElemInd2(n) )
+      n = Mesh % MaxElementDOFS
+      ALLOCATE( ElemInd(n), ElemInd2(n) )
         AllocationDone=.TRUE.
       ENDIF
 
       ThisOnly = .TRUE.
-
+      
       !Set up dims here beforehand if first time
       IF(nTime==1 .AND. (Part == 0 .OR. .NOT. Parallel)) THEN
-
         IF(Dim==2) DimId(4) = 0
         DO i=1,Dim+1
           IF(i==1) THEN
@@ -929,7 +928,7 @@ END SUBROUTINE SaveGridData
                 IF (SinglePrec) THEN
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
                 ELSE
-                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
+                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                 ENDIF
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
@@ -943,7 +942,7 @@ END SUBROUTINE SaveGridData
                 IF (SinglePrec) THEN
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
                 ELSE
-                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
+                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                 ENDIF
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
@@ -1041,7 +1040,6 @@ END SUBROUTINE SaveGridData
       l = NumVars2
 
       DO Vari = l, NumVars-1
-
 
         !---------------------------------------------------------------------
         ! We've already read the variable list when defining the variables in
@@ -1145,10 +1143,10 @@ END SUBROUTINE SaveGridData
           DO k = 1,nz
             DO j = 1,ny
               DO i = 1,nx
-
+                
                 ind = GridIndex( i, j, k ) 
                 IF(ind.GT.0) THEN
-
+               
                     Element => Mesh % Elements( Particles % ElementIndex(ind) )            
                     IF ( Solution % TYPE == Variable_on_elements ) THEN
                       val = Values(Perm(Element % ElementIndex))
@@ -1224,6 +1222,8 @@ END SUBROUTINE SaveGridData
           CALL Fatal( 'WriteNetCDFFile', 'NetCDF file could not be closed: '//TRIM(NetCDFFile))
         END IF
       END IF
+
+      DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, ElemInd, ElemInd2 )
 
     END SUBROUTINE WriteNetCDFFile
       

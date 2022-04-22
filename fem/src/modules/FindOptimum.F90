@@ -87,7 +87,18 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   ! In the 1st round perform initializations 
   !------------------------------------------------------------------------------
   IF( OptimizationsDone == 0) THEN
+    
+    CALL Info('FindOptimum','--------------------------------------------------------------')
+    CALL Info('FindOptimum','The functionality of the FindOptimum routine has been moved',Level=3)
+    CALL Info('FindOptimum','into the library side and the definitions should be added',Level=3)
+    CALL Info('FindOptimum','to a "Run Control" section that is to be before "Simulation".',Level=3)
+    CALL Info('FindOptimum','The reason to the change is that it became very cumbersome to',Level=3)
+    CALL Info('FindOptimum','Further develope the functionality on the same level as other',Level=3)
+    CALL Info('FindOptimum','routines. Usually optimization should be the outermost level.',Level=3)
+    CALL Info('FindOptimum','--------------------------------------------------------------')
+    CALL Warn('FindOptimum','The solver will soon be removed!')
 
+    
     CALL Info('FindOptimum','Initializing solver for optimization')
 
     CALL DefaultVariableAdd('Found Better',Global=.TRUE.,InitValue = -1.0_dp)

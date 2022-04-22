@@ -584,11 +584,17 @@ static int ElmerToVtkType(int elmertype)
   case 203:        
     vtktype = 21;
     break;
+  case 204:        
+    vtktype = 35;
+    break;
   case 303:        
     vtktype = 5;
     break;
   case 306:        
     vtktype = 22;
+    break;
+  case 310:        
+    vtktype = 69;
     break;
   case 404:        
     vtktype = 9;
@@ -598,6 +604,9 @@ static int ElmerToVtkType(int elmertype)
     break;
   case 409:        
     vtktype = 28;
+    break;
+  case 416:        
+    vtktype = 70;
     break;
   case 504:        
     vtktype = 10;

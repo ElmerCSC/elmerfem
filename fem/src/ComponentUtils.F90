@@ -83,7 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode, IsParallel
+     LOGICAL :: BcMode, isParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -97,11 +97,7 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
-     IsParallel = ( ParEnv % PEs > 1 )
-     IF( IsParallel ) THEN
-       IF( Mesh % SingleMesh ) isParallel = .FALSE.
-     END IF
-
+     isParallel = CurrentModel % Solver % Parallel
      
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
@@ -204,9 +200,14 @@ MODULE ComponentUtils
 
          ! Only compute the parallel reduction once
          IF( isParallel ) THEN
-           IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-         END IF
+           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
+! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
+!          IF( VisitNodeOnlyOnce ) THEN           
+!            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+!          END IF
+         END IF
+           
          F(1) = NF % Values( dofs*(k-1) + 1)
          F(2) = NF % Values( dofs*(k-1) + 2)
          IF( dofs == 3 ) THEN 
@@ -232,7 +233,8 @@ MODULE ComponentUtils
 
            ! Calculate torque around an axis
            IF( PRESENT( Torque ) ) THEN
-             v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             !v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
              Torque = Torque + SUM(Axis*v2)        
            END IF
@@ -408,7 +410,7 @@ MODULE ComponentUtils
     END DO
     
     
-    sumi = NINT( ParallelReduction(1.0_dp * sumi) )
+    sumi = ParallelReduction(sumi) 
     IF( sumi == 0 ) THEN
       CALL Warn('ComponentNodalReduction','No active nodes to reduced!')
       RETURN

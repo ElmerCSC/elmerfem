@@ -102,7 +102,9 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-     write(*,*)FlowSolverName, SSA
+     WRITE(Message,*)&
+          'Flow Solver Name:', TRIM(FlowSolverName),' SSA:',SSA
+     CALL INFO('Sliding_Weertman',Message,Level=3)
   END IF
   
   !Read the coefficients C and m in the sif file

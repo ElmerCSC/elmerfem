@@ -24,7 +24,7 @@ Simulation
   Output Intervals = 0
 
 !  Mesh Levels = 2
-  Post File = case.vtu
+  Post File = case.vtu ! consider giving "Lagrange Element Degree" in p-visualization
 End
 
 Constants

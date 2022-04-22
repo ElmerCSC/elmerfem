@@ -223,7 +223,7 @@ CONTAINS
     !-----------------------
     ! Numerical integration:
     !-----------------------
-    IF (.NOT. IsPElement(Element) .AND. nd > n) THEN
+    IF (.NOT. IsActivePElement(Element) .AND. nd > n) THEN
       IP = GaussPoints(Element, 3)
     ELSE
       IP = GaussPoints(Element)
@@ -237,7 +237,7 @@ CONTAINS
               IP % W(t), detJ, Basis, dBasis)
 
       ! Create a bubble if the element is the standard 2-node element:
-      IF (.NOT. IsPElement(Element) .AND. nd > n) THEN
+      IF (.NOT. IsActivePElement(Element) .AND. nd > n) THEN
         Basis(n+1) = Basis(1) * Basis(2)
         dBasis(3,:) = dBasis(1,:) * Basis(2) + Basis(1) * dBasis(2,:)
       END IF

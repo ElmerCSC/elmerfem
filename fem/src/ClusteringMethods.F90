@@ -26,7 +26,7 @@
 
 !------------------------------------------------------------------------------
 !> Module containing various clustering methods that may be used in conjunction
-!> with algebraic multigrid methods, for example.
+!> with algebraic multigrid methods or mesh partitioning, for example.
 ! author Peter Råback
 !------------------------------------------------------------------------------
 
@@ -34,10 +34,692 @@
 MODULE ClusteringMethods
   
   USE Lists
-  USE CRSMatrix
+!  USE CRSMatrix
+  USE ElementUtils, ONLY : TangentDirections
+  
   IMPLICIT NONE
 
 CONTAINS
+
+
+!---------------------------------------------------------------
+!> This partitions the mesh into a given number of partitions in each 
+!> direction. It may be used in clustering multigrid or similar, 
+!> and also to internal partitioning within ElmerSolver. 
+!---------------------------------------------------------------
+  SUBROUTINE ClusterNodesByDirection(Params,Mesh,Clustering,MaskActive)
+ 
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: MaskActive(:)
+    INTEGER, POINTER :: Clustering(:)
+!---------------------------------------------------------------
+    LOGICAL :: MaskExists,GotIt,Hit
+    REAL(KIND=dp), ALLOCATABLE :: Measure(:)
+    INTEGER :: i,j,k,k0,l,ind,n,dim,dir,divs,nsize,elemsinpart,clusters
+    INTEGER, POINTER :: Iarray(:),Order(:),NodePart(:),NoPart(:)
+    INTEGER :: Divisions(3),minpart,maxpart,clustersize
+    REAL(KIND=dp), POINTER :: PArray(:,:), Arrange(:)
+    REAL(KIND=dp) :: Normal(3), Tangent1(3), Tangent2(3), Coord(3), Weights(3), &
+        avepart,devpart
+    CHARACTER(*), PARAMETER :: Caller="ClusterNodesByDirection"
+!---------------------------------------------------------------
+
+    CALL Info(Caller,'Starting clustering',Level=30)
+
+    MaskExists = PRESENT(MaskActive)
+    IF( MaskExists ) THEN
+      nsize = COUNT( MaskActive )
+    ELSE
+      nsize = Mesh % NumberOfNodes
+    END IF
+     
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal(Caller,'No parameter list associated')
+    END IF
+
+    dim = Mesh % MeshDim
+    Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
+    IF( GotIt ) THEN
+      Normal = Parray(1:3,1)
+    ELSE
+      Normal(1) = 1.0
+      Normal(2) = 1.0d-2
+      IF( dim == 3) Normal(3) = 1.0d-4
+    END IF
+    Normal = Normal / SQRT( SUM( Normal ** 2) )
+
+    CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    
+
+    IF( .FALSE. ) THEN
+      PRINT *,'Normal:',Normal
+      PRINT *,'Tangent1:',Tangent1
+      PRINT *,'Tangent2:',Tangent2
+    END IF
+
+
+    Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',GotIt )
+    IF(.NOT. GotIt) Iarray => ListGetIntegerArray( Params,'MG Cluster Divisions',GotIt )
+    Divisions = 1
+    IF( GotIt ) THEN
+      n = MIN( SIZE(Iarray), dim ) 
+      Divisions(1:n) = Iarray(1:n)
+    ELSE
+      clustersize = ListGetInteger( Params,'Partitioning Size',GotIt)
+      IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
+      IF( GotIt .AND. ClusterSize > 0) THEN
+        IF( dim == 2 ) THEN
+          Divisions(1) = ( nsize / clustersize ) ** 0.5_dp
+          Divisions(2) = ( nsize / ( clustersize * Divisions(1) ) )
+        ELSE
+          Divisions(1:2) = ( nsize / clustersize ) ** (1.0_dp / 3 )
+          Divisions(3) = ( nsize / ( clustersize * Divisions(1) * Divisions(2) ) )
+        END IF
+      ELSE
+        CALL Fatal(Caller,'Clustering Divisions not given!')
+      END IF
+    END IF
+
+    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+
+    IF( .FALSE. ) THEN
+      PRINT *,'dim:',dim
+      PRINT *,'divisions:',divisions
+      PRINT *,'clusters:',clusters
+      PRINT *,'nsize:',nsize
+    END IF
+
+    ALLOCATE(Order(nsize),Arrange(nsize),NodePart(nsize),NoPart(Clusters))
+    
+
+    ! These are needed as an initial value for the loop over dimension
+    elemsinpart = nsize
+    nodepart = 1
+    
+
+    ! Go through each direction and cumulatively add to the clusters
+    !-----------------------------------------------------------
+
+    DO dir = 1,dim      
+      divs = Divisions(dir)
+      IF( divs <= 1 ) CYCLE
+      
+      ! Use the three principal directions as the weight
+      !-------------------------------------------------
+      IF( dir == 1 ) THEN
+        Weights = Normal
+      ELSE IF( dir == 2 ) THEN
+        Weights = Tangent1
+      ELSE 
+        Weights = Tangent2
+      END IF
+
+      ! Initialize ordering for the current direction
+      !----------------------------------------------
+      DO i=1,nsize
+        Order(i) = i
+      END DO
+      
+
+      ! Now compute the weights for each node
+      !----------------------------------------
+      DO i=1,Mesh % NumberOfNodes
+        j = i
+        IF( MaskExists ) THEN
+          IF( .NOT. MaskActive(j) ) CYCLE
+        END IF
+        
+        Coord(1) = Mesh % Nodes % x(i)
+        Coord(2) = Mesh % Nodes % y(i)
+        Coord(3) = Mesh % Nodes % z(i)
+
+        Arrange(j) = SUM( Weights * Coord )
+      END DO
+
+      ! Order the nodes for given direction
+      !----------------------------------------------
+      CALL SortR(nsize,Order,Arrange)
+
+      ! For each direction the number of elements in cluster becomes smaller
+      elemsinpart = elemsinpart / divs
+
+      ! initialize the counter partition
+      nopart = 0
+
+
+      ! Go through each node and locate it to a cluster taking into consideration
+      ! the previous clustering (for 1st direction all one)
+      !------------------------------------------------------------------------
+      j = 1
+      DO i = 1,nsize
+        ind = Order(i)
+        
+        ! the initial partition offset depends on previous partitioning
+        k0 = (nodepart(ind)-1) * divs
+
+        ! Find the correct new partitioning, this loop is just long enough
+        DO l=1,divs
+          Hit = .FALSE.
+          
+          ! test for increase of local partition
+          IF( j < divs ) THEN
+            IF( nopart(k0+j) >= elemsinpart ) THEN
+              j = j + 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! test for decrease of local partition
+          IF( j > 1 )  THEN            
+            IF( nopart(k0+j-1) < elemsinpart ) THEN
+              j = j - 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! If either increase or decrease is needed, this must be ok 
+          IF(.NOT. Hit) EXIT
+        END DO
+          
+        k = k0 + j
+        nopart(k) = nopart(k) + 1
+        nodepart(ind) = k
+      END DO
+
+    END DO
+
+
+    minpart = HUGE(minpart)
+    maxpart = 0
+    avepart = 1.0_dp * nsize / clusters
+    devpart = 0.0_dp
+    DO i=1,clusters
+      minpart = MIN( minpart, nopart(i))
+      maxpart = MAX( maxpart, nopart(i))
+      devpart = devpart + ABS ( nopart(i) - avepart )
+    END DO
+    devpart = devpart / clusters
+
+    WRITE(Message,'(A,T25,I10)') 'Min nodes in cluster:',minpart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T25,I10)') 'Max nodes in cluster:',maxpart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Average nodes in cluster:',avepart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Deviation of nodes:',devpart
+    CALL Info(Caller,Message)
+    
+
+    IF( ASSOCIATED(Clustering)) THEN
+      Clustering = Nodepart 
+      DEALLOCATE(Nodepart)
+    ELSE
+      Clustering => Nodepart
+      NULLIFY( Nodepart ) 
+    END IF
+    
+    DEALLOCATE(Order,Arrange,NoPart)
+
+
+  END SUBROUTINE ClusterNodesByDirection
+
+
+
+  SUBROUTINE ClusterElementsByDirection(Params,Mesh,Clustering,MaskActive)
+ 
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: MaskActive(:)
+    INTEGER, POINTER :: Clustering(:)
+!---------------------------------------------------------------
+    LOGICAL :: MaskExists,GotIt,Hit
+    REAL(KIND=dp), ALLOCATABLE :: Measure(:)
+    INTEGER :: i,j,k,k0,l,ind,n,dim,dir,divs,nsize,elemsinpart,clusters
+    INTEGER, POINTER :: Iarray(:),Order(:),NodePart(:),NoPart(:)
+    INTEGER :: Divisions(3),minpart,maxpart,clustersize
+    REAL(KIND=dp), POINTER :: PArray(:,:), Arrange(:)
+    REAL(KIND=dp) :: Normal(3), Tangent1(3), Tangent2(3), Coord(3), Weights(3), &
+        avepart,devpart, dist
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    CHARACTER(*), PARAMETER :: Caller="ClusterNodesByDirection"
+!---------------------------------------------------------------
+
+    CALL Info(Caller,'Starting Clustering',Level=30)
+
+    MaskExists = PRESENT(MaskActive)
+    IF( MaskExists ) THEN
+      nsize = COUNT( MaskActive ) 
+    ELSE
+      nsize = Mesh % NumberOfBulkElements
+    END IF
+     
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal(Caller,'No parameter list associated')
+    END IF
+
+    dim = Mesh % MeshDim
+    Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
+    IF(.NOT. GotIt) THEN
+      Parray => ListGetConstRealArray( Params,'Partitioning Normal Vector',GotIt )
+    END IF
+    IF( GotIt ) THEN
+      Normal = Parray(1:3,1)
+    ELSE
+      Normal(1) = 1.0
+      Normal(2) = 1.0d-2
+      IF( dim == 3) THEN
+        Normal(3) = 1.0d-4
+      ELSE
+        Normal(3) = 0.0_dp
+      END IF
+    END IF
+    Normal = Normal / SQRT( SUM( Normal ** 2) )
+
+    CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    
+    IF( .FALSE. ) THEN
+      PRINT *,'Normal:',Normal
+      PRINT *,'Tangent1:',Tangent1
+      PRINT *,'Tangent2:',Tangent2
+    END IF
+
+    Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',GotIt )
+    IF(.NOT. GotIt ) THEN
+      Iarray => ListGetIntegerArray( Params,'MG Cluster Divisions',GotIt )
+    END IF
+
+    Divisions = 1
+    IF( GotIt ) THEN
+      n = MIN( SIZE(Iarray), dim ) 
+      Divisions(1:n) = Iarray(1:n)
+    ELSE
+      clustersize = ListGetInteger( Params,'Partitioning Size',GotIt)
+      IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
+      IF( GotIt .AND. ClusterSize > 0) THEN
+        IF( dim == 2 ) THEN
+          Divisions(1) = ( nsize / clustersize ) ** 0.5_dp
+          Divisions(2) = ( nsize / ( clustersize * Divisions(1) ) )
+        ELSE
+          Divisions(1:2) = ( nsize / clustersize ) ** (1.0_dp / 3 )
+          Divisions(3) = ( nsize / ( clustersize * Divisions(1) * Divisions(2) ) )
+        END IF
+      ELSE
+        CALL Fatal(Caller,'Clustering Divisions not given!')
+      END IF
+    END IF
+
+    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+
+    IF( .FALSE. ) THEN
+      PRINT *,'dim:',dim
+      PRINT *,'divisions:',divisions
+      PRINT *,'clusters:',clusters
+      PRINT *,'nsize:',nsize
+    END IF
+
+    ALLOCATE(Order(nsize),Arrange(nsize),NodePart(nsize),NoPart(Clusters))
+    
+
+    ! These are needed as an initial value for the loop over dimension
+    elemsinpart = nsize
+    nodepart = 1
+    
+
+    ! Go through each direction and cumulatively add to the clusters
+    !-----------------------------------------------------------
+
+    DO dir = 1,dim      
+      divs = Divisions(dir)
+      IF( divs <= 1 ) CYCLE
+      
+      ! Use the three principal directions as the weight
+      !-------------------------------------------------
+      IF( dir == 1 ) THEN
+        Weights = Normal
+      ELSE IF( dir == 2 ) THEN
+        Weights = Tangent1
+      ELSE 
+        Weights = Tangent2
+      END IF
+
+      ! Now compute the weights for each node
+      !----------------------------------------
+      j = 0
+      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        IF( MaskExists ) THEN
+          IF( .NOT. MaskActive( i ) ) CYCLE
+        ELSE 
+          IF( i > Mesh % NumberOfBulkElements ) EXIT
+        END IF
+        
+        Element => Mesh % Elements(i)
+        NodeIndexes => Element % NodeIndexes 
+        n = Element % TYPE % NumberOfNodes
+
+        Coord(1) = SUM( Mesh % Nodes % x( NodeIndexes ) ) / n
+        Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
+        Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
+
+        j = j + 1
+        Arrange(j) = SUM( Weights * Coord )
+
+        ! Initialize ordering for the current direction
+        Order(j) = j
+      END DO
+
+      ! Order the distances for given direction, only the active ones
+      !--------------------------------------------------------------
+      CALL SortR(nsize,Order,Arrange)
+
+      ! For each direction the number of elements in cluster becomes smaller
+      elemsinpart = elemsinpart / divs
+
+      ! initialize the counter partition
+      nopart = 0
+
+      ! Go through each node and locate it to a cluster taking into consideration
+      ! the previous clustering (for 1st direction all one)
+      !------------------------------------------------------------------------
+      j = 1
+      DO i = 1,nsize
+        ind = Order(i)
+        
+        ! the initial partition offset depends on previous partitioning
+        k0 = (nodepart(ind)-1) * divs
+
+        ! Find the correct new partitioning, this loop is just long enough
+        DO l=1,divs
+          Hit = .FALSE.
+          
+          ! test for increase of local partition
+          IF( j < divs ) THEN
+            IF( nopart(k0+j) >= elemsinpart ) THEN
+              j = j + 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! test for decrease of local partition
+          IF( j > 1 )  THEN            
+            IF( nopart(k0+j-1) < elemsinpart ) THEN
+              j = j - 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! If either increase or decrease is needed, this must be ok 
+          IF(.NOT. Hit) EXIT
+        END DO
+          
+        k = k0 + j
+        nopart(k) = nopart(k) + 1
+
+        ! Now set the partition 
+        nodepart(ind) = k
+      END DO
+
+    END DO
+
+
+    minpart = HUGE(minpart)
+    maxpart = 0
+    avepart = 1.0_dp * nsize / clusters
+    devpart = 0.0_dp
+    DO i=1,clusters
+      minpart = MIN( minpart, nopart(i))
+      maxpart = MAX( maxpart, nopart(i))
+      devpart = devpart + ABS ( nopart(i) - avepart )
+    END DO
+    devpart = devpart / clusters
+
+    WRITE(Message,'(A,T25,I10)') 'Min nodes in cluster:',minpart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T25,I10)') 'Max nodes in cluster:',maxpart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Average nodes in cluster:',avepart
+    CALL Info(Caller,Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Deviation of nodes:',devpart
+    CALL Info(Caller,Message)
+    
+    
+    IF( ASSOCIATED(Clustering)) THEN
+      IF( PRESENT( MaskActive ) ) THEN
+        j = 0
+        DO i=1, SIZE(MaskActive)
+          IF( MaskActive(i) ) THEN
+            j = j + 1
+            Clustering(i) = Nodepart(j)
+          END IF
+        END DO
+      ELSE
+        Clustering = Nodepart 
+      END IF
+      DEALLOCATE(Nodepart)
+    ELSE
+      Clustering => Nodepart
+      NULLIFY( Nodepart ) 
+    END IF
+    
+    DEALLOCATE(Order,Arrange,NoPart)
+
+  END SUBROUTINE ClusterElementsByDirection
+
+
+
+  SUBROUTINE ClusterElementsUniform(Params,Mesh,Clustering,MaskActive,PartitionDivisions)
+ 
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Clustering(:)
+    LOGICAL, OPTIONAL :: MaskActive(:)
+    INTEGER, OPTIONAL :: PartitionDivisions(3)
+!---------------------------------------------------------------
+    LOGICAL :: MaskExists,UseMaskedBoundingBox,Found
+    INTEGER :: i,j,k,ind,n,dim,nsize,nmask,clusters
+    INTEGER, POINTER :: Iarray(:),ElemPart(:)
+    INTEGER, ALLOCATABLE :: NoPart(:)
+    INTEGER :: Divisions(3),minpart,maxpart,Inds(3)
+    REAL(KIND=dp) :: Coord(3), Weights(3), avepart,devpart
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    REAL(KIND=dp) :: BoundingBox(6)
+    INTEGER, ALLOCATABLE :: CellCount(:,:,:)
+    LOGICAL, ALLOCATABLE :: NodeMask(:)
+    CHARACTER(*),PARAMETER :: Caller="ClusterElementsUniform"
+
+    CALL Info(Caller,'Clustering elements uniformly in bounding box',Level=12)
+
+    IF( Mesh % NumberOfBulkElements == 0 ) RETURN
+    
+    MaskExists = PRESENT(MaskActive)
+    IF( MaskExists ) THEN
+      nsize = SIZE( MaskActive ) 
+      nmask = COUNT( MaskActive ) 
+      CALL Info(Caller,'Applying division to masked element: '//TRIM(I2S(nmask)),Level=8)
+    ELSE
+      nsize = Mesh % NumberOfBulkElements 
+      nmask = nsize
+      CALL Info(Caller,'Applying division to all bulk elements: '//TRIM(I2S(nsize)),Level=8)
+    END IF
+     
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal(Caller,'No parameter list associated')
+    END IF
+
+    dim = Mesh % MeshDim
+
+    ! We can use the masked bounding box
+    UseMaskedBoundingBox = .FALSE.
+    IF( MaskExists ) UseMaskedBoundingBox = ListGetLogical( Params,&
+        'Partition Masked Bounding Box',Found ) 
+
+    IF( UseMaskedBoundingBox ) THEN
+      ALLOCATE( NodeMask( Mesh % NumberOfNodes ) )
+      NodeMask = .FALSE.
+
+      ! Add all active nodes to the mask
+      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        IF( .NOT. MaskActive( i ) ) CYCLE        
+        Element => Mesh % Elements(i)
+        NodeIndexes => Element % NodeIndexes 
+        NodeMask( NodeIndexes ) = .TRUE.
+      END DO
+
+      i = COUNT( NodeMask ) 
+      CALL Info(Caller,'Masked elements include nodes: '//TRIM(I2S(i)),Level=8)
+      
+      ! Define the masked bounding box
+      BoundingBox(1) = MINVAL( Mesh % Nodes % x, NodeMask )
+      BoundingBox(2) = MAXVAL( Mesh % Nodes % x, NodeMask )
+      BoundingBox(3) = MINVAL( Mesh % Nodes % y, NodeMask )
+      BoundingBox(4) = MAXVAL( Mesh % Nodes % y, NodeMask )
+      BoundingBox(5) = MINVAL( Mesh % Nodes % z, NodeMask )
+      BoundingBox(6) = MAXVAL( Mesh % Nodes % z, NodeMask )
+
+      DEALLOCATE( NodeMask ) 
+    ELSE      
+      BoundingBox(1) = MINVAL( Mesh % Nodes % x )
+      BoundingBox(2) = MAXVAL( Mesh % Nodes % x )
+      BoundingBox(3) = MINVAL( Mesh % Nodes % y )
+      BoundingBox(4) = MAXVAL( Mesh % Nodes % y )
+      BoundingBox(5) = MINVAL( Mesh % Nodes % z )
+      BoundingBox(6) = MAXVAL( Mesh % Nodes % z )
+    END IF
+      
+    
+    IF( PRESENT( PartitionDivisions ) ) THEN
+      Divisions = PartitionDivisions
+    ELSE      
+      Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',Found)
+      IF(.NOT. Found ) THEN
+        CALL Fatal(Caller,'> Partitioning Divisions < not given!')
+      END IF      
+      Divisions = 1
+      IF( Found ) THEN
+        n = MIN( SIZE(Iarray), dim ) 
+        Divisions(1:n) = Iarray(1:n)
+      END IF
+    END IF
+      
+    ALLOCATE( CellCount(Divisions(1), Divisions(2), Divisions(3) ) )
+    CellCount = 0
+    Clusters = 1
+    DO i=1,dim
+      Clusters = Clusters * Divisions(i)
+    END DO
+
+    IF( .FALSE. ) THEN
+      PRINT *,'dim:',dim
+      PRINT *,'divisions:',divisions
+      PRINT *,'clusters:',clusters
+      PRINT *,'nsize:',nsize
+    END IF
+
+    ALLOCATE(ElemPart(nsize),NoPart(Clusters))
+    NoPart = 0
+    ElemPart = 0
+
+    !----------------------------------------
+    Inds = 1
+    Coord = 0.0_dp
+
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF( MaskExists ) THEN
+        IF( .NOT. MaskActive( i ) ) CYCLE
+      ELSE 
+        IF( i > Mesh % NumberOfBulkElements ) EXIT
+      END IF
+      
+      Element => Mesh % Elements(i)
+      NodeIndexes => Element % NodeIndexes 
+      n = Element % TYPE % NumberOfNodes
+      
+      ! Find the center of the element
+      Coord(1) = SUM( Mesh % Nodes % x( NodeIndexes ) ) / n
+      Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
+      IF( dim == 3 ) THEN
+        Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
+      END IF
+
+      Inds = 1
+      DO j=1,dim
+        Inds(j) = CEILING( Divisions(j) * &
+            ( Coord(j) - BoundingBox(2*j-1) ) / &
+            ( BoundingBox(2*j) - BoundingBox(2*j-1) ) )
+      END DO
+      Inds = MAX( Inds, 1 ) 
+
+      CellCount(Inds(1),Inds(2),Inds(3)) = &
+          CellCount(Inds(1),Inds(2),Inds(3)) + 1
+
+      ind = (Inds(1)-1)*Divisions(2)*Divisions(3) + &
+          (Inds(2)-1)*Divisions(3) +  &
+          Inds(3)
+      ElemPart(i) = ind
+      NoPart(ind) = NoPart(ind) + 1
+    END DO
+
+    ! Compute statistical information of the partitioning
+    n = COUNT( NoPart > 0 )    
+    minpart = HUGE(minpart)
+    maxpart = 0
+    avepart = 1.0_dp * nmask / n
+    devpart = 0.0_dp
+    DO i=1,clusters
+      IF( nopart(i) > 0 ) THEN
+        minpart = MIN( minpart, nopart(i))
+        maxpart = MAX( maxpart, nopart(i))
+        devpart = devpart + ABS ( nopart(i) - avepart )
+      END IF
+    END DO
+    devpart = devpart / n
+
+    CALL Info(Caller,'Number of partitions: '//TRIM(I2S(n)),Level=8)
+    CALL Info(Caller,'Min elements in cluster: '//TRIM(I2S(minpart)),Level=8)
+    CALL Info(Caller,'Max elements in cluster: '//TRIM(I2S(maxpart)),Level=8)
+
+    WRITE(Message,'(A,F10.2)') 'Average elements in cluster:',avepart
+    CALL Info(Caller,Message,Level=8)    
+    WRITE(Message,'(A,F10.2)') 'Average deviation in size:',devpart
+    CALL Info(Caller,Message,Level=8)
+
+    ! Renumber the partitions using only the active ones
+    n = 0
+    DO i=1,clusters
+      IF( NoPart(i) > 0 ) THEN
+        n = n + 1
+        NoPart(i) = n
+      END IF
+    END DO
+    
+    ! Renumbering only needed if there are empty cells
+    IF( n < clusters ) THEN
+      DO i=1,nsize
+        j = ElemPart(i)
+        IF( j > 0 ) ElemPart(i) = NoPart(j) 
+      END DO
+    END IF
+
+    !DO i=1,clusters
+    !  PRINT *,'count in part:',i,COUNT( ElemPart(1:nsize) == i ) 
+    !END DO
+    
+    IF( ASSOCIATED( Clustering ) ) THEN
+      WHERE( ElemPart > 0 ) Clustering = ElemPart
+      DEALLOCATE( ElemPart ) 
+    ELSE
+      Clustering => ElemPart
+      NULLIFY( ElemPart ) 
+    END IF
+    
+    DEALLOCATE(NoPart,CellCount)
+
+    CALL Info(Caller,'Clustering of elements finished',Level=10)
+
+  END SUBROUTINE ClusterElementsUniform
+
   
 !------------------------------------------------------------------------------
 !> Subroutine creates clusters of connections in different ways. The default method

@@ -791,7 +791,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
-   CALL Info('MagnetoDynamicsCalcFields','Number of components to compute: '//TRIM(I2S(DOFs)))
+   CALL Info('MagnetoDynamicsCalcFields',&
+       'Number of components to compute: '//TRIM(I2S(DOFs)),Level=8)
          
    NodalFields = &
        ASSOCIATED(MFD) .OR. &
@@ -1007,8 +1008,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
-         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-         IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
+         !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+         !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
          VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
@@ -1024,8 +1025,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
 
-         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
-         IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
+         !nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+         !IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
 
          VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
@@ -1774,10 +1775,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
            ! No losses to add if loss coefficient is not given
            IF( Found ) THEN
+             Coeff = 0.0_dp
+             Coeff2 = 0.0_dp
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
-               Coeff = s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               Coeff2 = s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
+               Coeff = Coeff + s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
+               Coeff2 = Coeff2 + s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
                ComponentLoss(1,l) = ComponentLoss(1,l) + Coeff
                BodyLoss(1,BodyId) = BodyLoss(1,BodyId) + Coeff 
                ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
@@ -1958,6 +1961,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
 
+         ! and current density
          IF( ASSOCIATED( SCD ) ) THEN
            DO p=1,n
              k = SCD % Perm(Element % NodeIndexes(p))
@@ -1972,7 +1976,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO
 
        !DO l=1,Dofs
-       IF (NodalFields) THEN
+       IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
          CALL UpdateGlobalForce( GForce(:,l), &
              Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)

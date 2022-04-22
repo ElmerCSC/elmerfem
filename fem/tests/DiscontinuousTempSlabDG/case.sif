@@ -1,0 +1,145 @@
+! This is a test case illuminating the potential use of the discontinuity
+! for simple heat equation consisting of two layers.
+! This is done using DG with reduced basis + jump condition.
+! This is novel work, I would appreciate contacting me if you plan
+! using this in some scientific paper. 
+!
+! P.R. 31.1.2022
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "slabs"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "slabs.vtu"
+!  vtu: discontinuous bodies = Logical True
+End
+
+Body 1
+  Name = "LowerBody"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "UpperBody"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+Initial Condition 1
+  Temperature = 500.0
+End
+
+Material 1
+  Name = "MatA"
+  Density = 1.0
+  Heat Conductivity = 5.0
+  Heat Capacity = 1.0
+  DG Parent Material = Logical True
+End
+
+Material 2
+  Name = "MatB"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+  DG Parent Material = Logical True
+End
+
+Body Force 1
+  Mesh Translate 2 = Variable Coordinate 1
+    Real MATC "0.75*sin(3*pi*tx/10.0)"
+End 
+
+Equation 1
+  Active Solvers(1) = 2
+End
+
+Equation 2
+  Active Solvers(2) = 1 2
+End
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a given relaxation field [0,1].
+
+  Exec Solver = Before all
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Max Iterations = 1000
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+
+  Variable = MeshRelax
+End
+
+
+
+Solver 2
+  Equation = Heat Equation
+  Procedure = "HeatSolveVec" "HeatSolver"
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Max Iterations = 1000
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+
+  Nonlinear System Max Iterations = 1
+
+  Vector Assembly = Logical True
+
+! Here we define the basis 
+  Discontinuous Galerkin = Logical True
+  DG Reduced Basis = Logical True
+  DG Reduced Basis Master Bodies(1) = Integer 1 
+End
+
+Boundary Condition 1
+  Name = "Cold"
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Name = "Jump"
+  Target Boundaries = 2
+
+! And the jump condition
+  Heat Gap = Logical True
+  Heat Gap Coefficient = Real 1.0e1
+
+! BC for the mesh mapping 
+  Fixed Boundary = True
+End
+
+Boundary Condition 3
+  Name = "Flux"
+  Target Boundaries = 3
+  Heat Flux = 100.0
+
+! BC for the mash mapping
+  Moving Boundary = True
+End
+
+Solver 1 :: Reference Norm = 5.91607978E-01
+Solver 2 :: Reference Norm = 3.48854042E+01

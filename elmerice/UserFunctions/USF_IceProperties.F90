@@ -178,3 +178,109 @@ FUNCTION IcePressureMeltingPoint(Model, Node, press) RESULT(Tpmp)
 
 END FUNCTION IcePressureMeltingPoint
 
+!==============================================================================
+FUNCTION ArrheniusFactor(Model, Node, InputArray) RESULT(ArrhF)
+!==============================================================================
+
+  USE IceProperties
+
+  IMPLICIT None
+
+  TYPE(Model_t) :: Model
+  INTEGER :: Node
+  REAL(KIND=dp) :: InputArray(2), Arrhf
+
+  INTEGER :: N
+  REAL(KIND=dp) ::  Temp, Pressure
+  REAL(KIND=dp) :: Tempoffset, GlenExponent, GlenEnhancementFactor, &
+       ClausiusClapeyron, GasConstant, LimitTemperature,&
+        Tpmp, Trel, scalingfactor, RateFactor(2), ActivationEnergy(2)
+  TYPE(ValueList_t), POINTER :: Constants
+  LOGICAL ::  GotIt, InCelsius, ScaleRateFactor
+  TYPE(Element_t), POINTER :: Element
+  TYPE(ValueList_t), POINTER  :: Material
+  
+
+
+  
+  Element => Model % CurrentElement
+  Material => GetMaterial(Element)
+  Constants => GetConstants()
+
+  GasConstant = GetConstReal(Constants, "Gas Constant",GotIt)
+  IF (.NOT.GotIt) GasConstant = 8.314_dp
+  ClausiusClapeyron = GetConstReal( Constants, 'Clausius Clapeyron Constant', GotIt)
+  IF (.NOT.GotIt) THEN
+    ClausiusClapeyron = 9.8d-08
+    CALL INFO("IcePressureMeltingPoint","No entry found for >Clausius Clapeyron Constant<.",Level=5)
+    CALL INFO("IcePressureMeltingPoint","Setting to 9.8d-08 (SI units)",Level=5)
+  END IF
+  scalingfactor = GetConstReal(Material,"Pressure Scaling Factor",GotIt)
+  IF (.NOT.GotIt) scalingfactor = 1.0_dp
+  InCelsius = GetLogical(Material, "Temperature in Celsius", GotIt)
+  IF (InCelsius) THEN
+    Tempoffset = 0.0_dp
+  ELSE
+    Tempoffset = 273.15_dp
+  END IF
+
+  Temp = InputArray(1) - Tempoffset
+  Pressure = InputArray(2)
+  
+  GlenExponent = GetConstReal(Material,"Glen Exponent",GotIt)
+   IF (.NOT.GotIt) THEN
+     CALL INFO("IceProperties(ArrheniusFactor)",&
+          '"Glen Exponent" not found. Setting to 3.0',Level=5)
+    GlenExponent = 3.0_dp
+  END IF  
+  LimitTemperature = GetConstReal(Material,"Limit Temperature",GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusFactor)",&
+         '"Limit Temperature" not found. Setting to -10.0',Level=5)
+    LimitTemperature = -10.0_dp
+  END IF
+  RateFactor(1) = GetConstReal(Material,"Rate Factor 1", GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusFactor)",&
+         '"Rate Factor 1" not found. Setting to (SI value) 2.89165e-13',Level=5)
+    RateFactor(1) = 2.89165d-13
+  END IF
+  RateFactor(2) = GetConstReal(Material,"Rate Factor 2", GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusFactor)",&
+         '"Rate Factor 2" not found. Setting to (SI value) 2.42736e-02',Level=5)
+    RateFactor(2) = 2.42736d-02
+  END IF
+  ScaleRateFactor = GetLogical(Material,"Scale Rate Factors",GotIt)
+  IF (ScaleRateFactor) RateFactor = RateFactor*(scalingfactor**GlenExponent)
+  
+  ActivationEnergy(1) = GetConstReal(Material,"Activation Energy 1", GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusEnergy)",&
+         '"Activation Energy 1" not found. Setting to (SI value) 60.0e03',Level=5)
+    ActivationEnergy(1) = 60.0d03
+  END IF
+  ActivationEnergy(2) = GetConstReal(Material,"Activation Energy 2", GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusEnergy)",&
+         '"Activation Energy 2" not found. Setting to (SI value) 115.0e3',Level=5)
+    ActivationEnergy(2) = 115.d03
+  END IF
+ 
+  GlenEnhancementFactor = GetConstReal(Material,"Glen Enhancement Factor",GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL INFO("IceProperties(ArrheniusEnergy)",&
+         '"Glen Enhancement Factor" not found. Setting to 1.0', Level=5)
+    GlenEnhancementFactor = 1.0_dp
+  END IF
+
+  ! need to scale pressure 
+  Tpmp = GetIcePressureMeltingPoint(ClausiusClapeyron, scalingfactor * Pressure)
+   
+  Trel = MAX(MIN(Temp - Tpmp,0.0_dp),-60.0_dp)
+  IF (Trel<-10) THEN
+    Arrhf = RateFactor(1) * EXP( -ActivationEnergy(1)/( GasConstant* (273.15 + Trel)))
+  ELSE
+    Arrhf= RateFactor(2) * EXP( -ActivationEnergy(2)/( GasConstant* (273.15 + Trel)))
+  END IF
+END FUNCTION ArrheniusFactor

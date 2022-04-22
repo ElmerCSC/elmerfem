@@ -124,7 +124,7 @@ Solver 3
   Expression 1 = Variable "time"
     Real MATC "sin(omega*tx)"
 
-  Show Norm Index = 5
+  Show Norm Name = ""value: temperature at node 61"
 End
  
 
