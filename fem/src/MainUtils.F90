@@ -1987,8 +1987,10 @@ CONTAINS
     END DO
 
     IF(Doit) THEN
-      ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
-      Solver % Matrix % MassValues=0._dp
+      IF( ASSOCIATED( Solver % Matrix ) ) THEN
+        ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
+        Solver % Matrix % MassValues=0._dp
+      END IF
     END IF
      
     Solver % LinBeforeProc = 0
