@@ -2348,7 +2348,10 @@ CONTAINS
      DO id=1,Model % NumberOfBodies
        IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) Found = .TRUE.
        IF(ListGetLogical( Model % Bodies(id) % Values, &
-           'Default Target', GotIt)) DefaultTargetBody = id       
+           'Default Target', GotIt)) THEN
+         DefaultTargetBody = id
+         Found = .TRUE.
+       END IF
      END DO
 
      IF( DefaultTargetBody /= 0 ) THEN
