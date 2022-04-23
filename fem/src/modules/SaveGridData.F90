@@ -801,7 +801,7 @@ END SUBROUTINE SaveGridData
       REAL :: fvalue
       TYPE(Nodes_t),SAVE :: Nodes      
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp),Allocatable,SAVE :: Array(:,:,:),Parray(:,:,:),Basis(:)
+      REAL(KIND=dp),ALLOCATABLE,SAVE :: Array(:,:,:),Parray(:,:,:)
       REAL(KIND=dp) :: rt,rt0,rtc
       INTEGER :: nx,ny,nz
 
@@ -828,7 +828,7 @@ END SUBROUTINE SaveGridData
       nz=(GridExtent(6)-GridExtent(5))+1
       
       IF (.NOT.AllocationDone) THEN
-        Allocate(Array(nx,ny,nz))
+        ALLOCATE(Array(nx,ny,nz))
         IF (Parallel) Allocate(Parray(nx,ny,nz))
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
