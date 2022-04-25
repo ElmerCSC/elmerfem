@@ -83,7 +83,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TimeForce(:), &
       Viscosity(:), GapHeight(:), NormalVelocity(:), Velocity(:,:), &
       Admittance(:), Impedance(:), ElemPressure(:), PrevElemPressure(:),  &
-      ElemDensity(:),ElemArtif(:),ExtPres(:),FluxPres(:),CoeffPres(:), &
+      ElemDensity(:),ElemArtif(:,:),ExtPres(:),FluxPres(:),CoeffPres(:), &
       ElemPseudoPressure(:), PseudoPressure(:)
   TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
@@ -163,7 +163,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         ExtPres(N), &
         FluxPres(N), &
         CoeffPres(N), &
-        ElemArtif(N), &
+        ElemArtif(2,N), &
         ElemDensity(N), &
         Velocity(3,N),         &
         NormalVelocity(N),     &
@@ -422,7 +422,8 @@ CONTAINS
       END IF
       
       IF( CompressibilityType == Compressibility_Artificial ) THEN
-        ElemArtif(1:n) = GetReal( Material,'Artificial Compressibility')
+        ElemArtif(1,1:n) = GetReal( Material,'Artificial Compressibility')
+        ElemArtif(2,1:n) = GetReal( Material,'Surface Compressibility')
       END IF
 
       
@@ -636,7 +637,8 @@ CONTAINS
       ! This is pseudotime, not real time...
       IF( GotAC ) THEN
         PseudoPres = SUM(Basis(1:n) * ElemPseudoPressure(1:n) )              
-        MA = -Density * Gap * SUM( ElemArtif(1:n) * Basis(1:n) ) / dt
+        MA = ( -Density / dt ) * ( Gap * SUM( ElemArtif(1,1:n) * Basis(1:n) ) + &
+            SUM( ElemArtif(2,1:n) * Basis(1:n) ) )
       ELSE
         MA = 0.0_dp        
       END IF
