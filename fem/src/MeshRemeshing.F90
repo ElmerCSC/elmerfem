@@ -1901,7 +1901,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   ALLOCATE(SharedNodes(NoNeighbours, MAXVAL(NSharedNodes)))
   DO i=1, NoNeighbours
     OutProc = i-1
-    CALL PMMG_Get_NodeCommunicator_nodesf(pmmgMesh, OutProc, SharedNodes(i, 1:NSharedNodes(i)), ierr)
+    CALL PMMG_Get_ithNodeCommunicator_nodes(pmmgMesh, OutProc, SharedNodes(i, 1:NSharedNodes(i)), ierr)
   END DO
 
   IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % INTERFACE)) &
