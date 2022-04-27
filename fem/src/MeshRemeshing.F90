@@ -1904,9 +1904,9 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     CALL PMMG_Get_ithNodeCommunicator_nodes(pmmgMesh, OutProc, SharedNodes(i, 1:NSharedNodes(i)), ierr)
   END DO
 
-  IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % INTERFACE)) &
-    ALLOCATE(NewMesh % ParallelInfo % Interface(NewMesh % NumberOfNodes))
-  NewMesh % ParallelInfo % Interface = .FALSE.
+  IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % NodeInterface)) &
+    ALLOCATE(NewMesh % ParallelInfo % NodeInterface(NewMesh % NumberOfNodes))
+  NewMesh % ParallelInfo % NodeInterface = .FALSE.
   DO i=1, NewMesh % NumberOfNodes
     counter = 1
     DO j=1, NoNeighbours
@@ -1920,7 +1920,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
       IF(ANY(SharedNodes(j,1:NSharedNodes(j)) == i)) THEN
         counter = counter + 1
         NewMesh % ParallelInfo % NeighbourList(i) % Neighbours(counter) = Neighbours(j)
-        NewMesh % ParallelInfo % INTERFACE(i) = .TRUE.
+        NewMesh % ParallelInfo % NodeInterface(i) = .TRUE.
       END IF
     END DO
   END DO
