@@ -154,28 +154,28 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
 
   IF ( .NOT. AllocationsDone  ) THEN
-    N = Solver % Mesh % MaxElementNodes
+    n = Solver % Mesh % MaxElementNodes
 
-    ALLOCATE(ElementNodes % x( N ),  &
-        ElementNodes % y( N ),       &
-        ElementNodes % z( N ),       &
-        Viscosity( N ),              &
-        GapHeight(N),          &
-        ExtPres(N), &
-        FluxPres(N), &
-        CoeffPres(N), &
-        ElemArtif(N), &
-        ElemDensity(N), &
+    ALLOCATE(ElementNodes % x(n),  &
+        ElementNodes % y(n),       &
+        ElementNodes % z(n),       &
+        Viscosity(n),              &
+        GapHeight(n),          &
+        ExtPres(n), &
+        FluxPres(n), &
+        CoeffPres(n), &
+        ElemArtif(n), &
+        ElemDensity(n), &
         Velocity(3,N),         &
-        NormalVelocity(N),     &
-        Admittance(N),         &
+        NormalVelocity(n),     &
+        Admittance(n),         &
         FORCE( 2*N ),           &
         STIFF( 2*N, 2*N ), &
         MASS( 2*N, 2*N ), &
         TimeForce( 2*N ), &
-        ElemPressure(N), &
-        PrevElemPressure(N), &
-        ElemPseudoPressure(N), &
+        ElemPressure(n), &
+        PrevElemPressure(n), &
+        ElemPseudoPressure(n), &
         STAT=istat )
     IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')
 
@@ -359,10 +359,10 @@ CONTAINS
             Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
           END IF
         END IF
-        NormalVelocity(1:n) = GetReal(Equation,'Normal Velocity',GotIt)
-        IF(.NOT. GotIt) NormalVelocity(1:n) = &
-          GetReal(Material,'Normal Velocity',GotIt)
-      END IF     
+      END IF
+        
+      NormalVelocity(1:n) = GetReal(Equation,'Normal Velocity',GotIt)
+      IF(.NOT. GotIt) NormalVelocity(1:n) = GetReal(Material,'Normal Velocity',GotIt)
 
       IF( ManningModel ) THEN
         ElemDensity(1:) = GetReal( Material,'Density')
@@ -536,6 +536,7 @@ CONTAINS
 !      Parameters at integration point
 !------------------------------------------------------------------------------
 
+      NormalVelo = SUM( Basis(1:n) * NormalVelocity(1:n) )
       IF(UseVelocity) THEN
         IF( ASSOCIATED( Element % BoundaryInfo)) THEN
           Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
@@ -545,10 +546,9 @@ CONTAINS
         DO i=1,3
           Velo(i) = SUM( Basis(1:n) * Velocity(i,1:n) )
         END DO
-        NormalVelo = SUM( Normal * Velo)
+        NormalVelo = NormalVelo + SUM( Normal * Velo)
         TangentVelo = Velo - NormalVelo * Normal
       ELSE
-        NormalVelo = SUM( Basis(1:n) * NormalVelocity(1:n) )
         DO i=1,3
           TangentVelo(i) = SUM( Basis(1:n) * Velocity(i,1:n) )
         END DO
@@ -991,7 +991,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, UseVelocity, AllocationsDone = .FALSE., &
       OpposingWall, CalculateMoment, ManningModel, GotMinGap
 
-  REAL(KIND=dp), POINTER :: Pressure(:)
+  REAL(KIND=dp), POINTER :: Pressure(:), gWork(:,:)
   REAL(KIND=dp) :: Norm, ReferencePressure, mfp0, HeatSlide, HeatPres, HeatTotal, &
       Pforce(3), Vforce(3), TotForce, Moment(3), MomentAbout(3), AmbientPres, &
       ManningCoeff, GravityCoeff, MinGap
@@ -1036,7 +1036,12 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   END IF
   
   IF( ManningModel ) THEN
-    GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
+    gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotIt)
+    IF ( GotIt ) THEN
+      GravityCoeff = gWork(4,1)      
+    ELSE
+      GravityCoeff = GetCReal( CurrentModel % Constants,'Gravity Coefficient',GotIt)
+    END IF
     IF(.NOT. GotIt) GravityCoeff = 9.81
   END IF
 
@@ -1057,17 +1062,17 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone  ) THEN
     N = Solver % Mesh % MaxElementNodes
 
-    ALLOCATE(ElementNodes % x( N ),  &
-        ElementNodes % y( N ),       &
-        ElementNodes % z( N ),       &
-        Viscosity( N ),              &
-        GapHeight(N),          &
-        ElemDensity(N), &
-        BotHeight(N), &
-        Velocity(3,N),         &
-        FORCE( N ),           &
-        STIFF( N, N ), &
-        ElemPressure(N), &
+    ALLOCATE(ElementNodes % x(n),  &
+        ElementNodes % y(n),       &
+        ElementNodes % z(n),       &
+        Viscosity(n),              &
+        GapHeight(n),          &
+        ElemDensity(n), &
+        BotHeight(n), &
+        Velocity(3,n),         &
+        FORCE(n),           &
+        STIFF(n,n), &
+        ElemPressure(n), &
         STAT=istat )
 
     IF ( istat /= 0 ) CALL FATAL(Caller,'Memory allocation error')    
