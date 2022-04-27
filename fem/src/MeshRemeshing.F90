@@ -1589,26 +1589,26 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     CASE(504)
       NTetras = NTetras + 1
     CASE(605)
-      CALL Fatal("MMG3D","can't handle pyramid elements (605)")
+      CALL Fatal("ParMMG","can't handle pyramid elements (605)")
     CASE(706)
       NPrisms = NPrisms + 1
     CASE(808)
-      CALL Fatal("MMG3D","can't handle brick/hexahedral elements (808)")
+      CALL Fatal("ParMMG","can't handle brick/hexahedral elements (808)")
     CASE DEFAULT
       PRINT *,'Bad element type: ',Element % TYPE % ElementCode
-      CALL Fatal("MMG3D","Unsupported element type")
+      CALL Fatal("ParMMG","Unsupported element type")
     END SELECT
   END DO
 
-  IF(Warn101) CALL Warn("MMG3D","101 elements detected - these won't be remeshed")
-  IF(Warn202) CALL Warn("MMG3D","202 elements detected - these won't be remeshed")
+  IF(Warn101) CALL Warn("ParMMG","101 elements detected - these won't be remeshed")
+  IF(Warn202) CALL Warn("ParMMG","202 elements detected - these won't be remeshed")
 
   !args: mesh, nvertices, ntetra, nprisms, ntriangless, nquads, nedges
   CALL PMMG_Set_meshSize(pmmgMesh,nverts,ntetras,nprisms,ntris,nquads,nedges,ierr)
-  PRINT*, 'Set MEsh SIze', ParEnv % MyPE, nverts
-  IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
-       'CALL TO MMG3D_Set_meshSize FAILED')
-  IF (DEBUG) PRINT *,'--**-- MMG3D_Set_meshSize DONE', ParEnv % Mype
+
+  IF ( ierr /= 1 ) CALL FATAL('PMMGSolver',&
+       'CALL TO PMMG_Set_meshSize FAILED')
+  IF (DEBUG) PRINT *,'--**-- PMMG_Set_meshSize DONE', ParEnv % Mype
 
   ref = 0
   DO i=1,NVerts
@@ -1618,10 +1618,10 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i) + 10
     CALL PMMG_Set_vertex(pmmgMesh, Mesh%Nodes%x(i), &
          Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
-    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
-         'CALL TO MMG3D_Set_vertex FAILED')
+    IF ( ierr /= 1 ) CALL FATAL('PMMGSolver',&
+         'CALL TO PMMG_Set_vertex FAILED')
   END DO
-  IF (DEBUG) PRINT *,'--**-- MMG3D_Set_vertex DONE', ParEnv % Mype
+  IF (DEBUG) PRINT *,'--**-- PMMG_Set_vertex DONE', ParEnv % Mype
 
   ntetras = 0
   nprisms = 0
@@ -1657,7 +1657,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     CASE DEFAULT
     END SELECT
   END DO
-  IF (DEBUG) PRINT *,'--**-- MMG3D - Set elements DONE', ParEnv % Mype
+  IF (DEBUG) PRINT *,'--**-- ParMMG - Set elements DONE', ParEnv % Mype
 
   !! use element pairs '202' elements
   Elem202 = (PRESENT(EdgePairs))
@@ -1670,7 +1670,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     END DO
   END IF
 
-  IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE', ParEnv % Mype
+  IF (DEBUG) PRINT *, '--**-- ParMMG - Set edge elements DONE', ParEnv % Mype
 
   ! use nodes to set mpi comms
   CALL PMMG_SET_IPARAMETER(pmmgMesh,PMMGPARAM_APImode, 1, ierr)
@@ -1981,7 +1981,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
 
   Debug = .TRUE.
   Parallel = ParEnv % PEs > 1
-  FuncName = "RemeshDistParMMG3D"
+  FuncName = "RemeshDistParMMG"
 
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   Time = INT(TimeVar % Values(1))
@@ -2189,12 +2189,12 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
 
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
   CALL PMMG_parmmglib_distributed(pmmgMesh,ierr)
-  IF(ierr == PMMG_LOWFAILURE) THEN
-    PRINT*, ParEnv % MyPE, 'low failure'
-  ELSE IF ( ierr == PMMG_STRONGFAILURE .OR. ierr == PMMG_LOWFAILURE ) THEN
+
+  ! need to check that if one process returns failure all do
+  ! based of serial remeshing failure routine so may need refinement
+  IF ( ierr == PMMG_STRONGFAILURE .OR. ierr == PMMG_LOWFAILURE ) THEN
     PRINT*,"BAD ENDING OF PMMGLIB: UNABLE TO SAVE MESH", ParEnv % MyPE
     !! Release mmg mesh
-    CALL FATAL('bad', 'ending of remeshing')
     CALL PMMG_Free_all ( PMMG_ARG_start,     &
         PMMG_ARG_ppParMesh,pmmgMesh,         &
         PMMG_ARG_end)
