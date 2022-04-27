@@ -64,6 +64,7 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
   IF ( ListCheckPresent( Solver % Values,'Show Norm Index') .OR. &
       ListCheckPresent( Solver % Values,'Show Norm Name') ) THEN
     Name = ListGetString( Solver % Values, 'Equation',GotIt)
+    IF(.NOT. GotIt) Name = "SaveScalars"
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
       CALL ListAddString( Solver % Values,'Variable',&
           '-nooutput -global '//TRIM(Name)//'_var')
@@ -144,7 +145,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
       Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper, SaveJson, &
-      StartNewFile
+      StartNewFile, SimulationVisited
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
   REAL (KIND=DP) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
@@ -198,6 +199,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   Var => VariableGet( Model % Variables,'run')
   IF( ASSOCIATED( Var ) ) RunInd = NINT( Var % Values(1) )
 
+  SimulationVisited = .FALSE.
   
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -462,8 +464,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           Var2 => VariableGet( Model % Variables, TRIM(VariableName)//' 2' )
           Var3 => VariableGet( Model % Variables, TRIM(VariableName)//' 3' )          
         ELSE
-          CALL Warn(Caller,'Requested variable does not exist: '//TRIM(VariableName))
-          CYCLE
+          val = ListGetConstReal( Model % Simulation, TRIM(VariableName), GotIt )
+          IF( GotIt ) THEN
+            CALL Info(Caller,'Adding keyword from simulation section as variable: '&
+                //TRIM(VariableName),Level=10)
+            CALL AddToSaveList(TRIM(VariableName), val, .FALSE.)
+            SimulationVisited = .TRUE.
+            CYCLE
+          ELSE
+            CALL Warn(Caller,'Requested variable does not exist: '//TRIM(VariableName))
+            CYCLE
+          END IF
         END IF
       ELSE
         ComponentVar = .FALSE.
@@ -994,18 +1005,18 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
                 Val = REAL( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
                 IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," at node ",I7)') j,TRIM(Var % Name),l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),l
                 ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," at node ",I7)') j,TRIM(Var % Name),i,l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,l
                 END IF
                 CALL AddToSaveList( TRIM(Name), Val)
                 
                 IF(ComplexEigenVectors) THEN
                   Val2 = AIMAG( Var % EigenVectors(j, Var%Dofs*(Ind-1)+i) )
                   IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," at node ",I7)') j,TRIM(Var % Name),l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," at node ",I0)') j,TRIM(Var % Name),l
                   ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," at node ",I7)') j,TRIM(Var % Name),i,l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," at node ",I0)') j,TRIM(Var % Name),i,l
                   END IF
                   CALL AddToSaveList( TRIM(Name), Val2)
                 END IF
@@ -1029,7 +1040,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
           
         IF(Ind > 0) THEN
-          WRITE(Name,'("value: ",A," at node ",I7)') TRIM( Var % Name ), l
+          WRITE(Name,'("value: ",A," at node ",I0)') TRIM( Var % Name ), l
           CALL AddToSaveList( TRIM(Name), Var % Values(Ind))        
         END IF
 
@@ -1210,7 +1221,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DO WHILE( ASSOCIATED( Lst ) )    
     IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
       IF ( ASSOCIATED(Lst % Fvalues) ) THEN
-        CALL AddToSaveList(Lst % Name, Lst % Fvalues(1,1,1))
+        CALL AddToSaveList(Lst % Name, Lst % Fvalues(1,1,1), &
+            CheckForDuplicates = SimulationVisited )
         l = l + 1
       END IF
     END IF
@@ -1296,7 +1308,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(ParallelReduce) CALL Info(Caller,'Parallel data is reduced into one file',Level=6)
       IF(FileAppend) CALL Info(Caller,'Data is appended to existing file',Level=6)
       
-      OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile)
+      OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile,IOSTAT=istat)
+      IF(istat /= 0) THEN
+        CALL Fatal(Caller,'Could not open fie for saving: '//TRIM(ScalarNamesFile))
+      END IF
       
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
@@ -1353,18 +1368,21 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF ( ParallelWrite ) THEN      
       IF(WriteCore) WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPe      
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,POSITION='APPEND')
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,POSITION='APPEND',IOStat=istat)
       ELSE 
-        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile)
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,IOSTAT=istat)
       END IF
     ELSE IF( WriteCore ) THEN 
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile,POSITION='APPEND')
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile,POSITION='APPEND',IOStat=istat)
       ELSE 
-        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile)
+        OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarsFile,IOStat=istat)
       END IF
     END IF
-
+    IF( istat /= 0) THEN
+      CALL Fatal(Caller,'Could not open file for saving: '//TRIM(ScalarsFile))
+    END IF
+    
 
     IF( WriteCore ) THEN
       ! If there are multiple lines it may be a good idea to mark each by an index
@@ -1394,7 +1412,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Message = ListGetString(Params,'Comment',GotIt)
         Name = TRIM(ScalarsFile) // '.' // TRIM("marker")
         IF( GotIt ) THEN
-          OPEN(NEWUNIT=ScalarsUnit, FILE=Name,POSITION='APPEND')
+          OPEN(NEWUNIT=ScalarsUnit, FILE=Name,POSITION='APPEND',IOstat=istat)
           WRITE(ScalarsUnit,'(I6,A,A)') LineInd,': ',TRIM(Message)
           CLOSE(ScalarsUnit)
         END IF
@@ -1643,14 +1661,16 @@ CONTAINS
 
 
 
-  SUBROUTINE AddToSaveList(Name, Val, ValueIsInteger, ParallelOperator )
+  SUBROUTINE AddToSaveList(Name, Val, ValueIsInteger, ParallelOperator, CheckForDuplicates )
 
-    INTEGER :: n
     CHARACTER(LEN=*) :: Name
-    REAL(KIND=dp) :: Val, ParVal
+    REAL(KIND=dp) :: Val
     LOGICAL, OPTIONAL :: ValueIsInteger
     CHARACTER(LEN=*), OPTIONAL :: ParallelOperator
+    LOGICAL, OPTIONAL :: CheckForDuplicates
     !------------------------------------------------------------------------
+    INTEGER :: i,n
+    REAL(KIND=dp) :: ParVal
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
@@ -1672,6 +1692,21 @@ CONTAINS
 
     n = NoValues
 
+    ! We save always in lower case as we may be doing string comparisons etc.
+    nlen = StringToLowerCase(str,Name)
+
+    IF( PRESENT( CheckForDuplicates ) ) THEN      
+      IF( CheckForDuplicates ) THEN
+        DO i=1,n
+          IF( TRIM(ValueNames(i)) == str(1:nlen) ) EXIT
+        END DO
+        IF( i<=n) THEN
+          CALL Info(Caller,'Found duplicate at '//TRIM(I2S(i))//' for: '//TRIM(str),Level=12)
+          RETURN
+        END IF
+      END IF
+    END IF
+    
     ! If vectors are too small make some more room in a rather dummy way
     IF(n >= SIZE(Values) ) THEN
       ALLOCATE(TmpValues(n), TmpValueNames(n), TmpValuesInteger(n),STAT=istat)
@@ -1691,13 +1726,10 @@ CONTAINS
       ValueNames(1:n) = TmpValueNames(1:n)
       DEALLOCATE(TmpValues,TmpValueNames,TmpValuesInteger)
     END IF
-
+    
     n = n + 1
     Values(n) = Val
 
-    ! We save always in lower case as we may be doing string comparisons etc.
-    nlen = StringToLowerCase(str,Name)
-   
     ! If we have positive or negative operator then revert that back in the save name
     IF( PosOper ) THEN
       ValueNames(n) = 'positive '//TRIM(str)

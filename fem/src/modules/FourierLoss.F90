@@ -645,7 +645,7 @@ CONTAINS
         ELSE
           t0 = GetCReal(SolverParams,'Fourier Start Time', Found )
           IF( .NOT. Found ) THEN
-            IF( TimesVisited == 1 ) t0 = 0.0_dp
+            IF( TimesVisited == 1 ) t0 = MAX(time-dt,0.0_dp)
           END IF
         END IF
       END IF

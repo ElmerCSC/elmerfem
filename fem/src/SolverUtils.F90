@@ -4626,8 +4626,8 @@ CONTAINS
        END IF
     END IF
 
-    bndry_start = Model % NumberOfBulkElements+1
-    bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
+    bndry_start = Mesh % NumberOfBulkElements+1
+    bndry_end   = bndry_start + Mesh % NumberOfBoundaryElements-1
     DirCount = 0
 
     ! check and set some flags for nodes belonging to n-t boundaries
@@ -4642,7 +4642,7 @@ CONTAINS
           Conditional = ActiveCond(BC)
 
           DO t = bndry_start, bndry_end
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                    Model % BCs(BC) % Tag ) CYCLE
 
@@ -4675,7 +4675,7 @@ CONTAINS
             IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
             Conditional = ActiveCond(BC)
           
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                  Model % BCs(BC) % Tag ) CYCLE
           
@@ -4705,7 +4705,7 @@ CONTAINS
 
       IF ( DOF<= 0 ) THEN
         DO t=bndry_start,bndry_end
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           n = Element % TYPE % NumberOfNodes
           DO j=1,n
             k = NT % BoundaryReorder(Element % NodeIndexes(j))
@@ -4730,7 +4730,7 @@ CONTAINS
           Conditional = ActiveCond(BC)
 
           DO t = bndry_start, bndry_end
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                 Model % BCs(BC) % Tag ) CYCLE
             Model % CurrentElement => Element
@@ -4761,7 +4761,7 @@ CONTAINS
             IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
             Conditional = ActiveCond(BC)
             
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
             IF ( Element % BoundaryInfo % Constraint /= &
                 Model % BCs(BC) % Tag ) CYCLE
             
@@ -4819,7 +4819,7 @@ CONTAINS
           
         ! Set the extruded BCs to zero. Note that only this value is available currently.
         DO t = bndry_start, bndry_end
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           IF(ANY(ChildBCs(1:m) == Element % BoundaryInfo % Constraint ) ) THEN          
             Model % CurrentElement => Element
             n = mGetElementDOFs( Indexes, Element, Model % Solver )            
@@ -4983,13 +4983,13 @@ CONTAINS
         ! check and set some flags for nodes belonging to n-t boundaries
         ! getting set by other bcs:
         ! --------------------------------------------------------------
-        DO t = 1, Model % NumberOfBulkElements+Model % NumberOfBoundaryElements
-          Element => Model % Elements(t)
+        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
           Model % CurrentElement => Element
           n = Element % TYPE % NumberOfNodes
           NodeIndexes => Element % NodeIndexes
           
-          IF( t > Model % NumberOfBulkElements ) THEN
+          IF( t > Mesh % NumberOfBulkElements ) THEN
             DO bc = 1,Model % NumberOfBCs
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
               ValueList => Model % BCs(BC) % Values
@@ -5200,8 +5200,8 @@ CONTAINS
         IF( bc <= Model % NumberOfBCs ) THEN
           IF(.NOT. AnySingleBC ) CYCLE
           ValueList => Model % BCs(BC) % Values
-          ElemFirst =  Model % NumberOfBulkElements + 1 
-          ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+          ElemFirst =  Mesh % NumberOfBulkElements + 1 
+          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         ELSE
           IF(.NOT. AnySingleBF ) CYCLE
           ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
@@ -5221,7 +5221,7 @@ CONTAINS
 
           ind = 0
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)
+            Element => Mesh % Elements(t)
 
             IF( bc <= Model % NumberOfBCs ) THEN
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
@@ -5276,7 +5276,7 @@ CONTAINS
         LumpedNodeSet(ind) = .TRUE.
 
         DO t = ElemFirst, ElemLast
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
 
           IF( bc <= Model % NumberOfBCs ) THEN
             IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
@@ -5363,8 +5363,8 @@ CONTAINS
         CALL List_toListMatrix(A)
       END IF
 
-      ElemFirst =  Model % NumberOfBulkElements + 1 
-      ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+      ElemFirst = Mesh % NumberOfBulkElements + 1 
+      ElemLast = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
       DO bc = 1,Model % NumberOfBCs 
 
@@ -5381,7 +5381,7 @@ CONTAINS
 
           ! Add nodes to the set that are associated with this BC only.
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)            
+            Element => Mesh % Elements(t)            
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
               NodeIndexes => Element % NodeIndexes
               CandNodes(NodeIndexes) = .TRUE.
@@ -5390,7 +5390,7 @@ CONTAINS
 
           ! Remove nodes from the set that may be set by other BCs also. 
           DO t = ElemFirst, ElemLast
-            Element => Model % Elements(t)            
+            Element => Mesh % Elements(t)            
             IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) THEN
               NodeIndexes => Element % NodeIndexes
               CandNodes(NodeIndexes) = .FALSE.
@@ -5414,7 +5414,7 @@ CONTAINS
         LumpedNodeSet(PlaneInds) = .TRUE.
 
         DO t = ElemFirst, ElemLast
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
 
           IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
             n = Element % TYPE % NumberOfNodes
@@ -6995,6 +6995,7 @@ END SUBROUTINE SetNodalSources
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActivePartAll(:), DoneLoad(:)
     LOGICAL :: NodesFound
     TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(*), PARAMETER :: Caller = 'SetNodalLoads'
 
     
@@ -7011,6 +7012,8 @@ END SUBROUTINE SetNodalSources
 ! Go through the boundaries
 !------------------------------------------------------------------------------
 
+    Mesh => Model % Mesh
+    
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
     DO BC=1,Model % NumberOfBCs
@@ -7028,10 +7031,10 @@ END SUBROUTINE SetNodalSources
       DO BC=1,Model % NumberOfBCs
         IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
 
-        DO t = Model % NumberOfBulkElements + 1, &
-          Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+        DO t = Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
-          Element => Model % Elements(t)
+          Element => Mesh % Elements(t)
           IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
           
           Model % CurrentElement => Element
@@ -7065,8 +7068,8 @@ END SUBROUTINE SetNodalSources
       IF(.NOT. ALLOCATED(DoneLoad)) ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )      
       DoneLoad = .FALSE.
 
-      DO t = 1, Model % NumberOfBulkElements 
-        Element => Model % Elements(t)
+      DO t = 1, Mesh % NumberOfBulkElements 
+        Element => Mesh % Elements(t)
         bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force', GotIt)
         
         IF(.NOT. GotIt) CYCLE
@@ -8312,7 +8315,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
     LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
-    INTEGER :: LhsConflicts, NormalConflicts
+    INTEGER :: LhsConflicts, NormalConflicts, ConflictCount
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
@@ -8362,10 +8365,11 @@ CONTAINS
 !------------------------------------------------------------------------------
       ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
       n_comp = 0
-
+      
       IF ( NumberOfBoundaryNodes>0 ) THEN
         BoundaryNormals = 0._dp
-        
+        ConflictCount = 0
+
         DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
                       Model % NumberOfBoundaryElements
           Element => Model % Elements(t)
@@ -8453,8 +8457,9 @@ CONTAINS
                       l = n_comp(Indexes(j))
                       n_comp(Indexes(j)) = l + 1
                       IF( l > 0 ) THEN
-                        IF( SUM( BoundaryNormals(k,:) * nrm ) < 0 ) THEN
-                          CALL Warn(Caller,'Node '//TRIM(I2S(Indexes(j)))//' has conflicting normal directions!')
+                        IF( SUM( BoundaryNormals(k,:) * nrm ) < -EPSILON(s) ) THEN
+                          ConflictCount = ConflictCount + 1
+                          !CALL Warn(Caller,'Node '//TRIM(I2S(Indexes(j)))//' has conflicting normal directions!')
                         END IF
                       END IF
 
@@ -8468,6 +8473,10 @@ CONTAINS
           DEALLOCATE(Condition)
         END DO
 
+        IF( ConflictCount > 0 ) THEN
+          CALL Warn(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!')
+        END IF
+        
         ! Here we go through the periodic projectors and average the normals
         ! such that the normals are the same where the nodes are the same.
         !--------------------------------------------------------------------
@@ -9859,17 +9868,19 @@ END FUNCTION SearchNodeL
       
     ELSE
       iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-      IterNo = NINT( iterVar % Values(1) )
-      Solver % Variable % NonlinIter = IterNo
+      IF( ASSOCIATED( iterVar ) ) THEN
+        IterNo = NINT( iterVar % Values(1) )
+        Solver % Variable % NonlinIter = IterNo
 
-      Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
-      IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
+        Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
+        IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
 
-      IF( .NOT. Solver % NewtonActive ) THEN
-        i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
-        IF( Stat .AND. i <= IterNo ) Solver % NewtonActive = .TRUE.
-      END IF     
-      
+        IF( .NOT. Solver % NewtonActive ) THEN
+          i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
+          IF( Stat .AND. i <= IterNo ) Solver % NewtonActive = .TRUE.
+        END IF
+      END IF
+        
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
 
       IF(Skip) THEN
@@ -18192,7 +18203,7 @@ CONTAINS
     END IF
     
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
-      ! Add the largest entry that allocates the whole list matrix structure
+      ! Add the outmost entry that allocates the whole list matrix structure
       CALL AddToMatrixElement(A_fs,nf,ns,0.0_dp)
       CALL AddToMatrixElement(A_sf,ns,nf,0.0_dp)
     ELSE
@@ -18222,55 +18233,45 @@ CONTAINS
     
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
-    !IF( IsShell ) CALL DetermineCouplingNormals()
+    ! IF( IsShell ) CALL DetermineCouplingNormals()
 
-    ! For the shell equation enforce the directional derivative of the displacement
-    ! field in implicit manner from solid displacements. The interaction conditions
-    ! for the corresponding forces are also created.
+    !
+    ! Create coupling conditions between a solid and a shell:
+    !
     IF (IsShell) THEN
+      !
+      ! In this block, the directional derivative DOFs of the shell model are set to follow
+      ! the displacement of the solid. The interaction conditions for the corresponding forces are 
+      ! also created.
+      !
       BLOCK
         INTEGER, POINTER :: Indexes(:)
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:)
         INTEGER, ALLOCATABLE :: EdgePerm(:),EdgeShellCount(:),EdgeShellTable(:,:),&
             EdgeSolidCount(:),EdgeSolidTable(:,:)
-        INTEGER :: MaxEdgeSolidCount, MaxEdgeShellCount, NoFound, NoFound2
-        INTEGER :: InterfaceN, hits, TotCount, EdgeCount, Phase
-        INTEGER :: p,lf,ls,ii,jj,m,t,l,e1,e2,k1,k2
+        INTEGER :: MaxEdgeSolidCount, MaxEdgeShellCount, NoFound
+        INTEGER :: InterfaceN, EdgeCount, Phase, Interface_Edge_Id
+        INTEGER :: p,lf,ls,ii,jj,m,t,l,k1,k2
         INTEGER :: NormalDir
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:), rhs0(:), Mass0(:)
         REAL(KIND=dp) :: u,v,w,weight,weight0,detJ,val
         REAL(KIND=dp) :: x, y, z 
+        REAL(KIND=dp) :: d(3)
+        REAL(KIND=dp), ALLOCATABLE :: TestArray(:)
         TYPE(Element_t), POINTER :: Element, ShellElement, Edge
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat
-       
-        n = Mesh % MaxElementNodes 
-        ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-              
-        ! Memorize the original values
-        ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
-        A_f0 = A_f % Values
+        LOGICAL :: Reject_Imperfect, CheckWeights
 
-                
-        IF (DrillingDOFs) THEN
-          ALLOCATE(rhs0(SIZE(A_f % rhs)))
-          rhs0 = A_f % rhs
-          IF (DoMass) THEN
-            ALLOCATE(Mass0(SIZE(A_f % MassValues)))
-            Mass0 = A_f % MassValues
-          END IF
-        END IF
-
-        n = Mesh % NumberOfNodes
-        ALLOCATE( NodeHits( n ), InterfacePerm( n ) )
-        NodeHits = 0
-        InterfacePerm = 0
-
-        ! First, in the basic case, zero the rows related to directional derivative dofs, 
-        ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
+        ! 
+        ! Tag the nodes which are shared by a solid and a shell
         !
+        n = Mesh % NumberOfNodes
+        ALLOCATE( InterfacePerm( n ) )
+
+        InterfacePerm = 0
         InterfaceN = 0
         DO i=1,Mesh % NumberOfNodes
           jf = FPerm(i)      
@@ -18280,60 +18281,66 @@ CONTAINS
           ! also number the interface
           InterfaceN = InterfaceN + 1
           InterfacePerm(i) = InterfaceN
-
-          DO lf = 4, 6
-            kf = fdofs*(jf-1)+lf
-
-            IF( ConstrainedF(kf) ) CYCLE
-
-            DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-              A_f % Values(k) = 0.0_dp
-              IF (DoMass) THEN
-                A_f % MassValues(k) = 0.0_dp
-              END IF
-              IF( DoDamp) THEN
-                A_f % DampValues(k) = 0.0_dp
-              END IF
-            END DO
-            A_f % rhs(kf) = 0.0_dp
-          END DO
         END DO
+        CALL Info(Caller,'Number of nodes shared by the shell and solid: ' &
+            //TRIM(I2S(InterfaceN)),Level=10)
 
-        CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=10)
-
-        ! We need to create mesh edges to simplify many things
-        CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
-        ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
-        EdgePerm = 0
         EdgeCount = 0
-        
-        DO t=1,Mesh % NumberOfEdges
-          Edge => Mesh % Edges(t)
-          Indexes => Edge % NodeIndexes
-          
-          k = COUNT( InterfacePerm(Indexes(1:2)) > 0 )
-          IF( k == 2 ) THEN
-            EdgeCount = EdgeCount + 1
-            EdgePerm(t) = EdgeCount
-          END IF
-        END DO
-                
-        CALL Info(Caller,'Number of edges at interface: '//TRIM(I2S(EdgeCount)),Level=10)
+        IF (InterfaceN > 0) THEN
+          !
+          ! We need to create mesh edges to simplify many things
+          !
+          CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
+          !
+          ! We now assume that an edgewise construction of the coupling interface is made, 
+          ! so that the array EdgePerm will be the primary way to check whether we are on
+          ! the coupling interface. Therefore, sharing an isolated node is not enough for
+          ! activating the coupling.
+          !
+          ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
+          EdgePerm = 0
+          DO t=1,Mesh % NumberOfEdges
+            Edge => Mesh % Edges(t)
+            Indexes => Edge % NodeIndexes
+
+            k = COUNT( InterfacePerm(Indexes(1:2)) > 0 )
+            IF( k == 2 ) THEN
+              EdgeCount = EdgeCount + 1
+              EdgePerm(t) = EdgeCount
+            END IF
+          END DO
+
+          CALL Info(Caller,'Number of edges at interface: '//TRIM(I2S(EdgeCount)),Level=10)
+        END IF
+
         IF( EdgeCount == 0 ) THEN
           CALL List_toCRSMatrix(A_fs)
           CALL List_toCRSMatrix(A_sf)
           CALL Info(Caller,'Coupling matrices are empty! Nothing to do!',Level=6)
+          DEALLOCATE(InterfacePerm)
+          IF (InterfaceN > 0) DEALLOCATE(EdgePerm)
           RETURN
         END IF
         
+        ! Find the shell elements that have an edge on the solid-shell interface.
+        ! Count how many times an interface edge is associated with such shell element.
+
         ALLOCATE( EdgeShellCount(EdgeCount), EdgeSolidCount(EdgeCount) )
-        
-        ! Go through shell elements that are at solid-shell interface.
-        ! Count how many times a mesh edge is associated with such shell element.
+        ALLOCATE( NodeHits( Mesh % NumberOfNodes ) )
+        NodeHits = 0
+
+        !
+        ! If the user does not prevent, we shall pre-examine interface edges to find whether a limitation of 
+        ! implementation is met. Creating imperfect constraints can then be avoided by neglecting 
+        ! problematic edges
+        !
+        Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
+            'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE. 
+        Reject_Imperfect = Reject_Imperfect .AND. DrillingDOFs
 
         DO Phase = 0,1         
           EdgeShellCount = 0                  
-          NoFound = 0
           
           DO t=1,Mesh % NumberOfBulkElements
             
@@ -18354,7 +18361,7 @@ CONTAINS
             ! We should not have the shell immersed in solid
             IF(ALL( SPerm(Indexes) /= 0 ) ) CYCLE 
           
-            ! Ok, now associate the shell element with the mesh edge
+            ! Ok, now associate the shell element with the interface edge
 
             DO i = 1, Element % TYPE % NumberOfEdges
               j = Element % EdgeIndexes(i)
@@ -18362,18 +18369,42 @@ CONTAINS
               k = EdgePerm(j)
               IF( k == 0 ) CYCLE
               Edge => Mesh % Edges(j)
-              
-              ! Edge is defined by two nodes only!
-              IF( ALL( Indexes /= Edge % NodeIndexes(1) ) ) CYCLE
-              IF( ALL( Indexes /= Edge % NodeIndexes(2) ) ) CYCLE
-              
-              ! Ok, we have an edge
-              NoFound = NoFound + 1
-              
-              IF( Phase == 0 ) THEN
-                EdgeShellCount(k) = EdgeShellCount(k) + 1
-              ELSE IF( ALL( EdgeShellTable(k,:) /= t ) ) THEN
-                EdgeShellCount(k) = EdgeShellCount(k) + 1
+
+              IF (Reject_Imperfect) THEN
+                DO ii = 1, Edge % TYPE % NumberOfNodes
+                  DO jj = 1, Element % TYPE % NumberOfNodes
+                    IF (Indexes(jj) == Edge % NodeIndexes(ii)) EXIT
+                  END DO
+                  
+                  ! To pre-examine, get the director of the shell element
+                  Director => GetElementalDirectorInt(Mesh, Element, Node=jj)
+
+                  !
+                  ! With the drilling DOFs, the implementation is limited to cases where the director is
+                  ! aligned with one of the global coordinate axes. Now, deactivate interface edges for
+                  ! which this condition is not satisfied.
+                  !
+                  NormalDir = 1              
+                  DO p=2,3
+                    IF (ABS(Director(p)) > ABS(Director(NormalDir))) NormalDir = p
+                  END DO
+                  IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                    !WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                    !    NormalDir,': ',Director(NormalDir)
+                    !CALL Warn(Caller, Message)
+                    CALL Info(Caller, 'No constraint created for the edge '//TRIM(I2S(j)), Level=10)
+                    EdgePerm(j) = 0
+                    EXIT
+                  END IF
+                END DO
+
+                IF (EdgePerm(j) == 0) CYCLE
+              END IF
+
+              ! Ok, we have an edge on the interface
+
+              EdgeShellCount(k) = EdgeShellCount(k) + 1
+              IF( Phase == 1 ) THEN
                 EdgeShellTable(k,EdgeShellCount(k)) = t
               END IF
             END DO
@@ -18384,26 +18415,26 @@ CONTAINS
             MaxEdgeShellCount = MAXVAL( EdgeShellCount )
             ALLOCATE( EdgeShellTable(EdgeCount,MaxEdgeShellCount) )
             EdgeShellTable = 0
+            Reject_Imperfect = .FALSE.            
+
+            CALL Info(Caller,'Maximum number of owner-shell elements for one edge: '&
+                //TRIM(I2S(MaxEdgeShellCount)),Level=10)
+            CALL Info(Caller,'Total number of owner-shell elements for all edges: '&
+                //TRIM(I2S(SUM(EdgeShellCount))),Level=10)
           END IF
-          
         END DO
 
-        MaxEdgeShellCount = MAXVAL( EdgeShellCount ) 
-        CALL Info(Caller,'Maximum number of edge shell owners: '&
-            //TRIM(I2S(MaxEdgeShellCount)),Level=10)
-        CALL Info(Caller,'Total number of edge shell owners: '&
-            //TRIM(I2S(SUM(EdgeShellCount))),Level=10)
-
-
-        NoFound = COUNT( EdgeShellCount == 0 ) 
-        CALL Info(Caller,'Number of edges with no shell owners: '//TRIM(I2S(NoFound)),Level=10)
-        NoFound2 = COUNT( EdgeShellCount > 1 ) 
-        CALL Info(Caller,'Number of edges with several shell owners: '//TRIM(I2S(NoFound2)),Level=10)
+        NoFound = COUNT( EdgeShellCount == 0 )
+        IF (NoFound > 0)  CALL Warn(Caller,'The number of deactivated interface edges: '//TRIM(I2S(NoFound)))
+        m = COUNT( EdgeShellCount > 1 ) 
+        CALL Info(Caller,'Number of edges with several owner-shell elements: '//TRIM(I2S(m)),Level=10)
  
        
-        ! Go through solid elements that are at solid-shell interface.
-        ! Count how many times a mesh edge and its nodes are associated with such solid element.
-        !--------------------------------------------------------------------
+        ! Find the solid elements that have edges on the solid-shell interface.
+        ! Count how many times an interface edge is associated with such solid element.
+        ! Also, count how many times a node is called to construct an interface edge
+        ! when looping over the solid elements.
+        !
         DO Phase = 0,1
           EdgeSolidCount = 0
           
@@ -18426,16 +18457,11 @@ CONTAINS
             DO i = 1, Element % Type % NumberOfEdges
               j = Element % EdgeIndexes(i)
 
-              ! Is this on active edge?               
+              ! Is this an active edge?               
               k = EdgePerm(j)
               IF( k == 0 ) CYCLE
 
               Edge => Mesh % Edges(j)
-
-              ! Edge is defined by two nodes only!
-              IF( ALL( Indexes /= Edge % NodeIndexes(1) ) ) CYCLE
-              IF( ALL( Indexes /= Edge % NodeIndexes(2) ) ) CYCLE
-
               EdgeSolidCount(k) = EdgeSolidCount(k) + 1
               
               IF( Phase == 1 ) THEN
@@ -18447,39 +18473,173 @@ CONTAINS
 
           IF( Phase == 0 ) THEN
             MaxEdgeSolidCount = MAXVAL( EdgeSolidCount )
-            CALL Info(Caller,'Maximum number of edge solid owners: '&
+            CALL Info(Caller,'Maximum number of owner-solid elements for one edge: '&
                 //TRIM(I2S(MaxEdgeSolidCount)),Level=10)
-            CALL Info(Caller,'Total number of edge solid owners: '&
+            CALL Info(Caller,'Total number of owner-solid elements for all edges: '&
                 //TRIM(I2S(SUM(EdgeSolidCount))),Level=10)
             ALLOCATE( EdgeSolidTable(EdgeCount,MaxEdgeSolidCount) )
             EdgeSolidTable = 0
           END IF
         END DO
-        
-        
+
+        !
+        ! Finally, start to create entries related to the coupling.
+        ! "s" refers to solid and "f" to shell.
+        !
+        n = Mesh % MaxElementNodes 
+        ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+        ! Memorize the original values
+        ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
+        A_f0 = A_f % Values
+                
+        IF (DrillingDOFs) THEN
+          ALLOCATE(rhs0(SIZE(A_f % rhs)))
+          rhs0 = A_f % rhs
+          IF (DoMass) THEN
+            ALLOCATE(Mass0(SIZE(A_f % MassValues)))
+            Mass0 = A_f % MassValues
+          END IF
+        END IF
+
+        ! First, zero the rows related to directional derivative dofs, 
+        ! i.e. the components 4,5,6. 
+        !
         DO t=1,Mesh % NumberOfEdges
           IF( EdgePerm(t) == 0 ) CYCLE
 
           Edge => Mesh % Edges(t)
+          Indexes => Edge % NodeIndexes
+          DO i=1,Edge % Type % NumberOfNodes
+            jf = FPerm(Indexes(i))
+            DO lf = 4, 6
+              kf = fdofs*(jf-1)+lf
+
+              IF( ConstrainedF(kf) ) CYCLE
+
+              DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                A_f % Values(k) = 0.0_dp
+                IF (DoMass) THEN
+                  A_f % MassValues(k) = 0.0_dp
+                END IF
+                IF( DoDamp) THEN
+                  A_f % DampValues(k) = 0.0_dp
+                END IF
+              END DO
+              A_f % rhs(kf) = 0.0_dp
+            END DO
+          END DO
+        END DO
+
+        Reject_Imperfect = ListGetLogical(CurrentModel % Solver % Values, &
+            'Reject Imperfect Couplings', Found)
+        IF (.NOT. Found) Reject_Imperfect = .TRUE.
+
+        CheckWeights = .TRUE.
+        IF (CheckWeights) THEN
+          ! We shall perform an additional check that the logic works as planned.
+          ALLOCATE( TestArray(6*Mesh % NumberOfNodes) )
+          TestArray = 0.0_dp          
+        END IF
+
+        ! Create weights for the averaging of constraints when the drilling DOFs
+        ! formulation is used. For the default shell formulation the counting of
+        ! contraints is more straightforward and the array NodeHits will serve
+        ! for the calculation of weights.
+        !
+        IF (DrillingDOFs) THEN
+          DO t=1,Mesh % NumberOfEdges
+            
+            Interface_Edge_Id = EdgePerm(t)
+            IF( Interface_Edge_Id == 0 ) CYCLE
+
+            Edge => Mesh % Edges(t)
+
+            DO k1 = 1, EdgeShellCount(Interface_Edge_Id)
+
+              ShellElement => Mesh % Elements( EdgeShellTable(Interface_Edge_Id,k1) )
+              
+              ! Get the director at the center of the interface edge
+              d(:) = 0.0_dp
+              DO ii = 1, Edge % Type % NumberOfNodes
+                DO jj = 1, ShellElement % TYPE % NumberOfNodes
+                  IF (ShellElement % NodeIndexes(jj) == Edge % NodeIndexes(ii)) EXIT
+                END DO
+                Director => GetElementalDirectorInt(Mesh, ShellElement, Node=jj)
+                d(1:3) = d(1:3) + Director(1:3)
+              END DO
+
+              d = 1.0_dp/SQRT(SUM(d**2)) * d
+              Director(1:3) = d(1:3)
+
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
+              END DO
+
+              DO k2 = 1, EdgeSolidCount(Interface_Edge_Id)        
+                DO ii = 1, 2
+                  i = Edge % NodeIndexes(ii)           
+                  jf = FPerm(i)      
+                  DO lf = 4, 6
+                    kf = fdofs*(jf-1)+lf
+
+                    IF( ConstrainedF(kf) ) CYCLE
+
+                    IF ((lf-3) /= NormalDir) THEN
+                      IF (CheckWeights) TestArray(kf) = TestArray(kf) + 1.0_dp
+                    END IF
+                  END DO
+                END DO
+              END DO
+            END DO
+          END DO
+        END IF
+
+        PICK_INTERFACE_EDGES: DO t=1,Mesh % NumberOfEdges
+
+          Interface_Edge_Id = EdgePerm(t)
+          IF( Interface_Edge_Id == 0 ) CYCLE         
+
+          Edge => Mesh % Edges(t)
           Indexes => Edge % NodeIndexes          
           
-          ! For edge by construction we have two nodes, but let's be generic
+          ! We shall retrieve tying information at the centre of the interface edge.
+          ! By construction an edge is identified by two nodes, but let's be generic.
           n = Edge % Type % NumberOfNodes
           x = SUM( Mesh % Nodes % x(Indexes) ) / n
           y = SUM( Mesh % Nodes % y(Indexes) ) / n 
           z = SUM( Mesh % Nodes % z(Indexes) ) / n 
 
-          weight0 = 1.0_dp / COUNT(EdgeShellTable(EdgePerm(t),:) > 0 ) 
+          !
+          ! If the interface edge has several owner-shell elements, distinct shell 
+          ! elements may have different director definitions and then different constraints 
+          ! may arise. The following loop is used to construct an average constraint.
+          !
+          ! The count of the different approximations of a rotation is 
+          ! EdgeShellCount(Interface_Edge_Id) per an edge. To get a single
+          ! approximation per an edge, we should assemble a fraction 
+          ! 1/EdgeShellCount(Interface_Edge_Id) per an edge to average. We shall
+          ! average the rotations at an edge as constants, so that the same
+          ! weighting works for the weighting of nodal rotations.
+          !
+          weight0 = 1.0_dp / EdgeShellCount(Interface_Edge_Id)
+          SHELLS_SHARING_INTERFACE_EDGE: DO k1 = 1, EdgeShellCount(Interface_Edge_Id)
 
-          DO e1 = 1, MaxEdgeShellCount
-            k1 = EdgeShellTable(EdgePerm(t),e1) 
-            IF( k1 == 0 ) CYCLE
-                     
-            ! We currently limit to one shell element only!
-            ShellElement => Mesh % Elements(k1)
+            ShellElement => Mesh % Elements( EdgeShellTable(Interface_Edge_Id,k1) )
 
-            ! Get the director for the shell element
-            Director => GetElementalDirectorInt(Mesh,ShellElement)
+            ! Get the director at the center of the interface edge
+            d(:) = 0.0_dp
+            DO ii = 1, n
+              DO jj = 1, ShellElement % TYPE % NumberOfNodes
+                IF (ShellElement % NodeIndexes(jj) == Edge % NodeIndexes(ii)) EXIT
+              END DO
+              Director => GetElementalDirectorInt(Mesh, ShellElement, Node=jj)
+              d(1:3) = d(1:3) + Director(1:3)
+            END DO
+
+            d = 1.0_dp/SQRT(SUM(d**2)) * d
+            Director(1:3) = d(1:3)
 
             IF (DrillingDOFs) THEN
               !
@@ -18493,22 +18653,23 @@ CONTAINS
               DO i=2,3
                 IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              ! This is not good, but maybe not bad enough to throw the whole analysis away...
-              IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
-                WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
-                    NormalDir,': ',Director(NormalDir)
-                CALL Warn(Caller,Message)
+              IF (.NOT. Reject_Imperfect) THEN
+                ! This is not good, but maybe not bad enough to throw the whole analysis away...
+                IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                  WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                      NormalDir,': ',Director(NormalDir)
+                  CALL Warn(Caller,Message)
+                END IF
               END IF
             END IF
         
-            ! Then go through each solid element associated with the interface and
+            ! Then go through each solid element associated with the interface edge and
             ! create matrix entries defining the interaction conditions for the
             ! directional derivatives and corresponding forces. 
-            DO e2 = 1, MaxEdgeSolidCount
-              k2 = EdgeSolidTable(EdgePerm(t),e2) 
-              IF( k2 == 0 ) CYCLE
+            !
+            SOLIDS_SHARING_INTERFACE_EDGE: DO k2 = 1, EdgeSolidCount(Interface_Edge_Id)
 
-              Element => Mesh % Elements(k2)
+              Element => Mesh % Elements( EdgeSolidTable(Interface_Edge_Id,k2) )
               Indexes => Element % NodeIndexes 
 
               n = Element % TYPE % NumberOfNodes
@@ -18519,29 +18680,32 @@ CONTAINS
               ! TO DO: The following call may not work for p-elements!
               CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
 
-              ! Integration at the center of the edge
+              ! Evaluate the basis functions for the solid at the center of the interface edge:
               stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
 
-              DO ii = 1, 2
+              NODES_ON_EDGE: DO ii = 1, 2
                 i = Edge % NodeIndexes(ii)           
                 jf = FPerm(i)      
 
-                IF( jf == 0 ) CALL Fatal(Caller,'jf should not be zero!')
-                IF( NodeHits(i) == 0 ) CALL Fatal(Caller,'NodeHits should not be zero!')
+                ! It is not self-evident how we should sum up conditions when several
+                ! shell and solid elements are related to a single edge. Ideally, only
+                ! one visit at a node would be sufficient to write a constraint. Now
+                ! we average by the count of alternative constraints which can be created
+                ! at the node, so that we end up to a direct expression for the nodal
+                ! rotation.
 
-                Weight = 1.0_dp / NodeHits(i) 
+                IF (.NOT. DrillingDOFs) THEN
+                  Weight = 1.0_dp / NodeHits(i) 
+                  weight = weight0 * weight
+                END IF
 
-                ! It is not self-evident how we should sum up conditions where several
-                ! shell elements are related to single edge. In this way the weights at least
-                ! sum up to unity. 
-                weight = weight0 * weight
-                
-                DO lf = 4, 6
+                ROTATION_DOFS: DO lf = 4, 6
                   kf = fdofs*(jf-1)+lf
 
                   IF( ConstrainedF(kf) ) CYCLE
 
-                  IF (DrillingDOFs) THEN
+                  DRILLING_OR_NOT: IF (DrillingDOFs) THEN
+                    Weight = 1.0_dp/TestArray(kf)
                     IF ((lf-3) /= NormalDir) THEN
 
                       DO p = 1,n
@@ -18593,6 +18757,9 @@ CONTAINS
                     ELSE
                       !
                       ! Return one row of deleted values to the shell matrix
+                      !
+                      ! TO DO: Check what happens when several shell elements
+                      ! with different directors share a node
                       !
                       DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                         A_f % Values(k) = A_f0(k)
@@ -18652,22 +18819,49 @@ CONTAINS
                         END IF
                       END DO
                     END DO
+                  END IF DRILLING_OR_NOT
+
+                  ! The diagonal entry should sum up to unity!
+                  IF (DrillingDOFs) THEN
+                    IF ((lf-3) /= NormalDir) THEN
+                      CALL AddToMatrixElement(A_f,kf,kf,weight)
+                    END IF
+                  ELSE
+                    CALL AddToMatrixElement(A_f,kf,kf,weight)
+                    IF (CheckWeights) TestArray(kf) = TestArray(kf) + weight
                   END IF
 
-                  ! This should sum up to unity!
-                  CALL AddToMatrixElement(A_f,kf,kf,weight)
-                END DO
-              END DO
-            END DO
+                END DO ROTATION_DOFS
+              END DO NODES_ON_EDGE
+            END DO SOLIDS_SHARING_INTERFACE_EDGE
+          END DO SHELLS_SHARING_INTERFACE_EDGE
+        END DO PICK_INTERFACE_EDGES
+
+        IF (.NOT. DrillingDOFs .AND. CheckWeights) THEN
+          Found = .FALSE.
+          DO i=1,SIZE(TestArray)
+            IF (ABS(TestArray(i)) > 1.0d-8) THEN
+              IF (ABS(TestArray(i)-1.0_dp) > 1.0d-8) THEN
+                PRINT *, 'weight (index,value)',i,testarray(i)
+                Found = .TRUE.
+              END IF
+            END IF
           END DO
-        END DO
+          IF (Found) THEN
+            CALL Fatal(Caller, 'The coupling creates a weight inconsistency')
+          ELSE
+            CALL Info(Caller, 'Weight check done', Level=10)
+          END IF
+        END IF
         
         DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
-        DEALLOCATE(A_f0, NodeHits, InterfacePerm)
+        DEALLOCATE(A_f0, NodeHits, InterfacePerm, EdgePerm, EdgeShellCount, EdgeSolidCount, &
+            EdgeShellTable, EdgeSolidTable)
         IF (DrillingDOFs) THEN
           DEALLOCATE(rhs0)
           IF (DoMass) DEALLOCATE(Mass0)
         END IF
+        IF (CheckWeights) DEALLOCATE(TestArray)
 
       END BLOCK
     END IF
@@ -22148,7 +22342,7 @@ CONTAINS
      TYPE(Model_t) :: Model                       !< Complele model structure
      TYPE(Solver_t) :: Solver                     !< Solver for which to set the friction
      CHARACTER(LEN=*) :: FrictionName             !< Name of the friction coefficient
-     CHARACTER(LEN=*), OPTIONAL :: DirectionName  !< Name of the friction coefficient
+     CHARACTER(LEN=*), OPTIONAL :: DirectionName  !< Name of the optional direction field that may be used to set the direction
          
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Matrix_t), POINTER :: A
@@ -22163,7 +22357,7 @@ CONTAINS
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t
      INTEGER :: dofN, dofT1, dofT2, bc_id, dim, dofs
-     LOGICAL :: Rotated, Found
+     LOGICAL :: Rotated, Found, ExcludePressure
      REAL(KIND=dp), POINTER :: VeloDir(:,:)
      REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
      CHARACTER(*), PARAMETER :: Caller = 'SetImplicitFriction'
@@ -22182,6 +22376,8 @@ CONTAINS
                
      ALLOCATE( NodeDone( SIZE( FlowPerm ) ) )
      NodeDone = .FALSE.
+
+     ExcludePressure = ListGetLogical( Solver % Values,'Implicit Friction Exclude Pressure',Found)
      
      DO t = Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -22255,6 +22451,7 @@ CONTAINS
            VeloCoeff(DofT1) = SUM( VeloDir(1:dim,1) * LocalT1 )
            IF( dim == 3 ) VeloCoeff(DofT2) = SUM( VeloDir(1:dim,1) * LocalT2 )
          ELSE
+           k = FlowPerm(j)
            VeloCoeff(DofT1) = FlowVar % Values(Dofs*(k-1)+DofT1) 
            IF(dim==3) VeloCoeff(DofT2) = FlowVar % Values(Dofs*(k-1)+DofT2) 
          END IF
@@ -22284,7 +22481,7 @@ CONTAINS
          END IF
 
          DO l = A % Rows(k),A % Rows(k+1)-1
-           IF( Dofs > dim ) THEN
+           IF( Dofs > dim .AND. ExcludePressure ) THEN
              IF( MODULO(A % Cols(l),Dofs) == 0 ) CYCLE
            END IF
            DO l2 = A % Rows(k2), A % Rows(k2+1)-1

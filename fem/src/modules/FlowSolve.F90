@@ -117,7 +117,7 @@
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
-     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel,FrictionName,DirectionName
+     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
      INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
@@ -478,14 +478,6 @@
         'Free Surface After Iterations', GotIt, minv=0 )
      IF ( .NOT. GotIt ) FreeSIter = 0
 
-!-----------------------------------------------------------------------------     
-
-     DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
-     IF (ImplicitFrictionDirection) THEN
-       WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName) 
-       CALL INFO('FlowSolve',Message)
-     END IF
-   
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
 !------------------------------------------------------------------------------
@@ -1257,7 +1249,9 @@
       END IF
       
 
-      
+      ! This is a matrix level routine for setting friction such that tangential
+      ! traction is the normal traction multiplied by a coefficient.
+      CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
       
       CALL DefaultFinishAssembly()
 

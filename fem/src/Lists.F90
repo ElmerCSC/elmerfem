@@ -1311,7 +1311,8 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-        GlobalBubbles = Pvar % Solver % GlobalBubbles
+        GlobalBubbles = .FALSE.
+        IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
@@ -4270,8 +4271,26 @@ use spariterglobals
                    EXIT
                  END IF
                END DO
-             ELSE
-               CALL Fatal('VarsToValuesOnNodes','DG field requires DGIndexes: '//TRIM(Var % Name))              
+             ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+               BLOCK
+                 TYPE(Element_t), POINTER :: Parent
+                 DO j=1,2
+                   IF(j==1) THEN
+                     Parent => Element % BoundaryInfo % Left
+                   ELSE
+                     Parent => Element % BoundaryInfo % Right
+                   END IF
+                   DO i=1,Parent % TYPE % NumberOfNodes
+                     IF( Parent % NodeIndexes(i) == ind) THEN
+                       k1 = Parent % DGIndexes(i)
+                       EXIT
+                     END IF
+                   END DO
+                   IF( k1 > 0 ) THEN
+                     IF(Var % Perm(k1) > 0) EXIT
+                   END IF
+                 END DO
+               END BLOCK
              END IF
              IF( k1 == 0 ) THEN
                CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
@@ -9341,16 +9360,18 @@ use spariterglobals
       END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the given element...
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
       IF(PRESENT(UElement)) THEN
         Element => UElement
-        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-        w = 2 * PI * ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-        IF(.NOT. GotIt) w = ListGetCReal( &
-            CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF( GotIt ) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
       END IF
     END IF
 
@@ -9367,27 +9388,34 @@ use spariterglobals
         CurrentModel % Solver % Values,'Angular Frequency',GotIt)
 
     ! It seems that the equation section is used to allow compliance with ElmerGUI
+    ! If element given, don't do this as it has been done before already.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-       elem_id = CurrentModel % Solver % ActiveElements(1)
-       Element => CurrentModel % Elements(elem_id)
-       eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
-       w = 2 * PI * ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
-       IF(.NOT. GotIt) w = ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+        w = 2 * PI * ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the 1st element, if not element given.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-      elem_id = CurrentModel % Solver % ActiveElements(1)
-      Element => CurrentModel % Elements(elem_id)
-      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-      w = 2 * PI * ListGetCReal( &
-        CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF(GotIt) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
+      END IF
     END IF
 
     IF( PRESENT( Found ) ) THEN
