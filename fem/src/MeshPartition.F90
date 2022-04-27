@@ -110,8 +110,8 @@ CONTAINS
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
     INTEGER, ALLOCATABLE :: PartitionPerm(:), InvPerm(:)
-    LOGICAL :: UsePerm, Success
-    LOGICAL, ALLOCATABLE :: PartSuccess(:)
+    LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
+    LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface", ImbTolStr, Messageq
 
@@ -132,7 +132,13 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: PartParams
     TYPE(ValueListEntry_t), POINTER :: ptr
     INTEGER :: ncopy
- 
+
+#ifdef HAVE_PARMETIS
+    GotParMetis = .TRUE.
+#else
+    GotParMetis = .FALSE.
+#endif
+
     IF(PRESENT(StartImbalanceTol)) THEN
       ImbalanceTol = StartImbalanceTol
     ELSE
@@ -175,13 +181,19 @@ CONTAINS
       CALL Info(FuncName,'Nothing to do without any partitions requested!')
       RETURN
     END IF
-
-10  CONTINUE
           
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
+    
+    ALLOCATE(PartGotNodes(ParEnv % PEs))
+    CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
+        1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
+    DistributedMesh = ALL(PartGotNodes)
+
+10  CONTINUE
 
     ! If we have a masked partitioning then make a reordering of the bulk elements
     UsePerm = PRESENT( PartitionCand ) 
@@ -237,24 +249,24 @@ CONTAINS
       CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
     END IF
 
-#ifdef HAVE_PARMETIS
-    CALL Info(FuncName, 'Using ParMetis for rebalancing')
-    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-    CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
-    CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
-    CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
-#else
-    CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
-    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-    CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
-    CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
-    CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
-    IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
-#endif
+    IF(GotParMetis .AND. DistributedMesh) THEN
+      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
+    ELSE
+      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
+      CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    END IF
 
     !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
     WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
