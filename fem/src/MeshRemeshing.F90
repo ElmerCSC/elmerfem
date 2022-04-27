@@ -1554,7 +1554,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       SharedNodesGlobal(:,:)
   LOGICAL, ALLOCATABLE :: IsNeighbour(:)
   INTEGER, POINTER :: Neighbours(:)
-  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.TRUE.,Elem202
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_ParMMG_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("ParMMG","Only works for 3D meshes!")
 
@@ -1758,7 +1758,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   INTEGER :: i,j,ii,kk,NoBCs
   LOGICAL :: Found, Debug
 
-  Debug= .TRUE.
+  Debug= .FALSE.
 
   !Set up a map of BoundaryInfo % Constraint to % BodyID
   NoBCs = CurrentModel % NumberOfBCs
@@ -1979,7 +1979,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
 
 #ifdef HAVE_PARMMG
 
-  Debug = .TRUE.
+  Debug = .FALSE.
   Parallel = ParEnv % PEs > 1
   FuncName = "RemeshDistParMMG"
 
