@@ -117,7 +117,7 @@
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
-     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
+     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel, DirectionName
      INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
