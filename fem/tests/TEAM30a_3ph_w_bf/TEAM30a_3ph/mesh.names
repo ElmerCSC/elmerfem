@@ -1,0 +1,19 @@
+! ----- names for bodies -----
+$ Rotor_Steel = 1
+$ Rotor_Aluminum = 2
+$ Rotor_side_Airgap = 3
+$ Stator_side_Airgap = 10
+$ Stator_Air = 13
+$ Stator_Steel = 14
+$ Winding_1_plus = 16
+$ Winding_2_minus = 17
+$ Winding_3_plus = 18
+$ Winding_1_minus = 19
+$ Winding_2_plus = 20
+$ Winding_3_minus = 21
+! ----- names for boundaries -----
+$ Rotor_side_Mortar_Boundary = 5
+$ Rotor_Steel_Surface = 6
+$ Rotor_Aluminum_Surface = 7
+$ Stator_side_Mortar_Boundary = 11
+$ Infinity = 15

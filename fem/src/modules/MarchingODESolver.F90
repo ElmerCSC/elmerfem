@@ -94,18 +94,18 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   LOGICAL :: Found
   REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
       Hparam, dth, time 
-  INTEGER :: t,i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti
+  INTEGER :: t,i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti,NoActive
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Element_t), POINTER :: Element
   INTEGER, POINTER :: BotPointer(:), UpPointer(:)
-  INTEGER, POINTER :: BotPerm(:),InvPerm(:),PrevInvPerm(:),MaskPerm(:),SingleIndex(:)
-  INTEGER, ALLOCATABLE :: ParentElem(:)
+  INTEGER, POINTER :: BotPerm(:),InvPerm(:),PrevInvPerm(:),MaskPerm(:),SingleIndex(:),Node2DG(:)
+  INTEGER, ALLOCATABLE :: ParentElem(:),DGIndexes(:)
   INTEGER :: NumberOfLayers, NoBCNodes
   TYPE(Variable_t), POINTER :: ExtVar, Var3D
   TYPE(ValueList_t), POINTER :: Material
-  LOGICAL :: MaskExist, ParabolicModel, RequireBC, DoTransient
+  LOGICAL :: MaskExist, ParabolicModel, RequireBC, DoTransient, AnyDG
   REAL(KIND=dp), POINTER :: Coord(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: TimeMethod, VarName
   LOGICAL, ALLOCATABLE :: BCNode(:)
@@ -118,7 +118,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   SAVE :: BotPointer, UpPointer, BotPerm, InvPerm, PrevInvPerm, ParentElem, &
       SingleIndex, MaskPerm, MaskExist, NumberOfLayers, ExtVar, BotNodes, &
       TimeMethod, RequireBC, xivec, dxvec, xvec, fvec, rvec, cvec, &
-      x0vec, f0vec, r0vec, c0vec, Coord, Hparam
+      x0vec, f0vec, r0vec, c0vec, Coord, Hparam, AnyDG
   
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving ODE on moving coordinates in structured mesh',Level=4)
@@ -131,7 +131,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   ! same extruded mesh. Hence these are not saved. 
   Var3D => Solver % Variable
   VarName = TRIM( Var3D % Name ) 
-  
+
   IF( .NOT. Initialized ) THEN
     CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=6)
     CALL Info(Caller,'Solving for variable: '//TRIM(VarName),Level=6)
@@ -146,17 +146,22 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     IF( MaskExist ) MaskPerm => ExtVar % Perm
     Coord => ExtVar % Values
 
-    IF( MaskExist ) THEN
+    AnyDG = ListGetLogicalAnySolver( Model,'Discontinuous Galerkin')
+    IF( MaskExist .OR. AnyDG ) THEN
       CALL Info(Caller,'Creating inverse node parent look-up table',Level=7)
       ALLOCATE( ParentElem(Mesh % NumberOfNodes) )
       ParentElem = 0
-      DO t=1,Mesh % NumberOfBulkElements 
-        Element => Mesh % Elements(t)
+
+      NoActive = GetNOFActive()
+      DO t=1,NoActive
+        Element => GetActiveElement(t)
         n = Element % TYPE % NumberOfNodes
-        IF( ANY( MaskPerm(Element % NodeIndexes) == 0 ) ) CYCLE
+        IF( MaskExist ) THEN
+          IF( ANY( MaskPerm(Element % NodeIndexes) == 0 ) ) CYCLE
+        END IF
         DO i=1,n
           j = Element % NodeIndexes(i)
-          IF( ParentElem(j) == 0 ) ParentElem(j) = t
+          IF( ParentElem(j) == 0 ) ParentElem(j) = Element % ElementIndex
         END DO
       END DO
     END IF
@@ -195,7 +200,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       IF(BotPointer(j) /= i) CYCLE
 
       ! Ok, check that also the next node would be at BC
-      ! The 1st layer may be an exeption, check for 2nd too
+      ! The 1st layer may be an exception, check for 2nd too
 
       ! The variable to be marched does not exist 
       IF( Var3D % Perm(UpPointer(j)) == 0 ) CYCLE
@@ -216,14 +221,14 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ! Allocate some vectors to study convergence 
     ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
         c0vec(n), xivec(n), dxvec(n), x0vec(n) )
-    
+       
     Initialized = .TRUE.
     CALL Info(Caller,'Initialization done',Level=10)
   END IF
   
   ! The variable on the layer
   n = BotNodes
-    
+  
   ! We just use one parameter to define the timestepping.
   ! This defines how the coeffcients are to be evaluated. 
   Beta = ListGetCReal( Params,'Newmark Beta',Found )
@@ -319,7 +324,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       ELSE
         xvec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
       END IF
-
+      
       ! 0-values at values at the previous layer
       ! The 1st layer cannot really change since it is the BC. 
       CALL GetCoefficients(Set0=.TRUE.)
@@ -336,7 +341,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ELSE
       InvPerm = UpPointer(PrevInvPerm)
     END IF
-       
+        
     ! xi is the value of x at the previous iterate of this layer
     IF( ParabolicModel ) THEN
       xivec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
@@ -352,6 +357,10 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       dz = Coord(InvPerm(1)) - Coord(PrevInvPerm(1))
     END IF
     dtime = dz / velo
+    
+    IF(.TRUE.) THEN
+
+    END IF
     
     ! We may have iteration if the ODE is nonlinear.
     ! However, more typical could be to iterate over coupled systems. 
@@ -463,16 +472,23 @@ CONTAINS
     LOGICAL, OPTIONAL :: Set0
     INTEGER :: i,j,k
     TYPE(Element_t), POINTER :: Element
+
     
-    IF(MaskExist) THEN
+    IF(MaskExist .OR. AnyDG ) THEN
       k = 1
       DO i=1,n
         j = InvPerm(i)
         SingleIndex(1) = j
-
+        
         IF(j==0) CALL Fatal('GetCoefficients','We should have positive index!')
-          
-        Model % CurrentElement => Mesh % Elements( ParentElem(j) )
+        Element => Mesh % Elements( ParentElem(j) )
+        
+        Model % CurrentElement => Element
+
+        !PRINT *,'ParentIndex:',ParentElem(j), j
+        !PRINT *,'Nodes:',Element % NodeIndexes
+        !PRINT *,'DGs:',Element % DGIndexes
+
         IF( HaveF ) THEN
           fvec(i:i) = ListGetReal( Material,&
               TRIM(VarName)//': Source',k,SingleIndex(1:1))
@@ -485,6 +501,8 @@ CONTAINS
           cvec(i:i) = ListGetReal( Material,&
               TRIM(VarName)//': Time Derivative Coefficient',k,SingleIndex(1:1) )
         END IF
+
+        IF(ALL(SingleIndex(1) /= Element % NodeIndexes ) ) STOP
       END DO
     ELSE
       IF( HaveF ) THEN
@@ -501,6 +519,11 @@ CONTAINS
       END IF
     END IF
 
+    !PRINT *,'fvec',fvec(1:n)
+    !PRINT *,'rvec',rvec(1:n)
+    !PRINT *,'cvec',cvec(1:n)
+
+    
     ! When using different integration we may need to access the
     ! value of cofficients at previous mesh layer.
     IF( PRESENT( Set0 ) ) THEN

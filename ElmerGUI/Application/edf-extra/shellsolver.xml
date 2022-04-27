@@ -1,0 +1,164 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Shell Equations" >
+      <Name>Shell Equations</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "ShellSolver" "ShellSolver" </DefaultValue>
+         </Parameter>
+         
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Large Deflection </Name>
+           <Whatis> If checked use large deflection theory. </Whatis>
+         </Parameter>
+	 
+        <Parameter Widget="CheckBox" Enabled="True"> 
+            <Name> Displace mesh </Name>
+            <Whatis> Displace mesh with the solution (or not).</Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Solver>
+
+      <Equation>
+         
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Equation>
+
+      <InitialCondition>
+          
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </InitialCondition>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Pressure </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Normal Pressure </Name>
+             <SifName> Normal Pressure </SifName>
+             <Whatis> Pressure normal to boundary. </Whatis>
+          </Parameter>
+          
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name>Youngs modulus</Name>
+            <Whatis> The elastic modulus must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Poisson ratio</Name>
+            <Whatis> For isotropic materials Poisson ratio must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Shell Thickness</Name>
+            <Whatis> Set thickness of shell elements. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Material>
+
+     <BoundaryCondition>
+         
+          <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> U 1 </Name>
+          <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> U 2 </Name>
+             
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> U 3 </Name>
+             
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> DNU 1 </Name>
+             
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> DNU 2 </Name>
+             
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> DNU 3 </Name>
+             
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+                    
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>	 
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

@@ -42,12 +42,18 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
   ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
-  ZirkaHysteresis.F90 SolidMechanicsUtils.F90)
+  ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
+  OptimizationUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
 
-
+IF(WITH_EXTOPTIM)
+  LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
+  PowellOptBobyqa.F90 PowellOptNewuoa.F90)
+  SET(HAVE_EXTOPTIM TRUE)
+ENDIF() 
+      
 IF(WITH_LUA)
   INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
   LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)
@@ -133,10 +139,7 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/SOLVER.KEYWORDS
   ${CMAKE_CURRENT_BINARY_DIR}/SOLVER.KEYWORDS COPYONLY)
 
 IF (NOT MPI_FOUND)
-  FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/mpif_stub.h 
-            DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-  FILE(RENAME ${CMAKE_CURRENT_BINARY_DIR}/mpif_stub.h
-              ${CMAKE_CURRENT_BINARY_DIR}/mpif.h)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mpif_stub.h ${CMAKE_CURRENT_BINARY_DIR}/mpif.h COPYONLY)
 ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
@@ -298,21 +301,23 @@ IF(NOT(WIN32))
   SET_TARGET_PROPERTIES(ViewFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
-# GebhardFactors
-ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90)
-TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES} 
-                                      mpi_stubs elmersolver)
+# Radiators
+ADD_EXECUTABLE(Radiators Radiators.F90)
+SET_TARGET_PROPERTIES(Radiators PROPERTIES LINKER_LANGUAGE Fortran)
+# TARGET_INCLUDE_DIRECTORIES(Radiators PUBLIC ${CMAKE_BINARY_DIR}/fem/src/view3d)
+# TARGET_INCLUDE_DIRECTORIES(Radiators PUBLIC ${CMAKE_BINARY_DIR}/fem/src/viewfactors)
+# FIND_LIBRARY(VIEW3D_LIBRARIES PATHS ${CMAKE_CURRENT_BINARY_DIR}/view3d)
+# FIND_LIBRARY(VIEWAXIS_LIBRARIES PATHS ${CMAKE_CURRENT_BINARY_DIR}/viewaxis)
+TARGET_LINK_LIBRARIES(Radiators ${ELMERSOLVER_LIBRARIES} 
+                                  mpi_stubs
+				  view3d
+				  viewaxis elmersolver)
+INSTALL(TARGETS Radiators RUNTIME DESTINATION "bin")
 
 IF(NOT(WIN32))
-  SET_TARGET_PROPERTIES(GebhardtFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
+  SET_TARGET_PROPERTIES(Radiators PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
-IF(WITH_Trilinos)
-  TARGET_LINK_LIBRARIES(GebhardtFactors elmersolver "${Trilinos_LIBRARIES};${Belos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
-ENDIF()
-
-INSTALL(TARGETS GebhardtFactors mpi_stubs RUNTIME DESTINATION "bin"
-  LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
 
 # Installation rules
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")

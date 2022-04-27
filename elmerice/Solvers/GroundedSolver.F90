@@ -277,7 +277,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
          IF(Nn==0) CYCLE
          Nn = Permutation(Element % NodeIndexes(i))
          IF(Nn==0) CYCLE
-         IF (ABS(VariableValues(Nn)-1.0_dp)<AEPS) VariableValues(Nn) = 0.0_dp
+         IF (VariableValues(Nn) > 0.0) VariableValues(Nn) = 0.0_dp
        END DO
      END IF
   END DO

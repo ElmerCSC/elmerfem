@@ -157,7 +157,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, dim
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    TYPE(ValueHandle_t) :: Load_h, SoundSpeed_h, DampingCoeff_h, ReactCoeff_h
+    TYPE(ValueHandle_t) :: Load_h, SoundSpeed_h, Density_h, DampingCoeff_h, ReactCoeff_h
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -166,16 +166,17 @@ CONTAINS
     INTEGER :: i, t, p, q
 
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), DAMP(nd,nd)
-    REAL(KIND=dp) :: c, att, react, LoadAtIP
+    REAL(KIND=dp) :: c, att, react, LoadAtIP, rho
     REAL(KIND=dp) :: Weight, Basis(nd), dBasisdx(nd,3), DetJ
 
-    SAVE Load_h, SoundSpeed_h, DampingCoeff_h, ReactCoeff_h, Nodes
+    SAVE Load_h, SoundSpeed_h, DampingCoeff_h, ReactCoeff_h, Density_h, Nodes
 !------------------------------------------------------------------------------
     IF (InitHandles) THEN
       CALL ListInitElementKeyword(Load_h, 'Body Force', 'Sound source')
       CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
           UnfoundFatal=.TRUE.)
       CALL ListInitElementKeyword(DampingCoeff_h, 'Material', 'Sound damping')
+      CALL ListInitElementKeyword(Density_h, 'Material', 'Density')
       CALL ListInitElementKeyword(ReactCoeff_h, 'Material', &
           'Sound reaction damping')
       InitHandles = .FALSE.
@@ -201,15 +202,18 @@ CONTAINS
       c = ListGetElementReal(SoundSpeed_h, Basis, Element)
       att = ListGetElementReal(DampingCoeff_h, Basis, Element, DampingActive)
       react = ListGetElementReal(ReactCoeff_h, Basis, Element, ReactiveMedium)
-
+      
       ! TO DO: Source is now a scalar field div(b). Rather than giving div(b)
       ! it would be better to give the vector b and to apply
       ! integration by parts to get always consistent flux BCs.
       IF (.NOT. Load_h % NotPresentAnywhere) &
           LoadAtIP = ListGetElementReal(Load_h, Basis, Element, AssembleSource) 
 
-      Weight = IP % s(t) * DetJ
+      Weight = IP % s(t) * DetJ 
 
+      rho = ListGetElementReal(Density_h, Basis, Element, Found ) 
+      IF(Found) Weight = Weight / rho
+      
       ! The Laplace term:
       ! -----------------------------------------------
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
@@ -264,16 +268,16 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(ValueHandle_t) :: Flux_h, SoundSpeed_h
+    TYPE(ValueHandle_t) :: Flux_h, SoundSpeed_h, Density_h
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: AssembleFlux, OutflowBC, Stat, Found
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), DAMP(nd,nd), MASS(nd,nd)
-    REAL(KIND=dp) :: c, g
+    REAL(KIND=dp) :: c, g, rho
     REAL(KIND=dp) :: Weight, Basis(nd), dBasisdx(nd,3), DetJ
     INTEGER :: t, p, q
  
-    SAVE Flux_h, SoundSpeed_h, Nodes
+    SAVE Flux_h, SoundSpeed_h, Density_h, Nodes
 !------------------------------------------------------------------------------
     BC => GetBC()
     IF (.NOT.ASSOCIATED(BC)) RETURN
@@ -283,13 +287,15 @@ CONTAINS
           'Source Acceleration')
       CALL ListInitElementKeyword(SoundSpeed_h, 'Material', 'Sound speed', &
           UnfoundFatal=.TRUE.)
+      CALL ListInitElementKeyword(Density_h, 'Material', 'Density', &
+          UnfoundFatal=.TRUE.)
       InitHandles = .FALSE.
     END IF
 
     OutflowBC = GetLogical(BC, 'Plane Wave BC', Found)
     IF (.NOT. Found) OutflowBC = GetLogical(BC, 'Outflow Boundary', Found)
     IF (.NOT. OutflowBC .AND. Flux_h % NotPresentAnywhere) RETURN
-
+    
     CALL GetElementNodes( Nodes )
 
     STIFF = 0._dp
@@ -305,8 +311,10 @@ CONTAINS
       !--------------------------------------------------------------
       stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx)
-
-      Weight = IP % s(t) * DetJ
+      Weight = IP % s(t) * DetJ  
+           
+      rho = ListGetElementRealParent( Density_h, Basis, Element, Found )
+      IF(Found) Weight = Weight / rho
 
       IF (OutflowBC) THEN
         c = ListGetElementRealParent(SoundSpeed_h, Basis, Element)

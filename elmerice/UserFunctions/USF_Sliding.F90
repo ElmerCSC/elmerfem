@@ -102,7 +102,9 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-     write(*,*)FlowSolverName, SSA
+     WRITE(Message,*)&
+          'Flow Solver Name:', TRIM(FlowSolverName),' SSA:',SSA
+     CALL INFO('Sliding_Weertman',Message,Level=3)
   END IF
   
   !Read the coefficients C and m in the sif file
@@ -450,7 +452,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 
   REAL (KIND=dp) :: Bdrag 
  
-  REAL (KIND=dp), ALLOCATABLE :: normal(:), velo(:)
+  REAL (KIND=dp), ALLOCATABLE :: normal(:), velo(:), BuddFrictionCoeff(:)
   TYPE(ValueList_t), POINTER  :: BC, ParentMaterial
   TYPE(Variable_t), POINTER   :: NormalVar, FlowVariable, Hvar
   TYPE(Element_t), POINTER    :: parentElement, BoundaryElement
@@ -459,15 +461,15 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   REAL(KIND=dp), POINTER      :: coefValues(:)
   INTEGER, POINTER            :: coefPerm(:)
   INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:), WeertCoefPerm(:)
-  INTEGER          :: DIM, i, body_id, other_body_id, material_id
-  REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
-  REAL (KIND=dp)   :: ut, un, ut0, WeertExp, Cw
+  INTEGER          :: DIM, i, body_id, other_body_id, material_id, elementNbNodes,elementNodeNumber
+  REAL (KIND=dp)   :: m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
+  REAL (KIND=dp)   :: C, ut, un, ut0, WeertExp, Cw
   LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE., H_scaling
   LOGICAL          :: UnFoundFatal=.TRUE., ConvertWeertman
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName, CoefName, WeertCoefName, WeertForm
 
   SAVE :: normal, velo, DIM, SSA, FirstTime, FlowSolverName, UseFloatation
-  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman
+  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman, BuddFrictionCoeff
 
 
   USF_name = "Sliding_Budd"
@@ -485,6 +487,8 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         CALL FATAL(USF_name, 'Bad dimension of the problem')
      END IF
+
+     ALLOCATE(BuddFrictionCoeff(Model % MaxElementNodes))
      
      FlowSolverName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )    
      IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
@@ -514,6 +518,13 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   ! get some information upon active boundary element and its parent
   !-----------------------------------------------------------------
   BoundaryElement => Model % CurrentElement
+  elementNbNodes = GetElementNOFNodes(BoundaryElement)
+  
+  ! get number of node in element
+  DO elementNodeNumber=1,elementNbNodes
+    IF (BoundaryElement % NodeIndexes(elementNodeNumber) == nodenumber) EXIT
+  END DO
+  
   IF ( .NOT. ASSOCIATED(BoundaryElement) ) THEN
      CALL FATAL(USF_Name,'No boundary element found')
   END IF
@@ -545,10 +556,16 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 !     CALL FATAL(USF_name, 'Need Ice Density for the Budd sliding law')
 !  END IF
 
-  C = GetConstReal( BC, 'Budd Friction Coefficient', GotIt )
+  !C = GetConstReal( BC, 'Budd Friction Coefficient', GotIt )
+
+  BuddFrictionCoeff(1:elementNbNodes) = &
+       ListGetReal(BC, 'Budd Friction Coefficient', elementNbNodes, BoundaryElement % Nodeindexes, GotIt)
+  
   IF (.NOT. GotIt) THEN
-     CALL FATAL(USF_name, 'Need a Friction Coefficient for the Budd sliding law')
+    CALL FATAL(USF_name, 'Need a Friction Coefficient for the Budd sliding law')
   END IF
+
+  C = BuddFrictionCoeff(elementNodeNumber)
   
   m = GetConstReal( BC, 'Budd Velocity Exponent', GotIt )
   IF (.NOT. GotIt) THEN
@@ -914,4 +931,180 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
   END IF
     
 END FUNCTION FreeSlipShelves
+! ******************************************************************************
+! *
+! *  Authors: Thomas Zwinger
+! *  Email:   
+! *  Web: 
+! *
+! *  Original Date: 
+! *   2021/05/25
+! *****************************************************************************
+!> USF_Sliding.f90, function Weertman2Coulomb
+!> 
+!> Converts linear Weertman coefficient (e.g. form inversion) to
+!> Coulomb sliging law parameters
+!> 
+!> For the .sif (bottom boundary):
+!> 
+!>  
+FUNCTION Weertman2Coulumb (Model, nodenumber, slc) RESULT(CoulombParam)
+  
+  USE DefUtils
 
+  IMPLICIT NONE
+  
+  TYPE(Model_t)  :: Model
+  REAL (KIND=dp) :: slc
+  INTEGER        :: nodenumber
+  REAL (KIND=dp) :: CoulombParam
+  
+  TYPE(ValueList_t), POINTER :: BC
+  TYPE(Element_t), POINTER :: BoundaryElement
+  REAL (KIND=dp) :: BetaSwitch, defaultC, minC,defaultAs, normalvelocity(3),&
+       tangentialvelocity(3), normal(3), velo(3), cstress(3,3),&
+       stressvector(3), As, Cc, normalstress, tangentialvelocitysqared, &
+       externalpressure, effectivepressure
+  REAL (KIND=dp), ALLOCATABLE :: auxReal(:)
+  LOGICAL ::  GotIt
+  TYPE(Variable_t), POINTER :: NormalVar, FlowVariable, StressVariable, NVariable, CVar, AsVar
+  REAL(KIND=dp), POINTER :: NormalValues(:), FlowValues(:),&
+       StressValues(:), SlidingCoeff(:), NValues(:), CValues(:), AsValues(:)
+  INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), StressPerm(:), NPerm(:), CPerm(:), AsPerm(:)
+  INTEGER :: DIM, i, n, stressdof, elementNbNodes, elementNodeNumber
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName, Cname, Asname
+
+  ALLOCATE(auxreal(Model % MaxElementNodes))
+ 
+  DIM = CoordinateSystemDimension()
+  IF (DIM == 2) THEN
+    stressdof = 4
+  ELSE IF (DIM == 3) THEN
+    stressdof = 6
+  ELSE
+    stressdof = 1
+  END IF
+  BoundaryElement => Model % CurrentElement
+  elementNbNodes = GetElementNOFNodes(BoundaryElement)
+  GotIt = .FALSE.
+  DO elementNodeNumber=1,elementNbNodes
+    IF (BoundaryElement % NodeIndexes(elementNodeNumber) == nodenumber) THEN
+      GotIt = .TRUE.
+      EXIT
+    END IF
+  END DO
+  IF (.NOT.GotIt) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)","Node in element not found")
+  BC => GetBC(BoundaryElement)
+  IF (.NOT.ASSOCIATED(BC)) THEN
+    CALL FATAL("USF_Sliding(Weertman2Coulumb)","Boundary Condition not found")
+  END IF
+  BetaSwitch = GetConstReal(BC,"Threshold Sliding Coefficient", GotIt)
+  IF (.NOT.GotIt) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'No "Threshold Sliding Coefficient" found')
+  defaultC = GetConstReal(BC,"Default C", GotIt)
+  IF (.NOT.GotIt) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'No "Default C" found')
+  defaultAs = GetConstReal(BC,"Default As", GotIt)
+  IF (.NOT.GotIt) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'No "Default As" found')
+  minC = GetConstReal(BC,"Min C", GotIt)
+  IF (.NOT.GotIt) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'No "Min C" found')
+  
+  FlowSolverName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )    
+     IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
+  FlowVariable => VariableGet( Model % Variables, FlowSolverName,UnFoundFatal=.True.)
+  IF (.NOT.ASSOCIATED(FlowVariable)) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Variable "FlowVariable" not found')
+  FlowPerm    => FlowVariable % Perm
+  FlowValues  => FlowVariable % Values
+  velo = 0.0_dp
+  DO i=1, DIM     
+    velo(i) = FlowValues( (DIM+1)*(FlowPerm(Nodenumber)-1) + i )
+  END DO
+  
+  NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(NormalVar)) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Variable "Normal Vector" not found')
+  NormalPerm => NormalVar % Perm
+  NormalValues => NormalVar % Values
+  DO i=1, DIM
+    normal(i) = -NormalValues(DIM*(NormalPerm(Nodenumber)-1) + i)      
+  END DO
+
+  Cname = GetString( BC , 'Coulomb C Output Variable', GotIt )
+  IF (.NOT.GotIt) &
+    CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Keyword "Coulomb C Output Variable" not found')
+  CVar =>  VariableGet(Model % Variables,TRIM(Cname),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(CVar)) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)","Variable "//TRIM(Cname)//" not found")
+  CPerm => CVar % Perm
+  CValues => CVar % Values
+
+  Asname = GetString( BC , 'Coulomb As Output Variable', GotIt )
+  IF (.NOT.GotIt) &
+    CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Keyword "Coulomb As Output Variable" not found')
+  AsVar =>  VariableGet(Model % Variables,TRIM(Asname),UnFoundFatal=.TRUE.)
+  IF (.NOT.ASSOCIATED(AsVar)) &
+       CALL FATAL("USF_Sliding(Weertman2Coulumb)","Variable "//TRIM(Asname)//" not found")
+  AsPerm => AsVar % Perm
+  AsValues => AsVar % Values
+  
+  NVariable => VariableGet( Model % Variables, 'Effective Pressure' )
+  IF ( ASSOCIATED( NVariable ) ) THEN
+    NPerm    => NVariable % Perm
+    NValues  => NVariable % Values
+    effectivepressure = NValues(NPerm(nodenumber))
+  ELSE
+    auxReal(1:elementNbNodes) = &
+         ListGetReal(BC, 'Effective Pressure', elementNbNodes, BoundaryElement % Nodeindexes, GotIt)
+    IF (GotIt) THEN
+      effectivepressure = auxReal(elementNodeNumber)
+    ELSE
+      StressVariable => VariableGet( Model % Variables, 'Stress',UnFoundFatal=.TRUE.)
+      IF (.NOT.ASSOCIATED(StressVariable)) &
+           CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Variable "Stress" not found')
+      StressPerm    => StressVariable % Perm
+      StressValues  => StressVariable % Values
+      DO i=1, DIM
+        cstress(i,i) = StressValues(stressdof*(StressPerm( Nodenumber)-1) + i)
+      END DO
+      auxReal(1:elementNbNodes) = &
+           ListGetReal(BC, 'External Pressure', elementNbNodes, BoundaryElement % Nodeindexes, GotIt)
+      IF (.NOT.GotIt) &
+           CALL FATAL("USF_Sliding(Weertman2Coulumb)",'Neither "Effective Pressure" nor "External Pressure" found')
+      externalpressure =  auxReal(elementNodeNumber)
+      cstress(1,2) = StressValues(stressdof*(StressPerm( Nodenumber)-1) + 4)
+      cstress(2,1) = cstress(1,2) 
+      IF (DIM == 3) THEN
+        cstress(2,3) = StressValues(stressdof*(StressPerm( Nodenumber)-1) + 5)
+        cstress(3,2) = cstress(2,3)
+        cstress(1,3) = StressValues(stressdof*(StressPerm( Nodenumber)-1) + 6)
+        cstress(3,1) = cstress(1,3)
+      END IF
+      DO i=1,DIM
+        stressvector(i) = SUM(cstress(i,1:DIM)*normal(1:DIM))
+      END DO
+      normalstress = MAX(SUM(stressvector(1:DIM)*normal(1:DIM)),0.0001_dp)
+
+      effectivepressure =  MAX(-normalstress - externalpressure, 0.0_dp)
+    END IF
+  END IF
+  
+  normalvelocity = SUM(normal(1:DIM)*velo(1:DIM))*normal
+  tangentialvelocity = velo - normalvelocity
+  tangentialvelocitysqared = SUM(tangentialvelocity(1:DIM)*tangentialvelocity(1:DIM))
+ 
+  n = GetElementNOFNodes()
+  IF (slc > BetaSwitch) THEN
+    CValues(CPerm(Nodenumber)) = defaultC
+    AsValues(AsPerm(Nodenumber)) = 1.0_dp/(slc*slc*slc * tangentialvelocitysqared)&
+         - SQRT(tangentialvelocitysqared)/effectivepressure**3.0_dp
+    CoulombParam = 1.0
+  ELSE
+    AsValues(AsPerm(Nodenumber))  = defaultAs
+    CValues(CPerm(Nodenumber)) = slc*SQRT(tangentialvelocitysqared)/effectivepressure
+    CoulombParam = -1.0
+  END IF
+END FUNCTION Weertman2Coulumb

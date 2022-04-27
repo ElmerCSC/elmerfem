@@ -35,7 +35,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Output Intervals = 1
@@ -101,10 +101,6 @@ Solver 1
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
 
-! The index of master structure is assumed to "1" and the
-! other solver is defined here:
-  Shell Solver Index = Integer 2
-
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
@@ -114,7 +110,7 @@ Solver 1
 ! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot:
+! Call the assembly for the 2nd solver using the pre-solvers slot:
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
@@ -231,7 +227,7 @@ Boundary Condition 8
 End
 
 
-Solver 1:: Reference Norm = 2.35206276E-07
+Solver 1:: Reference Norm = 2.35389219E-07
 
 
 

@@ -39,7 +39,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Simulation Type = Steady State
 End
 
@@ -51,6 +51,15 @@ Solver 1
   Exec Solver = Always
   Equation = "mgdyn"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  ! Apply the following three commands to impose the gauge 
+  ! condition div A = 0 in an iterated manner. This leads to the same
+  ! solution as the file with_projection.sif, which was created before
+  ! "Helmholtz Projection = True" within the AV-solver was enabled
+  !
+  ! Helmholtz Projection = True
+  ! Nonlinear System Max Iterations = 10
+  ! Nonlinear System Convergence Tolerance = 1e-6
 
   Fix Input Current Density = False
   Use Piola Transform = True

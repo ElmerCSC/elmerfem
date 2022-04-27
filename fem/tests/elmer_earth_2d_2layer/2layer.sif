@@ -22,7 +22,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 9
+  Max Output Level = 5
   Coordinate System = String Cartesian 2D
   
 

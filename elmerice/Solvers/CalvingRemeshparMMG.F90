@@ -608,7 +608,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
           gdofs = NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:NELNodes))
           DO j=1,GatheredMesh % NumberOfNodes
             IF(ANY(gdofs == GatheredMesh % ParallelInfo % GlobalDOFs(j)) .AND. &
-                 GatheredMesh % ParallelInfo % INTERFACE(j)) THEN
+                 GatheredMesh % ParallelInfo % NodeInterface(j)) THEN
               isolated = .FALSE.
               EXIT
             END IF
@@ -996,7 +996,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
    !Some checks on the new mesh
    !----------------------------
    DO i=1,GatheredMesh % NumberOfNodes
-     IF(GatheredMesh % ParallelInfo % INTERFACE(i)) THEN
+     IF(GatheredMesh % ParallelInfo % NodeInterface(i)) THEN
        IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
             CALL Fatal(SolverName, "Neighbourlist not associated!")
        IF(SIZE(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours) < 2) &

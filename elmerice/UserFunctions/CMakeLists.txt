@@ -5,7 +5,7 @@ SET(ElmerIceUSF_SRC Buoyancy.F90 USF_GetFrictionHeating.F90 USF_Sliding.F90
                     CaffeFlow.F90 USF_LateralFriction.F90 USF_WaterTransfer.F90
                     USF_Contact.F90 USF_ShapeFactor.F90 USF_Zs.F90 USF_Damage.F90
                     USF_Haf.F90 USF_CouplingGlaDS_SSA.F90 USF_CoV.F90 USF_IceProperties.F90
-		    USF_GlacierMeshMetric.F90)
+		    USF_GlacierMeshMetric.F90 USF_SourceCalcCalving.F90)
 
 ADD_LIBRARY(ElmerIceUSF SHARED ${ElmerIceUSF_SRC})
 

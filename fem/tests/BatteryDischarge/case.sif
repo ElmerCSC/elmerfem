@@ -1,0 +1,388 @@
+! Test case for battery development.
+! This is the discharge test case in Master's thesis. 
+!
+! Here Solvers 1 & 2 are iterated until converged for each timestep,
+! thereafter solver 3 & 4 are solved only once.
+!
+! It was difficult to obtain convergence. The following tricks are used:
+! - Electrostatic equations only are iterated as coupled system $npass times 
+! - Concentration equations are only updated once for given potential
+! - The equilibrium potentials are kept constant during concentration computations
+! - The solid state concentration has a maximum allow change, $dcsmax
+! - Currently 2nd order mesh is used, this enables use of strong form of diffusive source for Ce
+! - Sensitivity of solution is used for linearization of Phis, Phie, Ce (but not of Cs)
+!
+! Notes on accuracy:
+! - Even the current accuracy is not very good. One could increase $nss or decrease $sstol
+! - There is a heavy computational cost in large number of iterations
+!
+! Peter Raback, CSC & Timo Uimonen, University of Vaasa. 15.8.2019
+! If you want to use this as part of your own research we would
+! appreciated contacting. 
+!---------------------------------------------------------------------
+
+Check Keywords Warn
+
+
+$area = 1.0452
+$currdens = 6.0 / area
+
+$p0 = 0.126
+$p1 = 0.676
+$q1 = 0.442
+$q0 = 0.936
+
+$prefix="a"
+
+$relax=0.4     ! relaxation factor, note (1-relax)^iter must be small 
+$npass=5       ! how many ss iterations for electrostatics only
+$nss=20        ! how many ss iterations for full system
+$dcsmax=2.0    ! largest allowed change in concentration in one iteration
+$sstol=1.0e-6  ! ss convergence tolerance 
+
+
+Header
+  Mesh DB "." "battery1d"
+End
+
+
+Constants
+  Faraday Constant = Real 96485.9
+  Gas Constant = Real 8.314
+  Transference Number = Real 0.363
+  Electrode Plate Area = Real $area
+  Ambient Temperature = Real 288.0
+  Current Collector Resistance = Real 0.0020
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+
+  Timestepping method = implicit euler 
+
+! 3600 s for a full hour, 3 s for testing
+  Timestep Intervals(1) = 3 ! 3600
+  Timestep Sizes(1) = 1.0
+  Output Intervals(1) = 10
+
+  ! from um to m
+  Coordinate Scaling = Real 1.0e-6
+
+  Steady State Min Iterations = $npass+nss
+  Steady State Max Iterations = 200
+End
+
+Body 1
+  Name = "Left_Anode"  ! negative
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Initial condition = 1
+  Body Force = 1 
+End
+
+Body 2
+  Name = "Center"
+  Target Bodies(1) = 2
+  Equation = 2
+  Material = 2
+  Initial condition = 2
+  Body Force = 1
+End
+
+Body 3
+  Name = "Right_Cathode"  ! positive
+  Target Bodies(1) = 3
+  Equation = 1
+  Material = 3
+  Initial condition = 3
+  Body Force = 1
+End
+
+
+Body Force 1
+  Name = "just save"
+  Save Line = Logical True
+End 
+
+Equation 1
+  Name = "SolidphaseEqs"
+
+! We use this way to tell active solvers since it allows
+! for renumering of the solver to test different orders.
+  ElectrolytePot = Logical True
+  ElectrolyteCons = Logical True
+  SolidphasePot = Logical True
+  SolidphaseCons = Logical True
+End
+
+Equation 2
+  Name = "ElectrolyteEqs"
+  ElectrolytePot = Logical True
+  ElectrolyteCons = Logical True
+End 
+
+
+Solver 1 ! Phis
+  Equation = SolidphasePot
+  Procedure = "BatterySolver" "SolidphasePot"
+
+  Linearize Flux = Logical True
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = $relax
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Measure = "solution"
+
+  Steady State Convergence Tolerance = $sstol
+!  Nonlinear Post Solvers(1) = 2
+
+  Charge Controller = Logical True
+  Cutoff voltage = Real 3.1
+End
+
+Solver 2 ! Phie
+  Equation = ElectrolytePot
+! Exec Solver = always
+
+  Procedure = "BatterySolver" "ElectrolytePot"
+  Linearize Flux = Logical True
+! Fixed Overpotential = Logical True
+! Calculate Ce sensitivity = Logical True
+! Ignore Electrolyte Diffusion = Logicalx True
+  Quadratic Electrolyte Diffusion = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = $relax
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Measure = "solution"
+
+  Steady State Convergence Tolerance = $sstol
+End
+
+
+Solver 3 ! Ce 
+  Equation = ElectrolyteCons
+  Procedure = "BatterySolver" "ElectrolyteCons"
+
+! How many times visit the solver before going to work
+  Number Of Passive Visits = Integer $npass
+
+  Linearize Flux = Logical True
+  Fixed Overpotential = Logical True
+! Use Mean Flux = Logical True
+  
+! Correct Butler Volmer Fluxes = Logical True
+! Also calculate sensitivity for solver '4'
+! Calculate Cs sensitivity = Logical True
+! Skip Butler Volmer = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Measure = "solution"
+  Nonlinear System Relaxation Factor = $relax
+
+  Steady State Convergence Tolerance = $sstol
+End
+
+
+Solver 4 ! Cs
+  Equation = SolidphaseCons
+  Procedure = "BatterySolver" "SolidphaseCons"
+
+  Number Of Passive Visits = Integer $npass
+
+  Linearize Flux = Logical False
+  Fixed Overpotential = Logical True
+
+! Note that we use "speed" hence the change is speed*dt
+  Maximum Global Change Speed = Real $dcsmax
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+! These define the 1D mesh that is created on-the-fly for this solver
+! Note that currently we use 2nd order mesh
+! Using 1st order mesh allows more elements with same computational cost.
+  1D Mesh Create = Logical True
+  1D Element Order = Integer 2
+  1D Number Of Elements = Integer 50
+  1D Mesh Length = Real 1.0
+  1D Active Direction = Integer 1
+  1D Body Id = Integer 1
+
+! If we try to iterate the system further the global iteration suffers
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = $relax
+  Nonlinear System Convergence Tolerance = 1.0e-8
+
+  Save Solid Phase Average = Logical True
+  Save Solid Phase Diff = Logical True
+  Save State of Charge = Logical True
+
+! This keywords allows use to the submodel solution (Cs OneDim), of given mesh
+! Otherwise the last submodel is saved.
+!  Visualize Node Index = Integer 20
+End
+
+
+Solver 5 ! Phie
+  Equation = BatteryPost
+  Exec Solver = "after timestep"
+
+  Procedure = "BatterySolver" "BatteryPost"
+End
+
+Solver 6
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = after timestep
+
+  Variable 1 = time
+  
+  Filename = f$prefix$.dat
+End
+
+Solver 7
+  Equation = SaveBatterProfile
+  Procedure = "SaveData" "SaveLine"
+!  Exec Solver = after saving
+  Exec Solver = never
+
+  Filename = g$prefix$.dat
+  Save Solver Mesh Index = Integer 1
+End
+
+Solver 8
+  Equation = SaveSubmodel
+  Procedure = "SaveData" "SaveLine"
+!  Exec Solver = after saving 
+  Exec Solver = never
+
+  Filename = h$prefix$.dat
+  Save Solver Mesh Index = Integer 4
+End
+
+
+
+
+
+! Material parameters from Table1 of Master's Thesis
+
+Material 1
+  Name = "Anode" ! left
+  Anode = Logical True
+
+  Particle Radius = Real 1.0e-6
+
+  Active Particle Volume Fraction = Real 0.58
+  Electrolyte Volume Fraction = Real 0.332
+
+  Maximum solid phase concentration =  Real 16.1e3
+
+  Kinetic Constant = Real 1.38e-4
+  Anodic charge transfer coefficient = Real 0.5
+  Cathodic charge transfer coefficient = Real 0.5
+  Solid Phase Diffusion Coefficient = Real 2.0e-16
+  Electrolyte Diffusion Coefficient =  Real 2.0e-10
+  Solid Phase Electrical Conductivity = Real 100.0
+
+  Stoichiometry at Full Charge = Real $p1
+  Stoichiometry at Nill Charge = Real $p0
+End
+
+
+Material 2
+  Name = "Electrolyte"
+
+  Electrolyte Volume Fraction = Real 0.5
+  Electrolyte Diffusion Coefficient =  Real 2.0e-10
+End
+
+Material 3
+  Name = "Cathode" ! right
+  Cathode = Logical True
+
+  Particle Radius = Real 1.0e-6
+
+  Active Particle Volume Fraction = Real 0.50
+  Electrolyte Volume Fraction = Real 0.330
+
+  Maximum solid phase concentration =  Real 23.9e3
+
+  Kinetic Constant = Real 0.64e-4
+  Anodic charge transfer coefficient = Real 0.5
+  Cathodic charge transfer coefficient = Real 0.5
+  Solid Phase Diffusion Coefficient = Real 3.7e-16
+  Electrolyte Diffusion Coefficient =  Real 2.0e-10
+  Solid Phase Electrical Conductivity = Real 10.0
+
+  Stoichiometry at Full Charge = Real $q1
+  Stoichiometry at Nill Charge = Real $q0
+End
+
+Initial Condition 1
+  Name = "InitialCondition 1"
+  Cs = Real $p1*16.1e3 
+  Ce = Real 1205.0
+  Phie = Real 2.2
+  Phis = Real 2.0
+  Jli = Real 0.0
+End
+
+Initial Condition 2
+  Name = "InitialCondition 2"
+  Ce = Real 1205.0
+  Phie = Real 2.2
+  Jli = Real 0.0
+End
+
+Initial Condition 3
+  Name = "InitialCondition 3"
+  Cs = Real $q1*23.9e3
+  Ce = Real 1205.0
+  Phie = Real 2.2
+  Phis = Real 6.0
+  Jli = Real 0.0
+End
+
+! Note that in BCs all natural one are automatically satisfied (zero flux)
+Boundary Condition 1
+  Name = "0" 
+  Target Boundaries(1) = 1
+  current density = Real $ currdens
+End
+
+Boundary Condition 2
+  Name = "Lneg" 
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "Lpos" 
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Name = "L" 
+  Target Boundaries(1) = 4
+  current density = Real $ -currdens
+End
+
+! Currentle these imply consistency, not correctness!
+Solver 1 :: Reference Norm = 4.30264101E+00
+Solver 2 :: Reference Norm = 2.14011214E+00
+Solver 3 :: Reference Norm = 1.20488804E+03
+Solver 4 :: Reference Norm = 1.08044183E+05
+
+!End Of File

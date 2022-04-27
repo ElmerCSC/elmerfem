@@ -1,0 +1,198 @@
+!---------------------------------------------------------
+! A test case for assembling solid and shell equations
+! into a single linear system so that the coupled equations can 
+! be solved simultaneously.
+!
+! This is an eigenanalysis version derived from the verification
+! case ../tests/BeamSolidSolidCoupling/
+!
+! P.R. 9.6.2020
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = eigen.vtu
+  
+  vtu: Eigen Analysis = Logical True
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
+End
+
+Body 1
+  Name = "Solid"
+  Equation = 1
+  Material = 1 
+End
+
+Body 2
+  Name = "Shell Body"
+  Equation = 2
+  Material = 1
+!  Body Force = 1 
+End
+
+!Body Force 1
+!  Name = "Transverse load"
+!  Normal Pressure = 1e4
+!End 
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "Shell"
+  Active Solvers = 2 
+End
+
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+  Shell Thickness = 0.05
+End
+
+
+Solver 1
+  Equation = "Navier Equations"
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+
+  Linear System Solver = direct 
+  Linear System Direct Method = umfpack
+  Linear System Scaling = False
+
+! Request for a linear system that couples two structural models:
+  Structure-Structure Coupling = Logical True
+
+! Enforce the block mode when solving the system:
+  Linear System Block Mode = Logical True
+
+! Define the solvers that build the block system:
+  Block Solvers(2) = Integer 1 2
+
+! Call the assembly for the 2nd solver using the pre-solvers slot:
+  Pre Solvers(1) = 2
+  
+  Linear System Block Method = String "other"
+  Block Monolithic = Logical True
+
+! We don't want to displace the mesh in this test since only the solid would
+! be displaced, not the shell. 
+  Displace Mesh = False
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Max Iterations = 1
+  Eigen System Select = smallest magnitude
+!  Eigen System Shift = Real 1.0e3
+!  Eigen System Normalize To Unity = Logical True
+!  Save EigenValues = Logical True
+
+! This makes it possible to consider damping
+  Eigen System Complex = Logical True
+End
+ 
+
+Solver 2
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+!  Linear System Solver = "Direct"
+!  Linear System Direct Method = MUMPS
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+
+
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = GCR
+!  Linear System GCR Restart = 400
+!  Linear System Preconditioning = Ilu2
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1e-6
+
+  Steady State Convergence Tolerance = 1e-09
+  Nonlinear System Convergence Tolerance = 1e-8
+  Nonlinear System Max Iterations = 1
+
+! The defaults are True for the following 2 keywords:
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Exec Solver = never
+  Linear System Solver Disabled = Logical True  
+End
+
+
+Solver 3
+!  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Show Norm = True
+  Show Norm Index = 7
+
+  Save EigenValues = Logical True
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 4
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 8
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 0.0
+  DNU 1 = Real 0
+  DNU 2 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Name = "LeftTop"
+  Target Boundaries(1) = 6 
+!  Normal Force = 5.0e3
+End
+
+Boundary Condition 4
+  Name = "LeftBottom"
+  Target Boundaries(1) = 5
+!  Normal Force = -5.0e3
+End
+
+
+Solver 1:: Reference Norm = 1.84727770E-02
+Solver 3:: Reference Norm = 1.39962983E+05
+
+
+

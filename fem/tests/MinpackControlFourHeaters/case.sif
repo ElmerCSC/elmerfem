@@ -1,0 +1,144 @@
+! Test case for generalized source with four heaters.
+! This one with temperature set at given location. 
+!
+! This one uses optimization routine from minpack to define the heating.
+!
+! P.R. 15.1.2022
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Run Control
+  Max Output Level = 7
+  
+  External Optimization = Logical True
+  Run Control Iterations = Integer 100
+  Parameter Count = Integer 4
+
+  Run Control Tolerance = Real 1.0e-6
+  Run Control Variation = Real 0.1
+
+  Optimization Method = String "hybrd"
+
+  Initial Parameter 1 = Real 1.0
+  Initial Parameter 2 = Real 2.0
+  Initial Parameter 3 = Real 3.0
+  Initial Parameter 4 = Real 4.0
+
+  Control Target Value 1 = Real 20.0
+  Control Target Value 2 = Real 30.0
+  Control Target Value 3 = Real 40.0
+  Control Target Value 4 = Real 50.0
+
+  Control Variable = String "temperature"
+
+  Control Node Coordinates(4,2) = Real 2 6 6 6 2 2 6 2
+End 
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = -rpar 1 1.0
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = -rpar 2 2.0
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = -rpar 3 3.0
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = -rpar 4 4.0
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = idrs
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 50
+  Linear System Abort Not Converged = False
+End 
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 2.20281802E+01
+
+
+

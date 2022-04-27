@@ -127,7 +127,7 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
   IF( .NOT. ListCheckPresent(Params,'OpenFOAM Mesh 1') ) THEN
     CALL OpenFOAMBlocks()
   END IF
-  NoDir = NINT( ParallelReduction(1.0_dp * NoDir ) )
+  NoDir = ParallelReduction(NoDir ) 
   CALL Info('Elmer2OpenFOAMWrite','Number of active OpenFOAM blocks: '//TRIM(I2S(NoDir)),Level=5)
 
   
@@ -157,7 +157,7 @@ SUBROUTINE Elmer2OpenFoamWrite( Model,Solver,dt,TransientSimulation )
       OFMesh % Nodes % z = 0.0_dp
     END IF
 
-    CALL Info('Elmer2OpenFoamWrite','Mapping data to the temporal mesh using libary routines',Level=6)
+    CALL Info('Elmer2OpenFoamWrite','Mapping data to the temporal mesh using library routines',Level=6)
     
     OFVar => VariableGet(OFMesh % Variables, VarName )
     
@@ -408,7 +408,7 @@ CONTAINS
     Mesh % NumberOfNodes = n
          
 
-    ! This is just empty left paranthesis
+    ! This is just empty left parenthesis
     IF(.NOT. InlineCoords ) THEN
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
     END IF
@@ -433,11 +433,11 @@ CONTAINS
         
       IF( j == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
-            'Expecting a paranthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
       IF( k == 0 ) THEN
         CALL Fatal('Elmer2OpenFoamWrite',&
-            'Expecting a paranthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
 
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z

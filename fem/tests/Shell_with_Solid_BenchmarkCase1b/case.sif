@@ -1,0 +1,184 @@
+!---------------------------------------------------------
+! A verification case for assembling 3D solid and 2D shell 
+! equations into a single linear system so that the coupled 
+! equations can be solved simultaneously.
+!
+! This is a membrane-dominated benchmark problem described in 
+! Pitkäranta et al. Shell deformation states and the finite element 
+! method: a benchmark study of cylindrical shells. Here the boundary
+! layer adjacent to the clamped edge is modelled in 3D and
+! the 2D shell model is used elsewhere. For a model using 
+! the shell equations only see the test 
+!
+!       ../tests/Shell_BenchmarkCase1_Quad
+!
+! The coupling conditions are enforced quite near the clamped 
+! edge where the boundary layer is still strong in order to
+! test that the effects of bending and transverse shear deformation 
+! are handled correctly by the interface conditions.
+!
+! The results of the coupled simulation have been verified
+! against using pure shell equations and pure 3D elasticity
+! equations.
+!
+! The author of the original version of test: Mika Malinen
+!
+!------------------------------------------------------------
+! This test case is different from the reference case only in that
+! automated settings are used. Also LUA used instead of MATC. 
+! Also complements are used in VTU output.
+! Modifications: P.R. 17.2.2021
+
+
+! Define the thickness of the shell as a LUA variable:
+#t = 5.0e-2
+
+Header
+  Mesh DB "." "cylinder"
+  Include Path ""
+  Results Directory "results"
+End 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = coupled.vtu
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
+End
+
+Body 1
+  Name = "Shell Body"
+  Equation = 2
+  Material = 1
+  Body Force = 1 
+End
+
+Body 2
+  Name = "Solid"
+  Equation = 1
+  Material = 1 
+End
+
+Body Force 1
+  Name = "Transverse load"
+  Normal Pressure = Variable Coordinate
+     Real LUA "-t * 1.0e+5 * (1-2*tx[0]*tx[0])"
+End 
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "Shell"
+  Active Solvers = 2 
+End
+
+Material 1
+  Name = "Lame model"
+  Youngs Modulus = 7.0e+10
+  Density = 1.0e3
+  Poisson Ratio = #1.0/3.0
+  Shell Thickness = #t
+End
+
+Solver 1
+  Equation = "Navier Equations"
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+
+  Automated Structure-Structure Coupling = Logical True
+  Linear System Solver = Direct 
+  Linear System Direct Method = umfpack 
+End
+
+Solver 2
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Nonlinear System Max Iterations = 1
+End
+
+
+Solver 3
+  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Variable 1 = Displacement
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max abs 
+  Operator 4 = norm
+  Operator 5 = min
+  Operator 6 = max
+End 
+
+Boundary Condition 1
+  Target Boundaries(1) = 7
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 8
+  U 3 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 9
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 2
+  Displacement 3 = Real 0
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 3
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 4
+  Displacement 1 = Real 0
+End
+
+Boundary Condition 7
+  Name = "Top solid face"
+  Target Boundaries(1) = 5 
+  Normal Force = Variable Coordinate
+    Real LUA "-t/2.0 * 1.0e+5 * (1-2*tx[0]*tx[0]/(tx[0]*tx[0]+(1-tx[2])^2))"
+End
+
+Boundary Condition 8
+  Name = "Bottom solid face"
+  Target Boundaries(1) = 6
+  Normal Force = Variable Coordinate
+    Real LUA "t/2.0 * 1.0e+5 * (1-2*tx[0]*tx[0]/(tx[0]*tx[0]+(1-tx[2])^2))"
+End
+
+
+Solver 1:: Reference Norm =  2.35389217E-07
+
+
+

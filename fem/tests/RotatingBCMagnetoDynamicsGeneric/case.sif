@@ -3,7 +3,7 @@
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
-! Increse number of extruded layers for better accuracy. 
+! Increase number of extruded layers for better accuracy. 
 !
 ! This test case uses a generic projector which does not make 
 ! any assumptions on the characteristics of the 2D mesh.
@@ -102,12 +102,12 @@ Solver 2
   Linear System Iterative Method = GCR
   BicGStabL Polynomial Degree = 4
   Linear System GCR Restart = 600
-  Linear System Convergence Tolerance = 1e-14
+  Linear System Convergence Tolerance = 1e-5
   Linear System Abort Not Converged = False
 
   Steady State Convergence Tolerance = 1e-10
 
-  Linear System Normwise Backward Error = Logical True
+  Linear System Componentwise Backward Error = True
 !  Linear System Row Equilibration = True
 
   Edge Basis = Logical True

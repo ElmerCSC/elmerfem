@@ -746,6 +746,21 @@ def export_unv(export_path, mesh_object):
     """
     Fem.export([mesh_object], export_path)
 
+def find_compound_filter_point(compound_filter, point):
+    """
+    Finds which point in the compound filter object is given point.
+    Returns the name of the point in compound filter.
+
+    :param compound_filter: FreeCAD compound filter.
+    :param point: FreeCAD vector.
+
+    :return: A string.
+    """
+    for num, c_vertex in enumerate(compound_filter.Shape.Vertexes):
+        if vectors_are_same(c_vertex.Point, point):
+            return str(num+1)
+    raise ValueError('Point not found')
+
 def find_compound_filter_edge(compound_filter, edge):
     """
     Find which edge in the compound filter object is the edge as the one given in second argument.
@@ -990,7 +1005,8 @@ def pick_faces_from_geometry(geom_object, face_picks, mesh_sizes=None):
         add_entity_in_list(faces, face_name, face_objects[face_number], mesh_sizes)
     return faces
 
-def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction_dict=None, line_params=None):
+def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction_dict=None, line_params=None,
+                                       volume_corner_vectors=None):
     """
     Creates transfinite mesh parameter dictionary e.g.::
 
@@ -1000,9 +1016,10 @@ def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction
 
     :param volume_name: List containing volume names.
     :param surface_name_list: List containing surface names.
-    :param direction_dict: None or a dictionary e.g. {'A1_alpha0': 'Left'} (added to geo file).
+    :param direction_dict: None or a dictionary e.g. {'A1_alpha0_direction': 'Left'} (added to geo file).
     :param line_params: None or a list containing dictionaries (see function create_transfinite_line_param_dict).
-
+    :param volume_corner_vectors: None or a list containing volume corner points (for transfinite volume definition)
+    
     :return: Dictionary.
     """
     mesh_params = {'volume': volume_name,
@@ -1011,20 +1028,24 @@ def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction
         mesh_params.update(direction_dict)
     if line_params:
         mesh_params['line_params'] = line_params
+    if volume_corner_vectors:
+        mesh_params['volume_corner_vectors'] = volume_corner_vectors
     return {'transfinite_mesh_params': mesh_params}
 
-def create_transfinite_line_param_dict(edge_list, nof_points, progression=1, comment=''):
+def create_transfinite_line_param_dict(edge_list, nof_points, progression=1, comment='', mesh_type='Progression'):
     """
     Creates dictionary containing transfinite line parameters.
 
     :param edge_list: List containing FreeCAD edge objects.
     :param nof_points: Integer.
-    :param progression: Number.
+    :param progression: Number (mesh_type coefficient).
     :param comment: String (commented in geo file).
+    :param mesh_type: String.
 
     :return: Dictionary.
     """
-    return {'edges': edge_list, 'points': str(nof_points), 'progression': str(progression), 'comment': comment}
+    return {'edges': edge_list, 'points': str(nof_points), 'progression': str(progression), 
+            'mesh_type': mesh_type, 'comment': comment}
 
 def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefixes=None):
     """ 
@@ -1116,6 +1137,12 @@ def find_lines_to_transfinite_mesh_params(compound_filter, entities_dict):
             for edge in line_param_dict['edges']:
                 line_ids.append(find_compound_filter_edge(compound_filter, edge))
             line_param_dict['lines'] = line_ids
+        if mesh_param_dict.get('volume_corner_vectors', []):
+           volume_corner_points = []
+           # if used corner points needs already be in correct order
+           for corner_vector in mesh_param_dict['volume_corner_vectors']:
+               volume_corner_points.append(find_compound_filter_point(compound_filter, corner_vector))
+           mesh_param_dict['volume_corner_points'] = volume_corner_points
 
 def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compound_face_names, face_name_list,
                      surface_objs, surface_objs_by_compound_face_names, surface_object=None):

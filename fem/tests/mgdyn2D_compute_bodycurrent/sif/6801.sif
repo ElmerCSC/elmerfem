@@ -174,13 +174,17 @@ End
 
 Component 1
    Name = String test 1
-   Master Bodies = Integer 2
+!   Master Bodies = Integer 2
+! This was replaced to test the feature of giving names instead
+! integer array. 
+   Master Bodies Name = String "test 1"
    Coil Type = String massive
 End
 
 Component 2
-   Name = String test 2
-   Master Bodies = Integer 3
+   Name = String anything
+!   Master Bodies = Integer 3
+   Master Bodies Name = String "test 2"
    Coil Type = String massive
 End
 

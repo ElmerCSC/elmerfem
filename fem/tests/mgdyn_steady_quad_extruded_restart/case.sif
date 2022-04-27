@@ -1,0 +1,214 @@
+! This test case checks that the parallel extrusion works also for Hcurl basis.
+!
+! P.R. 27.1.2022
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "quads"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Extruded Mesh Layers = 12
+  Extruded Mesh Slices = Logical True
+  Single Mesh = True
+
+  Extruded Min Coordinate = 0.0
+  Extruded Max Coordinate = 0.01
+
+  Enforce Parallel = Logical True
+End
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+
+
+Solver 1
+!  Exec Solver = before all 
+  Equation = "MapCoordinates"
+  Procedure = "./NodeToEdgeSolver" "ExtrudedRestart"
+  Active Coordinate = Integer 3
+
+!  Mesh = -part 2 "rect"  ! in parallel when initial computation in several partitions
+  Mesh = -single "quads"  ! in serial 
+  Restart File = File "az.dat"
+  Restart Position = Integer 0 
+  Restart Error Continue = Logical True  
+
+! Ensures that we perform interpolation on plane 
+  Interpolation Passive Coordinate = Integer 3 
+
+!  Restart Variable 1 = String "az"
+
+! Create this on-the-fly to 3D mesh
+  Variable 1 = az 
+End 
+
+Solver 2
+!  Exec Solver = before all 
+  Equation = "NodeToEdge"
+  Procedure = "./NodeToEdgeSolver" "NodeToEdgeField"
+  Variable = azproj 
+
+  Active Coordinate = Integer 3
+  
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-6
+  BicgStabl Polynomial Degree = 4
+
+  Nonlinear System Consistent Norm = True
+End 
+
+
+Solver 3
+  Equation = "MGDynamics"
+
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+!  Linear System Symmetric = True
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-6
+  BicgStabl Polynomial Degree = 4
+
+  Nonlinear System Consistent Norm = True
+
+  Linear System Abort Not Converged = False
+
+! This has been eliminated to really test the initial test
+  Exec Solver = never
+End
+
+
+Solver 4
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Joule Heating = True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Magnetic Vector Potential = True
+  Calculate Nodal Fields = True
+  
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+
+!  Exec Solver = never
+End
+
+
+Solver 5
+!  Exec Solver = never
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_proj
+  Vtu format = Logical True
+  Save Geometry Ids = True
+  Discontinuous Bodies = Logical True
+
+! It becomes confusing to save both 2D and 3D results!
+  Save This Mesh Only = Logical True
+
+  Exec Solver = never
+End
+
+Solver 6
+  Exec Solver = after all
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+  Show Norm Index = 1
+
+  Variable 1 = magnetic vector potential 3
+  Operator 1 = max abs
+End
+
+
+Body Force 1
+  Current Density 1 = 0.0 
+  Current Density 2 = 0.0
+  Current Density 3 = 1.0e6
+End
+
+Boundary Condition 1
+  Name = "Symmetry"
+  Target Boundaries(2) = 1 2  
+End
+
+
+Boundary Condition 2
+  Name = "AirSurface"
+  Target Boundaries(1) = 3
+
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 3
+  Name = "WireStart"
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "AirStart"
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "WireEnd"
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 6
+  Name = "AirEnd"
+  AV {e} = Real 0.0
+End
+
+Solver 6 :: Reference Norm = 1.64273618E-06

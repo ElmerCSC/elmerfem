@@ -57,9 +57,8 @@
 #include <gui/PythonQtScriptingConsole.h>
 #endif
 
-#if 1
 #include "vtkConfigure.h"
-#else
+#ifndef VTK_MAJOR_VERSION
 #include "vtkVersionMacros.h"
 #endif
 

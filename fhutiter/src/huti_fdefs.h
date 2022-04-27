@@ -9,7 +9,7 @@
 ! HUTI defaults
 
 #define HUTI_DFLTMAXIT 5000
-#define HUTI_DFLTMINIT 0						
+#define HUTI_DFLTMINIT 0					       
 #define HUTI_DFLTTOLERANCE 0.000001
 #define HUTI_DFLTDBUGLVL 0
 #define HUTI_DFLTPROCS 1
@@ -111,7 +111,7 @@
 #define HUTI_DBUGLVL ipar(5)
 #define HUTI_EXTOP_MATTYPE ipar(6)
 #define HUTI_PSEUDOCOMPLEX ipar(7)
-
+						
 ! Iteration parameters (10-19)
 
 #define HUTI_MAXIT ipar(10)
@@ -123,7 +123,7 @@
 #define HUTI_BICGSTABL_L ipar(16)
 #define HUTI_GCR_RESTART ipar(17)
 #define HUTI_IDRS_S ipar(18)
-
+						
 ! Parallel environment parameters (20-29)
 #define HUTI_MYPROC ipar(20)
 #define HUTI_PROCS ipar(21)
@@ -132,6 +132,7 @@
 #define HUTI_ROBUST ipar(26)
 #define HUTI_ROBUST_MAXBADIT ipar(27)
 #define HUTI_SMOOTHING ipar(28)
+#define HUTI_ROBUST_START ipar(29)
   
 ! Output parameters (30-39)
 !

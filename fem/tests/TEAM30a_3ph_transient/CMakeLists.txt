@@ -1,0 +1,7 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE(TEAM30a_3ph_transient.sif TEAM30a_3ph_transient.sif COPYONLY)
+file(COPY ELMERSOLVER_STARTINFO TEAM30a_3ph_harmonic.sif TEAM30a_3ph DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(TEAM30a_3ph_transient LABELS harmonic restart)

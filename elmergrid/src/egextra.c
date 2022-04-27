@@ -744,7 +744,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
     elemtype = data->elementtypes[i];
     material = data->material[i];
 
-    if(data->bodynamesexist) 
+    if(data->bodynamesexist)      
       fprintf(out,"body_%d_%s %d ",material,data->bodyname[material],elemtype);
     else if(elemtype/100 > 4) 
       fprintf(out,"vol%d %d ",material,elemtype);
@@ -1390,7 +1390,7 @@ int ReadRealVector(Real *vector,int first,int last,char *filename)
   Real num;
     
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("The opening of the real vector file '%s' wasn't succesfull !\n",filename);
+    printf("The opening of the real vector file '%s' wasn't successful !\n",filename);
     return(1);
   }
   for(i=first;i<=last;i++) {
@@ -1427,7 +1427,7 @@ int ReadIntegerVector(int *vector,int first,int last,char *filename)
   int num;
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("The opening of the int vector file '%s' wasn't succesfull !\n",filename);
+    printf("The opening of the int vector file '%s' wasn't successful !\n",filename);
     return(1);
   }
   for(i=first;i<=last;i++) {
@@ -1464,7 +1464,7 @@ int ReadRealMatrix(Real **matrix,int row_first,int row_last,
   Real num;
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("The opening of the real matrix file '%s' wasn't succesfull!\n",filename);
+    printf("The opening of the real matrix file '%s' wasn't successful!\n",filename);
     return(1);
   }
 
@@ -1508,7 +1508,7 @@ int ReadIntegerMatrix(int **matrix,int row_first,int row_last,
   int num;
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("The opening of the int matrix file '%s' wasn't succesfull!\n",filename);
+    printf("The opening of the int matrix file '%s' wasn't successful!\n",filename);
     return(FALSE);
   }
 

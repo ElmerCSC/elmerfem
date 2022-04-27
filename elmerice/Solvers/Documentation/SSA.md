@@ -23,7 +23,7 @@ The mandatory input variables are the bottom surface elevation and top surface e
 For the Flow law the SSA solver uses a “power-law” formulation and uses the keywords Viscosity Exponent, Critical Shear Rate, and Mean Viscosity. It doesn't work with the built-in Glen's flow law (TODO).
 Newton linearisation of the viscosity can be used using the keywords Nonlinear System Newton After Tolerance and/or Nonlinear System Newton After Iterations. It is automatically reset to False at the beginning of a new iteration.
 
-The Mean Density and Mean Viscosity, if not uniform along the vertical direction, can be computed using the GetMeanValueSolver routine or the StucturedProjectToPlan solver (preferred solution).
+The Mean Density and Mean Viscosity, if not uniform along the vertical direction, can be computed using the GetMeanValueSolver routine or the StructuredProjectToPlan solver (preferred solution).
 
 Contrary to the NS solver, the gravity must be orientated along the z-axis and is taken from the value of Flow BodyForce 2 for a SSA-1D problem or Flow BodyForce 3 for a SSA-2D problem.
 

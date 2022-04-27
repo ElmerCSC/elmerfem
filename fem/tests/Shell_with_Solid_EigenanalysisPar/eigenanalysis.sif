@@ -1,0 +1,134 @@
+!---------------------------------------------------------
+! A test case for assembling 3D solid and 2D shell 
+! equations into a single linear system so that the eigenanalysis 
+! of the coupled equations can be performed.
+!
+! This is a variation for parallel eigensolver.
+! Director has been dropped as it is not available in parallel.
+!
+! P.R. 29.9.2021, based on test case by M.M. 
+!------------------------------------------------------------
+
+! Define the thickness of the shell as a MATC variable:
+$ t = 5.0e-2
+
+Header
+  Mesh DB "." "cylinder"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+! Define postprocessing
+  Post File = coupled_eigen.vtu
+  vtu: Eigen Analysis = Logical True
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
+
+! These are the internal partitioning commands
+  Partition Mesh = Logical True
+  Partitioning Method = String "Zoltan"
+  Partition Equation Balance = Logical True 
+  Partition Equation Interface = Logical True
+  Partition Mesh Extend Layers = Integer 2
+End
+
+Body 1
+  Name = "Shell Body"
+  Equation = 2
+  Material = 1
+End
+
+Body 2
+  Name = "Solid"
+  Equation = 1
+  Material = 1 
+End
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "Shell"
+  Active Solvers = 2 
+End
+
+Material 1
+  Name = "Lame model"
+  Youngs Modulus = 7.0e+10
+  Density = 2.7e3
+  Poisson Ratio = $1.0/3.0
+  Shell Thickness = $t
+End
+
+Solver 1
+  Equation = "Navier Equations"
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = smallest magnitude
+  
+  Block System Mass Lumping = Logical False
+  Eigen System Complex = Logical False
+
+  Nonlinear System Max Iterations = 1
+!  Nonlinear System Consistent Norm = Logical True
+
+! We use MUMPS for the monolithic system
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+
+! This keyword creates a 2x2 block system for the structures that
+! is then turned monolithic. This hides many keywords behind...
+  Automated Structure-Structure Coupling = Logical True
+
+! We don't want to displace the mesh in this test since only the solid would
+! be displaced, not the shell. 
+  Displace Mesh = False
+
+! This is only to help visualization. 
+  Eigen System Normalize To Unity = Logical True
+
+!  Skip Compute Nonlinear Change = Logical True
+End
+
+Solver 2
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Steady State Convergence Tolerance = 1e-09
+  Nonlinear System Convergence Tolerance = 1e-8
+  Nonlinear System Max Iterations = 1
+
+  Skip Compute Nonlinear Change = Logical True
+
+! This works better for the generic coupling!
+  Large Deflection = Logical False
+  Drilling Dofs = Logical False
+  Exec Solver = never
+End
+
+
+Solver 3
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = Logical True
+  Show Norm Index = 7
+  Filename = f.dat
+End 
+
+
+Solver 3:: Reference Norm = 4.08286558E+05

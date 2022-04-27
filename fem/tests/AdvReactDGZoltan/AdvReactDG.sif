@@ -16,7 +16,7 @@ $ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
 $ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 20
  
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -30,7 +30,7 @@ Simulation
 ! These are the internal partitioning commands
   Partition Mesh = Logical True
   Partitioning Method = String "Zoltan"
-!  Number of partitions = Integer 6
+  Number of partitions = Integer 6
 End
 
 Constants

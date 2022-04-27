@@ -72,7 +72,8 @@ Solver 1
 ! Adds 2nd order p-element shape functions on top of the linear Lagrangian space.
   Element = "p:2"
 
-! This keyword reduces the number of Gauss points from 27 to 8 (3^3 vs. 2^3). 
+! In the case of second-order p-tetrahedra this keyword reduces the number of Gauss points
+! from 36 to 12 (3x3x4 vs. 2x2x3). Note that more points is created in one direction.
   Relative Integration Order = Integer -1
 End
 
@@ -84,6 +85,12 @@ Solver 2
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
   Vtu Format = Logical True
+  !
+  ! The following keyword enables the visualization of the p-solution by using 
+  ! the second-order Lagrange element basis:
+  !
+  Lagrange Element Degree = Integer 2
+  Save Bulk Only = True
 End
 
 

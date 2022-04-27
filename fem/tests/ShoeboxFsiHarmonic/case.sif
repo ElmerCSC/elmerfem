@@ -23,7 +23,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1

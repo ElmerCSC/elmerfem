@@ -1,0 +1,157 @@
+! This is a test case for cyclic system where results from previous timestep
+! are saved for the next round. Convergence tolerance is the average nonlinear
+! system change over the time compared to the previous simulation.
+!
+! As the base case but this one also with parallel timestepping.
+! Paradoxically this converges a lot faster!
+!
+! P.R. 8.4.2021
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+
+! Frequency and timesteps per cycle sets the timestep.
+$f=10.0
+$omega = f*2*pi
+$ncycle = 20
+$dt = 1.0/(f*ncycle)
+
+  Simulation Type = "Transient"
+  Timestep Sizes = $dt
+
+! How many steps before we start repeating again
+  Periodic Timesteps = Integer $ncycle
+! How many steps overall maximum
+  Timestep Intervals = $100*ncycle
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+! Enforce parallel timestepping
+  Parallel Timestepping = True
+  Single Mesh = Logical True
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Left"
+  Target Bodies(1) = 1
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Right"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+End 
+
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"  
+  Variable = Temperature
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "Idrs"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 0.7
+  Nonlinear System Convergence Measure = "solution"
+
+! This ensures good initial guess the next time
+  Store Cyclic System = True
+! This looks at the average error through the whole cycle.
+! Upon success the flag "produce" is set to 1.
+  Cyclic System Convergence Tolerance = 1.0e-5
+  Cyclic Guess Mode = Integer 0
+
+!  Vector Assembly = Logical True
+End
+
+
+Solver 2
+! After cyclic convergence we still take full cycle with production.
+  Exec Condition = Equals "produce"
+!  Exec Solver = After timestep
+ 
+  Equation = VtuOutput
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = True
+  Save Geometry Ids = True
+End 
+
+
+Solver 3
+  Name = "SaveScalars"
+  Exec Condition = Equals "produce"
+!  Exec Solver = after timestep
+
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = "f.dat"
+
+  Variable 1 = time
+  Variable 2 = periodic time
+  Variable 3 = Temperature
+  Operator 3 = norm
+  Operator 4 = nonlin change
+
+  Save Coordinates(2,2) = 0.5 0.5 1.5 0.5
+
+! We want to save the "heat source" also.
+  Expression 1 = Variable "time"
+    Real MATC "sin(omega*tx)"
+End
+ 
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = Variable "time"
+    MATC "sin(omega*tx)"
+End
+
+Boundary Condition 1
+  Name = "Left"
+  Target Boundaries(1) = 1 
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 1.43457554E-02
+
+!End Of File

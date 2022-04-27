@@ -691,7 +691,7 @@ CONTAINS
           DO i=1,A % NumberOFRows
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % Interface(i) ) CYCLE
+              IF( A % ParallelInfo % NodeInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0
@@ -704,7 +704,7 @@ CONTAINS
           
           DO i=A % NumberOfRows,1,-1
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % Interface(i) ) CYCLE
+              IF( A % ParallelInfo % NodeInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0

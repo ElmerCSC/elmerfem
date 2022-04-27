@@ -7,7 +7,7 @@ Mesh DB "." "shoebox_hexas"
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady

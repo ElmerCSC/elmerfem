@@ -260,8 +260,10 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
     MaskValues  => MaskVar % Values
   END IF
 
-  IF (UseMask .AND. (MaskValues(MaskPerm(Node))  .LE. 0.0_dp)) THEN
-    frictionLoad = 0.0_dp
+  IF (UseMask) THEN
+    IF ( MaskValues(MaskPerm(Node)).LE.0.0_dp ) THEN
+      frictionLoad = 0.0_dp
+    END IF
   ELSE
     DO i=1, DIM
       normal(i) = NormalValues(DIM*(NormalPerm(Node)-1) + i)      
@@ -278,4 +280,5 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
     frictionLoad = &
          MAX( (-1.0_dp * (SUM(tangvelocity(1:DIM) * flowLoad(1:DIM)))), 0.0_dp)
   END IF
+
 END FUNCTION getFrictionLoads

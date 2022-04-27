@@ -21,8 +21,9 @@ def main(argv):
    import shapefile
    
    found_d=False
+   bc_only=False
    try:
-      opts, args = getopt.getopt(argv,"hd:")
+      opts, args = getopt.getopt(argv,"hd:",["bc"])
    except getopt.GetoptError:
       usage()
       sys.exit(2)
@@ -33,6 +34,8 @@ def main(argv):
       elif opt in ("-d"):
          dir_name= arg
          found_d=True
+      elif opt in ("--bc"):
+         bc_only=True
 
    if not found_d:
       print('missing mandatory mesh dir name')
@@ -73,35 +76,36 @@ def main(argv):
 
    shp.close()
 
-   ## elemnts as polygons
-   bcfile=os.path.join(outputdir, 'elements')
-   shp=shapefile.Writer(bcfile, shapefile.POLYGON)
-   shp.field('enum', 'N')
-   shp.field('etype', 'N')
-   shp.field('BodyId', 'N')
+   if not bc_only :
+      ## elemnts as polygons
+      bcfile=os.path.join(outputdir, 'elements')
+      shp=shapefile.Writer(bcfile, shapefile.POLYGON)
+      shp.field('enum', 'N')
+      shp.field('etype', 'N')
+      shp.field('BodyId', 'N')
 
-   Efile = os.path.join(dir_name, 'mesh.elements')
-   with open(Efile) as fin:
-       for line in fin:
-         l = line.split()
-         enum,bd,etype=int(l[0]),int(l[1]),int(l[2])
-         nv=etype%100
-         evertices = [vertices[int(i)] for i in l[3:3+nv]]
+      Efile = os.path.join(dir_name, 'mesh.elements')
+      with open(Efile) as fin:
+          for line in fin:
+            l = line.split()
+            enum,bd,etype=int(l[0]),int(l[1]),int(l[2])
+            nv=etype%100
+            evertices = [vertices[int(i)] for i in l[3:3+nv]]
 
-         # As its elements so no hole
-         # should we check the rotation order?
-         #  seems not
-         # this would be the solution wiyh shapely
-         #polygon = shapely.geometry.Polygon(evertices)
-         #if not polygon.exterior.is_ccw:
-         #  evertices=evertices[::-1]
+            # As its elements so no hole
+            # should we check the rotation order?
+            #  seems not
+            # this would be the solution wiyh shapely
+            #polygon = shapely.geometry.Polygon(evertices)
+            #if not polygon.exterior.is_ccw:
+            #  evertices=evertices[::-1]
 
-         # spyshp autoimatically add lastpt=firstpt
-         # to close polygons
-         shp.poly([evertices])
-         shp.record(enum,etype,bd)
+            # spyshp autoimatically add lastpt=firstpt
+            # to close polygons
+            shp.poly([evertices])
+            shp.record(enum,etype,bd)
 
-   shp.close()
+      shp.close()
 
    print("Shapefiles for Elmer mesh have been created")
    print("You can define the projection with gdal tools")
@@ -113,6 +117,7 @@ def usage():
    print('options:')
    print('   -h [print help]')
    print('   -d <mesh dir. name>')
+   print('   --bc [output only boundary elements]')
 
 
 if __name__ == "__main__":

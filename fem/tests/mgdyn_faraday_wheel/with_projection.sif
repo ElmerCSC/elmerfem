@@ -90,7 +90,7 @@ Solver 1
   Linear System Preconditioning = ILU2
   Linear System Row Equilibration = True
   Linear System Residual Output = 20
-  Linear System Max Iterations = 1000
+  Linear System Max Iterations = 3000
   Linear System Iterative Method = GCR
   Linear System GCR Restart = 400
   Linear System Convergence Tolerance = 1e-6
@@ -143,7 +143,7 @@ Solver 4
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
-  linear system convergence tolerance = 1e-8
+  linear system convergence tolerance = 1e-9
   linear system preconditioning = ILU0
   linear system abort not converged = True
   linear system residual output = 20
@@ -163,7 +163,7 @@ Solver 5
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
-  linear system convergence tolerance = 1e-8
+  linear system convergence tolerance = 1e-9
   linear system preconditioning = ILU0
   linear system abort not converged = True
   linear system residual output = 1
