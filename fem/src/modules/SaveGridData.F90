@@ -138,7 +138,8 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
     CALL Warn('SaveGridData','Please recompile Elmer with Netcdf library or choose another file format !')
     NetCDFFormat = .FALSE.
   ENDIF 
-
+#endif
+  
   AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat .OR. NetCDFFormat
   IF( .NOT. AnyFormat ) THEN
     CALL Warn('SaveGridData','No active file format given, nothing to do!')
