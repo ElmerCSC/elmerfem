@@ -123,34 +123,25 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   TableFormat = ListGetLogical( Params,'Table Format',Found)
   VtuFormat = ListGetLogical( Params,'Vtu Format',Found)
   VtiFormat = GetLogical( Params,'Vti Format',GotIt )
-#ifdef HAVE_NETCDF
   NetCDFFormat =  GetLogical( Params,'NetCDF Format',GotIt )
-#endif
 
   FileFormat = ListGetString( Params,'Output Format',Found) 
   IF( Found ) THEN
     IF( FileFormat == 'vtu') VtuFormat = .TRUE.
     IF( FileFormat == 'table') TableFormat = .TRUE.
     IF( FileFormat == 'vti') VtiFormat = .TRUE.
-#ifdef HAVE_NETCDF
-    IF( FileFormat == 'netcdf')  THEN 
-      NetCDFFormat = .TRUE. 
-      CALL Info('SaveGridData','Saving data to Netcdf        ', Level=4 )
-    ENDIF
-#endif
+    IF( FileFormat == 'netcdf')  NetCDFFormat = .TRUE. 
   END IF
 
-#ifdef HAVE_NETCDF
-  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat .OR. NetCDFFormat
-#else
-  IF( FileFormat == 'netcdf') THEN
+#ifndef HAVE_NETCDF
+  IF( NetCDFFormat ) THEN
     CALL Warn('SaveGridData','Please recompile Elmer with Netcdf library or choose another file format !')
-    RETURN
+    NetCDFFormat = .FALSE.
   ENDIF 
-  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat
-#endif
+
+  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat .OR. NetCDFFormat
   IF( .NOT. AnyFormat ) THEN
-    CALL Warn('SaveGridData','No active file format given!')
+    CALL Warn('SaveGridData','No active file format given, nothing to do!')
     RETURN
   END IF
 
@@ -158,11 +149,7 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
 
   ! Initialize the particles on the first calling
   !------------------------------------------------------------------------
-#ifdef HAVE_NETCDF
   Structured = VtiFormat .OR. NetCDFFormat
-#else
-  Structured = VtiFormat 
-#endif
   IF( .NOT. Visited .OR. RecreateGrid ) THEN
     Particles % TimeOrder = 0
     Particles % dim = CoordinateSystemDimension()
@@ -388,7 +375,13 @@ CONTAINS
       DO i=1,3
         gMinCoord(i) = ParallelReduction(MinCoord(i),1)
         gMaxCoord(i) = ParallelReduction(MaxCoord(i),2)
-      END DO
+      END DO      
+#ifdef HAVE_NETCDF
+      IF(NetCDFFormat) THEN
+        MinCoord = gMinCoord
+        MaxCoord = gMaxCoord
+      END IF
+#endif 
     ELSE
       gMinCoord = MinCoord
       gMaxCoord = MaxCoord
