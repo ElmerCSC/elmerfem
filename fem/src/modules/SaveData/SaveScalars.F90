@@ -1623,7 +1623,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: LocalOper, ParOper
 
 
-    ParOper = 'NONE'
+    ParOper = 'none'
     IF(.NOT. ParallelReduce ) RETURN
 
     SELECT CASE(LocalOper)
@@ -1642,7 +1642,9 @@ CONTAINS
 
       ! These operators should already be more of less parallel
     CASE('partitions','cpu time','wall time','cpu memory','norm','nonlin change','steady state change',&
-	'nonlin iter','nonlin converged','steady converged','threads')
+	'nonlin iter','nonlin converged','steady converged','threads',&
+        'mean','mean abs','mean square','variance','deviation','int mean','int square mean', &
+        'int abs mean','int variance')
       ParOper = 'none'
 
     CASE DEFAULT
@@ -1887,12 +1889,14 @@ CONTAINS
     REAL(KIND=dp) :: operx
 
     REAL(KIND=dp) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
-        Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
+        Mean, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
     TYPE(NeighbourList_t), POINTER :: nlist(:)
     INTEGER, POINTER :: PPerm(:)
     
     CALL Info(Caller,'Computing operator: '//TRIM(OperName),Level=12)
+
+    operx = 0.0_dp
 
     sumi = 0
     sumx = 0.0
@@ -1990,20 +1994,18 @@ CONTAINS
       END IF
     END DO
 
+    ! These operators cannot be done in parallel afterwards, since they are more complex
+    ! than 'min','max', or 'sum'
+    IF( ParallelReduce ) THEN
+      IF( OperName == 'mean' .OR. OperName == 'mean abs' .OR. &
+          OperName == 'mean square' .OR. OperName == 'variance' ) THEN
+        sumi = ParallelReduction(sumi)
+      END IF
+    END IF
+      
     ! If there are no dofs avoid division by zero
-    IF(sumi == 0) THEN
-      operx = 0.0d0
-      RETURN
-    END IF
+    IF(sumi == 0) RETURN
 
-    Mean = sumx / sumi
-
-    Variance2 = sumxx/sumi-Mean*Mean
-    IF(Variance2 > 0.0d0) THEN
-      Variance = SQRT(Variance2) 
-    ELSE
-      Variance = 0.0d0
-    END IF
 
     SELECT CASE(OperName)
       
@@ -2032,19 +2034,29 @@ CONTAINS
       operx = AbsMinimum
       
     CASE ('mean')
-      operx = Mean
+      IF(ParallelReduce) sumx = ParallelReduction(sumx)
+      operx = sumx / sumi 
 
     CASE ('mean square')
+      IF(ParallelReduce) sumxx = ParallelReduction(sumxx)
       operx = sumxx / sumi 
 
     CASE ('rms')
+      IF(ParallelReduce) sumxx = ParallelReduction(sumxx)
       operx = SQRT( sumxx / sumi )
       
     CASE ('mean abs')
+      IF(ParallelReduce) sumabsx = ParallelReduction(sumabsx)
       operx = sumabsx / sumi
 
-    CASE ('variance')
-      operx = Variance
+    CASE('variance')      
+      IF(ParallelReduce) THEN
+        sumx = ParallelReduction(sumx)
+        sumxx = ParallelReduction(sumxx)
+      END IF
+      mean = sumx / sumi
+      Variance2 = sumxx/sumi-mean*mean
+      IF(Variance2 > 0.0d0) operx = SQRT(Variance2) 
       
     CASE DEFAULT 
       CALL Warn(Caller,'Unknown statistical operator!')
@@ -2103,7 +2115,6 @@ CONTAINS
       END IF
 
       j = i
-
       IF( IsParallel ) THEN
         IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
       END IF
@@ -2128,13 +2139,24 @@ CONTAINS
       END IF
     END DO
 
+    IF( ParallelReduce ) sumi = ParallelReduction(sumi)   
+    
     IF(sumi == 0) RETURN
 
+    IF( ParallelReduce ) sumx = ParallelReduction(sumx)
     Mean = sumx / sumi
     sumi = 0
     sumdx = 0.0
     DO i=1,Nonodes
+      IF( MaskOper ) THEN
+        IF( .NOT. NodeMask(i) ) CYCLE
+      END IF
+
       j = i
+      IF( IsParallel ) THEN
+        IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+      END IF
+
       IF(ASSOCIATED(PPerm)) j = PPerm(i)
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
@@ -2155,6 +2177,7 @@ CONTAINS
         sumdx = sumdx + dx
       END IF
     END DO
+    IF(ParallelReduce) sumdx = ParallelReduction(sumdx)
     Deviation = sumdx / sumi
 
   END FUNCTION VectorMeanDeviation
@@ -2395,7 +2418,7 @@ CONTAINS
           integral1 = integral1 + s * coeff * func
 
         CASE DEFAULT 
-          CALL Warn(Caller,'Unknown statistical OPERATOR')
+          CALL Warn(Caller,'Unknown statistical operator!')
 
         END SELECT
 
@@ -2407,6 +2430,14 @@ CONTAINS
 10  CONTINUE 
     
     operx = 0.0d0
+    IF(ParallelReduce) THEN
+      IF( OperName == 'int mean' .OR. OperName == 'int square mean' .OR. &
+          OperName == 'int abs mean' .OR. OperName == 'int variance' ) THEN
+        hits = ParallelReduction(hits)
+      END IF
+    END IF
+
+    
     IF(hits == 0) RETURN
 
     SELECT CASE(OperName)
@@ -2415,12 +2446,25 @@ CONTAINS
       operx = integral1
 
     CASE ('int mean','int square mean','int abs mean')
+      IF( ParallelReduce ) THEN
+        integral1 = ParallelReduction(integral1)
+        vol = ParallelReduction(vol)
+      END IF
       operx = integral1 / vol        
 
     CASE ('int rms')
+      IF( ParallelReduce ) THEN
+        integral1 = ParallelReduction(integral1)
+        vol = ParallelReduction(vol)
+      END IF
       operx = SQRT( integral1 / vol ) 
 
     CASE ('int variance')
+      IF( ParallelReduce ) THEN
+        integral1 = ParallelReduction(integral1)
+        integral2 = ParallelReduction(integral2)
+        vol = ParallelReduction(vol)
+      END IF
       operx = SQRT(integral2/vol-(integral1/vol)**2)
 
     CASE ('diffusive energy','convective energy')
