@@ -2569,7 +2569,8 @@
 
        RealTimestep = 1
               
-       DO timestep = 1,Timesteps(interval)
+       timestep = 0
+       DO WHILE(timestep /= Timesteps(interval))
          
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
@@ -3124,6 +3125,21 @@
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
          
+         IF(Transient) THEN
+            Timesteps => ListGetIntegerArray( CurrentModel % Simulation, &
+            'Timestep Intervals', GotIt )
+            IF ( .NOT.GotIt ) THEN
+                CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+                    'defined for transient and scanning simulations' )
+            END IF
+         END IF
+         Timestep = Timestep + 1
+
+         stepcount = 0
+         DO i = 1, TimeIntervals
+            stepcount = stepcount + Timesteps(i)
+         END DO
+
 !------------------------------------------------------------------------------
        END DO ! timestep within an iterval
 !------------------------------------------------------------------------------

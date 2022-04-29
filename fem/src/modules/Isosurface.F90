@@ -406,7 +406,14 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   !----------------------------------------------------------------------	
   IF(.NOT. FixedSurface ) THEN
     IF( NoEdges > 0 ) CALL ReleaseMeshEdgeTables( Mesh )
-    IF ( ASSOCIATED( NewElements ) ) DEALLOCATE( NewElements )
+    IF ( ASSOCIATED( NewElements ) ) THEN
+      DO i=1, NoNewElements
+        IF ( ASSOCIATED( NewElements(i) % NodeIndexes ) ) &
+          DEALLOCATE( NewElements(i) % NodeIndexes )
+        NewElements(i) % NodeIndexes => NULL()
+      END DO
+      DEALLOCATE( NewElements )
+    END IF
   END IF
 
   IF( ALLOCATED( ElemFun ) ) DEALLOCATE( ElemFun, ElemPerm )  

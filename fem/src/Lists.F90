@@ -3480,17 +3480,23 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal ) RESULT(L)
+   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal,Default) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     INTEGER, OPTIONAL :: Default
      INTEGER :: L
      LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER, OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     L = 0
+     IF(PRESENT(Default)) THEN
+       L = Default
+     ELSE
+       L = 0
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3625,16 +3631,21 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a logical value from the list, if not found return False.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal ) RESULT(L)
+   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal,Default ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL :: L
-     LOGICAL, OPTIONAL :: Found, UnfoundFatal
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal, Default
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     L = .FALSE.
+     IF(PRESENT(Default)) THEN
+       L = Default
+     ELSE
+       L = .FALSE.
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3704,16 +3715,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a string from the list by its name, if not found return empty string.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal ) RESULT(S)
+   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal,Default ) RESULT(S)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      CHARACTER(LEN=MAX_NAME_LEN) :: S
+     CHARACTER(*), OPTIONAL :: default
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     S = ' '
+     IF(PRESENT(Default)) THEN
+       S = TRIM(Default)
+     ELSE
+       S = ' '
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3739,13 +3756,13 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Get a constant real from the list by its name. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal ) RESULT(F)
+   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal,Default) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      REAL(KIND=dp) :: F
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
-     REAL(KIND=dp), OPTIONAL :: x,y,z
+     REAL(KIND=dp), OPTIONAL :: x,y,z,Default
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
@@ -3754,7 +3771,11 @@ use spariterglobals
      INTEGER :: i,j,k,n
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd,tmp_str
 !------------------------------------------------------------------------------
-     F = 0.0_dp
+     IF(PRESENT(Default)) THEN
+       F = Default
+     ELSE
+       F = 0.0_dp
+     END IF
 
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
@@ -7996,11 +8017,11 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a real array from the list by its name,
 !------------------------------------------------------------------------------
-   RECURSIVE SUBROUTINE ListGetRealArray( List,Name,F,N,NodeIndexes,Found )
+   RECURSIVE SUBROUTINE ListGetRealArray( List,Name,F,N,NodeIndexes,Found, UnfoundFatal)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp), POINTER :: F(:,:,:), G(:,:)
 !------------------------------------------------------------------------------
@@ -8014,8 +8035,14 @@ use spariterglobals
      LOGICAL :: AllGlobal
 !------------------------------------------------------------------------------
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
-
+     IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           CALL Fatal("ListGetConstRealArray","Failed to find: "//TRIM(Name))
+         END IF
+       END IF
+       RETURN
+     END IF
      
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
        CALL Fatal( 'ListGetRealArray', &

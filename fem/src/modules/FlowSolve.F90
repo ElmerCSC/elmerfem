@@ -113,11 +113,11 @@
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
                   Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
-                  RecheckNewton=.FALSE.
+                  RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
-     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
+     CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel, DirectionName
      INTEGER :: CompressibilityModel, ModelCoords, ModelDim, NoActive
      INTEGER :: body_id,bf_id,eq_id,DIM
      INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
@@ -477,6 +477,12 @@
      FreeSIter = ListGetInteger( Solver % Values, &
         'Free Surface After Iterations', GotIt, minv=0 )
      IF ( .NOT. GotIt ) FreeSIter = 0
+
+     DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
+     IF (ImplicitFrictionDirection) THEN
+       WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName)
+       CALL INFO('FlowSolve',Message)
+     END IF
 
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
@@ -1238,10 +1244,17 @@
       END DO
 
       CALL DefaultFinishBoundaryAssembly()
-
-      ! This is a matrix level routine for setting friction such that tangential
-      ! traction is the normal traction multiplied by a coefficient.
-      CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
+     
+      !------------------------------------------------------------------------------
+      !     Implicit Friction Boundaries
+       !------------------------------------------------------------------------------     
+      IF (ImplicitFrictionDirection) THEN
+        ! This is a matrix level routine for setting friction such that tangential
+        ! traction is the normal traction multiplied by a coefficient.
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName=TRIM(DirectionName)  )
+      ELSE
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient' )
+      END IF
       
       CALL DefaultFinishAssembly()
 

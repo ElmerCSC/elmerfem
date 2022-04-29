@@ -81,7 +81,8 @@ CONTAINS
   !> info in Mesh % Repartition (defined on elements)
   !> Dual-graph (element connectivity) is determined based on shared faces(3D)/edges(2D)
   !-------------------------------------------------------------------------------------
-  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand )
+  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand, &
+                                StartImbalanceTol, TolChange, MinElems )
 
     USE MeshUtils
 
@@ -94,23 +95,25 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, OPTIONAL :: SerialMode
-    INTEGER, OPTIONAL :: NoPartitions 
+    INTEGER, OPTIONAL :: NoPartitions, MinElems
     LOGICAL, POINTER, OPTIONAL :: PartitionCand(:)
+    REAL(KIND=dp), OPTIONAL :: StartImbalanceTol, TolChange
     !------------------------
 
 #ifdef HAVE_ZOLTAN
     TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
-    REAL(KIND=dp) :: t1,t2
+    REAL(KIND=dp) :: t1,t2, ImbalanceTol
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
          max_elemno,NoPart
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
     INTEGER, ALLOCATABLE :: PartitionPerm(:), InvPerm(:)
-    LOGICAL :: UsePerm
+    LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
+    LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface"
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface", ImbTolStr, Messageq
 
     !Zoltan things
     TYPE(Zoltan_Struct), POINTER :: zz_obj
@@ -118,7 +121,7 @@ CONTAINS
     INTEGER(Zoltan_INT),DIMENSION(:), POINTER :: importGlobalGids, importLocalGids, importProcs, &
          importToPart,exportGlobalGids,exportLocalGids, exportProcs, exportToPart
     REAL(Zoltan_FLOAT) :: version
-    LOGICAL :: changes,Debug,Serial,Found
+    LOGICAL :: changes,Debug=.FALSE.,Serial,Found
 
     TYPE ElemTable_t
        INTEGER :: counter=0
@@ -129,8 +132,30 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: PartParams
     TYPE(ValueListEntry_t), POINTER :: ptr
     INTEGER :: ncopy
- 
-    
+
+#ifdef HAVE_PARMETIS
+    GotParMetis = .TRUE.
+#else
+    GotParMetis = .FALSE.
+#endif
+
+    IF(PRESENT(StartImbalanceTol)) THEN
+      ImbalanceTol = StartImbalanceTol
+    ELSE
+      CALL Info(FuncName, 'No imbalance tolerance given so starting with 1.1 (10%)')
+      ImbalanceTol = 1.1_dp
+    END IF
+
+    IF(.NOT. PRESENT(TolChange)) THEN
+      CALL Info(FuncName, 'No imbalance tolerance change given so using a 0.02 reduction')
+      TolChange = 0.02_dp
+    END IF
+
+    IF(.NOT. PRESENT(MinElems)) THEN
+      CALL Info(FuncName, 'No min elements required for every partition so setting to 0')
+      MinElems = 0
+    END IF
+
     CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=10)
     PartParams => Model % Simulation
 
@@ -161,6 +186,14 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
+    
+    ALLOCATE(PartGotNodes(ParEnv % PEs))
+    CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
+        1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
+    DistributedMesh = ALL(PartGotNodes)
+
+10  CONTINUE
 
     ! If we have a masked partitioning then make a reordering of the bulk elements
     UsePerm = PRESENT( PartitionCand ) 
@@ -210,15 +243,34 @@ CONTAINS
     END IF
 
     ! Set default values for keywords, if not given
-    CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
-    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-    CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
-    CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
-    CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+    IF(Debug) THEN
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
+    ELSE
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
+    END IF
+
+    IF(GotParMetis .AND. DistributedMesh) THEN
+      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
+    ELSE
+      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
+      CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    END IF
+
+    !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
+    WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
+    CALL ListAddNewString( PartParams,"zoltan: imbalance_tol",TRIM(ImbTolStr))
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
@@ -227,7 +279,7 @@ CONTAINS
       CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
@@ -307,6 +359,15 @@ CONTAINS
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
     IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
+
+    ! need to check all partitions are given elements
+    Success = .TRUE.
+    IF(NBulk - numExport + numImport <= MinElems) THEN
+      WRITE(Message, '(i0,A)') ParEnv % MyPE,' Part not given any elements'
+      CALL WARN(FuncName, Message)
+      Success = .FALSE.
+    END IF
+
         
     IF(ASSOCIATED(Mesh % Repartition)) THEN
       IF( SIZE( Mesh % Repartition ) < NBulk ) DEALLOCATE(Mesh % Repartition)
@@ -345,6 +406,22 @@ CONTAINS
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportToPart(1:numExport) + 1
     ELSE
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportProcs(1:numExport) + 1
+    END IF
+
+    ! check the success of the rebalancing. Does every partition have nodes?
+    ! if not retry with stricter imbalance tolerance
+    IF(.NOT. Serial) THEN
+      ALLOCATE(PartSuccess(ParEnv % PEs))
+      CALL MPI_ALLGATHER(Success, 1, MPI_LOGICAL, PartSuccess, 1, MPI_LOGICAL,&
+          ELMER_COMM_WORLD, ierr)
+      IF(ANY(.NOT. PartSuccess)) THEN
+        ImbalanceTol = ImbalanceTol - TolChange
+        WRITE(Message, '(A,F10.2)') 'Retrying rebalancing using stricter imbalance tolerance: ', ImbalanceTol
+        CALL Info(FuncName, Message)
+        IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
+        DEALLOCATE(ElemAdj, ElemAdjProc, ElemStart, PartSuccess)
+        GOTO 10
+      END IF
     END IF
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
@@ -1634,10 +1711,11 @@ CONTAINS
   !Cleanly removes elements & nodes from a mesh based on mask
   !Any element containing a removed node (RmNode) will be deleted
   !May optionally specify which elements to remove
-  !Not currently used
+  !If only RmElem is provided, no nodes are removed 
+  !(should this be changed? i.e. detect orphaned nodes?)
   SUBROUTINE CutMesh(Mesh, RmNode, RmElem)
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: RmNode(:)
+    LOGICAL, OPTIONAL :: RmNode(:)
     LOGICAL, OPTIONAL, TARGET :: RmElem(:)
     !--------------------------------
     TYPE(Element_t), POINTER :: Element, Work_Elements(:)
@@ -1654,6 +1732,9 @@ CONTAINS
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     NBdry = Mesh % NumberOfBoundaryElements
+
+    IF(.NOT. (PRESENT(RmElem) .OR. PRESENT(RmNode))) &
+         CALL Fatal(FuncName,"Need to provide at least one of RmElem, RmNode!")
 
     IF(PRESENT(RmElem)) THEN
       RmElement => RmElem
@@ -1684,99 +1765,101 @@ CONTAINS
       END DO
     END IF
 
-    !Removing nodes implies shifting element nodeindexes
-    !Map pre -> post deletion node nums
-    ALLOCATE(Nodeno_map(NNodes))
-    Nodeno_map = 0
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      Nodeno_map(i) = counter
-    END DO
-
-    !Update the element nodeindexes
-    DO i=1,NBulk+NBdry
-      Element => Mesh % Elements(i)
-      IF(RmElement(i)) CYCLE
-      DO j=1,Element % TYPE % NumberOfNodes
-        Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
-        IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
-             "Programming error: mapped nodeno = 0")
-      END DO
-    END DO
-
-    !Clear out deleted nodes
-    Nodes => Mesh % Nodes
-    NewNNodes = COUNT(.NOT. RmNode)
-
-    ALLOCATE(work_x(NewNNodes),&
-         work_y(NewNNodes),&
-         work_z(NewNNodes))
-
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      work_x(counter) = Nodes % x(i)
-      work_y(counter) = Nodes % y(i)
-      work_z(counter) = Nodes % z(i)
-    END DO
-
-    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-    Nodes % x => work_x
-    Nodes % y => work_y
-    Nodes % z => work_z
-
-    Nodes % NumberOfNodes = NewNNodes
-    Mesh % NumberOfNodes = NewNNodes
-
-    !Clear out ParallelInfo
-    IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
-      ALLOCATE(work_pInt(NewNNodes))
+    IF(PRESENT(RmNode)) THEN
+      !Removing nodes implies shifting element nodeindexes
+      !Map pre -> post deletion node nums
+      ALLOCATE(Nodeno_map(NNodes))
+      Nodeno_map = 0
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        Nodeno_map(i) = counter
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
-      Mesh % ParallelInfo % GlobalDOFs => work_pInt
-      work_pInt => NULL()
-    END IF
 
-    !Get rid of NeighbourList
-    IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
-      ALLOCATE(work_neighlist(NewNNodes))
-      DO i=1,NNodes
-        IF(.NOT. RmNode(i)) CYCLE
-        IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-             DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+      !Update the element nodeindexes
+      DO i=1,NBulk+NBdry
+        Element => Mesh % Elements(i)
+        IF(RmElement(i)) CYCLE
+        DO j=1,Element % TYPE % NumberOfNodes
+          Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
+          IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
+              "Programming error: mapped nodeno = 0")
+        END DO
       END DO
+
+      !Clear out deleted nodes
+      Nodes => Mesh % Nodes
+      NewNNodes = COUNT(.NOT. RmNode)
+
+      ALLOCATE(work_x(NewNNodes),&
+          work_y(NewNNodes),&
+          work_z(NewNNodes))
 
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        work_x(counter) = Nodes % x(i)
+        work_y(counter) = Nodes % y(i)
+        work_z(counter) = Nodes % z(i)
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
-      Mesh % ParallelInfo % NeighbourList => work_neighlist
-      work_neighlist => NULL()
-    END IF
 
-    !Get rid of ParallelInfo % NodeInterface
-    IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
-      ALLOCATE(work_logical(NewNNodes))
-      counter = 0
-      DO i=1,NNodes
-        IF(RmNode(i)) CYCLE
-        counter = counter + 1
-        work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
-      END DO
-      DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
-      Mesh % ParallelInfo % NodeInterface => work_logical
-      work_logical => NULL()
+      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+      Nodes % x => work_x
+      Nodes % y => work_y
+      Nodes % z => work_z
+
+      Nodes % NumberOfNodes = NewNNodes
+      Mesh % NumberOfNodes = NewNNodes
+
+      !Clear out ParallelInfo
+      IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
+        ALLOCATE(work_pInt(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
+        Mesh % ParallelInfo % GlobalDOFs => work_pInt
+        work_pInt => NULL()
+      END IF
+
+      !Get rid of NeighbourList
+      IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
+        ALLOCATE(work_neighlist(NewNNodes))
+        DO i=1,NNodes
+          IF(.NOT. RmNode(i)) CYCLE
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+        Mesh % ParallelInfo % NeighbourList => work_neighlist
+        work_neighlist => NULL()
+      END IF
+
+      !Get rid of ParallelInfo % NodeInterface
+      IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
+        ALLOCATE(work_logical(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
+        Mesh % ParallelInfo % NodeInterface => work_logical
+        work_logical => NULL()
+      END IF
     END IF
 
     !TODO - Mesh % Edges - see ReleaseMeshEdgeTables
@@ -1971,7 +2054,7 @@ CONTAINS
          GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
     NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes, InitParallel = .TRUE.)    
-    
+
     ! 4) Finally unpack and glue the pieces on an existing mesh
     CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, minind, &
          maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
@@ -2554,7 +2637,7 @@ CONTAINS
 
     ! Add the number of elements coming from different partitions
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
@@ -2590,7 +2673,7 @@ CONTAINS
 
     ! also check the imported global indexes
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
       i1 = PPack % indpos + 1
@@ -2599,8 +2682,10 @@ CONTAINS
       maxind = MAX( maxind, MAXVAL( PPack % idata(i1:i2) ) )
     END DO
 
-    CALL Info('LocalNumberingMeshPieces','Global index range '&
-         //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
+    IF(minind == 0) RETURN
+
+    !CALL Info('LocalNumberingMeshPieces','Global index range '&
+    !     //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
 
     ! Allocate the vector for local renumbering
     ALLOCATE( GlobalToLocal(minind:maxind), STAT=allocstat)
