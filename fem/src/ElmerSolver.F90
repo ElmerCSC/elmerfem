@@ -2571,6 +2571,8 @@
               
        timestep = 0
        DO WHILE(timestep /= Timesteps(interval))
+
+         Timestep = Timestep + 1
          
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
@@ -3133,7 +3135,6 @@
                     'defined for transient and scanning simulations' )
             END IF
          END IF
-         Timestep = Timestep + 1
 
          stepcount = 0
          DO i = 1, TimeIntervals
