@@ -114,7 +114,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
       NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
-      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd
+      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd, FoundNan 
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
@@ -149,6 +149,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL Info(Caller, '------------------------------------------', Level=4 )
 
   FileIsOpen = .FALSE.
+  FoundNan = 0
   
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
@@ -310,6 +311,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     Solver % Variable % Norm = Norm
   END IF
 
+  IF(FoundNan > 0 ) THEN
+    CALL Warn(Caller,'Replaced '//TRIM(I2S(FoundNan))//' NaN entries with -1')
+  END IF
 
   CALL Info(Caller,'All done')
 
@@ -927,6 +931,13 @@ CONTAINS
         Values(No+1:No+3) = 0.0
       END IF
     END IF
+
+    DO j=1,NoResults
+      IF( ISNAN(Values(j)) ) THEN
+        FoundNan = FoundNan + 1
+        Values(j) = -1.0_dp
+      END IF
+    END DO
     
     DO j=1,NoResults-1
       WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
