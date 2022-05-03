@@ -678,6 +678,7 @@ CONTAINS
      INTEGER :: i,j,k,n, comm
      TYPE(ParallelInfo_t)  :: ParallelInfo
 
+     INTEGER, POINTER :: p(:)
      LOGICAL :: L(0:ParEnv % PEs-1), L1(0:ParEnv % PEs-1)
      INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
 
@@ -702,61 +703,47 @@ CONTAINS
      IF(ANY(L(0:np-1))) THEN
        IF(L(imemb(ParEnv % MyPE))) THEN
 
-         DO i=1,SIZE(ParallelInfo % Neighbourlist(1) % Neighbours)
-           nbr = ParallelInfo % NeighbourList(1) % Neighbours(i)
-           IF(nbr==ParEnv % myPE) THEN
-             ParallelInfo % NeighbourList(1) % Neighbours(i) = &
-               ParallelInfo % NeighbourList(1) % Neighbours(1)
-
-             ParallelInfo % NeighbourList(1) % Neighbours(1) = &
-               ParEnv % myPE
-
+         p => ParallelInfo % NeighbourList(1) % Neighbours
+         DO i=1,SIZE(p)
+           IF(p(i)==ParEnv % myPE) THEN
+             p(i) = p(1)
+             p(1) = ParEnv % MyPE
              EXIT
            END IF
          END DO
-         CALL Sort(SIZE(ParallelInfo % NeighbourList(1) % Neighbours)-1, &
-              ParallelInfo % NeighbourList(1) % Neighbours(2:) )
+         CALL Sort(SIZE(p)-1, p(2:) )
 
-         DO i=2,SIZE(ParallelInfo % Neighbourlist(1) % Neighbours)
-           nbr = ParallelInfo % NeighbourList(1) % Neighbours(i)
-           IF(.NOT.ParEnv % Active(nbr+1)) stop 'active ?'
-
-           dof = ParallelInfo % GlobalDOFs(1)
-           CALL MPI_BSEND( dof,1,MPI_INTEGER,nbr,501, ELMER_COMM_WORLD, ierr)
+         dof = ParallelInfo % GlobalDOFs(1)
+         DO i=2,SIZE(p)
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, imemb(p(i)), 501, comm, ierr)
          END DO
+
+         dof = 0
          DO i=0,np-1
-           IF(memb(i)==ParEnv % myPE) CYCLE
-           IF(ANY(memb(i)==ParallelInfo % NeighbourList(1) % Neighbours)) CYCLE
-             dof = 0
-            CALL MPI_BSEND(dof,  1, MPI_INTEGER, memb(i), 501, ELMER_COMM_WORLD, ierr)
+           IF(ANY(memb(i)==p)) CYCLE
+           CALL MPI_BSEND(dof,  1, MPI_INTEGER, i, 501, comm, ierr)
          END DO
        END IF
 
 
        DO i=0,np-1
-         IF(memb(i) == ParEnv % myPE ) CYCLE
+         IF(memb(i) == ParEnv % myPE) CYCLE
 
          IF(L(i)) THEN
-           nbr = memb(i)
-           CALL MPI_RECV(dof, 1,MPI_INTEGER,nbr,501,ELMER_COMM_WORLD,status,ierr )
+           CALL MPI_RECV(dof, 1, MPI_INTEGER, i, 501, comm, status, ierr )
 
            IF(dof>0) THEN
             k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
              IF (k>0) THEN
-
-               DO j=1,SIZE(ParallelInfo % Neighbourlist(k) % Neighbours)
-                 nbr = ParallelInfo % NeighbourList(k) % Neighbours(j)
-                 IF(nbr==ParEnv % myPE) THEN
-                   ParallelInfo % NeighbourList(k) % Neighbours(j) = &
-                     ParallelInfo % NeighbourList(k) % Neighbours(1)
-
-                   ParallelInfo % NeighbourList(k) % Neighbours(1) = &
-                     nbr
+               p => ParallelInfo % NeighbourList(k) % Neighbours
+               DO j=1,SIZE(p)
+                 IF(p(j)==ParEnv % myPE) THEN
+                   p(j) = p(1)
+                   p(1) = memb(i)
                    EXIT
                  END IF
                END DO
-               CALL Sort(SIZE(ParallelInfo % NeighbourList(k) % Neighbours)-1, &
-                  ParallelInfo % NeighbourList(k) % Neighbours(2:) )
+               CALL Sort(SIZE(p)-1, p(2:) )
              ELSE
                STOP 'k'
              END IF
