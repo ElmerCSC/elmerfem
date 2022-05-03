@@ -662,12 +662,112 @@ CONTAINS
        END DO
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
+       IF(ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found)) &
+         CALL AssingAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
+CONTAINS
+
+
 !-------------------------------------------------------------------------------
-    END SUBROUTINE ParallelInitMatrix
+   SUBROUTINE AssingAtLeastOneDOFToPartition(n,ParallelInfo,comm)
+!-------------------------------------------------------------------------------
+     INTEGER :: i,j,k,n, comm
+     TYPE(ParallelInfo_t)  :: ParallelInfo
+
+     LOGICAL :: L(0:ParEnv % PEs-1), L1(0:ParEnv % PEs-1)
+     INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
+
+     np = 0
+     DO i=0,ParEnv % PEs-1
+       IF ( ParEnv % Active(i+1) ) THEN
+         memb(np) = i
+         imemb(i) = np
+         np = np+1
+       END IF
+     END DO
+
+     L1 = .TRUE.; L=.TRUE.
+     DO i=1,n
+       IF(ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % myPE) THEN
+         L1(imemb(ParEnv % MyPE)) = .FALSE.; EXIT
+       END IF 
+     END DO
+     CALL MPI_ALLREDUCE(L1,L,np,MPI_LOGICAL,MPI_LAND, comm ,ierr)
+
+
+     IF(ANY(L(0:np-1))) THEN
+       IF(L(imemb(ParEnv % MyPE))) THEN
+
+         DO i=1,SIZE(ParallelInfo % Neighbourlist(1) % Neighbours)
+           nbr = ParallelInfo % NeighbourList(1) % Neighbours(i)
+           IF(nbr==ParEnv % myPE) THEN
+             ParallelInfo % NeighbourList(1) % Neighbours(i) = &
+               ParallelInfo % NeighbourList(1) % Neighbours(1)
+
+             ParallelInfo % NeighbourList(1) % Neighbours(1) = &
+               ParEnv % myPE
+
+             EXIT
+           END IF
+         END DO
+         CALL Sort(SIZE(ParallelInfo % NeighbourList(1) % Neighbours)-1, &
+              ParallelInfo % NeighbourList(1) % Neighbours(2:) )
+
+         DO i=2,SIZE(ParallelInfo % Neighbourlist(1) % Neighbours)
+           nbr = ParallelInfo % NeighbourList(1) % Neighbours(i)
+           IF(.NOT.ParEnv % Active(nbr+1)) stop 'active ?'
+
+           dof = ParallelInfo % GlobalDOFs(1)
+           CALL MPI_BSEND( dof,1,MPI_INTEGER,nbr,501, ELMER_COMM_WORLD, ierr)
+         END DO
+         DO i=0,np-1
+           IF(memb(i)==ParEnv % myPE) CYCLE
+           IF(ANY(memb(i)==ParallelInfo % NeighbourList(1) % Neighbours)) CYCLE
+             dof = 0
+            CALL MPI_BSEND(dof,  1, MPI_INTEGER, memb(i), 501, ELMER_COMM_WORLD, ierr)
+         END DO
+       END IF
+
+
+       DO i=0,np-1
+         IF(memb(i) == ParEnv % myPE ) CYCLE
+
+         IF(L(i)) THEN
+           nbr = memb(i)
+           CALL MPI_RECV(dof, 1,MPI_INTEGER,nbr,501,ELMER_COMM_WORLD,status,ierr )
+
+           IF(dof>0) THEN
+            k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
+             IF (k>0) THEN
+
+               DO j=1,SIZE(ParallelInfo % Neighbourlist(k) % Neighbours)
+                 nbr = ParallelInfo % NeighbourList(k) % Neighbours(j)
+                 IF(nbr==ParEnv % myPE) THEN
+                   ParallelInfo % NeighbourList(k) % Neighbours(j) = &
+                     ParallelInfo % NeighbourList(k) % Neighbours(1)
+
+                   ParallelInfo % NeighbourList(k) % Neighbours(1) = &
+                     nbr
+                   EXIT
+                 END IF
+               END DO
+               CALL Sort(SIZE(ParallelInfo % NeighbourList(k) % Neighbours)-1, &
+                  ParallelInfo % NeighbourList(k) % Neighbours(2:) )
+             ELSE
+               STOP 'k'
+             END IF
+           END IF
+         END IF
+       END DO
+     END IF
+!-------------------------------------------------------------------------------
+   END SUBROUTINE AssingAtLeastOneDOFToPartition
+!-------------------------------------------------------------------------------
+  END SUBROUTINE ParallelInitMatrix
 !-------------------------------------------------------------------------------
 
 
