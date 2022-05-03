@@ -663,7 +663,7 @@ CONTAINS
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
        IF(ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found)) &
-         CALL AssingAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
 
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
@@ -673,7 +673,7 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE AssingAtLeastOneDOFToPartition(n,ParallelInfo,comm)
+   SUBROUTINE AssignAtLeastOneDOFToPartition(n,ParallelInfo,comm)
 !-------------------------------------------------------------------------------
      INTEGER :: i,j,k,n, comm
      TYPE(ParallelInfo_t)  :: ParallelInfo
@@ -721,7 +721,7 @@ CONTAINS
          dof = 0
          DO i=0,np-1
            IF(ANY(memb(i)==p)) CYCLE
-           CALL MPI_BSEND(dof,  1, MPI_INTEGER, i, 501, comm, ierr)
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, i, 501, comm, ierr)
          END DO
        END IF
 
@@ -752,7 +752,7 @@ CONTAINS
        END DO
      END IF
 !-------------------------------------------------------------------------------
-   END SUBROUTINE AssingAtLeastOneDOFToPartition
+   END SUBROUTINE AssignAtLeastOneDOFToPartition
 !-------------------------------------------------------------------------------
   END SUBROUTINE ParallelInitMatrix
 !-------------------------------------------------------------------------------
