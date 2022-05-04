@@ -47,5 +47,7 @@ Simulation
 End
 ```
 
-## Examples
+## Tests and Examples
+
+Functionnality tested in  [ELMER_TRUNK]/elmerice/Tests/Proj_South: compute Lon/Lat and back x,y 
 

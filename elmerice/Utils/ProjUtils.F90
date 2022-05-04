@@ -35,7 +35,7 @@
 !>  utility routines for fwd (LonLat => xy) and inv. (xy => LonLat) projections
 !>  Currently supported projections:
 !     > polar stereographic projections north and south
-!     > generic form proj4 definition (requires fortrangis libraries with proj support)
+!     > generic from proj4 definition (requires fortrangis libraries with proj support)
 !--------------------------------------------------------------------------------
       MODULE ProjUtils
       USE DefUtils

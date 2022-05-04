@@ -71,7 +71,7 @@ Solver 2
 
 End
 !#######################################################
-! Post Processing
+! check that it worked... might not work in detached mode if writing is delayed??
 !#######################################################
 Solver 3
    Exec Solver = After All
