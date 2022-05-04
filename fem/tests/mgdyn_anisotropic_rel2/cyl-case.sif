@@ -43,8 +43,10 @@ end
 Material 2 ! nonlinear material
   Name = "Iron"
 
-  Reluctivity(3,3) = variable coordinate
-    real procedure "reluctivity" "reluct"
+  Generalized Reluctivity(3,3) = variable dummy1, dummy2, dummy3, coordinate
+    real procedure "reluctivity" "reluctgen"
+!  Reluctivity(3,3) = variable coordinate
+!    real procedure "reluctivity" "reluct"
   Relative Permittivity = 1
 End
 
@@ -170,6 +172,7 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
+! Norms are excpected to be little different
 solver 1::Reference norm = 7.03999683E-06
 solver 1::Reference norm tolerance = 1e-5
 solver 3::Reference norm = 9.54680124E+00

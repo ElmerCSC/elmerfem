@@ -407,9 +407,7 @@ MODULE Types
      INTEGER :: Counter = 0
 #endif
 
-#ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
-#endif
      INTEGER :: partag = 0
      LOGICAL :: disttag = .FALSE.
    END TYPE ValueListEntry_t
