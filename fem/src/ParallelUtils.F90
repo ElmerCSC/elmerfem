@@ -662,8 +662,32 @@ CONTAINS
        END DO
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
-       IF(ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found)) &
-         CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+
+
+       ! This is used for a rare condition:
+       !
+       ! o Linear system solved using Hypre
+       ! o Some paritions have no degrees of freedom assinged, but have matrix entries
+       ! to contribute to the global system (for example from halo elements).
+       BLOCK
+         INTEGER :: NameSpaceI
+
+         IF( ListGetLogical( Solver % Values,'Linear System Trialing', Found ) ) THEN
+           NameSpaceI = MAX( 1, NINT( ListGetCReal( &
+                         Solver % Values,'Linear System Namespace Number', Found ) ))
+
+           IF( ListGetLogical( Solver % Values, 'linsys' // &
+                 TRIM(I2S(NameSpaceI))//': Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         ELSE
+           IF( ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found) .OR. &
+               ListGetLogical( Solver % Values, 'linsys1: Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         END IF
+       END BLOCK
+
 
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
@@ -683,11 +707,11 @@ CONTAINS
      INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
 
      np = 0
-     DO i=0,ParEnv % PEs-1
-       IF ( ParEnv % Active(i+1) ) THEN
-         memb(np) = i
-         imemb(i) = np
-         np = np+1
+     DO i=1,ParEnv % PEs
+       IF ( ParEnv % Active(i) ) THEN
+         memb(np)  = i-1
+         imemb(i-1) = np
+         np = np + 1
        END IF
      END DO
 
@@ -697,12 +721,11 @@ CONTAINS
          L1(imemb(ParEnv % MyPE)) = .FALSE.; EXIT
        END IF 
      END DO
-     CALL MPI_ALLREDUCE(L1,L,np,MPI_LOGICAL,MPI_LAND, comm ,ierr)
+     CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
 
 
      IF(ANY(L(0:np-1))) THEN
        IF(L(imemb(ParEnv % MyPE))) THEN
-
          p => ParallelInfo % NeighbourList(1) % Neighbours
          DO i=1,SIZE(p)
            IF(p(i)==ParEnv % myPE) THEN
@@ -724,7 +747,6 @@ CONTAINS
            CALL MPI_BSEND(dof, 1, MPI_INTEGER, i, 501, comm, ierr)
          END DO
        END IF
-
 
        DO i=0,np-1
          IF(memb(i) == ParEnv % myPE) CYCLE
