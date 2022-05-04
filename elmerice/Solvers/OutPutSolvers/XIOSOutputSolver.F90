@@ -51,6 +51,7 @@
       USE DefUtils
       USE SolverUtils
       USE SaveUtils
+      USE ProjUtils
       USE Netcdf
       USE xios
 
@@ -62,7 +63,6 @@
 
       CHARACTER(*), PARAMETER :: Caller = 'XIOSOutputSolver'
 
-      TYPE(Variable_t),POINTER :: LonVar,LatVar,FaceLonVar,FaceLatVar
       INTEGER, SAVE :: nTime = 0
       INTEGER,SAVE :: ElemFirst, ElemLast
       INTEGER, ALLOCATABLE, TARGET,SAVE :: NodePerm(:),InvNodePerm(:), InvDgPerm(:), DgPerm(:)
@@ -88,8 +88,6 @@
       INTEGER :: MaxElementNodes  ! // MaxNumNodesPerFace
       INTEGER,PARAMETER :: Connect_Fill=-1
       LOGICAL :: FieldActive
-
-      LOGICAL :: UseLonLat=.FALSE.
 
       TYPE(xios_duration) :: dtime,time_units
       TYPE(xios_context) :: ctx_hdl
@@ -155,14 +153,6 @@
           CALL FATAL(Caller, &
                 "Saving boundary elements not supported yet....")
 
-        UseLonLat=ListGetLogical(Params,"Use LonLat Coordinates")
-        IF (UseLonLat) THEN
-          LonVar =>  VariableGet( Model % Mesh % Variables,"longitude",UnFoundFatal=.TRUE.)
-          LatVar =>  VariableGet( Model % Mesh % Variables,"latitude",UnFoundFatal=.TRUE.)
-          FaceLonVar => VariableGet( Model % Mesh % Variables,"Face_longitude",UnFoundFatal=.TRUE.)
-          FaceLatVar => VariableGet( Model % Mesh % Variables,"Face_latitude",UnFoundFatal=.TRUE.)
-        ENDIF
-
         CALL xios_get_handle(TRIM(xios_id),ctx_hdl)
         CALL xios_set_current_context(ctx_hdl)
 
@@ -211,7 +201,8 @@
         LOGICAL :: stat
 
         REAL(KIND=dp) :: xg,yg
-        REAL(KIND=dp),DIMENSION(:),ALLOCATABLE :: x,y,Lon,Lat
+        REAL(KIND=dp) :: Lon,Lat
+        REAL(KIND=dp),DIMENSION(:),ALLOCATABLE :: x,y
         REAL(KIND=dp),DIMENSION(:),ALLOCATABLE :: NodeLon,FaceLon
         REAL(KIND=dp),DIMENSION(:),ALLOCATABLE :: NodeLat,FaceLat
         REAL(KIND=dp),DIMENSION(:,:),ALLOCATABLE :: LonBnds,LatBnds
@@ -232,7 +223,6 @@
         M = Model % MaxElementNodes
         ALLOCATE(Basis(M),dBasisdx(M,3))
         ALLOCATE(Vertice(NumberOfActiveNodes),x(NumberOfActiveNodes),y(NumberOfActiveNodes))
-        ALLOCATE(Lon(NumberOfActiveNodes),Lat(NumberOfActiveNodes))
         ALLOCATE(cell_area(NumberOfElements),Indexes(MaxElementNodes,NumberOfElements),GIndexes(NumberOfElements))
         ALLOCATE(NodeLon(NumberOfActiveNodes),NodeLat(NumberOfActiveNodes))
         ALLOCATE(FaceLon(NumberOfElements),FaceLat(NumberOfElements))
@@ -258,15 +248,9 @@
           x(n) = Mesh%Nodes%x(i)
           y(n) = Mesh%Nodes%y(i)
 
-          IF (UseLonLat) THEN
-            lon(n) = LonVar%Values(LonVar%Perm(i))
-            lat(n)= LatVar%Values(LatVar%Perm(i))
-            NodeLon(n) = lon(n)
-            NodeLat(n) = lat(n)
-          ELSE
-            NodeLon(n) = x(n)
-            NodeLat(n) = y(n)
-          ENDIF
+          CALL xy2LonLat(x(n),y(n),lon,lat)
+          NodeLon(n) = lon
+          NodeLat(n) = lat
 
         END DO
 
@@ -302,24 +286,18 @@
           END IF
 
           ! element center
-          IF (UseLonLat) THEN
-            FaceLon(t) = FaceLonVar%Values(FaceLonVar%Perm(Element % ElementIndex))
-            FaceLat(t) = FaceLatVar%Values(FaceLatVar%Perm(Element % ElementIndex))
-          ELSE
-            xg=SUM(Mesh%Nodes%x(NodeIndexes(1:n)))/n
-            yg=SUM(Mesh%Nodes%y(NodeIndexes(1:n)))/n
-            FaceLon(t) = xg
-            FaceLat(t) = yg
-          ENDIF
+          xg=SUM(Mesh%Nodes%x(NodeIndexes(1:n)))/n
+          yg=SUM(Mesh%Nodes%y(NodeIndexes(1:n)))/n
+          CALL xy2LonLat(xg,yg,Lon,Lat)
+          FaceLon(t) = Lon
+          FaceLat(t) = Lat
 
           DO k=1,n
-            IF (UseLonLat) THEN
-              LonBnds(k,t)=LonVar%Values(LonVar%Perm(NodeIndexes(k)))
-              LatBnds(k,t)=LatVar%Values(LatVar%Perm(NodeIndexes(k)))
-            ELSE
-              LonBnds(k,t)=Mesh%Nodes%x(NodeIndexes(k))
-              LatBnds(k,t)=Mesh%Nodes%y(NodeIndexes(k))
-            ENDIF
+            xg=Mesh%Nodes%x(NodeIndexes(k))
+            yg=Mesh%Nodes%y(NodeIndexes(k))
+            CALL xy2LonLat(xg,yg,Lon,Lat)
+            LonBnds(k,t)=Lon
+            LatBnds(k,t)=Lat
           END DO
 
           CALL GetElementNodes( ElementNodes, Element )
@@ -387,7 +365,6 @@
         DEALLOCATE(NodeLon,NodeLat)
         DEALLOCATE(FaceLon,FaceLat)
         DEALLOCATE(LonBnds,LatBnds)
-        DEALLOCATE(Lon,Lat)
 
       END SUBROUTINE SendMeshInfo
 

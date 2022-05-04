@@ -84,7 +84,7 @@ IF(NOT(WIN32))
     SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES
                           INSTALL_RPATH_USE_LINK_PATH TRUE)
 ENDIF()
-TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
+TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver ElmerIceUtils)
 
 IF(HAVE_NETCDF)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})

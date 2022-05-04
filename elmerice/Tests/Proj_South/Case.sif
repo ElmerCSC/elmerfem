@@ -1,0 +1,88 @@
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+! Antarctic Polar Stereographic EPSG:3031
+  projection type = String "polar stereographic south"
+  central_meridian = Real 0.0
+  latitude_of_origin = Real -71.0
+
+  Simulation Type = Steady 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "Case.vtu"
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  longitude = Variable Coordinate 1, Coordinate 2
+    Real procedure "ElmerIceUSF" "xy2Lon"
+
+  latitude = Variable Coordinate 1, Coordinate 2
+    Real procedure "ElmerIceUSF" "xy2Lat"
+
+  x = Variable longitude, latitude
+    Real procedure "ElmerIceUSF" "LonLat2x"
+
+  y = Variable longitude, latitude
+    Real procedure "ElmerIceUSF" "LonLat2y"
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+   dx 1 = Variable Coordinate 1, x
+    REAL MATC "tx[0]-tx[1]"
+
+   dx 2 = Variable Coordinate 2, y
+    REAL MATC "tx[0]-tx[1]"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+   Equation = "UpdateEx"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = longitude
+  Exported Variable 2 = latitude
+  Exported Variable 3 = x
+  Exported Variable 4 = y
+
+  Exported Variable 5 = -dofs 2 "dx"
+End
+
+Solver 2
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+
+  Filename = "results.dat"
+
+  Show Norm = True
+  Show Norm Index = 1
+  
+   Variable 1 = "dx 1"
+   Operator 1= rms
+
+   Variable 2 = "dx 2"
+   Operator 2 = rms
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 2 :: Reference Norm = Real 0.0
+Solver 2 :: Reference Norm Tolerance = Real 1E-04
