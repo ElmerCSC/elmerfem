@@ -725,8 +725,18 @@ CONTAINS
 
 
      IF(ANY(L(0:np-1))) THEN
+
        IF(L(imemb(ParEnv % MyPE))) THEN
-         p => ParallelInfo % NeighbourList(1) % Neighbours
+
+         j = 0; k=0
+         DO i=1,n
+           p => ParallelInfo % NeighbourList(i) % Neighbours
+           IF (SIZE(p)>j) THEN
+              j=SIZE(p); k=i
+           END IF
+         END DO
+         p => ParallelInfo % NeighbourList(k) % Neighbours
+
          DO i=1,SIZE(p)
            IF(p(i)==ParEnv % myPE) THEN
              p(i) = p(1)
@@ -736,7 +746,7 @@ CONTAINS
          END DO
          CALL Sort(SIZE(p)-1, p(2:) )
 
-         dof = ParallelInfo % GlobalDOFs(1)
+         dof = ParallelInfo % GlobalDOFs(k)
          DO i=2,SIZE(p)
            CALL MPI_BSEND(dof, 1, MPI_INTEGER, imemb(p(i)), 501, comm, ierr)
          END DO
@@ -767,7 +777,7 @@ CONTAINS
                END DO
                CALL Sort(SIZE(p)-1, p(2:) )
              ELSE
-               STOP 'k'
+!              STOP 'k'
              END IF
            END IF
          END IF
