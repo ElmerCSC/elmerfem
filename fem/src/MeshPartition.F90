@@ -103,9 +103,9 @@ CONTAINS
 #ifdef HAVE_ZOLTAN
     TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
-    REAL(KIND=dp) :: t1,t2, ImbalanceTol
+    REAL(KIND=dp) :: t1,t2, ImbalanceTol, ZTolChange
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
-         max_elemno,NoPart
+         max_elemno,NoPart, ZMinElems
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
@@ -146,14 +146,18 @@ CONTAINS
       ImbalanceTol = 1.1_dp
     END IF
 
-    IF(.NOT. PRESENT(TolChange)) THEN
+    IF(PRESENT(TolChange)) THEN
+      ZTolChange = TolChange
+    ELSE
       CALL Info(FuncName, 'No imbalance tolerance change given so using a 0.02 reduction')
-      TolChange = 0.02_dp
+      ZTolChange = 0.02_dp
     END IF
 
-    IF(.NOT. PRESENT(MinElems)) THEN
+    IF(PRESENT(MinElems)) THEN
+      ZMinElems = MinElems
+    ELSE
       CALL Info(FuncName, 'No min elements required for every partition so setting to 0')
-      MinElems = 0
+      ZMinElems = 0
     END IF
 
     CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=10)
@@ -186,12 +190,15 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
-    
-    ALLOCATE(PartGotNodes(ParEnv % PEs))
-    CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
-        1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
 
-    DistributedMesh = ALL(PartGotNodes)
+    IF (.NOT. Serial) THEN
+      ALLOCATE(PartGotNodes(ParEnv % PEs))
+      CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
+          1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+      DistributedMesh = ALL(PartGotNodes)
+    ELSE
+      DistributedMesh = .FALSE.
+    END IF
 
 10  CONTINUE
 
@@ -362,7 +369,7 @@ CONTAINS
 
     ! need to check all partitions are given elements
     Success = .TRUE.
-    IF(NBulk - numExport + numImport <= MinElems) THEN
+    IF(NBulk - numExport + numImport <= ZMinElems) THEN
       WRITE(Message, '(i0,A)') ParEnv % MyPE,' Part not given any elements'
       CALL WARN(FuncName, Message)
       Success = .FALSE.
@@ -415,7 +422,7 @@ CONTAINS
       CALL MPI_ALLGATHER(Success, 1, MPI_LOGICAL, PartSuccess, 1, MPI_LOGICAL,&
           ELMER_COMM_WORLD, ierr)
       IF(ANY(.NOT. PartSuccess)) THEN
-        ImbalanceTol = ImbalanceTol - TolChange
+        ImbalanceTol = ImbalanceTol - ZTolChange
         WRITE(Message, '(A,F10.2)') 'Retrying rebalancing using stricter imbalance tolerance: ', ImbalanceTol
         CALL Info(FuncName, Message)
         IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
