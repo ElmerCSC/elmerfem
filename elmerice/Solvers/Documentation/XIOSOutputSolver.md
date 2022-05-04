@@ -54,6 +54,20 @@ Adding the following instructions to your cmake configuration file should be suf
  ...
 ```   
 
+
+### Running Elmer with XIOS
+
+Elmer will call XIOS if Elmer has been compiled with XIOS support and the XIOS configuration file **iodef.xml** is present in the current directory.  The context *id* should be **elmerice** to configure the outputs.
+
+It can be run in attached mode, where each Elmer MPI process will call one instance of xios, using
+```
+mpirun -np N ElmerSolver_mpi
+```
+or in detached mode using
+```
+mpirun -np N ElmerSolver_mpi : -np N2 xios_server
+```
+
 ## Known Bugs and Limitations
 
 - Restricted to 2D, but should be possible to extand this to a 3D simulation if working with a vertically extruded mesh, and we want to save only 2D variables.
@@ -101,7 +115,7 @@ End
 
 ## elmerice context
 
-For the XIOS xml configuration file, the context id should be **elmerice**.   
+For the XIOS xml configuration file, the context *id* should be **elmerice**.   
 A variable with **id="time_units** should be provided to define the units of the time step, i.e. **1y** if we are using years or **1s** for seconds. The time step send to xios is then the Elmer time step *dt* times the *time_units*.    
 
 - :warning: **its is to the user responsability to check that the time step is constant and a finite fraction of the output frequency**   
@@ -120,6 +134,7 @@ A variable with **id="time_units** should be provided to define the units of the
 
 </context>
 ```
+
 
 ## Visualising the resulting UGRID file.	
 
