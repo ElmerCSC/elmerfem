@@ -518,7 +518,7 @@ CONTAINS
     ! check, whether we have globally or element-wise defined values of rock-material parameters
     IF (ElementWiseRockMaterial) THEN
       RockMaterialID = ElementID  ! each element has it's own set of parameters
-    ELSE
+    ELSE      
       RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
     END IF
 
@@ -942,15 +942,10 @@ CONTAINS
       body_id = GetInteger(BoundaryCondition,'Permafrost Target Body', Found)   
       ! inquire parent element and material
       IF (Found) THEN
-        IF (body_id == Element % BoundaryInfo % outbody) THEN
-          ParentElement => Element % BoundaryInfo % Right
-        ELSE         
+        ParentElement => Element % BoundaryInfo % Right
+        IF (body_id .NE. ParentElement % BodyId) THEN
           ParentElement => Element % BoundaryInfo % Left
-        !ELSE
-        !  WRITE(Message,*)&
-        !     'No material body found for given body id ', body_id
-        !  CALL FATAL(FunctionName,Message)
-        END IF
+        END IF                
       ELSE    
         other_body_id = Element % BoundaryInfo % outbody      
         IF (other_body_id < 1) THEN ! only one body in calculation
@@ -960,9 +955,10 @@ CONTAINS
           ParentElement => Element % BoundaryInfo % Right
           IF (ParentElement % BodyId == other_body_id) ParentElement => Element % BoundaryInfo % Left
         END IF
+        body_id = ParentElement % BodyId
       END IF
-      ! all the above was just so we can get the material properties of the parent element...
-      body_id = ParentElement % BodyId
+        
+      ! all the above was just so we can get the material properties of the parent element...      
       material_id = ListGetInteger(Model % Bodies(body_id) % Values, 'Material', Found)
       IF (.NOT.Found) CALL FATAL(FunctionName,'Parent Material ID in BC not found')
       !PRINT *,"Parent Material ID",  body_id,  material_id
@@ -979,7 +975,12 @@ CONTAINS
       IF (ElementWiseRockMaterial) THEN
         RockMaterialID = ParentElement % ElementIndex  ! each element has it's own set of parameters
       ELSE
-        RockMaterialID = ListGetInteger(ParentMaterial,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
+        !RockMaterialID = ListGetInteger(ParentMaterial,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
+        RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found)
+        IF (.NOT.Found) THEN
+          PRINT *,'ParentElement % ElementIndex',ParentElement % ElementIndex
+          PRINT *,"Rock Material ID",RockMaterialID
+        END IF
       END IF
 
       ConstVal = GetLogical(ParentMaterial,'Constant Permafrost Properties',Found)
