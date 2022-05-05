@@ -311,7 +311,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-  LOGICAL :: LaminateStack, CoilBody, Cubic, HasHBCurve, HasGeneralReluctivity
+  LOGICAL :: LaminateStack, CoilBody, Cubic, HasHBCurve, HasReluctivityFunction, &
+      NewMaterial
 
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
@@ -675,8 +676,8 @@ CONTAINS
   Active = GetNOFActive()
 
   
-  IF( ListCheckPresentAnyMaterial(Model,'Generalized Reluctivity') ) THEN
-    CALL ListInitElementKeyword( mu_h,'Material','Generalized Reluctivity',&
+  IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+    CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
         EvaluateAtIp=.TRUE.,DummyCount=3)
   END IF
   
@@ -727,10 +728,11 @@ CONTAINS
      END IF
 
      Material => GetMaterial( Element )
-     IF(.NOT. ASSOCIATED(Material,PrevMaterial) ) THEN
+     NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
+     IF (NewMaterial) THEN
        HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-       HasGeneralReluctivity = ListCheckPresent(Material,'Generalized Reluctivity')
+       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
        PrevMaterial => Material
      END IF
      
@@ -769,7 +771,7 @@ CONTAINS
      Acoef = 0.0d0
      Tcoef = 0.0d0
      IF ( ASSOCIATED(Material) ) THEN
-       IF ( .NOT. ( HasHBCurve .OR. HasGeneralReluctivity ) ) THEN
+       IF ( .NOT. ( HasHBCurve .OR. HasReluctivityFunction ) ) THEN
          CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
          IF (HasTensorReluctivity) THEN
            IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
@@ -1630,7 +1632,7 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
   LOGICAL :: PiolaVersion, SecondOrder
 
   ! FE-Basis stuff
-  REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
+  REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, C(3,3), &
     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
   REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
 
@@ -1714,7 +1716,7 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
@@ -1765,32 +1767,45 @@ END SUBROUTINE LocalConstraintMatrix
       LocalGauge = GetLogical( BodyForce,'Local Lagrange Gauge', Found ) 
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
-
     
-    siz = 0
-    Cval => NULL()
     IF ( HasHBCurve ) THEN
-      CALL GetConstRealArray( Material, HB, 'H-B curve' )     
-      siz = SIZE(HB,1)
+      siz = 0
+      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )     
+      IF (Found) siz = SIZE(HB,1)
+
       IF(siz>1) THEN
         Bval=>HB(:,1)
         Hval=>HB(:,2)
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
-          ALLOCATE(CubicCoeff(siz))
+        IF (Cubic .AND. NewMaterial) THEN
+          IF (.NOT.ASSOCIATED(CubicCoeff)) THEN
+            ALLOCATE(CubicCoeff(siz))
+          ELSE
+            IF (SIZE(CubicCoeff) < siz) THEN
+              DEALLOCATE(CubicCoeff)
+              ALLOCATE(CubicCoeff(siz))
+            END IF
+          END IF
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-      ELSE IF(siz<=1) THEN
+      ELSE 
         Lst => ListFind(Material,'H-B Curve')
-        Cval => Lst % CubicCoeff
-        Bval => Lst % TValues
-        Hval => Lst % FValues(1,1,:)
+        IF (ASSOCIATED(Lst)) THEN
+          Cval => Lst % CubicCoeff
+          Bval => Lst % TValues
+          Hval => Lst % FValues(1,1,:)
+        ELSE
+          HasHBCurve = .FALSE.
+          CALL GetReluctivity(Material,Acoef,n)
+        END IF
       END IF
 
-      CALL GetScalarLocalSolution(Aloc)
-      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
-      IF(.NOT. Found ) Newton = ExtNewton
-    ELSE IF( HasGeneralReluctivity ) THEN
+      IF (HasHBCurve) THEN
+        CALL GetScalarLocalSolution(Aloc)
+        Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+        IF(.NOT. Found ) Newton = ExtNewton
+      END IF
+    ELSE IF( HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
     END IF
 
@@ -1820,7 +1835,7 @@ END SUBROUTINE LocalConstraintMatrix
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
-       ELSE IF( HasGeneralReluctivity ) THEN
+       ELSE IF( HasReluctivityFunction ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
          mu = ListGetElementReal( mu_h, Basis, Element, &
              GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )             
@@ -1841,7 +1856,6 @@ END SUBROUTINE LocalConstraintMatrix
          END IF
        ELSE
          mu = SUM( Basis(1:n) * Acoef(1:n) )
-         muder = 0._dp
        END IF
 
        ! Compute convection type term coming from a rigid motion:
@@ -2035,7 +2049,7 @@ END SUBROUTINE LocalConstraintMatrix
          DO j = 1,nd-np
            q = j+np
 
-           IF (HasTensorReluctivity .OR. HasGeneralReluctivity ) THEN
+           IF (HasTensorReluctivity .OR. HasReluctivityFunction ) THEN
              STIFF(p,q) = STIFF(p,q) &
                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
            ELSE

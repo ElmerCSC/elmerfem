@@ -587,7 +587,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE.
+   LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -632,7 +632,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
    REAL(KIND=dp), POINTER :: muTensor(:,:)
-   LOGICAL :: HasGeneralReluctivity
+   LOGICAL :: HasReluctivityFunction
    REAL(KIND=dp) :: rdummy
    INTEGER :: mudim
    
@@ -700,11 +700,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
-   IF( ListCheckPresentAnyMaterial(Model,'Generalized Reluctivity') ) THEN
+   IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
      IF(.NOT. RealField ) THEN
-       CALL Fatal('MagnetoDynamicsCalcFields','Generalized reluctivity not implemented in complex cases!')
+       CALL Fatal('MagnetoDynamicsCalcFields','Reluctivity Function not implemented in complex cases!')
      END IF
-     CALL ListInitElementKeyword( mu_h,'Material','Generalized Reluctivity',&
+     CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
          EvaluateAtIp=.TRUE.,DummyCount=3)
    END IF
    
@@ -913,10 +913,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      Material => GetMaterial()
      BodyForce => GetBodyForce()
      
-     IF(.NOT. ASSOCIATED(Material,PrevMaterial) ) THEN
+     NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
+     IF (NewMaterial) THEN
        HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-       HasGeneralReluctivity = ListCheckPresent(Material,'Generalized Reluctivity')
+       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
        PrevMaterial => Material
      END IF
      
@@ -1072,23 +1073,40 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      HasTensorReluctivity = .FALSE.
 
      IF ( HasHBCurve ) THEN
-       CALL GetConstRealArray( Material, HB, 'H-B curve' )     
-       l = SIZE(HB,1)
-       HBBval => HB(:,1)
-       HBHval => HB(:,2)
+       CALL GetConstRealArray( Material, HB, 'H-B curve', Found )     
+       IF (Found) THEN
+         l = SIZE(HB,1)
+       ELSE
+         l = 0
+       END IF
+
        IF(l>1) THEN
-         IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-           ALLOCATE(CubicCoeff(l))
-           CALL CubicSpline(l,HB(:,1),HB(:,2),CubicCoeff)
+         HBBval => HB(:,1)
+         HBHval => HB(:,2)
+         IF (Cubic .AND. NewMaterial) THEN
+           IF (.NOT.ASSOCIATED(CubicCoeff)) THEN
+             ALLOCATE(CubicCoeff(l))
+           ELSE
+             IF (SIZE(CubicCoeff) < l) THEN
+               DEALLOCATE(CubicCoeff)
+               ALLOCATE(CubicCoeff(l))
+             END IF
+           END IF
+           CALL CubicSpline(l,HBBVal,HBHVal,CubicCoeff)
          END IF
          HBCval => CubicCoeff
        ELSE
          HBLst => ListFind(Material,'H-B Curve')
-         HBCval => HBLst % CubicCoeff
-         HBBval => HBLst % TValues
-         HBHval => HBLst % FValues(1,1,:)
+         IF (ASSOCIATED(HBLst)) THEN
+           HBCval => HBLst % CubicCoeff
+           HBBval => HBLst % TValues
+           HBHval => HBLst % FValues(1,1,:)
+         ELSE
+           HasHBCurve = .FALSE.
+           CALL GetReluctivity(Material,R_Z,n)
+         END IF
        END IF
-     ELSE IF( HasGeneralReluctivity ) THEN
+     ELSE IF( HasReluctivityFunction ) THEN
        CONTINUE       
      ELSE      
        ! 
@@ -1474,11 +1492,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          DO k=1,3
            Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
          END DO
-       ELSE IF( HasGeneralReluctivity ) THEN
+       ELSE IF( HasReluctivityFunction ) THEN
          rdummy = ListGetElementReal( mu_h, Basis, Element, &
              GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
          Nu(1:mudim,1:mudim) = muTensor(1:mudim,1:mudim)                           
-         ! Not really correct!!
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
        ELSE
          IF (HasTensorReluctivity) THEN
