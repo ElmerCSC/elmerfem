@@ -1363,14 +1363,11 @@
           ! Go for all nodes of the element
           DO i=1,n
              Discharge = 0.0_dp
-             IF ( (ThickPerm(Edge % NodeIndexes(1)).NE.0) .AND. &
-                  (ThickPerm(Edge % NodeIndexes(2)).NE.0) ) THEN
                 CALL SheetDischargeCompute( & 
                      HydPot(HydPotPerm(Element % NodeIndexes(1:n))), &
                      ThickSolution(ThickPerm(Element % NodeIndexes(i))), &
                      SheetConductivity(i), alphas(i), betas(i), & 
                      Discharge, Element, n, ElementNodes, i ) 
-             END IF
 
              ! One more value for that node          
              DO j=1,dimSheet
@@ -2288,7 +2285,7 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
 
      ! We're interested in nodes where the grounded mask is both defined (non-zero permutation)
      ! and has value set to zero (the grounding line).
-     IF (gmPerm(nn).eq.0) CYCLE
+     IF (gmPerm(nn).le.0) CYCLE
      IF (gmVals(gmPerm(nn)).eq.0) THEN
 
         ! Sheet discharge multiplied by sheet thickness gives the volume flux from the sheet.
@@ -2338,7 +2335,10 @@ SUBROUTINE GlaDS_GLflux( Model,Solver,dt,TransientSimulation )
   CALL ParallelSumVector(Solver % Matrix, cglfVals)
 
   DO nn = 1, numNodes
-     GLfluxVals(GLfluxPerm(nn)) = volFluxSheet + volFluxChannel
+     IF (gmPerm(nn).le.0) CYCLE
+!     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) = volFluxSheet + volFluxChannel
+     IF (gmVals(gmPerm(nn)).eq.0) GLfluxVals(GLfluxPerm(nn)) =  & 
+          cglfVals(cglfPerm(nn)) + sglfVals(sglfPerm(nn))
   END DO
   
   NULLIFY(SolverParams)
