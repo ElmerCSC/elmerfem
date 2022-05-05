@@ -725,10 +725,6 @@ CONTAINS
      END DO
      CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
 
-     DO i=1,n
-       IF(.NOT. ParENV % ACtive(pARALLELinfo % neighbourlist(i) % NEIGHBOURS(1)+1)) STOP 'OWNER NOT ACTIVE'
-     END DO
-
 
      IF(ANY(L(0:np-1))) THEN
 
@@ -741,6 +737,7 @@ CONTAINS
               j=SIZE(p); k=i
            END IF
          END DO
+         K = n/2
          p => ParallelInfo % NeighbourList(k) % Neighbours
 
          DO i=1,SIZE(p)
