@@ -707,6 +707,8 @@ CONTAINS
      INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
 
      np = 0
+     memb  = -1
+     imemb = -1
      DO i=1,ParEnv % PEs
        IF ( ParEnv % Active(i) ) THEN
          memb(np)  = i-1
@@ -722,6 +724,10 @@ CONTAINS
        END IF 
      END DO
      CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
+
+     DO i=1,n
+       IF(.NOT. ParENV % ACtive(pARALLELinfo % neighbourlist(i) % NEIGHBOURS(1)+1)) STOP 'OWNER NOT ACTIVE'
+     END DO
 
 
      IF(ANY(L(0:np-1))) THEN
@@ -748,6 +754,7 @@ CONTAINS
 
          dof = ParallelInfo % GlobalDOFs(k)
          DO i=2,SIZE(p)
+           IF(.NOT.ParEnv % Active(p(i)+1)) CYCLE
            CALL MPI_BSEND(dof, 1, MPI_INTEGER, imemb(p(i)), 501, comm, ierr)
          END DO
 
