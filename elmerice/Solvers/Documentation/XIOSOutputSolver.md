@@ -43,15 +43,36 @@ The directory where you store the shared libary should be in your *LD_LIBRABRY_P
 ### Compiling Elmer with XIOS   
 
 If you have XIOS, in general you will also compile ELMER with Netcdf support, so the corresponding libraries should already by provided with the corresponding CMAKE instructions.    
-**Compile Elmer with the same NETCDF and compilator as XIOS!**  
+**Compile Elmer with the same NETCDF and compilor as XIOS!**  
 
+
+Regarding NETCDF and HDF5, you should used shared libraries:
+Assuming NETCDF is installed under *NETCDF_DIR* and HDF5 under *HDF5_DIR*
 Adding the following instructions to your cmake configuration file should be sufficient.
+
+
+```
+...
+ -DWITH_NETCDF:BOOL=TRUE \
+ -DNETCDF_INCLUDE_DIR=${NETCDF_DIR}/include -DNETCDF_ROOT=${NETCDF_DIR}  \
+ -DNETCDF_LIBRARY="${NETCDF_DIR}/lib/libnetcdf.so" \
+ -DNETCDFF_LIBRARY="${NETCDF_DIR}/lib/libnetcdff.so"\
+ -DPHDF5_INCLUDE_DIR=${HDF5_DIR}/include -DPHDF5_ROOT=${HDF5_DIR}  \
+ -DPHDF5_LIBRARY="${HDF5_DIR}/lib/libhdf5.so" \
+ -DPHDF5HL_LIBRARY="${HDF5_DIR}/lib/libhdf5_hl.so" \
+...
+
+``` 
+
+Assuming XIOS is installed under *XIOS_DIR*:
+Adding the following instructions to your cmake configuration file should be sufficient.
+
 ```
 ...
  -DWITH_XIOS:BOOL=TRUE \
- -DXIOS_INCLUDE_DIR=$XIOSROOT/inc \
- -DXIOS_LIBRARIES="-L$XIOSROOT/lib -lxios -lstdc++" \
- ...
+ -DXIOS_INCLUDE_DIR=${XIOS_DIR}/include -DXIOS_ROOT=${XIOS_DIR}  \
+ -DXIOS_LIBRARY="${XIOS_DIR}/lib/libxios.so" \
+...
 ```   
 
 
