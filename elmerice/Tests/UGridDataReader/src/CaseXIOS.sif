@@ -1,0 +1,96 @@
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+! Greenland EPSG:3413
+  projection type = String "polar stereographic north"
+  central_meridian = Real -45.0
+  latitude_of_origin = Real 70.0
+
+   Simulation Type = Transient
+   Timestepping Method = "bdf"
+   BDF Order = 2
+
+   Timestep Intervals =  20
+   Output Intervals = 4
+   Timestep Sizes = 0.25
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!  Post File = "CaseXIOS.vtu"
+
+  max output level = 5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  VarNode = Variable time, Coordinate 1 , Coordinate 2
+   REAL MATC "tx[0]*tx[0]+(tx[1]*tx[1]+tx[2]*tx[2])^0.5"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  VarElem = Variable time, Coordinate 1 , Coordinate 2
+   REAL MATC "tx[0]*tx[0]+(tx[1]*tx[1]+tx[2]*tx[2])^0.5"
+
+  VarNode = Variable time, Coordinate 1 , Coordinate 2
+   REAL MATC "tx[0]*tx[0]+(tx[1]*tx[1]+tx[2]*tx[2])^0.5"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+   Equation = "UpdateEx"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = VarNode
+  Exported Variable 2 = -elem VarElem
+
+! compute time derivative of VarNode
+  VarNode Calculate Velocity = Logical True
+End
+
+!#######################################################
+! Post Processing
+!#######################################################
+Solver 2
+   Exec Solver = After Timestep
+
+   Equation = "XIOSOutPutSolve"
+   Procedure = "ElmerIceSolvers" "XIOSOutputSolver"
+
+! node and elem vars
+   Scalar Field 1 = String "Coordinate 1"
+   Scalar Field 2 = String "Coordinate 2"
+   Scalar Field 3 = String "VarNode"
+   Scalar Field 4 = String "VarNode Velocity"
+   Scalar Field 5 = String "VarElem"
+
+  !Global Variables
+   Global Variable 1 = String "time"
+
+End
+!#######################################################
+! Post Processing
+!#######################################################
+Solver 3
+   Exec Solver = After All
+   Equation = "Check"
+   Procedure = "Check" "Check"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 3 :: Reference Norm = Real 1.0
+Solver 3 :: Reference Norm Tolerance = Real 1E-06

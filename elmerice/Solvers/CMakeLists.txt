@@ -58,6 +58,10 @@ IF(HAVE_XIOS)
   SET(ElmerIce_SRC ${ElmerIce_SRC} OutPutSolvers/XIOSOutputSolver.F90)
 ENDIF()
 
+IF(HAVE_NETCDF)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} UGridDataReader.F90)
+ENDIF()
+
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
 # Library object

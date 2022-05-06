@@ -43,13 +43,12 @@ The directory where you store the shared libary should be in your *LD_LIBRABRY_P
 ### Compiling Elmer with XIOS   
 
 If you have XIOS, in general you will also compile ELMER with Netcdf support, so the corresponding libraries should already by provided with the corresponding CMAKE instructions.    
-**Compile Elmer with the same NETCDF and compilor as XIOS!**  
+**Compile Elmer with the same NETCDF and compiler as XIOS!**  
 
 
 Regarding NETCDF and HDF5, you should used shared libraries:
 Assuming NETCDF is installed under *NETCDF_DIR* and HDF5 under *HDF5_DIR*
 Adding the following instructions to your cmake configuration file should be sufficient.
-
 
 ```
 ...
@@ -97,7 +96,9 @@ mpirun -np N ElmerSolver_mpi : -np N2 xios_server
 
 - Should work with *halo elements* as they are skipped for the saving table
 
-- should work with higher order elements, e.g. 306, as we will save only the corners. *To check how to get the max number of corners*
+- should work with higher order elements, e.g. 306, as we will save only the corners?
+	- *To check how to get the max number of corners?*
+	- Might not be as simple as we rely on the  gloabl DOFs for the ordering...
 
 - XIOS automatically re-computes the connectivity tables, including edges. 
 	- *Can we directly provide this to XIOS?*
@@ -181,6 +182,13 @@ UGRID Netcdf files can be visualized with:
 - [gridded](https://github.com/NOAA-ORR-ERD/gridded) 
 	- not tested
 
+
+## Reading an unstructured Netcdf File
+
+Files produced with XIOS can be read with the UGridDataReader
+
+
 ## Examples
 An example can be found here [ELMER_TRUNK]/elmerice/Tests/XIOS
 
+An example to read variables stored in a file produced with XIOS can be found in [ELMER_TRUNK]/elmerice/Tests/UGridDataReader

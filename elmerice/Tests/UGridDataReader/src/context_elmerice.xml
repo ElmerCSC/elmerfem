@@ -1,0 +1,73 @@
+<!-- Context elmerice -->
+   <context id="elmerice">
+
+    <variable_definition>
+      <!-- define the time unit system... should be lenght 2 -->
+      <variable id="time_units" type="string">1y</variable>
+    </variable_definition>
+
+    <calendar type="D360" start_date="2015-01-01 00:00:00" time_origin="2013-01-01 00:00:00" />
+
+    <field_definition enabled=".TRUE." >
+  
+     <!-- id corespond to var names and should be lower case!! -->
+      <field id="varelem"  name="MyElemVar"   standard_name="elem_var"   unit="m" grid_ref="GridCells" prec="8" operation="instant" />
+      <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" prec="8" operation="instant"> this/2 </field> 
+      <field id="varnode velocity"  name="MyVelocity"  standard_name="nodal_var_velocity"   unit="m" grid_ref="GridNodes" operation="average" />
+
+      <field_group id="mesh_info"  operation="once" >
+	      <field id="coordinate 1"  name="x"  standard_name="projection_x_coordinate"  unit="m" grid_ref="GridNodes" />
+	      <field id="coordinate 2"  name="y"  standard_name="projection_y_coordinate"  unit="m" grid_ref="GridNodes" />
+	      <field id="cell_area" name="cell_area" unit="m2" grid_ref="GridCells" />
+      </field_group>
+
+      <!-- saving a global scalar variable -->
+      <field id="time" operation="average"  grid_ref="ScalarGrid" />
+
+      <!-- reduction sum cell areas -->
+       <field id="area" name="area" field_ref="cell_area" grid_ref="ScalarGrid" />
+
+    </field_definition>
+
+    <file_definition type="one_file" par_access="collective" output_freq="1y" enabled=".TRUE.">
+
+	<file id="file" name="output_ugrid" convention="UGRID" >
+		<field_group group_ref="mesh_info" />		    
+		<field field_ref="varnode" />
+		<field field_ref="varnode velocity" />
+		<field field_ref="varelem" />
+		<variable name="My_globale_attribute" type="string"> elmer ice model</variable>
+	</file>
+
+       <file id="output_Scalar" name="output_Scalar" type="one_file" output_freq="1y">
+	       <field field_ref="time" />
+	       <field field_ref="area"/>
+       </file>
+
+    </file_definition>
+
+    <domain_definition>
+      <domain id="cells" name="mesh2D"/>
+      <domain id="nodes" name="mesh2D"/>
+    </domain_definition>
+
+    <grid_definition>
+
+      <grid id="GridCells">
+        <domain domain_ref="cells"/>
+      </grid>
+
+      <grid id="GridNodes">
+        <domain domain_ref="nodes"/>
+      </grid>
+
+      <grid id="ScalarGrid">
+        <scalar id="scalar">
+	      <reduce_domain operation="sum" />
+        </scalar>
+       </grid>
+
+    </grid_definition>
+
+  </context>
+
