@@ -5136,12 +5136,30 @@ CONTAINS
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) &
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
-     IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
      Parallel = Solver % Parallel 
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.
+
+BLOCK
+       LOGICAL :: ChangedActiveParts
+
+       ChangedActiveParts = .FALSE.
+
+       !block partitions containing ONLY halos
+       IF( MeActive ) THEN
+         IF ( ListGetLogical( Solver % Values, 'Skip Halo Only Partitions', Found) ) THEN
+           MeActive = .FALSE.
+           DO i=1,Solver % NumberOfActiveElements
+             IF(Solver % Mesh % Elements(Solver % ActiveElements(i)) % PartIndex==ParEnv % myPE) THEN
+               MeActive = .TRUE.; EXIT
+             END IF
+           END DO
+           IF(.NOT. MeActive) ChangedActiveParts = .TRUE.
+         END IF
+       END IF
+       CALL ParallelActive( MeActive )
        
        n = COUNT(ParEnv % Active)
        
@@ -5209,6 +5227,14 @@ CONTAINS
            OutputPE = -1
          END IF
        END IF
+
+       ! POTENTIAL INCOMPATIBILITY: don't execute solvers for non-active partitions
+       ! (usually this is done within the solver by:
+       ! IF (.NOT. ASSOCIATED(Solver % Matrix) ) RETURN
+       ! or some such .... )
+
+       IF(.NOT. MeActive .AND. ChangedActiveParts) RETURN
+END BLOCK
      END IF
 
        
