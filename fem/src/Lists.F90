@@ -5916,9 +5916,8 @@ use spariterglobals
        END IF
 
        Handle % Ptr % Head => ptr
-       Handle % Rdim = ptr % Fdim
        
-       IF( Handle % Rdim > 0 ) THEN
+       IF( ptr % Fdim > 0 ) THEN
          N1 = SIZE(ptr % FValues,1)
          N2 = SIZE(ptr % FValues,2)       
          IF ( ASSOCIATED( Handle % Rtensor) ) THEN
@@ -5930,6 +5929,7 @@ use spariterglobals
            ALLOCATE( Handle % Rtensor(N1,N2) )
          END IF
 
+         Handle % Rdim = MAX(N1,N2)
          IF( PRESENT( Rdim ) .AND. PRESENT( Rtensor ) ) THEN
            Rdim = Handle % Rdim
            Rtensor => Handle % Rtensor
@@ -6200,7 +6200,8 @@ use spariterglobals
          
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
-           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis )           
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
+              Handle % IntVarCount )           
          END IF
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index

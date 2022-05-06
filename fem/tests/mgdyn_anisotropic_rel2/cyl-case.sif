@@ -1,6 +1,10 @@
-! Development test case for a tensor-valued reluctivity
-! Juhani Kataja / CSC
-! 2016 / 6
+! This is a development test case for a tensor-valued reluctivity
+! derived from the test mgdyn_anisotropic_rel. Here the calling convention
+! allows the reluctivity tensor to depend upon the three components of the
+! magnetic induction B. In this case the keyword command
+! "Reluctivity Function(3,3) = ..." is used to specify a subroutine which 
+! defines how the reluctivity function depends on B and other variables.
+
 
 $ mu0 = 4e-7*pi
 $ mu_pm = 1.05
@@ -43,10 +47,16 @@ end
 Material 2 ! nonlinear material
   Name = "Iron"
 
-  Reluctivity Function(3,3) = variable dummy1, dummy2, dummy3, coordinate
+  ! To define a tensor-valued reluctivity as a function of B, instead of using
+  ! the keyword "Reluctivity" we must use "Reluctivity Function". When the A-V
+  ! solver calls the reluctivity function, the first three input arguments are 
+  ! automatically given the values of the current approximation of B and 
+  ! therefore we need some dummy names for the arguments which are replaced
+  ! by B.
+
+  Reluctivity Function(3,3) = variable B1_dummy, B2_dummy, B3_dummy, coordinate
     real procedure "reluctivity" "reluctfun"
-!  Reluctivity(3,3) = variable coordinate
-!    real procedure "reluctivity" "reluct"
+
   Relative Permittivity = 1
 End
 
@@ -172,8 +182,7 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
-! Norms are excpected to be little different
-solver 1::Reference norm = 6.81859149E-06
+solver 1::Reference norm = 6.81882104E-06
 solver 1::Reference norm tolerance = 1e-5
 solver 3::Reference norm = 9.54680124E+00
 solver 3::Reference norm tolerance = 1e-5
