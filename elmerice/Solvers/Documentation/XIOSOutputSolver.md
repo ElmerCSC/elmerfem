@@ -127,6 +127,8 @@ Solver ..
 
 ! node and elem vars
    Scalar Field i = String "VarName" ! Variable/component Name
+! to compute cell avaraged values
+   Scalar Field i compute cell average = Logical True
 
   !Global Variables
    Global Variable i = String "Global Variable Name"
@@ -141,7 +143,7 @@ For the XIOS xml configuration file, the context *id* should be **elmerice**.
 A variable with **id="time_units** should be provided to define the units of the time step, i.e. **1y** if we are using years or **1s** for seconds. The time step send to xios is then the Elmer time step *dt* times the *time_units*.    
 
 - :warning: **its is to the user responsability to check that the time step is constant and a finite fraction of the output frequency**   
-- :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case isensitive and should be referred as **id="varname"** for XIOS.
+- :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case insensitive and should be referred as **id="varname"** for XIOS.
 
 ```
 <context id="elmerice">
@@ -154,15 +156,23 @@ A variable with **id="time_units** should be provided to define the units of the
 <!-- id corespond to var names as defined in the .sif file and should be lower case!! -->
 <field id="varname"  name=... />
 
+<!-- if you want to compute element-averaged values from nodal values; add "_elem" to the var name -->
+<field id="varname_elem"  name=... />
+
+
 </context>
 ```
 
+## Tips
+- 
+
+- By default the files will contain a time dimension named **time_counter**, and the associated variable is the **time_centered** variable. As most software, e.g. for visualisation, will look for a dimension named **time**, the default can be changed using the following keywords in the file definition: *time_counter_name="time" time_counter="instant"*. But remember, the true time for a variable can be *time_instant* or *time_centered* depending on the time operator; this is defined in the variable attribute. 
 
 ## Visualising the resulting UGRID file.	
 
 UGRID Netcdf files can be visualized with:   
 - QGIS as **mesh layers** using the [crayfish plugin](https://www.lutraconsulting.co.uk/projects/crayfish)   
-	- the dimension and associated variable **time_counter** must be changed to **time**:
+	- If the time dimension and associated variable is **time_counter**,this must be changed to **time**:
 	```
         ncrename -d time_counter,time -v time_counter,time output_ugrid.nc
 	````
@@ -189,6 +199,8 @@ Files produced with XIOS can be read with the UGridDataReader
 
 
 ## Examples
-An example can be found here [ELMER_TRUNK]/elmerice/Tests/XIOS
+An example can be found here [ELMER_TRUNK]/elmerice/Tests/Xios
+
+An example to compute element averaged-values and do the reduction with XIOS can be found in [ELMER_TRUNK]/elmerice/Tests/Xios2
 
 An example to read variables stored in a file produced with XIOS can be found in [ELMER_TRUNK]/elmerice/Tests/UGridDataReader

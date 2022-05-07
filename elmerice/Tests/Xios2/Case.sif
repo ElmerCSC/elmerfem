@@ -1,0 +1,98 @@
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+! Antarctic Polar Stereographic EPSG:3031
+  projection type = String "polar stereographic south"
+  central_meridian = Real 0.0
+  latitude_of_origin = Real -71.0
+
+   Simulation Type = Transient
+   Timestepping Method = "bdf"
+   BDF Order = 2
+
+   Timestep Intervals =  5
+   Timestep Sizes =1.0
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  !Post File = "Case.vtu"
+
+  max output level = 5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  VarNode = Variable time, Coordinate 1, Coordinate 2
+   REAL MATC "10*tx[0]+10*(1.0+cos(2*pi*tx[1]/50.0e3)*sin(2*pi*tx[1]/50.0e3))"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+   Equation = "UpdateEx"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = VarNode
+
+End
+
+!#######################################################
+! Post Processing
+!#######################################################
+Solver 2
+   Exec Solver = After Timestep
+
+   Equation = "XIOSOutPutSolve"
+   Procedure = "ElmerIceSolvers" "XIOSOutputSolver"
+
+! node and elem vars
+   Scalar Field 1 = String "VarNode"
+   Scalar Field 1 compute cell average = Logical True
+
+End
+!#######################################################
+! 
+!#######################################################
+Solver 3
+  Exec Solver = After TimeStep
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+ 
+  Parallel Reduce =Logical True
+
+  FileName = f.dat
+
+  Variable 1 = Time
+
+  Variable 2 = "VarNode"
+  Operator 2 = Volume
+  Operator 3 = int
+
+End
+
+!#######################################################
+! Post Processing
+!#######################################################
+Solver 4
+   Exec Solver = After All
+   Equation = "Check"
+   Procedure = "Check_xios2" "Check"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 4 :: Reference Norm = Real 1.0
+Solver 4 :: Reference Norm Tolerance = Real 1E-06

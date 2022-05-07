@@ -31,7 +31,9 @@
 
     <file_definition type="one_file" par_access="collective" output_freq="1y" enabled=".TRUE.">
 
-	<file id="file" name="output_ugrid" convention="UGRID" >
+	    <!-- Rq sync_freq is here to force writing for the test; and should not be set in general -->
+	    <!-- Rq variables have their own time variable (instant or centered); but might be usefull to set the default time_counter to time -->
+	<file id="file" name="output_ugrid" convention="UGRID" time_counter_name="time" time_counter="instant" sync_freq="1ts" time_units="days" >
 		<field_group group_ref="mesh_info" />		    
 		<field field_ref="varnode" />
 		<field field_ref="varnode velocity" />

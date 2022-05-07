@@ -68,10 +68,11 @@
       INTEGER, ALLOCATABLE, TARGET,SAVE :: NodePerm(:),InvNodePerm(:), InvDgPerm(:), DgPerm(:)
       LOGICAL, ALLOCATABLE,SAVE :: ActiveElem(:),NotOwnedNode(:)
       REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: cell_area
+      REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
       INTEGER,SAVE :: NumberOfGeomNodes,NumberOfDofNodes,NumberOfElements
       INTEGER,SAVE :: NumberOfActiveNodes
       LOGICAL,SAVE :: NoPermutation
-      INTEGER :: i
+      INTEGER :: i,M
       CHARACTER(LEN=2) :: strg_var
       LOGICAL :: ierr
 
@@ -115,6 +116,8 @@
       !------------------------------------------------------------------------------
       IF ( nTime == 1 ) THEN
 
+        M = Model % MaxElementNodes
+        ALLOCATE(Basis(M),dBasisdx(M,3))
         !------------------------------------------------------------------------------
         ! Initialize stuff for masked saving
         !------------------------------------------------------------------------------
@@ -197,7 +200,6 @@
         INTEGER, POINTER :: NodeIndexes(:)
         TYPE(GaussIntegrationPoints_t) :: IntegStuff
         REAL(KIND=dp) :: U,V,W,SqrtElementMetric
-        REAL(KIND=dp),ALLOCATABLE :: Basis(:), dBasisdx(:,:)
         LOGICAL :: stat
 
         REAL(KIND=dp) :: xg,yg
@@ -220,8 +222,6 @@
         INTEGER :: TotalCount,nv
         LOGICAL :: FieldActive
 
-        M = Model % MaxElementNodes
-        ALLOCATE(Basis(M),dBasisdx(M,3))
         ALLOCATE(Vertice(NumberOfActiveNodes),x(NumberOfActiveNodes),y(NumberOfActiveNodes))
         ALLOCATE(cell_area(NumberOfElements),Indexes(MaxElementNodes,NumberOfElements),GIndexes(NumberOfElements))
         ALLOCATE(NodeLon(NumberOfActiveNodes),NodeLat(NumberOfActiveNodes))
@@ -359,7 +359,6 @@
 ! - do edges
 ! - send the projected coordinates?
 
-        DEALLOCATE(Basis,dBasisdx)
         DEALLOCATE(Vertice,x,y)
         DEALLOCATE(Indexes,GIndexes)
         DEALLOCATE(NodeLon,NodeLat)
@@ -397,9 +396,16 @@
         IMPLICIT NONE
 
         TYPE(Element_t),POINTER :: Element
+        TYPE(Nodes_t),SAVE :: ElementNodes
+        INTEGER, POINTER :: NodeIndexes(:)
+        TYPE(GaussIntegrationPoints_t) :: IntegStuff
+        REAL(KIND=dp) :: U,V,W,SqrtElementMetric
+        REAL(KIND=dp) :: VarMean,area
         TYPE(Variable_t),POINTER :: Solution
         INTEGER :: VarType
-        INTEGER :: ii,i,j,t,m,n
+        INTEGER :: ii,i,j,t,m,n,k
+        LOGICAL :: stat
+        LOGICAL :: Found
 
         REAL(KIND=dp),ALLOCATABLE :: NodeVar(:)
         REAL(KIND=dp),ALLOCATABLE :: EVar(:)
@@ -411,6 +417,7 @@
         INTEGER :: Vari
         LOGICAL :: ScalarsExist
         LOGICAL :: FieldActive
+        LOGICAL :: Project
 
         ALLOCATE(NodeVar(NumberOfActiveNodes),EVar(NumberOfElements))
 
@@ -418,6 +425,52 @@
         Vari=1
         DO WHILE (ScalarsExist)
           Solution => VariableGet( Model % Mesh % Variables, TRIM(ScalarFieldName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE.)
+          VarType = Solution % TYPE
+
+          IF (VarType == Variable_on_nodes) THEN
+             WRITE(Txt,'(A,I0,A)') &
+                'Scalar Field ',Vari,' compute cell average'
+             Project = ListGetLogical(Params,TRIM(Txt),Found)
+             IF (Project) THEN
+                ! check if wee need to send the data
+                FieldActive=xios_field_is_active(TRIM(Solution%Name)//'_elem',.TRUE.)
+                WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Solution%Name)//'_elem',FieldActive
+                CALL Info(Caller,Message,Level=4)
+                IF (FieldActive) THEN
+                  Perm => Solution % Perm
+                  Values => Solution % Values
+                  t=0
+                  DO i = ElemFirst, ElemLast
+                    IF( .NOT. ActiveElem(i) ) CYCLE
+                    t=t+1
+
+                    Element => Model % Elements(i)
+                    n = GetElementNOFNodes(Element)
+                    NodeIndexes(1:n) => Element % NodeIndexes(1:n)
+
+                    CALL GetElementNodes( ElementNodes, Element )
+
+                    IntegStuff = GaussPoints( Element )
+                    VarMean=0._dp
+                    area=0._dp
+                    Do k=1,IntegStuff % n
+                      U = IntegStuff % u(k)
+                      V = IntegStuff % v(k)
+                      W = IntegStuff % w(k)
+                      stat = ElementInfo(Element,ElementNodes,U,V,W,SqrtElementMetric, &
+                        Basis,dBasisdx )
+                      area=area+SqrtElementMetric*IntegStuff % s(k)
+                      VarMean=VarMean+ &
+                        SqrtElementMetric*IntegStuff % s(k)*SUM(Basis(1:n)*Values(Perm(NodeIndexes(1:n))))
+                    End do
+
+                    EVar(t) = VarMean/area
+                  END DO
+                  CALL xios_send_field(TRIM(Solution%Name)//'_elem',EVar)
+
+                END IF
+             ENDIF
+          END IF
 
           ! check if wee need to send the data
           FieldActive=xios_field_is_active(TRIM(Solution%Name),.TRUE.)
@@ -425,7 +478,6 @@
           CALL Info(Caller,Message,Level=4)
 
           IF (FieldActive) THEN
-           VarType = Solution % TYPE
            Perm => Solution % Perm
            Values => Solution % Values
            SELECT CASE (VarType)
