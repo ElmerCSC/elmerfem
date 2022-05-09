@@ -74,7 +74,6 @@ Adding the following instructions to your cmake configuration file should be suf
 ...
 ```   
 
-
 ### Running Elmer with XIOS
 
 Elmer will call XIOS if Elmer has been compiled with XIOS support and the XIOS configuration file **iodef.xml** is present in the current directory.  The context *id* should be **elmerice** to configure the outputs.
@@ -88,21 +87,16 @@ or in detached mode using
 mpirun -np N ElmerSolver_mpi : -np N2 xios_server
 ```
 
-## Known Bugs and Limitations
+### Saving variables with XIOS
 
-- Restricted to 2D, but should be possible to extand this to a 3D simulation if working with a vertically extruded mesh, and we want to save only 2D variables.
+- To use the UGRID format, geographical coordinates are required (Longitude/Latitude); They are computed using gerenic functionnalities in [ProjUtils](../../Utils/Documentation/ProjUtils.md). The projection description should be provided in the *Simulation* section (only south and north polar stereographic projections are supported by default at the moment). The projected coordinates can be saved by requesting to save the elmer coordinates.
 
-- Should work with 303 or 404 elements, *to check for mesh with a mixture how to prescribe the bounds?*
+- Elmer variables that have to be transferred to XIOS are defined with the Solver keywords *Scalar Field i* for nodal and elemental variables and *Global Variable i* for global variables. The *id* in the XIOS configuration file should be the elmer variable name :warning: **in lower case**.
 
-- Should work with *halo elements* as they are skipped for the saving table
+- Nodal variables can be avaraged by element using the keyword *Scalar Field i compute cell average = Logical True*. In this case the corresponding *id* for XIOS shoudl be *varname_elem* (:warning: **in lower case**). Multiplying by the element area and summing over the elements will provide a conservative alternative to integrating nodal variables with elmer. 
 
-- should work with higher order elements, e.g. 306, as we will save only the corners?
-	- *To check how to get the max number of corners?*
-	- Might not be as simple as we rely on the  gloabl DOFs for the ordering...
-
-- XIOS automatically re-computes the connectivity tables, including edges. 
-	- *Can we directly provide this to XIOS?*
-	- *To see how to save variable on edges, e.g. grounding line flux..."*
+- Variables computed by the solver and that can be accessed by XIOS: 
+	- The element area can be accessed with the *id* *cell_area*.
 
 ## SIF Contents
 The required keywords in the SIF file for this solver are
@@ -163,10 +157,9 @@ A variable with **id="time_units** should be provided to define the units of the
 </context>
 ```
 
-## Tips
-- 
+## Reading an unstructured Netcdf File
 
-- By default the files will contain a time dimension named **time_counter**, and the associated variable is the **time_centered** variable. As most software, e.g. for visualisation, will look for a dimension named **time**, the default can be changed using the following keywords in the file definition: *time_counter_name="time" time_counter="instant"*. But remember, the true time for a variable can be *time_instant* or *time_centered* depending on the time operator; this is defined in the variable attribute. 
+Files produced with XIOS can be read with the [UGridDataReader](UGridDataReader.md)
 
 ## Visualising the resulting UGRID file.	
 
@@ -187,18 +180,38 @@ UGRID Netcdf files can be visualized with:
 	- As the coordinates are in lon/lat, it might be interesting to provide the projected coorinates and thus change the names of the coordinate in the mesh attributes? or improve the reader?
 
 - [psyplot](https://psyplot.github.io/)
-	- not adapted yet for nodal variable as it re-compute a delaunay triangulation?
+	- not adapted yet for nodal variable as it re-computes a delaunay triangulation?
 
 - [gridded](https://github.com/NOAA-ORR-ERD/gridded) 
 	- not tested
 
+### Tips
 
-## Reading an unstructured Netcdf File
+- By default the files will contain a time dimension named **time_counter**, and the associated variable is the **time_centered** variable. As most software, e.g. for visualisation, will look for a dimension named **time**, the default can be changed using the following keywords in the file definition: *time_counter_name="time" time_counter="instant"*. But remember, the true time for a variable can be *time_instant* or *time_centered* depending on the time operator; this is defined in the variable attribute. 
 
-Files produced with XIOS can be read with the UGridDataReader
+
+
+## Known Bugs and Limitations
+
+- Restricted to applications where you can define geographic coordinates.
+
+- Restricted to 2D, but should be possible to extand this to a 3D simulation if working with a vertically extruded mesh, and we want to save only 2D variables.
+
+- Should work with 303 or 404 elements, *to check for mesh with a mixture how to prescribe the bounds?*
+
+- Should work with *halo elements* as they are skipped for the saving table.
+
+- should work with higher order elements, e.g. 306, as we will save only the corners?
+	- *To check how to get the max number of corners?*
+	- Might not be as simple as we rely on the  gloabl DOFs for the ordering...
+
+- XIOS automatically re-computes the connectivity tables, including edges. 
+	- *Can we directly provide this to XIOS?*
+	- *To see how to save variable on edges, e.g. grounding line flux..."*
 
 
 ## Examples
+
 An example can be found here [ELMER_TRUNK]/elmerice/Tests/Xios
 
 An example to compute element averaged-values and do the reduction with XIOS can be found in [ELMER_TRUNK]/elmerice/Tests/Xios2
