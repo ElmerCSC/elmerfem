@@ -42,7 +42,6 @@ end
 
 Material 2 ! nonlinear material
   Name = "Iron"
-
   Reluctivity(3,3) = variable coordinate
     real procedure "reluctivity" "reluct"
   Relative Permittivity = 1
@@ -143,8 +142,6 @@ Solver 2 ! MagnetoDynamicsCalcFields
   Linear System Residual Output=10
   Linear System Preconditioning = none
   Linear System Convergence Tolerance = 1.0e-8
-
-!  Exec solver = never
 End
 
 Solver 3
@@ -156,10 +153,10 @@ Solver 3
 End
 
 Solver 4
-!  exec solver = never
+  exec solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = cylinder_orig
+  Output File Name = cylinder
   Output Directory = cylinders
   Save Geometry IDs = Logical True
   Vtu Format = Logical True
