@@ -63,7 +63,7 @@
         OnRails
    INTEGER, POINTER :: Perm(:), FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
         FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), &
-        NodeIndexes(:)
+        NodeIndexes(:),InflowPerm(:)=>NULL()
    INTEGER, ALLOCATABLE :: FrontLocalNodeNumbers(:), &
         NodeNumbers(:), TangledGroup(:), TangledPivotIdx(:), UpdatedDirection(:)
    REAL(KIND=dp) :: NodeVelo(3), NodeMelt(3), NodeNormal(3), RailDir(2),&
@@ -76,12 +76,13 @@
         TangledShiftTo(:), xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
         Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
-        MovePastRailNode, HitsRails, Reverse, ThisBC
+        MovePastRailNode, HitsRails, Reverse, ThisBC, MoveBulk
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), &
         Tangled(:), DontMove(:), FrontToRight(:), FrontToLeft(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
         NormalVarName, FrontMaskName, TopMaskName, TangledVarName, &
-        LeftMaskName, RightMaskName, LeftRailFName, RightRailFName
+        LeftMaskName, RightMaskName, LeftRailFName, RightRailFName,&
+        InflowMaskName
    INTEGER,parameter :: io=20  
    SAVE :: FirstTime ! TO DO not actually using FirstTime here?
 
@@ -200,6 +201,9 @@
    buffer = ListGetConstReal(Params, "Rail Buffer", Found, Default=0.1_dp)
    IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
 
+   MoveBulk = ListGetLogical(Params,"MoveBulk", Found, Default=.FALSE.)
+   IF(.NOT. Found) CALL Info(SolverName, "Not moving bulk as default")
+
    !Get the front line
    FrontMaskName = "Calving Front Mask"
    TopMaskName = "Top Surface Mask"
@@ -218,6 +222,10 @@
         .FALSE., LeftPerm, dummyint)
    CALL MakePermUsingMask( Model, Solver, Mesh, RightMaskName, &
         .FALSE., RightPerm, dummyint)
+
+   InflowMaskName = "Inflow Mask"
+   CALL MakePermUsingMask( Model, Solver, Mesh, InflowMaskName, &
+        .FALSE., InflowPerm, dummyint)
    
    !--------------------------------------
    ! Action: Compute lagrangian displacement for all nodes
@@ -231,10 +239,31 @@
 
    ALLOCATE(FrontToRight(NNodes), FrontToLeft(NNodes))
    FrontToRight = .FALSE.; FrontToLeft = .FALSE.
+
+   IF(MoveBulk) THEN ! for a fully Lagrangian mesh
+      DO i=1, Mesh % NumberOfNodes
+        IF(InflowPerm(i) > 0) CYCLE
+        IF(FrontPerm(i) == 0 .AND. LeftPerm(i) == 0 .AND. RightPerm(i) == 0) THEN
+          NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
+          NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
+          NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
+
+          Displace(1) =  NodeVelo(1)
+          Displace(2) =  NodeVelo(2)
+          Displace(3) =  NodeVelo(3)
+          Displace = Displace * dt
+
+          Advance((Perm(i)-1)*DOFs + 1) = Displace(1)
+          Advance((Perm(i)-1)*DOFs + 2) = Displace(2)
+          Advance((Perm(i)-1)*DOFs + 3) = Displace(3)
+        END IF
+      END DO
+   END IF
     
    DO i=1,Mesh % NumberOfNodes
       IF(Perm(i) <= 0) CYCLE
-      IF(FrontPerm(i) == 0) CYCLE ! surely only need front nodes beyond here
+      IF(FrontPerm(i) == 0 .AND. LeftPerm(i) == 0 .AND. RightPerm(i) == 0) CYCLE
+      IF(InflowPerm(i) > 0) CYCLE
 
       IF(FrontMelting .AND. (FrontPerm(i) >0 )) THEN
          IF(MeltVar % Perm(i) <= 0) &
@@ -391,7 +420,6 @@
          END IF
       END IF
 
-
       ! NOTE: Displace overwritten on corner of left-front and right-front
       ! melt not taken into account on those corner nodes
       IF ((LeftPerm(i)>0) .OR. (RightPerm(i)>0) .OR. (OnRails > 0) ) THEN
@@ -445,38 +473,53 @@
                k=jmin+1
             END IF
             PRINT *, 'NOTE! mesh node on a rail node!'
-         ELSE ! x is not a rail node, check whether x is closest to  jmin+1 or jmin-1  
-            IF(PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-               (/xRail(jmin+1),yRail(jmin+1)/),(/xx,yy/)) &
-               > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-               (/xRail(jmin-1),yRail(jmin-1)/),(/xx,yy/))) THEN
-                 ! x closest to jmin-1 -- jmin segment
-                 IF (PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-                     (/xRail(jmin+1),yRail(jmin+1)/),(/xt,yt/)) &
-                     > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-                     (/xRail(jmin-1),yRail(jmin-1)/),(/xt,yt/))) THEN
-                     ! x+v*dt also closest to jmin--jmin-1 
-                     MovePastRailNode=.FALSE. ! case 2) x+dt*v and x are on same segment
-                     k=jmin-1 ! x and x+v*dt are closest to jmin>jmin-1 segment
-                 ELSE
-                     ! case 3) advancing past rail segment
-                     MovePastRailNode=.TRUE. 
-                     k=jmin+1 ! x is moving from jmin-1--jmin to jmin--jmin+1
-                 END IF
-            ELSE ! x closest to jmin -- jmin+1 segment, but closer to jmin than jmin+1
-                 ! assuming not moving past jmin+1 (see above assumption on time step and rail resolution)
-                 IF (PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-                    (/xRail(jmin+1),yRail(jmin+1)/),(/xt,yt/)) &
-                    > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
-                    (/xRail(jmin-1),yRail(jmin-1)/),(/xt,yt/))) THEN
-                     ! Case 3) x advancing past rail segment
-                     MovePastRailNode=.TRUE.
-                     k=jmin-1 ! x is moving from jmin+1>jmin to jmin>jmin-1
-                 ELSE
-                     ! Case 2) x+v*dt and x are on same segment jmin>jmin+1     
-                     MovePastRailNode=.FALSE.
-                     k=jmin+1
-                 END IF
+         ELSE ! x is not a rail node, check whether x is closest to  jmin+1 or jmin-1
+            IF(jmin==1) THEN
+              IF(PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+              (/xRail(jmin+1),yRail(jmin+1)/),(/xt,yt/)) &
+              > PointLineSegmDist2D((/xRail(jmin+1),yRail(jmin+1)/), &
+              (/xRail(jmin+2),yRail(jmin+2)/),(/xt,yt/))) THEN
+                ! x+v*dt also closest to jmin--jmin-1
+                MovePastRailNode=.TRUE. ! case 2) x+dt*v and x are on same segment
+                k=jmin+1
+              ELSE
+                ! case 3) advancing past rail segment
+                MovePastRailNode=.FALSE.
+                k=jmin+1 ! x is moving from jmin-1--jmin to jmin--jmin+1
+              END IF
+            ELSE
+              IF(PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                (/xRail(jmin+1),yRail(jmin+1)/),(/xx,yy/)) &
+                > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                (/xRail(jmin-1),yRail(jmin-1)/),(/xx,yy/))) THEN
+                  ! x closest to jmin-1 -- jmin segment
+                  IF (PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                      (/xRail(jmin+1),yRail(jmin+1)/),(/xt,yt/)) &
+                      > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                      (/xRail(jmin-1),yRail(jmin-1)/),(/xt,yt/))) THEN
+                      ! x+v*dt also closest to jmin--jmin-1
+                      MovePastRailNode=.FALSE. ! case 2) x+dt*v and x are on same segment
+                      k=jmin-1 ! x and x+v*dt are closest to jmin>jmin-1 segment
+                  ELSE
+                      ! case 3) advancing past rail segment
+                      MovePastRailNode=.TRUE.
+                      k=jmin+1 ! x is moving from jmin-1--jmin to jmin--jmin+1
+                  END IF
+              ELSE ! x closest to jmin -- jmin+1 segment, but closer to jmin than jmin+1
+                  ! assuming not moving past jmin+1 (see above assumption on time step and rail resolution)
+                  IF (PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                      (/xRail(jmin+1),yRail(jmin+1)/),(/xt,yt/)) &
+                      > PointLineSegmDist2D((/xRail(jmin),yRail(jmin)/), &
+                      (/xRail(jmin-1),yRail(jmin-1)/),(/xt,yt/))) THEN
+                      ! Case 3) x advancing past rail segment
+                      MovePastRailNode=.TRUE.
+                      k=jmin-1 ! x is moving from jmin+1>jmin to jmin>jmin-1
+                  ELSE
+                      ! Case 2) x+v*dt and x are on same segment jmin>jmin+1
+                      MovePastRailNode=.FALSE.
+                      k=jmin+1
+                  END IF
+              END IF
             END IF
          END IF
          IF(MovePastRailNode) THEN
@@ -587,6 +630,6 @@
 
    FirstTime = .FALSE.
 
-  DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
+  DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm, InflowPerm)
 
  END SUBROUTINE GlacierAdvance3D
