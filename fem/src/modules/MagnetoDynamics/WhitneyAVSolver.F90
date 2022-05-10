@@ -1838,9 +1838,10 @@ END SUBROUTINE LocalConstraintMatrix
        ELSE IF( HasReluctivityFunction ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
          mu = ListGetElementReal( mu_h, Basis, Element, &
-             GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )             
-         A_t = 0.0_dp
-         A_t(1:mudim,1:mudim) = muTensor(1:mudim,1:mudim)         
+             GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )
+         IF (mudim < 2) CALL Fatal('WhitneyAVSolver', &
+             'Specify Reluctivity Function as a full (3x3)-tensor')
+         A_t(1:3,1:3) = muTensor(1:3,1:3)         
        ELSE IF( HasTensorReluctivity ) THEN
          IF (SIZE(Acoef_t,2) == 1) THEN
            A_t = 0.0d0
