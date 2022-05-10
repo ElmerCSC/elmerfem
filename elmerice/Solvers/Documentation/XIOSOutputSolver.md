@@ -137,9 +137,10 @@ For the XIOS xml configuration file, the context *id* should be **elmerice**.
 A variable with **id="time_units** should be provided to define the units of the time step, i.e. **1y** if we are using years or **1s** for seconds. The time step send to xios is then the Elmer time step *dt* times the *time_units*.    
 
 - :warning: **its is to the user responsability to check that the time step is constant and a finite fraction of the output frequency**   
-- :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case insensitive and should be referred as **id="varname"** for XIOS.
+- :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case insensitive and should be referred as **id="varname"** for XIOS. There is a sanity check that a variable defined with the keywords *Global Variable* and *Scalar Field* are defined in the xios configuration file.
 
 ```
+<!-- mandatory context definition -->
 <context id="elmerice">
 
 <!-- define the time unit system... should be lenght 2 -->
@@ -153,8 +154,62 @@ A variable with **id="time_units** should be provided to define the units of the
 <!-- if you want to compute element-averaged values from nodal values; add "_elem" to the var name -->
 <field id="varname_elem"  name=... />
 
+<!-- setting elmer/ice version as a file global attribute -->
+<file id=... >
+  <field ... />
+  <!-- global attribute definition ... All varaibles with this id will be updated to contain both rev. and vers. numbers -->
+  <variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
+</file>
+
+<!-- mandatory domain and grids  -->
+<domain_definition>
+  <!-- mandatory domains ...  -->
+  <domain id="cells" name="mesh2D"/>
+  <domain id="edges" name="mesh2D"/>
+  <domain id="nodes" name="mesh2D"/>
+  <!-- ...  -->
+</domain_definition>
+
+<grid_definition>
+  <!-- mandatory grids... -->
+  <grid id="GridCells">
+     <domain domain_ref="cells"/>
+  </grid>
+
+  <grid id="GridNodes">
+    <domain domain_ref="nodes"/>
+  </grid>
+
+  <grid id="GridEdges">
+    <domain domain_ref="edges"/>
+  </grid>
+  <!-- ...  -->
+</grid_definition>
 
 </context>
+```
+
+### Hard coded definitions
+
+A *field_group* with **id="mesh_info"** will be automatically added is not already present, with the attribute *operation="once"*.
+If not already defined the following fields (related to mesh informations) will be added to the group:
+- node_x: node x coordinate  
+- node_y: node y coordinate  
+- cell_area: element area
+- boundary_condition: Edge % BoundaryInfo % Constraint
+
+i.e. this is equivalent to these definitions in the elerice context; and the field_group and fields can be used to be saved in files.
+
+:warning: these variables are not recomputed; however they might change in some applications... especially the boundary condition if we have passive/active boundary conditions...
+
+```
+<field_group id="mesh_info"  operation="once" >
+   <field id="node_x"  name="x"  standard_name="projection_x_coordinate"  unit="m" grid_ref="GridNodes" />
+   <field id="node_y"  name="y"  standard_name="projection_y_coordinate"  unit="m" grid_ref="GridNodes" />
+   <field id="cell_area" name="cell_area" unit="m2" grid_ref="GridCells" />
+   <!-- boundary condition number for edges... should be better to output as int. but qgis do not support variable that are not float? -->
+   <field id="boundary_condition" name="boundary_condition" unit="1" default_value="0" prec="4" grid_ref="GridEdges"/>
+</field_group>
 ```
 
 ## Reading an unstructured Netcdf File
@@ -187,6 +242,8 @@ UGRID Netcdf files can be visualized with:
 
 ### Tips
 
+- Variables defined with the *id="elmerversion"* will be automatically updated to *Elmer/Ice vVERSION_NUMBER (Rev: REVISION_NUMBER)*, so that it can be added as a global attribute in output files.
+
 - By default the files will contain a time dimension named **time_counter**, and the associated variable is the **time_centered** variable. As most software, e.g. for visualisation, will look for a dimension named **time**, the default can be changed using the following keywords in the file definition: *time_counter_name="time" time_counter="instant"*. But remember, the true time for a variable can be *time_instant* or *time_centered* depending on the time operator; this is defined in the variable attribute. 
 
 
@@ -199,7 +256,7 @@ UGRID Netcdf files can be visualized with:
 
 - Should work with 303 or 404 elements, *to check for mesh with a mixture how to prescribe the bounds?*
 
-- Should work with *halo elements* as they are skipped for the saving table.
+- Should work with *halo elements* as they are skipped from the saving table.
 
 - should work with higher order elements, e.g. 306, as we will save only the corners?
 	- *To check how to get the max number of corners?*
@@ -207,8 +264,8 @@ UGRID Netcdf files can be visualized with:
 
 - XIOS automatically re-computes the connectivity tables, including edges. 
 	- *Can we directly provide this to XIOS?*
-	- *To see how to save variable on edges, e.g. grounding line flux..."*
 
+- Edges: *Element="n:0 e:1"* is automatically added to the solver parameters so that elmer computes the edge table and ordering. :warning: Variables expoted in this solver will be defined by edges... To see how to define edge varaible in other solvers (e.g. grounding line flux) to send them to Xios...
 
 ## Examples
 

@@ -13,9 +13,6 @@
      <!-- id corespond to var names and should be lower case!! -->
       <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" operation="instant" /> 
       <field id="varnode_elem" name="MyNodalVarOnCell"  standard_name="Meanvar"   unit="m" grid_ref="GridCells" operation="instant" /> 
-      <field_group id="mesh_info"  operation="once" >
-	      <field id="cell_area" name="cell_area" unit="m2" grid_ref="GridCells" />
-      </field_group>
 
       <!-- reduction sum cell areas -->
       <field id="area" name="area" field_ref="cell_area" grid_ref="ScalarGrid" />
@@ -31,17 +28,23 @@
        <file id="output_Scalar" name="output_Scalar" type="one_file" output_freq="1y" time_counter_name="time" time_counter="instant" sync_freq="1ts" time_units="days" >
 	       <field field_ref="area" prec="8" />
 	       <field field_ref="volume" prec="8" />
+		<!-- global attribute definition ... with this id will be update to contain both rev. and vers. -->
+		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
        </file>
 
     </file_definition>
 
     <domain_definition>
+      <!-- mandatory domains ...  -->
       <domain id="cells" name="mesh2D"/>
+      <domain id="edges" name="mesh2D"/>
       <domain id="nodes" name="mesh2D"/>
+      <!-- ...  -->
     </domain_definition>
 
     <grid_definition>
 
+      <!-- mandatory grids... -->
       <grid id="GridCells">
         <domain domain_ref="cells"/>
       </grid>
@@ -49,6 +52,11 @@
       <grid id="GridNodes">
         <domain domain_ref="nodes"/>
       </grid>
+
+      <grid id="GridEdges">
+        <domain domain_ref="edges"/>
+      </grid>
+      <!-- ...  -->
 
       <grid id="ScalarGrid">
         <scalar id="scalar">

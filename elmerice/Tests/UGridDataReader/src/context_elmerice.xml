@@ -15,12 +15,6 @@
       <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" prec="8" operation="instant"> this/2 </field> 
       <field id="varnode velocity"  name="MyVelocity"  standard_name="nodal_var_velocity"   unit="m" grid_ref="GridNodes" operation="average" />
 
-      <field_group id="mesh_info"  operation="once" >
-	      <field id="coordinate 1"  name="x"  standard_name="projection_x_coordinate"  unit="m" grid_ref="GridNodes" />
-	      <field id="coordinate 2"  name="y"  standard_name="projection_y_coordinate"  unit="m" grid_ref="GridNodes" />
-	      <field id="cell_area" name="cell_area" unit="m2" grid_ref="GridCells" />
-      </field_group>
-
       <!-- saving a global scalar variable -->
       <field id="time" operation="average"  grid_ref="ScalarGrid" />
 
@@ -36,18 +30,22 @@
 		<field field_ref="varnode" />
 		<field field_ref="varnode velocity" />
 		<field field_ref="varelem" />
-		<variable name="My_globale_attribute" type="string"> elmer ice model</variable>
+		<!-- global attribute definition ... with this id will be update to contain both rev. and vers. -->
+> 		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
 	</file>
 
        <file id="output_Scalar" name="output_Scalar" type="one_file" output_freq="1y">
 	       <field field_ref="time" />
 	       <field field_ref="area"/>
+	       <!-- global attribute definition ... with this id will be update to contain both rev. and vers. -->
+> 		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
        </file>
 
     </file_definition>
 
     <domain_definition>
       <domain id="cells" name="mesh2D"/>
+      <domain id="edges" name="mesh2D"/>
       <domain id="nodes" name="mesh2D"/>
     </domain_definition>
 
@@ -55,6 +53,10 @@
 
       <grid id="GridCells">
         <domain domain_ref="cells"/>
+      </grid>
+
+      <grid id="GridEdges">
+        <domain domain_ref="edges"/>
       </grid>
 
       <grid id="GridNodes">

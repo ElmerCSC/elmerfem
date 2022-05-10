@@ -66,11 +66,9 @@ Solver 2
    Procedure = "ElmerIceSolvers" "XIOSOutputSolver"
 
 ! node and elem vars
-   Scalar Field 1 = String "Coordinate 1"
-   Scalar Field 2 = String "Coordinate 2"
-   Scalar Field 3 = String "VarNode"
-   Scalar Field 4 = String "VarNode Velocity"
-   Scalar Field 5 = String "VarElem"
+   Scalar Field 1 = String "VarNode"
+   Scalar Field 2 = String "VarNode Velocity"
+   Scalar Field 3 = String "VarElem"
 
   !Global Variables
    Global Variable 1 = String "time"
