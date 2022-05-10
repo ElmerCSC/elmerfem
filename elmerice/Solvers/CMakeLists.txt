@@ -54,6 +54,14 @@ IF(HAVE_MMG)
   SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90 ) #MMG3DSolver.F90 <- defunct?
 ENDIF()
 
+IF(HAVE_XIOS)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} OutPutSolvers/XIOSOutputSolver.F90)
+ENDIF()
+
+IF(HAVE_NETCDF)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} UGridDataReader.F90)
+ENDIF()
+
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
 # Library object
@@ -80,13 +88,17 @@ IF(NOT(WIN32))
     SET_TARGET_PROPERTIES(ElmerIceSolvers PROPERTIES
                           INSTALL_RPATH_USE_LINK_PATH TRUE)
 ENDIF()
-TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
+TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver ElmerIceUtils)
 
 IF(HAVE_NETCDF)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NETCDF_LIBRARIES})
 ENDIF()
 IF(HAVE_HDF5)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
+ENDIF()
+IF(HAVE_XIOS)
+  INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${XIOS_LIBRARIES})
 ENDIF()
 # IF(HAVE_MMG)
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})

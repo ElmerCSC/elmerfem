@@ -1,0 +1,13 @@
+IF(HAVE_XIOS)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+  CONFIGURE_FILE(Case.sif Case.sif COPYONLY)
+
+  ADD_ELMERICETEST_MODULE(XIOS Check_xios2 Check_xios2.F90)
+  FILE(COPY Check_xios2.F90 rectangle.grd ELMERSOLVER_STARTINFO iodef.xml context_elmerice.xml  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+  ADD_ELMERICE_TEST(XIOS2)
+  ADD_ELMERICE_LABEL(XIOS2 elmerice-fast)
+  ADD_ELMERICE_LABEL(XIOS2 elmerice-xios)
+  ADD_ELMERICE_LABEL(XIOS2 netcdf)
+ENDIF()
