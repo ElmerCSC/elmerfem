@@ -133,7 +133,7 @@
         ! If we have a discontinuous mesh then create the permutation vectors to deal
         ! with the discontinuities.
         !------------------------------------------------------------------------------
-        CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,SaveLinear,ActiveElem,NumberOfGeomNodes,&
+        CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,SaveLinear,ActiveElem,NumberOfGeomNodes,&
                NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
 
         !------------------------------------------------------------------------------
