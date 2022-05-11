@@ -70,7 +70,7 @@
         MeltRate, Displace(3), y_coord(2), epsShift, LongRangeLimit, MaxDisplacement, &
         EpsTangle,thisEps,Shift, thisY,xx,yy,TempDist,MinDist,xt,yt,t, &
         a1(2), a2(2), b1(2), b2(2), b3(2), intersect(2), DistRailNode, RDisplace(3),&
-        buffer
+        buffer, VeloFactor
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), &
         TangledShiftTo(:), xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
@@ -198,6 +198,12 @@
      MaxDisplacement = 1.0E4_dp
    END IF
 
+   VeloFactor = ListGetConstReal(Params, "Lateral Margin Velocity Factor", Found)
+   IF(.NOT.Found) THEN
+     CALL Info(SolverName, "'Lateral Margin Velocity Factor' not found, setting to 1.0.")
+     VeloFactor = 1.0_dp
+   END IF
+
    buffer = ListGetConstReal(Params, "Rail Buffer", Found, Default=0.1_dp)
    IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
 
@@ -286,6 +292,12 @@
       NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
       NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
       NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
+
+      IF(FrontPerm(i) > 0) THEN
+         IF(LeftPerm(i) > 0 .OR. RightPerm(i) > 0) THEN
+            NodeVelo = NodeVelo * VeloFactor
+         END IF
+      END IF
             
       Displace = 0.0
       IF ( FrontPerm(i) > 0 ) THEN
