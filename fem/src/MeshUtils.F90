@@ -20442,7 +20442,7 @@ CONTAINS
        END IF
     END DO
 
-    IF( ElemFin - ElemStart <= 0) THEN
+    IF( ElemFin - ElemStart <= 0 .AND. .NOT. Parallel) THEN
        LocalNodes = 0
        RETURN
     END IF
