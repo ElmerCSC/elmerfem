@@ -305,9 +305,9 @@
 
          DO j=1, Nl-1
             b1(1) = xL(j); b1(2) = yL(j)
-            b2(1) = xL(j+1); b2(2) = yl(j+1)
-            IF(j < Nr - 1) THEN
-               b3(1) = xR(j+2); b3(2) = yR(j+2)
+            b2(1) = xL(j+1); b2(2) = yL(j+1)
+            IF(j < NL - 1) THEN
+               b3(1) = xL(j+2); b3(2) = yL(j+2)
             END IF
             tempdist = PointLineSegmDist2D(b1, b2, a1)
             IF(tempdist < buffer + AEPS) THEN
