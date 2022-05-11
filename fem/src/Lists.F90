@@ -5902,6 +5902,10 @@ use spariterglobals
          END IF
        ELSE
          ptr => Handle % ptr % head
+         IF (PRESENT(Rdim) .AND. PRESENT(Rtensor)) THEN 
+           Rdim = Handle % Rdim
+           Rtensor => Handle % Rtensor
+         END IF
        END IF
      ELSE IF( ListFound ) THEN
 
@@ -5916,6 +5920,7 @@ use spariterglobals
        END IF
 
        Handle % Ptr % Head => ptr
+       Handle % Rdim = ptr % Fdim 
        
        IF( ptr % Fdim > 0 ) THEN
          N1 = SIZE(ptr % FValues,1)
@@ -5929,7 +5934,6 @@ use spariterglobals
            ALLOCATE( Handle % Rtensor(N1,N2) )
          END IF
 
-         Handle % Rdim = MAX(N1,N2)
          IF( PRESENT( Rdim ) .AND. PRESENT( Rtensor ) ) THEN
            Rdim = Handle % Rdim
            Rtensor => Handle % Rtensor
