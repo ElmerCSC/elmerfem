@@ -84,7 +84,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: VariableValues(:), Zs(:), Zb(:), Nval(:)
 
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, MinH, rhow, sealevel, &
-       PrevUNorm, relativeChange, minv, fm, PostPeak, MinN
+       PrevUNorm, relativeChange, minv, fm, PostPeak, MinN, U0
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
@@ -333,8 +333,10 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
         iFriction = 2
       CASE('coulomb')
         iFriction = 3
+      CASE('regularized coulomb')
+        iFriction = 4
       CASE DEFAULT
-        CALL FATAL(SolverName,'Friction should be linear, Weertman or Coulomb')
+        CALL FATAL(SolverName,'Friction should be linear, Weertman, Coulomb or Regularized coulomb')
       END SELECT
 
       ! for all friction law
@@ -355,7 +357,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       END IF
 
       ! only for Coulomb friction
-      IF (iFriction > 2) THEN
+      IF (iFriction == 3) THEN
         PostPeak = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=UnFoundFatal )
 
         NodalC = 0.0_dp
@@ -372,6 +374,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
 
         MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
         !Previous default value: MinN = 1.0e-6_dp
+      END IF
+
+      ! only for Regularized Coulomb friction law we need to get U0 of Joughin law
+      IF (iFriction == 4) THEN
+        U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=UnFoundFatal)
+ 
       END IF
 
 
@@ -391,7 +399,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
 
       CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
            NodalDensity, NodalViscosity, NodalZb, NodalZs, NodalU, NodalV, &
-           iFriction, NodalBeta, fm, NodalLinVelo, PostPeak, NodalC, NodalN, &
+           iFriction, NodalBeta, fm, NodalLinVelo, PostPeak, U0, NodalC, NodalN, &
            NodalGM,NodalBed,SEP,rhow, &
            cn, MinSRInv, MinH , STDOFs, Newton)
 
@@ -548,7 +556,7 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
        Density, Viscosity, LocalZb, LocalZs, LocalU, LocalV, &
-       Friction, LocalBeta, fm, LocalLinVelo, fq, LocalC, LocalN, &
+       Friction, LocalBeta, fm, LocalLinVelo, fq, fU0, LocalC, LocalN, &
        NodalGM,NodalBed,SEP,rhow, &
        cm, MinSRInv, MinH, STDOFs , Newton )
     !------------------------------------------------------------------------------
@@ -561,7 +569,7 @@ CONTAINS
     REAL(KIND=dp) :: rhow
     REAL(KIND=dp) :: Bedrock,Hf
     INTEGER :: n, cp , STDOFs, Friction
-    REAL(KIND=dp) :: cm, fm, fq
+    REAL(KIND=dp) :: cm, fm, fq, fU0
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Newton
     !------------------------------------------------------------------------------
@@ -622,9 +630,9 @@ CONTAINS
            if (h.lt.Hf) beta=0._dp
         END IF
       END IF
-      IF (iFriction > 1) THEN
+      IF (Friction > 1) THEN
         LinVelo = SUM( LocalLinVelo(1:n) * Basis(1:n) )
-        IF ((iFriction == 2).AND.(fm==1.0_dp)) iFriction=1
+        IF ((Friction == 2).AND.(fm==1.0_dp)) Friction=1
         Velo = 0.0_dp
         Velo(1) = SUM(LocalU(1:n) * Basis(1:n))
         IF (STDOFs == 2) Velo(2) = SUM(LocalV(1:n) * Basis(1:n))
@@ -636,29 +644,34 @@ CONTAINS
         ENDIF
       END IF
 
-      IF (iFriction==3) THEN
+      IF (Friction==3) THEN
         fC = SUM( LocalC(1:n) * Basis(1:n) )
         fN = SUM( LocalN(1:n) * Basis(1:n) )
         ! Effective pressure should be >0 (for the friction law)
         fN = MAX(fN, MinN)
       END IF
 
-      IF (iFriction==1) THEN
+      IF (Friction==1) THEN
         Slip = beta
         fNewtonLin = .FALSE.
-      ELSE IF (iFriction==2) THEN
+      ELSE IF (Friction==2) THEN
         Slip = beta * ub**(fm-1.0_dp) 
         Slip2 = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
-      ELSE IF (iFriction==3) THEN
-        IF (PostPeak.NE.1.0_dp) THEN
-          alpha = (PostPeak-1.0_dp)**(PostPeak-1.0_dp) / PostPeak**PostPeak
+      ELSE IF (Friction==3) THEN
+        IF (fq.NE.1.0_dp) THEN
+          alpha = (fq-1.0_dp)**(fq-1.0_dp) / fq**fq
         ELSE
           alpha = 1.0_dp
         END IF
-        fB = alpha * (beta / (fC*fN))**(PostPeak/fm)
-        Slip = beta * ub**(fm-1.0_dp) / (1.0_dp + fB * ub**PostPeak)**fm
+        fB = alpha * (beta / (fC*fN))**(fq/fm)
+        Slip = beta * ub**(fm-1.0_dp) / (1.0_dp + fB * ub**fq)**fm
         Slip2 = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-             fm*PostPeak*fB*ub**(PostPeak-2.0_dp)/(1.0_dp+fB*ub**PostPeak))
+             fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
+      ELSE IF (Friction==4) THEN
+        Slip = beta * ub**(fm-1.0_dp) / (ub + fU0)**fm
+        !slip2=(1/ux)*(dslip/dux)=(1/uy)*(dslip/duy)
+        Slip2 = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
+              fm*ub**(-1.0_dp)/(ub+fU0))
       END IF
 
       !------------------------------------------------------------------------------
@@ -726,7 +739,7 @@ CONTAINS
             END DO
           END DO
 
-          IF ((fNewtonLin).AND.(iFriction > 1)) THEN
+          IF ((fNewtonLin).AND.(Friction > 1)) THEN
             DO i=1,STDOFs
               Do j=1,STDOFs
                 STIFF((STDOFs)*(p-1)+i,(STDOFs)*(q-1)+j) = STIFF((STDOFs)*(p-1)+i,(STDOFs)*(q-1)+j) +&
@@ -766,7 +779,7 @@ CONTAINS
                rho*g*h*gradS(i) * IP % s(t) * detJ * Basis(p) 
         END DO
 
-        IF ((fNewtonLin).AND.(iFriction>1)) THEN
+        IF ((fNewtonLin).AND.(Friction>1)) THEN
           DO i=1,STDOFs
             FORCE((STDOFs)*(p-1)+i) =   FORCE((STDOFs)*(p-1)+i) + &   
                  Slip2 * Velo(i) * ub * ub * IP % s(t) * detJ * Basis(p) 
