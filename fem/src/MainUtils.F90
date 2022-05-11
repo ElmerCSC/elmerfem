@@ -5165,8 +5165,8 @@ BLOCK
        
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-              CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
+           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
+             CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
          END IF
 
          CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
