@@ -109,13 +109,16 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   TYPE(Variable_t),POINTER :: ZbVar=>NULL(),ZsVar=>NULL()
   TYPE(Variable_t),POINTER :: HVar=>NULL(),BedVar=>NULL()
   TYPE(Variable_t),POINTER :: GLMask=>NULL()
+  TYPE(Variable_t),POINTER :: sftgif,sftgrf,sftflf
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t),POINTER :: BodyForce,Material, Params
 
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: Density
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: GL
+  REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: MinH,NodalH
   REAL(KIND=dp) :: zsea,rhow,rhoi
   REAL(KIND=dp) :: H,zb,zs,bedrock
+  REAL(KIND=dp), PARAMETER :: EPS=EPSILON(1.0)
 
 
   INTEGER,DIMENSION(:),POINTER,SAVE :: BotPointer,TopPointer,UpPointer
@@ -125,16 +128,20 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   INTEGER :: t,i,n
   INTEGER :: topnode
   INTEGER :: Active
+  INTEGER :: Eindex
 
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
   LOGICAL :: Found,GotIt
   LOGICAL :: BoundarySolver
+  LOGICAL :: ComputeIceMasks,LimitedSolution,IceFree
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='Flotation'
   CHARACTER(LEN=MAX_NAME_LEN) :: ZbName,ZsName,HName
 
 !------------------------------------------------------------------------------
+  PRINT *, "EPSILON",EPS
+
   Mesh => Model % Mesh
 
   Params => Solver % Values
@@ -167,6 +174,31 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
      CALL INFO(SolverName,Message,level=5)
   END IF
 
+  !! compute ice area farctions
+  ComputeIceMasks = ListGetLogical(Params,"compute ice area fractions",Gotit)
+  LimitedSolution = .FALSE.
+  IF (ComputeIceMasks) THEN
+          
+    sftgif => VariableGet( Model % Mesh % Variables, 'sftgif',UnFoundFatal=.TRUE.)
+    sftgif  % Values = 0._dp
+    IF (sftgif % TYPE /= Variable_on_elements) &
+           CALL FATAL(SolverName,"sftgif type should be on_elements")
+    sftgrf => VariableGet( Model % Mesh % Variables, 'sftgrf',UnFoundFatal=.TRUE.)
+    sftgrf  % Values = 0._dp
+    IF (sftgrf % TYPE /= Variable_on_elements) &
+           CALL FATAL(SolverName,"sftgrf type should be on_elements")
+    sftflf => VariableGet( Model % Mesh % Variables, 'sftflf',UnFoundFatal=.TRUE.)
+    sftflf  % Values = 0._dp
+    IF (sftflf % TYPE /= Variable_on_elements) &
+           CALL FATAL(SolverName,"sftflf type should be on_elements")
+
+    ! check if we have a limited solution
+    ! internal Elmer limiters...
+    LimitedSolution=ListCheckPresentAnyBodyForce(CurrentModel, TRIM(HName)//" Lower Limit")
+    IF (.NOT.LimitedSolution) &
+      LimitedSolution=ListCheckPresentAnyMaterial(CurrentModel, "Min "//TRIM(HName))
+  ENDIF
+
 !!! Do some initialisation/allocation
   IF ((.NOT.Initialized).OR.Mesh%Changed) THEN
 
@@ -180,10 +212,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
                                 TopNodePointer = TopPointer, UpNodePointer = UpPointer)
     END IF
 
-    IF (Initialized) deallocate(Density,GL)
+    IF (Initialized) deallocate(Density,GL,MinH,NodalH)
     
     N=Model % MaxElementNodes
-    allocate(Density(N),GL(N))
+    allocate(Density(N),GL(N),MinH(N),NodalH(N))
 
     Initialized = .TRUE.
   END IF
@@ -209,10 +241,29 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
       CurrentModel % CurrentElement => Element
     ENDIF
 
+    Eindex = Element%ElementIndex
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
 
     Material => GetMaterial(Element)
+    BodyForce => GetBodyForce(Element)
+
+    NodalH(1:n) = HVar%Values(HVar%Perm(NodeIndexes(1:n)))
+
+    IF (ComputeIceMasks) &
+      sftgif % Values ( sftgif % Perm(Eindex)) = 1._dp
+
+    ! If H is limited check if all element is at lower limit...
+    IceFree=.FALSE.
+    IF (LimitedSolution) THEN
+      MinH = 0._dp
+      ! check for limited solution;
+      MinH = ListGetConstReal(BodyForce,TRIM(HName)//' Lower Limit', Gotit)
+      IF (.NOT.Gotit) &
+       MinH = ListGetConstReal(Material,'Min '//TRIM(HName), Gotit)
+      IF (.NOT.GotIt) CALL FATAL(SolverName,TRIM(HName)//" not found...but was supposed to be limited")
+      IF (ALL((NodalH(1:n)-MinH(1:n)).LE.EPS)) IceFree=.TRUE.
+    END IF
 
     Density(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,UnFoundFatal=.TRUE.)
 
@@ -220,7 +271,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
     GL=-1
     Do i=1,n 
 
-       H=HVar%Values(HVar%Perm(NodeIndexes(i)))
+       H=NodalH(i)
        rhoi=Density(i)
        zb=zsea-H*rhoi/rhow
       ! if bedrock defined check flotation criterion
@@ -250,6 +301,21 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
        END IF
        GLMask%Values(GLMask%Perm(NodeIndexes(1:n)))= GL(1:n) * ABS(GLMask%Values(GLMask%Perm(NodeIndexes(1:n))))
     END IF
+
+    IF (ComputeIceMasks) THEN
+      IF (GroundedNode.LT.n) THEN
+         sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
+         sftflf % Values ( sftflf % Perm(Eindex)) = 1._dp
+      ELSE
+         sftgrf % Values ( sftgrf % Perm(Eindex)) = 1._dp
+         sftflf % Values ( sftflf % Perm(Eindex)) = 0._dp
+      END IF
+      IF (IceFree) THEN
+        sftgif % Values ( sftgif % Perm(Eindex)) = 0._dp
+        sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
+        sftflf % Values ( sftflf % Perm(Eindex)) = 0._dp
+      END IF
+    ENDIF
  End Do
 
  IF (ASSOCIATED(GLMask).AND.( ParEnv % PEs>1 )) CALL ParallelSumVector( Solver % Matrix, GLMask%Values ,1 )
