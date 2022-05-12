@@ -1,4 +1,4 @@
-SET(ElmerIceUtils_SRC ProjUtils.F90)
+SET(ElmerIceUtils_SRC ProjUtils.F90 SSAMaterialModels.F90)
 
 ADD_LIBRARY(ElmerIceUtils SHARED ${ElmerIceUtils_SRC})
 

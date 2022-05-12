@@ -15,6 +15,11 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
+## History
+- Rev. 26a079785: introduce "regularised Coulomb" friction law
+	- Update Keyword: MATERIAL : SSA Friction Law = String "regularised Coulomb"
+	- New Keyword: MATERIAL : SSA Friction Threshold Velocity = Real
+
 ## General Description
 ### Ice flow
 The SSABasalSolver solves the classical SSA equation, it has been modified in Rev. 6440 to be executed either on a grid of dimension lower than the problem dimension itself (i.e. the top or bottom grid of a 2D or 3D mesh for a SSA 1D or 2D problem), or on a grid of the same dimension as the problem (i.e. 2D mesh for a 2D plane view SSA solution).

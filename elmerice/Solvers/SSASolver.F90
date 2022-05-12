@@ -30,7 +30,7 @@
 ! * 
 ! *****************************************************************************
 !> SSolver to inquire the velocity from the SSA solution            
-SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
+  SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !******************************************************************************
   !
@@ -54,6 +54,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   !
   !******************************************************************************
   USE DefUtils
+  USE SSAMaterialModels
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -69,12 +70,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: CurrentElement, Element, ParentElement, BoundaryElement
   TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC
-  TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol, Nsol
+  TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: Newton
 
-  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs, iFriction
+  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
 
   INTEGER, POINTER :: Permutation(:), ZsPerm(:), ZbPerm(:), &
@@ -84,16 +85,14 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: VariableValues(:), Zs(:), Zb(:), Nval(:)
 
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, MinH, rhow, sealevel, &
-       PrevUNorm, relativeChange, minv, fm, PostPeak, MinN, U0
+       PrevUNorm, relativeChange, minv
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
-       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),  &
-       NodalBeta(:), NodalLinVelo(:), NodalC(:), NodalN(:),&
-       NodalGM(:),NodalBed(:)
+       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:)
 
   REAL(KIND=dp) :: UnLimit,un,un_max
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, Friction, ZsName, ZbName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ZsName, ZbName
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
 #else
@@ -101,15 +100,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
 #endif     
   LOGICAL :: SEP ! Sub-element parametrization for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
-  TYPE(Variable_t), POINTER :: GMSol,BedrockSol
 
   SAVE rhow
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
-       NodalU, NodalV, NodeIndexes, &
-       NodalBeta, NodalLinVelo, NodalC, NodalN,&
-       NodalGM,NodalBed
+       NodalU, NodalV
 
   !------------------------------------------------------------------------------
   PointerToVariable => Solver % Variable
@@ -149,11 +145,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   ZsSol => VariableGet( Solver % Mesh % Variables, ZsName,UnFoundFatal=UnFoundFatal)
   Zs => ZsSol % Values
   ZsPerm => ZsSol % Perm
-  NSol => VariableGet( Solver % Mesh % Variables, 'Effective Pressure' )
-  IF (ASSOCIATED(NSol)) THEN
-    Nval => NSol % Values
-    NPerm => NSol % Perm
-  END IF
 
 !  Sub - element GL parameterisation
   SEP=GetLogical( Solver % Values, 'Sub-Element GL parameterization',GotIt)
@@ -161,8 +152,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   IF (SEP) THEN
      GLnIP=ListGetInteger( Solver % Values, &
            'GL integration points number',UnFoundFatal=.TRUE. )
-     GMSol => VariableGet( Solver % Mesh % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
-     BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
   END IF
 
   sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
@@ -179,14 +168,13 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
 
     ! Get some constants
-    rhow = GetConstReal( Model % Constants, 'Water Density', Found )
+    rhow = ListGetConstReal( Model % Constants, 'Water Density', Found)
     If (.NOT.Found) Then
       WRITE(Message,'(A)') 'Constant Water Density not found. &
            &Setting to 1.03225e-18'
       CALL INFO(SolverName, Message, level=20)
       rhow = 1.03225e-18_dp
     End if
-
 
     ! Allocate
 
@@ -195,16 +183,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
     IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, NodalGravity, &
          NodalViscosity, NodalDensity,  &
          NodalZb, NodalZs,  NodalU, NodalV, &
-         NodalBeta, NodalLinVelo, NodalC, NodalN, &
-         NodalGM,NodalBed,&
          ElementNodes % x, &
          ElementNodes % y, ElementNodes % z )
 
     ALLOCATE( FORCE(STDOFs*N), LOAD(N), STIFF(STDOFs*N,STDOFs*N), &
          NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
          NodalZb(N), NodalZs(N), NodalU(N), NodalV(N), &
-         NodalBeta(N), NodalLinVelo(N), NodalC(N), NodalN(N), &
-         NodalGM(N),NodalBed(N), &
          ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N), &
          STAT=istat )
     IF ( istat /= 0 ) THEN
@@ -312,7 +296,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       MinH = ListGetConstReal( Material, 'SSA Critical Thickness',Found)
       If (.NOT.Found) MinH=EPSILON(MinH)
 
-
       NodalDensity=0.0_dp
       NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,Found,&
            UnFoundFatal=UnFoundFatal)
@@ -320,68 +303,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       NodalViscosity=0.0_dp
       NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found,&
            UnFoundFatal=UnFoundFatal)
-
-      Friction = GetString(Material, 'SSA Friction Law', Found) 
-      IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material keyword >SSA Friction Law<')
-
-      SELECT CASE(Friction) 
-      CASE('linear')
-        iFriction = 1
-        fm = 1.0_dp
-      CASE('weertman')
-        iFriction = 2
-      CASE('coulomb')
-        iFriction = 3
-      CASE('regularized coulomb')
-        iFriction = 4
-      CASE DEFAULT
-        CALL FATAL(SolverName,'Friction should be linear, Weertman, Coulomb or Regularized coulomb')
-      END SELECT
-
-      ! for all friction law
-      NodalBeta = 0.0_dp
-      NodalBeta(1:n) = ListGetReal( &
-           Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
-           UnFoundFatal=UnFoundFatal)
-
-      ! for Weertman and Coulomb friction
-      IF (iFriction > 1) THEN
-        fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=UnFoundFatal)
-
-
-        NodalLinVelo = 0.0_dp
-        NodalLinVelo(1:n) = ListGetReal( &
-             Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
-             UnFoundFatal=UnFoundFatal)
-      END IF
-
-      ! only for Coulomb friction
-      IF (iFriction == 3) THEN
-        PostPeak = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=UnFoundFatal )
-
-        NodalC = 0.0_dp
-        NodalC(1:n) = ListGetReal( &
-             Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
-             UnFoundFatal=UnFoundFatal)
-
-        ! Get the effective pressure
-        IF (ASSOCIATED(NSol)) THEN
-          NodalN(1:n) = Nval(NPerm(NodeIndexes(1:n)))
-        ELSE
-          CALL FATAL(SolverName,'Could not find variable >Effective Pressure<')
-        END IF
-
-        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
-        !Previous default value: MinN = 1.0e-6_dp
-      END IF
-
-      ! only for Regularized Coulomb friction law we need to get U0 of Joughin law
-      IF (iFriction == 4) THEN
-        U0 = ListGetConstReal( Material, 'SSA Friction Threshold Velocity', Found, UnFoundFatal=UnFoundFatal)
- 
-      END IF
-
 
       ! Get the Nodal value of Zb and Zs
       NodalZb(1:n) = Zb(ZbPerm(NodeIndexes(1:n)))
@@ -392,15 +313,9 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       NodalV = 0.0_dp
       IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
 
-      IF (SEP) THEN
-        NodalGM(1:n)=GMSol%Values(GMSol%Perm(NodeIndexes(1:n)))
-        NodalBed(1:n)=BedrockSol%Values(BedrockSol%Perm(NodeIndexes(1:n)))
-      ENDIF
-
       CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
            NodalDensity, NodalViscosity, NodalZb, NodalZs, NodalU, NodalV, &
-           iFriction, NodalBeta, fm, NodalLinVelo, PostPeak, U0, NodalC, NodalN, &
-           NodalGM,NodalBed,SEP,rhow, &
+           SEP,rhow, &
            cn, MinSRInv, MinH , STDOFs, Newton)
 
       CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -556,29 +471,27 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
        Density, Viscosity, LocalZb, LocalZs, LocalU, LocalV, &
-       Friction, LocalBeta, fm, LocalLinVelo, fq, fU0, LocalC, LocalN, &
-       NodalGM,NodalBed,SEP,rhow, &
+       SEP,rhow, &
        cm, MinSRInv, MinH, STDOFs , Newton )
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), gravity(:), Density(:), &
          Viscosity(:), LocalZb(:), LocalZs(:), &
-         LocalU(:), LocalV(:) , LocalBeta(:), &
-         LocalLinVelo(:), LocalC(:), LocalN(:)
-    REAL(KIND=dp) :: NodalGM(:),NodalBed(:)
+         LocalU(:), LocalV(:)
     LOGICAL :: SEP,PartlyGroundedElement
     REAL(KIND=dp) :: rhow
-    REAL(KIND=dp) :: Bedrock,Hf
-    INTEGER :: n, cp , STDOFs, Friction
-    REAL(KIND=dp) :: cm, fm, fq, fU0
+    INTEGER :: n, cp , STDOFs
+    REAL(KIND=dp) :: cm
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Newton
     !------------------------------------------------------------------------------
+    TYPE(Variable_t),POINTER :: GMSol
+    REAL(KIND=dp) :: NodalGM(n)
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), detJ 
     REAL(KIND=dp) :: g, rho, eta, h, dhdx, dhdy , muder
-    REAL(KIND=dp) :: beta, LinVelo, fC, fN, Velo(2), ub, alpha, fB
+    REAL(KIND=dp) :: Velo(2), ub
     REAL(KIND=dp) :: gradS(2), A(2,2), StrainA(2,2), StrainB(2,2), Exx, Eyy, Exy, Ezz, Ee, MinSRInv ,MinH                           
     REAL(KIND=dp) :: Jac(2*n,2*n), SOL(2*n), Slip, Slip2
-    LOGICAL :: Stat, NewtonLin, fNewtonLIn
+    LOGICAL :: Stat, NewtonLin
     INTEGER :: i, j, t, p, q , dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -592,9 +505,10 @@ CONTAINS
 
     ! Use Newton Linearisation
     NewtonLin = (Newton.AND.(cm.NE.1.0_dp))
-    fNewtonLin = (Newton.AND.(fm.NE.1.0_dp))
 
     IF (SEP) THEN
+     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
      PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
      IF (PartlyGroundedElement) THEN
         IP = GaussPoints( Element , np=GLnIP )
@@ -620,59 +534,11 @@ CONTAINS
       h = SUM( (LocalZs(1:n)-LocalZb(1:n)) * Basis(1:n) )
       h=max(h,MinH)
 
-      beta = SUM( LocalBeta(1:n) * Basis(1:n) )
-      IF (SEP) THEN
-        IF (ALL(NodalGM(1:n).LT.0._dp)) THEN
-           beta=0._dp
-        ELSE IF (PartlyGroundedElement) THEN
-           bedrock = SUM( NodalBed(1:n) * Basis(1:n) )
-           Hf= rhow * (sealevel-bedrock) / rho
-           if (h.lt.Hf) beta=0._dp
-        END IF
-      END IF
-      IF (Friction > 1) THEN
-        LinVelo = SUM( LocalLinVelo(1:n) * Basis(1:n) )
-        IF ((Friction == 2).AND.(fm==1.0_dp)) Friction=1
-        Velo = 0.0_dp
-        Velo(1) = SUM(LocalU(1:n) * Basis(1:n))
-        IF (STDOFs == 2) Velo(2) = SUM(LocalV(1:n) * Basis(1:n))
-        ub = SQRT(Velo(1)*Velo(1)+Velo(2)*Velo(2))
-        Slip2=1.0_dp
-        IF (ub < LinVelo) then 
-          ub = LinVelo
-          Slip2=0.0_dp
-        ENDIF
-      END IF
-
-      IF (Friction==3) THEN
-        fC = SUM( LocalC(1:n) * Basis(1:n) )
-        fN = SUM( LocalN(1:n) * Basis(1:n) )
-        ! Effective pressure should be >0 (for the friction law)
-        fN = MAX(fN, MinN)
-      END IF
-
-      IF (Friction==1) THEN
-        Slip = beta
-        fNewtonLin = .FALSE.
-      ELSE IF (Friction==2) THEN
-        Slip = beta * ub**(fm-1.0_dp) 
-        Slip2 = Slip2*Slip*(fm-1.0_dp)/(ub*ub)
-      ELSE IF (Friction==3) THEN
-        IF (fq.NE.1.0_dp) THEN
-          alpha = (fq-1.0_dp)**(fq-1.0_dp) / fq**fq
-        ELSE
-          alpha = 1.0_dp
-        END IF
-        fB = alpha * (beta / (fC*fN))**(fq/fm)
-        Slip = beta * ub**(fm-1.0_dp) / (1.0_dp + fB * ub**fq)**fm
-        Slip2 = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-             fm*fq*fB*ub**(fq-2.0_dp)/(1.0_dp+fB*ub**fq))
-      ELSE IF (Friction==4) THEN
-        Slip = beta * ub**(fm-1.0_dp) / (ub + fU0)**fm
-        !slip2=(1/ux)*(dslip/dux)=(1/uy)*(dslip/duy)
-        Slip2 = Slip2 * Slip * ((fm-1.0_dp) / (ub*ub) - &
-              fm*ub**(-1.0_dp)/(ub+fU0))
-      END IF
+      Velo = 0.0_dp
+      Velo(1) = SUM(LocalU(1:n) * Basis(1:n))
+      IF (STDOFs == 2) Velo(2) = SUM(LocalV(1:n) * Basis(1:n))
+      ub = SQRT(Velo(1)*Velo(1)+Velo(2)*Velo(2))
+      Slip=SSAEffectiveFriction(Element,n,Basis,ub,SEP,PartlyGroundedElement,h,rho,rhow,sealevel,Slip2)
 
       !------------------------------------------------------------------------------
       ! In the non-linear case, effective viscosity       
@@ -739,7 +605,7 @@ CONTAINS
             END DO
           END DO
 
-          IF ((fNewtonLin).AND.(Friction > 1)) THEN
+          IF (Newton.AND.(abs(Slip2).GT.0._dp)) THEN
             DO i=1,STDOFs
               Do j=1,STDOFs
                 STIFF((STDOFs)*(p-1)+i,(STDOFs)*(q-1)+j) = STIFF((STDOFs)*(p-1)+i,(STDOFs)*(q-1)+j) +&
@@ -779,7 +645,7 @@ CONTAINS
                rho*g*h*gradS(i) * IP % s(t) * detJ * Basis(p) 
         END DO
 
-        IF ((fNewtonLin).AND.(Friction>1)) THEN
+        IF (Newton.AND.(abs(Slip2).GT.0._dp)) THEN
           DO i=1,STDOFs
             FORCE((STDOFs)*(p-1)+i) =   FORCE((STDOFs)*(p-1)+i) + &   
                  Slip2 * Velo(i) * ub * ub * IP % s(t) * detJ * Basis(p) 
