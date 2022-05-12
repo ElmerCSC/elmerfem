@@ -59,7 +59,7 @@
         FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
         node, nodecounter, CurrentNodePosition, StartNode, &
         directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops, EdgeLength,&
-        status(MPI_STATUS_SIZE)
+        status(MPI_STATUS_SIZE), NUnfoundConstraint
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), InflowPerm(:)=>NULL(),&
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
@@ -1054,7 +1054,10 @@
      IF(UnfoundConstraint) THEN
        CALL INFO(SolverName, "Unfound boundary constraints so searching for nearest boundary element")
 
-       CALL MPI_BCAST(UnfoundConstraints, SIZE(UnfoundConstraints), MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+       IF(Boss) NUnfoundConstraint = SIZE(UnfoundConstraints)
+       CALL MPI_BCAST(NUnfoundConstraint, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+       IF(.NOT. Boss) ALLOCATE(UnfoundConstraints(NUnfoundConstraint))
+       CALL MPI_BCAST(UnfoundConstraints, NUnfoundConstraint, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
        DO node=1, SIZE(UnfoundConstraints)
 
