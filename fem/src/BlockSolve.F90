@@ -2843,7 +2843,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
     REAL(KIND=dp) :: nrm
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DoDiagScaling, UsePrecMat, Trans, &
+        IsComplex, BlockScaling, DoDiagScaling, DoPrecScaling, UsePrecMat, Trans, &
         Isolated, NoNestedScaling
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -2853,14 +2853,7 @@ CONTAINS
 
     n = ipar(3)
     
-    IF( InfoActive(20) ) THEN
-
-! This is commented out as u may be uninitialized:
-!      
-!      nrm = CompNorm(u(1:n),n)
-!      WRITE( Message,'(A,ES12.5)') 'U start norm: ',nrm
-!      CALL Info('BlockMatrixPrec',Message,Level=10)
-      
+    IF( InfoActive(25) ) THEN
       nrm = CompNorm(v(1:n),n)
       WRITE( Message,'(A,ES12.5)') 'V start norm: ',nrm
       CALL Info('BlockMatrixPrec',Message,Level=10)
@@ -2899,21 +2892,24 @@ CONTAINS
     IF( ASSOCIATED( Solver % Matrix ) ) THEN
       DoDiagScaling = ASSOCIATED( Solver % Matrix % diagscaling ) 
     END IF
-      
-    IF( DoDiagScaling .AND. BlockScaling ) THEN
-      CALL Warn('BlockMatrixPrec','It is not recommended to use two outer scalings at same time')
+    IF( DoDiagScaling ) THEN
+      CALL Info('BlockMatrixPrec','External diagonal scaling is active!',Level=20)
+    ELSE
+      CALL Info('BlockMatrixPrec','External diagonal scaling is not active!',Level=30)
     END IF
-    
-    NoNestedScaling = ListGetLogical( Params,'Eliminate Nested Scaling',Found ) 
-    !IF(.NOT. Found) NoNestedScaling = .TRUE.
-    
-    IF( NoNestedScaling ) THEN
-      IF( DoDiagScaling .OR. BlockScaling ) THEN
-        CALL Info('BlockMatrixPrec','Eliminating scaling for blocks as outer scaling already done!')
-        CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.)
-      END IF
+    IF( BlockScaling ) THEN
+      CALL Info('BlockMatrixPrec','Block matrix scaling is active!',Level=20)
+    ELSE
+      CALL Info('BlockMatrixPrec','Block matrix scaling is not active!',Level=30)
     END IF
       
+    IF(DoDiagscaling) THEN
+      NoNestedScaling = ListGetLogical( Params,'Eliminate Nested Scaling',Found )
+      IF(.NOT. Found) NoNestedScaling = .TRUE.      
+    ELSE
+      NoNestedScaling = .FALSE.
+    END IF
+
     ! Always treat the inner iterations as truly complex if they are
     CALL ListAddLogical( Params,'Linear System Skip Complex',.FALSE.) 
     
@@ -3005,10 +3001,14 @@ CONTAINS
       CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
        
       IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b,UsePrecMat)
-      
-      IF( DoDiagScaling .AND. UsePrecMat ) THEN
+
+      ! The special preconditioning matrices have not been scaled with the monolithic system.
+      ! So we need to transfer the (x,b) of this block to the unscaled system before going
+      ! going to solve it. It is probably desirable to use separate scaling for this system. 
+      DoPrecScaling = DoDiagScaling .AND. UsePrecMat
+      IF( DoPrecScaling ) THEN
         n = A % NumberOfRows
-        ALLOCATE( diagtmp(n), btmp(n) )
+        ALLOCATE( btmp(n), diagtmp(n) )
 
         IF( TotMatrix % GotBlockStruct ) THEN
           k = TotMatrix % InvBlockStruct(i)
@@ -3017,20 +3017,24 @@ CONTAINS
                 //TRIM(I2S(i))//' for scaling!')
           ELSE
             CALL Info('BlockMatrixPrec','Using initial block '//TRIM(I2S(k))//&
-                ' to scale prec matrix '//TRIM(I2S(i)),Level=6)
+                ' in scaling of prec matrix '//TRIM(I2S(i)),Level=12)
           END IF
         ELSE
           k = i
         END IF
 
         l = Solver % Variable % DOFs
-        Diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
+        diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
 
         ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
         x(1:n) = x(1:n) * diagtmp(1:n)
-        btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling**2        
+        btmp(1:n) = b(1:n) / diagtmp(1:n) * Solver % Matrix % RhsScaling**2
       ELSE
         btmp => b
+        IF( NoNestedScaling ) THEN
+          CALL Info('BlockMatrixPrec','Eliminating scaling for block as outer scaling already done!',Level=25)
+          CALL ListAddLogical( Params,'Linear System Skip Scaling',.TRUE.)
+        END IF
       END IF
               
 
@@ -3046,6 +3050,14 @@ CONTAINS
       
       CALL SolveLinearSystem( A, btmp, x, nrm, nc, ASolver )
 
+      ! If this was a special preconditioning matrix then update the solution in the scaled system. 
+      IF( DoPrecScaling ) THEN
+        x(1:n) = x(1:n) / diagtmp(1:n)
+        DEALLOCATE( btmp, diagtmp )
+      ELSE IF( NoNestedScaling ) THEN
+        CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.)
+      END IF
+        
       IF( InfoActive(20) ) THEN
         nrm = CompNorm(x,offset(i+1)-offset(i),A=A)
         WRITE( Message,'(A,ES12.5)') 'Linear system '//TRIM(I2S(i))//' norm: ',nrm
@@ -3180,8 +3192,6 @@ CONTAINS
     CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.FALSE.)
     CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
     
-    IF(NoNestedScaling) CALL ListAddLogical( Params,'Linear System Skip Scaling',.FALSE.)
-      
     Solver => Solver_save
     Solver % Matrix => mat_save
     Solver % Matrix % RHS => rhs_save
