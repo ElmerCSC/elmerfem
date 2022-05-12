@@ -3,9 +3,13 @@
 - **Solver Fortran File:** ThicknessSolver.f90  
 - **Solver Name:** ThicknessSolver  
 - **Required Output Variable(s):** H  
-- **Required Input Variable(s):** H residual  
-- **Optional Output Variable(s):** dhdt  
-- **Optional Input Variable(s):** FlowSolution  
+- **Required Input Variable(s):** 
+- **Optional Output Variable(s):** dhdt, acabf, libmassbf
+- **Optional Input Variable(s):** FlowSolution, H residual 
+
+## History
+- Rev  6c89e4bab: compute element averaged surface and basal mass balance
+	- New Solver keyword : Compute averaved mass balances = Logical
 
 ## General Description
 
@@ -32,6 +36,8 @@ As for the Free surface solver only  Dirichlet boundary conditions can be impose
 This solver can be used on a mesh of the same dimension as the problem (e.g. solve on the bottom or top boundary of a 3D mesh to solve the 2D thickness field) or on a mesh of lower dimension (e.g. can be use in a 2D plane view mesh with the [SSA solver](./SSA.md) for example).
 
 When working on a mesh of the same dimension as the problem it can be useful to have an extruded mesh along the vertical direction and to use the StructuredProjectToPlane and StructuredMeshMapper solvers to compute the mean horizontal velocity (from the Stokes solution), export the value of H computed on one boundary in the whole mesh and update the mesh (see examples).
+
+If the keyword "Compute averaved mass balances = Logical True" the compute the element averaged M_s and M_b. Requires the element variables "acabf" and "libmassbf" respectively.
 
 ### Remarks  
 - the equation is linear and becomes non-linear (i.e. requires non-linear iterations only if limiters are used).
@@ -98,6 +104,13 @@ Solver 1
      
 !!!!! or give the dimension of the problem using:
 ! Convection Dimension = Integer
+
+!!! Output element average SMB and BMB:
+  Compute averaved mass balances = Logical True
+
+  Exported Variable 1 = -elem acabf
+  Exported Variable 2 = -elem libmassbf
+
 End
 ```
 Material Properties:
