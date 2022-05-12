@@ -70,9 +70,10 @@
   TYPE(Element_t),POINTER :: CurrentElement, Element, ParentElement, BoundaryElement
   TYPE(Matrix_t),POINTER  :: StiffMatrix
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC
-  TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol
+  TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol,strbasemag,Ceff
 
   LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
+  LOGICAL :: stat
   LOGICAL :: Newton
 
   INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs
@@ -85,13 +86,13 @@
   REAL(KIND=dp), POINTER :: VariableValues(:), Zs(:), Zb(:), Nval(:)
 
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, MinH, rhow, sealevel, &
-       PrevUNorm, relativeChange, minv
+       PrevUNorm, relativeChange, minv, h
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
-       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:)
+       NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),Basis(:)
 
-  REAL(KIND=dp) :: UnLimit,un,un_max
+  REAL(KIND=dp) :: DetJ,UnLimit,un,un_max
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ZsName, ZbName
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
@@ -105,7 +106,8 @@
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
-       NodalU, NodalV
+       NodalU, NodalV, &
+       Basis
 
   !------------------------------------------------------------------------------
   PointerToVariable => Solver % Variable
@@ -184,12 +186,13 @@
          NodalViscosity, NodalDensity,  &
          NodalZb, NodalZs,  NodalU, NodalV, &
          ElementNodes % x, &
-         ElementNodes % y, ElementNodes % z )
+         ElementNodes % y, ElementNodes % z ,Basis)
 
     ALLOCATE( FORCE(STDOFs*N), LOAD(N), STIFF(STDOFs*N,STDOFs*N), &
          NodalGravity(N), NodalDensity(N), NodalViscosity(N), &
          NodalZb(N), NodalZs(N), NodalU(N), NodalV(N), &
          ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N), &
+         Basis(N), &
          STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( SolverName, 'Memory allocation error.' )
@@ -444,6 +447,91 @@
 
   END DO ! Loop Non-Linear Iterations
 
+  !!!! some post-processing... compute:
+  !!  - element mean friction
+  !!  - effective friction coefficient
+  !! to do : fluxes...
+  strbasemag => VariableGet( Solver % Mesh % Variables,"strbasemag")
+  IF (ASSOCIATED(strbasemag)) THEN
+   ! sanity check
+   IF (strbasemag % TYPE /= Variable_on_elements) &
+           CALL FATAL(SolverName,"strbasemag type should be on_elements") 
+   IF (.NOT.ASSOCIATED(strbasemag % Perm)) &
+           CALL FATAL(SolverName,"strbasemag perm not associated")
+   strbasemag % Values=0._dp
+  END IF
+
+  Ceff => VariableGet( Solver % Mesh % Variables,"Ceff")
+  IF (ASSOCIATED(Ceff))THEN
+    Ceff % Values = 0._dp
+  END IF
+
+  IF (ASSOCIATED(strbasemag).OR.ASSOCIATED(Ceff)) THEN
+
+   DO t=1,Solver % NumberOfActiveElements
+      Element => GetActiveElement(t)
+      n = GetElementNOFNodes()
+      NodeIndexes => Element % NodeIndexes 
+      ! set coords of highest occurring dimension to zero (to get correct path element)
+      !-------------------------------------------------------------------------------
+      ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+      IF (STDOFs == 1) THEN !1D SSA
+        ElementNodes % y(1:n) = 0.0_dp
+        ElementNodes % z(1:n) = 0.0_dp
+      ELSE IF (STDOFs == 2) THEN !2D SSA
+        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+        ElementNodes % z(1:n) = 0.0_dp
+      ELSE
+        WRITE(Message,'(a,i1,a)')&
+             'It is not possible to compute SSA problems with DOFs=',&
+             STDOFs, ' . Aborting'
+        CALL Fatal( SolverName, Message)
+        STOP
+      END IF
+
+      Material => GetMaterial(Element)
+
+      MinH = ListGetConstReal( Material, 'SSA Critical Thickness',Found)
+      If (.NOT.Found) MinH=EPSILON(MinH)
+
+      NodalDensity=0.0_dp
+      NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,Found,&
+           UnFoundFatal=UnFoundFatal)
+
+      ! Get the Nodal value of Zb and Zs
+      NodalZb(1:n) = Zb(ZbPerm(NodeIndexes(1:n)))
+      NodalZs(1:n) = Zs(ZsPerm(NodeIndexes(1:n)))
+
+      NodalU(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+1)
+      NodalV = 0.0_dp
+      IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
+
+
+      IF (ASSOCIATED(strbasemag)) &
+        strbasemag% Values(strbasemag % Perm(Element % ElementIndex))= &
+          ComputeMeanFriction(Element,n,ElementNodes,STDOFs,NodalU,NodalV,NodalZs,NodalZb,MinH,NodalDensity,SEP,GLnIP,sealevel,rhow)
+ 
+      IF (ASSOCIATED(Ceff)) THEN
+        Do i=1,n
+          stat = ElementInfo( Element, ElementNodes, Element % Type % NodeU(i) , Element % Type % NodeV(i),&
+                             Element % Type % NodeW(i),  detJ, Basis )
+          un=0._dp
+          Do j=1,STDOFs
+           un=un+VariableValues(STDOFs*(i-1)+j)*VariableValues(STDOFs*(i-1)+j)
+          End do
+          un=sqrt(un)
+
+          h=MAX(SUM(Basis(1:n)*(NodalZs(1:n)-NodalZb(1:n))),MinH)
+          Ceff%Values(Ceff%Perm(NodeIndexes(i)))=  &
+                  SSAEffectiveFriction(Element,n,Basis,un,SEP,.TRUE.,h,SUM(NodalDensity(1:n)*Basis(1:n)),rhow,sealevel)
+        End do
+      End IF
+
+   END DO
+  END IF
+
+
+  ! scale the results if a given limit is given... use with care?
   UnLimit = ListGetConstReal(SolverParams,'velocity norm limit',GotIt)
   IF (GotIt) THEN
     Do i=1,Solver%Mesh%NumberOfNodes
@@ -467,8 +555,9 @@
   IF (DIM.eq.(STDOFs+1)) CurrentModel % Dimension = DIM
 
 CONTAINS
-
-  !------------------------------------------------------------------------------
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !  bulk rigidity matrix
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
        Density, Viscosity, LocalZb, LocalZs, LocalU, LocalV, &
        SEP,rhow, &

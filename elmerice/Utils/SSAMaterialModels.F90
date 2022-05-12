@@ -191,5 +191,72 @@ MODULE SSAMaterialModels
 
   END FUNCTION SSAEffectiveFriction
 
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! Compute the element averaged friction
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  FUNCTION ComputeMeanFriction(Element,n,ElementNodes,STDOFs,NodalU,NodalV,NodalZs,NodalZb,MinH, &
+                               NodalDensity,SEP,GLnIP,sealevel,rhow) RESULT(strbasemag)
+  REAL(KIND=dp) :: strbasemag
+  TYPE(Element_t), POINTER :: Element
+  INTEGER :: n
+  TYPE(Nodes_t) :: ElementNodes
+  INTEGER :: STDOFs
+  REAL(KIND=dp) :: NodalU(n),NodalV(n),NodalZs(n),NodalZb(n),NodalDensity(n)
+  REAL(KIND=dp) :: MinH
+  LOGICAL :: SEP
+  INTEGER :: GLnIP
+  REAL(KIND=dp) :: sealevel,rhow
+
+  LOGICAL :: PartlyGroundedElement
+  TYPE(Variable_t),POINTER :: GMSol
+  REAL(KIND=dp) :: NodalGM(n)
+  TYPE(GaussIntegrationPoints_t) :: IP
+  REAL(KIND=dp) :: Basis(n), detJ
+  REAL(KIND=dp) :: h,ub,rho,Velo(2)
+  REAL(KIND=dp) :: area,tb
+  REAL(KIND=dp) :: Ceff
+  LOGICAL :: stat
+  INTEGER :: t
+
+  strbasemag=0._dp
+  IF (SEP) THEN
+     GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+     CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+     PartlyGroundedElement=(ANY(NodalGM(1:n).GE.0._dp).AND.ANY(NodalGM(1:n).LT.0._dp))
+     IF (PartlyGroundedElement) THEN
+        IP = GaussPoints( Element , np=GLnIP )
+     ELSE
+        IP = GaussPoints( Element )
+     ENDIF
+   ELSE
+     IP = GaussPoints( Element )
+   ENDIF
+
+   area=0._dp
+   tb=0._dp
+   DO t=1,IP % n
+      stat = ElementInfo( Element, ElementNodes, IP % U(t), IP % V(t), &
+           IP % W(t),  detJ, Basis )
+
+     h = SUM( (NodalZs(1:n)-NodalZb(1:n)) * Basis(1:n) )
+     h=max(h,MinH)
+
+     rho = SUM( NodalDensity(1:n) * Basis(1:n) )
+
+     Velo = 0.0_dp
+     Velo(1) = SUM(NodalU(1:n) * Basis(1:n))
+     IF (STDOFs == 2) Velo(2) = SUM(NodalV(1:n) * Basis(1:n))
+     ub = SQRT(Velo(1)*Velo(1)+Velo(2)*Velo(2))
+
+     Ceff=SSAEffectiveFriction(Element,n,Basis,ub,SEP,PartlyGroundedElement,h,rho,rhow,sealevel)
+
+     area=area+detJ*IP % s(t)
+     tb=tb+Ceff*ub*detJ*IP % s(t)
+   END DO
+
+   strbasemag=tb/area
+
+   END FUNCTION ComputeMeanFriction
+
   END MODULE SSAMaterialModels
 
