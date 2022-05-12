@@ -12,7 +12,9 @@
   - (1) Zb, Zs and Effective Pressure when using the Coulomb type friction law
   - (2) Depth
   - (3) Depth, FreeSurfGrad1, FreeSurfGrad2 and SSABasalFlow
-- **Optional Output Variable(s):** None
+- **Optional Output Variable(s):** 
+  - (1) strbasemag : element-average basal friction
+  - (2) Ceff: nodal effective friction coefficient
 - **Optional Input Variable(s):** None
 
 ## History
@@ -22,6 +24,11 @@
 
 - Rev. afcafe865: move friction law in a separate module
 	- New module SSAMaterialModels in the Utils dir. with the friction laws
+
+- Rev. afcafe865:  
+	- Add post-processing options:  
+		- compute element-average basal friction if variable "strbasemag" is found and is by element  
+		- compute nodal effective friction coefficient if variable "Ceff" is found
 
 ## General Description
 ### Ice flow
@@ -94,6 +101,11 @@ This scheme is activated with the Solver Keyword *Sub-Element GL parameterizatio
 *GL integration points number = N*
 
 :warning: if this scheme is not used it is to the user responsability to parameterised *beta* a a function of the grounded mask and set it to 0 for floating nodes.
+
+#### Post-processing variables
+
+- if a variable named "strbasemag" is found computes the element-averaged friction
+- if a variable names "Ceff" is found computes the nodal effictive friction coefficient
 
 ## SIF contents
 Solver section:
