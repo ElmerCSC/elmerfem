@@ -6,8 +6,14 @@
 	- Zb (or Variable name prescribed by *Bottom Surface Name*)
 	- Zs (or Variable name prescribed by *Top Surface Name*)
 - **Required Input Variable(s):** H (or Variable name prescribed by *Thickness Variable Name*)
-- **Optional Output Variable(s):** GroundedMask
+- **Optional Output Variable(s):** 
+	- GroundedMask
+	- sftgif,sftgrf,sftflf
 - **Optional Input Variable(s):** bedrock
+
+## History
+- Rev. 698263163: add computation of area fractions
+	- New Solver Keyword " compute ice area fractions = Logical"
 
 ## General Description
 
@@ -33,6 +39,7 @@ The aim of this solver is to apply the flotation criterion to compute the top an
   - GroundedMask=-1 where $z_b>bedrock$ (floating ice)
   - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at leat one node floating) element  
 
+- IF compute ice area fractions = TRUE, compute the element area fractions sftgif (land_ice_area_fraction), sftgrf (grounded_ice_sheet_area_fraction), sftflf (floating_ice_shelf_area_fraction). No sub-scheme is used so values are 0._dp or 1._dp. An element is considered floating if at least one node is floating, otherwise it is grounded. If the solution for the Thickness is limited, then if all nodal H == Lower Limit, all teh area fractions are set to 0.
 
 ### Remarks  
 
@@ -67,6 +74,13 @@ Solver 3
   ! (in the solver where they are created as Exported Variables):
   ! Zs Calculate Velocity = Logical True
   ! Zb Calculate Velocity = Logical True
+
+  ![OPTIONAL :]
+  compute ice area fractions = Logical TRUE
+  
+  Exported Variable 1 = -elem "sftgif"
+  Exported Variable 2 = -elem "sftgrf"
+  Exported Variable 3 = -elem "sftflf"
 End
 ```
 

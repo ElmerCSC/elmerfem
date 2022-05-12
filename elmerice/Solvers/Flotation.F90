@@ -140,7 +140,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: ZbName,ZsName,HName
 
 !------------------------------------------------------------------------------
-  PRINT *, "EPSILON",EPS
 
   Mesh => Model % Mesh
 
