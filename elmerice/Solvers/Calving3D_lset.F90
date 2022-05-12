@@ -68,13 +68,13 @@
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
          WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
-         EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:)
+         EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:), UnfoundConstraints(:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
         buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
-        CalvingLimit, CrevPenetration, PrevValue, &
+        CalvingLimit, CrevPenetration, PrevValue, PartMinDist, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -90,7 +90,7 @@
         PC_EqName, Iso_EqName, VTUSolverName, EqName
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, LeftToRight, inside, Complete,&
-        LatCalvMargins, FullThickness
+        LatCalvMargins, FullThickness, UnfoundConstraint
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
@@ -1040,11 +1040,80 @@
 
      IF(Boss) THEN
 
+       UnfoundConstraint = .FALSE.
        IF(ANY(IMBdryConstraint == 0)) THEN
          PRINT *,'Debug constraints: ', IMBdryConstraint
-         CALL Fatal(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
+         CALL WARN(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
+         UnfoundConstraints = PACK((/ (i,i=1,IMBdryCount) /),IMBdryConstraint == 0)
+         UnfoundConstraint = .TRUE.
        END IF
+     END IF
 
+     CALL MPI_BCAST(UnfoundConstraint, 1, MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
+
+     IF(UnfoundConstraint) THEN
+       CALL INFO(SolverName, "Unfound boundary constraints so searching for nearest boundary element")
+
+       CALL MPI_BCAST(UnfoundConstraints, SIZE(UnfoundConstraints), MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+       DO node=1, SIZE(UnfoundConstraints)
+
+         i = UnfoundConstraints(node)
+
+         a1(1) = IMBdryNodes(i,1)
+         a1(2) = IMBdryNodes(i,2)
+         a2(1) = IMBdryNodes(i,3)
+         a2(2) = IMBdryNodes(i,4)
+
+         !Slightly extend the length of the element to account for floating point
+         !precision issues:
+         a2a1 = (a2 - a1) * 0.1
+         a1 = a1 - a2a1
+         a2 = a2 + a2a1
+
+         DO j=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+              Mesh % NumberOfBoundaryElements
+
+           IceElement => Mesh % Elements(j)
+           IF(IceElement % BoundaryInfo % Constraint /= FrontConstraint .AND. &
+                IceElement % BoundaryInfo % Constraint /= LeftConstraint .AND. &
+                IceElement % BoundaryInfo % Constraint /= RightConstraint) CYCLE
+
+           IceNodeIndexes => IceElement  % NodeIndexes
+
+           n = IceElement % TYPE % NumberOfNodes
+
+           DO k=1,n
+             b1(1) = Mesh % Nodes % x(IceNodeIndexes(k))
+             b1(2) = Mesh % Nodes % y(IceNodeIndexes(k))
+
+             tempdist = PointLineSegmDist2D ( a1, a2, b1)
+
+             IF(TempDist < MinDist) THEN
+               MinDist = TempDist
+               jmin = j
+             END IF
+           END DO
+         END DO
+
+         CALL MPI_AllReduce(MinDist, PartMinDist, 1, MPI_DOUBLE_PRECISION, &
+            MPI_MIN, ELMER_COMM_WORLD, ierr)
+
+         IF(MinDist == PartMinDist) &
+            IMBdryConstraint(i) = Mesh % Elements(jmin) % BoundaryInfo % Constraint
+       END DO
+
+       IF(Boss) THEN
+         CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+              MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
+       ELSE
+         CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+              MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
+       END IF
+     END IF
+
+
+     IF(Boss) THEN
        !-----------------------------------------------------------------
        ! Cycle elements, deleting any which lie wholly on a margin
        !-----------------------------------------------------------------
