@@ -77,7 +77,7 @@
       INTEGER :: i,k
       INTEGER :: NN
       CHARACTER (len=MAX_NAME_LEN) :: FName
-      CHARACTER (len=MAX_NAME_LEN) :: VarName
+      CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
 
       INTEGER :: varid,nvals,ntime,ncid,ndims,TVarID
@@ -148,6 +148,14 @@
         IF ( NetCDFstatus /= NF90_NOERR ) &
            CALL FATAL(SolverName,"unable to get nvals"//TRIM(VarName))
 
+
+        WRITE(Message,'(A,I0)') &
+                    TRIM(VarName)//' ndims: ',ndims
+        CALL INFO(SolverName,Trim(Message),level=4)
+        WRITE(Message,'(A,I0)') &
+                    TRIM(VarName)//' dimension: ',nvals
+        CALL INFO(SolverName,Trim(Message),level=4)
+
         allocate(Values(nvals))
 
         SELECT CASE(ndims)
@@ -179,10 +187,10 @@
         
      ! get variable
         WRITE(Txt,'(A,I0)') 'Target Variable ',VarIndex
-        VarName = ListGetString(SolverParams,TRIM(Txt),Found)
-        IF (.NOT.Found) VarName=TRIM(VarName)
+        TVarName = ListGetString(SolverParams,TRIM(Txt),Found)
+        IF (.NOT.Found) TVarName=TRIM(VarName)
 
-        Var => VariableGet( Model % Mesh % Variables,TRIM(VarName),UnFoundFatal=.TRUE.)
+        Var => VariableGet( Model % Mesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
         SELECT CASE(Var % TYPE)
          CASE(Variable_on_elements)
 
@@ -214,14 +222,14 @@
               NIndex=i
              ENDIF
              IF (ASSOCIATED(Var % Perm)) THEN
-               k=Var % Perm(NIndex)
+               k=Var % Perm(i)
              ELSE
                k=i
              ENDIF
              IF (k==0) CYCLE
              IF (i.GT.nvals) &
                 CALL FATAL(SolverName,"Too many nodes"//TRIM(VarName))
-             Var%Values(k)=Values(i)
+             Var%Values(k)=Values(NIndex)
            END DO
 
          CASE DEFAULT
