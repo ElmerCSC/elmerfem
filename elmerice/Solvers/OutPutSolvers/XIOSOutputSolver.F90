@@ -96,6 +96,13 @@
 
       TYPE(xios_duration) :: dtime,time_units
       TYPE(xios_context) :: ctx_hdl
+      TYPE(xios_date),SAVE :: date1,date2
+      TYPE(xios_duration) :: dtvisit
+      CHARACTER(len=20) :: date_str
+      INTEGER :: ts,ol
+
+      INTEGER, SAVE :: Olevel=4
+      LOGICAL,SAVE :: AllwaysSend
 
       Params => GetSolverParams()
       Mesh => Model % Mesh
@@ -119,6 +126,15 @@
       ! Create and initialise file at first visit
       !------------------------------------------------------------------------------
       IF ( nTime == 1 ) THEN
+
+        ! can be use to set the output level for variables that are
+        ! requested and send
+        ol=ListGetInteger( Params,'Solver info level',GotIt)
+        IF (GotIt) Olevel=ol
+
+        ! do we send data only if requested or allways
+        ! should be mainly for debugging...
+        AllwaysSend=ListGetLogical(Params,"Allways send",Gotit)
 
         M = Model % MaxElementNodes
         ALLOCATE(Basis(M),dBasisdx(M,3))
@@ -179,8 +195,10 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! XIOS context definition
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        CALL xios_get_handle(TRIM(xios_id),ctx_hdl)
-        CALL xios_set_current_context(ctx_hdl)
+        CALL xios_context_initialize(TRIM(xios_id),ELMER_COMM_WORLD)
+        CALL xios_set_current_context(TRIM(xios_id))
+        !CALL xios_get_handle(TRIM(xios_id),ctx_hdl)
+        !CALL xios_set_current_context(ctx_hdl)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! check that mandatory fields have been defined
@@ -191,14 +209,24 @@
         !! Set-up the time step from elmer....
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ierr=xios_getvar("time_units",strg_var)
-        IF (.NOT. ierr) THEN
-          CALL FATAL(Caller, &
-                 "<time_units> variable not found")
+        IF (.NOT.ierr) &
+              CALL FATAL(Caller,"time_units not found")
+        time_units=xios_duration_convert_from_string(TRIM(strg_var)) 
+
+        ierr=xios_getvar("time_step",ts)
+
+        IF (ierr) THEN
+          dtime =  ts * time_units
         ELSE
-          time_units=xios_duration_convert_from_string(TRIM(strg_var)) 
+           dtime = dt * time_units
         ENDIF
-        dtime = dt*time_units
         CALL xios_set_timestep(dtime)
+
+        CALL xios_duration_convert_to_string(dtime,date_str)
+
+        CALL Info(Caller,"#########################",Level=3)
+        CALL Info(Caller,"Time step: "//TRIM(date_str),Level=3)
+        CALL Info(Caller,"#########################",Level=3)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !! set Elmer version number if a variable "elmerversion" exist
@@ -220,8 +248,6 @@
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! close elemer/ice context definition
-        ! maybe it could be initialised in this routine too instead of
-        ! in SParIterComm?
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         CALL xios_close_context_definition
 
@@ -234,6 +260,24 @@
       !  should we add a sanity check that dt has not changed?
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       CALL xios_update_calendar(nTime)
+      IF (nTime==1) THEN
+              CALL xios_get_current_date (date1)
+      ELSE
+              date1=date2
+      ENDIF
+      CALL xios_get_current_date (date2)
+      dtvisit  = date2 - date1
+
+      CALL xios_date_convert_to_string(date2, date_str)
+      CALL Info(Caller,"Current date: "//TRIM(date_str),Level=3)
+      WRITE( Message,'(A,ES12.3)') "Fraction of year:",xios_date_get_fraction_of_year(date2)
+      CALL Info(Caller,Message,Level=Olevel) 
+
+      CALL xios_duration_convert_to_string(dtvisit,date_str)
+      CALL Info(Caller,"Duration since last visit:"//TRIM(date_str), &
+                Level=Olevel) 
+
+
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       ! send requested variables
@@ -614,25 +658,26 @@
      ! 
       FieldActive=xios_field_is_active("cell_area",.TRUE.)
       WRITE( Message,'(A,A,L2)') 'Xios request : ',"cell_area",FieldActive
-      CALL Info(Caller,Message,Level=4)
-      IF (FieldActive) THEN
+      CALL Info(Caller,Message,Level=Olevel)
+      IF (FieldActive.OR.AllwaysSend) THEN
           CALL xios_send_field("cell_area",cell_area)
       END IF
       FieldActive=xios_field_is_active("node_x",.TRUE.)
       WRITE( Message,'(A,A,L2)') 'Xios request : ',"node_x",FieldActive
-      CALL Info(Caller,Message,Level=4)
-      IF (FieldActive) THEN
+      CALL Info(Caller,Message,Level=Olevel)
+      IF (FieldActive.OR.AllwaysSend) THEN
           CALL xios_send_field("node_x",Node_x)
       END IF
       FieldActive=xios_field_is_active("node_y",.TRUE.)
       WRITE( Message,'(A,A,L2)') 'Xios request : ',"node_y",FieldActive
-      CALL Info(Caller,Message,Level=4)
-      IF (FieldActive) THEN
+      CALL Info(Caller,Message,Level=Olevel)
+      IF (FieldActive.OR.AllwaysSend) THEN
           CALL xios_send_field("node_y",Node_y)
       END IF
       FieldActive=xios_field_is_active("boundary_condition",.TRUE.)
       WRITE( Message,'(A,A,L2)') 'Xios request : ',"boundary_condition",FieldActive
-      IF (FieldActive) THEN
+      CALL Info(Caller,Message,Level=Olevel)
+      IF (FieldActive.OR.AllwaysSend) THEN
          CALL xios_send_field("boundary_condition",BoundaryCondition)
       ENDIF
       END SUBROUTINE SendMeshVariables
@@ -711,8 +756,8 @@
                 ! check if wee need to send the data
                 FieldActive=xios_field_is_active(TRIM(Solution%Name)//'_elem',.TRUE.)
                 WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Solution%Name)//'_elem',FieldActive
-                CALL Info(Caller,Message,Level=4)
-                IF (FieldActive) THEN
+                CALL Info(Caller,Message,Level=Olevel)
+                IF (FieldActive.OR.AllwaysSend) THEN
                   Perm => Solution % Perm
                   Values => Solution % Values
                   t=0
@@ -742,6 +787,8 @@
 
                     EVar(t) = VarMean/area
                   END DO
+                  WRITE( Message,'(A,A,L2)') 'Sending : ',TRIM(Solution%Name)//'_elem',FieldActive
+                  CALL Info(Caller,Message,Level=Olevel)
                   CALL xios_send_field(TRIM(Solution%Name)//'_elem',EVar)
 
                 END IF
@@ -751,9 +798,9 @@
           ! check if wee need to send the data
           FieldActive=xios_field_is_active(TRIM(Solution%Name),.TRUE.)
           WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Solution%Name),FieldActive
-          CALL Info(Caller,Message,Level=4)
+          CALL Info(Caller,Message,Level=Olevel)
 
-          IF (FieldActive) THEN
+          IF (FieldActive.OR.AllwaysSend) THEN
            Perm => Solution % Perm
            Values => Solution % Values
            SELECT CASE (VarType)
@@ -781,6 +828,8 @@
                  ENDIF
                END DO
 
+               WRITE( Message,'(A,A,L2)') 'Sending : ',TRIM(Solution%Name),FieldActive
+               CALL Info(Caller,Message,Level=Olevel)
                CALL xios_send_field(TRIM(Solution%Name),NodeVar)
 
             CASE (Variable_on_elements)
@@ -807,6 +856,8 @@
                  ENDIF
                END DO
 
+               WRITE( Message,'(A,A,L2)') 'Sending : ',TRIM(Solution%Name),FieldActive
+               CALL Info(Caller,Message,Level=Olevel)
                CALL xios_send_field(TRIM(Solution%Name),EVar)
             CASE DEFAULT
                CALL FATAL(Caller,"sorry don't know how to deal with this variable type")

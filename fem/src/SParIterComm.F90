@@ -174,8 +174,6 @@ CONTAINS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
      CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
-     CALL xios_context_initialize(TRIM(xios_id),ELMER_COMM_WORLD)
-     CALL xios_set_current_context(TRIM(xios_id))
     ENDIF
 #endif
 
