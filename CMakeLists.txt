@@ -113,6 +113,7 @@ SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -369,12 +370,11 @@ ENDIF(WITH_Zoltan)
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
 
-FIND_PACKAGE(MMG)
+IF(WITH_MMG)
+  FIND_PACKAGE(MMG)
 # INCLUDE("cmake/Modules/FindMMG.cmake")
 # INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
 # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
-
-
 IF(MMG_FOUND)
 
   SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
@@ -395,10 +395,12 @@ ELSE()
   MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
   MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
 ENDIF(MMG_FOUND)
+ENDIF()
 
 MESSAGE(STATUS "------------------------------------------------")
 
-FIND_PACKAGE(PARMMG)
+IF(WITH_MMG)
+  FIND_PACKAGE(PARMMG)
 # INCLUDE("cmake/Modules/FindParMMG.cmake")
 # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
 # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
@@ -424,6 +426,7 @@ ELSE()
   MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
   MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
 ENDIF(PARMMG_FOUND)
+ENDIF()
 
 MESSAGE(STATUS "------------------------------------------------")
 
