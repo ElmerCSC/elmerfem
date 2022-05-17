@@ -1068,22 +1068,26 @@ CONTAINS
             IF (SIZE(DirectorValues) < 3*n) CALL Fatal('ReadSurfaceDirector', &
                 'Elemental director data is not associated with all nodes')
  
-            WRITE(FormatString(1:1),'(A1)') '('
-            IF (3*n < 10) THEN
-              WRITE(FormatString(2:2),'(A1)') TRIM(I2S(3*n))
-              i0 = 2
-            ELSE
-              WRITE(FormatString(2:3),'(A2)') TRIM(I2S(3*n))
-              i0 = 3
-            END IF
-            WRITE(FormatString(i0+1:i0+1),'(A1)') '('
-            WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
-            WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
+            !WRITE(FormatString(1:1),'(A1)') '('
+            !IF (3*n < 10) THEN
+            !  WRITE(FormatString(2:2),'(A1)') TRIM(I2S(3*n))
+            !  i0 = 2
+            !ELSE
+            !  WRITE(FormatString(2:3),'(A2)') TRIM(I2S(3*n))
+            !  i0 = 3
+            !END IF
+            !WRITE(FormatString(i0+1:i0+1),'(A1)') '('
+            !WRITE(FormatString(i0+2:i0+10),'(A9)') '2x,E22.15'
+            !WRITE(FormatString(i0+11:i0+12),'(A2)') '))'
 
-            WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
-            WRITE(10,'(A9)',ADVANCE='NO') 'director:'
-            WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
-            WRITE(10,'(A3)') 'end'
+            !WRITE(10,'(A8,I0)') 'element:', ActiveElements(k)
+            !WRITE(10,'(A9)',ADVANCE='NO') 'director:'
+            !WRITE(10,FormatString(1:i0+12)) DirectorValues(1:3*n)
+            !WRITE(10,'(A3)') 'end'
+
+            WRITE(FormatString,'(A)') '(A,I0,A,'//TRIM(I2S(3*n))//'E22.15,A)'
+            WRITE(10,FormatString) 'element: ',ActiveElements(k),' director: ', &
+                DirectorValues(1:3*n),' end'            
           ELSE
             CALL Fatal('ReadSurfaceDirector', 'Elemental director data is not associated')
           END IF

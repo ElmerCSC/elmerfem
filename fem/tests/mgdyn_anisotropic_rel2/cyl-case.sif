@@ -1,6 +1,10 @@
-! Development test case for a tensor-valued reluctivity
-! Juhani Kataja / CSC
-! 2016 / 6
+! This is a development test case for a tensor-valued reluctivity
+! derived from the test mgdyn_anisotropic_rel. Here the calling convention
+! allows the reluctivity tensor to depend upon the three components of the
+! magnetic induction B. In this case the keyword command
+! "Reluctivity Function(3,3) = ..." is used to specify a subroutine which 
+! defines how the reluctivity function depends on B and other variables.
+
 
 $ mu0 = 4e-7*pi
 $ mu_pm = 1.05
@@ -42,8 +46,17 @@ end
 
 Material 2 ! nonlinear material
   Name = "Iron"
-  Reluctivity(3,3) = variable coordinate
-    real procedure "reluctivity" "reluct"
+
+  ! To define a tensor-valued reluctivity as a function of B, instead of using
+  ! the keyword "Reluctivity" we must use "Reluctivity Function". When the A-V
+  ! solver calls the reluctivity function, the first three input arguments are 
+  ! automatically given the values of the current approximation of B and 
+  ! therefore we need some dummy names for the arguments which are replaced
+  ! by B.
+
+  Reluctivity Function(3,3) = variable B1_dummy, B2_dummy, B3_dummy, coordinate
+    real procedure "reluctivity" "reluctfun"
+
   Relative Permittivity = 1
 End
 
@@ -142,6 +155,8 @@ Solver 2 ! MagnetoDynamicsCalcFields
   Linear System Residual Output=10
   Linear System Preconditioning = none
   Linear System Convergence Tolerance = 1.0e-8
+
+!  Exec solver = never
 End
 
 Solver 3
@@ -153,10 +168,10 @@ Solver 3
 End
 
 Solver 4
-  exec solver = never
+!  exec solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = cylinder
+  Output File Name = cylinder_orig
   Output Directory = cylinders
   Save Geometry IDs = Logical True
   Vtu Format = Logical True
@@ -167,7 +182,7 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
-solver 1::Reference norm = 7.03999683E-06
+solver 1::Reference norm = 7.03999646E-06
 solver 1::Reference norm tolerance = 1e-5
 solver 3::Reference norm = 9.54680124E+00
 solver 3::Reference norm tolerance = 1e-5
