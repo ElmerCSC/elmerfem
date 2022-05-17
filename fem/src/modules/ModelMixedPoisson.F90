@@ -424,8 +424,7 @@ CONTAINS
         ! Here piecewise constant approximation is assumed. This
         ! could be integrated with one-point quadrature.
         !
-        
-        Mass(nd,nd) = Mass(nd,nd) - IPcapacity*s
+        Mass(nd,nd) = Mass(nd,nd) - s
       END IF
 
     END DO
