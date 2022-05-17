@@ -77,7 +77,6 @@
       INTEGER,SAVE :: NumberOfActiveNodes,NumberOfActiveEdges
       LOGICAL,SAVE :: NoPermutation
       INTEGER :: i,M,t
-      CHARACTER(LEN=2) :: strg_var
       LOGICAL :: ierr
 
 
@@ -94,10 +93,14 @@
       INTEGER,PARAMETER :: Connect_Fill=-1
       LOGICAL :: ok
 
+      CHARACTER(LEN=MAX_NAME_LEN) :: strg_var
       TYPE(xios_duration) :: dtime,time_units
       TYPE(xios_context) :: ctx_hdl
+      TYPE(xios_date) :: date_origin,ref_date
       TYPE(xios_date),SAVE :: date1,date2
       TYPE(xios_duration) :: dtvisit
+      REAL(KIND=dp) :: ndt,dt1,dt2
+      REAL(KIND=dp) :: tol
       CHARACTER(len=20) :: date_str
       INTEGER :: ts,ol
 
@@ -197,8 +200,6 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         CALL xios_context_initialize(TRIM(xios_id),ELMER_COMM_WORLD)
         CALL xios_set_current_context(TRIM(xios_id))
-        !CALL xios_get_handle(TRIM(xios_id),ctx_hdl)
-        !CALL xios_set_current_context(ctx_hdl)
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! check that mandatory fields have been defined
@@ -208,15 +209,24 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !! Set-up the time step from elmer....
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        ierr=xios_getvar("time_units",strg_var)
-        IF (.NOT.ierr) &
-              CALL FATAL(Caller,"time_units not found")
+        strg_var= ListGetString(Params,"time_units",UnFoundFatal=.TRUE.)
         time_units=xios_duration_convert_from_string(TRIM(strg_var)) 
 
-        ierr=xios_getvar("time_step",ts)
-
-        IF (ierr) THEN
-          dtime =  ts * time_units
+        strg_var = ListGetString(Params,"timestep",GotIt)
+        IF (Gotit) THEN
+           dtime =  xios_duration_convert_from_string(TRIM(strg_var))
+           ! check we are consistent:
+           tol=ListGetConstReal(Params,"timestep tolerance",UnFoundFatal=.TRUE.)
+           CALL xios_get_time_origin(date_origin)
+           ! n time-steps per time_units
+           ndt=1/dt
+           dt1=xios_date_convert_to_seconds(date_origin+time_units)
+           dt2=xios_date_convert_to_seconds(date_origin+dtime*ndt)
+           IF (abs(dt1-dt2).GT.tol) THEN
+             WRITE( Message,'(A,ES12.3)') & 
+                     "timestep difference (s) :",dt1-dt2
+             CALL FATAL(Caller,Message)
+           END IF
         ELSE
            dtime = dt * time_units
         ENDIF
@@ -227,6 +237,19 @@
         CALL Info(Caller,"#########################",Level=3)
         CALL Info(Caller,"Time step: "//TRIM(date_str),Level=3)
         CALL Info(Caller,"#########################",Level=3)
+
+        strg_var= ListGetString(Params,"reference date",GotIt)
+        IF (Gotit) THEN
+          ref_date=xios_date_convert_from_string(TRIM(strg_var)//" 00:00:00")
+          ref_date=ref_date+(GetTime()-dt)*time_units
+          CALL xios_set_start_date(start_date=ref_date)
+        END IF
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! 
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        strg_var=ListGetString(Params,"file names suffix",GotIt)
+        IF (GotIt) call UpdateFileSuffix(TRIM(strg_var))
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !! set Elmer version number if a variable "elmerversion" exist
@@ -288,6 +311,37 @@
 
       CONTAINS 
 
+
+      SUBROUTINE UpdateFileSuffix(suffix)
+        IMPLICIT NONE
+        CHARACTER(LEN=*) suffix
+        CHARACTER(LEN=3) fileid
+        INTEGER :: i
+
+        DO i = 1, 9
+         WRITE(fileid,'(i1)') i
+         CALL SetFileSuffix('file'//TRIM(fileid),suffix)
+        END DO
+        DO i = 1, 99
+         WRITE(fileid,'(i2.2)') i
+         CALL SetFileSuffix('file'//TRIM(fileid),suffix)
+        END DO
+      END SUBROUTINE 
+
+      SUBROUTINE SetFileSuffix(fileid,suffix)
+        IMPLICIT NONE
+        CHARACTER(LEN=*) suffix
+        CHARACTER(LEN=*) fileid    
+
+        IF( xios_is_valid_file(fileid) )  THEN
+                CALL xios_set_file_attr(fileid,name_suffix=suffix)
+        ENDIF
+        IF( xios_is_valid_filegroup(fileid) )  THEN
+                CALL xios_set_filegroup_attr(fileid,name_suffix=suffix)
+        ENDIF
+
+        !CALL xios_solve_inheritance()
+      END SUBROUTINE SetFileSuffix
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!! check that required elements are present
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

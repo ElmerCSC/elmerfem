@@ -109,6 +109,11 @@ Simulation
   projection type = String "polar stereographic north"
   central_meridian = Real -45.0
   latitude_of_origin = Real 70.0
+
+! setting the time_step to an integer number of days (15) for a 360 day calendar.
+  Output  Intervals(1) = 24
+  Timestep Intervals(1) = 240
+  Timestep Sizes(1) = $ 15.0/360.0
 End
 
 
@@ -119,6 +124,24 @@ Solver ..
    Equation = "XIOSOutPutSolve"
    Procedure = "ElmerIceSolvers" "XIOSOutputSolver"
 
+! keywords related to calendar management
+ ! time_units: mandatory set the time unit system used by elmer
+   time_units=String "1y"
+
+ ! time-step: optional the duration of the tile step; other time_step=time_units*dt
+   timestep=String "15d"
+ ! for consitency check we check that taking 1/dt time_step leads 
+ !  to the same duration than time_units with xx seconds
+   timestep tolerance = Real 1.0
+
+ ! to set the strat date from elmer; star date will be reference date + (Gettime()-dt)*time_units
+ ! i.e. for restart if time=10+dt => start_date=2025-01-01
+   reference date=String "2015-01-01"
+
+! automatically add this suffix to all files and file_groups that start by filei, i=1,9 or 01,09, and 10,99
+   file names suffix = String "_$name$_$suffix$"
+
+
 ! node and elem vars
    Scalar Field i = String "VarName" ! Variable/component Name
 ! to compute cell avaraged values
@@ -127,6 +150,8 @@ Solver ..
   !Global Variables
    Global Variable i = String "Global Variable Name"
 
+ ! for debbuging can decrease the info level (default 4) will shoaw all requested variables by xios...
+   Solver info level = integer 3
 End
 
 ```
@@ -134,19 +159,14 @@ End
 ## elmerice context
 
 For the XIOS xml configuration file, the context *id* should be **elmerice**.   
-A variable with **id="time_units** should be provided to define the units of the time step, i.e. **1y** if we are using years or **1s** for seconds. The time step send to xios is then the Elmer time step *dt* times the *time_units*.    
 
+- :warning: According to xios documentation: **Value of unit may be integer or floating (not recommended)**, so setting the time_step to dt*"1y" might lead to spurious effect. It is then possible to provide the time-setp in the solver as a duration; We will check that a full year give the same duration in seconds withon a given tolerance as in general an integer number of days will not lead to a finite fraction of year.... Might be better to move to units in days instead of years....?
 - :warning: **its is to the user responsability to check that the time step is constant and a finite fraction of the output frequency**   
 - :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case insensitive and should be referred as **id="varname"** for XIOS. There is a sanity check that a variable defined with the keywords *Global Variable* and *Scalar Field* are defined in the xios configuration file.
 
 ```
 <!-- mandatory context definition -->
 <context id="elmerice">
-
-<!-- define the time unit system... should be lenght 2 -->
-<variable_definition>
-	<variable id="time_units" type="string">1y</variable>
-</variable_definition>
 
 <!-- id corespond to var names as defined in the .sif file and should be lower case!! -->
 <field id="varname"  name=... />

@@ -1,11 +1,6 @@
 <!-- Context elmerice -->
    <context id="elmerice">
 
-    <variable_definition>
-      <!-- define the time unit system... should be lenght 2 -->
-      <variable id="time_units" type="string">1y</variable>
-    </variable_definition>
-
     <calendar type="D360" start_date="2015-01-01 00:00:00" time_origin="2013-01-01 00:00:00" />
 
     <field_definition enabled=".TRUE." >

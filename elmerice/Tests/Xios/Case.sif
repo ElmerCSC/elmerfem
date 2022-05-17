@@ -59,6 +59,8 @@ Solver 2
    Equation = "XIOSOutPutSolve"
    Procedure = "ElmerIceSolvers" "XIOSOutputSolver"
 
+   time_units=String "1y"
+
 ! node and elem vars
    Scalar Field 1 = String "VarNode"
    Scalar Field 2 = String "VarNode Velocity"
