@@ -1,0 +1,191 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test for Weertman friction law        !!
+!!                                       !!
+!! From test ISMIP-HOM B020              !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+! This is a variation related to internal user defined friction law
+! implemented in IncompressibleNSVec. With these ideas other models could
+! be easily implemented with the same philosophy.
+! P.R. 3.2.2022
+!
+!check keywords warn
+!echo on
+$L = 20.0e3
+$Slope = 0.5 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+$beta = 0.02
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady        
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!  Post File = "ismip_weertman.vtu"
+  max output level = 7   
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real $gravity 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 2
+
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+End
+
+Solver 2
+  Equation = "Normal vector"
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  Variable = -dofs 2 "Normal Vector"   
+  Optimize Bandwidth = Logical False 
+  ComputeAll = Logical False
+End
+
+Solver 3
+  Equation = "Navier-Stokes"
+
+  Procedure = "IncompressibleNSVec" "InCompressibleNSSolver"
+  Exported Variable 1 = -dofs 1 "dSdt" 
+  Exported Variable 2 = -dofs 1 "dS" 
+  
+  Stabilization Method = String Bubbles
+  Flow Model = Stokes
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+  Normal-Tangential Velocity = Logical True
+  Flow Force BC = Logical True
+    
+  Velocity 1 = Real 0.0
+!  Slip Coefficient 2 =  Variable Coordinate 1
+!    Real Procedure "ElmerIceUSF" "Sliding_Weertman"
+
+! These are generic for 1)-3)
+! If we know that normal velocity is zero by construction no need
+! to reduce it from the velocity field. 
+!  Friction Normal Velocity Zero = Logical True
+! Cut-off such that argument is not smaller than this
+  Friction Linear Velocity = Real 1.0e-4 
+
+! 1) Internal Weertman model 
+!  Weertman Friction Coefficient = Real $beta         
+!  Weertman Exponent = Real $1.0/n
+
+! 2) User defined friction coefficient with F90 - Weertman model
+! Friction Coefficient = Variable "dummy"
+!    Real Procedure "MyModule" "MyWeertman"
+
+! 3) User defined friction coefficient with MATC - Weertman model
+$alpha=1.0/n-1.0
+  Friction Coefficient = Variable "dummy"
+    Real MATC "min(beta*(tx^alpha) 1.0e20)"
+
+  ComputeNormal = Logical True
+
+  Bottom Surface = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)-1000.0+500.0*sin(2.0*pi*tx/L)"
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L 0.0  
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+  
+  ComputeNormal = Logical False
+End
+
+! Upper Surface
+Boundary Condition 3
+  Target Boundaries = 3
+  ComputeNormal = Logical False
+
+  Top Surface = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)"
+End
+
+! Periodic Left
+Boundary Condition 4
+  Target Boundaries = 4
+  ComputeNormal = Logical False
+End
+
+Solver 3 :: Reference Norm = 5.67318925E+01
+! Norm of original test: 56.70374

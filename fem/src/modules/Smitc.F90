@@ -87,7 +87,7 @@
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
-     REAL(KIND=dp) :: at,st
+     REAL(KIND=dp) :: RelaxationAlpha, at, st
 
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
@@ -125,7 +125,9 @@
 
      SolverParams => GetSolverParams()
      
-     
+     RelaxationAlpha = ListGetCReal(SolverParams, 'Shear Relaxation Alpha', Found)
+     IF (.NOT. Found) RelaxationAlpha = 1.0d0
+
      EigenOrHarmonic = EigenOrHarmonicAnalysis() &
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
@@ -238,7 +240,8 @@
          ! Get element local matrix, and rhs vector
          !-----------------------------------------
          CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef, KernelVersion)
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef, RelaxationAlpha, &
+             KernelVersion)
 
          IF( TransientSimulation ) &
              CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
@@ -291,13 +294,14 @@
 
 !------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix( STIFF, DAMP, MASS, &
-         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef, KernelVersion )
+         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef, &
+         RelaxationAlpha, KernelVersion )
 !------------------------------------------------------------------------------
        USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor, &
            IsotropicElasticity
 
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
-            MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:)
+            MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:), RelaxationAlpha
        TYPE(Element_t), POINTER :: Element
        INTEGER :: n, DOFs
        TYPE(Nodes_t) :: Nodes
@@ -386,7 +390,7 @@
               Basis, Nodes % x(1:n),Nodes % y(1:n), U, V, n, Pressure, s, KernelVersion)
 
          CALL ShearCorrectionFactor(Kappa, h, &
-              Nodes % x(1:n), Nodes % y(1:n), n)
+              Nodes % x(1:n), Nodes % y(1:n), n, RelaxationAlpha)
 
          IF (.NOT. KernelVersion) then
            DO p=1,n

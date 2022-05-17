@@ -5431,6 +5431,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  nameproblem = TRUE;
 	}
 	else {
+	  if(!data->bodyname[j]) data->bodyname[j] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[j],line2);	
 	  data->bodynamesexist = TRUE;
 	}
@@ -5441,6 +5442,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  nameproblem = TRUE;
 	}
 	else {
+	  if(!data->boundaryname[j]) data->boundaryname[j] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->boundaryname[j],line2);	
 	  data->boundarynamesexist = TRUE;
 	}
@@ -5642,13 +5644,23 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     
     if(data->bodynamesexist) {
       fprintf(out,"! ----- names for bodies -----\n");
-      for(i=1;i<MAXBODIES;i++) 
-	if(usedbody[i]) fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+      for(i=1;i<MAXBODIES;i++)
+	if(usedbody[i]) {
+	  if(data->bodyname[i])
+	    fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+	  else
+	    fprintf(out,"$ body%d = %d\n",i,i);	    
+	}
     }     
     if(data->boundarynamesexist) {
       fprintf(out,"! ----- names for boundaries -----\n");
       for(i=1;i<MAXBCS;i++) 
-	if(usedbc[i]) fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
+	if(usedbc[i]) {
+	  if(data->boundaryname[i])
+	    fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
+	  else
+	    fprintf(out,"$ bc%d = %d\n",i,i);	    	    
+	}
     }
     fclose(out);
 
@@ -5667,7 +5679,10 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if(usedbody[i]) {
 	  j = j + 1;
 	  fprintf(out,"Body %d\n",j);
-	  fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  if(data->bodyname[i])
+	    fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  else
+	    fprintf(out,"  Name = body%d\n",i);	    
 	  fprintf(out,"End\n\n");
 	}
       }
@@ -5680,7 +5695,10 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if(usedbc[i]) {
 	  j = j + 1;
 	  fprintf(out,"Boundary Condition %d\n",j);
-	  fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  if(data->boundaryname[i])
+	    fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  else
+	    fprintf(out,"  Name = bc%d\n",i);	    
 	  fprintf(out,"End\n\n");
 	}
       }

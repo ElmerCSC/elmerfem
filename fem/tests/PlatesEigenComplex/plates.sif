@@ -1,0 +1,94 @@
+! Solver eigenmodes of a plate using the standard plate solver.
+! Here the eigenmodes are solved from a complex system which would basically
+! enable complex eigenvalues (i.e. including of damping).
+!
+! P.R. 7.9.2021
+
+Header
+  Mesh DB "." "plates"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+! Output File = "plates.result"
+! Post File = "plates.vtu" 
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+   Density = 7800
+   Thickness = 0.01
+   Youngs Modulus = 70e9
+   Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Pressure = 1e6
+End
+
+Solver 1
+  Equation = Plate Solver
+  Procedure = "Smitc" "SmitcSolver"
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 0
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = smallest magnitude
+
+! This makes the system complex valued and can therefore solve
+! complex eigenmodes. 
+  Harmonic Mode = Logical True
+End
+
+Solver 2 
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = f.dat
+
+! Let's show the 8th eigenmode which is more sensitive to things
+  Show Norm = True
+  Show Norm Index = 8
+
+  Variable 1 = Deflection
+  Save EigenValues = Logical True
+End
+
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Deflection 1 = 0  ! z-deflection
+  Deflection 2 = 0  ! x-rotation
+  Deflection 3 = 0  ! y-rotation
+End
+
+Solver 2 :: Reference Norm = 3.975679728994E+005
+Solver 2 :: Reference Norm Tolerance = 1e-4
+

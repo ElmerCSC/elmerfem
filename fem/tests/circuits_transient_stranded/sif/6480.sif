@@ -16,7 +16,7 @@ Initial Condition 1
    A  = Real 0
 End
 Simulation 
-   Max Output Level = 3
+   Max Output Level = 5
    Coordinate System = Cartesian 3D
    Coordinate Mapping(3) = 1 2 3
    Coordinate Scaling = 0.001
@@ -81,8 +81,8 @@ End
 Solver 5  !---- CircuitsAndDynamics, CircuitsAndDynamics
    Exec Solver = Always
    Equation = Circuits
-   Variable = X
-   No Matrix = Logical True
+!   Variable = X
+!   No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
 End
 Solver 6  !---- MagnetoDynamics, WhitneyAVSolver
@@ -243,5 +243,3 @@ Solver 6 :: Reference Norm = Real 2.30686587E-03
 Solver 6 :: Reference Norm Tolerance = Real 1E-03
 Solver 7 :: Reference Norm = Real 5.08844468E+04 
 Solver 7 :: Reference Norm Tolerance = Real 1E-03
-$fprintf( stderr, "TEST CASE 1\n");
-RUN

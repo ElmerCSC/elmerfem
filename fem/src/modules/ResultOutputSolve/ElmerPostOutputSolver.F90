@@ -157,7 +157,7 @@
         ALLOCATE( MaskPerm( Model % NumberOfNodes ) ) 
         CALL MakePermUsingMask( Model,Solver,Mesh,Str, &
             .FALSE., MaskPerm, NumberOfNodes )
-        ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfNodes ) )
+        ParallelNodes = ParallelReduction( NumberOfNodes ) 
         IF( ParallelNodes > 0 ) THEN
           MaskExists = .TRUE.
           MaskAllocated = .TRUE.

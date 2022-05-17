@@ -1,0 +1,232 @@
+!---------------------------------------------------------
+! A verification case for assembling solid and shell equations
+! into a single linear system so that the coupled equations can 
+! be solved simultaneously.
+!
+! As a reference, the case can be simplified to a beam model where the beam
+! is clamped at both ends. The Euler-Bernoulli beam theory predicts
+! the maximum deflection to be p b L^4/(384 EI) = 0.2025, with
+! p, b and L being the surface traction, the beam width and
+! the beam length. The solution of the simple beam theory is seen to be
+! fairly closed to that of the more complicated coupled model.
+!
+! The original version P.R. 3.9.2019; 
+!   - modified to allow a comparison with the simple beam theory 
+!     by M.M. June, 2020.
+!   - tested to work with the drilling rotation formulation (Oct 6, 2020)
+!   - Modified for parallel operation 2.11.2021
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = coupled.vtu
+
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
+
+! These are the internal partitioning commands
+  Partition Mesh = Logical True
+  Partitioning Method = String "Zoltan"
+  Partition Equation Balance = Logical True 
+  Partition Equation Interface = Logical True
+  Partition Mesh Extend Layers = Integer 4
+
+!  Max OUtput Partition = 3
+!  Output To File = Logical True
+End
+
+Body 1
+  Name = "Solid"
+  Equation = 1
+  Material = 1 
+End
+
+Body 2
+  Name = "Shell Body"
+  Equation = 2
+  Material = 1
+  Body Force = 1 
+End
+
+Body Force 1
+  Name = "Transverse load"
+  Normal Pressure = 1e4
+End 
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "Shell"
+  Active Solvers = 2 
+End
+
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+  Shell Thickness = 0.05
+End
+
+
+Solver 1
+  Equation = "Navier Equations"
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = idrs 
+  Linear System GCR Restart = 400
+  Linear System Preconditioning = Ilu2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-6
+!  Linear System Solver = direct
+!  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+  Linear System Residual Output = 20
+
+! Request for a linear system that couples two structural models:
+  Structure-Structure Coupling = Logical True
+
+! Enforce the block mode when solving the system:
+  Linear System Block Mode = Logical True
+
+! Use linear system scalings in the solution of block system: 
+  Block Scaling = False
+
+! Define the solvers that build the block system:
+  Block Solvers(2) = Integer 1 2
+
+!  Block Mv monolithic = Logical False
+
+! Call the assembly for the 2nd solver using the pre-solvers slot:
+  Pre Solvers(1) = 2
+  
+  Linear System Block Method = String "other"
+  Block Preconditioner = Logical True ! default
+  Block Gauss-Seidel = Logical True   ! if false, jacobi
+
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-6
+  Outer: Linear System Iterative Method = "gcr"
+  Outer: Linear System GCR Restart = Integer 100
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 50
+  Outer: Linear System Min Iterations = integer 3
+  Outer: Linear System Abort Not Converged = false
+  Outer: Linear System Scaling = False
+
+
+  Block 11: Linear System Solver = string "direct"
+  Block 11: Linear System Direct Method = MUMPS
+  Block 22: Linear System Solver = string "direct"
+  Block 22: Linear System Direct Method = MUMPS
+
+! We don't want to displace the mesh in this test since only the solid would
+! be displaced, not the shell. 
+  Displace Mesh = False
+End
+
+
+Solver 2
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Large Deflection = False
+  Drilling DOFs = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = MUMPS
+
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = idrs 
+!  Linear System GCR Restart = 400
+!  Linear System Preconditioning = Ilu2
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1e-6
+!  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+
+! The defaults are True for the following 2 keywords:
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Exec Solver = never
+  Linear System Solver Disabled = Logical True  
+End
+
+
+Solver 3
+  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Variable 1 = Displacement
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max abs 
+  Operator 4 = norm
+  Operator 5 = min
+  Operator 6 = max
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 4
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 8
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 0.0
+  DNU 1 = Real 0
+  DNU 2 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Name = "LeftTop"
+  Target Boundaries(1) = 6 
+  Normal Force = 5.0e3
+End
+
+Boundary Condition 4
+  Name = "LeftBottom"
+  Target Boundaries(1) = 5
+  Normal Force = -5.0e3
+End
+
+
+Solver 1:: Reference Norm = 1.66363499E-02
+
+
+

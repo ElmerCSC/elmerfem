@@ -108,4 +108,4 @@ Boundary Condition 1
   U 6 = Real 0
 End
 
-Solver 3 :: Reference Norm = Real 5.25317835E+03
+Solver 3 :: Reference Norm = Real 5.25561300E+03

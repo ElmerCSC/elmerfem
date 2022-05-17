@@ -83,8 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode 
-
+     LOGICAL :: BcMode, isParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -98,6 +97,8 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
+     isParallel = CurrentModel % Solver % Parallel
+     
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
      IF( .NOT. Found ) THEN
@@ -198,10 +199,15 @@ MODULE ComponentUtils
          globalnode = NodeIndexes(i)
 
          ! Only compute the parallel reduction once
-         IF( ParEnv % PEs > 1 ) THEN
-           IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-         END IF
+         IF( isParallel ) THEN
+           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
+! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
+!          IF( VisitNodeOnlyOnce ) THEN           
+!            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+!          END IF
+         END IF
+           
          F(1) = NF % Values( dofs*(k-1) + 1)
          F(2) = NF % Values( dofs*(k-1) + 2)
          IF( dofs == 3 ) THEN 
@@ -227,7 +233,8 @@ MODULE ComponentUtils
 
            ! Calculate torque around an axis
            IF( PRESENT( Torque ) ) THEN
-             v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             !v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
              Torque = Torque + SUM(Axis*v2)        
            END IF
@@ -236,22 +243,24 @@ MODULE ComponentUtils
        END DO
      END DO
 
-     IF( PRESENT( Force ) ) THEN
-       DO i=1,3
-         Force(i) = ParallelReduction(Force(i))
-       END DO
+     IF( isParallel ) THEN
+       IF( PRESENT( Force ) ) THEN
+         DO i=1,3
+           Force(i) = ParallelReduction(Force(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Moment ) ) THEN
+         DO i=1,3
+           Moment(i) = ParallelReduction(Moment(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Torque ) ) THEN
+         Torque = ParallelReduction(Torque)
+       END IF
      END IF
-
-     IF( PRESENT( Moment ) ) THEN
-       DO i=1,3
-         Moment(i) = ParallelReduction(Moment(i))
-       END DO
-     END IF
-
-     IF( PRESENT( Torque ) ) THEN
-       Torque = ParallelReduction(Torque)
-     END IF
-
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE ComponentNodalForceReduction
 !------------------------------------------------------------------------------
@@ -401,7 +410,7 @@ MODULE ComponentUtils
     END DO
     
     
-    sumi = NINT( ParallelReduction(1.0_dp * sumi) )
+    sumi = ParallelReduction(sumi) 
     IF( sumi == 0 ) THEN
       CALL Warn('ComponentNodalReduction','No active nodes to reduced!')
       RETURN

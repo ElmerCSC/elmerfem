@@ -25,8 +25,8 @@ End
 Solver 1
    Exec Solver = Always
    Equation = Circuits
-   Variable = X
-   No Matrix = Logical True
+!   Variable = X
+!   No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
 End
 Solver 2
@@ -59,6 +59,7 @@ Solver 3
    Linear System Iterative Method = BicgstabL
    Linear System Symmetric = True
    Linear System Max Iterations = 100
+   Linear System Residual Output = 10
    Linear System Preconditioning = ILU0
    Linear System Convergence Tolerance = 1e-8
 End
@@ -156,6 +157,6 @@ Boundary Condition 3
    Infinity BC = Logical True
 End
 
-Solver 3 :: Reference Norm = 1.71609271E-05
-Solver 6 :: Reference Norm = 9.74578691E+02
+Solver 3 :: Reference Norm = 1.71467442E-05
+Solver 6 :: Reference Norm = 9.74581947E+02
 

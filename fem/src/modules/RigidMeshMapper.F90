@@ -69,7 +69,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
-  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform
+  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -77,16 +77,16 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
-      CalculateVelocity,TranslateBeforeRotate
+      CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
-      AnyMeshOrigin
+      AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
   LOGICAL, POINTER :: NodeDone(:)
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
-  TYPE(ValueList_t),POINTER :: BodyForce
+  TYPE(ValueList_t),POINTER :: BodyForce, PrevBodyForce
 
   
-  SAVE Xorig,Yorig,Zorig,Parray,Visited
+  SAVE Parray,Visited
    
   CALL Info( 'RigidMeshMapper','---------------------------------------',Level=4 )
   CALL Info( 'RigidMeshMapper','Performing analytic mesh mapping ',Level=4 )
@@ -98,11 +98,33 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   Cumulative = GetLogical( SolverParams,'Cumulative Displacements',Found)
   UseOriginalMesh = .NOT. Cumulative
 
+  StoreOriginalMesh = GetLogical( SolverParams,'Store Original Coordinates',Found )
+  
+  ! If using original mesh as a reference mesh it must be saved,
+  ! otherwise the analytic mapping does not require two meshes
+  !------------------------------------------------------------
+  IF(.NOT. Visited ) THEN
+    IF( UseOriginalMesh .OR. StoreOriginalMesh ) THEN
+      CALL Info('RigidMeshMapper','Storing original coordinates',Level=7)
+      CALL StoreOriginalCoordinates(Mesh)
+    END IF
+  END IF
+
   dim = CoordinateSystemDimension()
   
   Xnew => Mesh % Nodes % x
   Ynew => Mesh % Nodes % y
   Znew => Mesh % Nodes % z
+
+  IF( UseOriginalMesh ) THEN
+    Xorig => Mesh % NodesOrig % x
+    Yorig => Mesh % NodesOrig % y
+    Zorig => Mesh % NodesOrig % z
+  ELSE
+    Xorig => Xnew
+    Yorig => Ynew
+    Zorig => Znew
+  END IF
 
   NoNodes = Mesh % NumberOfNodes
   ALLOCATE( NodeDone(NoNodes) )
@@ -110,6 +132,13 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   NodeDone = .FALSE.
   NodeIndex => CurrentNode
 
+  ! This solver operator in radians hence we need to convert the angles to radians
+  ! only in case it is given in degrees. 
+  IF( ListGetLogical( CurrentModel % Simulation,'Rotate in Radians',Found ) ) THEN
+    AngleCoeff = 1.0_dp
+  ELSE
+    AngleCoeff = PI / 180.0_dp
+  END IF
 
   CalculateVelocity = GetLogical( SolverParams,'Calculate Mesh Velocity',Found)
   IF( CalculateVelocity ) THEN
@@ -158,24 +187,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
      DO i=1,j
         RotateOrder(i) = IntArray(j+1-i) !reverse the order
      END DO
-  END IF
-
-  ! If using original mesh as a reference mesh it must be saved,
-  ! otherwise the analytic mapping does not require two meshes
-  !------------------------------------------------------------
-  IF( UseOriginalMesh ) THEN
-    IF( .NOT. Visited ) THEN
-      WRITE(Message,* ) 'Allocating new nodes of size: ',NoNodes
-      CALL Info('RigidMeshMapper',Message,Level=6)
-      ALLOCATE(Xorig(NoNodes),Yorig(NoNodes),Zorig(NoNodes))      
-      Xorig = Xnew(1:NoNodes)
-      Yorig = Ynew(1:NoNodes)
-      Zorig = Znew(1:NoNodes)
-    END IF
-  ELSE
-    Xorig => Xnew
-    Yorig => Ynew
-    Zorig => Znew
   END IF
 
 
@@ -255,40 +266,33 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   
   at0 = CPUTime()
 
-   AnyMeshTranslate = ListCheckPresentAnyBodyForce( Model,'Mesh Displacement') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 1') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 2') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 3')
-   IF( AnyMeshTranslate ) THEN
-     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolete keyword',Level=3)
-     CALL Warn('RigidMeshMapper','Replace with > Mesh Translate < ')
-     AnyMeshTranslate = .FALSE.
-   END IF
+  AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Displacement') 
+  IF( AnyMeshTranslate ) THEN
+    CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolete keyword',Level=3)
+    CALL Warn('RigidMeshMapper','Replace with > Mesh Translate < ')
+    AnyMeshTranslate = .FALSE.
+  END IF
 
 
   AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')
-  AnyMeshRotate = ListCheckPresentAnyBodyForce( Model,'Mesh Rotate') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Rotate 1') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Rotate 2') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Rotate 3')
-  AnyMeshTranslate = ListCheckPresentAnyBodyForce( Model,'Mesh Translate') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Translate 1') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Translate 2') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Translate 3')
-  AnyMeshScale = ListCheckPresentAnyBodyForce( Model,'Mesh Scale') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Scale 1') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Scale 2') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Scale 3')
-  AnyMeshOrigin = ListCheckPresentAnyBodyForce( Model,'Mesh Origin') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Origin 1') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Origin 2') .OR. &
-      ListCheckPresentAnyBodyForce( Model,'Mesh Origin 3')
+   
+  AnyMeshRotate = ListCheckPrefixAnyBodyForce( Model,'Mesh Rotate')
 
-    
+  AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Translate')
+  AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale') 
+  AnyMeshOrigin = ListCheckPrefixAnyBodyForce( Model,'Mesh Origin')
+
+  AnyRelax = ListCheckPresentAnyBodyForce( Model,'Mesh Relax')
+
+  
   GotRotate = .FALSE.
   GotTranslate = .FALSE.
   GotScale = .FALSE.
   GotMatrix = .FALSE.
+
+  PrevBodyForce => NULL()
+  GotMap = .FALSE.
+  ConstantMap = ListGetLogical( SolverParams,'Constant Mapping',Found ) 
   
   DO elem = 1,Solver % Mesh % NumberOfBulkElements      
 
@@ -300,6 +304,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     IF(.NOT. Found) CYCLE
     
     BodyForce => Model % BodyForces(bf_id) % Values
+
+    IF( ConstantMap ) THEN
+      GotMap = ASSOCIATED( BodyForce, PrevBodyForce )
+      PrevBodyForce => BodyForce
+    END IF
+
     
     DO Node=1,n
       NodeIndex(1) = Element % NodeIndexes(Node)
@@ -308,6 +318,11 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF(NodeDone(NodeI)) CYCLE
       NodeDone(NodeI) = .TRUE.
 
+      ! This is to save time. If we have exactly same mapping as last time then
+      ! there is no use doing the same ListGet operation things again.
+      !-------------------------------------------------------------------------
+      IF( GotMap ) GOTO 100
+      
       ! Generic transformation matrix
       !--------------------------------
       GotMatrix = .FALSE.
@@ -323,7 +338,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       END IF
 
       IF(.NOT. GotMatrix ) THEN
-
         ! Rotations around main axis:
         !----------------------------        
         GotRotate = .FALSE.
@@ -343,6 +357,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             Angles(3:3) = ListGetReal( BodyForce,'Mesh Rotate 3', 1, NodeIndex, Found )
             IF( Found ) GotRotate = .TRUE.
           END IF
+          Angles = AngleCoeff * Angles
         END IF
 
         ! Scaling:
@@ -399,7 +414,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             
             DO i=1,3
               j = RotateOrder(i)
-              Alpha = Angles(j) * PI / 180.0_dp
+              Alpha = Angles(j) 
               
               IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
               TrfMatrix = Identity
@@ -448,35 +463,31 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
           END IF
         END IF
       END IF
+      
+      ! Get mesh origin
+      !----------------------------------------------------
+      Origin = 0.0_dp
+      IF( GotMatrix .AND. AnyMeshOrigin ) THEN
+        Parray => ListGetConstRealArray( BodyForce,'Mesh Origin', Found )
+        IF ( Found ) THEN
+          DO i=1,SIZE(Parray,1)
+            Origin(i) = Parray(i,1)
+          END DO
+        ELSE
+          Origin(1:1) = ListGetReal( BodyForce,'Mesh Origin 1', 1, NodeIndex, Found) 
+          Origin(2:2) = ListGetReal( BodyForce,'Mesh Origin 2', 1, NodeIndex, Found) 
+          Origin(3:3) = ListGetReal( BodyForce,'Mesh Origin 3', 1, NodeIndex, Found) 
+        END IF
+      END IF
 
-      IF( GotMatrix ) THEN        
-
+      
+100   IF( GotMatrix ) THEN                
         x0(1) = Xorig(NodeI)
         x0(2) = Yorig(NodeI)
         x0(3) = Zorig(NodeI)
         x0(4) = 1.0_dp
-
-        ! Get mesh origin
-        !----------------------------------------------------
-        IF( AnyMeshOrigin ) THEN
-          Origin = 0._dp
-          Parray => ListGetConstRealArray( BodyForce,'Mesh Origin', Found )
-          IF ( Found ) THEN
-            DO i=1,SIZE(Parray,1)
-              Origin(i) = Parray(i,1)
-            END DO
-          ELSE
-            Origin(1:1) = ListGetReal( BodyForce,'Mesh Origin 1', 1, NodeIndex, Found) 
-            Origin(2:2) = ListGetReal( BodyForce,'Mesh Origin 2', 1, NodeIndex, Found) 
-            Origin(3:3) = ListGetReal( BodyForce,'Mesh Origin 3', 1, NodeIndex, Found) 
-          END IF
-          x1 = MATMUL( TrfMatrix, x0 - Origin ) + Origin
-        ELSE
-          x1 = MATMUL( TrfMatrix, x0 ) 
-        END IF
-          
+        x1 = MATMUL( TrfMatrix, x0 - Origin ) + Origin          
         dx(1:3) = x1(1:3) / x1(4) - x0(1:3)
-
       ELSE IF( GotTranslate ) THEN
         dx(1:3) = dCoord(1:3)
       ELSE
@@ -494,7 +505,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
           Found = .TRUE.
         END IF
         dx = Relax(1) * dx 
-      ELSE
+      ELSE IF( AnyRelax ) THEN
         Relax(1:1) = ListGetReal( BodyForce,'Mesh Relax',1,NodeIndex,Found)
         IF( Found ) dx = Relax(1) * dx
       END IF

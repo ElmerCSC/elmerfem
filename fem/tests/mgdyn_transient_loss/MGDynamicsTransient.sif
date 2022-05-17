@@ -132,6 +132,13 @@ Boundary Condition 3
   P = Real 0
   P {e} = Real 0
 End
-Solver 3 :: Reference Norm = Real 1.1854786
-Solver 3 :: Reference Norm Tolerance = Real 1e-3
-RUN
+
+Solver 1 :: Reference Norm = 4.78587574E-04
+Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 2 :: Reference Norm = 4.45458059E-04
+Solver 2 :: Reference Norm Tolerance = 1e-4
+
+! Is there an error?
+Solver 3 :: Reference Norm = 1.1854786
+Solver 3 :: Reference Norm Tolerance = 1e-3
+

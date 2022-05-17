@@ -36,6 +36,7 @@ Material 1
   Sound Speed = Real 0.5
   Sound Damping = Real 0.0
   Sound Reaction Damping = Real 0.0
+  Density = 1.21  ! only affects fsi cases
 End 
 
 !Body Force 1

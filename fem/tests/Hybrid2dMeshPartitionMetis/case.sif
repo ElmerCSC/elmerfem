@@ -24,8 +24,9 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 0
-
   Mesh Levels = 1
+
+!  Post File = case.vtu
 End
 
 Constants
@@ -72,10 +73,10 @@ RUN
 
 ! check the global numbering 
 Solver 1:: Show Norm Index = 2
-Solver 1:: Reference Norm = 3.98655190E+07
+Solver 1:: Reference Norm = 4.34330340E+07
 RUN
 
 ! check the neighbours
 Solver 1:: Show Norm Index = 3 
-Solver 1:: Reference Norm = 9.38650000E+04
+Solver 1:: Reference Norm = 9.93020000E+04
 RUN 

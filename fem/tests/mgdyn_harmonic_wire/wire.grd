@@ -20,7 +20,7 @@ End
 Numbering = Horizontal
 Element Ratios 1 = 1 0.2 10.0
 Element Ratios 2 = 1  
-Element Divisions 1 = 4 8 8 
+Element Divisions 1 = 4 8 8
 Element Divisions 2 = 10  
 Revolve Blocks = 4
 Revolve Improve = 0.0

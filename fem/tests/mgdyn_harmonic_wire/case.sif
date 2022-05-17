@@ -118,7 +118,6 @@ Solver 3
   Discontinuous Bodies = Logical True
 
   Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
-  Reference Norm = 1.0
 End
 
 Solver 4
@@ -230,6 +229,10 @@ Boundary Condition 6
 End
 
 
+Solver 1 :: Reference Norm = 4.62227582E-06
+Solver 3 :: Reference Norm = 1.0
 Solver 4 :: Reference Norm = 1.42295178E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
 Solver 5 :: Reference Norm = 1.51593518E-06
+Solver 5 :: Reference Norm Tolerance = 1e-4
+

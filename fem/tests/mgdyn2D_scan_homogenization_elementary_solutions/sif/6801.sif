@@ -248,5 +248,6 @@ Boundary Condition 1
    Coupled 2: Magnetic Flux Density 2 = Real 1
 End
 
-Solver 3 :: Reference Norm = 0.57521435E-07
+Solver 3 :: Reference Norm = 5.75191822E-08
+Solver 4 :: Reference Norm = 1.33330056E+02
 

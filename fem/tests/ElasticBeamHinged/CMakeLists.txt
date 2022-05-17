@@ -5,4 +5,4 @@ CONFIGURE_FILE(hinge.sif hinge.sif COPYONLY)
 
 file(COPY hinge.msh ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ElasticBeamHinged NPROCS 1 LABELS elasticity)
+ADD_ELMER_TEST(ElasticBeamHinged NPROCS 1 LABELS elasticity n-t)

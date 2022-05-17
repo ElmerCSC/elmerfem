@@ -1079,9 +1079,9 @@
 !------------------------------------------------------------------------------
 !         normal force BC: \tau\cdot n = \alpha n
 !------------------------------------------------------------------------------
-          IF ( GetLogical( BC, 'Free Surface',gotIt) ) THEN
+          !IF ( GetLogical( BC, 'Free Surface',gotIt) ) THEN
             Alpha(1:n) = GetReal( BC,'Surface Tension Coefficient', gotIt )
-          END IF
+          !END IF
 
           ExtPressure(1:n) = GetReal( BC, 'External Pressure', GotForceBC )
           IF(.NOT. GotForceBC) ExtPressure(1:n) = GetReal( BC, 'Normal Pressure', GotForceBC )
@@ -1132,24 +1132,22 @@
           END IF
 !------------------------------------------------------------------------------
           SELECT CASE( CurrentCoordinateSystem() )
-          CASE( Cartesian )
-
+            
+          CASE( Cartesian )            
             CALL NavierStokesBoundary(  STIFF, FORCE, &
-             LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
+                LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
                 Element, n, ElementNodes )
-
-         CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )
-
+            
+          CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )            
             CALL NavierStokesCylindricalBoundary( STIFF, &
-             FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
-                 NormalTangential, Element, n, ElementNodes)
-
-         CASE DEFAULT
-
+                FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
+                NormalTangential, Element, n, ElementNodes)
+            
+          CASE DEFAULT            
             CALL NavierStokesGeneralBoundary( STIFF, &
-             FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
+                FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
                 Element, n, ElementNodes)
-
+            
          END SELECT
 
 !------------------------------------------------------------------------------
@@ -1240,6 +1238,11 @@
       END DO
 
       CALL DefaultFinishBoundaryAssembly()
+
+      ! This is a matrix level routine for setting friction such that tangential
+      ! traction is the normal traction multiplied by a coefficient.
+      CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
+      
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------
@@ -1278,39 +1281,38 @@
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
 
-      IF ( RecheckNewton .AND. NewtonLinearization .AND. (RelativeChange > NewtonUBound)) THEN
-        NewtonLinearization = .FALSE.
-	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      ! Check whether we should revert back to the more robust Picard iteration
+      IF ( RecheckNewton .AND. NewtonLinearization ) THEN
+        IF(RelativeChange > NewtonUBound) THEN
+          NewtonLinearization = .FALSE.
+          CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+        END IF
+        IF ( iter >= NewtonMaxIter) THEN
+          NewtonLinearization = .FALSE.
+          CALL Info('FlowSolve', 'Newton iteration limit exceeded, switching back to picard', Level=6)
+        END IF
+        IF ( RelativeChange > NewtonUBound) THEN
+          NewtonLinearization = .FALSE.
+          CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+        END IF
       END IF
-
-      IF ( RecheckNewton .AND. NewtonLinearization .AND. (iter >= NewtonMaxIter)) THEN
-        NewtonLinearization = .FALSE.
-	CALL Info('FlowSolve', 'Newton iteration limit exceeded, switching back to picard', Level=6)
-      END IF
-
-      IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
-        NewtonLinearization = .FALSE.
-	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
-      END IF
-
+        
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
 
 !------------------------------------------------------------------------------
 !     If free surfaces in model, this will move the nodal points
 !------------------------------------------------------------------------------
       IF ( FreeSurfaceFlag ) THEN
-
-        IF ( RelativeChange < FreeSTol .OR. &
-             iter > FreeSIter ) ComputeFree = .TRUE.
+        IF ( RelativeChange < FreeSTol .OR. iter > FreeSIter ) ComputeFree = .TRUE.
 
         IF ( ComputeFree ) THEN
-          Relaxation = GetCReal( Solver % Values, &
-             'Free Surface Relaxation Factor', GotIt )
-
-          IF ( .NOT.GotIt ) Relaxation = 1.0d0
-
           MBFlag = GetLogical(GetSolverParams(), 'Internal Move Boundary', GotIt)
-          IF ( MBFlag .OR. .NOT. GotIt ) CALL MoveBoundary( Model, Relaxation )
+          IF ( MBFlag .OR. .NOT. GotIt ) THEN
+            Relaxation = GetCReal( Solver % Values, &
+                'Free Surface Relaxation Factor', GotIt )            
+            IF ( .NOT.GotIt ) Relaxation = 1.0_dp
+            CALL MoveBoundary( Model, Relaxation )
+          END IF
         END IF
       END IF
 !------------------------------------------------------------------------------

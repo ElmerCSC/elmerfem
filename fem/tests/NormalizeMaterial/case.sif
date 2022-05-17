@@ -75,10 +75,14 @@ Material 1
   Name = "Material"
   Density = 1
 
+! Old syntax still tested for backward compatibility!
   Heat Conductivity = 1.0
 ! This together with the previous causes a division 
 ! by the volume (in 2D angle equal to 3). 
   Heat Conductivity Normalize by Volume = Logical True
+
+! This is the new syntax!
+!  Heat Conductivity = -distribute 1.0
 End
 
 Body Force 1

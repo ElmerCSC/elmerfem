@@ -22,11 +22,11 @@ Run Control
     Real Procedure "CostFunction" "CostFunction"   
 
   Parameter Count = Integer 4
-  Parameter Optimal Finish = Logical True
+  Optimal Finish = Logical True
   Parameter Best File = File "optimize-best.dat"
   Parameter History File = File "optimize-history.dat"
   !Parameter History Append = Logical True
-  !Parameter Guess File = "optimize-best0.dat"
+  !Parameter Restart File = "optimize-best0.dat"
 
   !Parameter Filetype = String 'table' ! 'dakota'
   !Parameter Row Offset = Integer 
@@ -43,9 +43,9 @@ Run Control
   !Simplex Restart Interval = Integer 20
   !Simplex Restart Convergence Ratio = Real 1.0
 
-  !Initial Step Size = Real
-  !Max Step Size = Real
-  !Step Size Relaxation Factor = Real
+  !Initial Stepsize = Real
+  !Max Stepsize = Real
+  !Stepsize Relaxation Factor = Real
 
   Max Output Level = 5 
 End 
