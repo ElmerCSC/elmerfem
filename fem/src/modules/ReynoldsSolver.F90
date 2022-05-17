@@ -668,7 +668,7 @@ CONTAINS
         SLR = SLR + 0.5_dp * Density * SUM( dBasisdx(1:n,i) * Velocity(i,1:n) * GapHeight(1:n)) 
       END DO
       ! Implicit part: coefficient of the pressure gradient
-      SLL = -0.5_dp* DensityDer * Gap * Velo 
+      SLL = -0.5_dp* DensityDer * Gap * TangentVelo 
 
 !------------------------------------------------------------------------------
 !      The Reynolds equation
@@ -1163,6 +1163,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------
         !       Get velocities
         !------------------------------------------------------------------------------                
+        Velocity = 0.0_dp
         UseVelocity = .FALSE.
         GotIt = .FALSE.; GotIt2 = .FALSE.; GotIt3 = .FALSE.
         IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN

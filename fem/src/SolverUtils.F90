@@ -11643,7 +11643,7 @@ END FUNCTION SearchNodeL
 	NULLIFY( Solution )
 	n = MAXVAL( IntPerm ) 
         ALLOCATE( Solution(n))
-        Solution = 0.0d0        
+        Solution = 0.0_dp
         CALL VariableAdd( Mesh % Variables, Mesh, Solver,&
             IntVarName, 1, Solution, IntPerm )
         NULLIFY( Solution )
@@ -11666,7 +11666,7 @@ END FUNCTION SearchNodeL
       IF( PRESENT( Var) ) Var => WeightsVar
     END IF
 
-    CALL Info('ComputeNodalWeights',&
+    CALL Info('CalculateNodalWeights',&
         'Computing weights for solver to variable: '//TRIM(IntVarName),Level=6)
     n = Mesh % MaxElementNodes
 
@@ -11733,10 +11733,18 @@ END FUNCTION SearchNodeL
 
     END DO
 
+    IF( ParEnv % PEs > 1 ) THEN
+      IF( ASSOCIATED( Solver % Matrix ) ) THEN
+        CALL ParallelSumVector(Solver % Matrix, Weights )
+      ELSE
+        CALL Warn('CalculateNodalWeights','Cannot communicate weights without parallel matrix!')
+      END IF
+    END IF
+      
     DEALLOCATE(Basis, ElementNodes % x, ElementNodes % y, &
         ElementNodes % z, LocalIndexes )
 
-    CALL Info('ComputeNodalWeights','All done',Level=8)
+    CALL Info('CalculateNodalWeights','All done',Level=8)
 
   END SUBROUTINE CalculateNodalWeights
 !------------------------------------------------------------------------------

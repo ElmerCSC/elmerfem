@@ -1495,7 +1495,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ELSE IF( HasReluctivityFunction ) THEN
          rdummy = ListGetElementReal( mu_h, Basis, Element, &
              GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
-         Nu(1:mudim,1:mudim) = muTensor(1:mudim,1:mudim)                           
+         Nu(1:3,1:3) = muTensor(1:3,1:3)                           
          w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
        ELSE
          IF (HasTensorReluctivity) THEN
