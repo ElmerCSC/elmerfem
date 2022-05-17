@@ -5096,25 +5096,43 @@ CONTAINS
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
      TYPE(Mesh_t), POINTER :: Mesh
+     LOGICAL :: DoBC, DoBulk
+
+!------------------------------------------------------------------------------
+     MeActive = ASSOCIATED(Solver % Matrix)
+     IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
+     Parallel = Solver % Parallel 
      
 !------------------------------------------------------------------------------
      IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
-
+       
        IF ( Found ) THEN
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
-
+         
          ! Calculate accumulated integration weights for bulk if requested          
-         IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
-           CALL CalculateNodalWeights(Solver,.FALSE.)
-         END IF
-
+         DoBulk = ListGetLogical( Solver % Values,'Calculate Weights',Found )
          ! Calculate weight for boundary 
-         IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
-           CALL CalculateNodalWeights(Solver,.TRUE.) 
+         DoBC = ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )
+
+         ! In parallel we have to prepare the communicator already for the weights
+         IF(DoBulk .OR. DoBC ) THEN
+           IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
+             ParEnv % ActiveComm = Solver % Matrix % Comm
+             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+               IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+                   CALL ParallelInitMatrix(Solver, Solver % Matrix )               
+               Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
+                   Solver % Matrix % Comm
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+             END IF
+           END IF
          END IF
+                  
+         IF(DoBulk) CALL CalculateNodalWeights(Solver,.FALSE.)
+         IF(DoBC) CALL CalculateNodalWeights(Solver,.TRUE.) 
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -5132,12 +5150,6 @@ CONTAINS
      END IF
      
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
-
-     MeActive = ASSOCIATED(Solver % Matrix)
-     IF ( MeActive ) &
-        MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
-
-     Parallel = Solver % Parallel 
 
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.
