@@ -55,6 +55,7 @@
   !******************************************************************************
   USE DefUtils
   USE SSAMaterialModels
+  USE ComputeFluxUtils
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -92,7 +93,7 @@
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
        NodalZs(:), NodalZb(:), NodalU(:), NodalV(:),Basis(:)
 
-  REAL(KIND=dp) :: DetJ,UnLimit,un,un_max
+  REAL(KIND=dp) :: DetJ,UnLimit,un,un_max,FillValue
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ZsName, ZbName
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at, at0
@@ -450,7 +451,26 @@
   !!!! some post-processing... compute:
   !!  - element mean friction
   !!  - effective friction coefficient
-  !! to do : fluxes...
+  !!  - GL flux
+  !!  - Calving front flux
+  IF (ListGetLogical( Solver % Values,"Compute grounding line flux", Found)) THEN
+    FillValue=ListGetConstReal(Solver % Values,"grounding line flux FillValue",Found)
+    IF (Found) THEN
+      CALL ComputeGLFlux_2D(Solver,FillValue)      
+    ELSE
+      CALL ComputeGLFlux_2D(Solver)
+    END IF
+  END IF
+
+  IF (ListGetLogical( Solver % Values,"Compute calving front flux", Found)) THEN
+    FillValue=ListGetConstReal(Solver % Values,"calving front flux FillValue",Found)
+    IF (Found) THEN
+      CALL ComputeCalvingFrontFlux_2D(Solver,FillValue)
+    ELSE
+      CALL ComputeCalvingFrontFlux_2D(Solver)
+    END IF
+  END IF
+
   strbasemag => VariableGet( Solver % Mesh % Variables,"strbasemag")
   IF (ASSOCIATED(strbasemag)) THEN
    ! sanity check
