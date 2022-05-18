@@ -79,13 +79,13 @@ SUBROUTINE ParallelRemesh( Model,Solver,dt,TransientSimulation )
   Mesh => Model % Mesh
   SolverParams => GetSolverParams()
 
-  Rebalance = ListGetLogical(SolverParams, "Rebalance", Found, Default = .TRUE.)
-  IF(.NOT. Found) CALL INFO(SolverName, "Option 'Rebalance' not found. Default is TRUE")
-  ManAssignEdges = ListGetLogical(SolverParams, "Manually Assign Edges", Found, Default = .FALSE.)
+  Rebalance = ListGetLogical(SolverParams, "Rebalance", Found, DefValue = .TRUE.)
+  IF(.NOT. Found) CALL INFO(SolverName, "Option 'Rebalance' not found. DefValue is TRUE")
+  ManAssignEdges = ListGetLogical(SolverParams, "Manually Assign Edges", Found, DefValue = .FALSE.)
   IF(.NOT. Found) CALL INFO(SolverName, "Option 'Manually Assign Edges' not found. Default is FALSE")
   MeshDir = ListGetString(SolverParams,"Save Mesh Name", UnfoundFatal = .TRUE.)
   ! Angle detection?
-  Angle = ListGetLogical(SolverParams, "Automatic Angle Detection", Found, Default = .FALSE.)
+  Angle = ListGetLogical(SolverParams, "Automatic Angle Detection", Found, DefValue = .FALSE.)
   IF(.NOT. Found) CALL INFO(SolverName, "Automatic Angle Detection turned off")
 
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
@@ -404,7 +404,7 @@ SUBROUTINE MeshMetricAniso(Model, nodenumber, y, TargetLength)
     IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Max LC' not set")
     lc_min = ListGetConstReal(SolverParams, "MeshMetric Min LC",  Found)
     IF(.NOT. Found) CALL FATAL(FuncName, "Variable: 'MeshMetric Min LC' not set")
-    ZInd = ListGetLogical(SolverParams, "MeshMetric Z Independent", Found, Default = .FALSE.)
+    ZInd = ListGetLogical(SolverParams, "MeshMetric Z Independent", Found, DefValue = .FALSE.)
     IF(.NOT. Found) CALL INFO(FuncName, "Option 'MeshMetric Z Independent' not found. Default is FALSE")
     IF(ZInd) THEN
       dz = ListGetConstReal(SolverParams, "MeshMetric Vertical LC",  Found)

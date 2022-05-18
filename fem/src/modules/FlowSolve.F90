@@ -480,8 +480,7 @@
 
      DirectionName = ListGetString(Solver %Values, 'Implicit Friction Direction Vector', ImplicitFrictionDirection)
      IF (ImplicitFrictionDirection) THEN
-       WRITE(Message,*) '"Implicit Friction Direction Vector" set to', TRIM(DirectionName)
-       CALL INFO('FlowSolve',Message)
+       CALL Info('FlowSolver','"Implicit Friction Direction Vector" set to: '//TRIM(DirectionName),Level=10)
      END IF
 
 !------------------------------------------------------------------------------
@@ -1247,11 +1246,11 @@
      
       !------------------------------------------------------------------------------
       !     Implicit Friction Boundaries
-       !------------------------------------------------------------------------------     
+      !------------------------------------------------------------------------------     
       IF (ImplicitFrictionDirection) THEN
         ! This is a matrix level routine for setting friction such that tangential
         ! traction is the normal traction multiplied by a coefficient.
-        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName=TRIM(DirectionName)  )
+        CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient', DirectionName )
       ELSE
         CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient' )
       END IF
