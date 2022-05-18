@@ -50,7 +50,7 @@ Time Point = Variable Time
    Time Point = Real Time
      REAL MATC "tx[0]"
 
-   ! File Name (case sensitive)
+   ! Default File Name (case sensitive)
    File Name = File "output_ugrid.nc"
 
    ! List of variables to read
@@ -59,6 +59,9 @@ Time Point = Variable Time
    ! the Elmer variable (must exist, as a solver or exported variable)
    Target Variable 1 = string "NodeVar"
   
+   ! Optionnal FileName for the variable; if we want to read more than one file...
+   ! will fall back to the default if not present
+   File Name 1 = File "MyFile 1"
   ...
 End
 ```

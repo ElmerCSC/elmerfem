@@ -80,9 +80,10 @@
       CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
 
+      INTEGER :: VarType
       INTEGER :: varid,nvals,ntime,ncid,ndims,TVarID
       INTEGER :: NetCDFstatus
-      INTEGER,ALLOCATABLE,SAVE :: dimids(:)
+      INTEGER :: dimids(2) 
       REAL(KIND=dp), ALLOCATABLE :: Values(:)
       REAL(KIND=dp) :: Time
       INTEGER :: TimeIndex,TimePoint
@@ -107,27 +108,24 @@
         TimePoint = floor(time-dt/2) + 1
       END IF
 
-      FName = ListGetString(SolverParams,'File Name',UnFoundFatal=.TRUE.)
-
-      write(Message,'(a,a)') 'File name: ',Trim(FName)
-      CALL INFO(SolverName,Message,Level=4)
-
-!! open NETCDF File
-      NetCDFstatus = NF90_OPEN(trim(FName),NF90_NOWRITE,ncid)
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-         CALL FATAL(SolverName,"file open failed")
-
-      IF (.NOT.ALLOCATED(dimids)) THEN
-        NetCDFstatus = nf90_inquire(ncid, nDimensions=ndims)
-        IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL FATAL(SolverName,"file open failed")
-        ALLOCATE(dimids(ndims))
-      ENDIF
 
       VarIndex=1
       VarName = ListGetString(SolverParams,'Variable Name 1',UnFoundFatal=.TRUE.)
       VarExist=.TRUE.
       DO WHILE (VarExist)
+
+         WRITE(Txt,'(A,I0)') 'File Name ',VarIndex
+         FName = ListGetString(SolverParams,TRIM(Txt),Found)
+         IF (.NOT.Found) &
+            FName = ListGetString(SolverParams,'File Name',UnFoundFatal=.TRUE.)
+
+         write(Message,'(a,a)') 'File name: ',Trim(FName)
+        CALL INFO(SolverName,Message,Level=4)
+
+!! open NETCDF File
+      NetCDFstatus = NF90_OPEN(trim(FName),NF90_NOWRITE,ncid)
+      IF ( NetCDFstatus /= NF90_NOERR ) &
+         CALL FATAL(SolverName,"file open failed")
 
         ! get variable ID
         NetCDFstatus = nf90_inq_varid(ncid,trim(VarName),TVarId)
@@ -144,6 +142,8 @@
         IF ( NetCDFstatus /= NF90_NOERR ) &
            CALL FATAL(SolverName,"unable to get dimids "//TRIM(VarName))
        
+        ! here we assume that the first dim is the size of the variable
+        ! and that the second should be time
         NetCDFstatus = nf90_inquire_dimension(ncid,dimids(1),len=nvals)
         IF ( NetCDFstatus /= NF90_NOERR ) &
            CALL FATAL(SolverName,"unable to get nvals"//TRIM(VarName))
@@ -162,7 +162,7 @@
          CASE(1)
            NetCDFstatus=nf90_get_var(ncid,TVarId,Values,start=(/1/),count=(/nvals/))
            IF ( NetCDFstatus /= NF90_NOERR ) &
-              CALL FATAL(SolverName,"unable to get variable"//TRIM(VarName))
+              CALL FATAL(SolverName,"unable to get variable "//TRIM(VarName))
 
             WRITE(Message,'(A)') &
                     'reading constant var '//TRIM(VarName)
@@ -170,7 +170,7 @@
          CASE(2)
             NetCDFstatus = nf90_inquire_dimension(ncid,dimids(2),len=ntime)
             IF ( NetCDFstatus /= NF90_NOERR ) &
-              CALL FATAL(SolverName,"unable to get ntime")
+              CALL FATAL(SolverName,"unable to get ntime "//TRIM(VarName))
 
             TimeIndex = max(1,min(TimePoint,ntime))
 
@@ -182,7 +182,7 @@
             IF ( NetCDFstatus /= NF90_NOERR ) &
                CALL FATAL(SolverName,"unable to get variable "//TRIM(VarName))
          CASE DEFAULT
-           CALL FATAL(SolverName,"wrong ndims"//TRIM(VarName))
+           CALL FATAL(SolverName,"wrong ndims "//TRIM(VarName))
         END SELECT
         
      ! get variable
@@ -191,7 +191,17 @@
         IF (.NOT.Found) TVarName=TRIM(VarName)
 
         Var => VariableGet( Model % Mesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
-        SELECT CASE(Var % TYPE)
+        VarType=Var % TYPE
+
+        ! special cases.... time do not seems to be a gloabl variable by
+        ! default
+        IF ( Var % Name  == 'time') VarType=Variable_global
+
+        SELECT CASE(VarType)
+         CASE(Variable_global)
+           ! for a global variable nvals should be the time dimension...
+           TimeIndex = max(1,min(TimePoint,nvals))
+           Var % Values(1)=Values(TimeIndex)
          CASE(Variable_on_elements)
 
            NN = GetNOFActive()
@@ -203,7 +213,7 @@
                EIndex=Element % ElementIndex
              ENDIF
              IF (EIndex.GT.nvals) &
-                     CALL FATAL(SolverName,"EIndex larger than nvals"//TRIM(VarName))
+                     CALL FATAL(SolverName,"EIndex larger than nvals "//TRIM(VarName))
              IF (ASSOCIATED(Var % Perm)) THEN
                k=Var % Perm(Element % ElementIndex)
              ELSE
@@ -228,23 +238,24 @@
              ENDIF
              IF (k==0) CYCLE
              IF (i.GT.nvals) &
-                CALL FATAL(SolverName,"Too many nodes"//TRIM(VarName))
+                CALL FATAL(SolverName,"Too many nodes "//TRIM(VarName))
              Var%Values(k)=Values(NIndex)
            END DO
 
          CASE DEFAULT
-            CALL FATAL(SolverName,"wrong var type"//TRIM(VarName))
+            CALL FATAL(SolverName,"wrong var type "//TRIM(VarName))
 
         END SELECT
 
         DEALLOCATE(Values)
+
+        ! close file
+        NetCDFstatus=nf90_close(ncid)
 
         VarIndex=VarIndex+1
         WRITE(Txt,'(A,I0)') 'Variable Name ',VarIndex
         VarName = ListGetString(SolverParams,TRIM(Txt),VarExist)
       END DO
 
-      ! close file
-      NetCDFstatus=nf90_close(ncid)
 
       END SUBROUTINE UGRIDDataReader
