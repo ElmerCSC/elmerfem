@@ -36,27 +36,23 @@ if test @HAVE_MMG@ = "TRUE"; then
 else
     MMGLIBDIR=""
     MMGINCLUDE=""
-    printf "no MMG\n"
 fi
 
 if test @HAVE_PARMMG@ = "TRUE"; then
     PARMMGLIBDIR="-L@PARMMG_LIBDIR@"
     PARMMGINCLUDE="-I@PARMMG_INCLUDE_DIR@"
     printf "with ParMMG\n"
+    if test "$MMGLIBDIR" = "$PARMMGLIBDIR"; then
+	PARMMGLIBDIR=""
+	printf "MMG and ParMMG share the same lib dir\n"
+    fi    
+    if test "$MMGINCLUDE" = "$PARMMGINCLUDE"; then
+	PARMMGINCLUDE=""
+	printf "MMG and ParMMG share the same include dir\n"
+    fi    
 else
     PARMMGLIBDIR=""
     PARMMGINCLUDE=""
-    printf "no ParMMG\n"
-fi
-
-if test "$MMGLIBDIR" = "$PARMMGLIBDIR"; then
-    PARMMGLIBDIR=""
-    printf "MMG and ParMMG share the same lib dir\n"
-fi
-
-if test "$MMGINCLUDE" = "$PARMMGINCLUDE"; then
-    PARMMGINCLUDE=""
-    printf "MMG and ParMMG share the same include dir\n"
 fi
 
 cmd="$FC $* @CMAKE_Fortran_FLAGS@ @ELMER_F90FLAGS@ @CMAKE_SHARED_LIBRARY_Fortran_FLAGS@ @CMAKE_SHARED_LIBRARY_CREATE_Fortran_FLAGS@ -I$INCLUDE -L$LIBDIR $LIBELMERICE $MMGINCLUDE $MMGLIBDIR $PARMMGINCLUDE $PARMMGLIBDIR -shared -lelmersolver "
