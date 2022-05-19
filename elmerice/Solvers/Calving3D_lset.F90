@@ -1059,8 +1059,9 @@
        IF(.NOT. Boss) ALLOCATE(UnfoundConstraints(NUnfoundConstraint))
        CALL MPI_BCAST(UnfoundConstraints, NUnfoundConstraint, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
-       DO node=1, SIZE(UnfoundConstraints)
+       DO node=1, NUnfoundConstraint
 
+         MinDist = HUGE(1.0_dp)
          i = UnfoundConstraints(node)
 
          a1(1) = IMBdryNodes(i,1)
@@ -1102,8 +1103,11 @@
          CALL MPI_AllReduce(MinDist, PartMinDist, 1, MPI_DOUBLE_PRECISION, &
             MPI_MIN, ELMER_COMM_WORLD, ierr)
 
-         IF(MinDist == PartMinDist) &
+         IF(MinDist == PartMinDist) THEN
             IMBdryConstraint(i) = Mesh % Elements(jmin) % BoundaryInfo % Constraint
+            PRINT*, ParEnv % MyPE, 'Assigning constraint', IMBdryConstraint(i), &
+               'based off mindist:', PartMinDist
+         END IF
        END DO
 
        IF(Boss) THEN
