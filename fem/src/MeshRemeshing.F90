@@ -901,7 +901,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
        nBCs,NodeNum(1), MaxRemeshIter, mmgloops, &
        NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter, Time
   INTEGER, ALLOCATABLE :: TetraQuality(:)
-  LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
+  LOGICAL :: Debug, DebugSol, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
        premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
@@ -911,6 +911,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 #ifdef HAVE_MMG
 
   Debug = .TRUE.
+  DebugSol = .FALSE.
   Parallel = ParEnv % PEs > 1
   FuncName = "RemeshMMG3D"
 
@@ -1043,7 +1044,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 
   DO i=1,NNodes
     IF(AnisoFlag) THEN
-      IF(Debug) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
+      IF(DebugSol) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
       CALL MMG3D_Set_TensorSol(mmgSol,Metric(i,1),Metric(i,2),Metric(i,3),&
            Metric(i,4),Metric(i,5),Metric(i,6),i,ierr)
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set tensor solution at vertex")
@@ -1108,7 +1109,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
     CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
-  IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
+  IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS ', ParEnv % MyPE
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
 
   CALL MMG3D_mmg3dlib(mmgMesh,mmgSol,ierr)

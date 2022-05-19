@@ -6724,7 +6724,7 @@ CONTAINS
           ELSE IF(detj < mean/10.0 .OR. detj > mean*10.0) THEN
             WRITE(Message, '(i0,A,i0,A,F10.2,A,F10.2,A)') ParEnv % MyPE,' element ',&
                  i,' detj (',detj,') deviates from mean (',mean,')'
-            CALL Warn(FuncName, Message)
+            IF(Debug) CALL Warn(FuncName, Message)
           END IF
         ELSE
           mean = mean + detj
