@@ -25428,20 +25428,6 @@ CONTAINS
       Found = .FALSE.
       IF( ASSOCIATED( Eold % EdgeIndexes ) ) THEN
         Found = ANY(EdgeSplit(Eold % EdgeIndexes) > 0 )
-      ELSE IF( Eold % Type % ElementCode == 202 ) THEN
-        ! For element type 202 create the edge such that we can use the
-        ! routines similarly for 202, 303 and 504 elements. 
-        Parent => Eold % BoundaryInfo % Left
-        IF(.NOT. ASSOCIATED( Parent ) ) THEN
-          Parent => Eold % BoundaryInfo % Right
-        END IF
-        Edge => Find_Edge(Mesh,Parent,Eold)
-        IF(.NOT. ASSOCIATED( Edge) ) THEN
-          CALL Fatal(Caller,'Could not find 2D edge element among edges!')
-        END IF
-        ALLOCATE( Eold % EdgeIndexes(1) )
-        Eold % EdgeIndexes = Edge % ElementIndex
-        Found = ( EdgeSplit(Edge % ElementIndex) > 0 ) 
       ELSE
         CALL Fatal(Caller,'No edges for element: '//TRIM(I2S(i)))
       END IF
@@ -25863,42 +25849,36 @@ CONTAINS
    IF( .FALSE. .AND. Parallel ) THEN
      CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
      
-     CALL Info(Caller,'Information on parallel mesh sizes')
-     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(1),' nodes'
-     CALL Info(Caller,Message)
-     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(2),' bulk elements'
-     CALL Info(Caller,Message)
-     WRITE ( Message,'(A,I0,A)') 'Initial mesh has ',ParSizes(3),' boundary elements'
-     CALL Info(Caller,Message)
-     WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(4),' nodes'
-      CALL Info(Caller,Message)
-      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(5),' bulk elements'
-      CALL Info(Caller,Message)
-      WRITE ( Message,'(A,I0,A)') 'New mesh has ',ParSizes(6),' boundary elements'
-      CALL Info(Caller,Message)
-    END IF
+     CALL Info(Caller,'Information on parallel mesh sizes',Level=8)
+     CALL Info(Caller,'Initial mesh has '//TRIM(I2S(ParSizes(1)))//' nodes',Level=8)
+     CALL Info(Caller,'Initial mesh has '//TRIM(I2S(ParSizes(2)))//' bulk elements',Level=8)
+     CALL Info(Caller,'Initial mesh has '//TRIM(I2S(ParSizes(3)))//' boundary elements',Level=8)
+     CALL Info(Caller,'New mesh has '//TRIM(I2S(ParSizes(4)))//' nodes',Level=5)
+     CALL Info(Caller,'New mesh has '//TRIM(I2S(ParSizes(5)))//' bulk elements',Level=5)
+     CALL Info(Caller,'New mesh has '//TRIM(I2S(ParSizes(6)))//' boundary elements',Level=5)
+   END IF
 
     
-!   Update structures needed for parallel execution:
-    !   ------------------------------------------------
-    IF( Parallel ) THEN
-      CALL UpdateParallelInfo( Mesh, NewMesh )
-    END IF
+   ! Update structures needed for parallel execution:
+   !--------------------------------------------------
+   IF( Parallel ) THEN
+     CALL UpdateParallelInfo( Mesh, NewMesh )
+   END IF
 
-!   Finalize:
-!   ---------
-    IF(.NOT.EdgesPresent) THEN
-      CALL ReleaseMeshEdgeTables( Mesh )
-      CALL ReleaseMeshFaceTables( Mesh )
-    ELSE
-      CALL FindMeshEdges( NewMesh )
-    END IF
+   ! Finalize:
+   !-----------
+   IF(.NOT.EdgesPresent) THEN
+     CALL ReleaseMeshEdgeTables( Mesh )
+     CALL ReleaseMeshFaceTables( Mesh )
+   ELSE
+     CALL FindMeshEdges( NewMesh )
+   END IF
 
-    CALL CheckTimer(Caller,Delete=.TRUE.)
+   CALL CheckTimer(Caller,Delete=.TRUE.)
 
-    CALL Info(Caller,'Mesh was enriched with zero levelset',Level=8)
-    
-  CONTAINS
+   CALL Info(Caller,'Mesh was enriched with zero levelset',Level=8)
+
+ CONTAINS
     
 !------------------------------------------------------------------------------
     SUBROUTINE UpdateParallelInfo( Mesh, NewMesh )
@@ -26065,11 +26045,6 @@ CONTAINS
       CALL CreateIntersection2D(.FALSE.,NewCnt)
     END IF
                
-    !DO i=1,10
-    !  PRINT *,'BCs of ind:',COUNT(BoundaryId == i)
-    !END DO
-
-    
     IF( InfoActive(10) ) THEN
       DO i=1,newbcs
         CALL Info('CreateIntersectionBCs','New boundary '//TRIM(I2S(IntersectionBCs(i,1)))//&
@@ -26350,7 +26325,6 @@ CONTAINS
       END IF
 
     END SUBROUTINE CreateIntersection2D
-
     
     
   END SUBROUTINE CreateIntersectionBCs

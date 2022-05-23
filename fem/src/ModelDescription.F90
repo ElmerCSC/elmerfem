@@ -381,9 +381,9 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF( PRESENT( ControlOnly ) ) THEN
       IF( ControlOnly ) THEN
-        CALL Info(Caller,'Trying to read "Run Control" section only',Level=20)    
         DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
           IF( SEQL(Section,'run control') ) THEN                        
+            CALL Info(Caller,'Reading "Run Control" section only',Level=6)    
             IF(.NOT.ASSOCIATED(Model % Control)) &
                 Model % Control => ListAllocate()
             List => Model % Control
