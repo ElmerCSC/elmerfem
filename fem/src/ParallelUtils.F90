@@ -662,12 +662,135 @@ CONTAINS
        END DO
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
+
+
+       ! This is used for a rare condition:
+       !
+       ! o Linear system solved using Hypre
+       ! o Some paritions have no degrees of freedom assinged, but have matrix entries
+       ! to contribute to the global system (for example from halo elements).
+       BLOCK
+         INTEGER :: NameSpaceI
+
+         IF( ListGetLogical( Solver % Values,'Linear System Trialing', Found ) ) THEN
+           NameSpaceI = MAX( 1, NINT( ListGetCReal( &
+                         Solver % Values,'Linear System Namespace Number', Found ) ))
+
+           IF( ListGetLogical( Solver % Values, 'linsys' // &
+                 TRIM(I2S(NameSpaceI))//': Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         ELSE
+           IF( ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found) .OR. &
+               ListGetLogical( Solver % Values, 'linsys1: Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         END IF
+       END BLOCK
+
+
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
+CONTAINS
+
+
 !-------------------------------------------------------------------------------
-    END SUBROUTINE ParallelInitMatrix
+   SUBROUTINE AssignAtLeastOneDOFToPartition(n,ParallelInfo,comm)
+!-------------------------------------------------------------------------------
+     INTEGER :: i,j,k,n, comm
+     TYPE(ParallelInfo_t)  :: ParallelInfo
+
+     INTEGER, POINTER :: p(:)
+     LOGICAL :: L(0:ParEnv % PEs-1), L1(0:ParEnv % PEs-1)
+     INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
+
+     np = 0
+     memb  = -1
+     imemb = -1
+     DO i=1,ParEnv % PEs
+       IF ( ParEnv % Active(i) ) THEN
+         memb(np)  = i-1
+         imemb(i-1) = np
+         np = np + 1
+       END IF
+     END DO
+
+     L1 = .TRUE.; L=.TRUE.
+     DO i=1,n
+       IF(ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % myPE) THEN
+         L1(imemb(ParEnv % MyPE)) = .FALSE.; EXIT
+       END IF 
+     END DO
+     CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
+
+
+     IF(ANY(L(0:np-1))) THEN
+
+       IF(L(imemb(ParEnv % MyPE))) THEN
+
+         j = 0; k=0
+         DO i=1,n
+           p => ParallelInfo % NeighbourList(i) % Neighbours
+           IF (SIZE(p)>j) THEN
+              j=SIZE(p); k=i
+           END IF
+         END DO
+         K = n/2
+         p => ParallelInfo % NeighbourList(k) % Neighbours
+
+         DO i=1,SIZE(p)
+           IF(p(i)==ParEnv % myPE) THEN
+             p(i) = p(1)
+             p(1) = ParEnv % MyPE
+             EXIT
+           END IF
+         END DO
+         CALL Sort(SIZE(p)-1, p(2:) )
+
+         dof = ParallelInfo % GlobalDOFs(k)
+         DO i=2,SIZE(p)
+           IF(.NOT.ParEnv % Active(p(i)+1)) CYCLE
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, imemb(p(i)), 501, comm, ierr)
+         END DO
+
+         dof = 0
+         DO i=0,np-1
+           IF(ANY(memb(i)==p)) CYCLE
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, i, 501, comm, ierr)
+         END DO
+       END IF
+
+       DO i=0,np-1
+         IF(memb(i) == ParEnv % myPE) CYCLE
+
+         IF(L(i)) THEN
+           CALL MPI_RECV(dof, 1, MPI_INTEGER, i, 501, comm, status, ierr )
+
+           IF(dof>0) THEN
+            k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
+             IF (k>0) THEN
+               p => ParallelInfo % NeighbourList(k) % Neighbours
+               DO j=1,SIZE(p)
+                 IF(p(j)==ParEnv % myPE) THEN
+                   p(j) = p(1)
+                   p(1) = memb(i)
+                   EXIT
+                 END IF
+               END DO
+               CALL Sort(SIZE(p)-1, p(2:) )
+             ELSE
+!              STOP 'k'
+             END IF
+           END IF
+         END IF
+       END DO
+     END IF
+!-------------------------------------------------------------------------------
+   END SUBROUTINE AssignAtLeastOneDOFToPartition
+!-------------------------------------------------------------------------------
+  END SUBROUTINE ParallelInitMatrix
 !-------------------------------------------------------------------------------
 
 

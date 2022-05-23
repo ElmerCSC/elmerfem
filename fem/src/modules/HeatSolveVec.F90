@@ -270,7 +270,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       !$OMP END DO
     END DO
     !$OMP END PARALLEL 
-    
+
     totelem = 0
     
     CALL DefaultFinishBulkAssembly()
@@ -299,18 +299,18 @@ BLOCK
       END IF
 END BLOCK
 
-    !$OMP PARALLEL &
-    !$OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
-    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
-    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    !!OMP PARALLEL &
+    !!OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
+    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
+    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
-      !$OMP SINGLE
+      !!OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !$OMP END SINGLE
+      !!OMP END SINGLE
       
       InitHandles = .TRUE. 
-      !$OMP DO
+      !!OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         !WRITE (*,*) Element % ElementIndex
@@ -326,9 +326,9 @@ END BLOCK
           END IF
         END IF
       END DO
-      !$OMP END DO
+      !!OMP END DO
     END DO
-    !$OMP END PARALLEL
+    !!OMP END PARALLEL
     
     IF( DG ) THEN
       BLOCK
@@ -407,8 +407,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+
     REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
         SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
+
     LOGICAL :: Stat,Found,ConvComp,ConvConst
     INTEGER :: i,t,p,q,ngp,allocstat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
@@ -421,10 +423,11 @@ CONTAINS
     
     
     !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, ConvVelo, ConvVelo_i, VeloAtIpVec, &
+    !$OMP               MASS, STIFF, FORCE, Nodes, ConvVelo, VeloAtIpVec, &
+    !$OMP               ConvVelo_i, RhoAtIpVec, SourceAtIpVec, TmpVec, CPAtIpVec, CondAtIpVec, &
     !$OMP               Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
     !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
-    !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h)
+    !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h, OrigMesh_h)
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -566,8 +569,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,nd)
+    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd)
     REAL(KIND=dp) :: weight, SourceAtIp, CpAtIp, RhoAtIp, CondAtIp, DetJ, A, VeloAtIp(3)
     REAL(KIND=dp) :: PerfRateAtIp, PerfDensAtIp, PerfCpAtIp, PerfRefTempAtIp, PerfCoeff
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
@@ -576,10 +579,16 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
+
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
         ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, &
         OrigMesh_h
+
     TYPE(VariableHandle_t), SAVE :: ConvField_h
+
+!$OMP  THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, ConvVelo_h, PerfRate_h, &
+!$OMP& PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, OrigMesh_h, ConvField_h, Nodes )
+
 !------------------------------------------------------------------------------
 
     ! This InitHandles flag might be false on threaded 1st call
@@ -610,16 +619,6 @@ CONTAINS
     
     IP = GaussPointsAdapt( Element )
       
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3),&
-          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed in LocalMatrix')
-      END IF
-    END IF
-
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrig( Nodes, UElement=Element )
     ELSE
@@ -863,12 +862,13 @@ CONTAINS
     INTEGER :: NoOwners, NoParents
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
-    TYPE(Nodes_t) :: Nodes
+
+    TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
         RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h 
 
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h)
+    !$OMP  THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h,RadFlag_h, &
+    !$OMP& RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h )
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -886,7 +886,6 @@ CONTAINS
       
       InitHandles = .FALSE.
     END IF
-
 
     ! In parallel if we have halo the same BC element may occur several times.
     ! Fetch here the fraction of the assembly to be accounted in this occurance. 
@@ -1111,6 +1110,8 @@ CONTAINS
     INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
     
     SAVE Nodes
+
+!$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     
     BC => GetBC(Element)
@@ -1121,7 +1122,6 @@ CONTAINS
     AssFrac = BCAssemblyFraction(Element)
     IF( AssFrac < TINY( AssFrac ) ) RETURN
 
-    n = GetElementNOFNodes(Element)       
     CALL GetElementNodes( Nodes, UElement=Element) 
     n = Element % TYPE % NumberOfNodes
     

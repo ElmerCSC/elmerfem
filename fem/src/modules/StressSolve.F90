@@ -104,11 +104,18 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
     IF( MaxwellMaterial ) THEN
       CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
-      CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
+      CALL ListAddInteger(SolverParams, 'BDF Order', 1 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
+
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
           '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
+
+      i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
+      CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
+
+      i = GetInteger( SolverParams, 'Nonlinear System Max Iterations', Found )
+      CALL ListAddInteger( SolverParams, 'Nonlinear System Max Iterations', MAX(i,2) )
     END IF
     
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
@@ -967,11 +974,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
              VonMises, DisplPerm, StressPerm, &
              NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
              EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
+
          IF (CalcVelocities) THEN
-           IF (DisplacementVelDOFs .NE. StressSol % DOFs) &
-                CALL FATAL('StressSolve',"Non matching DOFs for Displacement and DisplacementVelocity")
            CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
-                     DisplacementVel,DisplacementVelPerm,DisplacementVelDOFs,dt)
+               DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
          END IF
        END IF
 
@@ -1608,7 +1614,7 @@ CONTAINS
   END SUBROUTINE ComputeNormalDisplacement
 !------------------------------------------------------------------------------
   SUBROUTINE ComputeDisplacementVelocity(Displ,PrevDispl,DisplPerm,&
-       DisplVelo,DisplVeloPerm,DIM,dt)
+       DisplVelo,DisplVeloPerm,DispDofs,VeloDofs,dt)
 
     USE DefUtils
     
@@ -1617,19 +1623,20 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Displ(:),PrevDispl(:,:),DisplVelo(:)
     REAL(KIND=dp) :: dt
     INTEGER, POINTER :: DisplPerm(:),DisplVeloPerm(:)
-    INTEGER :: DIM
+    INTEGER :: DispDofs, VeloDofs
     !---------------------------------
-    INTEGER :: I, J, Cnt=0, CurrIndx
-    DO I=1,SIZE( DisplPerm )
-      IF ( DisplPerm(I) <= 0 ) CYCLE
-      Cnt = Cnt + 1
-      DisplVeloPerm(I) = DisplPerm(I)
-      DO J=1,DIM
-        CurrIndx = DIM*(DisplPerm(I)-1)+J
-        DisplVelo(CurrIndx) = (Displ(CurrIndx) - PrevDispl(CurrIndx,1))/dt
+    INTEGER :: i, j, k
+    
+    DO i=1,SIZE( DisplPerm )
+      IF ( DisplPerm(i) <= 0 ) CYCLE
+      DO j=1,VeloDofs
+        k = DispDofs*(DisplPerm(i)-1)+j
+        DisplVelo(VeloDofs*(DisplVeloPerm(i)-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
       END DO
     END DO
+    
   END SUBROUTINE ComputeDisplacementVelocity
+  
 !------------------------------------------------------------------------------
    SUBROUTINE ComputeStress( Displacement, NodalStress, &
               VonMises, DisplPerm, StressPerm, &

@@ -1234,10 +1234,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     First = .FALSE.
 
-    Parallel = (ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
-    END IF        
+    Parallel = Solver % Parallel 
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
     ELSE
@@ -1267,6 +1264,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         EXIT
       END IF
     END DO
+    
     IF(.NOT. ASSOCIATED(ASolver) ) THEN
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF

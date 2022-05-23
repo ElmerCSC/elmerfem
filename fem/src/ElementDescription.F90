@@ -312,9 +312,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       SELECT CASE( Element % ElementCode / 100 )
+        CASE(2) 
+           Element % NumberOfEdges = 1
         CASE(3) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 3
         CASE(4) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 4
         CASE(5) 
            Element % NumberOfFaces = 4

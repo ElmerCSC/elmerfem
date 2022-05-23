@@ -536,7 +536,7 @@ CONTAINS
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
      END IF
-      V => VariableGet( M1 % Variables, 'Periodic Cycle' )
+     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
      END IF
@@ -991,8 +991,78 @@ CONTAINS
      
    END SUBROUTINE CreateMaskedPerm
 
+   !------------------------------------------------------------------
+   ! Check for special solvers, to be executed only 
+   ! at a certain instances during the simulation:
+   !------------------------------------------------------------------  
+   SUBROUTINE AddExecWhenFlag(Solver)
+     TYPE(Solver_t), POINTER :: Solver
+
+     TYPE(ValueList_t), POINTER :: SolverParams
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     LOGICAL :: Found
+     
+     SolverParams => ListGetSolverParams(Solver)
+
+     ! Default value     
+     Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+
+     str = ListGetString( SolverParams, 'Exec Solver', Found )
+
+     IF( Found ) THEN    
+       SELECT CASE( TRIM(str) )
+       CASE( 'never' )
+         Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+       CASE( 'always' )
+         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+       CASE( 'after simulation', 'after all' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+       CASE( 'before simulation', 'before all' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+       CASE( 'before timestep' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+       CASE( 'after timestep' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+       CASE( 'before saving' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+       CASE( 'after saving' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+       CASE( 'predictor-corrector' )
+         Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+       CASE( 'when created' )
+         Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       CASE DEFAULT
+         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+       END SELECT
+     ELSE      
+       IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+       ELSE IF ( ListGetLogical( SolverParams, 'Before Simulation', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+       ELSE IF ( ListGetLogical( SolverParams, 'After All', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+       ELSE IF ( ListGetLogical( SolverParams, 'After Simulation', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+       ELSE IF ( ListGetLogical( SolverParams, 'Before Timestep', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+       ELSE IF ( ListGetLogical( SolverParams, 'After Timestep', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+       ELSE IF ( ListGetLogical( SolverParams, 'Before Saving', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+       ELSE IF ( ListGetLogical( SolverParams, 'After Saving', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+       ELSE IF ( ListGetLogical( SolverParams, 'Predictor-Corrector', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+       ELSE IF ( ListGetLogical( SolverParams, 'When Created', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       END IF
+     END IF
 
 
+   END SUBROUTINE AddExecWhenFlag
+     
+
+   
 !------------------------------------------------------------------------------
 !> Add the generic stuff related to each Solver. 
 !> A few solvers are for historical reasons given a special treatment. 
@@ -1917,62 +1987,9 @@ CONTAINS
     END DO
 
     IF(Doit) THEN
-      ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
-      Solver % Matrix % MassValues=0._dp
-    END IF
-
-
-    !------------------------------------------------------------------
-    ! Check for special solvers, to be executed only 
-    ! at a certain instances during the simulation:
-    !------------------------------------------------------------------
-
-    Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
-
-    str = ListGetString( SolverParams, 'Exec Solver', Found )
-
-    IF( Found ) THEN    
-      SELECT CASE( TRIM(str) )
-      CASE( 'never' )
-        Solver % SolverExecWhen = SOLVER_EXEC_NEVER
-      CASE( 'always' )
-        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
-      CASE( 'after simulation', 'after all' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-      CASE( 'before simulation', 'before all' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-      CASE( 'before timestep' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
-      CASE( 'after timestep' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
-      CASE( 'before saving' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
-      CASE( 'after saving' )
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
-      CASE( 'predictor-corrector' )
-        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
-      CASE DEFAULT
-        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
-      END SELECT      
-    ELSE      
-      IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-      ELSE IF ( ListGetLogical( SolverParams, 'Before Simulation', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
-      ELSE IF ( ListGetLogical( SolverParams, 'After All', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-      ELSE IF ( ListGetLogical( SolverParams, 'After Simulation', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
-      ELSE IF ( ListGetLogical( SolverParams, 'Before Timestep', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
-      ELSE IF ( ListGetLogical( SolverParams, 'After Timestep', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
-      ELSE IF ( ListGetLogical( SolverParams, 'Before Saving', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
-      ELSE IF ( ListGetLogical( SolverParams, 'After Saving', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
-      ELSE IF ( ListGetLogical( SolverParams, 'Predictor-Corrector', Found ) ) THEN
-        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+      IF( ASSOCIATED( Solver % Matrix ) ) THEN
+        ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
+        Solver % Matrix % MassValues=0._dp
       END IF
     END IF
      
@@ -5079,25 +5096,43 @@ CONTAINS
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
      TYPE(Mesh_t), POINTER :: Mesh
+     LOGICAL :: DoBC, DoBulk
+
+!------------------------------------------------------------------------------
+     MeActive = ASSOCIATED(Solver % Matrix)
+     IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
+     Parallel = Solver % Parallel 
      
 !------------------------------------------------------------------------------
      IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
-
+       
        IF ( Found ) THEN
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
-
+         
          ! Calculate accumulated integration weights for bulk if requested          
-         IF( ListGetLogical( Solver % Values,'Calculate Weights',Found )) THEN
-           CALL CalculateNodalWeights(Solver,.FALSE.)
-         END IF
-
+         DoBulk = ListGetLogical( Solver % Values,'Calculate Weights',Found )
          ! Calculate weight for boundary 
-         IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )) THEN
-           CALL CalculateNodalWeights(Solver,.TRUE.) 
+         DoBC = ListGetLogical( Solver % Values,'Calculate Boundary Weights',Found )
+
+         ! In parallel we have to prepare the communicator already for the weights
+         IF(DoBulk .OR. DoBC ) THEN
+           IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
+             ParEnv % ActiveComm = Solver % Matrix % Comm
+             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+               IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+                   CALL ParallelInitMatrix(Solver, Solver % Matrix )               
+               Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
+                   Solver % Matrix % Comm
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+             END IF
+           END IF
          END IF
+                  
+         IF(DoBulk) CALL CalculateNodalWeights(Solver,.FALSE.)
+         IF(DoBC) CALL CalculateNodalWeights(Solver,.TRUE.) 
        END IF
      END IF
 !------------------------------------------------------------------------------
@@ -5116,22 +5151,34 @@ CONTAINS
      
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
 
-     MeActive = ASSOCIATED(Solver % Matrix)
-     IF ( MeActive ) &
-        MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
-     IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
-
-     Parallel = Solver % Parallel 
-
      IF ( Parallel .AND. .NOT. SlaveNotParallel ) THEN
        ! Set the communicator and active info partitions.
+
+BLOCK
+       LOGICAL :: ChangedActiveParts
+
+       ChangedActiveParts = .FALSE.
+
+       !block partitions containing ONLY halos
+       IF( MeActive ) THEN
+         IF ( ListGetLogical( Solver % Values, 'Skip Halo Only Partitions', Found) ) THEN
+           MeActive = .FALSE.
+           DO i=1,Solver % NumberOfActiveElements
+             IF(Solver % Mesh % Elements(Solver % ActiveElements(i)) % PartIndex==ParEnv % myPE) THEN
+               MeActive = .TRUE.; EXIT
+             END IF
+           END DO
+           IF(.NOT. MeActive) ChangedActiveParts = .TRUE.
+         END IF
+       END IF
+       CALL ParallelActive( MeActive )
        
        n = COUNT(ParEnv % Active)
        
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
-           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
-              CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
+           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
+             CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
          END IF
 
          CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
@@ -5192,6 +5239,14 @@ CONTAINS
            OutputPE = -1
          END IF
        END IF
+
+       ! POTENTIAL INCOMPATIBILITY: don't execute solvers for non-active partitions
+       ! (usually this is done within the solver by:
+       ! IF (.NOT. ASSOCIATED(Solver % Matrix) ) RETURN
+       ! or some such .... )
+
+       IF(.NOT. MeActive .AND. ChangedActiveParts) RETURN
+END BLOCK
      END IF
 
        
@@ -5458,7 +5513,7 @@ CONTAINS
        WRITE(Message, '(A,I0,A,I0,A)' ) &
            'Passive element BC no. ',j, ' assigned to BC-ID no. ', &
            PassiveBcId
-       CALL INFO('MainUtils',Message,Level=6)
+       CALL Info('MainUtils',Message,Level=6)
      END IF
 
      ScanningLoops = ListGetInteger( Params,'Scanning Loops',GotLoops)
@@ -5480,7 +5535,7 @@ CONTAINS
        !----------------------------------------------------------------------
        IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
          iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-         iterV % Values(1) = 1
+         IF(ASSOCIATED(iterV)) iterV % Values(1) = 1
        END IF
 
        IF( GotLoops ) THEN
@@ -5524,7 +5579,6 @@ CONTAINS
            Solver % Variable % EigenVectors(scan,:) = Solver % Variable % Values
          END IF
        END IF
-
        
        Solver % TimesVisited = Solver % TimesVisited + 1
      END DO

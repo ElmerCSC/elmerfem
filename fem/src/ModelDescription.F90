@@ -381,9 +381,9 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF( PRESENT( ControlOnly ) ) THEN
       IF( ControlOnly ) THEN
-        CALL Info(Caller,'Trying to read "Run Control" section only',Level=20)    
         DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
           IF( SEQL(Section,'run control') ) THEN                        
+            CALL Info(Caller,'Reading "Run Control" section only',Level=6)    
             IF(.NOT.ASSOCIATED(Model % Control)) &
                 Model % Control => ListAllocate()
             List => Model % Control
@@ -2489,7 +2489,7 @@ CONTAINS
       Solver => Model % Solvers(i)
       Model % Solver => Solver
 
-      Name = ListGetString( Solver  % Values, 'Procedure', Found )
+      Name = ListGetString( Solver % Values, 'Procedure', Found )
       IF ( Found ) THEN
         InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
         IF ( InitProc /= 0 ) THEN
@@ -2780,7 +2780,7 @@ CONTAINS
       END DO
 
 
-      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset') ) THEN
+      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset', GotIt) ) THEN
         OldMesh => Model % Meshes      
         NewMesh => SplitMeshLevelset(OldMesh,Model % Simulation)
         IF(ASSOCIATED(NewMesh) ) THEN
@@ -2823,7 +2823,9 @@ CONTAINS
 
     MeshCount = 0
     DO s=1,Model % NumberOfSolvers
-      Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+
+      Solver => Model % Solvers(s)
+      Name = ListGetString( Solver % Values, 'Mesh', GotIt )
 
       DO MeshI=1,MeshCount
         IF(Name==MeshNames(MeshI)) EXIT
@@ -2837,9 +2839,7 @@ CONTAINS
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
         CALL Info('LoadModel',Message,Level=7)
 
-
-        single=.FALSE.
-      
+        single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.          
           Name=Name(9:)
@@ -2903,7 +2903,7 @@ CONTAINS
         ! If we have requested a unique copy of the mesh then do not check
         ! whether the mesh is already loaded as the primary mesh, or as some
         ! other solver-specific mesh. 
-        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Enforce Local Copy',Found ) ) THEN
+        IF(ListGetLogical( Solver % Values,'Mesh Enforce Local Copy',Found ) ) THEN
           CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
         ELSE
           Found = .FALSE.
@@ -2927,7 +2927,7 @@ CONTAINS
 
           IF ( Found ) THEN
             CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
-            Model % Solvers(s) % Mesh => Mesh
+            Solver % Mesh => Mesh
             CYCLE
           END IF
         END IF
@@ -2944,33 +2944,41 @@ CONTAINS
         END DO
 
         IF ( Single ) THEN
-          Model % Solvers(s) % Mesh => &
+          Solver % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
           IF ( mype < nprocs ) THEN
-            Model % Solvers(s) % Mesh => &
+            Solver % Mesh => &
                 LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,nprocs,mype,Def_Dofs, s )
           ELSE
             ! There are more partitions than partitions in mesh, just allocate
-            Model % Solvers(s) % Mesh => AllocateMesh()
+            Solver % Mesh => AllocateMesh()
           END IF
         END IF
-        Model % Solvers(s) % Mesh % OutputActive = .TRUE.
-        Model % Solvers(s) % Mesh % SingleMesh = Single
+
+        ! Make the solver-specific mesh remember its 
+        Solver % Mesh % SolverId = s
+
+        ! Control whether to save mesh-specific data or not
+        Solver % Mesh % OutputActive = &
+            ListGetLogical( Solver % Values,'Mesh Output',GotIt)
+        IF(.NOT. GotIt) Solver % Mesh % OutputActive = .TRUE.
+
+        Solver % Mesh % SingleMesh = Single
         
         Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Single)
         
-        MeshLevels = ListGetInteger( Model % Solvers(s) % Values, 'Mesh Levels', GotIt )
+        MeshLevels = ListGetInteger( Solver % Values, 'Mesh Levels', GotIt )
         IF ( .NOT. GotIt ) MeshLevels=1
 
-        MeshKeep = ListGetInteger( Model % Solvers(s) % Values, 'Mesh keep',  GotIt )
+        MeshKeep = ListGetInteger( Solver % Values, 'Mesh keep',  GotIt )
         IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
         MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
         MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
         DO i=2,MeshLevels
-          OldMesh => Model % Solvers(s) % Mesh
+          OldMesh => Solver % Mesh
 
           IF (MeshGrading) THEN
             ALLOCATE(h(OldMesh % NumberOfNodes))
@@ -3011,16 +3019,16 @@ CONTAINS
           ELSE
             CALL ReleaseMesh(OldMesh)
           END IF
-          Model % Solvers(s) % Mesh => NewMesh
+          Solver % Mesh => NewMesh
         END DO
 
         IF ( OneMeshName ) i = 0
 
         k = 1
         i = i + 1
-        Model % Solvers(s) % Mesh % Name = ' '
+        Solver % Mesh % Name = ' '
         DO WHILE( MeshName(i:i) /= CHAR(0) )
-          Model % Solvers(s) % Mesh % Name(k:k) = MeshName(i:i)
+          Solver % Mesh % Name(k:k) = MeshName(i:i)
           k = k + 1
           i = i + 1
         END DO
@@ -3030,9 +3038,9 @@ CONTAINS
           DO WHILE( ASSOCIATED( Mesh1 % Next ) ) 
             Mesh1 => Mesh1 % Next
           END DO
-          Mesh1 % Next => Model % Solvers(s) % Mesh
+          Mesh1 % Next => Solver % Mesh
         ELSE
-          Model % Meshes => Model % Solvers(s) % Mesh
+          Model % Meshes => Solver % Mesh
         END IF
       END IF
     END DO
@@ -3435,7 +3443,7 @@ CONTAINS
 !> The data may be saved either in ascii and binary formats.
 !------------------------------------------------------------------------------
   FUNCTION SaveResult( Filename,Mesh,Time,SimulationTime,Binary,SaveAll,&
-                       FreeSurface ) RESULT(SaveCount)
+                       FreeSurface, vList ) RESULT(SaveCount)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: Time,SaveCount
@@ -3443,7 +3451,7 @@ CONTAINS
     REAL(KIND=dp) :: SimulationTime
     LOGICAL :: Binary,SaveAll
     LOGICAL, OPTIONAL :: FreeSurface
-
+    TYPE(ValueList_t), POINTER, OPTIONAL :: vList
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
@@ -3468,8 +3476,12 @@ CONTAINS
     SavesDone = Mesh % SavesDone 
 
     ! The list from where to fetch the values.
-    ResList => CurrentModel % Simulation
-    
+    IF( PRESENT( vList ) ) THEN
+      ResList => vList
+    ELSE      
+      ResList => CurrentModel % Simulation
+    END IF
+      
     ! If we have cyclic files then each file includes all data but we cyclicly write the
     ! data on top of previous files. 
     FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )

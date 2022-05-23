@@ -81,11 +81,11 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   TYPE(Mesh_t), POINTER :: Mesh, ThisMesh, TargetMesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, pVar
-  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName, TargetName
   INTEGER :: i, j, k, l, dofs, n, m, NoVar, SolverInd, layers, maxperm
   INTEGER, POINTER :: pPerm(:)
   REAL(KIND=dp), POINTER :: pVals(:)
-  LOGICAL :: Found, CreateVar, LagrangeCopy
+  LOGICAL :: Found, CreateVar, LagrangeCopy, DoIt
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'ExtrudedRestart'
     
@@ -150,85 +150,94 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
       CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName))
     END IF
     dofs = Var % Dofs
-    maxperm = MAXVAL( Var % Perm ) 
 
     IF( InfoActive( 20 ) ) THEN
       CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(VarName))
     END IF
- 
-    pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+    
+    WRITE (Name,'(A,I0)') 'Extruded Variable ',i
+    TargetName = GetString( Params, Name, Found )  
+    IF(.NOT. Found) TargetName = VarName
+           
+    pVar => VariableGet( TargetMesh % Variables, TargetName, ThisOnly = .TRUE. )
     CreateVar = .NOT. ASSOCIATED(pVar)
     
-    NULLIFY(pPerm,pVals)
-    IF(CreateVar) THEN
-      ALLOCATE(pPerm(m))
-      pPerm = 0
-      ALLOCATE(pVals(layers*SIZE(Var % Values)))      
-    ELSE
-      pPerm => pVar % Perm
-      pVals => pVar % Values
-    END IF
-    pVals = 0.0_dp
-
-    ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear on!!
-    n = ThisMesh % NumberOfNodes
-    DO j=0,layers-1
-      DO k=1,ThisMesh % NumberOfNodes
-        IF( Var % Perm(k) == 0 ) CYCLE
-        
-        IF( CreateVar ) THEN
-          pPerm(k+j*n) = Var % Perm(k) + j * maxperm        
-        END IF
-        DO l=1,dofs
-          pVals(dofs*(pPerm(k+j*n)-1)+l) = Var % Values(dofs*(Var % perm(k)-1)+l)
-        END DO        
-      END DO
-    END DO    
-    
-    IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(VarName)//' extruded')       
-    END IF
-    
-    IF( CreateVar ) THEN
-      CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
-          VarName,Var % Dofs,pVals,pPerm,VarType=Var % Type)  
-      pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )      
-      IF(.NOT. ASSOCIATED(pVar) ) THEN
-        CALL Fatal(Caller,'Failed to create variable: '//TRIM(VarName))
+    ! One intened use of this module is to extrude data from 2D electrical machine computation
+    ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
+    ! found in the Lagrange multiplier values not associated to any permutation. So there are
+    ! copies as one-to-one from 2D to 3D mesh. 
+    !------------------------------------------------------------------------------------------------
+    IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
+      n = SIZE(Var % Values)    
+      IF( CreateVar ) THEN
+        NULLIFY(pVals)
+        ALLOCATE(pVals(n))
+        pVals = 0.0_dp
+        CALL VariableAddVector( TargetMesh % Variables,TargetMesh,&
+            Model % Solvers(SolverInd),TargetName,Var % Dofs,pVals)        
+      ELSE
+        pVals => pVar % Values
       END IF
+      pVals = Var % Values
+      CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=8)      
+    ELSE      
+      maxperm = MAXVAL( Var % Perm )       
+      NULLIFY(pPerm,pVals)
+      IF(CreateVar) THEN
+        ALLOCATE(pPerm(m))
+        pPerm = 0
+        ALLOCATE(pVals(layers*SIZE(Var % Values)))      
+      ELSE
+        pPerm => pVar % Perm
+        pVals => pVar % Values
+      END IF
+      pVals = 0.0_dp      
+      
+      ! Here we assume that the fields to be mapped are nodal ones and the mesh is linear on!!
+      n = ThisMesh % NumberOfNodes
+      DO j=0,layers-1
+        DO k=1,ThisMesh % NumberOfNodes
+          IF( Var % Perm(k) == 0 ) CYCLE
+
+          IF( CreateVar ) THEN
+            pPerm(k+j*n) = Var % Perm(k) + j * maxperm        
+          END IF
+          DO l=1,dofs
+            pVals(dofs*(pPerm(k+j*n)-1)+l) = Var % Values(dofs*(Var % perm(k)-1)+l)
+          END DO
+        END DO
+      END DO
+
+      IF( CreateVar ) THEN
+        CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
+            TargetName,Var % Dofs,pVals,pPerm,VarType=Var % TYPE)  
+        pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )      
+        IF(.NOT. ASSOCIATED(pVar) ) THEN
+          CALL Fatal(Caller,'Failed to create variable: '//TRIM(VarName))
+        END IF
+      END IF
+
+      IF(.NOT. Var % PeriodicFlipActive ) THEN
+        IF( COUNT( Var % Perm > 0 ) > SIZE( Var % Values ) / Var % Dofs ) THEN
+          CALL Info(Caller,'The variable that we read in seems to have been conforming!')
+          Var % PeriodicFlipActive = .TRUE.
+        END IF
+      END IF
+      
+      ! Inherit the periodic flips, if any
+      pVar % PeriodicFlipActive = Var % PeriodicFlipActive  
+
+      CALL Info(Caller,'Extruded variable from 2D mesh to 3D mesh: '//TRIM(VarName),Level=8)     
     END IF
+
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(TargetName))
+    END IF    
+
   END DO
     
-  CALL Info(Caller,'Interpolated variables between meshes',Level=7)
+  CALL Info(Caller,'Transferred '//TRIM(I2S(NoVar))//' variables from 2d to 3d mesh!',Level=7)
 
-
-  ! One intened use of this module is to extrude data from 2D electrical machine computation
-  ! to 3D one. The it is often desirable also to copy the related electrical circuits that may be
-  ! found in the Lagrange multiplier values. Hence we add this feature also here even though there
-  ! is nothing related to extrusion here.
-  !------------------------------------------------------------------------------------------------
-  IF( ListGetLogical( Params,'Copy Lagrange Multiplier', Found ) ) THEN
-    VarName = ListGetString( Params,'Lagrange Multiplier Name', Found )
-    IF(.NOT. Found) VarName = 'LagrangeMultiplier'
-    pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
-    IF(.NOT. ASSOCIATED(pVar) ) CALL Fatal(Caller,'Could not find variable: '//TRIM(VarName)) 
-
-    n = SIZE(pVar % Values)
-    
-    NULLIFY(pVals)
-    ALLOCATE(pVals(n))
-    pVals = 0.0_dp
-
-    pVals = pVar % Values
-    IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(pVals,SIZE(pVals),TRIM(VarName))
-    END IF
-        
-    CALL VariableAddVector( TargetMesh % Variables,TargetMesh,Model % Solvers(SolverInd),&
-        VarName,1,pVals)
-    CALL Info(Caller,'Copied variable as such from 2D mesh to 3D mesh: '//TRIM(VarName),Level=7)
-  END IF    
-  
 END SUBROUTINE ExtrudedRestart
 
 
@@ -313,7 +322,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   
   INTEGER :: dim, dofs, i, j, k, l, n, nd, t
   INTEGER :: istat, active, ActiveComp
-
+  INTEGER, POINTER :: NodeIndexes(:)  
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Force(:), Anodal(:,:)
   REAL(KIND=dp) :: Norm
 
@@ -328,6 +337,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   Params => GetSolverParams()
   Mesh => GetMesh()
 
+  
   ! Check if accelerated assembly is desired:
   ConstantBulkMatrix = GetLogical(Params, 'Constant Bulk Matrix', Found)
   ReadySystemMatrix = ASSOCIATED(Solver % Matrix % BulkValues) .AND. &
@@ -337,9 +347,8 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IF (.NOT. ASSOCIATED(ThisVar) ) THEN
     CALL Fatal(Caller, 'No variable associated to solver!')
   END IF
-  PRINT *,'this var name:',TRIM(ThisVar % Name)
   IF (ThisVar % Dofs /= 1) CALL Fatal(Caller, 'A real-valued potential expected')
-  
+
   ! Find the variable which defines the nodal field to be mapped.
   ! If the nodal field is a scalar field we need to know
   ! to which component it relates to!
@@ -350,8 +359,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IF(.NOT. ASSOCIATED(NodalVar) ) THEN
     CALL Fatal(Caller,'Nodal variable not associated: '//TRIM(Name))
   END IF
-
-  ! This
+  
   dofs = NodalVar % Dofs
   IF( dofs == 1 ) THEN
     ActiveComp = ListGetInteger( Params,'Active Coordinate',Found )
@@ -365,7 +373,6 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   IF( InfoActive(20) ) THEN
     CALL VectorValuesRange(NodalVar % Values,SIZE(NodalVar % Values),TRIM(NodalVar % Name))       
   END IF
-
   
   ! These should be consistent with the primary solver!!
   !-------------------------------------------------------------------------------------
@@ -384,23 +391,37 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   CALL DefaultInitialize(Solver, ReadySystemMatrix)
 
   n = Mesh % MaxElementDOFs
-  ALLOCATE( Force(n), Stiff(n,n), Anodal(n,3), STAT=istat )
+  ALLOCATE( Force(n), Stiff(n,n), Anodal(3,n), STAT=istat )
   
   DO t=1,active
     Element => GetActiveElement(t)
-
+    
     n = GetElementNOFNodes()
     nd = GetElementNOFDOFs()
-
+    NodeIndexes => Element % NodeIndexes
+           
     IF( dofs == 1 ) THEN
       Anodal = 0.0_dp
-      Anodal(1:n,ActiveComp) = NodalVar % Values(NodalVar % Perm(Element % NodeIndexes))
+      WHERE(NodalVar % Perm(NodeIndexes(1:n)) > 0 )
+        Anodal(ActiveComp,1:n) = NodalVar % Values( NodalVar % Perm(NodeIndexes(1:n)) )
+      END WHERE
     ELSE
       DO i=1,dofs
-        Anodal(1:n,i) = NodalVar % Values(dofs*(NodalVar % Perm(Element % NodeIndexes)-1)+i)
+        WHERE(NodalVar % Perm(NodeIndexes(1:n)) > 0 )
+          Anodal(i,1:n) = NodalVar % Values( dofs*(NodalVar % Perm(NodeIndexes(1:n))-1)+i )
+        END WHERE
       END DO
     END IF
 
+    IF( NodalVar % PeriodicFlipActive ) THEN
+      DO i=1,dofs
+        IF(dofs==1) j=ActiveComp
+        WHERE( Mesh % PeriodicFlip(NodeIndexes(1:n) ) )
+          Anodal(j,1:n) = -Anodal(j,1:n)
+        END WHERE
+      END DO
+    END IF
+        
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
@@ -422,11 +443,15 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
     CALL DefaultFinishBulkAssembly()
   END IF
 
+  CALL DefaultFinishBoundaryAssembly()
   CALL DefaultFinishAssembly()
+
   CALL DefaultDirichletBCs()
 
   Norm = DefaultSolve()  
 
+  CALL DefaultFinish()
+  
   IF( InfoActive(20) ) THEN
     CALL VectorValuesRange(ThisVar % Values,SIZE(ThisVar % Values),TRIM(ThisVar % Name))       
   END IF
@@ -436,11 +461,13 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
   !---------------------------------------------------------
   Name = GetString(Params, 'Edge Variable', Found)
   IF (.NOT. Found ) Name = 'av'  
+
   
   EdgeVar => VariableGet( Mesh % Variables, Name ) 
   IF(ASSOCIATED( EdgeVar ) ) THEN
-    n = SIZE(Solver % Variable % Perm(:))
-    IF (n /=  SIZE(EdgeVar % Perm(:))) THEN
+    n = SIZE(Solver % Variable % Perm)
+
+    IF (n /=  SIZE(EdgeVar % Perm)) THEN
       CALL Fatal(Caller, 'The variable and potential permutations differ')  
     END IF
     
@@ -450,6 +477,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
       k = EdgeVar % Perm(i)
       IF (k < 1) CALL Fatal(Caller, &
           'The variable and potential permutations are nonmatching?')
+
       EdgeVar % Values(k) = Solver % Variable % Values(j)
     END DO
   ELSE
@@ -526,7 +554,7 @@ CONTAINS
 
       Aip = 0.0d0
       DO i=1,dim
-        Aip(i) = SUM( Anodal(1:n,i) * Basis(1:n) ) 
+        Aip(i) = SUM( Anodal(i,1:n) * Basis(1:n) ) 
       END DO
       
       IF (.NOT. ReadySystemMatrix) THEN 

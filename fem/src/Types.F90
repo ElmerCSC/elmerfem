@@ -87,7 +87,8 @@ MODULE Types
                         SOLVER_EXEC_AFTER_TIME =  4, &
                         SOLVER_EXEC_AHEAD_SAVE =  5, &
                         SOLVER_EXEC_AFTER_SAVE =  6, &
-                        SOLVER_EXEC_PREDCORR = 7
+                        SOLVER_EXEC_PREDCORR = 7,    &
+                        SOLVER_EXEC_WHENCREATED = 8
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
 	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
@@ -406,9 +407,7 @@ MODULE Types
      INTEGER :: Counter = 0
 #endif
 
-#ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
-#endif
      INTEGER :: partag = 0
      LOGICAL :: disttag = .FALSE.
    END TYPE ValueListEntry_t
@@ -785,6 +784,8 @@ MODULE Types
      TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
      TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
+     INTEGER :: SolverId = 0
+     
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
