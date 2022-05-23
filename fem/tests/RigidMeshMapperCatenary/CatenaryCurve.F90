@@ -45,7 +45,7 @@ FUNCTION CatenaryCurve( Model, n, x ) RESULT(y)
   END IF
 
   ! default displacement
-  dy = 0.0_dp  
+  y = 0.0_dp  
 
   ! curve is symmetric around mid point
   x = Mesh % Nodes % x(n) - xm
