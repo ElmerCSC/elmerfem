@@ -17,6 +17,8 @@ FUNCTION CatenaryCurve( Model, n, x ) RESULT(y)
   SAVE :: Mesh,xm,dx,a,dy
   
 
+  y = 0._dp
+
   IF(.NOT. Visited ) THEN
     Mesh => GetMesh()
     Params => Model % Simulation
