@@ -5761,11 +5761,10 @@ use spariterglobals
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      LOGICAL, OPTIONAL :: Found
      REAL(KIND=dp) :: RValue
-     
      LOGICAL :: IntFound
      LOGICAL :: lefttest = .TRUE. ! first start with left test 1st
      TYPE(Element_t), POINTER :: Parent, PElement
-
+     
      SAVE lefttest
 
      ! Find the pointer to the element, if not given
@@ -6003,7 +6002,7 @@ use spariterglobals
      !------------------------------------------------------------------
      IF( Handle % EvaluateAtIp ) THEN       
        IF(.NOT. PRESENT(Basis)) THEN
-         CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+         CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
        END IF
        
        ! If we get back to the same element than last time use the data already 
@@ -6560,7 +6559,7 @@ use spariterglobals
            RValue = F(1)
          ELSE
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
            ELSE
              RValue = SUM( Basis(1:n) * F(1:n) )
            END IF
@@ -6571,7 +6570,7 @@ use spariterglobals
 
          IF( .NOT. Handle % GlobalInList ) THEN
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
            ELSE
              DO j2=1,SIZE( Handle % RTensor, 1 )
                DO k2=1,SIZE( Handle % RTensor, 2 )               
@@ -6976,7 +6975,7 @@ use spariterglobals
      IF( Handle % EvaluateAtIp ) THEN
 
        IF(.NOT. PRESENT(BasisVec)) THEN
-         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required!')
+         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required for: '//TRIM(Handle % Name))
        END IF
 
        IF( .NOT. Handle % AllocationsDone ) THEN

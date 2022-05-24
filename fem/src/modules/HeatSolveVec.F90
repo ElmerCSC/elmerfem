@@ -965,11 +965,7 @@ CONTAINS
           RadText = ListGetElementReal( ExtTemp_h, Basis, Element, Found )
         END IF
 
-!       IF ( ALLOCATED( Element % BoundaryInfo % Radiators ) ) &
-!         RadText = RadText + SUM(Element % BoundaryInfo % Radiators)
-
-        ! Basis not treated right yet        
-        Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
+        Emis = ListGetElementRealParent( EmisMat_h, Basis, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
