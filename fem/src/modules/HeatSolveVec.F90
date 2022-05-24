@@ -58,7 +58,7 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
   Params => GetSolverParams()
 
   IF( ListCheckPresentAnyEquation( Model,'Convection' ) .OR. &
-      ListCheckPresentAnyEquation( Model,'Plate Speed') .OR. &
+      ListCheckPresentAnyEquation( Model,'Draw Velocity') .OR. &
       ListGetLogical( Params,'Bubbles',Found) ) THEN
     IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
       CALL ListAddString(Params,'Element', &
@@ -441,8 +441,8 @@ CONTAINS
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
 
-      IF( ListCheckPresentAnyMaterial( Model,'Plate Speed' ) ) THEN
-        CALL Fatal(Caller,'Vectorized assembly not implemented for "Plate Speed"')
+      IF( ListCheckPresentAnyMaterial( Model,'Draw Velocity' ) ) THEN
+        CALL Fatal(Caller,'Vectorized assembly not implemented for "Draw Velocity"')
       END IF
 
       CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')      
@@ -660,7 +660,7 @@ CONTAINS
       CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')
       
       CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
-      CALL ListInitElementKeyword( PlateSpeed_h,'Material','Plate Speed')
+      CALL ListInitElementKeyword( PlateSpeed_h,'Material','Draw Velocity')
 
       str = GetString( Params, 'Temperature Convection Field', Found )
       IF(.NOT. Found ) str = 'Flow Solution'
