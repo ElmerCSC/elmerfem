@@ -96,14 +96,14 @@ Solver 1  !---- CoilSolver, CoilSolver
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU1
   Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1e-6
+  Linear System Convergence Tolerance = 1e-8
   Linear System Iterative Method = BiCGStab
-  Linear System Residual Output = 1
+  Linear System Residual Output = 20
   ! When we normalize, we introduce probably some divergence that
   ! does not impress the solver very much... Helmholtz projection needed?
   Normalize Coil Current = Logical True
-  Fix Input Current Density = Logical True
-  Nonlinear System Consistent Norm = Logical True
+  Fix Input Current Density = True
+  Nonlinear System Consistent Norm = True
   Coil Closed = Logical True
   Narrow Interface = Logical True
   Save Coil Set = Logical True
@@ -131,8 +131,7 @@ Solver 3  !---- MagnetoDynamics, WhitneyAVSolver
    Linear System preconditioning = none
    Linear System Convergence Tolerance = 1.e-8
    Linear System Max Iterations = 3000
-   Linear System Residual Output = 1000
-   Linear System ILUT Tolerance=1e-8
+   Linear System Residual Output = 20
    BicgstabL polynomial degree = 6
    Steady State Convergence Tolerance = 1e-08
 End
@@ -148,11 +147,11 @@ Solver 4  !---- MagnetoAndDynamics, MagnetoDynamicsCalcFields
   Linear System Symmetric = True
   Linear System Iterative Method = CG
   Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
-  Linear System Residual Output = 1
+  Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
   Discontinuous Bodies = Logical True
   
@@ -192,9 +191,12 @@ Equation 2
   Name = "MagnetoDynamic for air"
   Active Solvers(2) = 3 4
 End
-Solver 3 :: Reference Norm = Real 8.190E-04 
-Solver 3 :: Reference Norm Tolerance = Real 1E-03
-Solver 4 :: Reference Norm = Real 3.12279970E-03
-Solver 4 :: Reference Norm Tolerance = Real 1E-03
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 1 :: Reference Norm = 5.75316763E-01
+Solver 2 :: Reference Norm = 1.41421356E+05
+Solver 3 :: Reference Norm = 2.18666357E-02
+Solver 4 :: Reference Norm = 3.11923128E-03
+
+Solver 1 :: Reference Norm Tolerance = 1e-04
+Solver 2 :: Reference Norm Tolerance = 1e-04
+Solver 3 :: Reference Norm Tolerance = 1e-04
+Solver 4 :: Reference Norm Tolerance = 1e-04
