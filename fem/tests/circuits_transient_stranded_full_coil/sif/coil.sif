@@ -24,7 +24,7 @@ Simulation
   Timestep Sizes(1) = Real 0.1
   TimeStep Intervals(1) = Integer 3
   Output Intervals(1) = Integer 1
-  Max Output Level = 5
+  Max Output Level = 7
 End
 Constants
   Gravity(4) = 0 0 -1 9.82
@@ -60,6 +60,7 @@ Component 1    !---- Coil
   Number of Turns = Real 1
   Electrode Area = Real 1
   Resistance = Real 0
+  Coil Normal(3) = Real 0.0 0.0 1.0
 End
 Material 1     !---- Dummy
   Name = "Dummy"
@@ -88,7 +89,7 @@ Initial Condition 1
   Jfix = real 0.0
 End
 Solver 1  !---- CoilSolver, CoilSolver
-  Exec Solver = Before Timestep
+  Exec Solver = Before All
   Equation = "CoilSolver"
   Procedure = "CoilSolver" "CoilSolver"
   
@@ -96,8 +97,8 @@ Solver 1  !---- CoilSolver, CoilSolver
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU1
   Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1e-8
-  Linear System Iterative Method = BiCGStab
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabl
   Linear System Residual Output = 20
   ! When we normalize, we introduce probably some divergence that
   ! does not impress the solver very much... Helmholtz projection needed?
@@ -110,7 +111,7 @@ Solver 1  !---- CoilSolver, CoilSolver
   Save Coil Index = Logical True
   Calculate Elemental Fields = Logical True
   
-  Coil Normal(3) = Real 0. 0. 1.
+!  Coil Normal(3) = Real 0. 0. 1.
 End
 Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamics
    Exec Solver = Always
@@ -147,7 +148,7 @@ Solver 4  !---- MagnetoAndDynamics, MagnetoDynamicsCalcFields
   Linear System Symmetric = True
   Linear System Iterative Method = CG
   Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-10
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
@@ -193,10 +194,11 @@ Equation 2
 End
 Solver 1 :: Reference Norm = 5.75316763E-01
 Solver 2 :: Reference Norm = 1.41421356E+05
-Solver 3 :: Reference Norm = 2.18666357E-02
-Solver 4 :: Reference Norm = 3.11923128E-03
+! This is very sensitive, let us just check for the derived field
+!Solver 3 :: Reference Norm = 2.32419663E+00
+Solver 4 :: Reference Norm = 3.11671844E-03
 
 Solver 1 :: Reference Norm Tolerance = 1e-04
 Solver 2 :: Reference Norm Tolerance = 1e-04
-Solver 3 :: Reference Norm Tolerance = 1e-04
+!Solver 3 :: Reference Norm Tolerance = 1e-04
 Solver 4 :: Reference Norm Tolerance = 1e-04
