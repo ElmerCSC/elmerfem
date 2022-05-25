@@ -23999,10 +23999,13 @@ CONTAINS
         END DO
 
         IF( k == 1 ) THEN
-          AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
-          !PRINT *,'AveHits:',i,AveHits
+          IF( InfoActive(20) ) THEN
+            AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
+            WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
+            CALL Info('CalculateBodyAverage',Message) 
+          END IF
         END IF
-
+          
         IF( Parallel ) THEN
           Nneighbours = MeshNeighbours(Mesh, IsNeighbour)
           CALL SendInterface(); CALL RecvInterface()
