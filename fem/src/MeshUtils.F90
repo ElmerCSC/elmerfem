@@ -3173,33 +3173,21 @@ CONTAINS
    !-------------------------------------------------------------------    
    SUBROUTINE ParallelNonNodalElements()
 
-     INTEGER :: i,j,k,n,mype     
+     INTEGER :: i,j,k,n     
      TYPE(Element_t), POINTER :: Element
-     
-     !IF(.NOT. Parallel ) RETURN
 
-     n = SIZE( Mesh % ParallelInfo % NeighbourList )
-     mype = ParEnv % Mype
-
-     IF( InfoActive(8) ) THEN     
-       CALL Info('ParallelNonNodalElements','Number of initial nodes: '&
-           //TRIM(I2S(Mesh % NumberOfNodes)))
-
-       CALL Info('ParallelNonNodalElements','Number of initial faces: '&
-           //TRIM(I2S(Mesh % NumberOfFaces)))
-
-       CALL Info('ParallelNonNodalElements','Number of initial edges: '&
-           //TRIM(I2S(Mesh % NumberOfEdges)))
+     ! To be on the safe side create the parallel info if it is missing.
+     IF( Mesh % NumberOfNodes > 0 ) THEN
+       n = SIZE( Mesh % ParallelInfo % NeighbourList )              
+       ! For unset neighbours just set the this partition to be the only owner
+       DO i=1,n
+         IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
+           CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(i) % Neighbours,1)
+           Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
+         END IF
+       END DO
      END IF
-     
-     ! For unset neighbours just set the this partition to be the only owner
-     DO i=1,n
-       IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-         CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(i) % Neighbours,1)
-         Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = mype
-       END IF
-     END DO
-
+       
      ! Create parallel numbering of faces
      CALL SParFaceNumbering(Mesh, .TRUE. )
 
@@ -3207,8 +3195,17 @@ CONTAINS
      CALL SParEdgeNumbering(Mesh, .TRUE.)
 
      ! There are mainly implemented for parallel debugging.
-     ! The whole sequence is only activated when "Max Output Level >= 8". 
-     IF( InfoActive(8) ) THEN     
+     ! The whole sequence is only activated when "Max Output Level >= 10". 
+     IF( InfoActive(10) ) THEN
+       CALL Info('ParallelNonNodalElements','Number of initial nodes: '&
+           //TRIM(I2S(Mesh % NumberOfNodes)))
+       
+       CALL Info('ParallelNonNodalElements','Number of initial faces: '&
+           //TRIM(I2S(Mesh % NumberOfFaces)))
+       
+       CALL Info('ParallelNonNodalElements','Number of initial edges: '&
+           //TRIM(I2S(Mesh % NumberOfEdges)))
+       
        j = 0; k = 0
        DO i=1,Mesh % NumberOfNodes
          IF( SIZE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) > 1 ) THEN
