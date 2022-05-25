@@ -535,26 +535,24 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
       ALLOCATE( OtherRhs ( SIZE( Solver % Matrix % Rhs ), NVar - 1) )
     END IF
     OtherRhs = 0.0_dp
-    SaveRhs => Solver % Matrix % Rhs   
-    SaveRhs = 0.0_dp
   END IF
-
 
   CALL BulkAssembly( Ncomp )
 
-  
   ! These three are probably not needed for this solver of limited features
   ! They are left here for possible future needs.
   ! CALL DefaultFinishBulkAssembly()
   ! CALL DefaultFinishAssembly()
   ! CALL DefaultDirichletBCs()      
+
   at2 = RealTime()
   WRITE( Message,'(A,ES12.3)') 'Assembly time: ',at2-at1
   CALL Info( Caller, Message, Level=5 )
-
+  
   !------------------------------------------------------------------------------     
   IF( SeparateComponents ) THEN
     ! Solver other components first, so that the values are saved to Solver % Var % Values
+    SaveRhs => Solver % Matrix % Rhs   
     DO icomp=2, Ncomp
       Solver % Matrix % Rhs => OtherRhs(:,icomp-1)
       Norm = DefaultSolve()
@@ -675,7 +673,6 @@ CONTAINS
 
       RightRule = .FALSE.
       CurrentCycle = NINT( time / tcycle )
-
       
       IF( CurrentCycle /= PreviousCycle ) THEN
         ! Check whether we have proceeded to a new cycle
@@ -691,13 +688,12 @@ CONTAINS
             CALL Fatal(Caller,'Cannot use left and right rule at the same time!')
           END IF
 
-          ! With some stretch we can finish this step. 
-          IF( CurrentCycle * tcycle - time > 0.0_dp ) THEN
-            ratio = 1.0_dp - (time-INT(1+time/tcycle)*tcycle)/dt
-          ELSE
-            ratio = 1.0_dp - (time-INT(time/tcycle)*tcycle)/dt
-          END IF
-                      
+          ratio = 1.0_dp - (time-NINT(time/tcycle)*tcycle)/dt
+
+          !PRINT *,'RightCycle:',ratio, tcycle, time / tcycle, INT(time/tcycle), CurrentCycle, &
+          !    CurrentCycle * tcycle, time, &
+          !    CurrentCycle * tcycle - time > 0.0_dp 
+                     
           CALL Info(Caller,'Finising Fourier transform cycle',Level=6)
           
           ! Return a True flag so that we know that we might need to start also the cycle.
@@ -705,10 +701,9 @@ CONTAINS
           PreviousCycle = CurrentCycle
         END IF
       END IF
-      
-      !PRINT *,'Cycle:',time, EndCycle, CurrentCycle, PreviousCycle, tcycle, RightRule, LeftRule, ratio
-      
     END IF
+      
+    !PRINT *,'RatioCycle:',ratio, time, tcycle, CurrentCycle, EndCycle, RightRule, LeftRule
 
     ! Set the time interval for integration, [ta,tb]
     ta = time - dt 
@@ -1023,7 +1018,6 @@ CONTAINS
             IF(.NOT. Found2 ) CYCLE
           END IF
 
-          
           ! For even j we have cosine series, for odd sine series
           Component => FourierVars(j) % Var % Values
 
@@ -1236,7 +1230,7 @@ CONTAINS
         CALL Info(Caller, Message, Level=6 )
       END DO
 
-      WRITE( Message,'(A,ES12.3)') 'Total component loss: ',CompLoss(k)
+      WRITE( Message,'(A,ES12.3)') 'Total component '//TRIM(I2S(k))//' loss: ',CompLoss(k)
       CALL Info(Caller,Message, Level=5 )
     END DO
     
@@ -1262,23 +1256,21 @@ CONTAINS
       END IF
     END IF
 
-    ! For debugging
-    IF( .FALSE. ) THEN
+    ! For debugging purposes     
+    IF( InfoActive(25) ) THEN
+      PRINT *,'Fourier components:'
       DO i=1,FourierDofs
-        PRINT *,'fourier range:',i,&
-            MINVAL(FourierVars(i) % Var % Values ), &
-            MAXVAL(FourierVars(i) % Var % Values )
+        CALL VectorValuesRange(FourierVars(i) % Var % Values, &
+            SIZE(FourierVars(i) % Var % Values),'F'//TRIM(I2S(i)))
       END DO
       
-      ! For debugging
+      PRINT *,'Loss components:'
       DO i=1,NComp
-        PRINT *,'loss component range:',i,&
-            MINVAL(CompVars(i) % Var % Values ), &
-            MAXVAL(CompVars(i) % Var % Values )
+        CALL VectorValuesRange(CompVars(i) % Var % Values, &
+            SIZE(CompVars(i) % Var % Values),'L'//TRIM(I2S(i)))
       END DO
     END IF
-      
-    
+
     !------------------------------------------------------------------------------
   END SUBROUTINE CommunicateLosess
   !------------------------------------------------------------------------------
