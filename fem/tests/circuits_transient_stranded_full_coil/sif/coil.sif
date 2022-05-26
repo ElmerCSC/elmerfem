@@ -51,7 +51,6 @@ Body 2
 End
 Component 1    !---- Coil
   Name = String "Coil"
-  Coil Type = String "test"
   Master Bodies(1) = Integer 1
   Desired Current Density = Real 1
   Coil Type = String stranded
@@ -100,8 +99,7 @@ Solver 1  !---- CoilSolver, CoilSolver
   Linear System Convergence Tolerance = 1e-10
   Linear System Iterative Method = BiCGStabl
   Linear System Residual Output = 20
-  ! When we normalize, we introduce probably some divergence that
-  ! does not impress the solver very much... Helmholtz projection needed?
+
   Normalize Coil Current = Logical True
   Fix Input Current Density = True
   Nonlinear System Consistent Norm = True
@@ -113,6 +111,7 @@ Solver 1  !---- CoilSolver, CoilSolver
   
 !  Coil Normal(3) = Real 0. 0. 1.
 End
+
 Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamics
    Exec Solver = Always
    Equation = Circuits
@@ -120,22 +119,26 @@ Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamics
    No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
 End
+
 Solver 3  !---- MagnetoDynamics, WhitneyAVSolver
    Exec Solver = Always
    Equation = "MGDynamics"
    Variable = "A"
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
+
    Linear System Solver = Iterative
-   Linear System Iterative Method = BicgstabL
-   Linear System preconditioning = none
-   Linear System Convergence Tolerance = 1.e-8
-   Linear System Max Iterations = 3000
+   Linear System Iterative Method = GCR
+   Linear System Preconditioning = Circuit
    Linear System Residual Output = 20
-   BicgstabL polynomial degree = 6
+   Linear System Max Iterations = 100
+   Linear System Convergence Tolerance = 1.e-10
+
    Steady State Convergence Tolerance = 1e-08
 End
+
 Solver 4  !---- MagnetoAndDynamics, MagnetoDynamicsCalcFields
   Exec Solver = Always
   Equation = MGDynamicsCalc
@@ -149,8 +152,7 @@ Solver 4  !---- MagnetoAndDynamics, MagnetoDynamicsCalcFields
   Linear System Iterative Method = CG
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1.0e-10
-  Linear System Preconditioning = ILU0
-  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Preconditioning = ILU
   Linear System Abort Not Converged = False
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
@@ -196,7 +198,7 @@ Solver 1 :: Reference Norm = 5.75316763E-01
 Solver 2 :: Reference Norm = 1.41421356E+05
 ! This is very sensitive, let us just check for the derived field
 !Solver 3 :: Reference Norm = 2.32419663E+00
-Solver 4 :: Reference Norm = 3.11671844E-03
+Solver 4 :: Reference Norm = 3.119368e-3
 
 Solver 1 :: Reference Norm Tolerance = 1e-04
 Solver 2 :: Reference Norm Tolerance = 1e-04
