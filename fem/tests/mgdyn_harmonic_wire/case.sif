@@ -118,7 +118,6 @@ Solver 3
   Discontinuous Bodies = Logical True
 
   Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
-  Reference Norm = 1.0
 End
 
 Solver 4
@@ -131,7 +130,30 @@ Solver 4
   Polyline Divisions(1) = 200 
 
 ! The Joule heating 
-  Show Norm Index = Integer 31
+  Show Norm Index = Integer 33
+End
+
+Solver 5
+  Exec Solver = after all
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  FileName = s.dat
+
+! Components of the complex total current
+  Variable 1 = Current Density Im e 3
+  Operator 1 = boundary int
+  Variable 2 = Current Density Re e 3
+  Operator 2 = boundary int
+
+! Components of the complex voltage
+  Variable 3 = AV Re
+  Operator 3 = boundary mean
+  Variable 4 = AV Im
+  Operator 4 = boundary mean
+
+! This is just to create a testable norm 
+  Show norm index = 5
 End
 
 
@@ -168,6 +190,8 @@ Boundary Condition 3
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
   AV im = Real 0.0
+
+  Save Scalars = True
 End
 
 Boundary Condition 4
@@ -205,5 +229,10 @@ Boundary Condition 6
 End
 
 
+Solver 1 :: Reference Norm = 4.62227582E-06
+Solver 3 :: Reference Norm = 1.0
 Solver 4 :: Reference Norm = 1.42295178E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
+Solver 5 :: Reference Norm = 1.51593518E-06
+Solver 5 :: Reference Norm Tolerance = 1e-4
+

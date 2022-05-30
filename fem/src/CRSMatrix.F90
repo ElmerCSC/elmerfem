@@ -377,6 +377,118 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Check whether matrix has a symmetric topology
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_CheckSymmetricTopo( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,k2,ns
+    INTEGER, POINTER :: Cols(:),Rows(:)
+    LOGICAL :: Hit
+!------------------------------------------------------------------------------
+    Rows   => A % Rows
+    Cols   => A % Cols
+
+    ns = 0
+    
+    DO i=1,A % NumberOfRows
+      DO k=Rows(i),Rows(i+1)-1
+        j=Cols(k)
+        Hit = .FALSE.
+        DO k2=Rows(j),Rows(j+1)-1
+          IF(Cols(k2)==i) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          ns = ns + 1
+          !PRINT *,'Not symmetric: ',i,j
+        END IF
+      END DO
+    END DO
+    
+    CALL Info('CSR_CheckSymmetricTopo','Number of symmetry misses:'//TRIM(I2S(ns)))
+    
+  END SUBROUTINE CRS_CheckSymmetricTopo
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Check whether matrix has a symmetric topology
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_CheckComplexTopo( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,i2,j2,k2,nc,nr
+    LOGICAL :: ImRow,ImCol
+    INTEGER, POINTER :: Cols(:),Rows(:)
+    LOGICAL :: Hit
+!------------------------------------------------------------------------------
+    Rows   => A % Rows
+    Cols   => A % Cols
+
+    nr = 0
+    nc = 0
+    
+    DO i=1,A % NumberOfRows
+      ImRow = (MODULO(i,2)==0)
+      IF(ImRow) THEN
+        i2=i-1
+      ELSE
+        i2=i+1
+      END IF
+
+      DO k=Rows(i),Rows(i+1)-1
+        j=Cols(k)
+        ImCol = (MODULO(j,2)==0) 
+        IF(ImCol) THEN
+          j2=j-1
+        ELSE
+          j2=j+1
+        END IF
+
+        ! We should find complementary entry on each row
+        Hit = .FALSE.
+        DO k2=Rows(i),Rows(i+1)-1
+          IF(Cols(k2)==j2) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          nr = nr + 1          
+          !PRINT *,'No complement on row: ',i,j,j2,ImRow,ImCol
+        END IF
+
+        ! We should find complementary entry on each column
+        Hit = .FALSE.        
+        DO k2=Rows(i2),Rows(i2+1)-1
+          IF(Cols(k2)==j) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) THEN
+          nc = nc + 1          
+          !PRINT *,'No complement on column: ',i,j,i2,ImRow,ImCol
+        END IF
+        
+      END DO
+    END DO
+    
+    CALL Info('CSR_CheckComplexTopo','Number of row misses:'//TRIM(I2S(nr)))
+    CALL Info('CSR_CheckComplexTopo','Number of col misses:'//TRIM(I2S(nc)))
+    
+  END SUBROUTINE CRS_CheckComplexTopo
+!------------------------------------------------------------------------------
+
+
+
+  
 
 !------------------------------------------------------------------------------
 !>    Set a given value to an element of a  CRS format matrix.
@@ -2678,7 +2790,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
-!>    Pics a block from matrix A to build matrix B. 
+!> Pics a block from matrix A to build matrix B. 
 !> This subroutine enables the use of 
 !> nontrivial block decompositions. 
 !------------------------------------------------------------------------------
@@ -2698,7 +2810,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Blocks = SIZE( BlockStruct )
 
     IF(Blocks <= 1) THEN
-      CALL Fatal('CRS_BlockMatrixPick','No applicable to just one block!')
+      CALL Fatal('CRS_BlockMatrixPick2','Not applicable for just one block!')
       RETURN
     END IF
 
@@ -2722,7 +2834,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     END DO
 
     IF( Mrow == 0 .OR. Mcol == 0 ) THEN
-      CALL Fatal('CRS_BlockMatrixPick','Nothing to pick!')
+      CALL Fatal('CRS_BlockMatrixPick2','Nothing to pick!')
     END IF
 
     Nsub = N / Blocks
@@ -2780,18 +2892,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     
     IF( .NOT. Allocated ) THEN
       IF( kb == 1 ) THEN
-        CALL Warn('CRS_BlockMatrixPick','No matrix entries in submatrix')
+        CALL Warn('CRS_BlockMatrixPick2','No matrix entries in submatrix')
         RETURN
       END IF
 
       ALLOCATE(B % Rows(Mrow*nsub+1),B % Cols(kb-1), B % Values(kb-1),STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 1')
+      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 1')
       
       B % Rows(Mrow*Nsub+1) = kb
       
       IF( Diagonal ) THEN
         ALLOCATE( B % Diag(Mrow*nsub), B % rhs(Mrow*nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 2')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick2','memory allocation error 2')      
       END IF
 
       IF( A % COMPLEX ) THEN
@@ -4211,7 +4323,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        DO i=1,A % NumberOfRows
-         b(i) = b(i) / A % Values( A % Diag(i) )
+         s = A % Values(A % Diag(i))
+         IF(s /= 0 ) b(i) = b(i) / s
        END DO
        RETURN
     END IF

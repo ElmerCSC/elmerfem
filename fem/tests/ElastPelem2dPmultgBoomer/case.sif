@@ -1,0 +1,155 @@
+! Test case for demonstration stress computation efficiently for p:2
+! elements using the special p-multigrid method.
+!
+! P.R. 3.9.2021
+
+! Polynomial degree of element
+! This scheme works best for values 2!
+$pn=2
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Max Iterations = 1
+  Element = p:$pn$
+
+!  Linear System Positive Definite = Logical True
+!  Linear System Symmetric = True
+
+! Outer level: iterative solver "idrs"
+  Linear System Solver = iterative 
+  Linear System Iterative Method = gcr !idrs
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+
+! Preconditioning by p-multigrid
+  Linear System Preconditioning = multigrid
+  MG Method = p
+  MG Levels = $pn
+  MG Smoother = cg
+  MG Pre Smoothing iterations = 5
+  MG Post Smoothing Iterations = 5
+  MG Lowest Linear Solver = iterative
+
+! Lowest method BoomerAMG
+  mglowest: Linear System Use Hypre = Logical True
+  mglowest: Linear System Iterative Method = "boomeramg"
+  mglowest: Linear System Max Iterations = 5
+  mglowest: Linear System Convergence Tolerance = 1.0E-03
+  mglowest: Linear System Abort Not Converged = False
+  mglowest: Linear System Residual Output = 20
+
+! BoomerAMG specific keywords
+  BoomerAMG Relax Type = Integer 3
+  BoomerAMG Coarsen Type = Integer 0
+  BoomerAMG Num Sweeps = Integer 1
+  Boomeramg Max Levels = Integer 25
+  BoomerAMG Interpolation Type = Integer 0
+  BoomerAMG Smooth Type = Integer 6
+  BoomerAMG Cycle Type = Integer 1
+  BoomerAMG Num Functions = Integer 2 ! DOFs
+  BoomerAMG Strong Threshold = Real 0.25
+
+
+  Calculate Stresses = Logical True
+
+! compute stresses with cimple CG+ILU1
+  stress: Linear System Solver = iterative
+  stress: Linear System Use Hypre = False
+  stress: Linear System Iterative Method = cg
+  stress: Linear System Preconditioning = ILU1
+  stress: Linear System Max Iterations = 1000
+  stress: Linear System Convergence Tolerance = 1.0e-8
+  stress: Linear System Symmetric = True
+  stress: Linear System Residual Output = 0
+
+! Get info on linear system speed
+  Linear System Timing = Logical True
+
+! This keyword reduces the number of Gauss points needed.
+! As we have only entries involving dBasisdx lower order rules will do!
+  Relative Integration Order = Integer -1
+End
+
+
+Solver 2
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+
+! We have line going from corner to corner. 
+  Polyline Coordinates(2,2) = -1.0 -1.0 3.0 2.999
+  Polyline Divisions(1) = 400
+
+  Filename = g.dat
+
+! Just make a reference norm from sum of stress_xx entries. 
+  Show Norm Index = 9
+End
+
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+End
+
+Equation 1
+  Name = "LinearElasticity"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0e3
+  Poisson ratio = 0.3
+  Youngs modulus = 1.0e9
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "natural"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "fixed"
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "force"
+  Force 1 = 1.0e6
+End
+
+Solver 1 :: Reference Norm = 9.98172517E-03
+Solver 2 :: Reference Norm = 1.86258909E+08

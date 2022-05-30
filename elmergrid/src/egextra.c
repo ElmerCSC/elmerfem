@@ -744,7 +744,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
     elemtype = data->elementtypes[i];
     material = data->material[i];
 
-    if(data->bodynamesexist) 
+    if(data->bodynamesexist)      
       fprintf(out,"body_%d_%s %d ",material,data->bodyname[material],elemtype);
     else if(elemtype/100 > 4) 
       fprintf(out,"vol%d %d ",material,elemtype);

@@ -398,7 +398,13 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
 
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
-   dt = Model % Solver % dt 
+
+   aux = GetConstReal(Model % Constants, 'Sea Spring Timestep Size', GotIt)
+   IF (GotIt) THEN
+     dt = aux
+   ELSE
+     dt = Model % Solver % dt
+   END IF
    
    !Element type 101 doesn't have a parent element, can't enquire SeaLevel
    !Should only occur during SaveBoundaryValues, so isn't an issue
@@ -433,8 +439,6 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
 
       DIM = CoordinateSystemDimension()
 
-      aux = GetConstReal(Model % Constants, 'Sea Spring Timestep Size', GotIt)
-      IF (GotIt) dt = aux
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
       IF (.NOT.GotIt) THEN
          WRITE(Message,'(A)') 'Variable "Water Density" not found in Constants.'

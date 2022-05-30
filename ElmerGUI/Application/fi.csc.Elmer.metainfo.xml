@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+    <id>fi.csc.Elmer</id>
+    <launchable type="desktop-id">fi.csc.Elmer.desktop</launchable>
+    <name>Elmer</name>
+    <summary>Free and open source multiphysical simulation software</summary>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>LGPL-2.0-only</project_license>
+    <description>
+        <p>
+            Elmer is computational tool for multi-physics problems. Elmer includes
+            physical models of fluid dynamics, structural mechanics, electromagnetics,
+            heat transfer and acoustics, for example. These are described by partial
+            differential equations which Elmer solves by the Finite Element Method (FEM).
+        </p>
+    </description>
+    <url type="homepage">https://www.csc.fi/web/elmer</url>
+    <url type="help">https://www.csc.fi/web/elmer/documentation</url>
+    <url type="bugtracker">https://github.com/ElmerCSC/elmerfem/issues</url>
+    <developer_name>CSC – IT Center for Science</developer_name>
+    <screenshots>
+        <screenshot type="default">
+            <image>https://raw.githubusercontent.com/ElmerCSC/elmerfem-manuals/main/latex-elmergui/images/elmergui.png</image>
+        </screenshot>
+        <screenshot>
+            <image>https://a.fsdn.com/con/app/proj/elmerfem/screenshots/171098.jpg</image>
+        </screenshot>
+    </screenshots>
+    <content_rating type="oars-1.1"/>
+    <releases>
+        <release version="9.0" date="2020-11-11">
+            <description>
+                <p>New features:</p>
+                    <ul>
+                    <li>New vectorized and threaded Navier-Stokes solver with block preconditioning</li>
+                    <li>Beam element module to complete structural models</li>
+                    <li>Mixed element Poisson solver (with Hdiv basis)</li>
+                    <li>Large number of improvements for electromagnetics</li>
+                    <li>Coupled structural problems enables (e.g. shell-solid)</li>
+                    <li>Enable automatic elimination of conforming BCs</li>
+                    <li>Faster and improved view factor computation</li>
+                    <li>Better support for parametrized runs with Run Control and inline parameters</li>
+                    <li>And more!</li>
+                </ul>
+            </description>
+        </release>
+   </releases>
+</component>

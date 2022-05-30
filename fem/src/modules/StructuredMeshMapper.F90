@@ -294,8 +294,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     CALL BinaryLayerMapper()
   END IF
 
-  LimitedCount = NINT( ParallelReduction(1.0_dp * LimitedCount) )
-  TangledCount = NINT( ParallelReduction(1.0_dp * TangledCount) )
+  LimitedCount = ParallelReduction(LimitedCount) 
+  TangledCount = ParallelReduction(TangledCount) 
   
   IF( LimitedCount > 0 ) THEN
     CALL Info(Caller,'There seems to be '&

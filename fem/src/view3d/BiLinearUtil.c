@@ -306,7 +306,7 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB,
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
-    double F,R,cosA,cosB,EA;
+    double F,R,Rs,cosA,cosB,EA;
 
     double *BX  = GB->BiLinear->PolyFactors[0];
     double *BY  = GB->BiLinear->PolyFactors[1];
@@ -318,34 +318,25 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB,
 
     int i,j;
 
-    R = NFX*NFX + NFY*NFY + NFZ*NFZ;
-
-    if ( ABS(1-R)>1.0E-08 )
+    Rs = NFX*NFX + NFY*NFY + NFZ*NFZ;
+    if ( Rs != 0 && ABS(1-Rs)>1.0E-08 )
     {
-       R = 1.0/sqrt(R);
-       NFX *= R;
-       NFY *= R;
-       NFZ *= R;
+       Rs = 1.0/sqrt(Rs);
+       NFX *= Rs;
+       NFY *= Rs;
+       NFZ *= Rs;
     }
 
     F  = 0.0;
+    cosA = 1;
     for( i=0; i<N_Integ; i++ )
     {
        U = U_Integ[i];
        V = V_Integ[i];
         
-       DX  = BiLinearValue(U,V,BX) - FX;
-       DY  = BiLinearValue(U,V,BY) - FY;
-       DZ  = BiLinearValue(U,V,BZ) - FZ;
-
-       cosA = DX*NFX + DY*NFY + DZ*NFZ;
-
-       if ( cosA < 1.0E-8 ) continue;
-
        NTX = BiLinearValue(U,V,NBX);
        NTY = BiLinearValue(U,V,NBY);
        NTZ = BiLinearValue(U,V,NBZ);
-
        R = NTX*NTX + NTY*NTY + NTZ*NTZ;
 
        if ( ABS(1-R)>1.0E-08 )
@@ -356,10 +347,20 @@ double BiLinearIntegrateDiffToArea( Geometry_t *GB,
            NTZ *= R;
        }
 
-       cosB = -DX*NTX - DY*NTY - DZ*NTZ;
+       DX  = BiLinearValue(U,V,BX) - FX;
+       DY  = BiLinearValue(U,V,BY) - FY;
+       DZ  = BiLinearValue(U,V,BZ) - FZ;
+       R = sqrt(DX*DX + DY*DY + DZ*DZ);
+
+       if ( Rs != 0) {
+         cosA = (DX*NFX + DY*NFY + DZ*NFZ) / R;
+         if ( cosA < 1.0E-8 ) continue;
+       }
+
+
+       cosB = (-DX*NTX - DY*NTY - DZ*NTZ) / R;
        if ( cosB < 1.0E-8 ) continue;
 
-       R = DX*DX + DY*DY + DZ*DZ;
 
        EA = BiLinearEofA( U,V,BX,BY,BZ );
        F += EA*cosA*cosB*S_Integ[i] / (R*R);
@@ -572,3 +573,104 @@ subdivide:
         BiLinearComputeViewFactors( GA->Right,GB,LevelA+1,LevelB );
     }
 }
+
+
+
+/*******************************************************************************
+
+Compute  differential view factor for linear surface elements by subdivision
+and direct numerical integration when the differential viewfactors match given
+magnitude criterion or areas of the elements are small enough. Blocking of the
+view between the elements is resolved by ray tracing.
+
+24 Aug 1995
+
+*******************************************************************************/
+void
+BiLinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
+			      double dz, int LevelA)
+{
+  double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0);
+
+  double *X = GA->BiLinear->PolyFactors[0];
+  double *Y = GA->BiLinear->PolyFactors[1];
+  double *Z = GA->BiLinear->PolyFactors[2];
+
+  double *aX = GA->BiLinear->PolyFactors[3];
+  double *aY = GA->BiLinear->PolyFactors[4];
+  double *aZ = GA->BiLinear->PolyFactors[5];
+
+  int i, j;
+
+  if (LevelA & 1)
+    {
+      Fa = 0;
+      Fb = 0;
+        goto subdivide;
+    }
+
+    Fa = Fb = BiLinearIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+
+    if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
+
+    if ( Fa<FactorEPS || GA->Area<AreaEPS )
+    {
+       GeometryList_t *Link;
+
+       Hit = Nrays;
+       for( i=0; i<Nrays; i++ )
+       {
+          U = drand48();
+          V = drand48();
+
+          FX = BiLinearValue(U,V,X);
+          FY = BiLinearValue(U,V,Y);
+          FZ = BiLinearValue(U,V,Z);
+
+          GX = dx - FX;
+          GY = dy - FY;
+          GZ = dz - FZ;
+
+           if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
+        }
+
+        if ( Hit == 0 ) return;
+
+        if ( Hit == Nrays || Fa<FactorEPS/2 || GA->Area < AreaEPS/2 )
+        {
+            F = Hit*Fa/(1.0*Nrays);
+            Fa = Fb = F / GA->Area / (4*PI);
+
+            Link = (GeometryList_t *)calloc(sizeof(GeometryList_t),1);
+            Link->Next = GA->Link;
+            GA->Link = Link;
+
+            Link->Entry = GA;
+            Link->ViewFactor = Fa;
+
+            return;
+        }
+    }
+
+subdivide:
+
+        if ( !GA->Left ) BiLinearSubdivide( GA, LevelA,1 );
+
+        if ( GA->Flags & GEOMETRY_FLAG_LEAF )
+        {
+            GA->Flags &= ~GEOMETRY_FLAG_LEAF;
+            GA->Left->Flags  |= GEOMETRY_FLAG_LEAF;
+            GA->Right->Flags |= GEOMETRY_FLAG_LEAF;
+
+            if ( !GA->Left->Area )
+            {
+                GA->Left->Area  = BiLinearArea(GA->Left);
+                GA->Right->Area = BiLinearArea(GA->Right);
+            }
+        }
+
+        BiLinearComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
+        BiLinearComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
+}
+

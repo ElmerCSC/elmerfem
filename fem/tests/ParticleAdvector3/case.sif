@@ -116,7 +116,6 @@ Solver 2
 
 ! Show some info in the end
 !  Particle Info = Logical True
-  Particle Time = Logical True
 
 ! The internal variables for this solver
   Variable 1 = String "Particle Distance"

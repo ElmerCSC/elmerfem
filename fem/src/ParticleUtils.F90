@@ -150,12 +150,12 @@ CONTAINS
     END DO
       
     CALL Info('ParticleStatusCount','Information on particle status:')
-    k = NINT( ParallelReduction( 1.0_dp * NoParticles ) )
+    k = ParallelReduction( NoParticles ) 
     WRITE(Message,'(A,T18,I0)') 'Total: ',k
     CALL Info('ParticleStatusCount',Message,Level=8)
     DO i=1,PARTICLE_GHOST
       j = StatusCount(i)
-      k = NINT( ParallelReduction( 1.0_dp * j ) )
+      k = ParallelReduction( j ) 
       IF( k == 0 ) CYCLE
       WRITE(Message,'(A,T18,I0)') TRIM(StatusString(i))//': ',k
       CALL Info('ParticleStatusCount',Message,Level=8)
@@ -539,8 +539,8 @@ CONTAINS
     i = COUNT( InternalElements )
     j = NumberOfElements - i
     
-    i = NINT( ParallelReduction( 1.0_dp * i ) )
-    j = NINT( ParallelReduction( 1.0_dp * j ) )
+    i = ParallelReduction( i ) 
+    j = ParallelReduction( j ) 
 
     CALL Info('MarkInternalElements','Internal Elements: '//TRIM(I2S(i)),Level=8 )
     CALL Info('MarkInternalElements','Interface Elements: '//TRIM(I2S(j)),Level=8 )    
@@ -1934,7 +1934,7 @@ RETURN
       Cnt = Cnt + 1
     END DO
     
-    TotParticles = NINT( ParallelReduction( 1.0_dp * Cnt ) )
+    TotParticles = ParallelReduction( Cnt ) 
     IF( TotParticles == 0 ) THEN
       CALL Warn('MeanParticleCoordinate','No active particles!')
       RETURN
@@ -1999,8 +1999,8 @@ RETURN
     CALL ParticleStatusCount( Particles )
 
     IF( ParEnv % PEs > 1 ) THEN
-      TotNoParticles =  NINT( ParallelReduction( 1.0_dp * Particles % NumberOfParticles ) )
-      TotParticleStepsTaken = NINT( ParallelReduction( 1.0_dp * ParticleStepsTaken) )
+      TotNoParticles =  ParallelReduction( Particles % NumberOfParticles ) 
+      TotParticleStepsTaken = ParallelReduction( ParticleStepsTaken) 
     ELSE
       TotNoParticles = Particles % NumberOfParticles 
       TotParticleStepsTaken =  ParticleStepsTaken
@@ -2080,7 +2080,7 @@ RETURN
     IF( UseMaxSpeed ) THEN
       CharSpeed = ParallelReduction( MaxSpeed, 2 )
     ELSE
-      ParallelParticles = NINT( ParallelReduction( 1.0_dp * Cnt ) )
+      ParallelParticles = ParallelReduction( Cnt ) 
       CharSpeed = ParallelReduction( SumSpeed ) / ParallelParticles
     END IF
     CharSpeed = SQRT( CharSpeed ) 
@@ -2185,7 +2185,7 @@ RETURN
     ElementSizeMin = ParallelReduction( ElementSizeMin, 1 ) 
     ElementSizeMax = ParallelReduction( ElementSizeMax, 2 ) 
     ElementSizeAve = ParallelReduction( ElementSizeAve ) 
-    NoElems = NINT( ParallelReduction( 1.0_dp * NoElems ) )
+    NoElems = ParallelReduction( NoElems ) 
     
     ElementSizeAve = ElementSizeAve / NoElems 
 
@@ -2612,7 +2612,7 @@ RETURN
     IF( ParEnv% PEs == 1 ) THEN
       TotParticles = NewParticles
     ELSE
-      TotParticles = NINT( ParallelReduction( 1.0_dp * NewParticles ) )
+      TotParticles = ParallelReduction( NewParticles ) 
     END IF
     
     IF( TotParticles == 0 ) THEN
@@ -4400,8 +4400,12 @@ RETURN
     Velo = 0.0_dp
     IF( PRESENT( GradVelo ) ) GradVelo = 0.0_dp
     
-    n = CurrentElement % TYPE % NumberOfNodes
-    LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+    n = CurrentElement % TYPE % NumberOfNodes    
+    IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN      
+      LocalPerm(1:n) = Var % Perm( CurrentElement % DGIndexes )
+    ELSE
+      LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
+    END IF
     npos = COUNT ( LocalPerm(1:n) > 0 )
     
     
@@ -4899,7 +4903,7 @@ RETURN
       IF ( Particles % Status(i) == PARTICLE_LOST ) CYCLE
       
       node = Particles % ClosestNode(i)
-      IF ( .NOT. PI % INTERFACE(node) ) CYCLE
+      IF ( .NOT. PI % NodeInterface(node) ) CYCLE
       Neighbours => PI % NeighbourList(node) % Neighbours
       DO j=1,SIZE(Neighbours)
         proc = Neighbours(j)
@@ -4928,7 +4932,7 @@ RETURN
       IF ( Particles % Status(i) == PARTICLE_LOST ) CYCLE
       
       node = Particles % ClosestNode(i)
-      IF ( .NOT. PI % INTERFACE(node) ) CYCLE
+      IF ( .NOT. PI % NodeInterface(node) ) CYCLE
       Neighbours => PI % NeighbourList(node) % Neighbours
       DO j=1,SIZE(Neighbours)
         proc = Neighbours(j)
@@ -5467,6 +5471,28 @@ RETURN
     IF(.NOT. Visited ) THEN
       Visited = .TRUE.
 
+      TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
+      TimeInteg = ASSOCIATED( TimeIntegVar )
+      IF( TimeInteg ) THEN
+        IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+            'Particle Time Integral Source') ) THEN
+          CALL Fatal('ParticlePathIntegral',&
+              'Path integral requires body force: "Particle Time Integral Source"')
+        END IF
+      END IF
+        
+      DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
+      DistInteg = ASSOCIATED( DistIntegVar )
+      IF( DistInteg ) THEN
+        IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
+            'Particle Distance Integral Source') ) THEN
+          CALL Fatal('ParticlePathIntegral',&
+              'Path integral requires body force: "Particle Distance Integral Source"')
+        END IF
+      END IF
+
+      IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
+      
       Params => ListGetSolverParams()
       Mesh => CurrentModel % Solver % Mesh
       dim = Particles % dim
@@ -5491,17 +5517,12 @@ RETURN
       IF( .NOT. Particles % DtConstant ) THEN
         DtVar => ParticleVariableGet( Particles,'particle dt')
         IF(.NOT. ASSOCIATED( DtVar ) ) THEN
-          CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
+          CALL Fatal('ParticlePathIntegral','Variable timestep, > particle dt < should exist!')
         END IF
       END IF
       
-      TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
-      TimeInteg = ASSOCIATED( TimeIntegVar )
-
-      DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
-      DistInteg = ASSOCIATED( DistIntegVar )
     END IF
-
+      
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 
@@ -6775,7 +6796,7 @@ RETURN
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
         Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize, &
-        iTime 
+        iTime, SaveGroup 
     REAL(KIND=dp) :: SaveNodeFraction, LocalVal(3)
     LOGICAL :: BinaryOutput,AsciiOutput,Found,Visited = .FALSE.,SaveFields
     REAL(KIND=dp) :: DoubleWrk
@@ -6843,10 +6864,15 @@ RETURN
     
     Dim = Particles % dim
 
+    SaveGroup = ListGetInteger( Params,'Particle Save Group',GotIt)
+
     NumberOfNodes = 0
     DO i=1,Particles % NumberOfParticles
       IF ( Particles % Status(i) > MaxSaveStatus .OR. &
           Particles % Status(i) < MinSaveStatus )  CYCLE
+      IF(SaveGroup > 0) THEN
+        IF( Particles % Group(i) /= SaveGroup ) CYCLE 
+      END IF    
       NumberOfNodes = NumberOfNodes + 1
     END DO
 
@@ -6859,7 +6885,7 @@ RETURN
         NumberOfNodes = MIN(i,NumberOfNodes)
       END IF
     END IF
-
+    
     BaseFile = FilePrefix
     CALL SolverOutputDirectory( pSolver, BaseFile, OutputDirectory, UseMeshDir = .TRUE.  )
     BaseFile = TRIM(OutputDirectory)// '/' //TRIM(BaseFile)    
@@ -6907,11 +6933,12 @@ RETURN
       CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat
-      LOGICAL :: WriteData, WriteXML, Buffered, IsDG   
+      LOGICAL :: WriteData, WriteXML, Buffered, IsDG, IsInteger
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
       INTEGER, ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: Values(:),Values2(:),&
           Values3(:),VecValues(:,:),Basis(:)
+      INTEGER, POINTER :: Ivalues(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
       TYPE(Nodes_t) :: Nodes      
       TYPE(Element_t), POINTER :: Element
@@ -6986,6 +7013,7 @@ RETURN
       ! do the scalars & vectors
       !--------------------------------- -----------------------------------
 100   Offset = 0
+      IsInteger = .FALSE.
 
       IF( SaveFields ) THEN
         
@@ -7074,6 +7102,7 @@ RETURN
             ! Get the values assuming particle mode
             !---------------------------------------------------------------------
             IF( ParticleMode ) THEN
+              IsInteger = .FALSE.
               IF( IsVector == 1) THEN
                 dofs = PartDim
                 IF( FieldName == 'velocity' ) THEN
@@ -7105,6 +7134,12 @@ RETURN
                     CALL Fatal('WriteVTUFile','> Particle Dt < does not exist!')
                   END IF
                   Values => ParticleVar % Values
+                ELSE IF( FieldName == 'particle group') THEN
+                  IsInteger = .TRUE.
+                  IValues => Particles % Group 
+                  IF( .NOT. ASSOCIATED( IValues) ) THEN
+                    CALL Fatal('WriteVTUFile','> Particle Group < does not exist!')
+                  END IF
                 ELSE
                   WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
                   CALL Warn('WriteVtuXMLFile', Txt)
@@ -7153,6 +7188,11 @@ RETURN
 
                 IF ( Particles % Status(i) > MaxSaveStatus .OR. &
                     Particles % Status(i) < MinSaveStatus )  CYCLE
+                IF( SaveGroup > 0 ) THEN
+                  IF( Particles % Group(i) /= SaveGroup ) CYCLE
+                END IF
+                
+                
                 j = j + 1
 
                 LocalVal = 0.0_dp
@@ -7163,7 +7203,11 @@ RETURN
                     LocalVal(1:dofs) = VecValues(i,1:dim)
                   ELSE
                     dofs = 1
-                    LocalVal(1) = Values(i)
+                    IF( IsInteger ) THEN
+                      LocalVal(1) = 1.0_dp * IValues(i)
+                    ELSE
+                      LocalVal(1) = Values(i)
+                    END IF
                   END IF
                 ELSE
                   Element => Mesh % Elements( Particles % ElementIndex(i) )            
@@ -7290,6 +7334,10 @@ RETURN
           
           IF ( Particles % Status(i) > MaxSaveStatus .OR. &
               Particles % Status(i) < MinSaveStatus )  CYCLE
+          IF( SaveGroup > 0 ) THEN
+            IF( Particles % Group(i) /= SaveGroup ) CYCLE
+          END IF
+          
           j = j + 1
           
           IF( ParticleMode ) THEN

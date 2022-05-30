@@ -225,7 +225,7 @@ double LinearIntegrateDiffToArea( Geometry_t *GB,
     double FX,double FY,double FZ, double NFX,double NFY,double NFZ )
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
-    double F,R,cosA,cosB,EA,d;
+    double F,R,Rs,cosA,cosB,EA,d;
 
     double *BX  = GB->Linear->PolyFactors[0];
     double *BY  = GB->Linear->PolyFactors[1];
@@ -237,15 +237,17 @@ double LinearIntegrateDiffToArea( Geometry_t *GB,
 
     int i,j;
 
-    R = NFX*NFX + NFY*NFY;
-    if ( ABS(1-R)>1.0e-9 )
+    Rs = NFX*NFX + NFY*NFY;
+    if ( Rs != 0 && ABS(1-Rs)>1.0e-9 )
     {
-       R = 1.0/sqrt(R);
-       NFX *= R;
-       NFY *= R;
+       R = 1.0/sqrt(Rs);
+       NFX *= Rs;
+       NFY *= Rs;
     }
 
     F  = 0.0;
+    cosA = 1.0;
+
     for( i=0; i<N_Integ1d; i++ )
     {
        U = U_Integ1d[i];
@@ -255,11 +257,15 @@ double LinearIntegrateDiffToArea( Geometry_t *GB,
        DY = LinearValue(U,BY) - FY;
 
        R = sqrt(DX*DX + DY*DY);
-       cosA = (DX*NFX + DY*NFY)/R;
-       if ( cosA < 1.0e-9 ) continue;
+
+       if ( Rs>0 ) {
+         cosA = (DX*NFX + DY*NFY) / R;
+         if ( cosA < 1.0e-9 ) continue;
+       }
 
        NTX = LinearValue(U,NBX);
        NTY = LinearValue(U,NBY);
+
 
        d = NTX*NTX + NTY*NTY;
        if ( ABS(1-R)>1.0e-9 ) {
@@ -271,11 +277,12 @@ double LinearIntegrateDiffToArea( Geometry_t *GB,
        if ( cosB < 1.0e-9 ) continue;
 
        EA = LinearEofA( U,V,BX,BY,BZ );
-       F += EA*S_Integ1d[i]*cosA*cosB/(2*R);
+       F += EA*S_Integ1d[i]*cosA*cosB / (2*R);
     }
 
     return F;
 }
+
 
 double LinearViewFactor( Geometry_t *GA, Geometry_t *GB )
 {
@@ -548,4 +555,96 @@ subdivide:
         LinearComputeViewFactors( GA->Left,GB,LevelA+1,LevelB );
         LinearComputeViewFactors( GA->Right,GB,LevelA+1,LevelB );
     }
+}
+/*******************************************************************************
+
+Compute  differential view factor for linear surface elements by subdivision
+and direct numerical integration when the differential viewfactors match given
+magnitude criterion or areas of the elements are small enough. Blocking of the
+view between the elements is resolved by ray tracing.
+
+24 Aug 1995
+
+*******************************************************************************/
+void
+LinearComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
+         double dz, int LevelA)
+{
+  double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0);
+
+  double *X = GA->Linear->PolyFactors[0];
+  double *Y = GA->Linear->PolyFactors[1];
+  double *Z = GA->Linear->PolyFactors[2];
+
+  int i, j;
+
+  if (LevelA & 1)
+    {
+      Fa = 0;
+      Fb = 0;
+        goto subdivide;
+    }
+
+    Fa = Fb = LinearIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+
+    if ( Fa < 1.0e-10 && Fb < 1.0e-10 ) return;
+
+    if ( Fa<FactorEPS || GA->Area<AreaEPS )
+    {
+       GeometryList_t *Link;
+
+       Hit = Nrays;
+       for( i=0; i<Nrays; i++ )
+       {
+          U = drand48();
+
+          FX = LinearValue(U,X);
+          FY = LinearValue(U,Y);
+          FZ = 0.0;
+
+          GX = dx - FX;
+          GY = dy - FY;
+          GZ = 0.0;
+
+           if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
+        }
+
+        if ( Hit == 0 ) return;
+
+        if ( Hit == Nrays || Fa<FactorEPS/2 || GA->Area < AreaEPS/2 )
+        {
+            F = Hit*Fa/(1.0*Nrays);
+            Fa = Fb = F / GA->Area / PI;
+
+            Link = (GeometryList_t *)calloc(sizeof(GeometryList_t),1);
+            Link->Next = GA->Link;
+            GA->Link = Link;
+
+            Link->Entry = GA;
+            Link->ViewFactor = Fa;
+
+            return;
+        }
+    }
+
+subdivide:
+
+        if ( !GA->Left ) LinearSubdivide( GA, LevelA,1 );
+
+        if ( GA->Flags & GEOMETRY_FLAG_LEAF )
+        {
+            GA->Flags &= ~GEOMETRY_FLAG_LEAF;
+            GA->Left->Flags  |= GEOMETRY_FLAG_LEAF;
+            GA->Right->Flags |= GEOMETRY_FLAG_LEAF;
+
+            if ( !GA->Left->Area )
+            {
+                GA->Left->Area  = LinearArea(GA->Left);
+                GA->Right->Area = LinearArea(GA->Right);
+            }
+        }
+
+        LinearComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
+        LinearComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
 }

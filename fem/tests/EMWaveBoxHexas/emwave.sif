@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 35
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient

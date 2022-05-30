@@ -123,34 +123,26 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   TableFormat = ListGetLogical( Params,'Table Format',Found)
   VtuFormat = ListGetLogical( Params,'Vtu Format',Found)
   VtiFormat = GetLogical( Params,'Vti Format',GotIt )
-#ifdef HAVE_NETCDF
   NetCDFFormat =  GetLogical( Params,'NetCDF Format',GotIt )
-#endif
 
   FileFormat = ListGetString( Params,'Output Format',Found) 
   IF( Found ) THEN
     IF( FileFormat == 'vtu') VtuFormat = .TRUE.
     IF( FileFormat == 'table') TableFormat = .TRUE.
     IF( FileFormat == 'vti') VtiFormat = .TRUE.
-#ifdef HAVE_NETCDF
-    IF( FileFormat == 'netcdf')  THEN 
-      NetCDFFormat = .TRUE. 
-      CALL Info('SaveGridData','Saving data to Netcdf        ', Level=4 )
-    ENDIF
-#endif
+    IF( FileFormat == 'netcdf')  NetCDFFormat = .TRUE. 
   END IF
 
-#ifdef HAVE_NETCDF
-  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat .OR. NetCDFFormat
-#else
-  IF( FileFormat == 'netcdf') THEN
+#ifndef HAVE_NETCDF
+  IF( NetCDFFormat ) THEN
     CALL Warn('SaveGridData','Please recompile Elmer with Netcdf library or choose another file format !')
-    RETURN
+    NetCDFFormat = .FALSE.
   ENDIF 
-  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat
 #endif
+  
+  AnyFormat = VtuFormat .OR. TableFormat .OR. VtiFormat .OR. NetCDFFormat
   IF( .NOT. AnyFormat ) THEN
-    CALL Warn('SaveGridData','No active file format given!')
+    CALL Warn('SaveGridData','No active file format given, nothing to do!')
     RETURN
   END IF
 
@@ -158,11 +150,7 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
 
   ! Initialize the particles on the first calling
   !------------------------------------------------------------------------
-#ifdef HAVE_NETCDF
   Structured = VtiFormat .OR. NetCDFFormat
-#else
-  Structured = VtiFormat 
-#endif
   IF( .NOT. Visited .OR. RecreateGrid ) THEN
     Particles % TimeOrder = 0
     Particles % dim = CoordinateSystemDimension()
@@ -300,8 +288,7 @@ CONTAINS
     TYPE(Particle_t), POINTER :: Particles
 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Minx, Miny, Minz, Maxx, Maxy,&
-                     Maxz
+    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), gMinCoord(3), gMaxCoord(3)
     REAL(KIND=dp) :: LocalCoords(3), GlobalCoords(3)
     REAL(KIND=dp) :: x,y,z,u,v,w
     INTEGER, POINTER :: MaskPerm(:)
@@ -344,7 +331,7 @@ CONTAINS
       ALLOCATE( MaskPerm( Model % NumberOfNodes ) ) 
       CALL MakePermUsingMask( Model,Solver,Mesh,Str, &
           .FALSE., MaskPerm, NumberOfNodes, MaskOnBulk )
-      ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfNodes ) )
+      ParallelNodes = ParallelReduction( NumberOfNodes ) 
       IF( ParallelNodes == 0 ) THEN
         CALL Fatal('SaveGridData','Given mask not active: '//TRIM(Str) )
       ELSE
@@ -383,36 +370,32 @@ CONTAINS
     MaxCoord(3) = GetCReal( Params,'Max Coordinate 3',GotIt) 
     IF(.NOT. GotIt) MaxCoord(3) = MAXVAL(Mesh % Nodes % z )
 
+    ! We need separately global range (with "g") for determining nx, ny, nz etc.
+    ! and the local range to not allocate too much memory. 
+    IF( Parallel ) THEN
+      DO i=1,3
+        gMinCoord(i) = ParallelReduction(MinCoord(i),1)
+        gMaxCoord(i) = ParallelReduction(MaxCoord(i),2)
+      END DO      
+#ifdef HAVE_NETCDF
+      IF(NetCDFFormat) THEN
+        MinCoord = gMinCoord
+        MaxCoord = gMaxCoord
+      END IF
+#endif 
+    ELSE
+      gMinCoord = MinCoord
+      gMaxCoord = MaxCoord
+    END IF
+    
      !print *,'Bounding box min:',MinCoord,ParEnv % myPE
      !print *,'Bounding box max:',MaxCoord,ParEnv % myPE
-
-#ifdef HAVE_NETCDF
-    !This is for a parallel run and NetCDF output. It ensures that every
-    !partition constructs the same grid, which then means values can be easily
-    !sent to the boss partition that will actually do the output of a single
-    !consolidated NetCDF. On the downside, does potentially use a lot of memory
-    !if the grid is large.
-    IF(Parallel .AND. NetCDFFormat) THEN
-      CALL MPI_ALLREDUCE(MinCoord(1), Minx, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MinCoord(2), Miny, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MinCoord(3), Minz, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(1), Maxx, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(2), Maxy, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(3), Maxz, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      MinCoord(1) = Minx
-      MinCoord(2) = Miny
-      MinCoord(3) = Minz
-      MaxCoord(1) = Maxx
-      MaxCoord(2) = Maxy
-      MaxCoord(3) = Maxz
-    END IF
-#endif
 
     ! Optionally the mesh origin may be moved to guarantee that there is 
     ! a node at (x0,y0,z0) always.
     !--------------------------------------------------------------------
     IF( GetLogical( Params,'Grid Origin At Corner',GotIt ) ) THEN
-      Origin(1:3) = MinCoord(1:3)
+      Origin(1:3) = gMinCoord(1:3)
     ELSE
       Origin(1) = GetCReal( Params,'Grid Origin 1',GotIt) 
       Origin(2) = GetCReal( Params,'Grid Origin 2',GotIt) 
@@ -427,7 +410,7 @@ CONTAINS
     IF(.NOT. GotIt ) THEN
       nx = GetInteger( Params,'Grid nx',GotIt) 
       IF( GotIt) THEN
-        dx(1) = ( MaxCoord(1) - MinCoord(1) ) / nx 
+        dx(1) = ( gMaxCoord(1) - gMinCoord(1) ) / nx 
       ELSE
         CALL Fatal('FindGridParticles','Give either > Grid dx < or > Grid nx <')
       END IF
@@ -438,7 +421,7 @@ CONTAINS
       IF(.NOT. GotIt ) THEN
         nx = GetInteger( Params,'Grid ny',GotIt) 
         IF( GotIt) THEN
-          dx(2) = ( MaxCoord(2) - MinCoord(2) ) / nx
+          dx(2) = ( gMaxCoord(2) - gMinCoord(2) ) / nx
         ELSE
           dx(2) = dx(1)
         END IF
@@ -450,7 +433,7 @@ CONTAINS
       IF(.NOT. GotIt ) THEN
         nx = GetInteger( Params,'Grid nz',GotIt) 
         IF( GotIt) THEN
-          dx(3) = ( MaxCoord(3) - MinCoord(3) ) / nx
+          dx(3) = ( gMaxCoord(3) - gMinCoord(3) ) / nx
         ELSE
           dx(3) = dx(1)
         END IF
@@ -459,7 +442,8 @@ CONTAINS
 
 
     ! Set limits for the global indexes. These are used particularly if the 
-    ! bounding box has been manually reduced. 
+    ! bounding box has been manually reduced. Note use of local boundaring box
+    ! in parallel too. 
     !----------------------------------------------------------------------------
     imintot = CEILING( ( MinCoord(1) - Origin(1) ) / dx(1) ) 
     imaxtot = FLOOR( ( MaxCoord(1) - Origin(1) ) / dx(1) ) 

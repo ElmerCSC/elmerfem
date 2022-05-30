@@ -247,7 +247,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     n = 0
     IF( ALLOCATED( A % ConstrainedDOF ) ) THEN
       n = COUNT( A % ConstrainedDOF )
-      n = NINT( ParallelReduction( 1.0_dp * n ) )
+      n = ParallelReduction( n ) 
     END IF
     IF( n == 0 ) THEN
       CALL Warn('JfixPotentialSolver','No Dirichlet conditions used to define Jfix level!')

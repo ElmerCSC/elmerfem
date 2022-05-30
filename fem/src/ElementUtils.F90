@@ -152,7 +152,7 @@ CONTAINS
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
-       DEALLOCATE(Matrix % ParallelInfo % INTERFACE)
+       DEALLOCATE(Matrix % ParallelInfo % NodeInterface)
        DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
        END DO
@@ -311,7 +311,7 @@ CONTAINS
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, Left, Right
     CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
-    LOGICAL :: GotIt
+    LOGICAL :: GotIt, PSA
     CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrix'
 !------------------------------------------------------------------------------
 
@@ -325,6 +325,10 @@ CONTAINS
     ELSE
       DB = .FALSE.
     END IF
+
+    ! When this has been checked properly the old can be removed
+    PSA = ListGetLogical( Solver % Values,'PSA',Found ) 
+    IF(.NOT. Found) PSA = .TRUE.
     
     List => List_AllocateMatrix(LocalNodes)
 
@@ -373,7 +377,8 @@ CONTAINS
 
         IF( DGIndirect ) THEN
           CALL Info(Caller,'Creating also indirect connections!',Level=12)
-          ALLOCATE( IndirectPairs( LocalNodes ) )
+          ALLOCATE( IndirectPairs( LocalNodes ), STAT=istat )
+          IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for IndirectPairs work.')
           IndirectPairs = 0
         END IF
                         
@@ -393,15 +398,19 @@ CONTAINS
             CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF
         END DO
 
         IF( Mesh % NumberOfFaces == 0 ) THEN
@@ -447,15 +456,19 @@ CONTAINS
               Indexes(n) = Right % DGIndexes(j)
             END DO
 
-            DO i=1,n
-              k1 = Reorder(Indexes(i))
-              IF ( k1 <= 0 ) CYCLE
-              DO j=1,n
-                k2 = Reorder(Indexes(j))
-                IF ( k2 <= 0 ) CYCLE
-                Lptr => List_GetMatrixIndex( List,k1,k2 )
+            IF( PSA ) THEN
+              CALL PackSortAdd(n,Indexes,Reorder)
+            ELSE
+              DO i=1,n
+                k1 = Reorder(Indexes(i))
+                IF ( k1 <= 0 ) CYCLE
+                DO j=1,n
+                  k2 = Reorder(Indexes(j))
+                  IF ( k2 <= 0 ) CYCLE
+                  Lptr => List_GetMatrixIndex( List,k1,k2 )
+                END DO
               END DO
-            END DO
+            END IF
           END DO
         END IF
 
@@ -506,15 +519,19 @@ CONTAINS
             Indexes(n) = Right % DGIndexes(j)
           END DO
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF
         END DO
 
         IF( DGIndirect ) THEN
@@ -554,16 +571,21 @@ CONTAINS
             END IF
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF          
         END DO
+        
         DO t=1,Mesh % NumberOfFaces
           n = 0
           Elm => Mesh % Faces(t) % BoundaryInfo % Left
@@ -588,15 +610,19 @@ CONTAINS
             END IF
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF            
         END DO
       END IF
     END IF ! DGSolver
@@ -626,7 +652,9 @@ CONTAINS
         INTEGER :: cnt, maxnodes
 
         n = Mesh % MaxElementNodes
-        ALLOCATE( ElemInds(n), ElemInds2(n) )
+        ALLOCATE( ElemInds(n), ElemInds2(n), STAT=istat )
+        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for ElemInds.')
+        
         ElemInds = 0
         ElemInds2 = 0
 
@@ -673,11 +701,12 @@ CONTAINS
             END IF
                         
             IF (.NOT.ALLOCATED(inds)) THEN
-              ALLOCATE(inds(maxnodes*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors),STAT=istat)
             ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
               DEALLOCATE(inds)
-              ALLOCATE(inds(maxnodes*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors),STAT=istat)
             END IF
+            IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error fo inds.')
 
             cnt = 0
             DO n=1,NumberOfFactors
@@ -736,9 +765,7 @@ CONTAINS
             IndexSize = n
             IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
             ALLOCATE( Indexes(n), STAT=istat )
-            IF( istat /= 0 ) THEN
-              CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
-            END IF
+            IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
          END IF
 
          n = 0
@@ -789,15 +816,19 @@ CONTAINS
             END DO
          END IF
 
-         DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
+         IF( PSA ) THEN
+           CALL PackSortAdd(n,Indexes,Reorder)
+         ELSE
+           DO i=1,n
+             k1 = Reorder(Indexes(i))
+             IF ( k1 <= 0 ) CYCLE
+             DO j=1,n
                k2 =  Reorder(Indexes(j))
                IF ( k2 <= 0 ) CYCLE
                Lptr => List_GetMatrixIndex( List,k1,k2 )
-            END DO
-         END DO
+             END DO
+           END DO
+         END IF
          t = t + 1
       END DO
 
@@ -879,7 +910,9 @@ CONTAINS
     IF( PRESENT( CalcNonZeros ) ) DoNonZeros = CalcNonZeros
     
     IF( DoNonZeros ) THEN
-      ALLOCATE( InvPerm(LocalNodes) )
+      ALLOCATE( InvPerm(LocalNodes), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for InvPerm.')
+      
       InvPerm = 0
       k = 0
       DO i=1,SIZE(Reorder)
@@ -899,7 +932,32 @@ CONTAINS
 
   CONTAINS
 
+    ! Takes elemental indexes (for nodes, edges, faces etc.) and using the initial permutation
+    ! pack the nonzeros and then sort them and finally add them to the list matrix structure.
+    ! Adding the whole row is computationally advantageous to adding just one entry at a time.
+    !-----------------------------------------------------------------------------------------
+    SUBROUTINE PackSortAdd(n,Ind,Perm)
+      INTEGER :: n
+      INTEGER :: Ind(:),Perm(:)
+      INTEGER :: i,j,m
+      
+      m = 0
+      DO i=1,n
+        j = Perm(Ind(i))
+        IF(j==0) CYCLE
+        m = m+1
+        Ind(m) = j
+      END DO
 
+      CALL Sort(m,Ind)
+
+      DO i=1,m
+        CALL List_AddMatrixIndexes(List,Ind(i),m,Ind)
+      END DO
+
+    END SUBROUTINE PackSortAdd
+        
+    
     ! Pick thet correct indexes for radition when using discontinuous Galerkin.
     ! In internal BCs we expect to find 'emissivity' given on either side.
     !--------------------------------------------------------------------------
@@ -1050,9 +1108,7 @@ CONTAINS
     IF ( DGSolver ) THEN
        IndexSize = 128
        ALLOCATE( Indexes(IndexSize), STAT=istat )
-       IF( istat /= 0 ) THEN
-         CALL Fatal(Caller,'Allocation error for Indexes')
-       END IF
+       IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes')
 
        ! TODO: Add multithreading
        DO t=1,Mesh % NumberOfEdges
@@ -1197,11 +1253,9 @@ CONTAINS
                
                IndexSize = MAX(MAX(128, IndexSize*2), n)
                ALLOCATE(Indexes(IndexSize), &
-                    IndexReord(IndexSize), &
-                    IPerm(IndexSize), STAT=istat )
-               IF( istat /= 0 ) THEN
-                  CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
-               END IF
+                   IndexReord(IndexSize), &
+                   IPerm(IndexSize), STAT=istat )
+               IF( istat /= 0 ) CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
             END IF
             
             n = 0
@@ -1570,7 +1624,8 @@ CONTAINS
      INTEGER :: nthr
      LOGICAL :: UseThreads
      LOGICAL, ALLOCATABLE :: ConstrainedNode(:)
-     
+     CHARACTER(*), PARAMETER :: Caller = 'CreateMatrix'
+   
 !------------------------------------------------------------------------------
 
      NULLIFY( Matrix )
@@ -1583,11 +1638,11 @@ CONTAINS
        
      IF( OptimizeBW ) THEN
        IF( ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) ) THEN
-         CALL Info('CreateMatrix','Suppressing bandwidth optimization for discontinuous bodies',Level=8)
+         CALL Info(Caller,'Suppressing bandwidth optimization for discontinuous bodies',Level=8)
          OptimizeBW = .FALSE.
        END IF
        IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
-         CALL Info('CreateMatrix','Suppressing bandwidth optimization for conforming bcs',Level=8)
+         CALL Info(Caller,'Suppressing bandwidth optimization for conforming bcs',Level=8)
          OptimizeBW = .FALSE.
        END IF
      END IF
@@ -1660,7 +1715,7 @@ CONTAINS
 
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
-       CALL Info('CreateMatrix','creating initial permutation',Level=14)
+       CALL Info(Caller,'Creating initial permutation',Level=14)
        k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
        IF ( k <= 0 ) THEN
          IF(ALLOCATED(InvInitialReorder)) DEALLOCATE(InvInitialReorder)
@@ -1681,7 +1736,7 @@ CONTAINS
 
      IF( ParEnv % PEs > 1 .AND. &
          ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
-       CALL Info('CreateMatrix','Skipping pure halo nodes',Level=14)
+       CALL Info(Caller,'Skipping pure halo nodes',Level=14)
        j = 0
        DO i=1,Mesh % NumberOfNodes 
          ! These are pure halo nodes that need not be communicated. They are created only 
@@ -1700,10 +1755,10 @@ CONTAINS
 
      
      IF( OptimizeBW ) THEN
-       CALL Info('CreateMatrix','Creating inverse of initial order of size: '//TRIM(I2S(k)),Level=14)
+       CALL Info(Caller,'Creating inverse of initial order of size: '//TRIM(I2S(k)),Level=14)
        ALLOCATE( InvInitialReorder(k), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for InvInitialReorder of size: '//TRIM(I2S(k)))
+         CALL Fatal(Caller,'Allocation error for InvInitialReorder of size: '//TRIM(I2S(k)))
        END IF
 
        ! We need to keep the initial numbering only in case we optimize the bandwidth!
@@ -1714,7 +1769,7 @@ CONTAINS
      END IF
      
      UseOptimized = ListGetLogical( Solver % Values, &
-       'Optimize Bandwidth Use Always', GotIt )
+         'Optimize Bandwidth Use Always', GotIt )
           
      Matrix => NULL()
 
@@ -1726,19 +1781,8 @@ CONTAINS
      END IF
 
      !------------------------------------------------------------------------------
-     ! Note that Model % RowNonZeros is not used anymore!!!!
-     ! For this to be ok the "SetRows" flag must be set .FALSE.
-     ! The reason behind the change is that using that was not flexible enough with
-     ! DB fields. 
-     !------------------------------------------------------------------------------
-     !     ALLOCATE( Model % RowNonZeros(k), STAT=istat )
-     !     IF( istat /= 0 ) THEN
-     !       CALL Fatal('CreateMatrix','Allocation error for RowNonZeros of size: '//TRIM(I2S(k)))
-     !     END IF
-     !     Model % RowNonzeros=0
-
      IF (UseThreads) THEN
-       CALL Info('CreateMatrix','Creating threaded list matrix array for equation',Level=14)
+       CALL Info(Caller,'Creating threaded list matrix array for equation',Level=14)
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrixArray( Model, Solver, Mesh, ListMatrixArray, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE. )
@@ -1755,7 +1799,7 @@ CONTAINS
        !------------------------------------------------------------------------------
        ! Initialize the matrix. Multithreading only supports CRS.
        !------------------------------------------------------------------------------
-       CALL Info('CreateMatrix','Initializing list matrix array for equation',Level=14)
+       CALL Info(Caller,'Initializing list matrix array for equation',Level=14)
        IF ( MatrixFormat == MATRIX_CRS) THEN
          Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
              Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
@@ -1767,15 +1811,16 @@ CONTAINS
            CALL InitializeMatrix( Matrix, k, ListMatrixArray % Rows, DOFs )          
          END IF
        ELSE
-         CALL Fatal('CreateMatrix','Multithreaded startup only supports CRS matrix format')
+         CALL Fatal(Caller,'Multithreaded startup only supports CRS matrix format')
        END IF
        
-       CALL Info('CreateMatrix','Matrix created',Level=14)
+       CALL Info(Caller,'Matrix created',Level=14)
 
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
        NULLIFY( ListMatrix )
-       CALL Info('CreateMatrix','Creating list matrix for equation: '//TRIM(Eq),Level=14)
+       CALL Info(Caller,'Creating list matrix for equation: '//TRIM(Eq),Level=14)
+
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
@@ -1792,9 +1837,10 @@ CONTAINS
        !------------------------------------------------------------------------------
        ! Initialize the matrix. 
        !------------------------------------------------------------------------------
-       CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
+       CALL Info(Caller,'Initializing list matrix for equation',Level=14)
        SELECT CASE( MatrixFormat )
        CASE( MATRIX_CRS )
+         
          Matrix => CRS_CreateMatrix( DOFs*k, Model % TotalMatrixElements, Ndeg=DOFs, &
              Reorder=Perm, AllocValues=.TRUE., SetRows = .FALSE.)
          Matrix % FORMAT = MatrixFormat
@@ -1804,14 +1850,13 @@ CONTAINS
          ELSE
            CALL InitializeMatrix( Matrix, k, ListMatrix, DOFs )
          END IF
-            
       CASE( MATRIX_BAND )
         Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.FALSE.,.TRUE. )
          
        CASE( MATRIX_SBAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.TRUE.,.TRUE. )
        END SELECT
-       CALL Info('CreateMatrix','Matrix created',Level=14)
+       CALL Info(Caller,'Matrix created',Level=14)
 
        CALL List_FreeMatrix( k, ListMatrix )
      END IF
@@ -1833,7 +1878,7 @@ CONTAINS
        ALLOCATE( A % Rows(n+1), A % Diag(n), A % RHS(n), &
            ConstrainedNode(Mesh % NumberOfNodes), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for CRS matrix topology: '//TRIM(I2S(n)))
+         CALL Fatal(Caller,'Allocation error for CRS matrix topology: '//TRIM(I2S(n)))
        END IF
 
        DO i=1,n
@@ -1875,7 +1920,7 @@ CONTAINS
 
        ALLOCATE( A % Cols(cols), A % Values(cols), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('CreateMatrix','Allocation error for CRS cols and values: '//TRIM(I2S(cols)))
+         CALL Fatal(Caller,'Allocation error for CRS cols and values: '//TRIM(I2S(cols)))
        END IF
        A % Cols = 0
        A % Values = 0
@@ -2349,14 +2394,9 @@ CONTAINS
 ! ListGetRealArray doesn t exist, so we READ it component by component
 ! naming them with suffixes " 1" etc.
        DO j=1,DIM
-         WRITE (Component, '(" ",I1.1)') j
-         IntegrandFunctionComponent = IntegrandFunctionName(1: &
-             LEN_TRIM(IntegrandFunctionName))
-         IntegrandFunctionComponent(LEN_TRIM(IntegrandFunctionName)+1: &
-             LEN_TRIM(IntegrandFunctionName)+2) = Component
+         IntegrandFunctionComponent = TRIM(IntegrandFunctionName)//' '//TRIM(I2S(j))
          IntegrandFunction(1:n,j) = ListGetReal( Model % Simulation, &
-          IntegrandFunctionComponent(1:LEN_TRIM(IntegrandFunctionComponent)), &
-          n, NodeIndexes )
+             IntegrandFunctionComponent, n, NodeIndexes )
        END DO
 
 !------------------------------------------------------------------------------
@@ -2505,14 +2545,9 @@ CONTAINS
 ! ListGetRealArray doesn t exist, so we READ it component by component
 ! naming them with suffixes " 1" etc.
        DO j=1,DIM
-         WRITE (Component, '(" ",I1.1)') j
-         IntegrandFunctionComponent = IntegrandFunctionName(1: &
-             LEN_TRIM(IntegrandFunctionName))
-         IntegrandFunctionComponent(LEN_TRIM(IntegrandFunctionName)+1: &
-             LEN_TRIM(IntegrandFunctionName)+2) = Component
+         IntegrandFunctionComponent = TRIM(IntegrandFunctionName)//' '//TRIM(I2S(j))
          IntegrandFunction(1:n,j) = ListGetReal( Model % Simulation, &
-          IntegrandFunctionComponent(1:LEN_TRIM(IntegrandFunctionComponent)), &
-          n, NodeIndexes )
+             IntegrandFunctionComponent, n, NodeIndexes )
        END DO
 
 !------------------------------------------------------------------------------

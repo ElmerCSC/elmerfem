@@ -123,7 +123,7 @@
         <item row="0" column="1">
          <widget class="QLineEdit" name="divideLineEdit">
           <property name="text">
-           <string>ElmerGrid 2 2 %msh -metis %n</string>
+           <string>ElmerGrid 2 2 %msh -partdual -metiskway %n</string>
           </property>
          </widget>
         </item>
@@ -137,7 +137,7 @@
         <item row="1" column="1">
          <widget class="QLineEdit" name="mergeLineEdit">
           <property name="text">
-           <string>ElmerGrid 15 3 %ep -partjoin %n</string>
+           <string></string>
           </property>
          </widget>
         </item>

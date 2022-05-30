@@ -92,11 +92,11 @@ MODULE StressLocal
      REAL(KIND=dp) :: M(3,3),D(3,3),HeatExpansion(3,3), A(4,4)
      REAL(KIND=dp) :: Temperature,Density, C(6,6), Damping,MeshVelo(3)
      REAL(KIND=dp) :: StressTensor(3,3), StrainTensor(3,3), InnerProd, NodalViscosity(n)
-     REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6)
+     REAL(KIND=dp) :: StressLoad(6), StrainLoad(6), PreStress(6), PreStrain(6), StressLoadVE(6)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis,ind(3)
 
-     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), xPhi
+     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), xPhi, Ux(ntot), Uy(ntot), Uz(ntot)
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -115,8 +115,8 @@ MODULE StressLocal
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: ndim
      LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
-     REAL(KIND=dp) :: Pres, Pres0
-     REAL(KIND=dp) :: PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
+     REAL(KIND=dp) :: Pres, Pres0, dt
+     REAL(KIND=dp) :: PSOL(4,ntot), SOL(4,ntot), ShearModulus, Viscosity, PrevStress(3,3)
      CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
@@ -208,6 +208,11 @@ MODULE StressLocal
          CALL Fatal( 'StressCompose', '"Maxwell material" set, but no storage space for stresses present?' )
        END IF
 
+       IF(.NOT.ASSOCIATED(ve_stress % PrevValues)) THEN
+         ALLOCATE(ve_stress % PrevValues(1,SIZE(ve_stress % values)))
+         ve_stress % PrevValues = 0._dp
+       END IF
+
        i = Element % ElementIndex
        j = ve_stress % Perm( i+1 ) - ve_stress % Perm ( i )
        IF( IntegStuff % n /= j ) THEN
@@ -218,8 +223,26 @@ MODULE StressLocal
 
        SOL = 0; PSOL = 0
        CALL GetVectorLocalSolution( SOL )
-       CALL GetVectorLocalSolution( PSOL, tStep=-2 )
-       PSOL = SOL - PSOL
+       CALL GetVectorLocalSolution( PSOL, tStep=-1 )
+
+       dt = GetTimeStepSize()
+       SELECT CASE(dim)
+       CASE(1)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
+         Uy = 0._dp
+         Uz = 0._dp
+       CASE(2)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
+         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
+         Uz = 0._dp
+       CASE(3)
+         Ux = (SOL(1,1:ntot) - PSOL(1,1:ntot))/dt
+         Uy = (SOL(2,1:ntot) - PSOL(2,1:ntot))/dt
+         Uz = (SOL(3,1:ntot) - PSOL(3,1:ntot))/dt
+       CASE DEFAULT
+         CALL Fatal( 'StressCompose', 'Unkown coordinate system dimension' ) 
+       END SELECT
+
        PrevStress = 0._dp
      END IF
 
@@ -439,8 +462,15 @@ MODULE StressLocal
 
        IF(MaxwellMaterial) THEN
          Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
+BLOCK
+REAL(KIND=dp) :: muder0
+
+         Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
+            Element, Nodes, n, ntot, u, v, w,  muder0, LocalIP=t )
+
          xPhi = ViscoElasticLoad( ve_stress, t, StressLoad )
          NeedPreStress = .TRUE.
+END BLOCK
        ELSE
          xPhi = 1
        END IF
@@ -674,22 +704,32 @@ CONTAINS
  FUNCTION ViscoElasticLoad(ve_stress, ip, StressLoad) RESULT(xPhi)
 !------------------------------------------------------------------------------
     TYPE(Variable_t) :: ve_stress
-    INTEGER :: ip
+    INTEGER :: ip, nonl
     REAL(KIND=dp) :: StressLoad(6), Xphi
 !------------------------------------------------------------------------------
     INTEGER :: i
-    REAL(KIND=dp) :: StressTensor(3,3), PrevStress(3,3), Pres, Pres0, &
+    REAL(KIND=dp) :: ElasticStress(3,3), VEStress(3,3), PrevStress(3,3), Pres, Pres0, &
            ShearModulus
 
-    StressTensor  = 0._dp
-    CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
-         NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-         PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+    i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
 
+    IF ( GetNonlinIter()==1 .AND. GetCoupledIter()==1 ) THEN
+      ve_stress % prevvalues(1,i+1:i+dim**2) = ve_stress % values(i+1:i+dim**2)
+    END IF
+
+    ! Elastic deviatoric stress
+    ! -------------------------
+    ElasticStress = 0._dp
+    CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
+         NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
+         SOL-PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+
+    ! Pressure terms:
+    ! ---------------
     IF(Incompressible) THEN
       ShearModulus = Young / 3
       Pres  = SUM( Basis(1:n) * SOL(ndim,1:n) )
-      Pres0 = SUM( Basis(1:n) * (SOL(ndim,1:n) - PSOL(ndim,1:n)) )
+      Pres0 = SUM( Basis(1:n) * PSOL(ndim,1:n) )
     ELSE
       Pres = 0._dp; Pres0 = 0._dp
       ShearModulus = Young / (2*(1+Poisson))
@@ -697,17 +737,18 @@ CONTAINS
 
     xPhi = 1._dp / ( 1 + ShearModulus / Viscosity * GetTimeStepSize() )
 
-    i = dim**2*(ve_stress % perm(Element % ElementIndex) + ip - 1)
-    PrevStress(1:dim,1:dim) = RESHAPE( ve_stress % values(i+1:i+dim**2), [dim,dim] )
-    PrevStress = xPhi * (StressTensor + PrevStress + Pres0 * Ident) - Pres * Ident
-    ve_stress % values(i+1:i+dim**2) = RESHAPE( PrevStress(1:dim,1:dim), [dim**2] )
+    ! Update new viscoelastic stress
+    ! ------------------------------
+    PrevStress(1:dim,1:dim) = RESHAPE(ve_stress % prevvalues(1,i+1:i+dim**2), [dim,dim] )
+    VEStress = xPhi * (ElasticStress + PrevStress + Pres0*Ident) - Pres*Ident 
+    ve_stress % values(i+1:i+dim**2) = RESHAPE( VEStress(1:dim,1:dim), [dim**2] )
 
-    StressTensor  = 0._dp
-    CALL LocalStress( StressTensor,StrainTensor,NodalPoisson,ElasticModulus, &
-        NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
-        SOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
+    ElasticStress = 0._dp
+    CALL LocalStress( ElasticStress,StrainTensor,NodalPoisson,ElasticModulus, &
+         NodalHeatExpansion, NodalTemperature, Isotropic,CSymmetry,PlaneStress,   &
+         PSOL,Basis,dBasisdx,Nodes,dim,n,ntot, .FALSE. )
 
-    StressTensor = xPhi * (StressTensor - PrevStress - Pres * Ident)
+    StressTensor = xPhi * (ElasticStress - PrevStress - Pres0 * Ident)
             
     CALL Tensor26Vector( StressTensor, StressLoad, dim, CSymmetry )
 !------------------------------------------------------------------------------

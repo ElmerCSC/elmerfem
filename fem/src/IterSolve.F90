@@ -446,6 +446,8 @@ CONTAINS
       IF(.NOT. GotIt ) HUTI_ROBUST_STEPSIZE = 1.1_dp
       HUTI_ROBUST_MAXBADIT = ListGetInteger( Params,'Linear System Robust Max Iterations',GotIt)
       IF(.NOT. GotIt ) HUTI_ROBUST_MAXBADIT = HUTI_MAXIT / 2
+      HUTI_ROBUST_START = ListGetInteger( Params,'Linear System Robust Start Iteration',GotIt)
+      IF(.NOT. GotIt ) HUTI_ROBUST_START = 1
     ELSE
       HUTI_ROBUST = 0
     END IF

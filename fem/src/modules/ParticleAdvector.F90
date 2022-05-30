@@ -119,9 +119,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( VisitedTimes == 1 ) THEN
-    IF( GetLogical( Params,'Particle Time',Found) ) THEN
-      CALL ParticleVariableCreate( Particles,'particle time')
-    END IF 
+    CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
   ELSE	 
     PtimeVar => ParticleVariableGet( Particles, 'particle time' )
@@ -206,7 +204,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     END DO 
 
     NoMoving = Particles % NumberOfMovingParticles
-    NoMoving = NINT( ParallelReduction( 1.0_dp * NoMoving ) )
+    NoMoving = ParallelReduction( NoMoving ) 
     WRITE (Message,'(A,I0,A,I0,A)') 'Timestep ',i,' with ',NoMoving,' moving particles'
     CALL Info('ParticleAdvector',Message,Level=6)
 
