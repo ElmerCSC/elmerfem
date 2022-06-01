@@ -177,7 +177,7 @@ ENDIF()
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(WITH_LUA)
