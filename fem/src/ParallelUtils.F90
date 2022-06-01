@@ -964,15 +964,13 @@ CONTAINS
         CALL SParMatrixVector( Mx, Mr, ipar )
       END IF
  
-      IF(UpdateL) THEN
-        CALL SParUpdateResult( Matrix, x, b, .FALSE. )
-        IF(ZeroNotOwnedL) THEN
-          DO i = 1, Matrix % NumberOFRows
-            IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) THEN
-              b(i) = 0._dp
-            END IF
-          END DO
-        END IF
+      IF(UpdateL) CALL SParUpdateResult( Matrix, x, b, .FALSE. )
+
+      IF (ZeroNotOwnedL) THEN
+        DO i = 1, Matrix % NumberOFRows
+          IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) &
+            b(i) = 0._dp
+        END DO
       END IF
 
       IF ( UseMassValsL ) THEN
