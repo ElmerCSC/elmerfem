@@ -12344,9 +12344,10 @@ END FUNCTION SearchNodeL
 !>   Equilibrate the rows of the coefficient matrix A to
 !>   minimize the condition number. The associated rhs vector f is also scaled.
 !------------------------------------------------------------------------------
-  SUBROUTINE RowEquilibration( A, f, Parallel )
+  SUBROUTINE RowEquilibration( Solver, A, f, Parallel )
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: f(:)
     LOGICAL :: Parallel
 !-----------------------------------------------------------------------------
@@ -12388,18 +12389,40 @@ END FUNCTION SearchNodeL
         Diag(i+1) = tmp
       END DO
     ELSE
-      DO i=1,n
-        tmp = 0.0d0
-        DO j=Rows(i),Rows(i+1)-1        
-          tmp = tmp + ABS(Values(j))          
+      IF (Parallel) THEN
+BLOCK
+     REAL(KIND=dp) :: xtmp, x(n),y(n), z(n)
+     LOGICAL :: Found
+     TYPE(Matrix_t), POINTER :: ap
+ 
+        IF(ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
+          ap => a
+          x = 1; y=0; z=0
+          CALL ParallelInitSolve( ap, x, y, z )
+          CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
+        ELSE
+          DO i=1,n
+            tmp = 0.0_dp
+            DO j=Rows(i),Rows(i+1)-1        
+              tmp = tmp + ABS(Values(j))          
+            END DO
+            Diag(i)  = tmp       
+          END DO
+        END IF
+        CALL ParallelSUMVector(A,Diag)
+
+END BLOCK
+      ELSE
+        DO i=1,n
+          tmp = 0.0d0
+          DO j=Rows(i),Rows(i+1)-1        
+            tmp = tmp + ABS(Values(j))          
+          END DO
+          Diag(i)  = tmp       
         END DO
-        Diag(i) = tmp       
-      END DO
+      END IF
     END IF
 
-    IF (Parallel) THEN
-      CALL ParallelSumVector(A, Diag)
-    END IF
     norm = MAXVAL(Diag(1:n))
     IF( Parallel ) THEN
       norm = ParallelReduction(norm,2)
@@ -13568,7 +13591,7 @@ END FUNCTION SearchNodeL
     IF ( ScaleSystem ) THEN
       ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
       IF ( ApplyRowEquilibration ) THEN
-        CALL RowEquilibration(A, b, Parallel)
+        CALL RowEquilibration(Solver, A, b, Parallel)
       ELSE
         CALL ScaleLinearSystem(Solver, A, b, x, &
             RhsScaling = (bnorm/=0._dp), ConstraintScaling=.TRUE. )
