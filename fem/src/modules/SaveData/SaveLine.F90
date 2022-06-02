@@ -111,7 +111,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo, GotDivisions, EdgeBasis, DGVar, ElemVar, IpVar
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
-      Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
+      Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, NoLabels, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
       NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
       i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd, FoundNan 
@@ -135,6 +135,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   INTEGER :: imin,imax,nsize,LineUnit
   CHARACTER(*), PARAMETER :: Caller = 'SaveLine'
 
+  INTEGER :: NoData
+  REAL(KIND=dp), ALLOCATABLE :: PosData(:)
+  INTEGER, ALLOCATABLE :: LabelData(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: ResultData(:,:)
   
   INTERFACE
     SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
@@ -164,6 +168,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   FileIsOpen = .FALSE.
   FoundNan = 0
+  NoData = 0
   
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
@@ -224,6 +229,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   
   LineInd = ListGetInteger( Params,'Line Marker',GotIt)
   SaveNodes2 = 0;SaveNodes3 = 0; SaveNodes4 = 0
+
+
+  
   
 !----------------------------------------------
 ! Specify the number of entries for each node
@@ -235,6 +243,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   AVBasis = .FALSE.
   NoVar = 0
   NoResults = 0
+  NoLabels = 0
   DO ivar = 1,99
     Var => VariableGetN( ivar, Comps )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
@@ -418,13 +427,14 @@ CONTAINS
 !> are returned. 
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoords(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind)
+      Inside,Weights,maxind,linepos)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
     INTEGER :: n, maxind
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
+    REAL(KIND=dp) :: linepos
 
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
@@ -500,6 +510,9 @@ CONTAINS
         
         CALL InvertMatrix( A,3 )
         C(1:3) = MATMUL( A(1:3,1:3),B(1:3) )
+
+        ! position on the line
+        linepos = C(1)
         
         IF( ANY(C(1:3) < 0.0) .OR. ANY(C(1:3) > 1.0d0) ) CYCLE
         IF(C(2)+C(3) > 1.0d0) CYCLE
@@ -543,13 +556,14 @@ CONTAINS
 !> As the previous but performs mapping to plane
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoordsReduced(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind)
+      Inside,Weights,maxind,linepos)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
     INTEGER :: n, maxind
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
+    REAL(KIND=dp) :: linepos
 
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
@@ -597,6 +611,7 @@ CONTAINS
     
     CALL InvertMatrix( A,2 )
     C(1:2) = MATMUL(A(1:2,1:2),B(1:2))
+    linepos = C(1)
     
     IF(ANY(C(1:2) < 0.0) .OR. ANY(C(1:2) > 1.0d0)) RETURN
     
@@ -667,6 +682,40 @@ CONTAINS
 
   
   SUBROUTINE CloseLineFile()
+
+    INTEGER, ALLOCATABLE :: NewOrder(:)
+    
+    IF( NoData > 0 ) THEN
+      ALLOCATE(NewOrder(NoData))
+
+      ! Use negative sign so that we go from small coordinates to bigger...
+      PosData = -PosData
+      
+      PRINT *,'PosData:',PosData(1:NoData)
+      DO i=1,NoData
+        NewOrder(i) = i
+      END DO
+      
+      CALL SortR( NoData,NewOrder,PosData)
+
+      PRINT *,'NoData',NoData
+      PRINT *,'NewOrder:',NewOrder(1:NoData)
+      
+      DO i = 1, NoData
+        k = NewOrder(i)
+        DO j=1,NoLabels
+          WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(LabelData(k,j)))//' '
+        END DO
+        DO j=1,NoResults-1
+          WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') ResultData(k,j)
+        END DO
+        WRITE(LineUnit,'(ES20.11E3)') ResultData(k,NoResults)
+      END DO
+      NoData = 0
+
+      DEALLOCATE( NewOrder ) 
+    END IF
+       
     IF(FileIsOpen) CLOSE(LineUnit)
   END SUBROUTINE CloseLineFile
 
@@ -674,7 +723,8 @@ CONTAINS
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
   SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
-      node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, GlobalCoord )
+      node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, &
+      GlobalCoord, linepos )
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), TARGET :: Basis(:)
@@ -683,8 +733,9 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: NodalFlux(3)
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
     REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
+    REAL(KIND=dp), OPTIONAL :: linepos
     
-    INTEGER :: i,j,k,l,ivar,ii,i1,i2
+    INTEGER :: i,j,k,l,ivar,ii,i1,i2,n0
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
     INTEGER :: n, nd, np, EdgeBasisDegree, Labels(5)
@@ -693,13 +744,12 @@ CONTAINS
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
     INTEGER, TARGET :: NodeIndex(1), Indexes(54)
-    INTEGER :: n0
     REAL(KIND=dp) :: up,vp,wp
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
     REAL(KIND=dp) :: AveMult
     REAL(KIND=dp), ALLOCATABLE, SAVE :: fdg(:), fip(:)
-    LOGICAL :: pElem
+    LOGICAL :: pElem, Tabulate
     TYPE(Variable_t), POINTER :: pVar
     
     SAVE :: Nodes
@@ -707,6 +757,10 @@ CONTAINS
     Indexes = 0
     n0 = 0
 
+    ! If we have position on the line then we can sort the entries.
+    Tabulate = .FALSE.
+    IF(PRESENT(linepos)) Tabulate = .TRUE. 
+    
     CALL OpenLineFile()
       
     IF( .NOT. SkipBoundaryInfo ) THEN      
@@ -725,11 +779,23 @@ CONTAINS
       Labels(n0+2) = bc_id
       Labels(n0+3) = node_id      
       n0 = n0 + 3
+           
+      IF( Tabulate ) THEN
+        NoLabels = MAX(n0, NoLabels) 
+        NoData = NoData + 1
 
-      DO i=1,n0
-        WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
-      END DO
-      
+        IF(.NOT. ALLOCATED(PosData)) THEN
+          ALLOCATE(PosData(1000),LabelData(1000,n0))
+        END IF
+        
+        PosData(NoData) = linepos
+        LabelData(NoData,1:n0) = Labels(1:n0) 
+      ELSE
+        DO i=1,n0
+          WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
+        END DO
+      END IF
+        
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
         Norm = Norm + 1.0_dp * Labels(NormInd )
       END IF
@@ -1010,12 +1076,18 @@ CONTAINS
       END IF
     END DO
     
-    DO j=1,NoResults-1
-      WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
-    END DO
-    WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
-
-    
+    IF( Tabulate ) THEN
+      IF(.NOT. ALLOCATED(ResultData)) THEN
+        ALLOCATE(ResultData(1000,NoResults))
+      END IF
+      ResultData(NoData,1:NoResults) = Values(1:NoResults)
+    ELSE    
+      DO j=1,NoResults-1
+        WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
+      END DO
+      WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
+    END IF
+          
     IF( NormInd > n0 ) THEN
       Norm = Norm + Values(NormInd-n0)
     END IF
@@ -1464,7 +1536,8 @@ CONTAINS
   SUBROUTINE SavePolyLines()
 
     TYPE(Solver_t), POINTER :: pSolver
-
+    REAL(KIND=dp) :: linepos
+    
     pSolver => Solver
     
     
@@ -1639,20 +1712,22 @@ CONTAINS
               IF( LineTag(i) ) CYCLE
 
               GlobalCoord = R0 + i * dR / nsize
-
+              
               IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
                   LocalCoord, USolver = pSolver ) ) THEN
                 LineTag(i) = .TRUE.
 
                 SaveNodes2 = SaveNodes2 + 1
-
+                
+                linepos = 1.0_dp*i/nsize + 2*(Line-1)
                 CALL WriteFieldsAtElement( CurrentElement, Basis, Line, i, 0, &
-                    LocalCoord = LocalCoord )
+                    LocalCoord = LocalCoord, linepos = linepos )
               END IF
             END DO
           END DO
         ELSE
-
+          ! If no divisions then go though existing faces and check for the
+          ! intersection of line & and each face. 
           DO t = 1,NoFaces        
             IF(DIM == 2 .OR. IntersectEdge) THEN
               CurrentElement => Mesh % Edges(t)
@@ -1673,10 +1748,10 @@ CONTAINS
 
             IF( IntersectCoordinate /= 0 ) THEN
               CALL GlobalToLocalCoordsReduced(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i)
+                  DetEpsilon,Inside,Basis,i,linepos)
             ELSE
               CALL GlobalToLocalCoords(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i)
+                  DetEpsilon,Inside,Basis,i,linepos)
             END IF
 
             IF(.NOT. Inside) CYCLE
@@ -1689,8 +1764,10 @@ CONTAINS
             END IF
 
             SaveNodes2 = SaveNodes2 + 1
-            
-            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, NodeIndexes(i), 0 )
+
+            linepos = linepos + 2*(Line-1)
+            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, &
+                NodeIndexes(i), 0, linepos = linepos )
           END DO
         END IF
       END DO
@@ -2020,8 +2097,6 @@ CONTAINS
         (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
       ALLOCATE( ValueNames(NoResults+5), STAT=istat )
       IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for ValueNames') 
-
-      PRINT *,'NoResults:',NoResults
       
       No = 0
       DO ivar = -2,NoVar
