@@ -89,7 +89,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE MeshUtils
   USE BandwidthOptimize
   USE DefUtils
-
+  
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: PointFluxes(:,:), PointWeight(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
-      SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
+      SkipBoundaryInfo, GotDivisions, EdgeBasis, DGVar, ElemVar, IpVar
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
       Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
@@ -135,6 +135,20 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   INTEGER :: imin,imax,nsize,LineUnit
   CHARACTER(*), PARAMETER :: Caller = 'SaveLine'
 
+  
+  INTERFACE
+    SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
+      USE Types
+      USE Integration
+      USE ElementDescription
+      IMPLICIT NONE
+      
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: nip, ndg
+      REAL(KIND=dp) :: fip(:), fdg(:)
+    END SUBROUTINE Ip2DgFieldInElement
+  END INTERFACE
   
   SAVE SavePerm, PrevMaskName, SaveNodes
 
@@ -219,7 +233,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
 
   AVBasis = .FALSE.
-  DG = .FALSE.
   NoVar = 0
   NoResults = 0
   DO ivar = 1,99
@@ -227,34 +240,57 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
     NoVar = ivar
 
-    IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
-      DG = .TRUE.
-    END IF
-
+    DGvar = .FALSE.
+    IpVar = .FALSE. 
+    ElemVar = .FALSE.
+    EdgeBasis = .FALSE.
+    
     IF (ASSOCIATED (Var % EigenVectors)) THEN
       NoEigenValues = SIZE(Var % EigenValues) 
       NoResults = NoResults + Var % Dofs * NoEigenValues
     ELSE
-      EdgeBasis = .FALSE.
-      IF( ASSOCIATED( Var % Solver ) ) THEN
+      IF( Var % TYPE == variable_on_nodes_on_elements ) THEN
+        DGVar = .TRUE.
+      ELSE IF( Var % TYPE == variable_on_gauss_points ) THEN
+        IpVar = .TRUE.
+      ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+        ElemVar = .TRUE.
+      ELSE IF( ASSOCIATED( Var % Solver ) .AND. ASSOCIATED( Var % Perm ) ) THEN
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
-        IF( EdgeBasis .AND. ASSOCIATED( Var % Perm ) ) THEN
+        IF( EdgeBasis ) THEN          
+          EdgeBasis = ( SIZE( Var % Perm ) > Mesh % NumberOfNodes )
+        END IF
+        IF( EdgeBasis ) THEN
+          EdgeBasis = ( ANY( Var % Perm( Mesh % NumberOfNodes+1:) > 0 ) )
+        END IF
+        IF( EdgeBasis ) THEN
           IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE. 
         END IF
+        IF( EdgeBasis ) Var % TYPE = Variable_on_edges
       END IF
+
       IF( EdgeBasis ) THEN
-        CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
-        NoResults = NoResults + 3
-        IF( AVBasis ) NoResults = NoResults + 1
+        IF( AVBasis ) THEN
+          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in nodal+Hcurl: '//TRIM(Var % Name),Level=10)
+          NoResults = NoResults + 4
+        ELSE          
+          NoResults = NoResults + 3
+          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl: '//TRIM(Var % Name),Level=10)
+        END IF
       ELSE
+        IF( DgVar ) THEN
+          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living on DGBasis: '//TRIM(Var % Name),Level=10)
+        END IF
+        IF( IpVar ) THEN
+          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in IP points: '//TRIM(Var % Name),Level=10)
+        END IF
+        IF( ElemVar ) THEN
+          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living on elements: '//TRIM(Var % Name),Level=10)
+        END IF
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
       END IF
     END IF
   END DO
-  
-  IF( DG ) THEN
-    CALL Info(Caller,'Saving results assuming Discontinuous Galerkin variables',Level=7)
-  END IF
   
   IF ( CalculateFlux ) NoResults = NoResults + 3
   CALL Info(Caller,'Maximum number of fields for each node: '//TRIM(I2S(NoResults)),Level=18)
@@ -290,7 +326,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL SavePolylines()
 
   CALL SaveCircleLines()
- 
+
   ! Save data in the intersections isocurves and element edges.
   !---------------------------------------------------------------------------
   CALL SaveIsocurves()
@@ -298,23 +334,22 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   ! Finally close the file for saving
   !----------------------------------------
   CALL CloseLineFile()
-  
+
   CALL SaveVariableNames()
 
   DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, &
       LineNodes % x, LineNodes % y, LineNodes % z, Basis, Values )
-
 
   IF( NormInd > 0 ) THEN
     Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
   END IF
-
+  
   IF(FoundNan > 0 ) THEN
     CALL Warn(Caller,'Replaced '//TRIM(I2S(FoundNan))//' NaN entries with -1')
   END IF
-
+  
   CALL Info(Caller,'All done')
 
 CONTAINS
@@ -641,7 +676,7 @@ CONTAINS
   SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
       node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, GlobalCoord )
 
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), TARGET :: Basis(:)
     INTEGER :: bc_id, node_id, dgnode_id
     LOGICAL, OPTIONAL :: UseNode 
@@ -663,7 +698,9 @@ CONTAINS
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
     REAL(KIND=dp) :: AveMult
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: fdg(:), fip(:)
     LOGICAL :: pElem
+    TYPE(Variable_t), POINTER :: pVar
     
     SAVE :: Nodes
 
@@ -718,6 +755,7 @@ CONTAINS
     No = 0
     Values = 0.0d0
 
+    ! The funny negative indexes refer to coordinates that are treated separately
     DO ivar = -2,NoVar
       Var => VariableGetN( ivar, comps ) 
       IF( comps >= 2 ) THEN
@@ -748,25 +786,28 @@ CONTAINS
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
 
         ! Should we map (u,v,w) for piola reference element? 
+
+        EdgeBasis = ( Var % Type == variable_on_edges )
+        DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
+        IpVar = ( Var % TYPE == variable_on_gauss_points )
+        ElemVar = ( Var % TYPE == Variable_on_elements ) 
         
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
-          n = Element % TYPE % NumberOfNodes
-
-          IF(nd > n) pElem = isActivePElement(Element,Var % Solver) 
-                 
-          EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
-          IF( EdgeBasis ) THEN
-            IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
-              PiolaVersion = .TRUE.
-            ELSE
-              PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
-            END IF
-            np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-          END IF
         ELSE
-          nd = GetElementDOFs( Indexes, Element )
-          n = Element % Type % NumberOfNodes
+          nd = GetElementDOFs( Indexes, Element )  
+        END IF          
+        n = Element % TYPE % NumberOfNodes                  
+
+        IF(nd > n) pElem = isActivePElement(Element,Var % Solver)                              
+
+        IF( EdgeBasis ) THEN
+          IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
+            PiolaVersion = .TRUE.
+          ELSE
+            PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
+          END IF
+          np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
         END IF
         
         IF( EdgeBasis ) THEN
@@ -785,7 +826,7 @@ CONTAINS
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
           END IF
 
-          IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+          IF( DgVar ) THEN
             PtoIndexes => Element % DgIndexes
           ELSE IF( pElem ) THEN
             pToIndexes => Indexes
@@ -806,7 +847,7 @@ CONTAINS
           PtoIndexes => Element % NodeIndexes 
         END IF
 
-      ELSE
+      ELSE ! UseGivenNode
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           NodeIndex(1) = dgnode_id
         ELSE
@@ -814,7 +855,7 @@ CONTAINS
         END IF       
       END IF
 
-            
+      
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
@@ -832,6 +873,15 @@ CONTAINS
           Values(No) = 0.0_dp
           DO k=1,n
             l = PtoIndexes(k)
+            IF( l > SIZE( Var % Values ) ) THEN
+              PRINT *,'Too large l:',l,SIZE(Var % Values), TRIM( Var % Name)
+            END IF
+            IF( k <= 0 .OR. k > SIZE(NodeBasis) ) THEN
+              PRINT *,'Too large k:',k,SIZE(NodeBasis)              
+            END IF
+            IF( No >= 0 .OR. No > SIZE( Values ) ) THEN
+              PRINT *,'Too large No:',No,SIZE(Values)
+            END IF
             IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
           END DO
         END IF
@@ -858,45 +908,64 @@ CONTAINS
           END DO
         END IF
         No = No + Var % Dofs * NoEigenValues
+
       ELSE                          
-        IF( Var % TYPE == Variable_on_elements ) THEN
+        IF( ElemVar ) THEN
           l = Element % ElementIndex 
           IF( SIZE( Var % Perm ) >= l ) THEN
             l = Var % Perm(l)
           END IF
           IF( l > 0 ) THEN
-            DO ii=1,Var % Dofs
-              Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
-            END DO
-            IF( comps >= 2 ) THEN
-              Values(No+2) = Var % Values(l)
-            END IF
-            IF( comps >= 3 ) THEN
-              Values(No+3) = Var % Values(l)
-            END IF
-          END IF
-        ELSE IF ( Var % TYPE == Variable_on_gauss_points ) THEN
-          i1 = Var % Perm(Element % ElementIndex)
-          i2 = Var % Perm(Element % ElementIndex+1)-1
-          IF(i2>i1 ) THEN
-            AveMult = 1.0_dp/(i2-i1) 
-            i2 = i2-1
             IF( Var % Dofs > 1 ) THEN
-              DO l=1,Var % Dofs
-                DO ii=i1,i2
-                  Values(No+l) = Values(No+l) + AveMult * Var % Values(Var%Dofs*(ii-1)+l)
-                END DO
+              DO ii=1,Var % Dofs
+                Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
               END DO
             ELSE
-              Values(No+1) = AveMult * SUM(Var % Values(i1:i2))
+              Values(No+1) = Var % Values(l)              
               IF( comps >= 2 ) THEN
-                Values(No+2) = AveMult * SUM(Var2 % Values(i1:i2))
+                Values(No+2) = Var % Values(l)
               END IF
               IF( comps >= 3 ) THEN
-                Values(No+3) = AveMult * SUM(Var3 % Values(i1:i2))
+                Values(No+3) = Var % Values(l)
               END IF
             END IF
           END IF
+        ELSE IF ( IpVar ) THEN
+          i1 = Var % Perm(Element % ElementIndex)
+          i2 = Var % Perm(Element % ElementIndex+1)
+          l = i2-i1
+
+          IF( l<1 ) THEN
+            PRINT *,'too small?',l,i1,i2
+          END IF
+
+          IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
+            IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
+            ALLOCATE( fip(l) )
+          END IF
+
+          IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
+            IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
+            ALLOCATE( fdg(n) )
+          END IF
+                              
+          DO ii=1,MAX(Var % Dofs,comps)
+            IF( Var % Dofs > 1 ) THEN
+              CONTINUE
+            ELSE
+              IF( ii == 1 ) THEN
+                pVar => Var
+              ELSE IF( ii == 2 ) THEN
+                pVar => Var2
+              ELSE IF( ii == 3 ) THEN
+                pVar => Var3
+              END IF
+              fip(1:l) = pVar % Values(i1+1:i2)
+            END IF
+
+            CALL Ip2DgFieldInElement( Mesh, Element, l, fip, n, fdg )              
+            Values(No+ii) = SUM( PtoBasis(1:n) * fdg(1:n) )
+          END DO
 
         ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO k=1,nd
@@ -904,24 +973,26 @@ CONTAINS
             IF(l==0) CYCLE
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
             IF(l > 0) THEN
-              DO ii=1,Var % Dofs
-                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
-                    Var % Values(Var%Dofs*(l-1)+ii)
-              END DO
-              IF( comps >= 2 ) THEN
-                Values(No+2) = Values(No+2) + PtoBasis(k) * &
-                    Var2 % Values(l)
+              IF( Var % Dofs > 1 ) THEN
+                DO ii=1,Var % Dofs
+                  Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                      Var % Values(Var%Dofs*(l-1)+ii)
+                END DO
+              ELSE                
+                Values(No+1) = Values(No+1) + PtoBasis(k) * Var % Values(l)
+                IF( comps >= 2 ) THEN
+                  Values(No+2) = Values(No+2) + PtoBasis(k) * Var2 % Values(l)
+                END IF
+                IF( comps >= 3 ) THEN
+                  Values(No+3) = Values(No+3) + PtoBasis(k) * Var3 % Values(l)
+                END IF
               END IF
-              IF( comps >= 3 ) THEN
-                Values(No+3) = Values(No+3) + PtoBasis(k) * &
-                    Var3 % Values(l)
-              END IF                
             END IF
           END DO
         END IF
         
         No = No + MAX( Var % Dofs, comps )
-     END IF
+      END IF
     END DO
     
     IF( CalculateFlux ) THEN
@@ -1300,7 +1371,7 @@ CONTAINS
         
         IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
                         
-        IF( DG ) THEN
+        IF( DGVar ) THEN
           ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
           ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
           ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -1364,7 +1435,7 @@ CONTAINS
       
       ! Save the nodes if not in DG mode     
       !---------------------------------  
-      IF( .NOT. DG ) THEN
+      IF( .NOT. DGVar ) THEN
         dgnode = 0
         DO t = 1, SaveNodes    
           node = InvPerm(t)
@@ -1630,7 +1701,7 @@ CONTAINS
 
       CALL Info(Caller,'Number of nodes in specified lines: '//TRIM(I2S(SaveNodes2)))
 
-      DEALLOCATE( LineTag )
+      IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )
     END IF
 
   END SUBROUTINE SavePolyLines
@@ -1811,7 +1882,7 @@ CONTAINS
     
     CALL Info(Caller,'Number of nodes in specified circle: '//TRIM(I2S(SaveNodes3)))
     
-    DEALLOCATE( LineTag )
+    IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )
 
   END SUBROUTINE SaveCircleLines
 
@@ -1933,7 +2004,7 @@ CONTAINS
          
     END DO
     
-    DEALLOCATE( LineTag )    
+    IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )    
     
   END SUBROUTINE SaveIsoCurves
 
@@ -1947,9 +2018,11 @@ CONTAINS
     !-----------------------------------------------------------------
     IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
         (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
-      ALLOCATE( ValueNames(NoResults), STAT=istat )
+      ALLOCATE( ValueNames(NoResults+5), STAT=istat )
       IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for ValueNames') 
 
+      PRINT *,'NoResults:',NoResults
+      
       No = 0
       DO ivar = -2,NoVar
         Var => VariableGetN( ivar, comps ) 
@@ -1969,11 +2042,11 @@ CONTAINS
           END DO
           No = No + Var % Dofs * NoEigenValues
         ELSE 
-          EdgeBasis = .FALSE.
-          IF( ASSOCIATED( Var % Solver ) ) THEN
-            EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found)         
-          END IF
-
+          DGVar = ( Var % TYPE == variable_on_nodes_on_elements )
+          IpVar = ( Var % TYPE == variable_on_gauss_points ) 
+          ElemVar = ( Var % TYPE == variable_on_elements ) 
+          EdgeBasis = ( Var % Type == variable_on_edges ) 
+          
           IF( EdgeBasis ) THEN
             ValueNames(No+1) = TRIM(Var % Name)//' {e} 1'
             ValueNames(No+2) = TRIM(Var % Name)//' {e} 2'
