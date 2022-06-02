@@ -12351,7 +12351,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: f(:)
     LOGICAL :: Parallel
 !-----------------------------------------------------------------------------
-    LOGICAL :: ComplexMatrix
+    LOGICAL :: ComplexMatrix, Found
     INTEGER :: i, j, n 
     REAL(kind=dp) :: norm, tmp
     INTEGER, POINTER :: Cols(:), Rows(:)
@@ -12390,16 +12390,17 @@ END FUNCTION SearchNodeL
       END DO
     ELSE
       IF (Parallel) THEN
-BLOCK
-     REAL(KIND=dp) :: xtmp, x(n),y(n), z(n)
-     LOGICAL :: Found
-     TYPE(Matrix_t), POINTER :: ap
  
         IF(ListGetLogical(Solver % Values, 'Row Equilibration Use M-V',Found)) THEN
-          ap => a
-          x = 1; y=0; z=0
-          CALL ParallelInitSolve( ap, x, y, z )
-          CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
+          BLOCK
+             REAL(KIND=dp), ALLOCATABLE :: x(:),y(:),z(:)
+             TYPE(Matrix_t), POINTER :: ap
+             ALLOCATE(x(n),y(n),z(n))
+             ap => a
+             x = 1; y=0; z=0
+             CALL ParallelInitSolve( ap, x, y, z )
+             CALL ParallelMatrixVector( ap, x, Diag, Update=.TRUE.,UseABS=.TRUE. )
+          END BLOCK
         ELSE
           DO i=1,n
             tmp = 0.0_dp
@@ -12410,8 +12411,6 @@ BLOCK
           END DO
         END IF
         CALL ParallelSUMVector(A,Diag)
-
-END BLOCK
       ELSE
         DO i=1,n
           tmp = 0.0d0
