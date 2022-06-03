@@ -16494,13 +16494,13 @@ CONTAINS
     INTEGER :: iControl
     INTEGER :: ControlNode
 
-    INTEGER :: i
+    INTEGER :: i,m
     REAL(KIND=dp) :: Coord(3), MinDist
     REAL(KIND=dp), POINTER :: RealWork(:,:)
     LOGICAL :: Found
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     CHARACTER(*), PARAMETER :: Caller = 'GetControlNode'
-   
+
     str = 'Control Node Index '//TRIM(I2S(iControl))                
     ControlNode = ListGetInteger( Params,str,Found )
     IF(.NOT. Found .AND. iControl == 1 ) THEN
@@ -16520,14 +16520,16 @@ CONTAINS
         RealWork => ListGetConstRealArray( Params,str,Found )                         
         i = 1
       END IF
-
+      
       IF( Found ) THEN
         IF(SIZE(RealWork,2)==1) THEN
-          Coord = RealWork(:,i)
+          m = SIZE(RealWork,1)
+          Coord(1:m) = RealWork(1:m,i)
         ELSE
-          Coord = RealWork(i,:)
+          m = SIZE(RealWork,2)
+          Coord(1:m) = RealWork(i,1:m)
         END IF
-
+        
         CALL FindClosestNode(Mesh,Coord,MinDist,ControlNode,ParEnv % PEs>1,Perm=Perm)
         CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)),Level=6)
 
@@ -16730,8 +16732,10 @@ CONTAINS
 
         i = GetControlNode(Mesh,Perm,Params,iControl) 
 
-        IF(i>0) i = dofs*(Perm(i)-1)+dof0
-        cDof(iControl) = i 
+        IF(i>0) THEN
+          i = dofs*(Perm(i)-1)+dof0
+          cDof(iControl) = i
+        END IF
       END DO
       
       ! The possibility to use control for extremum temperature is here included.
@@ -16740,7 +16744,7 @@ CONTAINS
         IF( Ncontrol == 1 ) THEN
           ExtremumMode = .TRUE.
         ELSE
-          CALL Fatal(Caller,'Extremum control cannot be used with multiple controls!')
+          CALL Fatal(Caller,'Extremum control cannot be used with '//TRIM(I2S(Ncontrol))//' controls!')
         END IF
       END IF
       
