@@ -264,6 +264,12 @@
 #ifdef HAVE_PARDISO
          CALL Info( 'MAIN', ' PARDISO library linked in.')
 #endif
+#ifdef HAVE_MMG
+         CALL Info( 'MAIN', ' MMG library linked in.')
+#endif
+#ifdef HAVE_PARMMG
+         CALL Info( 'MAIN', ' ParMMG library linked in.')
+#endif         
 #ifdef HAVE_MKL
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
