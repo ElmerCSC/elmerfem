@@ -1254,14 +1254,14 @@ CONTAINS
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
             dofs = 1 
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) THEN
+              Values2 => Solution2 % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) THEN
+              Values3 => Solution3 % Values
               dofs = 3
             END IF
           END IF
@@ -1933,7 +1933,7 @@ CONTAINS
         FieldName, FullName
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
-    TYPE(Variable_t), POINTER :: Solution
+    TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
     INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
@@ -2073,10 +2073,10 @@ CONTAINS
 
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 2
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 3
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) dofs = 2
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) dofs = 3
           END IF
 
           IF( dofs > 1 ) THEN
@@ -2147,10 +2147,10 @@ CONTAINS
                 IF( ASSOCIATED(Solution)) THEN 
                   ComponentVector = .TRUE.
                   dofs = 1
-                  Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-                  IF( ASSOCIATED(Solution)) dofs = 2
-                  Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-                  IF( ASSOCIATED(Solution)) dofs = 3                  
+                  Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution2)) dofs = 2
+                  Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution3)) dofs = 3                  
                 ELSE 
                   CALL Warn('WritePvtuFile','Nonexistent vector variable: '//TRIM(FieldName))
                   CYCLE
@@ -2158,7 +2158,7 @@ CONTAINS
               END IF
             END IF
 
-            VarType = Solution % Type
+            VarType = Solution % TYPE
 
             IF( DG .OR. DN ) THEN
               Found = ( VarType == Variable_on_elements )
