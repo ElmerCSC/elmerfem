@@ -299,6 +299,7 @@
            Parent => Element % BoundaryInfo % Left
          END IF
          IF (.NOT.ASSOCIATED(Parent)) CYCLE
+         IF (ParEnv % myPe .NE. Parent % partIndex) CYCLE
 
          CALL GetElementNodes(ParentNodes,Parent)
          ! compute element area
@@ -314,8 +315,6 @@
 
         ! mean flux
         EIndex=Parent % ElementIndex
-        IF (EIndex > NofActive) &
-           CALL FATAL(Caller,"problem detected EIndex > NofActive")
         IF (ASSOCIATED(CFluxVar % Perm)) EIndex=CFluxVar % Perm (EIndex)
         IF (EIndex > 0) THEN
            IF (VisitedParent(Parent % ElementIndex)) THEN

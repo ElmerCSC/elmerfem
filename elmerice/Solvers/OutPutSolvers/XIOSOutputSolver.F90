@@ -76,12 +76,14 @@
       INTEGER,SAVE :: NumberOfGeomNodes,NumberOfDofNodes,NumberOfElements
       INTEGER,SAVE :: NumberOfActiveNodes,NumberOfActiveEdges
       LOGICAL,SAVE :: NoPermutation
-      INTEGER :: i,M,t
+      INTEGER :: i,ii,M,t
       LOGICAL :: ierr
 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(ValueList_t),POINTER :: Params
+      TYPE(Element_t),POINTER :: Edge,Parent
+      LOGICAL :: ActiveParent
       LOGICAL :: GotIt
       LOGICAL :: Parallel
       INTEGER :: GroupId
@@ -107,6 +109,9 @@
       INTEGER, SAVE :: Olevel=4
       LOGICAL,SAVE :: AllwaysSend
 
+      LOGICAL,SAVE :: SaveEdges=.TRUE.
+      LOGICAL  :: SkipEdges
+
       Params => GetSolverParams()
       Mesh => Model % Mesh
       ! Comment: Can we get the Mas number of corners instead of nodes?
@@ -124,11 +129,13 @@
       IF ((nTime>1).AND.(Mesh%Changed)) &
         CALL FATAL(Caller,"mesh has changed; not supported")
 
-
+      
       !------------------------------------------------------------------------------
       ! Create and initialise file at first visit
       !------------------------------------------------------------------------------
       IF ( nTime == 1 ) THEN
+        SkipEdges=ListGetLogical( Params,'Skip Edges',GotIt)
+        IF (SkipEdges) SaveEdges=.FALSE.
 
         ! can be use to set the output level for variables that are
         ! requested and send
@@ -162,9 +169,14 @@
         NotOwnedNode=.FALSE.
         NumberOfActiveNodes=NumberOfDofNodes
         IF (Parallel) THEN
-          DO i=1,NumberOfDofNodes
+          DO ii=1,NumberOfDofNodes
+            IF( NoPermutation ) THEN
+              i = ii
+            ELSE
+              i = InvNodePerm(ii)
+            END IF
             IF (Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1).NE.ParEnv % MyPE) THEN
-              NotOwnedNode(i)=.TRUE.
+              NotOwnedNode(ii)=.TRUE.
               NumberOfActiveNodes=NumberOfActiveNodes-1
             END IF
           END DO
@@ -179,10 +191,27 @@
         NumberOfActiveEdges=Mesh % NumberOfEdges
         IF (Parallel) THEN
           DO i=1,Mesh % NumberOfEdges
+           ! Edge at the interface and not owned
            IF (Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1).NE.ParEnv % MyPE) THEN
               NotOwnedEdge(i)=.TRUE.
               NumberOfActiveEdges=NumberOfActiveEdges-1
+              CYCLE
            ENDIF
+           ! Edge has no active parent
+           Edge => Mesh % Edges(i)
+           ActiveParent=.FALSE.
+           Parent => Edge % BoundaryInfo % Left
+           IF (ASSOCIATED(Parent)) THEN
+             ActiveParent=(ParEnv%MyPE.EQ.Parent%partIndex) 
+           ENDIF
+           Parent => Edge % BoundaryInfo % Right
+           IF (ASSOCIATED(Parent)) THEN
+             ActiveParent=(ActiveParent.OR.(ParEnv%MyPE.EQ.Parent%partIndex))
+           ENDIF
+           IF (.NOT.ActiveParent) THEN
+             NotOwnedEdge(i)=.TRUE.
+             NumberOfActiveEdges=NumberOfActiveEdges-1
+           END IF
           END DO
         END IF
 
@@ -362,9 +391,11 @@
          IF (.NOT.IsValid) &
                  CALL FATAL(Caller,"<GridNodes> grid not defined")
 
-         IsValid=xios_is_valid_grid("GridEdges")
-         IF (.NOT.IsValid) &
+         IF (SaveEdges) THEN
+           IsValid=xios_is_valid_grid("GridEdges")
+           IF (.NOT.IsValid) &
                  CALL FATAL(Caller,"<GridEdges> grid not defined")
+         END IF
 
          ! domains
          IsValid=xios_is_valid_domain("cells")
@@ -452,11 +483,13 @@
              CALL xios_set_attr(field_hdl,name="cell_area",unit="m2",grid_ref="GridCells")
            END IF
 
-           ok=xios_is_valid_field("boundary_condition")
-           IF (.NOT.ok) THEN
-             CALL xios_add_child(fieldgroup_hdl,field_hdl,"boundary_condition")
-             CALL xios_set_attr(field_hdl,name="boundary_condition",&
+           IF (SaveEdges) THEN
+             ok=xios_is_valid_field("boundary_condition")
+             IF (.NOT.ok) THEN
+               CALL xios_add_child(fieldgroup_hdl,field_hdl,"boundary_condition")
+               CALL xios_set_attr(field_hdl,name="boundary_condition",&
                      unit="1",default_value=0._dp,prec=4,grid_ref="GridEdges")
+             END IF
            END IF
         END IF
        END SUBROUTINE DefaultFieldDefinitions
@@ -652,6 +685,7 @@
            IF (TotalCount.NE.nv) &
              CALL FATAL(Caller, "Pb with number of nodes?? ")
 
+
            CALL xios_set_domain_attr("nodes",ni_glo=TotalCount,&
                 ni=NumberOfActiveNodes,i_Index=Vertice-1,&
                 nvertex=1 , type='unstructured')
@@ -662,15 +696,20 @@
            !! edges
            CALL MPI_ALLREDUCE(NumberOfActiveEdges,TotalCount,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(MAXVAL(EdgeIndexes),nv,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+
+           IF (.NOT.SaveEdges) &
+             PRINT *,'Edges',ParEnv%MyPE,NumberOfActiveEdges,TotalCount
+          
+          IF (SaveEdges) THEN
            IF (TotalCount.NE.nv) &
              CALL FATAL(Caller, "Pb with number of edges?? ")
-
            CALL xios_set_domain_attr("edges",ni_glo=TotalCount,&
                 ni=NumberOfActiveEdges,i_Index=EdgeIndexes-1,&
                 nvertex=2 , type='unstructured')
             CALL xios_set_domain_attr("edges",data_dim=1, data_ibegin=0, data_ni=NumberOfActiveEdges)
             CALL xios_set_domain_attr("edges",lonvalue_1d=EdgeLon, latvalue_1d=EdgeLat, &
                 bounds_lon_1d=EdgeLonBnds,bounds_lat_1d=EdgeLatBnds)
+          ENDIF
 
          ELSE
            CALL xios_set_domain_attr("cells",ni_glo=NumberOfElements, ibegin=0, ni=NumberOfElements, &
@@ -728,11 +767,13 @@
       IF (FieldActive.OR.AllwaysSend) THEN
           CALL xios_send_field("node_y",Node_y)
       END IF
-      FieldActive=xios_field_is_active("boundary_condition",.TRUE.)
-      WRITE( Message,'(A,A,L2)') 'Xios request : ',"boundary_condition",FieldActive
-      CALL Info(Caller,Message,Level=Olevel)
-      IF (FieldActive.OR.AllwaysSend) THEN
-         CALL xios_send_field("boundary_condition",BoundaryCondition)
+      IF (SaveEdges) THEN
+        FieldActive=xios_field_is_active("boundary_condition",.TRUE.)
+        WRITE( Message,'(A,A,L2)') 'Xios request : ',"boundary_condition",FieldActive
+        CALL Info(Caller,Message,Level=Olevel)
+        IF (FieldActive.OR.AllwaysSend) THEN
+           CALL xios_send_field("boundary_condition",BoundaryCondition)
+        ENDIF
       ENDIF
       END SUBROUTINE SendMeshVariables
 
