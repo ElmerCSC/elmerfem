@@ -520,13 +520,13 @@
         INTEGER :: TotalCount,nv
         LOGICAL :: FieldActive,ok
 
-        ALLOCATE(BoundaryCondition(NumberOfActiveEdges))
         ALLOCATE(Vertice(NumberOfActiveNodes),Node_x(NumberOfActiveNodes),Node_y(NumberOfActiveNodes))
         ALLOCATE(cell_area(NumberOfElements),Indexes(MaxElementNodes,NumberOfElements),GIndexes(NumberOfElements))
-        ALLOCATE(EdgeIndexes(NumberOfActiveEdges))
         ALLOCATE(NodeLon(NumberOfActiveNodes),NodeLat(NumberOfActiveNodes))
         ALLOCATE(FaceLon(NumberOfElements),FaceLat(NumberOfElements))
         IF (SaveEdges) THEN
+          ALLOCATE(BoundaryCondition(NumberOfActiveEdges))
+          ALLOCATE(EdgeIndexes(NumberOfActiveEdges))
           ALLOCATE(EdgeLon(NumberOfActiveEdges),EdgeLat(NumberOfActiveEdges))
           ALLOCATE(EdgeLonBnds(2,NumberOfActiveEdges),EdgeLatBnds(2,NumberOfActiveEdges))
         END IF
@@ -726,9 +726,10 @@
 ! - can we send the connectivity tables directly
 
         DEALLOCATE(Vertice)
-        DEALLOCATE(Indexes,GIndexes,EdgeIndexes)
+        DEALLOCATE(Indexes,GIndexes)
         DEALLOCATE(NodeLon,NodeLat)
         IF (SaveEdges) THEN
+          DEALLOCATE(EdgeIndexes)
           DEALLOCATE(EdgeLon,EdgeLat)
           DEALLOCATE(EdgeLonBnds,EdgeLatBnds)
         END IF

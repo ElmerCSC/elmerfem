@@ -237,7 +237,7 @@
         CFluxVar % Values = 0._dp
       END IF
 
-      NofActive = Solver % NumberOfActiveElements
+      NofActive = Solver % Mesh % NumberOfBulkElements
       ALLOCATE(VisitedParent(NofActive))
       VisitedParent=.FALSE.
 
@@ -321,6 +321,8 @@
              CFluxVar % Values ( EIndex ) = CFluxVar % Values ( EIndex ) + CalvingFlux / area
            ELSE 
              CFluxVar % Values ( EIndex ) = CalvingFlux / area
+             IF (Parent % ElementIndex.GT.NofActive) &
+                CALL FATAL(Caller,"Pb with VisitedParent allocated size")
              VisitedParent(Parent % ElementIndex)=.TRUE.
            END IF
         END IF

@@ -527,9 +527,11 @@
       IF (STDOFs.EQ.2) NodalV(1:n) = VariableValues(STDOFs*(Permutation(NodeIndexes(1:n))-1)+2)
 
 
-      IF (ASSOCIATED(strbasemag)) &
-        strbasemag% Values(strbasemag % Perm(Element % ElementIndex))= &
+      IF (ASSOCIATED(strbasemag)) THEN
+        IF (strbasemag % Perm(Element % ElementIndex) > 0) &
+         strbasemag% Values(strbasemag % Perm(Element % ElementIndex))= &
           ComputeMeanFriction(Element,n,ElementNodes,STDOFs,NodalU,NodalV,NodalZs,NodalZb,MinH,NodalDensity,SEP,GLnIP,sealevel,rhow)
+      END IF
  
       IF (ASSOCIATED(Ceff)) THEN
         Do i=1,n

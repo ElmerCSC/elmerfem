@@ -106,35 +106,43 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Solver_t),POINTER :: PSolver
   TYPE(Variable_t),POINTER :: Var
-  TYPE(Variable_t),POINTER :: ZbVar=>NULL(),ZsVar=>NULL()
-  TYPE(Variable_t),POINTER :: HVar=>NULL(),BedVar=>NULL()
-  TYPE(Variable_t),POINTER :: GLMask=>NULL()
+  TYPE(Variable_t),POINTER :: ZbVar,ZsVar
+  TYPE(Variable_t),POINTER :: HVar,BedVar
+  TYPE(Variable_t),POINTER :: GLMask,HafVar
   TYPE(Variable_t),POINTER :: sftgif,sftgrf,sftflf
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t),POINTER :: BodyForce,Material, Params
+  TYPE(Nodes_t),SAVE :: ElementNodes
+  TYPE(GaussIntegrationPoints_t) :: IP
 
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: Density
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: GL
   REAL(KIND=dp),DIMENSION(:),ALLOCATABLE,SAVE :: MinH,NodalH
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:)
   REAL(KIND=dp) :: zsea,rhow,rhoi
-  REAL(KIND=dp) :: H,zb,zs,bedrock
+  REAL(KIND=dp) :: H,zb,zs,bedrock,Hf
   REAL(KIND=dp), PARAMETER :: EPS=EPSILON(1.0)
+  REAL(KIND=dp) :: FillValue
+  REAL(KIND=dp) :: flarea,grarea,area,IParea,detJ
 
 
   INTEGER,DIMENSION(:),POINTER,SAVE :: BotPointer,TopPointer,UpPointer
   INTEGER, POINTER,SAVE :: NodeIndexes(:)
   INTEGER :: GroundedNode
   INTEGER :: ActiveDirection
-  INTEGER :: t,i,n
+  INTEGER :: t,i,n,kk,ll
   INTEGER :: topnode
   INTEGER :: Active
   INTEGER :: Eindex
+  INTEGER :: GlnIP
 
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
   LOGICAL :: Found,GotIt
   LOGICAL :: BoundarySolver
   LOGICAL :: ComputeIceMasks,LimitedSolution,IceFree
+  LOGICAL :: stat
+  LOGICAL :: SEP
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='Flotation'
   CHARACTER(LEN=MAX_NAME_LEN) :: ZbName,ZsName,HName
@@ -172,11 +180,19 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
      Message='bedrock not found'
      CALL INFO(SolverName,Message,level=5)
   END IF
+  ! height above flotation
+  HafVar => VariableGet( Model % Mesh % Variables, 'Haf')
+  IF (.NOT.ASSOCIATED(HafVar)) THEN
+     Message='<Haf> not found; do not compute height above flotation'
+     CALL INFO(SolverName,Message,level=5)
+  END IF
 
   !! compute ice area farctions
   ComputeIceMasks = ListGetLogical(Params,"compute ice area fractions",Gotit)
   LimitedSolution = .FALSE.
   IF (ComputeIceMasks) THEN
+     FillValue = ListGetConstReal(Params,"Ice free mask values",Gotit)
+     IF (.NOT.Gotit) FillValue=0._dp
           
     sftgif => VariableGet( Model % Mesh % Variables, 'sftgif',UnFoundFatal=.TRUE.)
     sftgif  % Values = 0._dp
@@ -190,6 +206,9 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
     sftflf  % Values = 0._dp
     IF (sftflf % TYPE /= Variable_on_elements) &
            CALL FATAL(SolverName,"sftflf type should be on_elements")
+
+    ! change number of IPs for partially grounded elements
+    GLnIP=ListGetInteger( Params,'GL integration points number',SEP)
 
     ! check if we have a limited solution
     ! internal Elmer limiters...
@@ -211,10 +230,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
                                 TopNodePointer = TopPointer, UpNodePointer = UpPointer)
     END IF
 
-    IF (Initialized) deallocate(Density,GL,MinH,NodalH)
+    IF (Initialized) deallocate(Density,GL,MinH,NodalH,Basis)
     
     N=Model % MaxElementNodes
-    allocate(Density(N),GL(N),MinH(N),NodalH(N))
+    allocate(Density(N),GL(N),MinH(N),NodalH(N),Basis(N))
 
     Initialized = .TRUE.
   END IF
@@ -230,6 +249,8 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
    ELSE
      Active = Solver % Mesh % NumberOfBulkElements
    ENDIF
+
+   IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
 
    Do t=1,Active
 
@@ -249,8 +270,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
 
     NodalH(1:n) = HVar%Values(HVar%Perm(NodeIndexes(1:n)))
 
-    IF (ComputeIceMasks) &
-      sftgif % Values ( sftgif % Perm(Eindex)) = 1._dp
+    IF (ComputeIceMasks) THEN
+      kk=sftgif % Perm(Eindex)
+      IF (kk>0) sftgif % Values ( kk ) = 1._dp
+    END IF
 
     ! If H is limited check if all element is at lower limit...
     IceFree=.FALSE.
@@ -280,6 +303,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
              zb=bedrock
              GL(i)=1
              GroundedNode=GroundedNode+1
+             IF (ASSOCIATED(HafVar)) THEN
+                Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
+                HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
+             END IF
           END IF
        END IF
 
@@ -301,18 +328,59 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
        GLMask%Values(GLMask%Perm(NodeIndexes(1:n)))= GL(1:n) * ABS(GLMask%Values(GLMask%Perm(NodeIndexes(1:n))))
     END IF
 
+
     IF (ComputeIceMasks) THEN
-      IF (GroundedNode.LT.n) THEN
-         sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
-         sftflf % Values ( sftflf % Perm(Eindex)) = 1._dp
+      IF (GroundedNode.EQ.0) THEN
+          !floating element
+          IF (sftgrf % Perm(Eindex) > 0 ) &
+           sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
+          IF (sftflf % Perm(Eindex) > 0 ) &
+           sftflf % Values ( sftflf % Perm(Eindex)) = 1._dp
+      ELSEIF (GroundedNode.LT.n) THEN
+         !partly grounded
+         CALL GetElementNodes( ElementNodes, Element )
+         IF (SEP) THEN
+           IP = GaussPoints( Element ,np=GLnIP )
+         ELSE
+           IP = GaussPoints( Element )
+         ENDIF
+         area=0._dp
+         flarea=0._dp
+         grarea=0._dp
+         DO ll=1,IP % n
+           stat = ElementInfo( Element, ElementNodes, IP % U(ll), IP % V(ll), &
+             IP % W(ll),  detJ, Basis )
+           rhoi=SUM(Density(1:n)*Basis(1:n))
+           H=SUM(NodalH(1:n)*Basis(1:n))
+           bedrock=SUM(BedVar%Values(BedVar%Perm(NodeIndexes(1:n)))*Basis(1:n))
+           Hf=(zsea-bedrock)*rhow/rhoi
+           IParea=detJ*IP % s(ll)
+           IF (H.LT.Hf) THEN
+             flarea=flarea+IParea
+           ELSE
+             grarea=grarea+IParea
+           ENDIF
+           area=area+IParea
+         END DO
+
+         IF (sftgrf % Perm(Eindex) > 0 ) &
+           sftgrf % Values ( sftgrf % Perm(Eindex)) = grarea/area
+         IF (sftflf % Perm(Eindex) > 0 ) &
+           sftflf % Values ( sftflf % Perm(Eindex)) = flarea/area
       ELSE
-         sftgrf % Values ( sftgrf % Perm(Eindex)) = 1._dp
-         sftflf % Values ( sftflf % Perm(Eindex)) = 0._dp
+         !grounded
+         IF (sftgrf % Perm(Eindex) > 0 ) &     
+           sftgrf % Values ( sftgrf % Perm(Eindex)) = 1._dp
+         IF (sftflf % Perm(Eindex) > 0 ) &
+           sftflf % Values ( sftflf % Perm(Eindex)) = 0._dp
       END IF
       IF (IceFree) THEN
-        sftgif % Values ( sftgif % Perm(Eindex)) = 0._dp
-        sftgrf % Values ( sftgrf % Perm(Eindex)) = 0._dp
-        sftflf % Values ( sftflf % Perm(Eindex)) = 0._dp
+        IF (sftgif % Perm(Eindex) > 0) &
+          sftgif % Values ( sftgif % Perm(Eindex)) = FillValue
+        IF (sftgrf % Perm(Eindex) > 0) &
+          sftgrf % Values ( sftgrf % Perm(Eindex)) = FillValue
+        IF (sftflf % Perm(Eindex) > 0) &
+          sftflf % Values ( sftflf % Perm(Eindex)) = FillValue
       END IF
     ENDIF
  End Do
