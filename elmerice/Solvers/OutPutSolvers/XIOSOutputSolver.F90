@@ -20,9 +20,6 @@
         ! need to skip halo
         CALL ListAddNewLogical( SolverParams,'Skip Halo Elements',.TRUE.)
 
-        ! Need edge elements to compute the edge table
-        CALL ListAddNewString( SolverParams,"Element","n:0 e:1")
-
       END SUBROUTINE XIOSOutputSolver_Init0
 !------------------------------------------------------------------------------
       SUBROUTINE XIOSOutputSolver_Init(Model,Solver,dt,Transient)
@@ -76,14 +73,12 @@
       INTEGER,SAVE :: NumberOfGeomNodes,NumberOfDofNodes,NumberOfElements
       INTEGER,SAVE :: NumberOfActiveNodes,NumberOfActiveEdges
       LOGICAL,SAVE :: NoPermutation
-      INTEGER :: i,ii,M,t
+      INTEGER :: i,ii,M,t,n
       LOGICAL :: ierr
 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(ValueList_t),POINTER :: Params
-      TYPE(Element_t),POINTER :: Edge,Parent
-      LOGICAL :: ActiveParent
       LOGICAL :: GotIt
       LOGICAL :: Parallel
       INTEGER :: GroupId
@@ -118,6 +113,7 @@
       ! we should loop over saved elements....??
       MaxElementNodes = Model % MaxElementNodes
 
+
       IF (Mesh % MeshDim.NE.2) &
         CALL FATAL(Caller,"Mesh dim should be 2 for now...")
 
@@ -136,6 +132,15 @@
       IF ( nTime == 1 ) THEN
         SkipEdges=ListGetLogical( Params,'Skip Edges',GotIt)
         IF (SkipEdges) SaveEdges=.FALSE.
+
+        IF (SaveEdges) THEN
+          !! Get the edges
+          CALL FindMeshEdges2D(Mesh)
+          ! temporary trick to get correct interface for halo..
+          Mesh % MeshDim = 3
+          CALL SParEdgeNumbering(Mesh)
+          Mesh % MeshDim = 2
+        END IF
 
         ! can be use to set the output level for variables that are
         ! requested and send
@@ -185,36 +190,21 @@
         !------------------------------------------------------------------------------
         ! Edges
         !------------------------------------------------------------------------------
-        ALLOCATE(NotOwnedEdge(Mesh % NumberOfEdges))
-        NotOwnedEdge=.FALSE.
+        IF (SaveEdges) THEN
+          ALLOCATE(NotOwnedEdge(Mesh % NumberOfEdges))
+          NotOwnedEdge=.FALSE.
 
-        NumberOfActiveEdges=Mesh % NumberOfEdges
-        IF (Parallel) THEN
-          DO i=1,Mesh % NumberOfEdges
-           ! Edge at the interface and not owned
-           IF (Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1).NE.ParEnv % MyPE) THEN
+          NumberOfActiveEdges=Mesh % NumberOfEdges
+          IF (Parallel) THEN
+            DO i=1,Mesh % NumberOfEdges
+             ! Edge at the interface and not owned
+             IF (Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1).NE.ParEnv % MyPE) THEN
               NotOwnedEdge(i)=.TRUE.
               NumberOfActiveEdges=NumberOfActiveEdges-1
-              CYCLE
-           ENDIF
-           ! Edge has no active parent
-           Edge => Mesh % Edges(i)
-           ActiveParent=.FALSE.
-           Parent => Edge % BoundaryInfo % Left
-           IF (ASSOCIATED(Parent)) THEN
-             ActiveParent=(ParEnv%MyPE.EQ.Parent%partIndex) 
-           ENDIF
-           Parent => Edge % BoundaryInfo % Right
-           IF (ASSOCIATED(Parent)) THEN
-             ActiveParent=(ActiveParent.OR.(ParEnv%MyPE.EQ.Parent%partIndex))
-           ENDIF
-           IF (.NOT.ActiveParent) THEN
-             NotOwnedEdge(i)=.TRUE.
-             NumberOfActiveEdges=NumberOfActiveEdges-1
-           END IF
-          END DO
+             ENDIF
+            END DO
+          END IF
         END IF
-
 
         ! The partition is active for saving if there are any nodes
         ! to write. There can be no elements nor dofs without nodes.
@@ -406,9 +396,11 @@
          IF (.NOT.IsValid) &
                  CALL FATAL(Caller,"<nodes> domain not defined")
 
-         IsValid=xios_is_valid_domain("edges")
-         IF (.NOT.IsValid) &
-                 CALL FATAL(Caller,"<edges> domain not defined")
+         IF (SaveEdges) THEN
+           IsValid=xios_is_valid_domain("edges")
+           IF (.NOT.IsValid) &
+             CALL FATAL(Caller,"<edges> domain not defined")
+         END IF
 
         ! requested global variables
         FieldName = GetString( Params,'Global Variable 1',ScalarsExist)
@@ -534,8 +526,10 @@
         ALLOCATE(EdgeIndexes(NumberOfActiveEdges))
         ALLOCATE(NodeLon(NumberOfActiveNodes),NodeLat(NumberOfActiveNodes))
         ALLOCATE(FaceLon(NumberOfElements),FaceLat(NumberOfElements))
-        ALLOCATE(EdgeLon(NumberOfActiveEdges),EdgeLat(NumberOfActiveEdges))
-        ALLOCATE(EdgeLonBnds(2,NumberOfActiveEdges),EdgeLatBnds(2,NumberOfActiveEdges))
+        IF (SaveEdges) THEN
+          ALLOCATE(EdgeLon(NumberOfActiveEdges),EdgeLat(NumberOfActiveEdges))
+          ALLOCATE(EdgeLonBnds(2,NumberOfActiveEdges),EdgeLatBnds(2,NumberOfActiveEdges))
+        END IF
         ALLOCATE(LonBnds(MaxElementNodes,NumberOfElements),LatBnds(MaxElementNodes,NumberOfElements))
 
         Indexes=Connect_Fill
@@ -566,45 +560,47 @@
         END DO
 
         ! Edges
-        t=0
-        DO ii = 1, Mesh % NumberOfEdges
-          IF (NotOwnedEdge(ii)) CYCLE
-          t=t+1
+        IF (SaveEdges) THEN
+          t=0
+          DO ii = 1, Mesh % NumberOfEdges
+            IF (NotOwnedEdge(ii)) CYCLE
+            t=t+1
 
-          Edge => Mesh % Edges(ii)
+            Edge => Mesh % Edges(ii)
 
-          BoundaryCondition(t) = Edge % BoundaryInfo % Constraint
+            BoundaryCondition(t) = Edge % BoundaryInfo % Constraint
 
-          n = Edge % TYPE % NumberOfNodes
+            n = Edge % TYPE % NumberOfNodes
 
-          IF (n/=2) &
-            CALL FATAL(Caller, 'Work only for edge element of type 202')
+            IF (n/=2) &
+              CALL FATAL(Caller, 'Work only for edge element of type 202')
 
-          IF (Parallel) THEN
-            EdgeIndexes(t)=Edge % GElementIndex
-          ELSE
-            EdgeIndexes(t)=Edge % ElementIndex
-          ENDIF
+            IF (Parallel) THEN
+              EdgeIndexes(t)=Edge % GElementIndex
+            ELSE
+              EdgeIndexes(t)=Edge % ElementIndex
+            ENDIF
 
-          NodeIndexes => Edge % NodeIndexes
+            NodeIndexes => Edge % NodeIndexes
 
-          ! Edge center
-          xg=SUM(Mesh%Nodes%x(NodeIndexes(1:n)))/n
-          yg=SUM(Mesh%Nodes%y(NodeIndexes(1:n)))/n
-          CALL xy2LonLat(xg,yg,Lon,Lat)
-          EdgeLon(t) = Lon
-          EdgeLat(t) = Lat
-
-          ! Edge bounds
-          DO k=1,n
-            xg=Mesh%Nodes%x(NodeIndexes(k))
-            yg=Mesh%Nodes%y(NodeIndexes(k))
+            ! Edge center
+            xg=SUM(Mesh%Nodes%x(NodeIndexes(1:n)))/n
+            yg=SUM(Mesh%Nodes%y(NodeIndexes(1:n)))/n
             CALL xy2LonLat(xg,yg,Lon,Lat)
-            EdgeLonBnds(k,t)=Lon
-            EdgeLatBnds(k,t)=Lat
-          END DO
+            EdgeLon(t) = Lon
+            EdgeLat(t) = Lat
 
-        END DO
+            ! Edge bounds
+            DO k=1,n
+              xg=Mesh%Nodes%x(NodeIndexes(k))
+              yg=Mesh%Nodes%y(NodeIndexes(k))
+              CALL xy2LonLat(xg,yg,Lon,Lat)
+              EdgeLonBnds(k,t)=Lon
+              EdgeLatBnds(k,t)=Lat
+            END DO
+
+          END DO
+        END IF
 
         ! Elements
         cell_area=0._dp
@@ -694,13 +690,10 @@
            CALL xios_set_domain_attr("nodes",lonvalue_1d=NodeLon, latvalue_1d=NodeLat)
 
            !! edges
+          IF (SaveEdges) THEN
            CALL MPI_ALLREDUCE(NumberOfActiveEdges,TotalCount,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(MAXVAL(EdgeIndexes),nv,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
 
-           IF (.NOT.SaveEdges) &
-             PRINT *,'Edges',ParEnv%MyPE,NumberOfActiveEdges,TotalCount
-          
-          IF (SaveEdges) THEN
            IF (TotalCount.NE.nv) &
              CALL FATAL(Caller, "Pb with number of edges?? ")
            CALL xios_set_domain_attr("edges",ni_glo=TotalCount,&
@@ -717,10 +710,12 @@
            CALL xios_set_domain_attr("cells",lonvalue_1d=FaceLon, latvalue_1d=FaceLat, &
                 bounds_lon_1d=LonBnds,bounds_lat_1d=LatBnds)
 
-           CALL xios_set_domain_attr("edges",ni_glo=NumberOfActiveEdges, ibegin=0, ni=NumberOfActiveEdges, &
+           IF (SaveEdges) THEN
+             CALL xios_set_domain_attr("edges",ni_glo=NumberOfActiveEdges, ibegin=0, ni=NumberOfActiveEdges, &
                 nvertex=2 , type='unstructured')
-           CALL xios_set_domain_attr("edges",lonvalue_1d=EdgeLon, latvalue_1d=EdgeLat, &
+             CALL xios_set_domain_attr("edges",lonvalue_1d=EdgeLon, latvalue_1d=EdgeLat, &
                 bounds_lon_1d=EdgeLonBnds,bounds_lat_1d=EdgeLatBnds)
+           END IF
 
            CALL xios_set_domain_attr("nodes",ni_glo=NumberOfDofNodes, ibegin=0, ni=NumberOfActiveNodes, &
                 nvertex=1 , type='unstructured')
@@ -733,8 +728,10 @@
         DEALLOCATE(Vertice)
         DEALLOCATE(Indexes,GIndexes,EdgeIndexes)
         DEALLOCATE(NodeLon,NodeLat)
-        DEALLOCATE(EdgeLon,EdgeLat)
-        DEALLOCATE(EdgeLonBnds,EdgeLatBnds)
+        IF (SaveEdges) THEN
+          DEALLOCATE(EdgeLon,EdgeLat)
+          DEALLOCATE(EdgeLonBnds,EdgeLatBnds)
+        END IF
         DEALLOCATE(FaceLon,FaceLat)
         DEALLOCATE(LonBnds,LatBnds)
 
