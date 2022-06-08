@@ -960,7 +960,7 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,skip_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveW, &
          HaveNormal, HaveFSSA, Found, Stat
@@ -968,6 +968,7 @@ END BLOCK
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
         Vect(3), Velo(3)
     TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, &
         WeertmanExp_h, WeertmanUt0_h, FSSAcoeff_h
@@ -1002,6 +1003,9 @@ END BLOCK
       
       InitHandles = .FALSE.
     END IF
+
+    BC => GetBC()
+
     
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
@@ -1063,6 +1067,7 @@ END BLOCK
       ! FSSA Coefficient
       !--------------------
       FSSAcoeff = ListGetElementReal( FSSAcoeff_h,  Basis, Element, HaveFSSA, GaussPoint = t )
+      FSSAFlag = GetString(BC, 'FSSA Flag', Found)
      
       ! Nothing to do, exit the routine
       IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres .OR. HaveW .OR. HaveFSSA)) RETURN
@@ -1176,77 +1181,78 @@ END BLOCK
       !---------------------------------------------------------------
       ! version 1
       IF ( HaveFSSA ) THEN
-        DO p=1,nd
-          DO q=1,nd
-            DO i=1,dim
-                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-                STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
-                s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
-            END DO
-          END DO
-        END DO
-      END IF
-      
-      ! approximation with normal pointing into z-direction
-      !IF ( HaveFSSA ) THEN        
-      !  DO p=1,nd
-      !    DO q=1,nd
-      !      DO i=dim,dim
-      !        STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-      !             STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
-      !             s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
-      !      END DO
-      !    END DO
-      !  END DO
-      !END IF
-
-      !! version 2, transposed
-      !IF ( HaveFSSA ) THEN
-      !  DO p=1,nd
-      !    DO q=1,nd
-      !      DO i=1,dim
-      !          STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
-      !          STIFF( (p-1)*c+i,(q-1)*c+dim ) + &
-      !          s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
-      !      END DO
-      !    END DO
-      !  END DO
-      !END IF
-   
-      ! Assemble given forces to r.h.s.
-      IF( HaveForce .OR. HavePres ) THEN
-        IF ( NormalTangential ) THEN
-          DO i=1,dim
-            SELECT CASE(i)
-            CASE(1)
-              Vect = Normal
-            CASE(2)
-              Vect = Tangent
-            CASE(3)
-              Vect = Tangent2
-            END SELECT
-
+        SELECT CASE(FSSAFlag)
+        ! approximation with normal pointing into z-direction
+        CASE ('normal')          
+          DO p=1,nd
             DO q=1,nd
-              DO j=1,dim
-                l = (q-1)*c + j
-                FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
+              DO i=dim,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
               END DO
             END DO
           END DO
-        ELSE       
-          DO i=1,dim
+        ! version 2, transposed
+        CASE ('transposed')
+          DO p=1,nd
             DO q=1,nd
-              k = (q-1)*c + i
-              FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
+              DO i=1,dim
+                STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
+                     STIFF( (p-1)*c+i,(q-1)*c+dim ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO        
+        CASE DEFAULT ! full entry matrix FSSA       
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO      
+      END SELECT
+    END IF
+      
+
+     
+    ! Assemble given forces to r.h.s.
+    IF( HaveForce .OR. HavePres ) THEN
+      IF ( NormalTangential ) THEN
+        DO i=1,dim
+          SELECT CASE(i)
+          CASE(1)
+            Vect = Normal
+          CASE(2)
+            Vect = Tangent
+          CASE(3)
+            Vect = Tangent2
+          END SELECT
+
+          DO q=1,nd
+            DO j=1,dim
+              l = (q-1)*c + j
+              FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
             END DO
           END DO
-        END IF
+        END DO
+      ELSE       
+        DO i=1,dim
+          DO q=1,nd
+            k = (q-1)*c + i
+            FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
+          END DO
+        END DO
       END IF
-    END DO
-      
-    CALL DefaultUpdateEquations( STIFF, FORCE )
-        
-  END SUBROUTINE LocalBoundaryMatrix
+    END IF
+  END DO
+
+  CALL DefaultUpdateEquations( STIFF, FORCE )
+
+END SUBROUTINE LocalBoundaryMatrix
 
 
 
