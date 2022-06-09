@@ -7541,6 +7541,7 @@ CONTAINS
         NodeCount(ElNodes) = .TRUE.
         NoNewNodes = .FALSE.
       END DO
+      IF(ALL(.NOT. IcebergElem)) EXIT
       IF(COUNT(NodeCount) == NNodes .OR. NoNewNodes) THEN
         DO i=1, NBulk
           IF(.NOT. ElemMask(i)) CYCLE
