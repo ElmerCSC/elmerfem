@@ -242,7 +242,8 @@ MODULE MaxwellAxiS
 !------------------------------------------------------------------------------
 !    The curl(u x B) terms when nabla . u = nabla . B = 0
 !------------------------------------------------------------------------------
-#ifdef FULL_INDUCTION     
+!#ifdef FULL_INDUCTION
+#if 1
       DO i=1,DIM
         A(i,1) = A(i,1) - s * Basis(q) * dVelodx(i,1) * Basis(p)
         A(i,2) = A(i,2) - s * Basis(q) * dVelodx(i,2) * Basis(p)
