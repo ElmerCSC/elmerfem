@@ -84,7 +84,7 @@
    REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), WorkReal(:), &
         CalvingValues(:)
    REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:), Polygon(:,:), PathPoly(:,:), &
-        EdgeX(:), EdgeY(:), EdgePoly(:,:)
+        EdgeX(:), EdgeY(:), EdgePoly(:,:), CrevOrient(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
         PC_EqName, Iso_EqName, VTUSolverName, EqName
@@ -1349,6 +1349,7 @@
           CurrentPath => CrevassePaths
           NoCrevNodes=0 ! Number of Crevasse nodes
           NoPaths=0
+
           DO WHILE(ASSOCIATED(CurrentPath))
              NoPaths=NoPaths+1
              NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
@@ -1358,7 +1359,16 @@
           IF(NoPaths > 0) THEN
 
             ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-                 CrevEnd(NoPaths),CrevStart(NoPaths))
+                 CrevEnd(NoPaths),CrevStart(NoPaths),CrevOrient(NoPaths,2))
+
+            j=0
+            CurrentPath => CrevassePaths
+            DO WHILE(ASSOCIATED(CurrentPath))
+              j=j+1
+              CrevOrient(j,:) = CurrentPath % Orientation
+              CurrentPath => CurrentPath % Next
+            END DO
+
             CurrentPath => CrevassePaths
             j=1;k=1
             n=CurrentPath % ID ! first ID may not be 1..
@@ -1412,11 +1422,13 @@
      CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-          CrevEnd(NoPaths),CrevStart(NoPaths))! (because already created on boss)
+          CrevEnd(NoPaths),CrevStart(NoPaths), CrevOrient(NoPaths,2))! (because already created on boss)
      CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevOrient,NoPaths*2,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+
      !above IF(Parallel) but that's assumed implicitly
      !make sure that code works for empty isomesh as well!!
 
@@ -1445,6 +1457,10 @@
      CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+     CALL CheckLateralCalving(Mesh, Params, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+      Polygon, PolyStart, PolyEnd)
+     NoPaths = SIZE(CrevStart)
 
      ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
      IsCalvingNode=.FALSE.
@@ -1653,5 +1669,329 @@ CONTAINS
     extent(3) = extent(3) - buffer
     extent(4) = extent(4) + buffer
   END FUNCTION GetFrontExtent
+
+  !subroutine to check if lateral calving would be evacuated or would jam on fjord walls
+  SUBROUTINE CheckLateralCalving(Mesh, SolverParams, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+              Polygon, PolyStart, PolyEnd)
+
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: SolverParams
+    INTEGER, POINTER :: FrontPerm(:)
+    REAL(KIND=dp),ALLOCATABLE :: CrevX(:),CrevY(:),CrevOrient(:,:),Polygon(:,:)
+    INTEGER, ALLOCATABLE :: CrevStart(:),CrevEnd(:),PolyStart(:),PolyEnd(:)
+    !--------------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: AdvSolver
+    TYPE(Valuelist_t), POINTER :: AdvParams
+    TYPE(Variable_t), POINTER :: SignDistVar
+    INTEGER, POINTER :: SignDistPerm(:)
+    REAL(KIND=dp), POINTER :: SignDistValues(:)
+    INTEGER :: i,j,NoPaths,ClosestCrev,Naux,Nl,Nr,ok,RemovePoints
+    REAL(KIND=dp) :: xx,yy,MinDist,a1(2),a2(2),b1(2),b2(2),Orientation(2),intersect(2), crevdist
+    INTEGER, ALLOCATABLE :: NodeClosestCrev(:), WorkInt(:)
+    REAL(KIND=dp), ALLOCATABLE :: PathPoly(:,:),xL(:),yL(:),xR(:),yR(:),WorkReal(:),WorkReal2(:,:)
+    LOGICAL :: inside,does_intersect,FoundIntersect
+    LOGICAL, ALLOCATABLE :: RemoveCrev(:), WorkLogical(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="CheckLateralCalving", Adv_EqName, LeftRailFName, RightRailFName
+    INTEGER, PARAMETER :: io=20
+
+    SignDistVar => VariableGet(Mesh % Variables, "SignedDistance", .TRUE.)
+    SignDistValues => SignDistVar % Values
+    SignDistPerm => SignDistVar % Perm
+
+    NoPaths = SIZE(CrevStart)
+
+    ALLOCATE(NodeClosestCrev(Mesh % NumberOfNodes))
+
+    DO i=1, Mesh % NumberOfNodes
+
+      IF(FrontPerm(i) == 0) CYCLE
+
+      xx = Solver % Mesh % Nodes % x(i)
+      yy = Solver % Mesh % Nodes % y(i)
+      MinDist = HUGE(1.0_dp)
+
+      inside=.FALSE.
+      ClosestCrev=0
+      DO j=1, NoPaths
+        ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
+        PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
+        inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+        DEALLOCATE(PathPoly)
+        IF(inside) THEN
+          ClosestCrev = j
+          NodeClosestCrev(i) = j
+          EXIT
+        END IF
+      END DO
+
+      ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+      DO j=1, NoPaths
+        IF(inside .AND. j/=ClosestCrev) CYCLE
+        DO k=CrevStart(j), CrevEnd(j)-1
+          a1(1)=CrevX(k);a1(2)=CrevY(k)
+          a2(1)=CrevX(k+1);a2(2)=CrevY(k+1)
+          TempDist=PointLineSegmDist2D( a1,a2, (/xx,yy/))
+          IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+            ! updated so no longer based off an angle. This caused problems when the front was
+            ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
+            ! PointInPolygon2D based of the winding number algorithm
+            IF(j==ClosestCrev) THEN ! inside calved area
+              MinDist = -TempDist
+            ELSE
+              MinDist = TempDist
+            END IF
+            jmin=k ! TO DO rm jmin? not necessary anymore
+          END IF
+        END DO
+      END DO
+
+      !hold in dist values temporarily
+      SignDistValues(SignDistPerm(i)) =  MinDist
+    END DO
+
+    Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", UnfoundFatal=.TRUE.)
+    ! Locate CalvingAdvance Solver
+    DO i=1,Model % NumberOfSolvers
+      IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
+         AdvSolver => Model % Solvers(i)
+         EXIT
+      END IF
+    END DO
+    AdvParams => AdvSolver % Values
+
+    LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Left Rail File Name not found, assuming './LeftRail.xy'")
+      LeftRailFName = "LeftRail.xy"
+    END IF
+    Nl = ListGetInteger(AdvParams, "Left Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Left Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(LeftRailFName), status = 'old',iostat = ok)
+    IF (ok /= 0) THEN
+      WRITE(message,'(A,A)') 'Unable to open file ',TRIM(LeftRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xL(Nl), yL(Nl))
+
+    ! read data
+    DO i = 1, Nl
+      READ(io,*,iostat = ok, end=200) xL(i), yL(i)
+    END DO
+200   Naux = Nl - i
+    IF (Naux > 0) THEN
+      WRITE(Message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(LeftRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+    RightRailFName = ListGetString(AdvParams, "Right Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Right Rail File Name not found, assuming './RightRail.xy'")
+      RightRailFName = "RightRail.xy"
+    END IF
+
+    Nr = ListGetInteger(AdvParams, "Right Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Right Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(RightRailFName), status = 'old',iostat = ok)
+
+    IF (ok /= 0) THEN
+      WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(RightRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xR(Nr), yR(Nr))
+
+    ! read data
+    DO i = 1, Nr
+       READ(io,*,iostat = ok, end=100) xR(i), yR(i)
+    END DO
+100   Naux = Nr - i
+    IF (Naux > 0) THEN
+      WRITE(message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(RightRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+
+    ALLOCATE(RemoveCrev(NoPaths))
+    RemoveCrev = .FALSE.
+    DO i=1, Mesh % NumberOfNodes
+
+      IF(FrontPerm(i) == 0) CYCLE
+      IF(SignDistValues(SignDistPerm(i)) >= 0) CYCLE
+      IF(RemoveCrev(NodeClosestCrev(i))) CYCLE
+
+      b1(1) = Solver % Mesh % Nodes % x(i)
+      b1(2) = Solver % Mesh % Nodes % y(i)
+      MinDist = HUGE(1.0_dp)
+
+      Orientation = CrevOrient(NodeClosestCrev(i),:)
+      b2 = b1 + 10*Orientation
+
+      FoundIntersect = .FALSE.
+      DO j=1, Nl-1
+        a1 = (/xL(j), yL(j)/)
+        a2 = (/xL(j+1), yL(j+1)/)
+        CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+        IF(.NOT. does_intersect) CYCLE
+        tempdist = PointDist2D(b1,intersect)
+        IF(tempdist < mindist) THEN
+          mindist = tempdist
+          FoundIntersect = .TRUE.
+        END IF
+      END DO
+
+      IF(.NOT. FoundIntersect) THEN
+        DO j=1, Nr-1
+          a1 = (/xR(j), yR(j)/)
+          a2 = (/xR(j+1), yR(j+1)/)
+          CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+          IF(.NOT. does_intersect) CYCLE
+          tempdist = PointDist2D(b1,intersect)
+          IF(tempdist < mindist) THEN
+            mindist = tempdist
+          END IF
+        END DO
+      END IF
+
+      crevdist = 0.0_dp
+      IF(FoundIntersect) THEN
+        crevdist = HUGE(1.0_dp)
+        DO j=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+          a1 = (/CrevX(j), CrevY(j)/)
+          a2 = (/CrevX(j+1), CrevY(j+1)/)
+          CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
+          IF(.NOT. does_intersect) CYCLE
+          tempdist = PointDist2D(b1,intersect)
+          IF(tempdist < crevdist) THEN
+            crevdist = tempdist
+          END IF
+        END DO
+      END IF
+
+      IF(MinDist < crevdist) THEN
+        CALL WARN(FuncName, 'Removing lateral calving event as it would jam on lateral margins')
+        RemoveCrev(NodeClosestCrev(i)) = .TRUE.
+      END IF
+    END DO
+
+    CALL MPI_AllReduce(MPI_IN_PLACE, RemoveCrev, NoPaths, MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, ierr)
+
+    DO WHILE(ANY(RemoveCrev))
+      DO i=1, NoPaths
+        IF(.NOT. RemoveCrev(i)) CYCLE
+        !CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+        !Polygon, PolyStart, PolyEnd)
+
+        !change crevasse allocations
+        RemovePoints = CrevEnd(i) - CrevStart(i) + 1
+        ALLOCATE(WorkReal(CrevEnd(NoPaths) - RemovePoints))
+        ! alter crevx
+        IF(i > 1) THEN
+          WorkReal(1:CrevEnd(i-1)) = CrevX(1:CrevEnd(i-1))
+          IF(i < NoPaths) WorkReal(CrevEnd(i-1)+1:) = CrevX(CrevStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal(1:) = CrevX(CrevStart(i+1):)
+        END IF
+        DEALLOCATE(CrevX)
+        ALLOCATE(CrevX((CrevEnd(NoPaths) - RemovePoints)))
+        CrevX = WorkReal
+        ! alter crevy
+        IF(i > 1) THEN
+          WorkReal(1:CrevEnd(i-1)) = CrevY(1:CrevEnd(i-1))
+          IF(i < NoPaths) WorkReal(CrevEnd(i-1)+1:) = CrevY(CrevStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal(1:) = CrevY(CrevStart(i+1):)
+        END IF
+        DEALLOCATE(CrevY)
+        ALLOCATE(CrevY((CrevEnd(NoPaths) - RemovePoints)))
+        CrevY = WorkReal
+        DEALLOCATE(WorkReal)
+
+        ALLOCATE(WorkInt(NoPaths-1))
+        !alter crevstart
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = CrevStart(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = CrevStart(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = CrevStart(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(CrevStart)
+        ALLOCATE(CrevStart(NoPaths-1))
+        CrevStart = WorkInt
+        !alter crevend
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = CrevEnd(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = CrevEnd(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = CrevEnd(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(CrevEnd)
+        ALLOCATE(CrevEnd(NoPaths-1))
+        CrevEnd = WorkInt
+
+        !now polygons
+        RemovePoints = PolyEnd(i) - PolyStart(i) + 1
+        ALLOCATE(WorkReal2(2, PolyEnd(NoPaths) - RemovePoints))
+        IF(i > 1) THEN
+          WorkReal2(:,1:PolyEnd(i-1)) = Polygon(:,1:PolyEnd(i-1))
+          IF(i < NoPaths) WorkReal2(:,PolyEnd(i-1)+1:) = Polygon(:,PolyStart(i+1):)
+        ELSE IF (i < NoPaths) THEN
+          WorkReal2(:,1:) = Polygon(:,PolyStart(i+1):)
+        END IF
+        DEALLOCATE(Polygon)
+        ALLOCATE(Polygon(2,PolyEnd(NoPaths) - RemovePoints))
+        Polygon = WorkReal2
+        DEALLOCATE(WorkReal2)
+
+        !alter polystart
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = PolyStart(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = PolyStart(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = PolyStart(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(PolyStart)
+        ALLOCATE(PolyStart(NoPaths-1))
+        PolyStart = WorkInt
+        !alter polyend
+        IF(i > 1) THEN
+          WorkInt(1:i-1) = PolyEnd(1:i-1)
+          IF(i < NoPaths) WorkInt(i:) = PolyEnd(i+1:) - RemovePoints
+        ELSE IF (i < NoPaths) THEN
+          WorkInt = PolyEnd(i+1:) - RemovePoints
+        END IF
+        DEALLOCATE(PolyEnd)
+        ALLOCATE(PolyEnd(NoPaths-1))
+        PolyEnd = WorkInt
+        DEALLOCATE(WorkInt)
+
+        !finally remove crev marker
+        ALLOCATE(WorkLogical(NoPaths-1))
+        IF(i > 1) THEN
+          WorkLogical(1:i-1) = RemoveCrev(1:i-1)
+          IF(i < NoPaths) WorkLogical(i:) = RemoveCrev(i+1:)
+        ELSE IF (i < NoPaths) THEN
+          WorkLogical = RemoveCrev(i+1:)
+        END IF
+        DEALLOCATE(RemoveCrev)
+        ALLOCATE(RemoveCrev(NoPaths-1))
+        RemoveCrev = WorkLogical
+        DEALLOCATE(WorkLogical)
+
+        EXIT
+      END DO
+
+      NoPaths = SIZE(RemoveCrev)
+    END DO
+
+  END SUBROUTINE CheckLateralCalving
 
 END SUBROUTINE Find_Calving3D_LSet

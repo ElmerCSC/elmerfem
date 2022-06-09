@@ -88,7 +88,7 @@ MODULE CalvingGeometry
      INTEGER :: NumberOfNodes = 0, NumberOfElements = 0, ID = 0
      INTEGER, POINTER :: NodeNumbers(:) => NULL(), ElementNumbers(:)=>NULL()
 !     INTEGER :: Ends(2)
-     REAL(KIND=dp) :: Left, Right, Extent
+     REAL(KIND=dp) :: Left, Right, Extent, Orientation(2)
      TYPE(CrevassePath_t), POINTER :: Next => NULL(), Prev => NULL()
      LOGICAL :: Valid = .TRUE.
   END TYPE  CrevassePath_t
@@ -3401,6 +3401,40 @@ CONTAINS
 
   END SUBROUTINE LinesIntersect
 
+  SUBROUTINE LineSegmLineIntersect ( a1, a2, b1, b2, intersect_point, does_intersect )
+    ! Find if two 2D line segments intersect
+    ! Line segment 'a' runs from point a1 => a2
+    ! Line b is defined by vector b1 -> b2
+
+    IMPLICIT NONE
+
+    REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
+    LOGICAL :: does_intersect
+    !-----------------------
+    REAL(KIND=dp) :: r(2), s(2), rxs, bma(2), t, u
+
+
+    does_intersect = .FALSE.
+    intersect_point = 0.0_dp
+
+    r = a2 - a1
+    s = b2 - b1
+
+    rxs = VecCross2D(r,s)
+
+    IF(rxs == 0.0_dp) RETURN
+
+    bma = b1 - a1
+
+    t = VecCross2D(bma,s) / rxs
+
+    IF(t < 0.0_dp .OR. t > 1.0_dp) RETURN
+
+    intersect_point = a1 + (t * r)
+    does_intersect = .TRUE.
+
+  END SUBROUTINE LineSegmLineIntersect
+
   FUNCTION VecCross2D(a, b) RESULT (c)
     REAL(KIND=dp) :: a(2), b(2), c
 
@@ -5854,6 +5888,9 @@ CONTAINS
 
       RotationMatrix = ComputeRotationMatrix(Orientation)
       UnRotationMatrix = TRANSPOSE(RotationMatrix)
+
+      !save crevasse orientation
+      CurrentPath % Orientation = Orientation(1:2)
 
       ! Temporarily rotate the mesh
       CALL RotateMesh(Mesh, RotationMatrix)
