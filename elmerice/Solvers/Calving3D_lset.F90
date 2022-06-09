@@ -1429,6 +1429,23 @@
      CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevOrient,NoPaths*2,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
 
+     ! if there are no crevasses exit
+     IF(NoCrevNodes == 0) THEN
+        CalvingOccurs = .FALSE.
+        EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+        DO j=1,Model % NumberOfSolvers
+          IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+            Found = .TRUE.
+            !Turn off (or on) the solver
+            !If CalvingOccurs, (switch) off = .true.
+            CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+            IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+            EXIT
+          END IF
+        END DO
+        CALL WARN(SolverName, 'No crevasses so returning')
+        RETURN
+     END IF
      !above IF(Parallel) but that's assumed implicitly
      !make sure that code works for empty isomesh as well!!
 
