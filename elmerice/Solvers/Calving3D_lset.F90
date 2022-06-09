@@ -1475,12 +1475,14 @@
          inside=.FALSE.
          ClosestCrev=0
          DO j=1, NoPaths
-           IF(inside) CYCLE ! already found
            ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
            PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
            inside = PointInPolygon2D(PathPoly, (/xx, yy/))
-           IF(inside) ClosestCrev = j
            DEALLOCATE(PathPoly)
+           IF(inside) THEN
+             ClosestCrev = j
+             EXIT
+           END IF
          END DO
 
          ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
