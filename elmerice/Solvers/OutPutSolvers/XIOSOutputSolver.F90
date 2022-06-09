@@ -137,9 +137,11 @@
           !! Get the edges
           CALL FindMeshEdges2D(Mesh)
           ! temporary trick to get correct interface for halo..
-          Mesh % MeshDim = 3
-          CALL SParEdgeNumbering(Mesh)
-          Mesh % MeshDim = 2
+          IF (Parallel) THEN
+            Mesh % MeshDim = 3
+            CALL SParEdgeNumbering(Mesh)
+            Mesh % MeshDim = 2
+          END IF
         END IF
 
         ! can be use to set the output level for variables that are
@@ -838,7 +840,7 @@
         ScalarFieldName = GetString( Params,'Scalar Field 1',ScalarsExist)
         Vari=1
         DO WHILE (ScalarsExist)
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(ScalarFieldName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE.)
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(ScalarFieldName),ThisOnly=.FALSE.,UnFoundFatal=.TRUE.)
           VarType = Solution % TYPE
 
           IF (VarType == Variable_on_nodes) THEN
