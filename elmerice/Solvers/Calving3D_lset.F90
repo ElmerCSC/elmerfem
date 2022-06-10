@@ -1432,6 +1432,10 @@
      ! if there are no crevasses exit
      IF(NoCrevNodes == 0) THEN
         CalvingOccurs = .FALSE.
+
+        CALL SParIterAllReduceOR(CalvingOccurs)
+        CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
+
         EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
         DO j=1,Model % NumberOfSolvers
           IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
@@ -1440,6 +1444,10 @@
             !If CalvingOccurs, (switch) off = .true.
             CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
             IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+
+            ! if remeshing if skipped need to ensure calving solvers are not paused
+            IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+
             EXIT
           END IF
         END DO
@@ -1562,6 +1570,10 @@
         !If CalvingOccurs, (switch) off = .true.
         CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
         IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+
+        ! if remeshing if skipped need to ensure calving solvers are not paused
+        IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+
         EXIT
       END IF
     END DO
