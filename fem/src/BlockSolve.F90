@@ -1036,7 +1036,6 @@ CONTAINS
   END SUBROUTINE BlockPickMatrixAV
 
 
-
   !-------------------------------------------------------------------------------------
   !> Picks vertical and horizontal components of a full matrix.
   !-------------------------------------------------------------------------------------
@@ -1310,6 +1309,143 @@ CONTAINS
     
   END SUBROUTINE BlockPickMatrixHorVer
 
+
+#if 0
+  !-------------------------------------------------------------------------------------
+  !> Picks linear parts of a quadratic Hcurl matrix.
+  !-------------------------------------------------------------------------------------
+  SUBROUTINE BlockPickMatrixHcurl( Solver, NoVar )
+
+    TYPE(Solver_t) :: Solver
+    INTEGER :: Novar
+
+    INTEGER::i,j,k,n,n0,nquad,nlin,dofs,nn,t,ndir(2),ic,kc
+    TYPE(Matrix_t), POINTER :: A,B
+    INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
+    INTEGER, POINTER :: QuadIndexes(:), LinIndexes(:)
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element, Edge
+
+    n = 28 ! currently just large enough
+    ALLOCATE( QuadIndexes(n), LinIndexes(n) )
+        
+    CALL Info('BlockPickMatrixHcurl','Dividing Hcurl matrix in linear and non-linear dofs',Level=10)
+
+    n = MAXVAL(Solver % Variable % Perm)
+    Mesh => Solver % Mesh 
+    
+    A => Solver % Matrix
+    dofs = Solver % Variable % Dofs
+    
+    n = A % NumberOfRows / dofs
+    
+    ALLOCATE( DTag(n), DPerm(n*dofs)  ) 
+    DTag = 2
+    DPerm = 0
+
+    IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Edges!')
+    END IF
+    IF(.NOT. ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Faces!')
+    END IF
+
+    n0 = Mesh % NumberOfNodes
+    
+    ! quad
+    ! CALL ListAddString( SolverParams, "Element", &
+    !    "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+    ! piola
+    ! CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+    ! basic
+    ! CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+
+    DO t=1,Solver % NumberOfActiveElements
+      Element => Mesh % Elements( Solver % ActiveElements(t) )
+
+      nquad = GetElementDOFs( QuadIndexes, Element, Solver)  
+      
+      nlin = Element % Type % NumberOfEdges
+      LinIndexes(1:nlin) = n0 + Element % EdgeIndexes
+      
+      Dtag(LinIndexes(1:nlin)) = 1
+    END DO
+    
+    ! Number linear and quadratic-only dofs separately
+    ndir = 0
+    DO i=1,n
+      DO j=1,dofs
+        k = dofs*(i-1)+j
+        ndir(DTag(i)) = ndir(DTag(i)) + 1
+        DPerm(k) = ndir(DTag(i))
+      END DO
+    END DO
+
+    PRINT *,'Linear and quadratic dofs:',ndir(1:NoVar)
+    i = n - SUM( ndir ) 
+    IF( i > 0 ) THEN      
+      CALL Fatal('BlockPickMatrixHcurl','Could not determine all nodes: '&
+          //TRIM(I2S(i)))
+    END IF
+
+    ! Allocate vectors if not present
+    DO i=1,NoVar
+      DO j=1,NoVar
+        B => TotMatrix % SubMatrix(i,j) % Mat
+        IF( ASSOCIATED( B % Values ) ) B % Values = 0.0_dp
+      END DO
+      B => TotMatrix % SubMatrix(i,i) % Mat      
+      IF(.NOT. ASSOCIATED( B % InvPerm ) ) ALLOCATE( B % InvPerm(ndir(i)) )
+      IF(.NOT. ASSOCIATED( B % Rhs) ) ALLOCATE(B % Rhs(ndir(i)) )
+      !PRINT *,'a complex', a % complex
+      !B % COMPLEX = A % COMPLEX
+    END DO
+    
+
+    DO i=1,A % NumberOfRows
+      ic = (i-1)/dofs+1
+      
+      DO j=A % Rows(i+1)-1,A % Rows(i),-1
+        k = A % Cols(j)
+        kc = (k-1)/dofs+1
+        
+        IF( DTag(ic) < 1 .OR. DTag(ic) > NoVar ) THEN
+          PRINT *,'i:',i,ic,Dtag(ic)
+        END IF
+        
+        IF( DTag(kc) < 1 .OR. DTag(kc) > NoVar ) THEN
+          PRINT *,'k:',k,kc,Dtag(kc)
+        END IF
+        
+        B => TotMatrix % SubMatrix(DTag(ic),DTag(kc)) % Mat
+        
+        IF( Dperm(i) < 1 .OR. DPerm(k) < 1 ) THEN
+          PRINT *,'ik',Dperm(i),Dperm(k)
+          STOP EXIT_ERROR
+        END IF
+        CALL AddToMatrixElement(B,Dperm(i),DPerm(k),A % Values(j))
+      END DO
+
+      B => TotMatrix % SubMatrix(DTag(ic),DTag(ic)) % Mat      
+      B % Rhs(Dperm(i)) = A % Rhs(i)          
+      B % InvPerm(Dperm(i)) = i          
+    END DO
+    
+    DO i=1,NoVar
+      DO j=1,NoVar
+        B => TotMatrix % SubMatrix(i,j) % Mat        
+        IF (B % FORMAT == MATRIX_LIST) THEN
+          CALL List_toCRSMatrix(B)
+        END IF
+      END DO
+    END DO
+    
+    IF( ASSOCIATED( A % ConstraintMatrix ) ) THEN
+      CALL Warn('BlockPickMatrixHcurl','Cannot deal with constraints')
+    END IF
+    
+  END SUBROUTINE BlockPickMatrixHcurl
+#endif
   
 
   !-------------------------------------------------------------------------------------
