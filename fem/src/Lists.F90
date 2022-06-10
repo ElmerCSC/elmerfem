@@ -7280,7 +7280,9 @@ use spariterglobals
          Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
 
        CASE DEFAULT
-         CALL Fatal('ListGetElementRealVec','Impossible entry type: '//TRIM(I2S(ptr % Type)))
+         CALL Info('ListGetElementRealVec','This one implemented ONLY for "ListGetElementReal"',Level=3)
+         CALL Fatal('ListGetElementRealVec','Impossible entry type for "'&
+             //TRIM(Handle % Name)//'": '//TRIM(I2S(ptr % TYPE)))
          
        END SELECT
 
