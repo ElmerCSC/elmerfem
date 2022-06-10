@@ -748,7 +748,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   VolTot = 0.0_dp
 
   !$OMP PARALLEL &
-  !$OMP SHARED(Solver, Active)
+  !$OMP SHARED(Solver, Active) &
   !$OMP PRIVATE(t,Element, n, InitHandles, MASS, FORCE)
   
   !$OMP SINGLE
@@ -825,7 +825,7 @@ CONTAINS
     SAVE Eps0
     
     !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, ElementPot, &
-    !$OMP               Nodes,SourceFoceff_h, CondCoeff_h, EpsCoeff_h)
+    !$OMP               Nodes,SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
 
     
 !------------------------------------------------------------------------------

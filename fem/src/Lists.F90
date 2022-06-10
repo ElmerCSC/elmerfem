@@ -3908,6 +3908,9 @@ use spariterglobals
      REAL(KIND=dp) :: x(1)
      INTEGER, PARAMETER :: one = 1
 
+     !$omp threadprivate(Dnodes)
+
+     
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
      IF ( ASSOCIATED(List % Head) ) THEN
@@ -5787,6 +5790,8 @@ use spariterglobals
      TYPE(Element_t), POINTER :: Parent, PElement
      
      SAVE lefttest
+
+     !$omp threadprivate(lefttest)
 
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
