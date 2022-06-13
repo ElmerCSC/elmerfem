@@ -1310,7 +1310,7 @@ CONTAINS
   END SUBROUTINE BlockPickMatrixHorVer
 
 
-#if 0
+#if 1
   !-------------------------------------------------------------------------------------
   !> Picks linear parts of a quadratic Hcurl matrix.
   !-------------------------------------------------------------------------------------
@@ -1319,7 +1319,7 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
 
-    INTEGER::i,j,k,n,n0,nquad,nlin,dofs,nn,t,ndir(2),ic,kc
+    INTEGER::i,j,k,n,n0,dofs,nn,t,ndir(2),ic,kc
     TYPE(Matrix_t), POINTER :: A,B
     INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
     INTEGER, POINTER :: QuadIndexes(:), LinIndexes(:)
@@ -1360,33 +1360,30 @@ CONTAINS
     ! basic
     ! CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
 
-    DO t=1,Solver % NumberOfActiveElements
-      Element => Mesh % Elements( Solver % ActiveElements(t) )
-
-      nquad = GetElementDOFs( QuadIndexes, Element, Solver)  
-      
-      nlin = Element % Type % NumberOfEdges
-      LinIndexes(1:nlin) = n0 + Element % EdgeIndexes
-      
-      Dtag(LinIndexes(1:nlin)) = 1
-    END DO
+        
+    n0 = Mesh % NumberOfNodes
     
+    DO i=1, Mesh % NumberOfEdges
+      ! This corresponds to the linear edge
+      j = n0 + 2*i-1
+      k = Solver % Variable % Perm(j)
+      IF(k<=0) THEN
+        CALL Fatal('BlockPickMatrixHcurl','k should not be zero!')
+      END IF
+      Dtag(k) = 1
+    END DO
+          
     ! Number linear and quadratic-only dofs separately
     ndir = 0
     DO i=1,n
       DO j=1,dofs
-        k = dofs*(i-1)+j
         ndir(DTag(i)) = ndir(DTag(i)) + 1
+        k = dofs*(i-1)+j
         DPerm(k) = ndir(DTag(i))
       END DO
     END DO
 
     PRINT *,'Linear and quadratic dofs:',ndir(1:NoVar)
-    i = n - SUM( ndir ) 
-    IF( i > 0 ) THEN      
-      CALL Fatal('BlockPickMatrixHcurl','Could not determine all nodes: '&
-          //TRIM(I2S(i)))
-    END IF
 
     ! Allocate vectors if not present
     DO i=1,NoVar
@@ -1578,6 +1575,7 @@ CONTAINS
     Params => Solver % Values
        
     BlockAV = ListGetLogical( Params,'Block A-V System', Found)
+
     A => SolverMatrix
     n = Solver % Mesh % NumberOfNodes
     
@@ -3535,7 +3533,7 @@ CONTAINS
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:),ParPerm(:)
     INTEGER :: i,j,k,l,ia,ib,istat
-    LOGICAL :: LS, BlockAV,Found, UseMono
+    LOGICAL :: LS, BlockAV,BlockHcurl, Found, UseMono
     CHARACTER(*), PARAMETER :: Caller = 'BlockKrylovIter'
  
     
@@ -3545,6 +3543,7 @@ CONTAINS
     Params => Solver % Values
     
     BlockAV = ListGetLogical(Params,'Block A-V System', Found)
+    BlockHcurl = ListGetLogical( Params,'Block Quadratic Hcurl System',Found )
 
     ndim = TotMatrix % TotSize 
     NoVar = TotMatrix % NoVar
@@ -4085,7 +4084,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
-        BlockHdiv, BlockHorVer, BlockCart, BlockNodal, BlockDomain
+        BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -4137,6 +4136,7 @@ CONTAINS
 
     ! Different strategies on how to split the initial monolithic matrix into blocks
     BlockAV = ListGetLogical( Params,'Block A-V System', GotIt)
+    BlockHcurl = ListGetLogical( Params,'Block Quadratic Hcurl System', GotIt)   
     BlockHdiv = ListGetLogical( Params,'Block Hdiv system',GotIt)
     BlockNodal = ListGetLogical( Params,'Block Nodal System', GotIt)
     BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)
@@ -4159,7 +4159,7 @@ CONTAINS
       BlockDofs = 0
       CALL BlockPickHdiv( PSolver, BlockIndex, BlockDofs )  
       SkipVar = .TRUE.
-    ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer ) THEN
+    ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer .OR. BlockHcurl ) THEN
       BlockDofs = 2
       SkipVar = .TRUE.
     ELSE IF( BlockCart ) THEN
@@ -4208,6 +4208,8 @@ CONTAINS
         DEALLOCATE( BlockIndex ) 
       ELSE IF( BlockAV ) THEN
         CALL BlockPickMatrixAV( Solver, VarDofs )
+      ELSE IF( BlockHcurl ) THEN
+        CALL BlockPickMatrixHcurl( Solver, VarDofs )
       ELSE IF( BlockHorVer .OR. BlockCart ) THEN
         CALL BlockPickMatrixHorVer( Solver, VarDofs, BlockCart )       
       ELSE IF( BlockNodal ) THEN
@@ -4343,7 +4345,7 @@ CONTAINS
       Solver % Matrix % ConstraintMatrix => SaveCM 
     END IF
 
-    IF( BlockHorVer .OR. BlockCart .OR. BlockDomain ) THEN
+    IF( BlockHorVer .OR. BlockCart .OR. BlockDomain .OR. BlockHcurl ) THEN
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
       
