@@ -72,12 +72,14 @@
 ! Local variables
       CHARACTER(*), PARAMETER :: SolverName="UGRIDDataReader"
       TYPE(ValueList_t), POINTER :: SolverParams
-      TYPE(Variable_t),POINTER :: Var
+      TYPE(Mesh_t), POINTER :: ThisMesh, TargetMesh,Mesh
+      TYPE(Projector_t), POINTER :: Projector
+      TYPE(Variable_t),POINTER :: Var,pVar
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,k
-      INTEGER :: NN
+      INTEGER :: NN,nf
       CHARACTER (len=MAX_NAME_LEN) :: FName
-      CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName
+      CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName,T2VarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
 
       INTEGER :: VarType
@@ -90,12 +92,56 @@
       INTEGER :: EIndex,NIndex,VarIndex
       LOGICAL :: Parallel,Found,VarExist
       INTEGER, SAVE :: VisitedTimes=0
+      LOGICAL, POINTER :: UnFoundNodes(:) => NULL()
+      !------------------------------------------------------------------------------
+      INTERFACE
+        SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+          USE Types
+          TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
+          TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
+          LOGICAL, OPTIONAL :: UseQuadrantTree
+          LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
+          CHARACTER(LEN=*),OPTIONAL :: MaskName
+          TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+        END SUBROUTINE InterpolateMeshToMesh
+      END INTERFACE
+!------------------------------------------------------------------------------
+! get parameters
+      SolverParams => GetSolverParams()
 
 ! check if this is a paralell run
       Parallel=(ParEnv % PEs > 1)
 
-! get parameters
-      SolverParams => GetSolverParams()
+! get mesh
+      ThisMesh => GetMesh(Solver)
+
+! target mesh if interpolation required; copy form Mesh2MeshSolver
+      TargetMesh => NULL()
+      i = ListGetInteger( SolverParams,'Target Mesh Solver Index',Found )
+      IF( Found ) THEN
+       ! Target mesh solver is explicitly given
+       TargetMesh => CurrentModel % Solvers(i) % Mesh
+       IF( ASSOCIATED( TargetMesh ) ) THEN
+         CALL Info(SolverName,'Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)
+       ELSE
+        CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//TRIM(I2S(i)))
+       END IF
+      ELSE
+        ! Otherwise use the 1st mesh that is not this old data mesh
+        Mesh => CurrentModel % Meshes
+        DO WHILE( ASSOCIATED(Mesh) )
+          IF( .NOT. ASSOCIATED( Mesh, ThisMesh ) ) THEN
+            TargetMesh => Mesh
+            EXIT
+          END IF
+          Mesh => Mesh % Next
+        END DO
+        IF( ASSOCIATED( TargetMesh ) ) THEN
+         CALL Info(SolverName,'Using target mesh as the first mesh different from this mesh',Level=8)
+        END IF
+      END IF
+
 
       ! get time index
       VisitedTimes = VisitedTimes + 1
@@ -190,7 +236,7 @@
         TVarName = ListGetString(SolverParams,TRIM(Txt),Found)
         IF (.NOT.Found) TVarName=TRIM(VarName)
 
-        Var => VariableGet( Model % Mesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
+        Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE.)
         VarType=Var % TYPE
 
         ! special cases.... time do not seems to be a gloabl variable by
@@ -251,6 +297,36 @@
 
         ! close file
         NetCDFstatus=nf90_close(ncid)
+
+        WRITE(Txt,'(A,I0)') 'Interpolated target Variable ',VarIndex
+        T2VarName = ListGetString(SolverParams,TRIM(Txt),Found)
+        IF (Found) THEN
+          IF (VarType.NE.Variable_on_nodes) &
+            CALL FATAL(SolverName,"Interpolation possible only with nodal variables")
+          IF (.NOT.ASSOCIATED(TargetMesh)) &
+            CALL FATAL(SolverName,"Target mesh not found")
+
+          Var % Name = T2VarName
+          Var % NameLen = LENTRIM( T2VarName )
+          CALL InterpolateMeshToMesh( ThisMesh, &
+            TargetMesh, Var, TargetMesh % Variables,&
+            Projector=Projector, UnfoundNodes=UnfoundNodes)
+
+          ! better to do something if there is unfoundnodes
+          nf = COUNT(UnfoundNodes)
+          IF (nf.GT.0) &
+            CALL FATAL(SolverName,"There is unfound nodes"//TRIM(I2S(nf)))
+
+          ! Validate the mapped variables
+          pVar => VariableGet( TargetMesh % Variables, TRIM(T2VarName), ThisOnly = .TRUE.,UnFoundFatal=.TRUE. )
+          pVar % Valid = .TRUE.
+          pVar % ValuesChanged = .TRUE.
+
+          ! back to initial name
+          Var % Name = TVarName
+          Var % NameLen = LENTRIM( TVarName )
+          Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE.)
+        END IF
 
         VarIndex=VarIndex+1
         WRITE(Txt,'(A,I0)') 'Variable Name ',VarIndex
