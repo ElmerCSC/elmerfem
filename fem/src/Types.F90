@@ -183,6 +183,9 @@ MODULE Types
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
 
+    ! Number of degrees of freedom in sparse matrix such that there is always a (ndeg x ndeg) dense block
+    INTEGER :: ndeg = -1
+    
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
     LOGICAL :: NoDirichlet = .FALSE.

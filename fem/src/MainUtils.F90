@@ -503,7 +503,10 @@ CONTAINS
      END DO
 
      IF( Transient ) THEN
-       CALL InterpolateMeshToMesh( Mesh, NewMesh, Mesh % Variables, NewMesh % Variables ) 
+      IF(ParEnv % PEs > 1) CALL ParallelActive(.TRUE.)
+      !Free quadrant tree to ensure its rebuilt in InterpolateMeshToMesh (bug fix)
+      CALL FreeQuadrantTree(Mesh % RootQuadrant)
+      CALL InterpolateMeshToMesh( Mesh, NewMesh, Mesh % Variables, NewMesh % Variables )
      END IF
 
 

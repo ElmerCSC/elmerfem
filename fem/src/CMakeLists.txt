@@ -27,7 +27,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   MaterialModels.F90 DirectSolve.F90 IterSolve.F90
   IterativeMethods.F90 TimeIntegrate.F90 Types.F90 SolveBand.F90
   ElementUtils.F90 Radiation.F90 fft.c Load.c Differentials.F90
-  FreeSurface.F90 Maxwell.F90 MaxwellAxiS.F90 MaxwellGeneral.F90
+  FreeSurface.F90 
   Walls.F90 SolverUtils.F90 SolveSBand.F90 CPUTime.c Interpolation.F90
   MainUtils.F90 Adaptive.F90 EigenSolve.F90 HashTable.F90
   MeshUtils.F90 SaveUtils.F90 SParIterGlobals.F90 SParIterComm.F90
@@ -45,8 +45,8 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   ZirkaHysteresis.F90 SolidMechanicsUtils.F90 MatrixAssembly.F90 
   OptimizationUtils.F90)
 
-SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
-	COMPILE_DEFINITIONS FULL_INDUCTION)
+#SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
+#	COMPILE_DEFINITIONS FULL_INDUCTION)
 
 IF(WITH_EXTOPTIM)
   LIST(APPEND solverlib_SOURCES minpack.F90 minpack_kinds.F90
@@ -160,6 +160,13 @@ IF(HAVE_MMG)
   #TODO - add to RPath
 ENDIF()
 
+IF(HAVE_PARMMG)
+  TARGET_LINK_LIBRARIES(elmersolver ${PARMMG_LIBRARY})
+  SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING_MOD}:${PARMMG_LIBDIR}")
+  SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}:${PARMMG_LIBDIR}")
+  #TODO - add to RPath
+ENDIF()
+  
 IF(HAVE_ZOLTAN)
   TARGET_LINK_LIBRARIES(elmersolver ${ZOLTAN_LIBRARY})
   ADD_DEPENDENCIES(elmersolver ${ZOLTAN_LIBRARY})
@@ -170,7 +177,7 @@ ENDIF()
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(WITH_LUA)

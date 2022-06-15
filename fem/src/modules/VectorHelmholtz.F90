@@ -887,11 +887,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
+   REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), SOL(:,:), RotWBasis(:,:), Basis(:), &
+       dBasisdx(:,:)
+   REAL(KIND=dp) :: s,u,v,w,Norm, E(2,3)
    REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, C_ip
-   COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), EdotJ, EF_ip(3), R_ip, &!
-                       B(3), R(35)
+   COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), &
+       EdotJ, EF_ip(3), R_ip, B(3)
+   COMPLEX(KIND=dp), ALLOCATABLE :: R(:)
 
    TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
@@ -921,25 +923,26 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    INTEGER :: soln
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrCoeff_h, MuCoeff_h
- 
+   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
+
 !-------------------------------------------------------------------------------------------
    SolverParams => GetSolverParams()
 
    soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
    IF( soln == 0 ) THEN
-     CALL Fatal('VectorHelmholtzCalcFields','We should know > Primary Solver Index <')
+     CALL Fatal(Caller,'We should know > Primary Solver Index <')
    END IF
 
    ! Pointer to primary solver
    pSolver => Model % Solvers(soln)
 
    Pname = getVarName(pSolver % Variable)
-   CALL Info('VectorHelmholtzCalcFields','Name of potential variable: '//TRIM(pName),Level=10)
+   CALL Info(Caller,'Name of potential variable: '//TRIM(pName),Level=10)
    
    ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
    IF( vDofs /= 2 ) THEN
-     CALL Fatal('VectorHelmholtzCalcFields','Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
+     CALL Fatal(Caller,'Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
    END IF
 
    IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
@@ -948,8 +951,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
    END IF
     
-   IF (PiolaVersion) CALL Info('MagnetoDynamicsCalcFields', &
-       'Using Piola transformed finite elements',Level=5)
+   IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
    Omega = GetAngularFrequency(Found=Found)
    
@@ -1011,9 +1013,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    dofs = MAX( edofs, ndofs ) 
    n = Mesh % MaxElementDOFs
-
+   
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
-
+   ALLOCATE( WBasis(n,3), SOL(2,n), RotWBasis(n,3), Basis(n), dBasisdx(n,3), R(n) )
+   
    SOL = 0._dp
    R=0._dp; PR=0._dp
    Energy = 0._dp; Energy_im = 0._dp
@@ -1049,7 +1052,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      hdotE_r = ParallelReduction(hdotE_r)
      hdotE_i = ParallelReduction(hdotE_i)
      write (Message,*) 'Energy Functional value:', hdotE_r, hdotE_i
-     CALL Info('VectorHelmholtzSolver',Message)
+     CALL Info(Caller,Message)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional', hdotE_r)
      CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional im', hdotE_i)
    END IF
@@ -1091,7 +1094,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
-       
+
        stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
        
@@ -1192,9 +1195,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, dofcount)
      END IF
-
+     
    END DO
-
+   
    Energy = ParallelReduction(Energy)
    Energy_im = ParallelReduction(Energy_im)
 
@@ -1221,18 +1224,22 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    END IF
 
    WRITE(Message,*) '(Electro) Integral of Divergence of Poynting Vector: ', Energy, Energy_im
-   CALL Info( 'VectorHelmholtz', Message )
+   CALL Info(Caller, Message )
    CALL ListAddConstReal(Model % Simulation,'res: Integral of Div Poynting Vector',Energy)
    CALL ListAddConstReal(Model % Simulation,'res: Integral of Div Poynting Vector im',Energy_im)
 
-   IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS,FORCE)
-      
    IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
-    WRITE(Message,*) 'Angular Frequency: ', Omega
-    CALL Info( 'MagnetoDynamics', Message )
-    CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
-  END IF
+     WRITE(Message,*) 'Angular Frequency: ', Omega
+     CALL Info(Caller, Message )
+     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
+   END IF
+      
+   IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
+   DEALLOCATE( MASS,FORCE,Pivot)
+
+   CALL Info(Caller,'All done for now!',Level=20)
+   
+  
 CONTAINS
 
  

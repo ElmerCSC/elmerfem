@@ -264,6 +264,12 @@
 #ifdef HAVE_PARDISO
          CALL Info( 'MAIN', ' PARDISO library linked in.')
 #endif
+#ifdef HAVE_MMG
+         CALL Info( 'MAIN', ' MMG library linked in.')
+#endif
+#ifdef HAVE_PARMMG
+         CALL Info( 'MAIN', ' ParMMG library linked in.')
+#endif         
 #ifdef HAVE_MKL
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
@@ -1300,7 +1306,7 @@
     SUBROUTINE AddSolvers()
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,nlen
-      LOGICAL :: InitSolver, Found
+      LOGICAL :: InitSolver, Found, DoTiming
 !------------------------------------------------------------------------------
 
       CALL Info('AddSolvers','Setting up '//TRIM(I2S(CurrentModel % NumberOfSolvers))//&
@@ -1356,10 +1362,16 @@
          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
            Solver % Mesh => CurrentModel % Meshes
          END IF
+
+         DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
+         IF( DoTiming ) CALL ResetTimer('SolverInitialization')
+         
          CurrentModel % Solver => Solver
          CALL AddEquationBasics( Solver, eq, Transient )
          CALL AddEquationSolution( Solver, Transient )
 
+         IF( DoTiming ) CALL CheckTimer('SolverInitialization',Level=7,Delete=.TRUE.)
+         
          CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
          CALL SetCurrentMesh( CurrentModel, Solver % Mesh )
          CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
@@ -1387,8 +1399,14 @@
            Solver % Mesh => CurrentModel % Meshes
          END IF
          CurrentModel % Solver => Solver
+
+         DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
+         IF( DoTiming ) CALL ResetTimer('SolverInitialization')
+         
          CALL AddEquationBasics( Solver, eq, Transient )
          CALL AddEquationSolution( Solver, Transient )
+
+         IF( DoTiming ) CALL CheckTimer('SolverInitialization',Level=7,Delete=.TRUE.)
        END IF
      END DO
 

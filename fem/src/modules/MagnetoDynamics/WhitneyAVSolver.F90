@@ -324,11 +324,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, mass_reg_epsilon
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, &
+      mass_reg_epsilon, newton_eps
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
+  LOGICAL :: Newton
   
   TYPE(Variable_t), POINTER :: Var, JFixVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
@@ -425,6 +426,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
+
+  Newton = .FALSE.
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found ) 
+  IF(.NOT. Found) newton_eps = 1.0e-3
   
   mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
@@ -591,7 +596,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL DefaultStart()
   
   DO i=1,NoIterationsMax
-    ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
+    Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+    IF(.NOT. Found ) Newton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
@@ -1719,13 +1725,12 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3)
+                     A_t(3,3), A_t_der(3,3), eps=1.0e-3
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
-    LOGICAL :: Stat, Found, Newton, &  
-        HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, mudim
+    LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
+    INTEGER :: t, i, j, k, p, q, np, siz, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1746,7 +1751,6 @@ END SUBROUTINE LocalConstraintMatrix
     FORCE = 0.0_dp
     MASS  = 0.0_dp
     JAC = 0.0_dp
-    Newton = .FALSE.
 
     IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
@@ -1802,8 +1806,6 @@ END SUBROUTINE LocalConstraintMatrix
 
       IF (HasHBCurve) THEN
         CALL GetScalarLocalSolution(Aloc)
-        Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
-        IF(.NOT. Found ) Newton = ExtNewton
       END IF
     ELSE IF( HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
@@ -1837,11 +1839,23 @@ END SUBROUTINE LocalConstraintMatrix
          END IF
        ELSE IF( HasReluctivityFunction ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
          mu = ListGetElementReal( mu_h, Basis, Element, &
              GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )
          IF (mudim < 2) CALL Fatal('WhitneyAVSolver', &
              'Specify Reluctivity Function as a full (3x3)-tensor')
          A_t(1:3,1:3) = muTensor(1:3,1:3)         
+         
+         IF( Newton ) THEN
+           ! Use central differencing 
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1+newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = muTensor(1:3,1:3)
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1-newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = ( A_t_der(1:3,1:3) - muTensor(1:3,1:3) ) / ( 2*newton_eps*babs)
+         END IF
+         
        ELSE IF( HasTensorReluctivity ) THEN
          IF (SIZE(Acoef_t,2) == 1) THEN
            A_t = 0.0d0
@@ -2057,8 +2071,16 @@ END SUBROUTINE LocalConstraintMatrix
              STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
-             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             IF ( HasHBCurve ) THEN
+               JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
+                   SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             ELSE IF( HasReluctivityFunction ) THEN
+               ! Note: check this though for unisotropic cases!!!
+               DO k=1,3
+                 JAC(p,q) = JAC(p,q) + SUM(A_t_der(k,:) *  B_ip(k) * RotWBasis(j,:)) * &
+                     SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+               END DO
+             END IF
            END IF
 
            ! Compute the conductivity term <C A,eta> for 
@@ -2125,8 +2147,10 @@ END SUBROUTINE LocalConstraintMatrix
     END DO
 
     IF ( Newton ) THEN
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
-      FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      IF( HasHBCurve .OR. HasReluctivityFunction ) THEN
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
+        FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      END IF
     END IF
 
 !------------------------------------------------------------------------------

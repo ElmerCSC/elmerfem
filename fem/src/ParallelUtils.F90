@@ -887,14 +887,17 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelMatrixVector( Matrix, x, b, Update, UseMassVals,ZeroNotOwned )
+    SUBROUTINE ParallelMatrixVector( Matrix, x, b, Update, UseMassVals, &
+                   ZeroNotOwned, UseAbs )
 !-------------------------------------------------------------------------------
-      REAL(KIND=dp) CONTIG :: x(:), b(:)
+      REAL(KIND=dp) CONTIG, TARGEt :: x(:), b(:)
       TYPE(Matrix_t), POINTER :: Matrix
-      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned
+      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned, UseAbs
 !-------------------------------------------------------------------------------
       INTEGER :: i,ipar(1)
       REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mr(:), Mb(:), r(:)
+
+      LOGICAL:: UpdateL, UseMassValsL,ZeroNotOwnedL, UseAbsL
 
       TYPE(Matrix_t), POINTER :: SaveMatrix
       TYPE(SplittedMatrixT), POINTER :: SP
@@ -907,144 +910,88 @@ CONTAINS
       GlobalMatrix => Matrix
       ParEnv = GlobalData % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
-      IF ( PRESENT( Update ) ) THEN
-         IF ( Update ) THEN
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
 
-                  SP => GlobalData % SplittedMatrix
-                  ALLOCATE( SavePtrIF( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrNB( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrIn )
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
-                       SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
-                    END IF
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
-                       SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
-                    END IF
-                  END DO
-                  SavePtrIN % Values => SP % InsideMatrix % Values
+      UpdateL = .FALSE.
+      IF(PRESENT(Update)) UpdateL=Update
 
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
-                      SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
+      UseMassValsL = .FALSE.
+      IF(PRESENT(UseMassVals)) UseMassValsL=UseMassVals
 
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
+      ZeroNotOwnedL = .FALSE.
+      IF(PRESENT(ZeroNotOwned)) ZeroNotOwnedL=ZeroNotOwned
+
+      UseABSL = .FALSE.
+      IF(PRESENT(UseABS)) UseABSL=UseABS
+
+      IF ( UseMassValsL ) THEN
+        SP => GlobalData % SplittedMatrix
+        ALLOCATE( SavePtrIF( ParEnv % PEs ) )
+        ALLOCATE( SavePtrNB( ParEnv % PEs ) )
+        ALLOCATE( SavePtrIn )
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
+             ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
+             SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
+          END IF
+          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+             ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
+             SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
+          END IF
+        END DO
+        SavePtrIN % Values => SP % InsideMatrix % Values
+
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
+            SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
+
+          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
                        SP % NbsIfMatrix(i) % Values = SP % NbsIfMatrix(i) % MassValues 
-                  END DO
-                  SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
-               END IF
-
-               Mx => GlobalData % SplittedMatrix % TmpXVec 
-               Mr => GlobalData % SplittedMatrix % TmpRVec 
-               CALL SParMatrixVector( Mx, Mr, ipar )
-               CALL SParUpdateResult( Matrix, x, b, .FALSE. )
-
-               IF(PRESENT(ZeroNotOwned)) THEN
-                 IF(ZeroNotOwned) THEN
-                   DO i = 1, Matrix % NumberOFRows
-                     IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) THEN
-                       b(i) = 0._dp
-                     END IF
-                   END DO
-                 END IF
-               ENDIF
-            ELSE
-               Mx => GlobalData % SplittedMatrix % TmpXVec 
-               Mr => GlobalData % SplittedMatrix % TmpRVec 
-               CALL SParMatrixVector( Mx, Mr, ipar )
-               CALL SParUpdateResult( Matrix, x, b, .FALSE. )
-
-               IF(PRESENT(ZeroNotOwned)) THEN
-                 IF(ZeroNotOwned) THEN
-                   DO i = 1, Matrix % NumberOFRows
-                     IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) THEN
-                       b(i) = 0._dp
-                     END IF
-                   END DO
-                 END IF
-               ENDIF
-            END IF
-
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
-                       SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
-                    END IF
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
-                       SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
-                    END IF
-                  END DO
-                  SP % InsideMatrix % Values => SavePtrIN % Values 
-                  DEALLOCATE( SavePtrIF )
-                  DEALLOCATE( SavePtrNB )
-                  DEALLOCATE( SavePtrIn )
-               END IF
-            END IF
-         ELSE
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
-                  SP => Matrix % ParMatrix % SplittedMatrix
-                  ALLOCATE( SavePtrIF( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrNB( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrIn )
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
-                       SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
-                    END IF
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
-                       SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
-                    END IF
-                  END DO
-                  SavePtrIN % Values => SP % InsideMatrix % Values
-
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
-                       SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
-                       SP % NbsIfMatrix(i) % Values = SP % NbsIfMatrix(i) % MassValues 
-                  END DO
-                  SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
-               END IF
-            END IF
-
-            CALL SParMatrixVector( x, b, ipar )
-
-            IF ( PRESENT(UseMassVals) ) THEN
-              IF ( UseMassVals ) THEN
-                DO i=1,ParEnv % PEs
-                  IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                     SP % IfMatrix(i) % Values = SavePtrIF(i) % Values
-                     DEALLOCATE(SavePtrIF(i) % Values)
-                  END IF
-
-                  IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                     SP % NbsIfMatrix(i) % Values = SavePtrNB(i) % Values 
-                     DEALLOCATE(SavePtrNB(i) % Values)
-                  END IF
-                END DO
-                SP % InsideMatrix % Values => SavePtrIN % Values 
-                DEALLOCATE( SavePtrIF )
-                DEALLOCATE( SavePtrNB )
-                DEALLOCATE( SavePtrIN )
-              END IF
-            END IF
-         END IF
-      ELSE
-         CALL SParMatrixVector( x, b, ipar )
+        END DO
+        SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
       END IF
-      GlobalMatrix => SaveMatrix
+
+      IF(UpdateL) THEN
+        Mx => GlobalData % SplittedMatrix % TmpXVec 
+        Mr => GlobalData % SplittedMatrix % TmpRVec 
+      ELSE
+        Mx => x
+        Mr => b
+      END  IF
+
+      IF(UseABSL) THEN
+        CALL SParABSMatrixVector( Mx, Mr, ipar )
+      ELSE
+        CALL SParMatrixVector( Mx, Mr, ipar )
+      END IF
+ 
+      IF(UpdateL) CALL SParUpdateResult( Matrix, x, b, .FALSE. )
+
+      IF (ZeroNotOwnedL) THEN
+        DO i = 1, Matrix % NumberOFRows
+          IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) &
+            b(i) = 0._dp
+        END DO
+      END IF
+
+      IF ( UseMassValsL ) THEN
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
+              ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
+              SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
+           END IF
+
+           IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+              ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
+              SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
+           END IF
+        END DO
+        SP % InsideMatrix % Values => SavePtrIN % Values 
+        DEALLOCATE( SavePtrIF )
+        DEALLOCATE( SavePtrNB )
+        DEALLOCATE( SavePtrIn )
+      END IF
+
+       GlobalMatrix => SaveMatrix
 #endif
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelMatrixVector
