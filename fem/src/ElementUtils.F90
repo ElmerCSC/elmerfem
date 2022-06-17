@@ -311,7 +311,7 @@ CONTAINS
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, Left, Right
     CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
-    LOGICAL :: GotIt
+    LOGICAL :: GotIt, PSA
     CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrix'
 !------------------------------------------------------------------------------
 
@@ -325,6 +325,10 @@ CONTAINS
     ELSE
       DB = .FALSE.
     END IF
+
+    ! When this has been checked properly the old can be removed
+    PSA = ListGetLogical( Solver % Values,'PSA',Found ) 
+    IF(.NOT. Found) PSA = .TRUE.
     
     List => List_AllocateMatrix(LocalNodes)
 
@@ -394,15 +398,19 @@ CONTAINS
             CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF
         END DO
 
         IF( Mesh % NumberOfFaces == 0 ) THEN
@@ -448,15 +456,19 @@ CONTAINS
               Indexes(n) = Right % DGIndexes(j)
             END DO
 
-            DO i=1,n
-              k1 = Reorder(Indexes(i))
-              IF ( k1 <= 0 ) CYCLE
-              DO j=1,n
-                k2 = Reorder(Indexes(j))
-                IF ( k2 <= 0 ) CYCLE
-                Lptr => List_GetMatrixIndex( List,k1,k2 )
+            IF( PSA ) THEN
+              CALL PackSortAdd(n,Indexes,Reorder)
+            ELSE
+              DO i=1,n
+                k1 = Reorder(Indexes(i))
+                IF ( k1 <= 0 ) CYCLE
+                DO j=1,n
+                  k2 = Reorder(Indexes(j))
+                  IF ( k2 <= 0 ) CYCLE
+                  Lptr => List_GetMatrixIndex( List,k1,k2 )
+                END DO
               END DO
-            END DO
+            END IF
           END DO
         END IF
 
@@ -507,15 +519,19 @@ CONTAINS
             Indexes(n) = Right % DGIndexes(j)
           END DO
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF
         END DO
 
         IF( DGIndirect ) THEN
@@ -555,16 +571,21 @@ CONTAINS
             END IF
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF          
         END DO
+        
         DO t=1,Mesh % NumberOfFaces
           n = 0
           Elm => Mesh % Faces(t) % BoundaryInfo % Left
@@ -589,15 +610,19 @@ CONTAINS
             END IF
           END IF
 
-          DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
-              k2 = Reorder(Indexes(j))
-              IF ( k2 <= 0 ) CYCLE
-              Lptr => List_GetMatrixIndex( List,k1,k2 )
+          IF( PSA ) THEN
+            CALL PackSortAdd(n,Indexes,Reorder)
+          ELSE
+            DO i=1,n
+              k1 = Reorder(Indexes(i))
+              IF ( k1 <= 0 ) CYCLE
+              DO j=1,n
+                k2 = Reorder(Indexes(j))
+                IF ( k2 <= 0 ) CYCLE
+                Lptr => List_GetMatrixIndex( List,k1,k2 )
+              END DO
             END DO
-          END DO
+          END IF            
         END DO
       END IF
     END IF ! DGSolver
@@ -791,15 +816,19 @@ CONTAINS
             END DO
          END IF
 
-         DO i=1,n
-            k1 = Reorder(Indexes(i))
-            IF ( k1 <= 0 ) CYCLE
-            DO j=1,n
+         IF( PSA ) THEN
+           CALL PackSortAdd(n,Indexes,Reorder)
+         ELSE
+           DO i=1,n
+             k1 = Reorder(Indexes(i))
+             IF ( k1 <= 0 ) CYCLE
+             DO j=1,n
                k2 =  Reorder(Indexes(j))
                IF ( k2 <= 0 ) CYCLE
                Lptr => List_GetMatrixIndex( List,k1,k2 )
-            END DO
-         END DO
+             END DO
+           END DO
+         END IF
          t = t + 1
       END DO
 
@@ -903,7 +932,32 @@ CONTAINS
 
   CONTAINS
 
+    ! Takes elemental indexes (for nodes, edges, faces etc.) and using the initial permutation
+    ! pack the nonzeros and then sort them and finally add them to the list matrix structure.
+    ! Adding the whole row is computationally advantageous to adding just one entry at a time.
+    !-----------------------------------------------------------------------------------------
+    SUBROUTINE PackSortAdd(n,Ind,Perm)
+      INTEGER :: n
+      INTEGER :: Ind(:),Perm(:)
+      INTEGER :: i,j,m
+      
+      m = 0
+      DO i=1,n
+        j = Perm(Ind(i))
+        IF(j==0) CYCLE
+        m = m+1
+        Ind(m) = j
+      END DO
 
+      CALL Sort(m,Ind)
+
+      DO i=1,m
+        CALL List_AddMatrixIndexes(List,Ind(i),m,Ind)
+      END DO
+
+    END SUBROUTINE PackSortAdd
+        
+    
     ! Pick thet correct indexes for radition when using discontinuous Galerkin.
     ! In internal BCs we expect to find 'emissivity' given on either side.
     !--------------------------------------------------------------------------

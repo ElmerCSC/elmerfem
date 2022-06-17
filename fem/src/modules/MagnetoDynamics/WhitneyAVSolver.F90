@@ -293,7 +293,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, PrevDT=-1, RelChange
-  TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC, BodyParams
+  TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, &
+      BC, BodyParams, PrevMaterial
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0, &
           NoIterationsMax,NoIterationsMin, nsize
@@ -310,7 +311,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-  LOGICAL :: LaminateStack, CoilBody
+  LOGICAL :: LaminateStack, CoilBody, Cubic, HasHBCurve, HasReluctivityFunction, &
+      NewMaterial
 
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
@@ -322,11 +324,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, mass_reg_epsilon
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, &
+      mass_reg_epsilon, newton_eps
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
+  LOGICAL :: Newton
   
   TYPE(Variable_t), POINTER :: Var, JFixVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
@@ -342,6 +345,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: UseCoilCurrent, ElemCurrent
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
+
+  TYPE(ValueHandle_t), SAVE :: mu_h 
+
   
   SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
@@ -420,6 +426,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
+
+  Newton = .FALSE.
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found ) 
+  IF(.NOT. Found) newton_eps = 1.0e-3
   
   mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
@@ -586,7 +596,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL DefaultStart()
   
   DO i=1,NoIterationsMax
-    ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
+    Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+    IF(.NOT. Found ) Newton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
@@ -643,6 +654,7 @@ CONTAINS
    CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
    REAL(KIND=dp),  POINTER CONTIG :: SaveValues(:), ConstraintValues(:)
 
+   
    SAVE TmpRHSVec, TmpRVec
   !-----------------
   !System assembly:
@@ -669,6 +681,13 @@ CONTAINS
   CALL DefaultInitialize()
   Active = GetNOFActive()
 
+  
+  IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+    CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
+        EvaluateAtIp=.TRUE.,DummyCount=3)
+  END IF
+  
+  PrevMaterial => NULL()
   DO t=1,active
      Element => GetActiveElement(t)
      n  = GetElementNOFNodes() ! kulmat
@@ -715,7 +734,14 @@ CONTAINS
      END IF
 
      Material => GetMaterial( Element )
-
+     NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
+     IF (NewMaterial) THEN
+       HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
+       Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
+       PrevMaterial => Material
+     END IF
+     
      IF(ASSOCIATED(Material).AND..NOT.FoundMagnetization) THEN
        CALL GetRealVector( Material, Load(4:6,1:n), 'Magnetization', FoundMagnetization )
      END IF
@@ -742,8 +768,6 @@ CONTAINS
             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
          END SELECT
          ConstraintActive = GetLogical(CompParams, 'Activate Constraint', Found )
-!        IF (.NOT. Found .AND. CoilType/='stranded') ConstraintActive = .TRUE.
-         IF (.NOT. Found ) ConstraintActive = .FALSE.
        END IF
      END IF
 
@@ -753,7 +777,7 @@ CONTAINS
      Acoef = 0.0d0
      Tcoef = 0.0d0
      IF ( ASSOCIATED(Material) ) THEN
-       IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+       IF ( .NOT. ( HasHBCurve .OR. HasReluctivityFunction ) ) THEN
          CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
          IF (HasTensorReluctivity) THEN
            IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
@@ -1614,7 +1638,7 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
   LOGICAL :: PiolaVersion, SecondOrder
 
   ! FE-Basis stuff
-  REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
+  REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, C(3,3), &
     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
   REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
 
@@ -1698,15 +1722,15 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3)
+                     A_t(3,3), A_t_der(3,3), eps=1.0e-3
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, &
-        HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+    REAL(KIND=dp), POINTER :: MuTensor(:,:)
+    LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
+    INTEGER :: t, i, j, k, p, q, np, siz, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1727,7 +1751,6 @@ END SUBROUTINE LocalConstraintMatrix
     FORCE = 0.0_dp
     MASS  = 0.0_dp
     JAC = 0.0_dp
-    Newton = .FALSE.
 
     IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
@@ -1748,37 +1771,44 @@ END SUBROUTINE LocalConstraintMatrix
       LocalGauge = GetLogical( BodyForce,'Local Lagrange Gauge', Found ) 
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
+    
+    IF ( HasHBCurve ) THEN
+      siz = 0
+      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )     
+      IF (Found) siz = SIZE(HB,1)
 
-    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
-    siz = 0
-    Cval => NULL()
-    IF ( HBCurve ) THEN
-      siz = SIZE(HB,1)
       IF(siz>1) THEN
         Bval=>HB(:,1)
         Hval=>HB(:,2)
-        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
-          ALLOCATE(CubicCoeff(siz))
+        IF (Cubic .AND. NewMaterial) THEN
+          IF (.NOT.ASSOCIATED(CubicCoeff)) THEN
+            ALLOCATE(CubicCoeff(siz))
+          ELSE
+            IF (SIZE(CubicCoeff) < siz) THEN
+              DEALLOCATE(CubicCoeff)
+              ALLOCATE(CubicCoeff(siz))
+            END IF
+          END IF
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
+      ELSE 
+        Lst => ListFind(Material,'H-B Curve')
+        IF (ASSOCIATED(Lst)) THEN
+          Cval => Lst % CubicCoeff
+          Bval => Lst % TValues
+          Hval => Lst % FValues(1,1,:)
+        ELSE
+          HasHBCurve = .FALSE.
+          CALL GetReluctivity(Material,Acoef,n)
+        END IF
       END IF
-    END IF
-    
-    IF(siz<=1) THEN
-      Lst => ListFind(Material,'H-B Curve',HBcurve)
-      IF(HBcurve) THEN
-        Cval => Lst % CubicCoeff
-        Bval => Lst % TValues
-        Hval => Lst % FValues(1,1,:)
-      END IF
-    END IF
 
-    IF(HBCurve) THEN
+      IF (HasHBCurve) THEN
+        CALL GetScalarLocalSolution(Aloc)
+      END IF
+    ELSE IF( HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
-      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
-      IF(.NOT. Found ) Newton = ExtNewton
     END IF
 
     !Numerical integration:
@@ -1800,7 +1830,33 @@ END SUBROUTINE LocalConstraintMatrix
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       IF (HasTensorReluctivity) THEN
+       IF ( HasHBCurve ) THEN
+         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
+         IF ( Newton ) THEN
+           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+         END IF
+       ELSE IF( HasReluctivityFunction ) THEN
+         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+         mu = ListGetElementReal( mu_h, Basis, Element, &
+             GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )
+         IF (mudim < 2) CALL Fatal('WhitneyAVSolver', &
+             'Specify Reluctivity Function as a full (3x3)-tensor')
+         A_t(1:3,1:3) = muTensor(1:3,1:3)         
+         
+         IF( Newton ) THEN
+           ! Use central differencing 
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1+newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = muTensor(1:3,1:3)
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1-newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = ( A_t_der(1:3,1:3) - muTensor(1:3,1:3) ) / ( 2*newton_eps*babs)
+         END IF
+         
+       ELSE IF( HasTensorReluctivity ) THEN
          IF (SIZE(Acoef_t,2) == 1) THEN
            A_t = 0.0d0
            DO i = 1,3
@@ -1813,6 +1869,8 @@ END SUBROUTINE LocalConstraintMatrix
              END DO
            END DO
          END IF
+       ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
        END IF
 
        ! Compute convection type term coming from a rigid motion:
@@ -1881,18 +1939,6 @@ END SUBROUTINE LocalConstraintMatrix
          END IF
        END IF
              
-       IF ( HBCurve ) THEN
-         B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
-         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
-         IF ( Newton ) THEN
-           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
-         END IF
-       ELSE
-         mu = SUM( Basis(1:n) * Acoef(1:n) )
-         muder = 0._dp
-       END IF
-
        ! ------------------------------------------------------------------
        ! Compute element stiffness matrix and force vector.
        ! If we calculate a coil, the nodal degrees of freedom are not used.
@@ -2018,15 +2064,23 @@ END SUBROUTINE LocalConstraintMatrix
          DO j = 1,nd-np
            q = j+np
 
-           IF (HasTensorReluctivity) THEN
+           IF (HasTensorReluctivity .OR. HasReluctivityFunction ) THEN
              STIFF(p,q) = STIFF(p,q) &
                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
            ELSE
              STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
-             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             IF ( HasHBCurve ) THEN
+               JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
+                   SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             ELSE IF( HasReluctivityFunction ) THEN
+               ! Note: check this though for unisotropic cases!!!
+               DO k=1,3
+                 JAC(p,q) = JAC(p,q) + SUM(A_t_der(k,:) *  B_ip(k) * RotWBasis(j,:)) * &
+                     SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+               END DO
+             END IF
            END IF
 
            ! Compute the conductivity term <C A,eta> for 
@@ -2093,8 +2147,10 @@ END SUBROUTINE LocalConstraintMatrix
     END DO
 
     IF ( Newton ) THEN
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
-      FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      IF( HasHBCurve .OR. HasReluctivityFunction ) THEN
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
+        FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      END IF
     END IF
 
 !------------------------------------------------------------------------------

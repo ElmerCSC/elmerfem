@@ -1016,7 +1016,7 @@ CONTAINS
      END IF
      
      IF ( PRESENT( Echo ) ) THEN
-        IF ( Echo ) WRITE( 6, '(a)' ) readstr(1:inlen)
+        IF ( Echo .AND. inlen > 0 ) WRITE( 6, '(a)' ) readstr(1:inlen)
      END IF
 
      i = 1
@@ -2055,7 +2055,7 @@ INCLUDE "mpif.h"
       Matrix % Symmetric = .FALSE.
       Matrix % SolveCount   = 0
       Matrix % NumberOfRows = 0
-
+      Matrix % Ndeg = -1
       Matrix % ProjectorBC = 0
       Matrix % ProjectorType = PROJECTOR_TYPE_DEFAULT
       

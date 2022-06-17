@@ -201,7 +201,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
   LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
-  LOGICAL :: ExtNewton
+  LOGICAL :: ExtNewton, StrandedHomogenization
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
@@ -221,7 +221,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   REAL(KIND=dp) :: NewtonTol
-
+  
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -421,7 +421,10 @@ CONTAINS
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              !CALL GetElementRotM(Element, RotM, n)
+              StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+              IF( StrandedHomogenization ) THEN
+                CALL GetElementRotM(Element, RotM, n)
+              END IF
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -1226,7 +1229,7 @@ END BLOCK
 
     LOGICAL :: Stat, Newton, Cubic, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    LOGICAL :: StrandedHomogenization, FoundIm
+    LOGICAL :: StrandedHomogenization, UseRotM, FoundIm
 
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
 
@@ -1306,25 +1309,30 @@ END BLOCK
     END IF
 
     StrandedHomogenization = .FALSE.
-    IF (CoilType == 'stranded') THEN 
-       CompParams => GetComponentParams( Element )
-       StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-       IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
-         
-       IF ( StrandedHomogenization ) THEN
-         nu_11 = 0._dp
-         nuim_11 = 0._dp
-         nu_11 = GetReal(CompParams, 'nu 11', Found)
-         nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
-         nu_22 = 0._dp
-         nuim_22 = 0._dp
-         nu_22 = GetReal(CompParams, 'nu 22', Found)
-         nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
-       END IF
-    END IF
+    UseRotM = .FALSE.
+    IF(CoilBody) THEN
+      IF (CoilType == 'stranded') THEN 
+        CompParams => GetComponentParams( Element )
+        StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
 
+        IF ( StrandedHomogenization ) THEN
+          nu_11 = 0._dp
+          nuim_11 = 0._dp
+          nu_11 = GetReal(CompParams, 'nu 11', Found)
+          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+          nu_22 = 0._dp
+          nuim_22 = 0._dp
+          nu_22 = GetReal(CompParams, 'nu 22', Found)
+          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+          UseRotM = .TRUE.
+        END IF
+      ELSE IF( CoilType == 'foil winding') THEN
+        UseRotM = .TRUE.
+      END IF
+    END IF
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1375,8 +1383,8 @@ END BLOCK
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
-       ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') THEN
+       ! --------------------------------------------------------------       
+       IF ( UseRotM ) THEN
          DO i=1,3
            DO j=1,3
              RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
@@ -1430,7 +1438,7 @@ END BLOCK
          Nu(2,2) = mu
          Nu(3,3) = mu
 
-         IF (CoilBody .AND. StrandedHomogenization) THEN
+         IF (StrandedHomogenization) THEN
            nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
            nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
            Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)

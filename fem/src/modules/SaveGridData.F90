@@ -304,8 +304,7 @@ CONTAINS
     TYPE(Particle_t), POINTER :: Particles
 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Minx, Miny, Minz, Maxx, Maxy,&
-                     Maxz
+    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), gMinCoord(3), gMaxCoord(3)
     REAL(KIND=dp) :: LocalCoords(3), GlobalCoords(3)
     REAL(KIND=dp) :: x,y,z,u,v,w
     INTEGER, POINTER :: MaskPerm(:)
@@ -387,36 +386,32 @@ CONTAINS
     MaxCoord(3) = GetCReal( Params,'Max Coordinate 3',GotIt) 
     IF(.NOT. GotIt) MaxCoord(3) = MAXVAL(Mesh % Nodes % z )
 
+    ! We need separately global range (with "g") for determining nx, ny, nz etc.
+    ! and the local range to not allocate too much memory. 
+    IF( Parallel ) THEN
+      DO i=1,3
+        gMinCoord(i) = ParallelReduction(MinCoord(i),1)
+        gMaxCoord(i) = ParallelReduction(MaxCoord(i),2)
+      END DO      
+#ifdef HAVE_NETCDF
+      IF(NetCDFFormat) THEN
+        MinCoord = gMinCoord
+        MaxCoord = gMaxCoord
+      END IF
+#endif 
+    ELSE
+      gMinCoord = MinCoord
+      gMaxCoord = MaxCoord
+    END IF
+    
      !print *,'Bounding box min:',MinCoord,ParEnv % myPE
      !print *,'Bounding box max:',MaxCoord,ParEnv % myPE
-
-#ifdef HAVE_NETCDF
-    !This is for a parallel run and NetCDF output. It ensures that every
-    !partition constructs the same grid, which then means values can be easily
-    !sent to the boss partition that will actually do the output of a single
-    !consolidated NetCDF. On the downside, does potentially use a lot of memory
-    !if the grid is large.
-    IF(Parallel .AND. NetCDFFormat) THEN
-      CALL MPI_ALLREDUCE(MinCoord(1), Minx, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MinCoord(2), Miny, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MinCoord(3), Minz, 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(1), Maxx, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(2), Maxy, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      CALL MPI_ALLREDUCE(MaxCoord(3), Maxz, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
-      MinCoord(1) = Minx
-      MinCoord(2) = Miny
-      MinCoord(3) = Minz
-      MaxCoord(1) = Maxx
-      MaxCoord(2) = Maxy
-      MaxCoord(3) = Maxz
-    END IF
-#endif
 
     ! Optionally the mesh origin may be moved to guarantee that there is 
     ! a node at (x0,y0,z0) always.
     !--------------------------------------------------------------------
     IF( GetLogical( Params,'Grid Origin At Corner',GotIt ) ) THEN
-      Origin(1:3) = MinCoord(1:3)
+      Origin(1:3) = gMinCoord(1:3)
     ELSE
       Origin(1) = GetCReal( Params,'Grid Origin 1',GotIt) 
       Origin(2) = GetCReal( Params,'Grid Origin 2',GotIt) 
@@ -431,7 +426,7 @@ CONTAINS
     IF(.NOT. GotIt ) THEN
       nx = GetInteger( Params,'Grid nx',GotIt) 
       IF( GotIt) THEN
-        dx(1) = ( MaxCoord(1) - MinCoord(1) ) / nx 
+        dx(1) = ( gMaxCoord(1) - gMinCoord(1) ) / nx 
       ELSE
         CALL Fatal('FindGridParticles','Give either > Grid dx < or > Grid nx <')
       END IF
@@ -442,7 +437,7 @@ CONTAINS
       IF(.NOT. GotIt ) THEN
         nx = GetInteger( Params,'Grid ny',GotIt) 
         IF( GotIt) THEN
-          dx(2) = ( MaxCoord(2) - MinCoord(2) ) / nx
+          dx(2) = ( gMaxCoord(2) - gMinCoord(2) ) / nx
         ELSE
           dx(2) = dx(1)
         END IF
@@ -454,7 +449,7 @@ CONTAINS
       IF(.NOT. GotIt ) THEN
         nx = GetInteger( Params,'Grid nz',GotIt) 
         IF( GotIt) THEN
-          dx(3) = ( MaxCoord(3) - MinCoord(3) ) / nx
+          dx(3) = ( gMaxCoord(3) - gMinCoord(3) ) / nx
         ELSE
           dx(3) = dx(1)
         END IF
@@ -463,7 +458,8 @@ CONTAINS
 
 
     ! Set limits for the global indexes. These are used particularly if the 
-    ! bounding box has been manually reduced. 
+    ! bounding box has been manually reduced. Note use of local boundaring box
+    ! in parallel too. 
     !----------------------------------------------------------------------------
     imintot = CEILING( ( MinCoord(1) - Origin(1) ) / dx(1) ) 
     imaxtot = FLOOR( ( MaxCoord(1) - Origin(1) ) / dx(1) ) 
@@ -801,9 +797,6 @@ END SUBROUTINE SaveGridData
       REAL :: fvalue
       TYPE(Nodes_t),SAVE :: Nodes      
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp),ALLOCATABLE,SAVE :: Array(:,:,:),Parray(:,:,:)
-      REAL(KIND=dp) :: rt,rt0,rtc
-      INTEGER :: nx,ny,nz
 
       ! Initialize the NetCDF file for writing (only in boss partition)
       ! Or, if this not first call, open the existing file
@@ -823,21 +816,11 @@ END SUBROUTINE SaveGridData
         END IF
       END IF
       
-      nx=(GridExtent(2)-GridExtent(1))+1
-      ny=(GridExtent(4)-GridExtent(3))+1
-      nz=(GridExtent(6)-GridExtent(5))+1
-      
-      IF (.NOT.AllocationDone) THEN
-        ALLOCATE(Array(nx,ny,nz))
-        IF (Parallel) Allocate(Parray(nx,ny,nz))
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
       n = Mesh % MaxElementDOFS
       ALLOCATE( ElemInd(n), ElemInd2(n) )
-        AllocationDone=.TRUE.
-      ENDIF
-
       ThisOnly = .TRUE.
       
       !Set up dims here beforehand if first time
@@ -848,13 +831,13 @@ END SUBROUTINE SaveGridData
             DimName = 'Time'
           ELSE IF(i==2) THEN
             DimName = 'x'
-            DimLen = nx
+            DimLen = (GridExtent(2)-GridExtent(1))+1
           ELSE IF(i==3) THEN
             DimName = 'y'
-            DimLen = ny
+            DimLen = (GridExtent(4)-GridExtent(3))+1
           ELSE IF(i==4) THEN
             DimName = 'z'
-            DimLen = nz
+            DimLen = (GridExtent(6)-GridExtent(5))+1
           ELSE
             CALL Fatal( 'WriteNetCDFFile', 'Are you sure your glacier has more than 3 dimensions?')
           END IF
@@ -894,13 +877,13 @@ END SUBROUTINE SaveGridData
           IF(i==4) DimName = 'z'
 
           IF(i==1) THEN
-            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, NFTYPE, (/ DimId(i) /),VarId(NumVars))
+            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, 6, (/ DimId(i) /),VarId(NumVars))
             IF ( NetCDFStatus /= 0 ) THEN
               CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
             END IF
             NumVars = NumVars + 1
           ELSE
-            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, NFTYPE, (/ DimId(i) /),VarId(NumVars))
+            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, 6, (/ DimId(i) /),VarId(NumVars))
             IF ( NetCDFStatus /= 0 ) THEN
               CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
             END IF
@@ -920,30 +903,22 @@ END SUBROUTINE SaveGridData
               FieldName = ListGetString( Params, TRIM(Txt), Found )
               IF(.NOT. Found) EXIT
               IF(Dim==2) THEN
-                NetCDFStatus = NF90_DEF_VAR(FileId, TRIM(FieldName), NFTYPE,&
+                NetCDFStatus = NF90_DEF_VAR(FileId, TRIM(FieldName), 6,&
                              (/ DimId(2), DimId(3), DimId(1) /),VarId(NumVars))
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
                 END IF
-                IF (SinglePrec) THEN
-                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
-                ELSE
-                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                ENDIF
+                NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
                 END IF
               ELSE IF(Dim==3) THEN
-                NetCDFStatus = NF90_DEF_VAR(FileId, TRIM(FieldName), NFTYPE,&
+                NetCDFStatus = NF90_DEF_VAR(FileId, TRIM(FieldName), 6,&
                              (/ DimId(2), DimId(3), DimId(4), DimId(1) /),VarId(NumVars))
                 IF ( NetCDFStatus /= 0 ) THEN
                 CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
                 END IF
-                IF (SinglePrec) THEN
-                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
-                ELSE
-                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                ENDIF
+                NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
                 END IF
@@ -959,31 +934,23 @@ END SUBROUTINE SaveGridData
                 END IF
                 IF(Dim==2) THEN
                   NetCDFStatus =  NF90_DEF_VAR(FileId,&
-                                TRIM(FieldName)//' '//TRIM(I2S(j)), NFTYPE,&
+                                TRIM(FieldName)//' '//TRIM(I2S(j)), 6,&
                                 (/ DimId(2), DimId(3), DimId(1) /),VarId(NumVars))
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
                   END IF
-                  IF (SinglePrec) THEN
-                    NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
-                  ELSE
-                    NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                  ENDIF
+                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
                   END IF
                 ELSE IF(Dim==3) THEN
                   NetCDFStatus =  NF90_DEF_VAR(FileId,&
-                                TRIM(FieldName)//' '//TRIM(I2S(j)), NFTYPE,&
+                                TRIM(FieldName)//' '//TRIM(I2S(j)), 6,&
                                 (/ DimId(2), DimId(3), DimId(4), DimId(1) /),VarId(NumVars))
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
                   END IF
-                  IF (SinglePrec) THEN
-                    NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
-                  ELSE
-                    NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                  ENDIF
+                  NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
                   END IF
@@ -1090,9 +1057,6 @@ END SUBROUTINE SaveGridData
           IF(Part .NE. 0) FieldName = TRIM(WorkString)
         END IF
 
-
-        CALL Info('SaveGridData',' Saving Variable '// TRIM(FieldName) // ' ' // I2S(Vari),Level=4 )
-
         !Actually get the variable!
         Solution => VariableGet( Mesh % Variables,TRIM(FieldName),ThisOnly )
         IF( .NOT. ASSOCIATED( Solution ) ) THEN
@@ -1139,14 +1103,76 @@ END SUBROUTINE SaveGridData
         ! Finally save the field values for scalars and vectors
         !---------------------------------------------------------------------
         IF( WriteData ) THEN
-          Array=-HUGE(1.0_dp)
-          DO k = 1,nz
-            DO j = 1,ny
-              DO i = 1,nx
+          DO k = 1,GridExtent(6)-GridExtent(5)+1
+            DO j = 1,GridExtent(4)-GridExtent(3)+1
+              DO i = 1,GridExtent(2)-GridExtent(1)+1
                 
+                IF(Parallel) NotInBoss = .FALSE.
+
+                CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+                  
+                !Gather ind. If all=0 then write 0, otherwise carry on.
+                !Also work out if particle is actually in boss partition or in
+                !a different one and send this information to boss (with an
+                !AllReduce so it's just one statement)
                 ind = GridIndex( i, j, k ) 
-                IF(ind.GT.0) THEN
-               
+                IF(Parallel) THEN
+                  CALL MPI_ALLREDUCE( ind, AllInd, 1, MPI_INTEGER, &
+                       MPI_MAX, ELMER_COMM_WORLD, ierr )
+                  ValidPart = 0
+                  IF(AllInd .NE. 0) THEN
+                    IF(Part == 0) THEN
+                      IF(ind == 0) THEN
+                        ind=-1
+                        NotInBoss = .TRUE.
+                      END IF
+                    ELSE
+                      IF(ind .NE. 0) THEN
+                        ValidPart = Part
+                      END IF
+                    END IF
+                    CALL MPI_BCAST(NotInBoss, 1, MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
+                    CALL MPI_ALLREDUCE( ValidPart, MPIVP, 1, MPI_INTEGER, &
+                         MPI_MAX, ELMER_COMM_WORLD, ierr )
+                    
+                    !For the edge case where two partitions return non-0 ind
+                    IF(Part .NE. 0 .AND. Part .NE. MPIVP) ind = 0
+                  END IF
+                END IF
+                  
+                !Write 0 if ind=0
+                IF( ind == 0 ) THEN
+                  IF(Part == 0 .OR. .NOT. Parallel) THEN
+                    IF( SinglePrec ) THEN
+                      fvalue = FillValue
+                      IF(Dim == 2) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), fvalue, start=(/ i,j,nTime /))
+                      ELSE IF(Dim == 3) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), fvalue, start=(/ i,j,k,nTime /))
+                      END IF
+                      IF ( NetCDFStatus /= 0 ) THEN
+                        CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be written: '//TRIM(FieldName))
+                      END IF
+                    ELSE
+                      val = FillValue
+                      IF(Dim == 2) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), val, start=(/ i,j,nTime /))
+                      ELSE IF(Dim == 3) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), val, start=(/ i,j,k,nTime /))
+                      END IF
+                      IF ( NetCDFStatus /= 0 ) THEN
+                        CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be written: '//TRIM(FieldName))
+                      END IF
+                    END IF
+                  END IF
+                !If a non-zero ind is returned from one partition (and it will
+                !only ever be one partition), work out the actual value. The
+                !boss partition (if it's not the owning partition) also needs to
+                !be in here too, but it's index is set to -1 above, so it will
+                !just skip straight to the writing bit where it's actually
+                !needed (ind will only ever be 0 or a positive integer else)
+                ELSE
+                  IF(ind .NE. -1) THEN
                     Element => Mesh % Elements( Particles % ElementIndex(ind) )            
                     IF ( Solution % TYPE == Variable_on_elements ) THEN
                       val = Values(Perm(Element % ElementIndex))
@@ -1188,29 +1214,45 @@ END SUBROUTINE SaveGridData
                         END IF
                       END IF
                     END IF
-
-                    Array(i,j,k)=val
+                  END IF
+                  !Send values to boss if not in boss
+                  IF(Parallel .AND. NotInBoss) THEN
+                    IF(Part .NE. 0) THEN
+                      CALL MPI_SEND(val, 1, MPI_DOUBLE_PRECISION, 0, 1001, ELMER_COMM_WORLD, ierr)
+                    END IF
+                    IF(Part == 0) THEN
+                      CALL MPI_RECV(val, 1, MPI_DOUBLE_PRECISION, MPIVP, 1001, ELMER_COMM_WORLD, status, ierr)
+                    END IF
                   END IF
 
+                  !Finally write the values. Send to boss then write
+                  !Boss only for this bit
+                  IF(Part == 0 .OR. .NOT. Parallel) THEN
+                    IF( SinglePrec ) THEN
+                      fvalue = val
+                      IF(Dim == 2) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), fvalue, start=(/ i,j,nTime /))
+                      ELSE IF(Dim == 3) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), fvalue, start=(/ i,j,k,nTime /))
+                      END IF
+                      IF ( NetCDFStatus /= 0 ) THEN
+                        CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be written: '//TRIM(FieldName))
+                      END IF
+                    ELSE
+                      IF(Dim == 2) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), val, start=(/ i,j,nTime /))
+                      ELSE IF(Dim == 3) THEN
+                        NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), val, start=(/ i,j,k,nTime /))
+                      END IF
+                      IF ( NetCDFStatus /= 0 ) THEN
+                        CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be written: '//TRIM(FieldName))
+                      END IF
+                    END IF
+                  END IF
+                END IF
               END DO ! i
             END DO ! j
           END DO ! k
-
-          IF(Parallel) CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
-        
-          IF(Part == 0 .OR. .NOT. Parallel) THEN
-            IF(Parallel) Array=PArray
-            WHERE(Array.EQ.-HUGE(1.0_dp)) Array=FillValue
-            IF(Dim == 2) THEN
-               NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), Array(:,:,1), start=(/ 1,1,nTime /))
-            ELSE IF(Dim == 3) THEN
-               NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), Array(:,:,:), start=(/ 1,1,1,nTime /))
-            END IF
-            IF ( NetCDFStatus /= 0 ) THEN
-               CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be written: '//TRIM(FieldName))
-            END IF
-          END IF
-
         END IF
         NumVars2 = NumVars2 + 1
       END DO
@@ -1222,7 +1264,7 @@ END SUBROUTINE SaveGridData
           CALL Fatal( 'WriteNetCDFFile', 'NetCDF file could not be closed: '//TRIM(NetCDFFile))
         END IF
       END IF
-
+      
       DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, ElemInd, ElemInd2 )
 
     END SUBROUTINE WriteNetCDFFile

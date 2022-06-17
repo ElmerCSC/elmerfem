@@ -216,7 +216,10 @@ void Instructions()
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisvol            : minimize total communication volume in Metis\n");
+  printf("-metisminconn        : minimize the maximum connectivity count in Metis\n");
   printf("-metisseed int       : random number generator seed for Metis algorithms\n");
+  printf("-metisncuts int      : number of competing partitions to generate\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
@@ -3576,8 +3579,10 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
-  eg->metiscontig = FALSE;
-  eg->metisseed = 0;
+  eg->metis_contig = FALSE;
+  eg->metis_volcut = FALSE;
+  eg->metis_seed = 0;
+  eg->metis_ncuts = 1;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -4088,8 +4093,19 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	return(15);
       }
       else {
-	eg->metisseed = atoi(argv[arg+1]);
-	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+	eg->metis_seed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metis_seed);
+      }
+    }
+
+    if(strcmp(argv[arg],"-metisncuts") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of parameters is required as parameter for -metisncuts!\n");
+	return(15);
+      }
+      else {
+	eg->metis_ncuts = atoi(argv[arg+1]);
+	printf("Number of competing partitions to generate : %d\n",eg->metis_ncuts);
       }
     }
     
@@ -4138,7 +4154,13 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     }
 
     if(strcmp(argv[arg],"-metiscontig") == 0 ) {
-      eg->metiscontig = TRUE;
+      eg->metis_contig = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisvol") == 0 ) {
+      eg->metis_volcut = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisminconn") == 0 ) {
+      eg->metis_minconn = TRUE;
     }
     
     if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {

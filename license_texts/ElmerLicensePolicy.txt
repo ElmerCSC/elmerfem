@@ -5,14 +5,15 @@ Elmer is a finite element code published under open source. It uses both the GPL
 v. 2.1) and LGPL license (GNU Lesser General Public License, v. 2.0).
 
 This is a short description of the licensing policy of Elmer suite from practical point of view. It applies to
-the use, modification and contribution of the code.
+the use, modification and contribution of the code. This is a laymans description of the terms and is in no
+way legally binding, or does not add anything to the existing license terms. 
 
 
 Licences used
 -------------
 The code under LGPL license include the ElmerSolver main library (libelmersolver, codewise /fem/src/*.F90),
-as well as the libraries matc and fhutiter. ElmerSolver library also depends on iso_varying_string that is
-already published under LGPL.
+as well as the libraries matc and fhutiter. Some physical modules are also available under LGPL. ElmerSolver
+library also depends on iso_varying_string that is already published under LGPL. 
 
 The parts of Elmer project still under the more restrictive GPL license include ElmerGUI, ElmerGrid, 
 and most of the existing physical modules a.k.a. solvers of Elmer (codewise /fem/src/modules/*).

@@ -197,10 +197,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
       Solver % Matrix % MassValues = MassValues
     END IF
 
-    InitHandles = .TRUE.
     tind = 0
-    
-!$omp parallel do private(Element,n,nd)   
+    InitHandles = .TRUE.
+   
+!$omp parallel do private(Element,n,nd,nb,t,InitHandles)   
     DO t=1,active
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes(Element)
@@ -221,7 +221,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     CALL DefaultFinishBulkAssembly()
 
     Active = GetNOFBoundaryElements()
-!$omp parallel do private(Element, n, nd, BC,Found)
+!$omp parallel do private(Element, n, nd, BC,Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC=>GetBC( Element )
@@ -758,7 +758,6 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
     LOGICAL :: CoilBody, StrandedCoil    
 
-!$omp threadprivate(Nodes, CubicCoeff, HB)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
     ! Zirka related
@@ -766,6 +765,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
+!$omp threadprivate(Nodes, CubicCoeff, HB)
+    
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -804,11 +805,11 @@ CONTAINS
       END IF
     END IF
 
-    if (zirka) then
+    IF (zirka) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
       zirkamodel => GetZirkaPointer(Material)
       hystvar => GetZirkaVariable(Material)
-    end if
+    END IF
 
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
@@ -911,7 +912,6 @@ CONTAINS
 
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
-
 
       ! Finally, the elemental matrix & vector:
       !----------------------------------------
@@ -1040,10 +1040,15 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: StrandedCoil
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, &
-        CoilType_h
-    
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h
+
     SAVE HBCurve, Nu0, PrevMaterial
+    
+    !$omp threadprivate(Basis, dBasisdx, MASS, STIFF, FORCE, POT, &
+    !$omp               CVal, BVal, HVal, Nodes, Nu0, HBCurve, PrevMaterial, &
+    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, RelPermCoeff_h, &
+    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h )
+    
 !------------------------------------------------------------------------------
 
     ! This InitHandles flag might be false on threaded 1st call
@@ -1055,13 +1060,13 @@ CONTAINS
       CALL ListInitElementKeyword( RelucCoeff_h,'Material','Reluctivity')
       CALL ListInitElementKeyword( Mag1Coeff_h,'Material','Magnetization 1')
       CALL ListInitElementKeyword( Mag2Coeff_h,'Material','Magnetization 2')
+      CALL ListInitElementKeyword( CoilType_h,'Component','Coil Type')
       Found = .FALSE.
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Nu0 = ListGetCReal( Model % Constants,'Permeability of Vacuum',Found)
       END IF
       IF( .NOT. Found ) Nu0 = PI * 4.0d-7
       InitHandles = .FALSE.
-      CALL ListInitElementKeyword( CoilType_h,'Component','Coil Type')
     END IF
 
     ! Allocate storage if needed
@@ -1157,8 +1162,11 @@ CONTAINS
           ELSE
             Mu = ListGetElementReal( RelucCoeff_h, Basis, Element, Found, GaussPoint = t )
           END IF
+
           IF(.NOT. Found ) THEN
-            CALL Fatal(Caller,'Could not define reluctivity in any way!')
+            PRINT *,'Element:',Element % ElementIndex, t
+            CALL Fatal(Caller,'Could not define reluctivity in any way in Body: '&
+                //TRIM(I2S(Element % BodyId)))
           END IF
         END IF
       END IF
@@ -1167,7 +1175,7 @@ CONTAINS
       Bt(1:nd,1) =  dbasisdx(1:nd,2)
       Bt(1:nd,2) = -dbasisdx(1:nd,1)
 
-      ! Here istrophy is assumed!
+      ! Here isotrophy is assumed!
       Ht(1:nd,:) = mu * Bt(1:nd,:)
            
       IF ( HBCurve .AND. NewtonRaphson) THEN
@@ -1237,7 +1245,7 @@ SUBROUTINE GetZirkaHBAtIP(i_IP, Solver, Element, HystVar, ZirkaModel, B_ip, H_ip
   TYPE(GlobalHysteresisModel_t), POINTER :: ZirkaModel
   REAL(KIND=dp), INTENT(IN) :: B_ip(2)
   REAL(KIND=dp), INTENT(OUT) :: H_ip(2)
-  REAL(KIND=dp), intent(INOUT) :: dHdB(2,2)
+  REAL(KIND=dp), INTENT(INOUT) :: dHdB(2,2)
 !-------------------------------------------------------------------------------
   INTEGER :: ipindex, n_dir, k,l
   REAL(KIND=dp) :: dH, B0(3)
@@ -1278,9 +1286,7 @@ END SUBROUTINE ! }}}
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(2,2,n), R_ip, &
             Inf_ip,Coord(3),Normal(3),mu,u,v
-
     TYPE(ValueList_t), POINTER :: Material
-
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
@@ -1796,7 +1802,7 @@ CONTAINS
     LOGICAL :: stat,Found
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
+    !$OMP THREADPRIVATE(Nodes)
 
     Density(1:n) = GetReal(GetMaterial(),'Density',Found,UElement=Element)
     IF(.NOT.Found) RETURN
@@ -1838,7 +1844,8 @@ CONTAINS
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-	!$OMP THREADPRIVATE(Nodes)
+
+    !$OMP THREADPRIVATE(Nodes)
 
     r0 = GetCReal(GetBodyParams(),'r inner',Found)
     r1 = GetCReal(GetBodyParams(),'r outer',Found)
@@ -2297,7 +2304,7 @@ CONTAINS
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
-!$omp threadprivate(Nodes,HB,CubicCoeff,InPlaneProximity)
+    !$omp threadprivate(Nodes,HB,CubicCoeff,InPlaneProximity)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -2579,7 +2586,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
- 	!$OMP THREADPRIVATE(Nodes)
+    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp

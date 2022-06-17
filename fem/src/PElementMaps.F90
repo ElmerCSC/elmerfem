@@ -57,22 +57,23 @@ MODULE PElementMaps
        BrickEdgeMap, BrickFaceMap, BrickFaceEdgeMap, &
        WedgeEdgeMap, WedgeFaceMap, WedgeFaceEdgeMap, &
        PyramidEdgeMap, PyramidFaceMap, PyramidFaceEdgeMap, &
-       MInit
+       MInit, TriangleFaceMap, QuadFaceMap
   ! Mappings
   INTEGER, TARGET, SAVE :: QuadEdgeMap(4,2), TriangleEdgeMap(3,2), &
        TetraEdgeMap1(6,2), TetraFaceMap1(4,3), TetraFaceEdgeMap1(4,3), &
        TetraEdgeMap2(6,2), TetraFaceMap2(4,3), TetraFaceEdgeMap2(4,3),&
        BrickEdgeMap(12,2), BrickFaceMap(6,4), BrickFaceEdgeMap(6,4), &
        WedgeEdgeMap(9,2), WedgeFaceMap(5,4), WedgeFaceEdgeMap(5,4), &
-       PyramidEdgeMap(8,2), PyramidFaceMap(5,4), PyramidFaceEdgeMap(5,4)
+       PyramidEdgeMap(8,2), PyramidFaceMap(5,4), PyramidFaceEdgeMap(5,4), &
+       TriangleFaceMap(1,3), QuadFaceMap(1,4), LineEdgeMap(1,2)
 
   LOGICAL, SAVE :: MInit = .FALSE.
-  !$OMP THREADPRIVATE(MInit, QuadEdgeMap, TriangleEdgeMap, &
+  !$OMP THREADPRIVATE(MInit, QuadEdgeMap, TriangleEdgeMap, LineEdgeMap, &
   !$OMP&              TetraEdgeMap1, TetraFaceMap1, TetraFaceEdgeMap1, &
   !$OMP&              TetraEdgeMap2, TetraFaceMap2, TetraFaceEdgeMap2,&
   !$OMP&              BrickEdgeMap, BrickFaceMap, BrickFaceEdgeMap, &
   !$OMP&              WedgeEdgeMap, WedgeFaceMap, WedgeFaceEdgeMap, &
-  !$OMP&              PyramidEdgeMap, PyramidFaceMap, PyramidFaceEdgeMap)
+  !$OMP&              PyramidEdgeMap, PyramidFaceMap, PyramidFaceEdgeMap, TriangleFaceMap, QuadFaceMap)
 CONTAINS
 
   ! MAPPINGS
@@ -80,6 +81,21 @@ CONTAINS
   ! First some direct mappings to elements. These should not be used directly 
   ! unless element type is implicitly known from context. Better way is to use
   ! getElement[Boundary,Edge,Face]Map -routines.
+
+    ! Call: localEdge = getQuadEdge(i)
+    !
+    ! Function returns mapping from edge number to edge endpoints 
+
+    FUNCTION getLineEdgeMap(i) RESULT(localEdge)
+      IMPLICIT NONE
+
+      INTEGER, INTENT(IN) :: i
+      INTEGER, DIMENSION(2) :: localEdge
+
+      IF (.NOT. MInit) CALL InitializeMappings()
+      
+      localEdge(:) = LineEdgeMap(i,:)
+    END FUNCTION getLineEdgeMap
 
     ! Call: localEdge = getQuadEdge(i)
     !
@@ -96,6 +112,20 @@ CONTAINS
       localEdge(:) = QuadEdgeMap(i,:)
     END FUNCTION getQuadEdgeMap
 
+    ! Call: localFace = getQuadFaceMap(i)
+    ! 
+    ! Function returns mapping from face number to face nodes
+    FUNCTION getQuadFaceMap(i) RESULT(localFace)
+      IMPLICIT NONE
+      
+      INTEGER, INTENT(IN) :: i
+      INTEGER, DIMENSION(4) :: localFace
+
+      IF (.NOT. MInit) CALL InitializeMappings()
+
+      localFace(:) = QuadFaceMap(1,:)
+    END FUNCTION getQuadFaceMap
+
     ! Call: localEdge = getTriangleEdge(i)
     ! 
     ! Function returns mapping from edge number to edge endpoints
@@ -110,6 +140,20 @@ CONTAINS
 
       localEdge(:)=TriangleEdgeMap(i,:)
     END FUNCTION getTriangleEdgeMap
+
+    ! Call: localFace = geTriangleFaceMap(i)
+    ! 
+    ! Function returns mapping from face number to face nodes
+    FUNCTION getTriangleFaceMap(i) RESULT(localFace)
+      IMPLICIT NONE
+      
+      INTEGER, INTENT(IN) :: i
+      INTEGER, DIMENSION(3) :: localFace
+
+      IF (.NOT. MInit) CALL InitializeMappings()
+
+      localFace(:) = TriangleFaceMap(1,:)
+    END FUNCTION getTriangleFaceMap
     
     ! Call: localEdge = getBrickEdgeMap(i)
     ! 
@@ -410,6 +454,8 @@ CONTAINS
       END IF
 
       SELECT CASE (Element % TYPE % ElementCode / 100)
+      CASE (2)
+         map => LineEdgeMap
       CASE (3)
          map => TriangleEdgeMap
       CASE (4)
@@ -466,10 +512,10 @@ CONTAINS
       END IF
 
       SELECT CASE (Element % TYPE % ElementCode / 100)
-!      CASE (3)
-!         facemap => TriangleEdgeMap
-!      CASE (4)
-!         facemap => QuadEdgeMap
+       CASE (3)
+          facemap => TriangleFaceMap
+       CASE (4)
+          facemap => QuadFaceMap
       CASE (5)
          SELECT CASE( Element % PDefs % TetraType )
          CASE (1)
@@ -552,16 +598,22 @@ CONTAINS
       
       CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements',Level=10)
 
+      LineEdgeMap(1,:) = [1,2]
+
       ! Quad edge mappings
       QuadEdgeMap(1,:) = (/ 1,2 /)
       QuadEdgeMap(2,:) = (/ 2,3 /)
       QuadEdgeMap(3,:) = (/ 4,3 /)
       QuadEdgeMap(4,:) = (/ 1,4 /)
 
+      QuadFaceMap(1,:) = (/ 1,2,3,4 /)
+
       ! Triangle edge mappings
       TriangleEdgeMap(1,:) = (/ 1,2 /)
       TriangleEdgeMap(2,:) = (/ 2,3 /)
       TriangleEdgeMap(3,:) = (/ 3,1 /)
+
+      TriangleFaceMap(1,:) = (/ 1,2,3 /)
 
       ! Brick edge mappings
       BrickEdgeMap(1,:) = (/ 1,2 /)

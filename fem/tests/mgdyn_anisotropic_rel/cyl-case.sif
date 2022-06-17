@@ -1,4 +1,4 @@
-! Development test case for stabilized lagrange formulation of magnetostatics
+! Development test case for a tensor-valued reluctivity
 ! Juhani Kataja / CSC
 ! 2016 / 6
 
@@ -167,5 +167,7 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
+solver 1::Reference norm = 7.03999683E-06
+solver 1::Reference norm tolerance = 1e-5
 solver 3::Reference norm = 9.54680124E+00
 solver 3::Reference norm tolerance = 1e-5

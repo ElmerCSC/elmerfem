@@ -76,7 +76,7 @@ MODULE PermafrostMaterials
   ! type for rock material
   !---------------------------------
   TYPE RockMaterial_t
-     INTEGER :: NumerOfRockRecords
+     INTEGER :: NumberOfRockRecords
      REAL(KIND=dp), ALLOCATABLE :: ks0th(:),e1(:),bs(:),rhos0(:),&
           Xi0(:),eta0(:),etak(:),hs0(:),Kgwh0(:,:,:),qexp(:),alphaL(:),alphaT(:),RadGen(:),&
           cs0(:),acs(:,:),as0(:),aas(:,:),ks0(:),cks(:,:),Es0(:),nus0(:),betas(:)
@@ -377,24 +377,26 @@ CONTAINS
   END SUBROUTINE ReadPermafrostSoluteMaterial
 
   !---------------------------------------------------------------------------------------------
-  FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumerOfRockRecords)
+  FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumberOfRockRecords)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Params
-    Integer :: NumerOfRockRecords
+    INTEGER :: NumberOfRockRecords
     !--------------
-    INTEGER :: i,j,k,l, n,t, active, DIM, ok,InitialNumerOfRockRecords, EntryNumber
+    INTEGER :: I,J,K, n,t, RockMaterialID, active, DIM, ok,InitialNumberOfRockRecords, EntryNumber
     INTEGER,parameter :: io=21
-    LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.
+    LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.,&
+         dimensionalTensorReduction = .FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) ::  MaterialFileName, NewMaterialFileName, str, Comment
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='ReadPermafrostRockMaterial'
 
-    SAVE AllocationsDone,DataRead,InitialNumerOfRockRecords,MaterialFileName
+    SAVE AllocationsDone,DataRead,InitialNumberOfRockRecords,MaterialFileName
 
     IF (DataRead) THEN
-      NumerOfRockRecords = InitialNumerOfRockRecords
+      NumberOfRockRecords = InitialNumberOfRockRecords
       RETURN
     ELSE ! we read Data from file database
       DIM = CoordinateSystemDimension()
+      dimensionalTensorReduction = GetLogical( Params, 'Swap Tensor', Found)
       !------------------------------------------------------------------------------
       ! Inquire and open file
       !------------------------------------------------------------------------------
@@ -443,11 +445,11 @@ CONTAINS
         !------------------------------------------------------------------------------
         ! Read in the number of records in file (first line integer)
         !------------------------------------------------------------------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) NumerOfRockRecords, Comment
-        WRITE (Message,*) "Attempting to read ",NumerOfRockRecords," ",&
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) NumberOfRockRecords, Comment
+        WRITE (Message,*) "Attempting to read ",NumberOfRockRecords," ",&
              TRIM(Comment)," records from data file ",TRIM(MaterialFileName)        
         CALL INFO(FunctionName,Message,level=3)
-        InitialNumerOfRockRecords = NumerOfRockRecords
+        InitialNumberOfRockRecords = NumberOfRockRecords
       END IF
       !------------------------------------------------------------------------------
       ! Allocate and read stuff
@@ -482,31 +484,31 @@ CONTAINS
              GlobalRockMaterial % VariableBaseName)
       END IF
       ALLOCATE(&
-           GlobalRockMaterial % ks0th(NumerOfRockRecords),&
-           GlobalRockMaterial % e1(NumerOfRockRecords),&
-           GlobalRockMaterial % bs(NumerOfRockRecords),&
-           GlobalRockMaterial % rhos0(NumerOfRockRecords),&
-           GlobalRockMaterial % cs0(NumerOfRockRecords),&
-           GlobalRockMaterial % Xi0(NumerOfRockRecords),&
-           GlobalRockMaterial % eta0(NumerOfRockRecords),&
-           GlobalRockMaterial % etak(NumerOfRockRecords),&
-           GlobalRockMaterial % hs0(NumerOfRockRecords),&
-           GlobalRockMaterial % Kgwh0(3,3,NumerOfRockRecords),&
-           GlobalRockMaterial % qexp(NumerOfRockRecords), &
-           GlobalRockMaterial % alphaL(NumerOfRockRecords), &
-           GlobalRockMaterial % alphaT(NumerOfRockRecords), &
-           GlobalRockMaterial % RadGen(NumerOfRockRecords), &
-           GlobalRockMaterial % acs(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % as0(NumerOfRockRecords), &
-           GlobalRockMaterial % aas(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % ks0(NumerOfRockRecords), &
-           GlobalRockMaterial % cks(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % Es0(NumerOfRockRecords), &
-           GlobalRockMaterial % nuS0(NumerOfRockRecords), &
-           GlobalRockMaterial % acsl(NumerOfRockRecords), &     
-           GlobalRockMaterial % aasl(NumerOfRockRecords), &
-           GlobalRockMaterial % cksl(NumerOfRockRecords), &
-           GlobalRockMaterial % VariableBaseName(NumerOfRockRecords),&
+           GlobalRockMaterial % ks0th(NumberOfRockRecords),&
+           GlobalRockMaterial % e1(NumberOfRockRecords),&
+           GlobalRockMaterial % bs(NumberOfRockRecords),&
+           GlobalRockMaterial % rhos0(NumberOfRockRecords),&
+           GlobalRockMaterial % cs0(NumberOfRockRecords),&
+           GlobalRockMaterial % Xi0(NumberOfRockRecords),&
+           GlobalRockMaterial % eta0(NumberOfRockRecords),&
+           GlobalRockMaterial % etak(NumberOfRockRecords),&
+           GlobalRockMaterial % hs0(NumberOfRockRecords),&
+           GlobalRockMaterial % Kgwh0(3,3,NumberOfRockRecords),&
+           GlobalRockMaterial % qexp(NumberOfRockRecords), &
+           GlobalRockMaterial % alphaL(NumberOfRockRecords), &
+           GlobalRockMaterial % alphaT(NumberOfRockRecords), &
+           GlobalRockMaterial % RadGen(NumberOfRockRecords), &
+           GlobalRockMaterial % acs(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % as0(NumberOfRockRecords), &
+           GlobalRockMaterial % aas(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % ks0(NumberOfRockRecords), &
+           GlobalRockMaterial % cks(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % Es0(NumberOfRockRecords), &
+           GlobalRockMaterial % nuS0(NumberOfRockRecords), &
+           GlobalRockMaterial % acsl(NumberOfRockRecords), &     
+           GlobalRockMaterial % aasl(NumberOfRockRecords), &
+           GlobalRockMaterial % cksl(NumberOfRockRecords), &
+           GlobalRockMaterial % VariableBaseName(NumberOfRockRecords),&
            STAT=OK)
       AllocationsDone = .TRUE.
       DataRead = .TRUE.
@@ -515,58 +517,68 @@ CONTAINS
         CALL FATAL(FunctionName, 'Allocation Error of input data array')
       END IF
       
-      DO I=1,NumerOfRockRecords
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(I), EntryNumber
-        IF (EntryNumber /= I) THEN
+      DO RockMaterialID=1,NumberOfRockRecords
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(RockMaterialID), EntryNumber
+        IF (EntryNumber /= RockMaterialID) THEN
           WRITE(Message,'(A,I3,A,I3)') &
                "Entry number", EntryNumber, "does not match expected number ",I
           CLOSE(io)
           CALL FATAL(FunctionName,Message)
         ELSE
           WRITE(Message,'(A,A,A,I3,A)')&
-               "Material ", TRIM(GlobalRockMaterial % VariableBaseName(I)),&
+               "Material ", TRIM(GlobalRockMaterial % VariableBaseName(RockMaterialID)),&
                " entry number ", EntryNumber, " will be read in"
           CALL INFO(FunctionName,Message,Level=3)
         END IF
-        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",I,": ", GlobalRockMaterial % VariableBaseName(I)
+        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",RockMaterialID,": ",&
+             GlobalRockMaterial % VariableBaseName(RockMaterialID)
         CALL INFO(FunctionName,Message,Level=9)
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(I), Comment
-        DO J=1,3
-          DO K=1,3
-            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(J,K,I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(RockMaterialID), Comment
+        DO I=1,3
+          DO J=1,3
+            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(I,J,RockMaterialID), Comment
           END DO
         END DO
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(I),  Comment
+        IF ((DIM == 2) .AND. dimensionalTensorReduction) THEN
+          WRITE(Message,'(A,I2,A,A)') "Reducing tensor Kgwh0 for material no.",RockMaterialID
+          CALL INFO(FunctionName,Message,Level=9)
+          GlobalRockMaterial % Kgwh0(2,2,RockMaterialID) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(1,2,RockMaterialID) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(2,1,RockMaterialID) = GlobalRockMaterial % Kgwh0(3,1,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(3,1:3,RockMaterialID) = 0.0_dp
+          GlobalRockMaterial % Kgwh0(1:3,3,RockMaterialID) = 0.0_dp
+        END IF
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(RockMaterialID),  Comment
         !--------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(RockMaterialID),  Comment
       END DO
-      CALL INFO(FunctionName,Message,Level=1)
+      !CALL INFO(FunctionName,Message,Level=1)
 30    CLOSE(io)
-      IF (I < NumerOfRockRecords) THEN
-        WRITE(Message,'(I3,A,I3)') I,"records read, which is smaller than given number ", NumerOfRockRecords
+      IF (RockMaterialID < NumberOfRockRecords) THEN
+        WRITE(Message,'(I3,A,I3)') RockMaterialID,"records read, which is smaller than given number ", NumberOfRockRecords
         CALL FATAL(FunctionName,Message)
       ELSE
-        WRITE(Message,'(A,I2,A,A)') "Read ",NumerOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
+        WRITE(Message,'(A,I2,A,A)') "Read ",NumberOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
         CALL INFO(FunctionName,Message,Level=1)
       END IF
       RETURN
@@ -758,7 +770,7 @@ CONTAINS
           WRITE(Message,*) 'Element',I
           GlobalRockMaterial % VariableBaseName(I) = TRIM(Message)
         END DO
-        GlobalRockMaterial % NumerOfRockRecords = NoElements
+        GlobalRockMaterial % NumberOfRockRecords = NoElements
         NumberOfRockRecords = NoElements
 50      CLOSE(io)
         IF (LocalNoElements < NoElements) THEN
@@ -989,243 +1001,7 @@ CONTAINS
     END IF
 
   END SUBROUTINE AssignSingleVarTimeDer
-  ! assign variables 
-  !---------------------------------------------------------------------------------------------
-  SUBROUTINE AssignVars(Solver,Model,AllocationsDone,&
-       NodalTemperature,NodalPressure,NodalPorosity,NodalSalinity,NodalGWflux, &
-       NodalTemperatureDt,NodalPressureDt,NodalSalinityDt, &
-       TemperatureVar, PressureVar, PorosityVar,SalinityVar, &
-       TemperatureDtVar, PressureDtVar,SalinityDtVar, &
-       GWFluxVar1,GWFluxVar2,GWFluxVar3, &
-       TemperaturePerm, PressurePerm, PorosityPerm,SalinityPerm, &
-       TemperatureDtPerm, PressureDtPerm,SalinityDtPerm, &
-       GWfluxPerm1, GWfluxPerm2,GWfluxPerm3, &
-       Temperature, Pressure, Porosity,Salinity,&
-       TemperatureDt, PressureDt,SalinityDt,&
-       GWFlux1,GWFlux2,GWFlux3, &
-       NoPressure, NoSalinity,ConstantPorosity,GivenGWFlux, DIM, ComputeDt,CallerSolverName)
 
-    IMPLICIT NONE
-    
-    TYPE(Solver_t):: Solver
-    TYPE(Model_t) :: Model
-    REAL(KIND=dp),POINTER :: NodalTemperature(:),NodalPressure(:),&
-         NodalPorosity(:),NodalSalinity(:),NodalGWflux(:,:),&
-         NodalTemperatureDt(:),NodalPressureDt(:),NodalSalinityDt(:)
-    REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
-         GWflux1(:),GWflux2(:),GWflux3(:),TemperatureDt(:), PressureDt(:),SalinityDt(:)
-    INTEGER ,POINTER :: TemperaturePerm(:), PressurePerm(:), PorosityPerm(:),SalinityPerm(:),&
-         GWfluxPerm1(:),GWfluxPerm2(:),GWfluxPerm3(:),&
-         TemperatureDtPerm(:), PressureDtPerm(:),SalinityDtPerm(:)
-    TYPE(Variable_t), POINTER :: TemperatureVar, PressureVar, PorosityVar,SalinityVar,&
-         GWFluxVar1,GWFluxVar2,GWFluxVar3,&
-         TemperatureDtVar, PressureDtVar,SalinityDtVar
-    INTEGER :: DIM
-    LOGICAL :: NoPressure, NoSalinity,AllocationsDone,ConstantPorosity,GivenGWFlux,ComputeDt
-    CHARACTER(LEN=MAX_NAME_LEN) :: CallerSolverName
-    !------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: TemperatureName,PressureName,PorosityName,SalinityName,&
-         GWfluxName,SolverName
-    TYPE(ValueList_t), POINTER ::  Params
-    LOGICAL :: Found
-    INTEGER :: N, istat
-    !------------------------------
-    
-    SolverName='PermaFrost(AssignVars <-'//TRIM(CallerSolverName)//')'
-    Params => GetSolverParams()
-    
-    IF ((.NOT.AllocationsDone) .OR. (Model % Mesh % Changed)) THEN
-      DIM = CoordinateSystemDimension()
-      N = MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
-      IF (AllocationsDone) &
-           DEALLOCATE(NodalTemperature,NodalPorosity,NodalPressure,&
-           NodalSalinity,NodalGWflux,NodalTemperatureDt,NodalPressureDt,&
-           NodalSalinityDt)
-      ALLOCATE(NodalTemperature(N),NodalPorosity(N),NodalPressure(N),&
-           NodalSalinity(N),NodalGWflux(3,N),NodalTemperatureDt(N),&
-           NodalPressureDt(N),NodalSalinityDt(N),STAT=istat )
-      IF ( istat /= 0 ) THEN
-        CALL FATAL(SolverName,"Allocation error")
-      ELSE
-        AllocationsDone = .TRUE.
-        CALL INFO(SolverName,"Allocations Done",Level=1)
-      END IF
-    END IF
-
-    IF (TRIM(CallerSolverName) == "PermafrostHeatEquation") THEN
-      TemperatureVar => Solver % Variable
-      TemperatureName = Solver % Variable % Name
-    ELSE
-      TemperatureName = ListGetString(Params, &
-           'Temperature Variable', Found )
-      IF (.NOT.Found) THEN
-        CALL WARN(SolverName," 'Temperature Variable' not found. Using default 'Temperature' ")
-        WRITE(TemperatureName,'(A)') 'Temperature'
-      ELSE
-        WRITE(Message,'(A,A)') "'Temperature Variable' found and set to: ", TemperatureName
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
-      TemperatureVar => VariableGet(Solver % Mesh % Variables,TemperatureName)
-    END IF
-    IF (.NOT.ASSOCIATED(TemperatureVar)) THEN
-      WRITE(Message,'(A,A,A)') "'Temperature Variable ", TRIM(TemperatureName), " not associated"
-      CALL FATAL(SolverName,Message)
-    ELSE
-      Temperature => TemperatureVar % Values
-      TemperaturePerm => TemperatureVar % Perm
-      WRITE(Message,'(A,A,A)') "'Temperature Variable ", TRIM(TemperatureName), " associated"
-      CALL INFO(SolverName,Message,Level=9)
-      IF (ComputeDt .AND. (TRIM(CallerSolverName) == "PermafrostHeatEquation")) THEN
-        TemperatureDtVar => VariableGet(Solver % Mesh % Variables,TRIM(TemperatureName) // ' Velocity')
-        IF(.NOT.ASSOCIATED(TemperatureDtVar)) THEN
-          WRITE (Message,*) ' "Compute Time Derivatives" set to true, but " ', TRIM(TemperatureName), ' Velocity " not found'
-          CALL WARN(SolverName,Message)
-          CALL WARN(SolverName,' Switching all time derivatives in source terms off ')
-          ComputeDt = .FALSE.
-        ELSE
-          TemperatureDt => TemperatureDtVar % Values
-          TemperatureDtPerm => TemperatureDtVar % Perm
-        END IF
-      END IF
-    END IF
-
-
-
-    
-    IF (TRIM(CallerSolverName) == "PermafrostGroundWaterFlow") THEN
-      PressureVar => Solver % Variable
-      PressureName = Solver % Variable % Name
-    ELSE
-      PressureName = ListGetString(Params, &
-           'Pressure Variable', Found )
-      IF (.NOT.Found) THEN
-        CALL WARN(SolverName," 'Pressure Variable' not found. Using default 'Pressure' ")
-        WRITE(PressureName,'(A)') 'Pressure'
-      ELSE
-        WRITE(Message,'(A,A)') "'Pressure Variable' found and set to: ", PressureName
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
-      PressureVar => VariableGet(Solver % Mesh % Variables,PressureName)
-    END IF
-    IF (.NOT.ASSOCIATED(PressureVar)) THEN
-      NULLIFY(Pressure)
-      NoPressure = .TRUE.
-      WRITE(Message,'(A,A,A)') "'Pressure Variable ", TRIM(PressureName), " not associated"
-      CALL WARN(SolverName,Message)
-    ELSE
-      Pressure => PressureVar % Values
-      PressurePerm => PressureVar % Perm
-      NoPressure = .FALSE.
-      WRITE(Message,'(A,A,A)') "'Pressure Variable ", TRIM(PressureName), " associated"
-      CALL INFO(SolverName,Message,Level=9)
-      IF (ComputeDt .AND. (TRIM(CallerSolverName) == 'PermafrostGroundWaterFlow')) THEN
-        PressureDtVar => VariableGet(Solver % Mesh % Variables,TRIM(PressureName) // ' Velocity')
-        IF(.NOT.ASSOCIATED(PressureDtVar)) THEN
-          WRITE (Message,*) ' "Compute Time Derivatives" set to true, but " ', TRIM(PressureName), ' Velocity " not found'
-          CALL WARN(SolverName,Message)
-          CALL WARN(SolverName,' Switching all time derivatives in source terms off ')
-          ComputeDt = .FALSE.
-        ELSE
-          PressureDt => PressureDtVar % Values
-          PressureDtPerm => PressureDtVar % Perm
-        END IF
-      END IF
-    END IF
-
-    PorosityName = ListGetString(Params, &
-         'Porosity Variable', Found )
-    IF (.NOT.Found) THEN
-      CALL WARN(SolverName," 'Porosity Variable' not found. Using default 'Porosity' ")
-      WRITE(PorosityName,'(A)') 'Porosity'
-    ELSE
-      WRITE(Message,'(A,A)') "'Porosity Variable' found and set to: ", PorosityName
-      CALL INFO(SolverName,Message,Level=9)
-    END IF
-    ConstantPorosity= GetLogical(Params,'Constant Porosity', Found)
-    IF ((.NOT.Found) .OR. (.NOT.ConstantPorosity)) THEN
-      PorosityVar => VariableGet(Solver % Mesh % Variables,PorosityName)
-      IF (.NOT.ASSOCIATED(PorosityVar)) THEN
-        CALL FATAL(SolverName,'Porosity Variable not found')
-      ELSE
-        Porosity => PorosityVar % Values
-        PorosityPerm => PorosityVar % Perm
-      END IF
-    ELSE
-      NULLIFY(PorosityVar)
-    END IF
-
-    IF (TRIM(CallerSolverName) == 'PermafrostSoluteTransport') THEN
-      SalinityVar => Solver % Variable
-    ELSE
-      SalinityName = ListGetString(Params, &
-         'Salinity Variable', Found )
-      IF (.NOT.Found) THEN
-        CALL WARN(SolverName," 'Salinity Variable' not found. Using default 'Salinity' ")
-        WRITE(SalinityName,'(A)') 'Salinity'
-      ELSE
-        WRITE(Message,'(A,A)') "'Salinity Variable' found and set to: ", SalinityName
-        CALL INFO(SolverName,Message,Level=9)
-      END IF
-      SalinityVar => VariableGet(Solver % Mesh % Variables,SalinityName)
-    END IF
-    IF (.NOT.ASSOCIATED(SalinityVar)) THEN
-      CALL WARN(SolverName,'Salinity Variable not found. Switching Salinity off')
-      NoSalinity = .TRUE.
-    ELSE
-      Salinity => SalinityVar % Values
-      SalinityPerm => SalinityVar % Perm
-      IF (ComputeDt .AND. (TRIM(CallerSolverName) == "PermafrostSoluteTransport")) THEN
-        SalinityDtVar => VariableGet(Solver % Mesh % Variables,TRIM(SalinityName) // ' Velocity')
-        IF(.NOT.ASSOCIATED(SalinityDtVar)) THEN
-          WRITE (Message,*) ' "Compute Time Derivatives" set to true, but " ', TRIM(SalinityName), ' Velocity " not found'
-          CALL WARN(SolverName,Message)
-          CALL WARN(SolverName,' Switching all time derivatives in source terms off ')
-          ComputeDt = .FALSE.
-        ELSE
-          SalinityDt => SalinityDtVar % Values
-          SalinityDtPerm => SalinityDtVar % Perm
-        END IF
-      END IF
-      NoSalinity=.FALSE.
-    END IF
-
-    GWfluxName = ListGetString(Params, &
-         'Groundwater Flux Variable', GivenGWFlux )
-    IF (GivenGWFlux) THEN
-      WRITE(Message,'(A,A)') "'Groundwater flux Variable' found and set to: ", GWfluxName
-      CALL INFO(SolverName,Message,Level=9)
-      GWFluxVar1 => VariableGet(Solver % Mesh % Variables,TRIM(GWfluxName) // " 1")
-      IF (.NOT.ASSOCIATED(GWFluxVar1)) THEN
-        PRINT *, TRIM(GWfluxName) // " 1", " not found"
-        GivenGWflux = .FALSE.
-      END IF
-      IF (DIM > 1) THEN
-        GWFluxVar2 => VariableGet(Solver % Mesh % Variables,TRIM(GWfluxName) // " 2")
-        IF (.NOT.ASSOCIATED(GWFluxVar2)) THEN
-          PRINT *, TRIM(GWfluxName) // " 2", " not found"
-          GivenGWflux = .FALSE.
-        END IF
-        IF (DIM > 2) THEN
-          GWFluxVar3 => VariableGet(Solver % Mesh % Variables,TRIM(GWfluxName) // " 3")
-          IF (.NOT.ASSOCIATED(GWFluxVar2)) THEN
-            PRINT *, TRIM(GWfluxName) // " 3", " not found"
-            GivenGWflux = .FALSE.
-          END IF
-        END IF
-      END IF
-      GWflux1 => GWFluxVar1 % Values
-      GWfluxPerm1 => GWFluxVar1 % Perm
-      IF (DIM > 1) THEN
-        GWflux2 => GWFluxVar2 % Values
-        GWfluxPerm2 => GWFluxVar2 % Perm
-        IF (DIM > 2) THEN
-          GWflux3 => GWFluxVar3 % Values
-          GWfluxPerm3 => GWFluxVar3 % Perm
-        END IF
-      END IF
-      CALL INFO(SolverName,'Groundwater flux Variable found. Using this as prescribed groundwater flux',Level=9)
-    END IF
-  END SUBROUTINE AssignVars
   ! compute element-wise single nodal variable
   SUBROUTINE ReadSingleVar(N,Element,VariablePerm,NodalVariable,Variable,VariableDOFs)
     IMPLICIT NONE
@@ -1245,113 +1021,6 @@ CONTAINS
     END DO
   END SUBROUTINE ReadSingleVar
 
-
-  SUBROUTINE ReadVarsDt(N,Element,Model,Material,&
-       NodalTemperatureDt,NodalPressureDt,NodalSalinityDt,&
-       TemperatureDtPerm, PressureDtPerm, SalinityDtPerm,&
-       TemperatureDt, PressureDt, SalinityDt,&
-       NoSalinity,NoPressure,CallerSolverName,DIM)
-    IMPLICIT NONE
-    
-    INTEGER :: N, DIM   
-    TYPE(Model_t) :: Model
-    TYPE(Element_t) :: Element
-    TYPE(ValueList_t), POINTER :: Material
-    REAL(KIND=dp),POINTER :: NodalTemperatureDt(:),NodalPressureDt(:),NodalSalinityDt(:)
-    REAL(KIND=dp),POINTER :: TemperatureDt(:), PressureDt(:), SalinityDt(:)
-    INTEGER ,POINTER :: TemperatureDtPerm(:), PressureDtPerm(:),SalinityDtPerm(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: CallerSolverName
-    LOGICAL :: NoSalinity,NoPressure
-
-    IF (.NOT.NoPressure) NodalPressureDt(1:N) = PressureDt(PressureDtPerm(Element % NodeIndexes(1:N)))
-    IF (.NOT.NoSalinity) NodalSalinityDt(1:N) = SalinityDt(SalinityDtPerm(Element % NodeIndexes(1:N)))
-    NodalTemperatureDt(1:N) = TemperatureDt(TemperatureDtPerm(Element % NodeIndexes(1:N)))
-    
-  END SUBROUTINE ReadVarsDt
-    
-  ! compute element-wise nodal variables
-  SUBROUTINE ReadVars(N,Element,Model,Material,&
-       NodalTemperature,NodalPressure,NodalPorosity,NodalSalinity,NodalGWflux,&
-       Temperature, Pressure, Porosity,Salinity,GWFlux1,GWFlux2,GWFlux3,&
-       TemperaturePerm, PressurePerm, PorosityPerm,SalinityPerm,&
-       GWfluxPerm1,GWfluxPerm2,GWfluxPerm3,&
-       NoSalinity,NoPressure,ConstantPorosity,GivenGWFlux,&
-       PorosityName,CallerSolverName,DIM)
-    
-    IMPLICIT NONE
-    
-    INTEGER :: N, DIM   
-    TYPE(Model_t) :: Model
-    TYPE(Element_t) :: Element
-    TYPE(ValueList_t), POINTER :: Material
-    REAL(KIND=dp),POINTER :: NodalTemperature(:),NodalPressure(:),&
-         NodalPorosity(:),NodalSalinity(:),NodalGWflux(:,:)
-    REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
-         GWflux1(:),GWflux2(:),GWflux3(:)
-    INTEGER ,POINTER :: TemperaturePerm(:), PressurePerm(:), PorosityPerm(:),SalinityPerm(:),&
-         GWfluxPerm1(:),GWfluxPerm2(:),GWfluxPerm3(:)
-    LOGICAL :: NoPressure, NoSalinity,ConstantPorosity,GivenGWFlux
-    CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName, CallerSolverName
-    !-------------------------
-    REAL(KIND=dp) :: p0
-    INTEGER :: I
-    CHARACTER(LEN=MAX_NAME_LEN) ::SolverName
-    LOGICAL :: Found
-    !-------------------------
-    
-    SolverName='PermaFrost(ReadVars <-'//TRIM(CallerSolverName)//')'
-    
-    NodalPressure(1:N) = 0.0_dp
-    NodalSalinity(1:N) = 0.0_dp
-    NodalGWflux(1:3,1:N) = 0.0_dp
-    NodalPorosity(1:N) = 0.0_dp
-    ! Nodal variable dependencies
-    NodalTemperature(1:N) = Temperature(TemperaturePerm(Element % NodeIndexes(1:N)))
-    IF (ConstantPorosity) THEN
-      NodalPorosity(1:N) = ListGetReal(Material,PorosityName,N,Element % NodeIndexes, Found)
-      IF (.NOT.Found) THEN
-        WRITE (Message,'(A,A,A)') "No '",TRIM(PorosityName) ,"'found in Material"
-        CALL FATAL(SolverName,Message)
-      END IF
-    ELSE
-      NodalPorosity(1:N) = Porosity(PorosityPerm(Element % NodeIndexes(1:N)))
-    END IF
-    DO I=1,N
-      IF (NodalPorosity(I) .NE. NodalPorosity(I)) THEN
-        PRINT *,SolverName,": Invalid value dedected in NodalPorosity"
-        PRINT *,SolverName,":", Porosity(PorosityPerm(Element % NodeIndexes(1:N)))
-        CALL FATAL(SolverName,"Exiting")
-      END IF
-    END DO
-    IF (NoPressure) THEN
-      CALL INFO(SolverName,'No Pressure variable found - setting to "Reference Pressure"',Level=9)
-      p0 = GetConstReal(Model % Constants, 'Reference Pressure', Found)
-      IF (.NOT.Found) THEN
-        p0 = 101032.0_dp
-        CALL INFO(SolverName, ' "Reference Pressure not found in Constants and set to default value p0=101032.0',Level=9)
-      END IF
-      NodalPressure(1:N) = p0
-    ELSE
-      NodalPressure(1:N) = Pressure(PressurePerm(Element % NodeIndexes(1:N)))
-    END IF
-    IF (NoSalinity) THEN
-      NodalSalinity(1:N) = 0.0_dp
-    ELSE
-      NodalSalinity(1:N) = Salinity(SalinityPerm(Element % NodeIndexes(1:N)))
-    END IF
-    IF (GivenGWflux) THEN
-      NodalGWflux(1,1:N) = &
-           GWflux1(GWfluxPerm1(Element % NodeIndexes(1:N)))
-      IF (DIM > 1) THEN
-        NodalGWflux(2,1:N) = &
-             GWflux2(GWfluxPerm2(Element % NodeIndexes(1:N)))
-        IF (DIM > 2) THEN
-          NodalGWflux(3,1:N) = &
-               GWflux3(GWfluxPerm3(Element % NodeIndexes(1:N)))
-        END IF
-      END IF
-    END IF
-  END SUBROUTINE ReadVars
   !---------------------------------------------------------------------------------------------
   !---------------------------------------------------------------------------------------------
   !---------------------------------------------------------------------------------------------
@@ -1731,7 +1400,7 @@ CONTAINS
     END IF
   END FUNCTION GetXi0Tilde
   !---------------------------------------------------------------------------------------------
-  REAL(KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
+  REAL (KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,rhow,Xi,GasConstant,Temperature)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
@@ -1889,6 +1558,15 @@ CONTAINS
     END IF
     IF (ComputeXi)  THEN
       XiAtIP = GetXi(BAtIP,DAtIP)
+      IF (XiAtIP < 0.0_dp) THEN
+        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
+        XiAtIP = 0.0_dp
+        CALL WARN("GetXiHartikainen",Message)
+      ELSE IF (XiAtIP > 1.0_dp) THEN
+        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
+        XiAtIP = 0.99_dp
+        CALL WARN("GetXiHartikainen",Message)
+      END IF
     END IF
     
     ! updates of derivatives
@@ -1896,6 +1574,11 @@ CONTAINS
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
       XiAtIP = GetXi(BAtIP,DAtIP)
+      IF (XiAtIP <= 0.0_dp) THEN
+        WRITE(Message,*) 'Xi=',XiAtIP,' reset to 0.001'
+        CALL WARN("GetXiHartikainen",Message)
+        XiAtIP = 0.001_dp
+      END IF
     END IF
     !----------------------------------------------------
     XiTAtIP = 0.0_dp
@@ -2220,20 +1903,21 @@ CONTAINS
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: rhow,rhoc,Xi,Salinity
     !------------
-    REAL(KIND=dp) :: xc, LSalinity    
+    REAL(KIND=dp) :: xc
     !------------
-!!$    IF (Salinity < 0.0_dp) THEN
-!!$      CALL WARN("rhogw","Salinity smaller than 0")
-!!$      LSalinity = 0.0_dp
-!!$    ELSE IF (Salinity > 0.3_dp) THEN
-!!$      CALL WARN("rhogw","Salinity larger than 0.3")
-!!$      LSalinity = 0.3_dp
-!!$    ELSE
-!!$      LSalinity =Salinity 
-!!$    END IF
-    xc = Salinity/Xi
+    xc = MAX(Salinity/Xi,0.0_dp)
     rhogw = rhow + xc*(rhoc - rhow)
   END FUNCTION rhogw
+  !---------------------------------------------------------------------------------------------
+  REAL (KIND=dp) FUNCTION rhogw_driesner(rhow,dummyrhoc,Xi,Salinity)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: rhow,dummyrhoc,Xi,Salinity
+    !------------
+    REAL(KIND=dp) :: xc   
+    !------------
+    xc = MAX(Salinity/Xi,0.0_dp)
+    rhogw_driesner = rhow*(18.01528_dp * (1.0_dp - xc) + 58.443_dp * xc)/18.01528_dp
+  END FUNCTION rhogw_driesner
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwP(rhowp,rhocp,Xi,Salinity)
     IMPLICIT NONE
@@ -2516,25 +2200,25 @@ CONTAINS
     CgwTT = (1.0_dp - xc)*rhow*cw + xc*rhoc*cc
   END FUNCTION GetCgwTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetCgwpp(rhogw,rhoi,rhogwp,rhoip,rhosp,&
+  FUNCTION GetCgwpp(rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,&
        kappaG,Xi,Xip,&
        RockMaterialID,Porosity)RESULT(Cgwpp)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
+    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: Cgwpp
     !-------------------------
     Cgwpp = Porosity * ( (rhogw - rhoi) * Xip  + Xi * rhogwp + (1.0_dp - Xi)*rhoip ) &
-         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) * ( (1.0_dp - Porosity) * rhosp + kappaG )
+         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) * ( (1.0_dp - Porosity) * rhosp/rhos  + kappaG )
   END FUNCTION GetCgwpp
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetCgwpT(rhogw,rhoi,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity)RESULT(CgwpT)
+  FUNCTION GetCgwpT(rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity)RESULT(CgwpT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity
+    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity
     REAL(KIND=dp) :: CgwpT
     !-------------------------
     CgwpT = Porosity * ( (rhogw - rhoi) * XiT  + Xi * rhogwT + (1.0_dp - Xi)*rhoiT ) &
-         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) *(1.0_dp - Porosity) * rhosT
+         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) *(1.0_dp - Porosity) * rhosT/rhos
   END FUNCTION GetCgwpT
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpYc(rhogw,rhoi,rhogwYc,Xi,XiYc,Porosity)RESULT(CgwpYc)
@@ -2596,13 +2280,52 @@ CONTAINS
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,&
-       mugw,Xi,MinKgw)RESULT(Kgw)
+  FUNCTION GetKGpe( RockMaterialID,CurrentSolventMaterial,Xi)RESULT(KGpe)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
+    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp) :: KGpe(3,3)
+!--------------------------
+    REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor
+    REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
+    INTEGER :: I, J
+    !-------------------------
+    muw0 = CurrentSolventMaterial % muw0
+    rhow0 = CurrentSolventMaterial % rhow0
+    qexp = GlobalRockMaterial % qexp(RockMaterialID)
+    Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
+    ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
+    factor = (muw0)*(Xi**qexp)/(rhow0*gval)
+    DO I=1,3
+      DO J=1,3
+        KGpe(i,j) = Kgwh0(i,j)*factor
+      END DO
+    END DO
+  END FUNCTION GetKGpe
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetXikG0hy(RockMaterialID,Xi)RESULT(XikG0hy)
+     IMPLICIT NONE
+    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+    INTEGER, INTENT(IN) :: RockMaterialID 
+    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp) :: XikG0hy(3,3)
+    !--------------------------
+    REAL(KIND=dp) :: Kgwh0(3,3), qexp
+    Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
+    qexp = GlobalRockMaterial % qexp(RockMaterialID)
+    XikG0hy = (Xi**qexp) * Kgwh0
+    !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
+  END FUNCTION GetXikG0hy
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw) RESULT(Kgw)
+    
+    IMPLICIT NONE
+    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+    INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
     REAL(KIND=dp) :: Kgw(3,3)
+ 
     !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
@@ -2613,11 +2336,13 @@ CONTAINS
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
     qexp = GlobalRockMaterial % qexp(RockMaterialID)
+        ! this is OK
+    !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
+
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = (muw0/mugw)*(Xi**qexp)/(rhow0*gval)
-    ! this is OK
-    !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
+
     Kgw = 0.0_dp
     DO I=1,3
       DO J=1,3
