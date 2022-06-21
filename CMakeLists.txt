@@ -487,6 +487,29 @@ ELSE()
   SET(HAVE_PARMMG FALSE)
 ENDIF()
 
+# XIOS
+IF (WITH_XIOS)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for XIOS ")
+
+  FIND_PACKAGE(XIOS)
+
+  IF(XIOS_FOUND)
+    SET(HAVE_XIOS TRUE)
+    MARK_AS_ADVANCED(HAVE_XIOS)
+    INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
+    LINK_DIRECTORIES(${XIOS_LIBRARIES})
+    ADD_DEFINITIONS(-DHAVE_XIOS)
+    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
+    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
+    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "  XIOS not found ")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
+
 MESSAGE(STATUS "------------------------------------------------")
 
 # MPI and LAPACK

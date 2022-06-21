@@ -332,8 +332,8 @@
         IF (DoInterp.AND.(VarType.EQ.Variable_on_nodes)) THEN
 
           CALL InterpolateMeshToMesh( ThisMesh, &
-            TargetMesh, Var, TargetMesh % Variables,&
-            Projector=Projector, UnfoundNodes=UnfoundNodes)
+                  TargetMesh, Var, TargetMesh % Variables,&
+                  UnfoundNodes=UnfoundNodes)
 
           ! Validate the mapped variables
           pVar => VariableGet( TargetMesh % Variables, TRIM(TVarName), ThisOnly = .TRUE.,UnFoundFatal=.TRUE. )
