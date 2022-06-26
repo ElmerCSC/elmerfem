@@ -321,6 +321,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   FileIndexOffset = GetInteger( Params,'Fileindex offset',GotIt)
   FileIndex = nTime + FileIndexOffset
 
+  i = GetInteger( Params, 'Output File cycle',GotIt)
+  IF(GotIt) FileIndex = MODULO(FileIndex-1,i)+1
+  
   BinaryOutput = GetLogical( Params,'Binary Output',GotIt)
   IF( GotIt ) THEN
     AsciiOutput = .NOT. BinaryOutput
