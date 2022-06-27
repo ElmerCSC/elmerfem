@@ -93,7 +93,8 @@
         LatCalvMargins, FullThickness, UnfoundConstraint
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
-        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
+        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:), &
+        CrevLR(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
 
@@ -1359,13 +1360,15 @@
           IF(NoPaths > 0) THEN
 
             ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-                 CrevEnd(NoPaths),CrevStart(NoPaths),CrevOrient(NoPaths,2))
+                 CrevEnd(NoPaths),CrevStart(NoPaths),CrevOrient(NoPaths,2),&
+                 CrevLR(NoPaths))
 
             j=0
             CurrentPath => CrevassePaths
             DO WHILE(ASSOCIATED(CurrentPath))
               j=j+1
               CrevOrient(j,:) = CurrentPath % Orientation
+              CrevLR(j) = CurrentPath % LeftToRight
               CurrentPath => CurrentPath % Next
             END DO
 
@@ -1422,12 +1425,14 @@
      CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-          CrevEnd(NoPaths),CrevStart(NoPaths), CrevOrient(NoPaths,2))! (because already created on boss)
+          CrevEnd(NoPaths),CrevStart(NoPaths), CrevOrient(NoPaths,2),&
+          CrevLR(NoPaths))! (because already created on boss)
      CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevOrient,NoPaths*2,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevLR,NoPaths,MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
 
      ! if there are no crevasses exit
      IF(NoCrevNodes == 0) THEN
@@ -1484,7 +1489,7 @@
      CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
      CALL CheckLateralCalving(Mesh, Params, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
-      Polygon, PolyStart, PolyEnd)
+      CrevLR, Polygon, PolyStart, PolyEnd)
      NoPaths = SIZE(CrevStart)
 
      ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
@@ -1703,7 +1708,7 @@ CONTAINS
 
   !subroutine to check if lateral calving would be evacuated or would jam on fjord walls
   SUBROUTINE CheckLateralCalving(Mesh, SolverParams, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
-              Polygon, PolyStart, PolyEnd)
+              CrevLR, Polygon, PolyStart, PolyEnd)
 
     IMPLICIT NONE
 
@@ -1712,6 +1717,7 @@ CONTAINS
     INTEGER, POINTER :: FrontPerm(:)
     REAL(KIND=dp),ALLOCATABLE :: CrevX(:),CrevY(:),CrevOrient(:,:),Polygon(:,:)
     INTEGER, ALLOCATABLE :: CrevStart(:),CrevEnd(:),PolyStart(:),PolyEnd(:)
+    LOGICAL, ALLOCATABLE :: CrevLR(:)
     !--------------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: AdvSolver
     TYPE(Valuelist_t), POINTER :: AdvParams
@@ -1719,7 +1725,8 @@ CONTAINS
     INTEGER, POINTER :: SignDistPerm(:)
     REAL(KIND=dp), POINTER :: SignDistValues(:)
     INTEGER :: i,j,NoPaths,ClosestCrev,Naux,Nl,Nr,ok,RemovePoints
-    REAL(KIND=dp) :: xx,yy,MinDist,a1(2),a2(2),b1(2),b2(2),Orientation(2),intersect(2), crevdist
+    REAL(KIND=dp) :: xx,yy,MinDist,a1(2),a2(2),b1(2),b2(2),Orientation(2),intersect(2), crevdist,&
+      TempDist, SecDist
     INTEGER, ALLOCATABLE :: NodeClosestCrev(:), WorkInt(:)
     REAL(KIND=dp), ALLOCATABLE :: PathPoly(:,:),xL(:),yL(:),xR(:),yR(:),WorkReal(:),WorkReal2(:,:)
     LOGICAL :: inside,does_intersect,FoundIntersect
@@ -1864,7 +1871,12 @@ CONTAINS
       MinDist = HUGE(1.0_dp)
 
       Orientation = CrevOrient(NodeClosestCrev(i),:)
-      b2 = b1 + 10*Orientation
+
+      IF(CrevLR(NodeClosestCrev(i))) THEN
+        b2 = b1 - 10*Orientation
+      ELSE
+        b2 = b1 + 10*Orientation
+      END IF
 
       FoundIntersect = .FALSE.
       DO j=1, Nl-1
@@ -1873,6 +1885,8 @@ CONTAINS
         CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
         IF(.NOT. does_intersect) CYCLE
         tempdist = PointDist2D(b1,intersect)
+        secdist = PointDist2D(b2, intersect)
+        IF(secdist > tempdist) CYCLE
         IF(tempdist < mindist) THEN
           mindist = tempdist
           FoundIntersect = .TRUE.
@@ -1886,6 +1900,8 @@ CONTAINS
           CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
           IF(.NOT. does_intersect) CYCLE
           tempdist = PointDist2D(b1,intersect)
+          secdist = PointDist2D(b2, intersect)
+          IF(secdist > tempdist) CYCLE
           IF(tempdist < mindist) THEN
             mindist = tempdist
           END IF
