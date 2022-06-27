@@ -28,6 +28,7 @@ Simulation
 ! Activate these for postprocessing
   Post File = "case.vtu"
   vtu: eigen analysis = Logical True
+  vtu: eigen vector component = String "complex"
 End
 
 Body 1
@@ -86,6 +87,8 @@ Solver 1
   Eigen System Values = 10
   Eigen System Convergence Tolerance = Real 1.0e-6
 
+  Eigen System Complex = Logical True
+
   Automated Fluid-Structure Coupling = Logical True
 End
 
@@ -138,5 +141,5 @@ Boundary Condition 4
 End
  
 
-Solver 1 :: reference norm = 1.64338946E-01
-Solver 3 :: reference norm = 4.80357948E+02
+Solver 1 :: reference norm = 1.46000148E+01
+Solver 3 :: reference norm = 9.99922700E-04

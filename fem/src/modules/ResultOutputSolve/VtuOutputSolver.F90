@@ -488,12 +488,14 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
         EigenVectorMode = 1
       ELSE IF( Str == 'abs' ) THEN
         EigenVectorMode = 2
+      ELSE IF( Str == 'complex' ) THEN
+        EigenVectorMode = 3
       ELSE
         CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
+      CALL Info(Caller,'Using eigen vector mode: '//TRIM(I2S(EigenVectorMode)),Level=7)
     END IF
   END IF
-
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
   IF( GotActiveModes2 ) THEN
@@ -657,8 +659,9 @@ CONTAINS
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
     CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
-    LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
+    LOGICAL :: ScalarsExist, VectorsExist, Found, &
+        ComponentVector, ComponentVectorB, ComplementExists, &
+        Use2, IsHarmonic, FlipActive, DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
@@ -1009,7 +1012,8 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Finally save the field values 
           !---------------------------------------------------------------------
-          DO iField = 1, NoFields + NoFields2          
+          DoIm = .FALSE.
+300       DO iField = 1, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info(Caller,'Setting field type to discontinuous',Level=12)
@@ -1134,13 +1138,21 @@ CONTAINS
                       END IF
                     END IF
                     
-                    IF( EigenVectorMode == 0 ) THEN
+                    SELECT CASE( EigenVectorMode )
+                    CASE( 0 ) 
                       val = REAL( zval )
-                    ELSE IF( EigenVectorMode == 1 ) THEN
+                    CASE(1) 
                       val = AIMAG( zval ) 
-                    ELSE
+                    CASE(2) 
                       val = ABS( zval ) 
-                    END IF                    
+                    CASE(3)
+                      IF( DoIm ) THEN
+                        val = AIMAG( zval )
+                      ELSE
+                        val = REAL( zval )
+                      END IF
+                    END SELECT
+
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
@@ -1180,6 +1192,18 @@ CONTAINS
               CALL AscBinStrWrite( OutStr ) 
             END IF
           END DO
+
+          IF( NoModes > 0 ) THEN !.AND. iField <= NoFields ) THEN
+            ! We have chosen to save both real and imaginary components.
+            ! We have done real, now redo with im. This is later patch, hence the dirty GOTO. 
+            IF(EigenVectorMode == 3 .AND. .NOT. DoIm ) THEN
+              DoIm = .TRUE. 
+              CALL Info(Caller,'Doing the imaginary component of: '//TRIM(FieldName),Level=25)
+              FieldName = TRIM(FieldName)//' Im'
+              GOTO 300 
+            END IF
+          END IF
+          
         END DO
       END DO
     END IF ! IF( SaveNodal )
@@ -2051,6 +2075,10 @@ CONTAINS
             END IF
           END IF
 
+          NoModes = 0
+          NoFields = 1
+          
+          ! Maybe we have some eigenmodes? 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
             IF( EigenAnalysis ) THEN
@@ -2069,9 +2097,6 @@ CONTAINS
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF
-          ELSE
-            NoModes = 0 
-            NoFields = 1
           END IF
 
           dofs = Solution % DOFs
@@ -2172,6 +2197,9 @@ CONTAINS
             END IF
             IF (.NOT. Found ) CYCLE
 
+            NoModes = 0 
+            NoFields = 1
+            
             IF( ASSOCIATED(Solution % EigenVectors)) THEN
               NoModes = SIZE( Solution % EigenValues )
               IF( EigenAnalysis ) THEN
@@ -2190,9 +2218,6 @@ CONTAINS
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
                 NoFields = NoModes
               END IF
-            ELSE
-              NoModes = 0 
-              NoFields = 1
             END IF
 
             IF( dofs > 1 ) THEN

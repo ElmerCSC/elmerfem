@@ -521,15 +521,10 @@ CONTAINS
          CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message,'(A,I0)' ) 'Number of converged Ritz values is: ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message,'(A,I0)') 'Number of update iterations taken: ',  IPARAM(3)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message,'(A,I0,A)') 'Computed ',NEIG,' Eigen Values'
-         CALL Info( Caller,Message, Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller,'Number of update iterations taken: '//TRIM(I2S(IPARAM(3))),Level=4)
+         CALL Info( Caller,'Computed '//TRIM(I2S(NEIG))//' Eigen Values',Level=4)
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1067,13 +1062,12 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
          k = 1
 
          DO i=1,NEIG
@@ -1520,13 +1514,12 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1536,8 +1529,8 @@ END SUBROUTINE CheckResiduals
 
          EigVectors = -1.0_dp
 
-         PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
-             SIZE(V,1),SIZE(V,2)
+         !PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
+         !    SIZE(V,1),SIZE(V,2)
          
          k = 1
          DO i=1,NEIG
@@ -2002,17 +1995,12 @@ END SUBROUTINE CheckResidualsComplex
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-
-         WRITE( Message, * ) ' The number of converged Ritz values is ', &
-              IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info(Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
 
 !------------------------------------------------------------------------------
 ! Extracting the right eigen values and vectors.

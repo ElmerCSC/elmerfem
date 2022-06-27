@@ -17552,8 +17552,10 @@ CONTAINS
     LOGICAL :: Stat, IsHarmonic, IsTransient
     INTEGER :: dim,mat_id,tcount
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
+    LOGICAL :: DoMass, DoDamp
     LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS, dt
+    REAL(KIND=dp), POINTER :: A_fs_values(:), A_sf_values(:)
     CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
     TYPE(Variable_t), POINTER :: dtVar
     
@@ -17611,10 +17613,11 @@ CONTAINS
       CALL Info(Caller,'The Helmholtz equation is multiplied by density',Level=10)
     END IF
     
+    DoMass = .FALSE.
+    DoDamp = .FALSE.
     
     ConstrainedF => A_f % ConstrainedDof
     ConstrainedS => A_s % ConstrainedDof
-    
     
     ! Here we assume harmonic coupling if there are more then 3 structure dofs
     dim = 3
@@ -17685,15 +17688,15 @@ CONTAINS
       pcomp = 1
     END IF
 
+    dt = 0.0_dp
+    Omega = 0.0_dp
     
     IF( IsHarmonic ) THEN
       Omega = 2 * PI * ListGetCReal( CurrentModel % Simulation,'Frequency',Stat ) 
       IF( .NOT. Stat) THEN
         CALL Fatal(Caller,'Frequency in Simulation list not found!')
       END IF
-      dt = 0.0_dp
-    ELSE
-      Omega = 0.0_dp
+    ELSE IF( IsTransient ) THEN
       dtVar => VariableGet( Solver % Mesh % Variables,'timestep size')
       dt = dtVar % Values(1)
     END IF
@@ -17729,7 +17732,7 @@ CONTAINS
     FreeF = .TRUE.; FreeFim = .TRUE.    
     
     
-    DO t=Mesh % NumberOfBulkElements+1, &
+100 DO t=Mesh % NumberOfBulkElements+1, &
         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
       Element => Mesh % Elements(t)
@@ -17858,10 +17861,11 @@ CONTAINS
             ! Shell and 3D elasticity are both treated with the same routine
             IF( .NOT. IsPlate ) THEN
 
+              val = 1.0_dp
               IF( IsHarmonic ) THEN
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
-              ELSE
+              ELSE IF( IsTransient ) THEN
                 val = 1.0/dt
                 jstruct = sdofs*(SPerm(jj)-1)+k 
                 CALL Fatal(Caller,'NS coupling only done for harmonic elasticity!')               
@@ -17976,9 +17980,21 @@ CONTAINS
                 ELSE
                   jstruct = sdofs*(SPerm(jj)-1)+k
 
-                  ! Structure load on the fluid: dp/dn = -u. (This seems strange???)
+                  ! Structure load on the fluid: dp/dn = -u. (This seems strange???)                  
                   IF( FreeF ) THEN
-                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)           
+                    IF( IsTransient ) THEN                    
+                      CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)
+                    ELSE
+                      IF( DoMass ) THEN
+                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val)
+                        !PRINT *,'fs:',ifluid,jstruct,MultFS,val
+                      ELSE
+                        ! Ensure correct matrix structure
+                        CALL AddToMatrixElement(A_fs,ifluid,jstruct,-MultFS*val*0.001)
+                      END IF
+                    END IF
+                  ELSE
+                    CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)                  
                   END IF
                 END IF
               END DO
@@ -18025,7 +18041,9 @@ CONTAINS
           END DO
         END DO
       END IF
-        
+
+      
+      IF( DoMass ) CYCLE
 
       ! A_sf:
       ! Effect of fluid (pressure) on structure.
@@ -18144,19 +18162,69 @@ CONTAINS
       END DO
 
     END DO ! Loop over boundary elements
-    
-      
-    DEALLOCATE( Basis, MASS, Nodes % x, Nodes % y, Nodes % z)
-
+          
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
       CALL List_toCRSMatrix(A_fs)
       CALL List_toCRSMatrix(A_sf)
     END IF
-      
-    !PRINT *,'interface area:',area
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
+    ! The list matrix type only includes one field. Hence when we want to also assembly
+    ! mass values we create a CRS, allocate the mass values and do another round.
+    ! Alternatively we could have two list matrices being worked at the same time. 
+    !------------------------------------------------------------------------------------
+    IF(.NOT. DoMass ) THEN
+      DoMass = .NOT. ( IsHarmonic .OR. IsTransient) .AND. ASSOCIATED( A_s % MassValues ) 
+                 
+      IF( DoMass ) THEN
+        !PRINT *,'Damp:',ASSOCIATED(A_s % DampValues), ASSOCIATED(A_f % DampValues ) 
+        !PRINT *,'Mass:',ASSOCIATED(A_s % MassValues), ASSOCIATED(A_f % MassValues ) 
+        
+        IF( .NOT. ASSOCIATED( A_f % MassValues ) ) THEN
+          CALL Warn(Caller,'Both models should have MassValues if one has!')
+        END IF
+
+        IF( InfoActive(20) ) THEN
+          PRINT *,'f sum:',SUM(A_f % Values), SUM( ABS( A_f % Values ) )
+          !PRINT *,'f damp sum:',SUM(A_f % DampValues), SUM( ABS( A_f % DampValues ) )
+          PRINT *,'f mass sum:',SUM(A_f % MassValues), SUM( ABS( A_f % MassValues ) )
+          PRINT *,'s sum:',SUM(A_s % Values), SUM( ABS( A_s % Values ) )
+          !PRINT *,'s damp sum:',SUM(A_s % DampValues), SUM( ABS( A_s % DampValues ) )
+          PRINT *,'s mass sum:',SUM(A_s % MassValues), SUM( ABS( A_s % MassValues ) )
+        END IF
+          
+      ALLOCATE( A_fs % MassValues( SIZE( A_fs % Values ) ) )
+        A_fs % MassValues = 0.0_dp
+        A_fs_values => A_fs % Values
+        A_fs % Values => A_fs % MassValues
+        ALLOCATE( A_sf % MassValues( SIZE( A_sf % Values ) ) )
+        A_sf % MassValues = 0.0_dp           
+        A_sf_values => A_sf % Values
+        A_sf % Values => A_sf % MassValues
+        CALL Info(Caller,'Looping again over the FSI boundary, now for mass values!',Level=10)      
+        GOTO 100 
+      END IF
+    ELSE 
+      ! We repointed the values in order to use the AddToMatrixElement subroutine.
+      ! Now let's revert to the original vectors. 
+      CALL Info(Caller,'Mass values assembled for the coupling matrices!',Level=10)
+      A_fs % Values => A_fs_values
+      A_sf % Values => A_sf_values     
+    END IF
+
+    DEALLOCATE( Basis, MASS, Nodes % x, Nodes % y, Nodes % z)
+    
+    IF( InfoActive(20) ) THEN        
+      PRINT *,'interface area:',area
+      PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
+      PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
+      IF( ASSOCIATED( A_fs % MassValues ) ) THEN
+        PRINT *,'interface fs mass sum:',SUM(A_fs % MassValues), SUM( ABS( A_fs % MassValues ) )
+      END IF
+      IF( ASSOCIATED( A_sf % MassValues ) ) THEN
+        PRINT *,'interface fs mass sum:',SUM(A_sf % MassValues), SUM( ABS( A_sf % MassValues ) )
+      END IF
+    END IF
+      
     CALL Info(Caller,'Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
     CALL Info(Caller,'Number of entries in fluid-structure matrix: '&
@@ -18352,7 +18420,7 @@ CONTAINS
       IF( ASSOCIATED( A_s % MassValues ) ) THEN
         DoMass = .TRUE.        
       ELSE
-        CALL Warn(Caller,'Both models should have MassValues!')
+        CALL Warn(Caller,'Both models should have MassValues if one has!')
       END IF
     END IF
 
