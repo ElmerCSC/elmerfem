@@ -90,7 +90,7 @@ MODULE CalvingGeometry
 !     INTEGER :: Ends(2)
      REAL(KIND=dp) :: Left, Right, Extent, Orientation(2)
      TYPE(CrevassePath_t), POINTER :: Next => NULL(), Prev => NULL()
-     LOGICAL :: Valid = .TRUE.
+     LOGICAL :: Valid = .TRUE., LeftToRight = .TRUE.
   END TYPE  CrevassePath_t
 
 CONTAINS
@@ -6246,6 +6246,8 @@ CONTAINS
       END IF
 
       IF(Debug) PRINT*, 'LeftToRight: ', LeftToRight, CrevBelow, ToLeft
+
+      CurrentPath % LeftToRight = LeftToRight
 
       IF(Debug) THEN
           FrontDist = NodeDist3D(Mesh % Nodes,First, Last)
