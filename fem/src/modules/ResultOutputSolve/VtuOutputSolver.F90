@@ -1303,7 +1303,7 @@ CONTAINS
           ! Finally save the field values 
           !---------------------------------------------------------------------
           IF( WriteXML ) THEN
-            CALL Info(Caller,'Writing variable: '//TRIM(FieldName) )
+            CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
             WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
             CALL AscBinStrWrite( OutStr )
 
