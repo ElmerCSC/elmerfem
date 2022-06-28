@@ -1040,7 +1040,6 @@ BLOCK
         IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
       END IF
 
-
       DO i=1,Element % Type % NumberOfNodes
         j = Solver % Variable % Perm(Element % NodeIndexes(i))
         A % ConstrainedDOF(j) = .TRUE.
@@ -1099,12 +1098,9 @@ END BLOCK
   IF (TG) THEN
     IF ( .NOT.ALLOCATED(TreeEdges) ) &
         CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
-
-    WRITE(Message,*) 'Volume tree edges: ', &
-           TRIM(i2s(COUNT(TreeEdges))),     &
-             ' of total: ',Mesh % NumberOfEdges
-    CALL Info('WhitneyAVSolver: ', Message, Level=5)
-
+    CALL Info('WhitneyAVSolver', 'Volume tree edges: '//TRIM(i2s(COUNT(TreeEdges)))// &
+        ' of total: '//TRIM(I2S(Mesh % NumberOfEdges)),Level=5)
+    
     DO i=1,SIZE(TreeEdges)
       IF(TreeEdges(i)) CALL SetDOFToValue(Solver,i,0._dp)
     END DO
@@ -2604,11 +2600,9 @@ END SUBROUTINE LocalConstraintMatrix
     ! ---------------------------------
     CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
-    WRITE(Message,*) 'Boundary tree edges: ', &
-      TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
-             ' of total: ',TRIM(i2s(FluxCount))
-    CALL Info('WhitneyAVSolver: ', Message, Level=5)
-
+    CALL Info('WhitneyAVSolver', 'Boundary tree edges: '//TRIM(i2s(COUNT(TreeEdges(FluxMap)))) // &
+        ' of total: '//TRIM(I2S(FluxCount)),Level=5)
+    
     ! Get (B,n) for BC faces:
     ! -----------------------
     ALLOCATE(Bn(Faces))
@@ -2930,27 +2924,6 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !/*****************************************************************************/
-! *
-! *  Elmer, A Finite Element Software for Multiphysical Problems
-! *
-! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
-! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
-! *
-! *****************************************************************************/
 ! *
 ! *  Utilities written as solvers to compute the Helmholtz projection P(A)
 ! *  of a curl-conforming vector field A. The projection can be obtained as 
