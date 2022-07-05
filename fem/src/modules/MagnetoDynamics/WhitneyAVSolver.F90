@@ -248,7 +248,8 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-
+  LOGICAL :: Found
+  
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
     CALL Fatal('WhitneyAVSolver_Init','Solver requires 3D mesh!')
@@ -258,6 +259,23 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
       CurrentCoordinateSystem() == CylindricSymmetric ) THEN
     CALL Fatal('WhitneyAVSolver_Init','Solver not applicable to axially axisymmetric cases!')
   END IF
+
+  ! Historically a real array could be used for H-B Curve.
+  ! This dirty piece of code makes things backward compatible.
+  BLOCK
+    INTEGER :: i
+    LOGICAL :: Cubic
+    TYPE(ValueList_t), POINTER :: Material
+    DO i=1,Model % NumberOfMaterials
+      Material => Model % Materials(i) % Values
+      IF( ListCheckPresent( Material, 'H-B Curve') ) THEN
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        CALL ListRealArrayToDepReal(Material,'H-B Curve','dummy',&
+            CubicTable=Cubic) !Monotone=.TRUE.)         
+      END IF
+    END DO
+  END BLOCK
+
   
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init
@@ -311,7 +329,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-  LOGICAL :: LaminateStack, CoilBody, Cubic, HasHBCurve, HasReluctivityFunction, &
+  LOGICAL :: LaminateStack, CoilBody, HasHBCurve, HasReluctivityFunction, &
       NewMaterial
 
   INTEGER, POINTER :: Perm(:)
@@ -735,9 +753,8 @@ CONTAINS
 
      Material => GetMaterial( Element )
      NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
-     IF (NewMaterial) THEN
+     IF (NewMaterial) THEN              
        HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
-       Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
        HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
        PrevMaterial => Material
      END IF
@@ -780,7 +797,7 @@ CONTAINS
        IF ( .NOT. ( HasHBCurve .OR. HasReluctivityFunction ) ) THEN
          CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
          IF (HasTensorReluctivity) THEN
-           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+           IF (SIZE(Acoef_t,1)==1 .AND. SIZE(Acoef_t,2)==1) THEN
              i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
              Acoef(1:i) = Acoef_t(1,1,1:i) 
              HasTensorReluctivity = .FALSE.
@@ -1638,12 +1655,10 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
   REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
 
-  INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, r, s, Indexes(1:nd)
+  INTEGER :: t, i, j, p, q, np, EdgeBasisDegree, r, s, Indexes(1:nd)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   TYPE(Nodes_t), SAVE :: Nodes
-
-  TYPE(ValueListEntry_t), POINTER :: Lst
   !------------------------------------------------------------------------------
   IF (SecondOrder) THEN
     EdgeBasisDegree = 2
@@ -1726,14 +1741,11 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
     LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
-    INTEGER :: t, i, j, k, p, q, np, siz, EdgeBasisDegree, mudim
+    INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
-
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueListEntry_t), POINTER :: Lst
+    
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1768,42 +1780,7 @@ END SUBROUTINE LocalConstraintMatrix
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
     
-    IF ( HasHBCurve ) THEN
-      siz = 0
-      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )     
-      IF (Found) siz = SIZE(HB,1)
-
-      IF(siz>1) THEN
-        Bval=>HB(:,1)
-        Hval=>HB(:,2)
-        IF (Cubic .AND. NewMaterial) THEN
-          IF (.NOT.ASSOCIATED(CubicCoeff)) THEN
-            ALLOCATE(CubicCoeff(siz))
-          ELSE
-            IF (SIZE(CubicCoeff) < siz) THEN
-              DEALLOCATE(CubicCoeff)
-              ALLOCATE(CubicCoeff(siz))
-            END IF
-          END IF
-          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
-        END IF
-        Cval=>CubicCoeff
-      ELSE 
-        Lst => ListFind(Material,'H-B Curve')
-        IF (ASSOCIATED(Lst)) THEN
-          Cval => Lst % CubicCoeff
-          Bval => Lst % TValues
-          Hval => Lst % FValues(1,1,:)
-        ELSE
-          HasHBCurve = .FALSE.
-          CALL GetReluctivity(Material,Acoef,n)
-        END IF
-      END IF
-
-      IF (HasHBCurve) THEN
-        CALL GetScalarLocalSolution(Aloc)
-      END IF
-    ELSE IF( HasReluctivityFunction ) THEN
+    IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
     END IF
 
@@ -1829,9 +1806,13 @@ END SUBROUTINE LocalConstraintMatrix
        IF ( HasHBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
-         IF ( Newton ) THEN
-           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+
+         ! h-b
+         IF( Newton ) THEN
+           mu = ListGetFun( Material,'h-b curve',babs,dFdx=muder) / Babs
+           muder = (muder-mu)/babs
+         ELSE
+           mu = ListGetFun( Material,'h-b curve',babs) / Babs
          END IF
        ELSE IF( HasReluctivityFunction ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
