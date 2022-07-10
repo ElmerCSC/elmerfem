@@ -2434,9 +2434,9 @@ CONTAINS
         END IF
         IF(TransientSimulation) THEN
           j = j+1
-          WRITE(NamesUnit,'(I3,": ",A)') j,'Time step'
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Timestep'
         END IF
-        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
+        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Call count'
         WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
         WRITE(NamesUnit,'(I3,": ",A)') 3+j,'Node index'
         j = j + 3
