@@ -3484,9 +3484,10 @@ CONTAINS
     LOGICAL :: Found, Global, GlobalBubbles, Debug, DoPrevValues, &
          NoMatrix, DoOptimizeBandwidth, PrimaryVar, HasValuesInPartition, &
          PrimarySolver
-    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
-    INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
+    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), BulkUnfoundNodes(:)=>NULL()
+    INTEGER :: i,j,k,DOFs, nrows,n, dummyint
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL(), &
+         SurfaceMaskPerm(:)=>NULL(), BottomMaskPerm(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3777,8 +3778,19 @@ CONTAINS
             ' nodes in SwitchMesh.'
     END IF
 
+    ! only search for 3D advance extrapolation of bulk and non-projected boundaries
+    CALL MakePermUsingMask( Model, Solver, NewMesh, "Top Surface Mask", &
+         .FALSE., SurfaceMaskPerm, dummyint)
+    CALL MakePermUsingMask( Model, Solver, NewMesh, "Bottom Surface Mask", &
+         .FALSE., BottomMaskPerm, dummyint)
+
+    ALLOCATE(BulkUnfoundNodes(NewMesh % NumberOfNodes))
+    BulkUnfoundNodes =  (SurfaceMaskPerm <= 0) .AND. &
+                        (BottomMaskPerm <= 0) .AND. &
+                        UnfoundNodes
+
     ! could improve improve by only required procs entering this
-    CALL InterpAdvanceUnfoundNodes(OldMesh, NewMesh, UnfoundNodes)
+    CALL InterpAdvanceUnfoundNodes(OldMesh, NewMesh, BulkUnfoundNodes)
 
     !---------------------------------------------------------
     ! For top, bottom and calving front BC, do reduced dim 
@@ -3903,7 +3915,7 @@ CONTAINS
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
-    DEALLOCATE(UnfoundNodes)
+    DEALLOCATE(UnfoundNodes, BulkUnfoundNodes)
 
     OldMesh => Model % Meshes
 
