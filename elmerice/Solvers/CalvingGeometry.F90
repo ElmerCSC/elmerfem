@@ -3915,7 +3915,7 @@ CONTAINS
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
-    DEALLOCATE(UnfoundNodes, BulkUnfoundNodes)
+    DEALLOCATE(UnfoundNodes, BulkUnfoundNodes, SurfaceMaskPerm, BottomMaskPerm)
 
     OldMesh => Model % Meshes
 
