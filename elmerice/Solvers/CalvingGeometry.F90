@@ -6793,15 +6793,19 @@ CONTAINS
   !Takes a mesh with GroundedMask defined on the base, and
   !ensures that grounded nodes remain grounded
   !i.e. sets z = min zs bottom wherever GroundedMask>-0.5
-  SUBROUTINE EnforceGroundedMask(Mesh)
+  SUBROUTINE EnforceGroundedMask(Model, Mesh)
+    TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     !-------------------------
+    TYPE(Solver_t), POINTER :: NullSolver => NULL()
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Variable_t), POINTER :: GMaskVar
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: GMask(:)
-    REAL(KIND=dp) :: zb
-    INTEGER :: i,n
-    INTEGER, POINTER :: GMaskPerm(:)
+    REAL(KIND=dp) :: zb, xydist, zdist
+    INTEGER :: i,j,k,n,BaseBCtag,FrontBCtag, dummyint
+    INTEGER, POINTER :: GMaskPerm(:), FrontPerm(:)=>NULL()
+    LOGICAL :: ConstraintChanged, ThisBC, Found
     CHARACTER(MAX_NAME_LEN) :: FuncName="EnforceGroundedMask", GMaskVarName
 
     GMaskVarName = "GroundedMask"
@@ -6811,10 +6815,27 @@ CONTAINS
       RETURN
     END IF
 
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, "Calving Front Mask", &
+        .FALSE., FrontPerm, dummyint)
+
     Material => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
 
     GMask => GMaskVar % Values
     GMaskPerm => GMaskVar % Perm
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,"Bottom Surface Mask",Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      BaseBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,"Calving Front Mask",Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      FrontBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
 
     DO i=1,Mesh % NumberOfNodes
       IF(GMaskPerm(i) == 0) CYCLE
@@ -6826,8 +6847,51 @@ CONTAINS
         IF(Mesh % Nodes % z(i) < zb) Mesh % Nodes % z(i) = zb
       ELSE
         Mesh % Nodes % z(i) = zb
+
+        !check element how much this deforms elements near front
+        !if the element is above a 45 degree vertical angle from xy plane change to front boundary
+        DO j=Mesh % NumberOfBulkElements +1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+          Element => Mesh % Elements(j)
+          IF(Element % BoundaryInfo % Constraint /= BaseBCtag) CYCLE
+          n = Element % TYPE % NumberOfNodes
+
+          !Doesn't contain our point
+          IF(.NOT. ANY(Element % NodeIndexes(1:n)==i)) CYCLE
+
+          ConstraintChanged = .FALSE.
+
+          DO k=1,n
+            IF(ConstraintChanged) CYCLE
+            IF(Element % NodeIndexes(k) == i) CYCLE ! this node
+            IF(GMask(GMaskPerm(Element % NodeIndexes(k))) >= -0.5) CYCLE ! grounded
+            IF(FrontPerm(Element % NodeIndexes(k)) == 0) CYCLE ! new node not on front
+
+            xydist = NodeDist2D(Mesh % Nodes, i, Element % NodeIndexes(k))
+            zdist = ABS(Mesh % Nodes % z(i) -  Mesh % Nodes % z(Element % NodeIndexes(k)))
+
+            IF(zdist > xydist) THEN
+              CALL WARN(FuncName, "Transferring boundary element to front as it vertically &
+                angled after GroundedMask has been enforced")
+              PRINT*, 'For node', i, 'x:', Mesh % Nodes % x(i), 'y:', Mesh % Nodes % y(i),&
+                'z:', Mesh % Nodes % z(i)
+
+              Element % BoundaryInfo % Constraint = FrontBCtag
+              ConstraintChanged = .TRUE.
+            END IF
+          END DO
+
+          IF(ConstraintChanged) THEN
+            DEALLOCATE(FrontPerm)
+            CALL MakePermUsingMask( Model, NullSolver, Mesh, "Calving Front Mask", &
+                .FALSE., FrontPerm, dummyint)
+          END IF
+        END DO
       END IF
     END DO
+
+    DEALLOCATE(FrontPerm)
 
   END SUBROUTINE EnforceGroundedMask
 

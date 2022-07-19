@@ -1040,7 +1040,7 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
    CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
 
    !After SwitchMesh because we need GroundedMask
-   CALL EnforceGroundedMask(Mesh)
+   CALL EnforceGroundedMask(Model, Mesh)
 
    !Calculate mesh volume
    CALL MeshVolume(Model % Mesh, .TRUE., PostCalveVolume)
