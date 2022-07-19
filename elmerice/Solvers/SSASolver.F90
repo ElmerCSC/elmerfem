@@ -539,7 +539,7 @@
                              Element % Type % NodeW(i),  detJ, Basis )
           un=0._dp
           Do j=1,STDOFs
-           un=un+VariableValues(STDOFs*(i-1)+j)*VariableValues(STDOFs*(i-1)+j)
+           un=un+VariableValues(STDOFs*(Permutation(NodeIndexes(i))-1)+j)*VariableValues(STDOFs*(Permutation(NodeIndexes(i))-1)+j)
           End do
           un=sqrt(un)
 
