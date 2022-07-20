@@ -560,16 +560,18 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     nlen = LEN_TRIM(Oper0) 
     IF( Oper0(1:11) == 'body force ') THEN
       BodyForceOper = .TRUE.
-      Oper = Oper0(12:nlen)
+      j = 11
     ELSE IF( Oper0(1:5) == 'body ') THEN
       BodyOper = .TRUE.
-      Oper = Oper0(6:nlen)
+      j = 5
     ELSE IF( Oper0(1:9) == 'material ') THEN
       MaterialOper = .TRUE.
-      Oper = Oper0(10:nlen)
+      j = 9
     ELSE
-      Oper = Oper0(1:nlen)
+      j = 0
     END IF
+    Oper(1:nlen-j) = Oper0(1+j:nlen)
+    
     MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
     IF( MaskOper ) THEN
       CALL Info(Caller,'Operator to be masked: '//TRIM(Oper),Level=12)
@@ -578,14 +580,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     nlen = LEN_TRIM(Oper) 
     PosOper = .FALSE.
     NegOper = .FALSE.
+    j = 0
     IF( Oper(1:9) == 'positive ') THEN
       PosOper = .TRUE.
-      Oper = Oper(10:nlen)
+      j = 9
     ELSE IF( Oper(1:9) == 'negative ') THEN
       NegOper = .TRUE.
-      Oper = Oper(10:nlen)
+      j = 9 
     END IF
-
+    IF(j>0) Oper(1:nlen-j) = Oper(1+j:nlen)
+    
     ! We may want to do integrals over projected surfaces
     PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate',GotIt )
     IF(.NOT. GotIt ) THEN

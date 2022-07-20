@@ -173,7 +173,7 @@ MODULE StressLocal
           NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )       
      NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 ) .OR. RayleighDamping
 
-     NeedHeat = ANY( NodalTemperature(1:n) /= 0.0d0 )
+     NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
      IF (.NOT.EvaluateLoadAtIP) NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
      NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
      NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
@@ -813,7 +813,7 @@ CONTAINS
      FORCE = 0.0D0
      FORCE_im = 0.0D0
 
-     NeedHeat = ANY( NodalTemperature(1:n) /= 0.0d0 )
+     NeedHeat = ANY( NodalTemperature(1:ntot) /= 0.0d0 )
      !    
      ! Integration stuff:
      ! ------------------  

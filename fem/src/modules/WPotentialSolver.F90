@@ -644,8 +644,9 @@ CONTAINS
     Active = GetNOFActive()
     DO t=1,Active
       Element => GetActiveElement(t)
-      n  = GetElementNOFNodes()
-  
+      n  = GetElementNOFNodes()      
+      nd = GetElementNOFDOFs()
+      
       CoilBody = .FALSE.
       CompParams => GetComponentParams( Element )
       CoilType = ''
@@ -656,8 +657,8 @@ CONTAINS
 
       IF (CoilBody) THEN
         CALL AddElementWNormAndVolume(Element, n, nd, &
-                              WnormCoeffs(Element % BodyId), &
-                             Volumes(Element % BodyId))
+            WnormCoeffs(Element % BodyId), &
+            Volumes(Element % BodyId))
       END IF 
     END DO
    
@@ -699,12 +700,13 @@ CONTAINS
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
+
     DO j=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-       IP % W(j), detJ, Basis, dBasisdx )
-
+          IP % W(j), detJ, Basis, dBasisdx )
+      
       ! Compute the Element Volume
       ! -----------------------------
       s = IP % s(j) * detJ

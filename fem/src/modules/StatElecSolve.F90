@@ -62,26 +62,15 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
     
     Calculate = ListGetLogical(Params,'Calculate Electric Field',Found)
     IF( Calculate ) THEN
-      IF( Dim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elfield[Electric Field:2]' )
-      ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elfield[Electric Field:3]' )
-      END IF
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-dofs '//TRIM(I2S(dim))//' electric field' )
     END IF
     
     Calculate = ListGetLogical(Params,'Calculate Electric Flux',Found)
     IF( Calculate ) THEN
-      IF( Dim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elflux[Electric Flux:2]' )
-      ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elflux[Electric Flux:3]' )
-      END IF
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-dofs '//TRIM(I2S(dim))//' electric flux' )
     END IF
-
 
     ! If computation of capacitance matrix is requested then compute 
     ! set the flag for load computation also.
@@ -168,7 +157,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: PotentialPerm(:), EnergyPerm(:), SurfPerm(:)
   INTEGER, POINTER :: FieldPerm(:), FluxPerm(:)
   INTEGER :: CapBodies, CapBody, Permi, Permj, iter, MaxIterations
-  INTEGER :: i, j, k, l, m, istat, bf_id, LocalNodes, DIM, NonlinearIter, &
+  INTEGER :: i, j, k, l, m, istat, bf_id, LocalNodes, dim, NonlinearIter, &
       nsize, N, ntot, t, TID
   
   LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC, OpenBc, LayerBC
@@ -184,6 +173,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   
   CHARACTER(LEN=MAX_NAME_LEN) :: CapMatrixFile, Name, VarName
   TYPE(ValueList_t), POINTER :: Params, BC 
+  CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver'
   
   SAVE LocalStiffMatrix, Load, LocalForce, PotDiff, &
       ElementNodes, CalculateFlux, CalculateEnergy, &
@@ -249,7 +239,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   Mesh => Solver % Mesh
 
   Norm = Solver % Variable % Norm
-  DIM = CoordinateSystemDimension()
+  dim = CoordinateSystemDimension()
   
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -273,16 +263,16 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
         PotDiff(N),            &
         Displacement(N,Dim),   &
         Basis(N),              &
-        dBasisdx(N,DIM),       &
+        dBasisdx(N,dim),       &
         STAT=istat )
     
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'StatElecSolve', 'Memory allocation error 1' )
+      CALL Fatal( Caller, 'Memory allocation error 1' )
     END IF
     
-    ALLOCATE( PiezoCoeff(DIM,2*DIM,N), STAT=istat )
+    ALLOCATE( PiezoCoeff(dim,2*dim,N), STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'StatElecSolve', 'Memory allocation error 2' )
+      CALL Fatal( Caller, 'Memory allocation error 2' )
     END IF
 
     NULLIFY( Pwrk )
@@ -313,7 +303,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       END IF	
       
       IF( CapBodies == 0 ) THEN
-        CALL Fatal('StatElecSolve',&
+        CALL Fatal(Caller,&
             'Capacitance calculation requested without any > Capacitance Body <')
       END IF
 
@@ -324,17 +314,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
           CapMatrix(CapBodies,CapBodies), &
           STAT = istat)
       IF ( istat /= 0 ) THEN
-        CALL Fatal( 'StatElecSolve', 'Memory allocation error 3' )
+        CALL Fatal( Caller, 'Memory allocation error 3' )
       END IF
       
       CapMatrix = 0.0_dp
       CapBodyIndex = 0
       !$omp end parallel
-    END IF
-
-    IF ( .NOT.ASSOCIATED( StiffMatrix % MassValues ) ) THEN
-      ALLOCATE( StiffMatrix % Massvalues( Model % NumberOfNodes ) )
-      StiffMatrix % MassValues = 0.0_dp
     END IF
 
     AllocationsDone = .TRUE.
@@ -347,30 +332,21 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   IF ( CalculateField ) THEN
-    Var => VariableGet( Solver % Mesh % Variables,'elfield')
-    IF( ASSOCIATED( Var) ) THEN
-      Field => Var % Values
-    ELSE
-      CALL Fatal('StatElecSolver','Electric Field does not exist')
-    END IF
+    Var => VariableGet( Solver % Mesh % Variables,'Electric Field')
+    IF( .NOT. ASSOCIATED( Var) ) CALL Fatal(Caller,'"Electric Field" does not exist')
+    Field => Var % Values
   END IF
   
   IF ( CalculateFlux ) THEN
-    Var => VariableGet( Solver % Mesh % Variables,'elflux')
-    IF( ASSOCIATED( Var ) ) THEN
-      Flux => Var % Values
-    ELSE
-      CALL Fatal('StatElecSolver','Electric Flux does not exist')
-    END IF
+    Var => VariableGet( Solver % Mesh % Variables,'Electric Flux')
+    IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Flux" does not exist')
+    Flux => Var % Values
   END IF
 
   IF ( CalculateEnergy ) THEN
     Var => VariableGet( Solver % Mesh % Variables,'Electric Energy Density')
-    IF( ASSOCIATED( Var ) ) THEN    
-      Energy => Var % Values
-    ELSE
-      CALL Fatal('StatElecSolver','Electric Energy Density does not exist')
-    END IF
+    IF( .NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'"Electric Energy Density" does not exist')
+    Energy => Var % Values
   END IF
    
 !------------------------------------------------------------------------------
@@ -378,8 +354,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   PermittivityOfVacuum = ListGetConstReal( Model % Constants, &
-      'Permittivity Of Vacuum',gotIt )
-  IF ( .NOT.gotIt ) PermittivityOfVacuum = 1.0_dp
+      'Permittivity Of Vacuum', GotIt )
+  IF ( .NOT. GotIt ) PermittivityOfVacuum = 1.0_dp
   
   NonlinearIter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations', GotIt )
@@ -388,9 +364,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   IF(CalculateCapMatrix) NonlinearIter = CapBodies
   
 !------------------------------------------------------------------------------
-  CALL Info( 'StatElecSolve', '-------------------------------------',Level=4 )
-  CALL Info( 'StatElecSolve', 'STATELEC SOLVER:  ', Level=4 )
-  CALL Info( 'StatElecSolve', '-------------------------------------',Level=4 )
+  CALL Info( Caller, '-------------------------------------',Level=4 )
+  CALL Info( Caller, 'Electrostatics solver:  ', Level=4 )
+  CALL Info( Caller, '-------------------------------------',Level=4 )
 
   CALL DefaultStart()
 
@@ -402,11 +378,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
   
      IF ( NonlinearIter > 1 ) THEN
-       WRITE( Message, '(a,I0)' ) 'Electrostatic iteration: ', iter
-       CALL Info( 'StatElecSolve', ' ', LEVEL=4 )
-       CALL Info( 'StatElecSolve', Message, LEVEL=4 )
+       CALL Info( Caller,'Electrostatic iteration: '//TRIM(I2S(iter)) , Level=5 )
      END IF
-     CALL Info( 'StatElecSolve', 'Starting Assembly...', Level=4 )
+     CALL Info( Caller, 'Starting Assembly...', Level=7 )
 
 !------------------------------------------------------------------------------
 !    Do the assembly
@@ -431,7 +405,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     RelativeChange = Solver % Variable % NonlinChange
     st = CPUTime() - st
     WRITE( Message, * ) 'Solve (s)             :',st
-    CALL Info( 'StatElecSolve', Message, Level=4 )
+    CALL Info( Caller, Message, Level=5 )
 
 !------------------------------------------------------------------------------
 !    Compute the electric field from the potential: E = -grad Phi
@@ -446,9 +420,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     IF ( CalculateEnergy ) THEN
       Wetot = ParallelReduction(Wetot)      
       WRITE( Message, * ) 'Tot. Electric Energy  :', Wetot
-      CALL Info( 'StatElecSolve', Message, Level=4 )
-      CALL ListAddConstReal( Model % Simulation, &
-          'RES: Electric Energy', Wetot )
+      CALL Info( Caller, Message, Level=4 )
+      CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Wetot )
     END IF
 
 !------------------------------------------------------------------------------
@@ -477,15 +450,15 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       
       IF(PotentialDifference > TINY(PotentialDifference)) THEN
         CALL ListAddConstReal( Model % Simulation, &
-            'RES: Potential Difference', PotentialDifference )
+            'res: Potential Difference', PotentialDifference )
         
         IF(CalculateEnergy) THEN
           Capacitance = 2*Wetot / (PotentialDifference*PotentialDifference)
           WRITE( Message,* ) 'Potential difference: ',PotentialDifference
-          CALL Info( 'StatElecSolve', Message, Level=8 )
+          CALL Info( Caller, Message, Level=8 )
           
           WRITE( Message, * ) 'Capacitance           :', Capacitance
-          CALL Info( 'StatElecSolve', Message, Level=4 )
+          CALL Info( Caller, Message, Level=4 )
           
           CALL ListAddConstReal( Model % Simulation, &
               'res: Capacitance', Capacitance )
@@ -521,10 +494,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     ELSE
 
       WRITE( Message, * ) 'Result Norm   : ',Norm
-      CALL Info( 'StatElecSolve', Message, Level=4 )
+      CALL Info( Caller, Message, Level=4 )
       WRITE( Message, * ) 'Relative Change : ',RelativeChange
-      CALL Info( 'StatElecSolve', Message, Level=4 )       
-      CALL Info( 'StatElecSolve', ' ', Level=4 )       
+      CALL Info( Caller, Message, Level=4 )       
       
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END IF
@@ -532,7 +504,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   END DO
    
    IF(CalculateCapMatrix) THEN
-     ! Symmetrisize
+     ! Symmetrisize the capacitance matrix as we know from physics it should be symmetric!
+     ! This is a way also to get more accuracy.
      
      IF( ParEnv % PEs > 1 ) THEN
        ALLOCATE( CapMatrixPara( CapBodies, CapBodies ) )
@@ -545,11 +518,11 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      IF( ParEnv % MyPE == 0 ) THEN
        CapMatrix = 0.5_dp * (CapMatrix + TRANSPOSE(CapMatrix))
        
-       CALL Info('StatElecSolve','Capacitance matrix computation performed (i,j,C_ij)',Level=4)
+       CALL Info(Caller,'Capacitance matrix computation performed (i,j,C_ij)',Level=4)
        DO i=1, CapBodies 
          DO j = i, CapBodies
            WRITE( Message, '(I3,I3,ES15.5)' ) i,j,CapMatrix(i,j)
-           CALL Info( 'StatElecSolve', Message, Level=4 )
+           CALL Info( Caller, Message, Level=4 )
          END DO
        END DO
       
@@ -564,11 +537,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          END DO
          CLOSE(10)     
          WRITE(Message,'(A,A)') 'Capacitance matrix was saved to file ',CapMatrixFile
-         CALL Info('StatElecSolve',Message)
+         CALL Info(Caller,Message)
        END IF
      END IF
-
-
    END IF
    
 
@@ -649,7 +620,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
                CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Permittivity', Pwrk, n, NodeIndexes, gotIt )
 
-         IF ( .NOT. gotIt ) CALL Fatal( 'StatElecSolve', &
+         IF ( .NOT. gotIt ) CALL Fatal( Caller, &
                'No > Relative permittivity < found!' )
 
          Permittivity = 0.0_dp
@@ -676,7 +647,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            PiezoCoeff = 0.0_dp
            CALL GetRealArray( Model % Materials(k) % Values, Pz_w, &
                  'Piezo Material Coefficients', gotIt, CurrentElement )
-           IF ( .NOT. GotIt )  CALL Fatal( 'StatElecSolve', &
+           IF ( .NOT. GotIt )  CALL Fatal( Caller, &
                  'No > Piezo Material Coefficients < defined!' )        
            DO i=1, Dim
              DO j=1, 2*Dim
@@ -691,7 +662,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            NULLIFY (Var)
            Var => VariableGet( Model % Variables, 'Displacement' )
            IF ( .NOT. ASSOCIATED( Var ) )  THEN
-             CALL Fatal('StatElecSolve', 'No displacements' )
+             CALL Fatal(Caller, 'No displacements' )
            END IF
            DO i = 1, Var % DOFs
              Displacement(1:n,i) = &
@@ -718,7 +689,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
                  (Solver % Mesh % NumberOfBulkElements-t) / &
                  (1.0*Solver % Mesh % NumberOfBulkElements)), ' % done'          
-           CALL Info( 'StatElecSolve', Message, Level=5 )          
+           CALL Info( Caller, Message, Level=5 )          
            at0 = RealTime()
          END IF
        END DO
@@ -745,7 +716,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
          Ivals => ListGetIntegerArray( Params, &
                'Constraint DOF 1 Body', Gotit )
-         ! IF ( .NOT. ASSOCIATED(Ivals) ) CONTINUE ! This did not seem right..
          IF (ASSOCIATED(Ivals)) THEN
 
            Solver % Matrix % ConstraintMatrix % RHS(1) = &
@@ -871,7 +841,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            LayerH(1:n) = ListGetReal( BC, &
                  'Layer Thickness', n, NodeIndexes, gotit )
            IF ( .NOT. gotit ) THEN
-             CALL Fatal( 'StatElecSolve','Charge > Layer thickness < not given!' )
+             CALL Fatal( Caller,'Charge > Layer thickness < not given!' )
            END IF
            Alpha(1:n) = Alpha(1:n) / LayerH(1:n)
 
@@ -893,7 +863,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
                    CurrentElement,GotIt)
            END IF
            IF(.NOT. GotIt) THEN
-             CALL Fatal( 'StatElecSolve','Could not find > Relative Permittivity < for parent!' )           
+             CALL Fatal( Caller,'Could not find > Relative Permittivity < for parent!' )           
            END IF
          END IF
 
@@ -938,53 +908,10 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
        at = CPUTime() - at
        WRITE( Message, * ) 'Assembly (s)          :',at
-       CALL Info( 'StatElecSolve', Message, Level=4 )
+       CALL Info( Caller, Message, Level=4 )
        !------------------------------------------------------------------------------
      END SUBROUTINE BoundaryAssembly
      !------------------------------------------------------------------------------
-
-#if 0 
-!------------------------------------------------------------------------------
-   SUBROUTINE TotalChargeBC(F,Element,n,Nodes)
-!------------------------------------------------------------------------------
-     TYPE(Nodes_t) :: Nodes
-     INTEGER :: n
-     REAL(KIND=dp) :: F(:)
-     TYPE(Element_t), POINTER :: Element
-!------------------------------------------------------------------------------
-     TYPE(GaussIntegrationPoints_t) :: IntegStuff
-     INTEGER :: i, j, pn
-     LOGICAL :: stat
-     TYPE(Nodes_t), SAVE :: Pnodes
-     TYPE(Element_t), POINTER ::  Parent
-     REAL(KIND=dp) :: s,u,v,w,detJ,pdetJ,pBasis(10),Basis(10),dBasisdx(10,3),Normal(3)
-     !$omp threadprivate(Pnodes)
-
-     Parent => Element % BoundaryInfo % Left
-     CALL GetElementNodes( PNodes, Parent )
-     pn = Parent % TYPE % NumberOfNodes
-
-     IntegStuff = GaussPoints(Element)
-
-     F = 0._dp
-     DO i=1,IntegStuff % N
-       u = IntegStuff % u(i)
-       v = IntegStuff % v(i)
-       w = IntegStuff % w(i)
-       Normal = NormalVector(Element,Nodes,u,v,.TRUE.)
-       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis )
-       CALL GetParentUVW( Element,n,Parent,pn,u,v,w,Basis )
-       stat = ElementInfo(Parent,PNodes,u,v,w,pdetJ,Basis,dBasisdx )
-       DO j=1,3
-         F(1:pn) = F(1:pn) - IntegStuff % s(i) * detJ * &
-               dBasisdx(1:pn,j)  * Normal(j)
-       END DO
-     END DO
-     
-!------------------------------------------------------------------------------
-   END SUBROUTINE TotalChargeBC
-!------------------------------------------------------------------------------
-#endif
 
 !------------------------------------------------------------------------------
 !> Compute the Electric Flux, Electric Field and Electric Energy at model nodes.
@@ -1001,9 +928,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
      REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:), SurfWeights(:), x(:), y(:), z(:)
      REAL(KIND=dp) :: PermittivityOfVacuum
-     ! REAL(KIND=dp) :: Permittivity(3,3,Mesh % MaxElementNodes)
-     ! REAL(KIND=dp) :: Basis(Mesh % MaxElementDofs)
-     ! REAL(KIND=dp) :: dBasisdx(Mesh % MaxElementDofs,3)
      REAL(KIND=DP) :: SqrtElementMetric, detJ
      REAL(KIND=dp), ALLOCATABLE :: ElementPot(:)
      REAL(KIND=dp) :: EnergyDensity, Sigma, Normal(3)
@@ -1012,7 +936,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      REAL(KIND=dp) :: SqrtMetric, Metric(3,3), Symb(3,3,3), dSymb(3,3,3,3)
      REAL(KIND=dp) :: xpos, ypos, zpos
      INTEGER, ALLOCATABLE :: Indexes(:), PotIndexes(:)
-     INTEGER :: n, N_Integ, t, tg, i, j, k, DIM, p, nPar, matId, nd, istat
+     INTEGER :: n, N_Integ, t, tg, i, j, k, dim, p, nPar, matId, nd, istat
      LOGICAL :: Stat
 
 !------------------------------------------------------------------------------
@@ -1020,7 +944,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      IF(CalculateFlux) Flux = 0.0_dp
      IF(CalculateField) Field = 0.0_dp
      
-     DIM = CoordinateSystemDimension()
+     dim = CoordinateSystemDimension()
      Wetot = 0.0_dp
 
      ALLOCATE(SumOfWeights(SIZE(Potential)), STAT=istat)
@@ -1032,7 +956,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            'Permittivity Of Vacuum',gotIt )
      IF ( .NOT.gotIt ) PermittivityOfVacuum = 1
 
-     !$omp parallel shared(Mesh, Model, Solver, DIM, Energy, Flux, &
+     !$omp parallel shared(Mesh, Model, Solver, dim, Energy, Flux, &
      !$omp                 Field, PermittivityOfVacuum, PotentialPerm, &
      !$omp                 Potential, ConstantWeights, CalculateEnergy, &
      !$omp                 CalculateFlux, CalculateField, SumOfWeights) &
@@ -1155,20 +1079,20 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          !------------------------------------------------------------------------------
 
          EpsGrad = 0.0_dp
-         DO j=1, DIM
+         DO j=1, dim
            Grad(j) = SUM( dBasisdx(1:nd,j) * ElementPot(1:nd) )
-           DO i = 1, DIM
+           DO i = 1, dim
              EpsGrad(j) = EpsGrad(j) + SUM( Permittivity(j,i,1:n) * &
                    Basis(1:n) ) * SUM( dBasisdx(1:nd,i) * ElementPot(1:nd) )
            END DO
          END DO
 
-         Wetot = Wetot + s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) )
+         Wetot = Wetot + s * SUM( Grad(1:dim) * EpsGrad(1:dim) )
 
          EnergyDensity = EnergyDensity + &
-               s * SUM(Grad(1:DIM) * EpsGrad(1:DIM))
+               s * SUM(Grad(1:dim) * EpsGrad(1:dim))
 
-         DO j = 1,DIM
+         DO j = 1,dim
            NodalFlux(j) = NodalFlux(j) - EpsGrad(j) * s
            NodalField(j) = NodalField(j) - Grad(j) * s
          END DO
@@ -1181,8 +1105,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
        IF ( ConstantWeights ) THEN
          EnergyDensity = EnergyDensity / ElemVol
-         NodalFlux(1:DIM) = NodalFlux(1:DIM) / ElemVol
-         NodalField(1:DIM) = NodalField(1:DIM) / ElemVol
+         NodalFlux(1:dim) = NodalFlux(1:dim) / ElemVol
+         NodalField(1:dim) = NodalField(1:dim) / ElemVol
          DO j=1,nd
            !$omp atomic
            SumOfWeights( PotIndexes(j) ) = &
@@ -1207,21 +1131,21 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
        IF(CalculateFlux) THEN
          NodalFlux = NodalFlux * PermittivityOfVacuum
-         DO i=1,DIM
+         DO i=1,dim
            DO j=1,nd
              !$omp atomic
-             Flux( DIM * ( PotIndexes(j)-1) + i ) = &
-                   Flux( DIM * ( PotIndexes(j)-1) + i ) + NodalFlux(i)
+             Flux( dim * ( PotIndexes(j)-1) + i ) = &
+                   Flux( dim * ( PotIndexes(j)-1) + i ) + NodalFlux(i)
            END DO
          END DO
        END IF
 
        IF(CalculateField) THEN
-         DO i=1,DIM
+         DO i=1,dim
            DO j=1,nd
              !$omp atomic
-             Field( DIM * ( PotIndexes(j)-1) + i ) = &
-                   Field( DIM * ( PotIndexes(j)-1) + i ) + NodalField(i)
+             Field( dim * ( PotIndexes(j)-1) + i ) = &
+                   Field( dim * ( PotIndexes(j)-1) + i ) + NodalField(i)
            END DO
          END DO
        END IF
@@ -1236,30 +1160,23 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      !$omp do 
      DO j = 1, SIZE( Potential )
        IF ( ABS( SumOfWeights(j) ) > 0.0_dp ) THEN
-         IF ( CalculateEnergy )  Energy(j) = Energy(j) / SumOfWeights( j )
+         IF ( CalculateEnergy )  Energy(j) = &
+             0.5_dp * PermittivityOfVacuum * Energy(j) / SumOfWeights( j )
 
          IF ( CalculateField ) THEN
-           DO k=1,DIM
-             Field( DIM*(j-1)+k ) = Field( DIM*(j-1)+k) / SumOfWeights( j )
+           DO k=1,dim
+             Field( dim*(j-1)+k ) = Field( dim*(j-1)+k) / SumOfWeights( j )
            END DO
          END IF
 
          IF ( CalculateFlux ) THEN
-           DO k=1,DIM
-             Flux( DIM*(j-1)+k ) = Flux( DIM*(j-1)+k) / SumOfWeights( j )
+           DO k=1,dim
+             Flux( dim*(j-1)+k ) = Flux( dim*(j-1)+k) / SumOfWeights( j )
            END DO
          END IF
        END IF
      END DO
      !$omp end do
-
-     IF(CalculateEnergy) THEN
-       !$omp do
-       DO j=1,SIZE(Potential)
-         Energy(j) = PermittivityOfVacuum * Energy(j) / 2.0_dp
-       END DO
-       !$omp end do
-     END IF
 
      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
                  Indexes, PotIndexes, ElementPot )
@@ -1292,12 +1209,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
        LOGICAL :: Stat
 
-       INTEGER :: i,j,p,q,t,DIM,ntot,Nbasis
+       INTEGER :: i,j,p,q,t,dim,ntot,Nbasis
  
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
 
-       DIM = CoordinateSystemDimension()
+       dim = CoordinateSystemDimension()
        NBasis = ntot
 
        PiezoForce = 0.0_dp
@@ -1362,8 +1279,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          
 !------------------------------------------------------------------------------
          L = SUM( Load(1:n) * Basis )
-         DO i=1,DIM
-           DO j=1,DIM
+         DO i=1,dim
+           DO j=1,dim
              C(i,j) = SUM( Permittivity(i,j,1:n) * Basis(1:n) )
            END DO
          END DO
@@ -1373,8 +1290,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          DO p=1,Nbasis
            DO q=1,Nbasis
              A = 0._dp
-             DO i=1,DIM
-               DO J=1,DIM
+             DO i=1,dim
+               DO J=1,dim
                  A = A + C(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
                END DO
              END DO
@@ -1589,12 +1506,10 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE( Mesh_t ), POINTER    :: Mesh
      TYPE( Element_t ), POINTER :: Edge
 !------------------------------------------------------------------------------
-
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
 
-
-     INTEGER :: i,j,k,n,l,t,DIM,Pn,En
+     INTEGER :: i,j,k,n,l,t,dim,Pn,En
      LOGICAL :: stat, Found
 
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -1633,9 +1548,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 !    
 !    ---------------------------------------------
@@ -1693,9 +1608,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      DO j=1,Model % NumberOfBCs
         IF ( Edge % BoundaryInfo % Constraint /= Model % BCs(j) % Tag ) CYCLE
-
-!       IF ( .NOT. ListGetLogical( Model % BCs(j) % Values, &
-!                 'Heat Flux BC', Found ) ) CYCLE
 
 !
 !       Check if dirichlet BC given:
@@ -1783,7 +1695,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !          force norm for scaling the residual:
 !          -----------------------------------------
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-              DO k=1,DIM
+              DO k=1,dim
                  Residual = Residual + Permittivity  * &
                     SUM( dBasisdx(1:Pn,k) * Potential(1:Pn) ) * Normal(k)
 
@@ -1791,8 +1703,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
                        SUM(dBasisdx(1:Pn,k) * Potential(1:Pn)) * Normal(k))**2
               END DO
            ELSE
-              DO k=1,DIM
-                 DO l=1,DIM
+              DO k=1,dim
+                 DO l=1,dim
                     Residual = Residual + Metric(k,l) * Permittivity  * &
                        SUM( dBasisdx(1:Pn,k) * Potential(1:Pn) ) * Normal(l)
 
@@ -1844,7 +1756,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element
 
-     INTEGER :: i,j,k,l,n,t,DIM,En,Pn
+     INTEGER :: i,j,k,l,n,t,dim,En,Pn
      LOGICAL :: stat, Found
 
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -1879,9 +1791,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 
      Metric = 0.0_dp
@@ -2008,7 +1920,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !
 !          Finally, the flux:
 !          ------------------
-           DO j=1,DIM
+           DO j=1,dim
               Grad(j,i) = Permittivity * SUM( dBasisdx(1:Pn,j) * Potential(1:Pn) )
            END DO
         END DO
@@ -2017,11 +1929,11 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !       -------------------------------   
         EdgeLength  = EdgeLength + s
         Jump = 0.0_dp
-        DO k=1,DIM
+        DO k=1,dim
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
            ELSE
-              DO l=1,DIM
+              DO l=1,dim
                  Jump = Jump + &
                        Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
               END DO
@@ -2063,7 +1975,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      TYPE(Nodes_t) :: Nodes
 
      LOGICAL :: stat, Found
-     INTEGER :: i,j,k,l,n,t,DIM
+     INTEGER :: i,j,k,l,n,t,dim
 
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
 
@@ -2109,9 +2021,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 !
 !    Element nodal points:
@@ -2205,7 +2117,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
         Residual = -SUM( NodalSource(1:n) * Basis(1:n) )
 
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-           DO j=1,DIM
+           DO j=1,dim
 !
 !             - grad(e).grad(T):
 !             --------------------
@@ -2222,8 +2134,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
                  SUM( Potential(1:n) * ddBasisddx(1:n,j,j) )
            END DO
         ELSE
-           DO j=1,DIM
-              DO k=1,DIM
+           DO j=1,dim
+              DO k=1,dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
@@ -2241,7 +2153,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,DIM
+                 DO l=1,dim
                     Residual = Residual + Metric(j,k) * Permittivity * &
                       Symb(j,k,l) * SUM( Potential(1:n) * dBasisdx(1:n,l) )
                  END DO
@@ -2252,7 +2164,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !
 !       Compute also force norm for scaling the residual:
 !       -------------------------------------------------
-        DO i=1,DIM
+        DO i=1,dim
            Fnorm = Fnorm + s * ( SUM( NodalSource(1:n) * Basis(1:n) ) ) ** 2
         END DO
 

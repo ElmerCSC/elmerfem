@@ -1147,7 +1147,7 @@ CONTAINS
          LocalTemperature(1:n) = LocalTemperature(1:n) - &
              ReferenceTemperature(1:n)
        ELSE
-         LocalTemperature(1:n) = 0.0_dp
+         LocalTemperature(1:ntot) = 0.0_dp
        END IF
 
        IF ( .NOT. ConstantBulkMatrixInUse ) THEN
@@ -1855,7 +1855,7 @@ CONTAINS
           CALL GetScalarLocalSolution( LocalTemperature, 'Temperature', USolver=Solver )
           LocalTemperature(1:n) = LocalTemperature(1:n) - ReferenceTemperature(1:n)
         ELSE
-          LocalTemperature(1:n) = 0.0_dp
+          LocalTemperature(1:nd) = 0.0_dp
         END IF
 
         ! Integrate local stresses:
