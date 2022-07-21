@@ -939,7 +939,7 @@ CONTAINS
   !Subroutine designed to interpolate single missing points which sometimes
   !occur on the base and top interpolation, from surrounding nodes of the same mesh.
   SUBROUTINE InterpolateUnfoundPoint( NodeNumber, Mesh, HeightName, HeightDimensions,&
-    ElemMask, NodeMask, Variables )
+    ElemMask, NodeMask, Variables, UnfoundDOFS )
 
     ! reworked
     ! search for suppnodes
@@ -952,6 +952,7 @@ CONTAINS
     INTEGER :: NodeNumber
     INTEGER, POINTER :: HeightDimensions(:)
     LOGICAL, POINTER, OPTIONAL :: ElemMask(:),NodeMask(:)
+    INTEGER, ALLOCATABLE, OPTIONAL :: UnfoundDOFS(:)
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
@@ -1034,6 +1035,11 @@ CONTAINS
         IF(idx == NodeNumber) CYCLE
         IF(ANY(WorkInt == idx)) CYCLE !already got
         IF(.NOT. ValidNode(idx)) CYCLE !invalid
+        !  do not include nodes that has yet to be interped
+        ! nodes are interped in GDOF order so if this unfoundnode has a lower
+        ! GDOF then the SuppNode has yet to be interped
+        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+        Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
@@ -1159,7 +1165,7 @@ CONTAINS
   END SUBROUTINE InterpolateUnfoundPoint
 
   SUBROUTINE InterpolateUnfoundSharedPoint( NodeNumber, Mesh, HeightName, HeightDimensions,&
-    ElemMask, NodeMask, Variables )
+    ElemMask, NodeMask, Variables, UnfoundDOFS )
 
     ! similar process to InterpolateUnfoundPont but includes parallel communication
     !! new method
@@ -1175,6 +1181,7 @@ CONTAINS
     INTEGER :: NodeNumber
     INTEGER, POINTER :: HeightDimensions(:)
     LOGICAL, POINTER, OPTIONAL :: ElemMask(:),NodeMask(:)
+    INTEGER, ALLOCATABLE, OPTIONAL :: UnfoundDOFS(:)
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
@@ -1255,6 +1262,11 @@ CONTAINS
         IF(idx == NodeNumber) CYCLE
         IF(ANY(WorkInt == idx)) CYCLE !already got
         IF(.NOT. ValidNode(idx)) CYCLE !invalid
+        !  do not include nodes that has yet to be interped
+        ! nodes are interped in GDOF order so if this unfoundnode has a lower
+        ! GDOF then the SuppNode has yet to be interped
+        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+        Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx

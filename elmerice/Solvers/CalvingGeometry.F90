@@ -4089,7 +4089,7 @@ CONTAINS
             'GDOF', FinalDOFs(i), &
             NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
             CALL InterpolateUnfoundSharedPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
-               NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
+               NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFS=FinalDOFs)
          END IF
       ! no need for a mask since nodes in both arrays in ascending order
       ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
@@ -4103,7 +4103,7 @@ CONTAINS
          'GDOF', FinalDOFs(i), &
          NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
          CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
-            NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
+            NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFs=FinalDOFs)
       END IF
     END DO
 
