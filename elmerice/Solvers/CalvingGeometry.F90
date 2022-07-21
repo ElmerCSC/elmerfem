@@ -6883,9 +6883,7 @@ CONTAINS
           END DO
 
           IF(ConstraintChanged) THEN
-            DEALLOCATE(FrontPerm)
-            CALL MakePermUsingMask( Model, NullSolver, Mesh, "Calving Front Mask", &
-                .FALSE., FrontPerm, dummyint)
+            FrontPerm(Element % NodeIndexes) = 1
           END IF
         END DO
       END IF
