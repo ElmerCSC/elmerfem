@@ -79,7 +79,7 @@
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,k
       INTEGER :: NN,nf
-      CHARACTER (len=MAX_NAME_LEN) :: FName
+      CHARACTER (len=MAX_STRING_LEN) :: FName
       CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName,T2VarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
       CHARACTER (len=MAX_NAME_LEN) :: MeshName

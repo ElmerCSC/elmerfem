@@ -90,7 +90,7 @@ MODULE NetCDFInterface
       LOGICAL :: Found
       CHARACTER (len=MAX_NAME_LEN) :: DimName         ! Name of the space or time dimension
       CHARACTER (len=MAX_NAME_LEN) :: CoordName       ! Name of the space or time coordinate variable (may be same as dimension)
-      CHARACTER (len=MAX_NAME_LEN) :: FileName        ! File name for reading the data (of .nc format)
+      CHARACTER (len=MAX_STRING_LEN) :: FileName        ! File name for reading the data (of .nc format)
       CHARACTER (len=MAX_NAME_LEN) :: str
       INTEGER :: i, j, k, dimid, size, VarDim, IndVec(1)
       REAL(KIND=dp) :: FirstTwo(2), LastTwo(2), dx0, dx1, dx2
