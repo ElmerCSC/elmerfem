@@ -357,6 +357,7 @@ void LinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
 void BiLinearComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
 void TriangleComputeRadiatorFactors(Geometry_t *GA,double, double, double, int );
 
+void elm_4node_quad_shape_functions(double B[4][4]); 
 
 static double FunctionValue( Geometry_t *Geom,double U,double V,int N )
 {

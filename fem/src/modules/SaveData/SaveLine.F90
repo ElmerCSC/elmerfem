@@ -932,7 +932,7 @@ CONTAINS
 
     Indexes = 0
     n0 = 0
-
+    
     ! If we have position on the line then we can sort the entries.
     Tabulate = .FALSE.
     IF(PRESENT(linepos)) Tabulate = .TRUE. 
@@ -953,7 +953,7 @@ CONTAINS
       Labels(n0+2) = bc_id
       Labels(n0+3) = node_id      
       n0 = n0 + 3
-           
+      
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
         Norm = Norm + 1.0_dp * Labels(NormInd )
       END IF
@@ -1103,7 +1103,7 @@ CONTAINS
             IF( k <= 0 .OR. k > SIZE(NodeBasis) ) THEN
               PRINT *,'Too large k:',k,SIZE(NodeBasis)              
             END IF
-            IF( No >= 0 .OR. No > SIZE( Values ) ) THEN
+            IF( No <= 0 .OR. No > SIZE( Values ) ) THEN
               PRINT *,'Too large No:',No,SIZE(Values)
             END IF
             IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
@@ -1748,10 +1748,10 @@ CONTAINS
   SUBROUTINE SavePolyLines()
 
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: linepos
+    REAL(KIND=dp) :: linepos, tanprod(2), s, eps
     
     pSolver => Solver
-    
+    eps = 1.0e-5
     
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
     IF(GotIt) THEN
@@ -1789,7 +1789,6 @@ CONTAINS
         END IF
       END IF
     END IF
-    
 
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
       NoTests = 0
@@ -1819,7 +1818,7 @@ CONTAINS
       DO Line = 1,NoLines + NoAxis
 
         LineTag = .FALSE.
-
+        
         IF(Line <= NoLines) THEN
           LineNodes % x(1:2) = PointCoordinates(2*Line-1:2*Line,1) 
           LineNodes % y(1:2) = PointCoordinates(2*Line-1:2*Line,2) 
@@ -1862,7 +1861,8 @@ CONTAINS
           R1(3) = LineNodes % z(2) 
 
           dR = R1 - R0 
-          LineN = dR / SQRT( SUM( dR**2 ) )
+          s = SQRT( SUM(dR**2) )
+          LineN = dR / s
           CALL TangentDirections( LineN, LineT1, LineT2 ) 
 
           nsize = NoDivisions(Line)
@@ -1897,7 +1897,7 @@ CONTAINS
               S1(2) = ElementNodes % y(i)  
               S1(3) = ElementNodes % z(i)  
 
-              dS = ( S1 - R0 ) / SQRT( SUM( dR**2 ) )
+              dS = ( S1 - R0 ) / s
               LocalCoord(1) = SUM( dS * LineN )
               LocalCoord(2) = SUM( dS * LineT1 )
               LocalCoord(3) = SUM( dS * LineT2 )
@@ -1913,15 +1913,18 @@ CONTAINS
               END IF
             END DO
 
-            IF( MinCoord(2) * MaxCoord(2) > 0.0_dp ) CYCLE
-            IF( dim >= 3 .AND. .NOT. IntersectEdge ) THEN
-              IF( MinCoord(3) * MaxCoord(3) > 0.0_dp ) CYCLE
-            END IF
+            DO i=1,2
+              tanprod(i) = MinCoord(i+1) * MaxCoord(i+1)
+            END DO
 
+            IF( tanprod(1) > eps ) CYCLE
+            IF( dim == 3 .AND. .NOT. IntersectEdge ) THEN
+              IF( tanprod(2) > eps ) CYCLE
+            END IF
+            
             imin = MAX(0, CEILING( nsize * MinCoord(1) ) )
             imax = MIN(nsize, FLOOR( ( nsize * MaxCoord(1) ) ) )
-
-
+            
             DO i=imin,imax
               NoTests = NoTests + 1
 
@@ -1930,9 +1933,9 @@ CONTAINS
               GlobalCoord = R0 + i * dR / nsize
               
               IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
-                  LocalCoord, USolver = pSolver ) ) THEN
+                  LocalCoord, USolver = pSolver, LocalEps = eps ) ) THEN
                 LineTag(i) = .TRUE.
-
+                
                 SaveNodes(2) = SaveNodes(2) + 1
                 
                 linepos = 1.0_dp*i/nsize + 2*(Line-1)
@@ -1980,7 +1983,7 @@ CONTAINS
             END IF
 
             SaveNodes(2) = SaveNodes(2) + 1
-
+            
             linepos = linepos + 2*(Line-1)
             CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, &
                 NodeIndexes(i), 0, linepos = linepos )
@@ -1993,7 +1996,7 @@ CONTAINS
       END IF
 
       CALL Info(Caller,'Number of nodes in specified lines: '//TRIM(I2S(SaveNodes(2))))
-
+      
       IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )
     END IF
 
@@ -2431,9 +2434,9 @@ CONTAINS
         END IF
         IF(TransientSimulation) THEN
           j = j+1
-          WRITE(NamesUnit,'(I3,": ",A)') j,'Time step'
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Timestep'
         END IF
-        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
+        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Call count'
         WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
         WRITE(NamesUnit,'(I3,": ",A)') 3+j,'Node index'
         j = j + 3

@@ -565,17 +565,20 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           CALL LocalFluxMatrix(  Element, n, nd, dimi )
         END DO
         
-        IF(.NOT. ASSOCIATED( FluxVar ) ) CYCLE
+        IF(ASSOCIATED( FluxVar ) ) THEN
+          ! Solve the flux in direction dimi
+          !--------------------------------------
+          CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
+          Norm = DefaultSolve()
+          
+          MinCurr(dimi) = MINVAL( SolVar % Values ) 
+          MaxCurr(dimi) = MAXVAL( SolVar % Values )
 
-        ! Solve the flux in direction dimi
-        !--------------------------------------
-        CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
-        Norm = DefaultSolve()
-
-        MinCurr(dimi) = MINVAL( SolVar % Values ) 
-        MaxCurr(dimi) = MAXVAL( SolVar % Values )
-
-        FluxVar % Values = SolVar % Values
+          FluxVar % Values = SolVar % Values
+        ELSE
+          MinCurr(dimi) = MINVAL( FluxVarE % Values(dimi::dim) )
+          MaxCurr(dimi) = MAXVAL( FluxVarE % Values(dimi::dim) )
+        END IF
       END DO
 
       IF( ParEnv % PEs > 1 ) THEN
@@ -2122,11 +2125,17 @@ CONTAINS
           END IF
 
           CALL GetElementNodes( Nodes )
-          
-          DO dimi=1,dim
-            NodalCurr(dimi,1:n) = FluxVar % Values( dim*(Perm( Element % NodeIndexes )-1) + dimi )
-          END DO
-          
+
+          IF( ASSOCIATED( FluxVarE ) ) THEN
+            DO dimi=1,dim
+              NodalCurr(dimi,1:n) = FluxVarE % Values( dim*(FluxVarE % Perm( Element % DGIndexes )-1) + dimi )
+            END DO
+          ELSE
+            DO dimi=1,dim
+              NodalCurr(dimi,1:n) = FluxVar % Values( dim*(FluxVar % Perm( Element % NodeIndexes )-1) + dimi )
+            END DO
+          END IF
+            
           ! Numerical integration:
           !----------------------
           IP = GaussPoints( Element )

@@ -400,7 +400,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
             END IF
           END IF
           
-
           CALL LocalMatrixBoundary(  STIFF, FORCE, AngularFrequency, &
               Impedance, Load, Element, n, nd, ConvVelo )
 

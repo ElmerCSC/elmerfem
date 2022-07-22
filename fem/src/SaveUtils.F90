@@ -503,6 +503,7 @@ CONTAINS
       IF( GotMaskCond ) THEN
         n = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
+        GotIt = .FALSE.
         
         IF( .NOT. IsBoundaryElement ) THEN
           l = Element % BodyId
@@ -520,7 +521,6 @@ CONTAINS
             END IF
           END IF
         ELSE
-          GotIt = .FALSE.
           IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
             DO l=1, Model % NumberOfBCs
               IF ( Model % BCs(l) % Tag /= Element % BoundaryInfo % Constraint ) CYCLE
@@ -546,7 +546,10 @@ CONTAINS
         m = Element % TYPE % ElementCode / 100
         IF( m >= 5 .AND. m <= 7 ) m = m-1
         NodePerm( Element % NodeIndexes(1:m) ) = 1
-      ELSE          
+      ELSE
+        IF( MAXVAL( Element % NodeIndexes ) > SIZE( NodePerm ) ) THEN
+          PRINT *,'too big:',SIZE(NodePerm), Element % NodeIndexes
+        END IF
         NodePerm( Element % NodeIndexes ) = 1
       END IF
 
