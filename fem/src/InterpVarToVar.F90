@@ -1038,8 +1038,10 @@ CONTAINS
         !  do not include nodes that has yet to be interped
         ! nodes are interped in GDOF order so if this unfoundnode has a lower
         ! GDOF then the SuppNode has yet to be interped
-        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
-        Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+        IF(PRESENT(UnfoundDOFs)) THEN
+          IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+          Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+        END IF
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
@@ -1265,8 +1267,10 @@ CONTAINS
         !  do not include nodes that has yet to be interped
         ! nodes are interped in GDOF order so if this unfoundnode has a lower
         ! GDOF then the SuppNode has yet to be interped
-        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
-        Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+        IF(PRESENT(UnfoundDOFS)) THEN
+          IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+          Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+        END IF
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
