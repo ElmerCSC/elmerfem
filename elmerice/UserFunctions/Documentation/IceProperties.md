@@ -7,18 +7,18 @@
 ## General Description
 The aim of these user functions is to provide a Fortran version of the else-as-MATC-functions-prescribed material parameters for ice (except for viscosity, which is handled by Glen's flow law). Fortran functions are way faster in execution time, which, in a run that repeatedly calls those parameters, can lead to tremendous speed-ups. Hence, if computing thermo-mechanically coupled problems, rather stick to this USF.
 
-All input is expected to be in SI units (Temperature in Kelvin). All outputs by default are in SI units, except the user provides scaling factors (see below).
+All input is expected to be in SI units (Temperatures in Kelvin!). All outputs by default are in SI units, except the user provides scaling factors (see below).
 
 ### IceConductivity
-The heat conductivity of ice as a function of temperature (T) is defined (in SI units) as:
-*\kappa_{ice} = 9.828 . exp(-5.7^{-3} . T) [W m^{−1} K^{−1}]*
+The heat conductivity of ice as a function of temperature (*T*) is defined (in SI units) as:
+ <img src="https://render.githubusercontent.com/render/math?math=\kappa_{ice}=9.828\cdot\text{exp}(-5.7\times10^{-3}\cdot\,T)\,[W\,m^{-1}\,K^{-1}]" title="heat conductivity of ice" />
 ### IceCapacity
-The capacity of ice as a function of temperature (T) is defined (in SI units) as:
-*c = 146.3 + (7.253 . T) [J kg^{−1} K^{−1}]*
+The capacity of ice as a function of temperature (*T*) is defined (in SI units) as:
+ <img src="https://render.githubusercontent.com/render/math?math=c=146.3+(7.253\cdot T)\,[J\,kg^{-1}\,K^{-1}]" title="Heat capacity of ice" />
 ### IcePressureMeltingPoint
-The pressure melting point of ice as a function of pressure (p) is defined as (in Kelvin):
-*T_{pmp} = 273.15 - C_{cc} . max(p, 0) [K]*
-where *C_{cc}* is the Clausius Clapeyron constant. In case of negative ice pressures (actually, any below atmospheric pressures), the function uses the reference value at atmospheric pressure.
+The pressure melting point of ice as a function of pressure (*p*) is defined as (in Kelvin):
+<img src="https://render.githubusercontent.com/render/math?math=T_{pmp}=273.15-C_{cc}\cdot\text{max}(p, 0)\,[K]" title="Clausius Clapeyron relation" />
+where <img src="https://render.githubusercontent.com/render/math?math=C_{cc}" title="Clausius Clapeyron constant"/> is the Clausius Clapeyron constant. In case of negative ice pressures (actually, any below atmospheric pressures), the function uses the reference value at atmospheric pressure.
 
 ## SIF contents
 The required keywords in the SIF file for these user functions are:

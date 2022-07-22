@@ -4,15 +4,18 @@
 - **Solver Name:** FlowdepthSolver
 - **Required Output Variable(s):** Depth or Height (user defined)
 - **Required Input Variable(s):** None
-- **Optional Output Variable(s):** FreeSurf, FreeSurfGrad1, FreeSurfGrad2 (FreeSurf name is user defined)
+- **Optional Output Variable(s):** *FreeSurf*, *FreeSurf*Grad1, *FreeSurf*Grad2 [*FreeSurf*  user defined]
 - **Optional Input Variable(s):** None
+- **Keywords**:
+  - `Gradient` [Real] needs to be set to +/-1.0 (-1.0 is from up to down, +1.0 is from down to up)
+  - `Calc Free Surface` [optional, Logical] triggers the computation of the free surface elevation at the reference surface for the depth or height (default is false)
+  - `Freesurf Name` [optional, String] variable name for the above selected surface elevation value to be computed
+  - `Flowdepth Skip` [Logical] if set to `True` explicitly skips searching for boundary value of the depth/height variable in a boundary condition
 
 ## General Description
-This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology). In structured FD-grids this is a trivial procedure - not so in unstructured FEM meshes as used by Elmer. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. It can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated.
+This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology) in unstructured grids. In structured grids this is a trivial procedure - not so in unstructured FEM meshes. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. Optionally, one can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated. Mind, that the computation is asumed to be aligned with the (either positive or negative) direction of the highest mesh-dimension.
 
-An optional feature provided by this solver is to compute the gradient components of the surface from where the distance is evaluated.
-
-Alternatively, if you are using a structured mesh, you might consider replacing the FlowDepth solver by the StructuredProjectToPlane solver, as explained [here](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh).
+Alternatively, if you are using a structured mesh, you might consider replacing the FlowDepth solver by the *StructuredProjectToPlane* solver, as explained [here](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh).
 
 ## SIF contents
 The required keywords in the SIF file for this solver are:
@@ -85,6 +88,6 @@ Boundary Condition 3
 End
 ```
 ## Examples
-Tests using the FlowDepth and FlowHeight solvers can be found in [ELMER_TRUNK]/elmerice/Tests/FlowDepth and [ELMER_TRUNK]/elmerice/Tests/FlowHeight .
+Tests including the FlowDepthSolver can be found in [ELMER_TRUNK]/elmerice/Tests/{AIFlowSolve, Calving2D, Calving3D, Calving3D_lset, Glen_2D, Hydro_SedOnly,  IntegratedVelocity, IntegrateVertically, Permafrost_Biot, SIA}.
 
 

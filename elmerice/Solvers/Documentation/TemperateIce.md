@@ -1,26 +1,31 @@
 # TemperateIce Solver
 ## General Information
-- **Solver Fortran File:** TemperateIce.f90
-- **Solver Name:** TemperateIceSolver
-- **Required Output Variable(s):** Temp (user defined)
-- **Required Input Variable(s):** A Flow Solution (in Flow Solution Name)
-- **Optional Output Variable(s):** Temp Homologous, Temp Residual
-- **Optional Input Variable(s):** Deformational Heat W
-
+- **Solver Fortran File:** ``TemperateIce.F90``
+- **Solver Name:** ``TemperateIceSolver``
+- **Required Output Variable(s):** ``Temp`` [user defined]
+- **Required Input Variable(s):** ``Flow Solution Name = Flow Solution`` [else ``Flow Solution`` is default]
+- **Optional Output Variable(s):** ``Temp Homologous``, ``Temp Residual`` [heading name (here ``Temp``) must coincide with variable name]
+- **Optional Input Variable(s):** Variable contianing Deformational Heat [in Source]
+- **Solver Keywords:** 
+  - ``Apply Dirichlet`` (Logical) True [switch in lower/uper limit contraint]
+  - ``Temp Upper Limit`` (Real) PressureMeltingPoint [in corresponding ``Material`` section]
+  - ``Temp Lower Limit`` (Real) 0.0 [in corresponding ``Material`` section]
+  - ``Temp Volume Source`` (Real) DeformationalHeat  [in corresponding ``Body Force`` section]
 ## General Description
-This solver treats the heat transfer problem with respect to an upper limit of the temperature (usually with ice the pressure-melting point, T< T_pm). Optionally, such a limit (and furthermore also a lower limit, e.g., T > 0 K) is introduced by solving the consequent variational inequality problem using an algorithm that - in comparison to the free surface problem - can be interpreted as a contact problem solver. In case of temperature, it basically introduces additional heat sinks/sources in order to comply with the constraints.
+This solver treats the heat transfer problem with respect to an upper limit of the temperature (usually with ice the pressure-melting point, <img src="https://render.githubusercontent.com/render/math?math=T\le\,T_{\text{pm}}" title="Temperature below pressure melting">). Optionally, such a limit (and furthermore also a lower limit, e.g., T > 0 K) is introduced by solving the consequent variational inequality problem using an algorithm that - in comparison to the free surface problem - can be interpreted as a contact problem solver. In case of temperature, it basically introduces additional heat sinks/sources in order to comply with the constraints.
 
 The volumetric heat source term can be estimated from the ice flow deformational heat using the [DeformationalHeat](./DeformationalHeat.md) Solver.
 
-**Looping option, added 6th June 2013 (version 6205):** It is possible in some cases that the nonlinear convergence tolerance can be reached before all nodes have been properly constrained. At this point the solver can exit with some nodes retaining temperatures above the upper limit. A new option was added to check for nodes with temperatures above the limit and to continue looping if such nodes exist. Using this option may cause more iterations but should ensure the upper limit is properly applied at all nodes. To use it add the following line to the temperate ice solver section in the sif file (default is False):
+### Looping option
+It is possible in some cases that the nonlinear convergence tolerance can be reached before all nodes have been properly constrained. At this point the solver can exit with some nodes retaining temperatures above the upper limit. A new option was added to check for nodes with temperatures above the limit and to continue looping if such nodes exist. Using this option may cause more iterations but should ensure the upper limit is properly applied at all nodes. To use it add the following line to the temperate ice solver section in the sif file (default is False):
 
-`Loop While Unconstrained Nodes = Logical True`
+``Loop While Unconstrained Nodes = Logical True``
 
 ## Known bugs
-timestep was not initialized; caused excessive heating if transient simulations with more than one iteration at the steady state level were done. Fixed June 2012
+- timestep was not initialized; caused excessive heating if transient simulations with more than one iteration at the steady state level were done. Fixed June 2012
 
 ## SIF contents
-The required keywords in the SIF file for this solver are given below. The MATC functions used here are explained and given on [this page](http://elmerfem.org/elmerice/wiki/doku.php?id=tips:thermoprop).
+The required keywords in the SIF file for this solver are given below. The MATC functions used here are explained and given on [this page](http://elmerfem.org/elmerice/wiki/doku.php?id=tips:thermoprop). If doing performance critical simulations, we though recommend to stick to ready implemented Fortran versions documented in [IceProperties](../../UserFunctions/Documentation/IceProperties.md)
 
 ```
 ! Units : MPa - m - yr
@@ -121,7 +126,8 @@ End
 See also [Thermodynamic Properties](http://elmerfem.org/elmerice/wiki/doku.php?id=tips:thermoprop) for heat capacity and conductivity functions.
 
 ## Examples
-An example demonstrating the use of the thermal properties of ice can be found in [ELMER_TRUNK]/elmerice/Tests/TemperateIceTest
+Examples demonstrating the use of the thermal properties of ice can be found in [ELMER_TRUNK]/elmerice/Tests/{TemperateIceTest,TemperateIceTestFct,TemperateIceTestTrans}
+
 
 ## Reference
 When used this solver can be cited using the following reference:

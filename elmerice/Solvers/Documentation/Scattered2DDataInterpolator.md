@@ -1,26 +1,32 @@
 # Scattered2DDataInterpolator
+
+## General Information
+- **Solver Fortran File:** Scattered2DDataInterpolator.F90
+- **Solver Name:** Scattered2DDataInterpolator
+- **Required Output Variable(s):** None
+- **Required Input Variable(s):** None
+- **Optional Output Variable(s):** None
+- **Optional Input Variable(s):** None
+- **Solver Keywords:** see *SIF Contents*
+  
+## General Description
+
 Solver to interpolate sparse 2D data sets onto the FE mesh.
 
-Interpolation is made using external libraries
+Interpolation is made using external libraries  
+- [nn](https://github.com/sakov/nn-c): a c code for Natural Neighbours interpolation  
+- [csa](https://github.com/sakov/csa-c) : a c code for cubic spline approximation  
 
-- [nn](http://code.google.com/p/nn-c/): a c code for Natural Neighbours interpolation
-- [csa](http://code.google.com/p/csa-c/) : a c code for cubic spline approximation
 The user is invited to get familiar with these libraries by using the command line utilities and test case provided with the libraries
 
-Note the libraries are now hosted at GitHub (above links may be out of date):
-
-- [nn](https://github.com/sakov/nn-c): a c code for Natural Neighbours interpolation
-- [csa](https://github.com/sakov/csa-c) : a c code for cubic spline approximation
-data are read from an **ASCII file** (x,y,variable) or from a **netcdf file** (if data file has extension .nc)
+Data are read from an **ASCII file** (x,y,variable) or from a **netcdf file** (if data file has extension .nc)
 
 As this solver depends on several external libraries (nn, csa, netcdf) it is not compiled and included by default in the ElmerIceSolver shared library.
 
-**To use the solver :**
-**Update 37f46d0** under elmerice branch
-Now you can automatically build, test & compile the solver with cmake.
-KeyWords:
+**To use the solver :**  you have to compile the required external libraries and compile elmer with the following cmake arguments
+
 ```
-cmake
+cmake ...
    -DWITH_ScatteredDataInterpolator:BOOL=TRUE \
    -DNetCDF_INCLUDE_DIR=PATH_TO_INCLUDE \
    -DNetCDF_LIBRARY=PATH_TO_libnetcdf.so \
@@ -30,38 +36,49 @@ cmake
    -DNN_INCLUDE_DIR=/PATH_TO_nn \
    -DNN_LIBRARY=PATH_TO_libnn.a
 ```
-**Old Version**
-nn and csa libraries must be compiled by the user
-Go to the ELMER_TRUNK/elmerice/ScatteredDataInterpolator directory
-Edit/Update the Makefile and compile/install the solver
+
+## Known Bugs and Limitations
+- None
 
 ## SIF contents
 The Solver section must include:
 
 ```
 Solver 
- ! This solver is intended to be used once before simulation to import data sets onto the FE mesh  
+ ! This solver is intended to be used once before simulation 
+ ! to import data sets onto the FE mesh  
   Exec Solver = Before simulation
 
   Equation = "ScatteredInter"
-
   procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
   
+
+!!  Bounding Box
+ ! If this parameter is set only the data points that are 
+ ! within Max/Min mesh corrdinates + the real Value
+ ! are used. It an be useful in parallel if all the data are stored in one file
   Bounding Box dx = Real 1.0e3  
-  ! will take only the data points that are within Max/Min mesh corrdinates + the real Value
-  ! can be useful in parallel if all the data are stored in one file
-  ! (Default) no bounding box
-  
-  CheckNaN = Logical True ! Default True; check is interpolation method gives NaN 
-        ! By default replace NaN by nearest available value
-        ! We can replace NaNs by Real value with following flag
-  !Replace NaN by = Real -9999999 
+ 
+!! CheckNaN 
+ ! check if interpolation method returns NaN 
+  CheckNaN = Logical True ! [Default: True]; 
+ ! By default replace NaN by nearest available value
+ ! We can replace NaNs by Real value with following flag
+  Replace NaN by = Real -9999999 
 
 !!!!! NNI or linear (nn-c library)
 
  ! Default Sibson interpolation
   Variable 1 = String "ZsNNI"
   Variable 1 data file = File "Rand200.txt"
+
+!! Valid Min/Max values
+!!  valid min/max values can be set with the following keywords
+!!    in this case data which are below (above) the value are set to the Min (Max) value
+!!    and the results will also be limited by these values
+!!  Only the min or the max can be set.
+   Variable 1  Valid Min Value = Real ...
+   Variable 1  Valid Max Value = Real ...
 
   Variable 2 = String "ZsNNIW"
   Variable 2 data file = File "Rand200.txt"
@@ -105,17 +122,24 @@ Keywords specific to netcdf:
 ```
 Solver 2
   Exec Solver = Before simulation
-
   Equation = "ScatteredInter"
-
   procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
 
+ ! name of the variable in the netcdf file as it is case sensitive use "File"
+  Variable 1 = File "NetcdfVar"  
+! results can be stroed in an Elmer variable with a different name
+! set the name of the Elmer variable with the following flag
+ Target Variable 1 = String "MyVar"
+
+ ! .nc means that the data file is in netcdf format
+  Variable 1 data file = File "<NETCDF_FILE>.nc"  
   
-  Variable 1 = File "NetcdfVar"  ! name of the variable in the netcdf file as it is case sensitive use "File"
-  Variable 1 data file = File "<NETCDF_FILE>.nc"  ! .nc means that the data file is in netcdf format
+  ! FillValue; 
+  ! The solver reads the attribute _FillValue and exclude the corresponding data.
+  ! It can be changed (or set if the attribute is not present) with the following flag;
+  Variable 1 Fill Value = Real ... 
   
-  Variable 1 Fill Value = Real ... ! Value meaning No Data (if attribute _FillValue is not found for the variable
-  
+  !! Dim and Var names
   Variable 1 x-dim name = File "x" !name of the x dimension (default: x)
   Variable 1 y-dim name = File "y" !name of the y dimension (default: y)
   Variable 1 x-Var name = File "x" !name of the variable with x-coordinates (default: x)

@@ -4552,9 +4552,8 @@ use spariterglobals
      IF( PRESENT(intvarcount)) THEN
        vari0 = intvarcount
      END IF
-     count = vari0
-     
-     
+     count = vari0  
+
      DO Vari = vari0+1, VarCount 
        Var => VarTable(Vari) % Variable
 

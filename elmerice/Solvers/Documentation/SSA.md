@@ -12,8 +12,23 @@
   - (1) Zb, Zs and Effective Pressure when using the Coulomb type friction law
   - (2) Depth
   - (3) Depth, FreeSurfGrad1, FreeSurfGrad2 and SSABasalFlow
-- **Optional Output Variable(s):** None
+- **Optional Output Variable(s):** 
+  - (1) strbasemag : element-average basal friction
+  - (2) Ceff: nodal effective friction coefficient
 - **Optional Input Variable(s):** None
+
+## History
+- Rev. 26a079785: introduce "regularised Coulomb" friction law
+	- Update Keyword: MATERIAL : SSA Friction Law = String "regularised Coulomb"
+	- New Keyword: MATERIAL : SSA Friction Threshold Velocity = Real
+
+- Rev. afcafe865: move friction law in a separate module
+	- New module SSAMaterialModels in the Utils dir. with the friction laws
+
+- Rev. afcafe865:  
+	- Add post-processing options:  
+		- compute element-average basal friction if variable "strbasemag" is found and is by element  
+		- compute nodal effective friction coefficient if variable "Ceff" is found
 
 ## General Description
 ### Ice flow
@@ -42,7 +57,9 @@ When the SSA solution is computed on a boundary of a mesh of dimension larger th
 - used as a Dirichlet condition for the SIA velocity (see the [SIA Solver](./SIA.md)).
 
 ### Basal friction
-Since version 6480, there are three friction laws implemented in the SSA solver:
+
+#### friction laws
+Currently, there are 4 friction laws implemented in the SSA solver:
 
 - a linear friction law
 *tau_b = beta . u*
@@ -51,22 +68,44 @@ Since version 6480, there are three friction laws implemented in the SSA solver:
 - a Coulomb type friction law
 *tau_b = 1/{A_s}^{1/n} {[{ 1/ {(1 + alpha . chi^q)} }]}^{1/n} . {u_b}^{1/n-1}. u*
 where *alpha = {(q - 1)^{q-1}}/{q^q}* and *chi = {u_b}/{C^n N^n A_s}*
-The latter two are non-linear and a Newton linearisation can be used. The friction law is chosen using the keyword SSA Friction Law, which takes the value Linear, Weertman or Coulomb. The other keywords are:
+- a regularised coulomb friction law  
+*tau_b = beta (u_b/(u_b+u_0))^m*
+
+The latter three are non-linear and a Newton linearisation can be used. 
+When *u_b = (u^2+v^2)^{1/2}< u_min*, *u_b* in the previous equations is replaced by *u_min*.
+
+The friction law is chosen using the keyword SSA Friction Law, which takes the value Linear, Weertman, coulomb, regularised Coulomb. The other keywords are:  
 - a linear friction law
   - SSA Friction Parameter → *beta*
 - a Weertman type friction law
   - SSA Friction Parameter → *beta*
   - SSA Friction Exponent → *m*
-  - SSA Friction Linear Velocity → *u_{t0}*
+  - SSA Friction Linear Velocity → *u_lin*
+- a Regularised Coulomb friction law  
+  - SSA Friction Parameter → *beta*  
+  - SSA Friction Exponent → *m*
+  - SSA Friction Linear Velocity → *u_lin*
+  - SSA Friction Threshold Velocity → *u_0*
 - a Coulomb type friction law
   - SSA Friction Parameter → *beta= {A_s}^{-m}*
   - SSA Friction Exponent → *m = 1/n*
-  - SSA Friction Linear Velocity → *u_{t0}*
+  - SSA Friction Linear Velocity → *u_lin*
   - SSA Friction Post-Peak → *q >= 1*
   - SSA Friction Maximum Value → *C ~ max bed slope*
   - Effective Pressure (variable) → *N*
   - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*
-When *u_b = (u^2+v^2)^{1/2}< u_{t0}*, *u_b* in the previous equations is replaced by *u_{t0}*.
+
+#### Sub-Element grounding line parametrisation
+The flotation condition can be tested directly at the integration points. The friction parameter is then set to 0 if ice is floating at the integration point.
+This scheme is activated with the Solver Keyword *Sub-Element GL parameterization = logical True*. The number of integration point for partially floating elements, i.e. where the scheme is used is set with the keyword
+*GL integration points number = N*
+
+:warning: if this scheme is not used it is to the user responsability to parameterised *beta* a a function of the grounded mask and set it to 0 for floating nodes.
+
+#### Post-processing variables
+
+- if a variable named "strbasemag" is found computes the element-averaged friction
+- if a variable names "Ceff" is found computes the nodal effictive friction coefficient
 
 ## SIF contents
 Solver section:
@@ -77,6 +116,13 @@ Solver 1
   Procedure = File "ElmerIceSolvers" "SSABasalSolver"
   Variable = String "SSAVelocity"
   Variable DOFs = 2   ! 1 in SSA 1-D or 2 in SSA-2D
+
+  !# Set true to set friction to 0 when ice is floating
+  !   Require: GroundedMask and Bedrork variables
+  Sub-Element GL parameterization = logical True
+  !# You can set the number of IP points to evaluated the friction in the
+  !   first floating elemnt
+  GL integration points number = Integer 20
 
   Linear System Solver = Direct
   Linear System Direct Method = umfpack
@@ -101,14 +147,14 @@ Material 1
   SSA Mean Viscosity = Real $eta
   SSA Mean Density = Real $rhoi
 
-! Needed for Linear, Weertman and Coulomb 
-  ! Which law are we using (linear, weertman or coulomb)
+! Needed for Linear, Weertman , Coulomb and regularised coulomb
+  ! Which law are we using (linear, weertman , coulomb or regularised coulomb)
   SSA Friction Law = String "Coulomb"
   ! beta parameter (beta = 1/As^m)
   SSA Friction Parameter = Variable coordinate 1 , Coordinate 2
      Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))
 
-! Needed for Weertman and Coulomb
+! Needed for Weertman , Coulomb and regularised coulomb
   ! Exponent m 
   SSA Friction Exponent = Real $1.0/n
   
@@ -120,6 +166,10 @@ Material 1
   SSA Friction Post-Peak = Real 1.0
   ! Iken's bound  tau_b/N < C (see Gagliardini et al., 2007)
   SSA Friction Maximum Value = Real 0.5
+
+! Needed for Regularised Coulomb
+  SSA Friction Threshold Velocity = Real 300.0
+
 End
 Body Forces:
 

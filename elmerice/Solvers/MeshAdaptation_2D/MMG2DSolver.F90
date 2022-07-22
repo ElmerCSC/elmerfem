@@ -100,6 +100,7 @@
       TYPE(Mesh_t),POINTER :: NewMesh,PrevMesh
       TYPE(Variable_t),POINTER :: MeshSize
       TYPE(ValueList_t), POINTER :: SolverParams
+      TYPE(Element_t),POINTER :: Element
 
       REAL(KIND=dp) :: Hmin, Hmax,hsiz
       REAL(KIND=dp) :: Change,Tolerance
@@ -110,6 +111,7 @@
       INTEGER :: ii,kk
       INTEGER :: MinIter
       INTEGER, SAVE :: nVisit=0
+      INTEGER, ALLOCATABLE :: LEtoGE(:)
 
       CHARACTER(len=300) :: filename
       CHARACTER(LEN=1024) :: Path
@@ -124,8 +126,16 @@
       LOGICAL :: IncrementMeshNumber
       LOGICAL :: UniformSize
       LOGICAL :: TestConvergence
+      LOGICAL :: Parallel
+
+      Parallel = (ParEnv % PEs > 1)
 
       nVisit=nVisit+1
+
+      IF ((Parallel).AND.(nVisit>1)) &
+         CALL FATAL('MMGSolver',&
+                    'As interpolation is not ready in Parallel; no point &
+                    &to visit this solver more than once?')
 
       SolverParams => GetSolverParams()
 
@@ -140,6 +150,13 @@
                  ListGetLogical(SolverParams,'Increment Mesh Number',Found)
       IF (.NOT.Found) IncrementMeshNumber=.TRUE.
 
+! Get serial mesh
+      IF (Parallel) THEN
+        Mesh => GATHER_PMesh(Solver % Mesh)
+      ELSE
+        Mesh => Solver % Mesh
+      END IF
+
 ! GET REQUIRED VARIABLE
       IF (.NOT.UniformSize) THEN
         MeshSizeName = ListGetString( SolverParams, &
@@ -151,7 +168,11 @@
                        'Variable <ElementSize> should have 1 or 3 DOFs')
         END IF
         Scalar=(MeshSize%DOFS.EQ.1)
+        IF (Parallel) MeshSize => GATHER_PVar(Solver % Mesh,Mesh,MeshSize,MeshSizeName)
       END IF  
+
+      IF ((.NOT.Parallel).OR.(ParEnv % MyPE == 0)) THEN
+ 
 
 !INITIALISATION OF MMG MESH AND SOL STRUCTRURES
       IF (DEBUG) PRINT *,'--**-- INITIALISATION OF MMG '
@@ -165,11 +186,20 @@
       IF (DEBUG) PRINT *,'--**-- SET MMG2D PARAMETERS '
       CALL SET_MMG2D_PARAMETERS(SolverParams)
 
-      Mesh => Solver % Mesh
 
 !> COPY MESH TO MMG FORMAT
       IF (DEBUG) PRINT *,'--**-- COPY MESH TO MMG FORMAT'
+
+       !Permuatation table Local Element => Global E
+       ! to insure consistent numbering for different partitionning
+       ALLOCATE(LEtoGE(Mesh % NumberOfBulkElements))
+        DO ii=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(ii)
+          LEtoGE(Element % GElementIndex)=ii
+        END DO
       CALL SET_MMG2D_MESH(Mesh)
+
+      DEALLOCATE(LEtoGE)
 
       IF (.NOT.UniformSize) THEN
 !> SET THE SOL 
@@ -245,6 +275,9 @@
        CALL WriteMeshToDisk( NewMesh, Path )
       END IF
 
+     ! Interpolate only in serial
+      IF (.NOT.Parallel) THEN
+
 ! Get previous Mesh to do interpolation
 !---------------------------------------
       PrevMesh => Model % Meshes
@@ -284,6 +317,10 @@
         Model % Meshes % Next => NULL()
       END IF
 
+!! End Serial interpolation
+!-----------------
+      END IF
+
       NewMesh % Changed = .TRUE.
 ! Print info
 !-----------
@@ -302,11 +339,129 @@
         CALL MMG2D_Free_all(MMG5_ARG_start, &
                MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
                MMG5_ARG_end)      
+     
+      END IF
 !-------------------------------------
 !! Subroutine
 !-------------------------------------
      CONTAINS
 
+      !Gather Parallel mesh to Part 0
+      FUNCTION GATHER_PMesh(Mesh) RESULT(GatheredMesh)
+      USE MeshPartition
+      IMPLICIT NONE
+      TYPE(Mesh_t), POINTER :: Mesh,GatheredMesh
+      INTEGER :: n,allocstat
+
+        n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+        IF( ASSOCIATED( Mesh % RePartition ) ) THEN
+         IF( SIZE( Mesh % RePartition ) < n ) THEN
+           DEALLOCATE(Mesh % RePartition)
+           Mesh % RePartition => Null()
+         END IF
+       END IF
+
+       IF(.NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
+         ALLOCATE( Mesh % RePartition( n ), STAT = allocstat)
+         IF( allocstat /= 0 ) THEN
+           CALL Fatal('GATHER_PMesh','Allocation error')
+         END IF
+       END IF
+
+       Mesh % RePartition(:) = 1
+       GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
+
+       IF (DEBUG) THEN
+         IF (ParEnv%MyPE==0) THEN 
+           PRINT *,"-- GatheredMesh --"
+           PRINT *,ParEnv%MyPE,GatheredMesh%NumberOfNodes,&
+                               GatheredMesh%NumberOfBulkElements,&
+                               GatheredMesh%NumberOfBoundaryElements
+          GatheredMesh % Name = "Gathered"
+          Path = TRIM(GatheredMesh % Name)
+          CALL MakeDirectory( TRIM(path) // CHAR(0) )
+          CALL WriteMeshToDisk( GatheredMesh, Path )
+       END IF
+       ENDIF
+      END FUNCTION GATHER_PMesh
+      !Gather Parellel variable for the mesh size
+      FUNCTION GATHER_PVar(Mesh,GatheredMesh,Var,MeshSizeName) RESULT(GVar)
+      IMPLICIT NONE
+      TYPE(Variable_t),POINTER :: Var,GVar
+      TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh
+      CHARACTER(LEN=MAX_NAME_LEN) :: MeshSizeName
+      REAL(KIND=dp),POINTER :: Values(:)
+      INTEGER,POINTER :: Perm(:)
+      INTEGER,ALLOCATABLE :: node_count(:),disps(:),PGDOFs_send(:)
+      REAL(KIND=dp),ALLOCATABLE :: PVar_send(:),local_var(:)
+
+      INTEGER :: DOFs
+      INTEGER :: ntot
+      INTEGER :: ierr
+      INTEGER :: i,k
+
+      DOFs=Var%DOFs
+
+      ALLOCATE(node_count(ParEnv%PEs),disps(ParEnv%PEs),local_var(Mesh%NumberOfNodes))
+      node_count = 0
+
+      ! Total number of nodes (including shared nodes)
+      CALL MPI_Gather(Mesh%NumberOfNodes, 1, MPI_INTEGER, node_count, 1, &
+         MPI_INTEGER, 0, ELMER_COMM_WORLD,ierr)
+      ntot=SUM(node_count)
+
+     ! Create disps table for GatherV
+     ! and do some allocation
+      IF(ParEnv % MyPE == 0) THEN
+
+        disps(1) = 0
+        DO i=2,ParEnv%PEs
+          disps(i) = disps(i-1) + node_count(i-1)
+        END DO
+
+        ALLOCATE(PGDOFs_send(ntot),PVar_send(ntot))
+        ALLOCATE(Values(DOFs*GatheredMesh % NumberOfNodes),Perm(GatheredMesh % NumberOfNodes))
+      ELSE
+        ALLOCATE(PGDOFs_send(1),PVar_send(1))
+      END IF
+      
+     ! Gather Global DOFs
+      CALL MPI_GatherV(Mesh % ParallelInfo % GlobalDOFs, &
+         Mesh%NumberOfNodes, MPI_INTEGER, PGDOFs_send, node_count, &
+         disps, MPI_INTEGER, 0, ELMER_COMM_WORLD ,ierr)
+
+     ! Gather Variable values
+      DO k=1,DOFs
+        DO i=1,Mesh%NumberOfNodes
+          local_var(i)=Var % Values(DOFs*(Var%Perm(i)-1)+k)
+        END DO
+        CALL MPI_GatherV(local_var, &
+          Mesh%NumberOfNodes, MPI_DOUBLE_PRECISION, PVar_send, node_count, &
+          disps, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD ,ierr)
+    
+        IF(ParEnv % MyPE == 0) THEN
+          Do i=1,ntot
+            Values(DOFs*(PGDOFs_send(i)-1)+k)=PVar_send(i)
+          End do
+        END IF
+
+       END DO
+
+       ! Create Variable on gathered mesh
+       IF(ParEnv % MyPE == 0) THEN
+         Do i=1,GatheredMesh % NumberOfNodes
+           Perm(i) = i
+         End do
+        CALL VariableAdd( GatheredMesh % Variables, GatheredMesh, &
+                Name=TRIM(MeshSizeName),DOFs=DOFs,Values=Values,Perm=Perm)
+       GVar => VariableGet( GatheredMesh % Variables,TRIM(MeshSizeName),ThisOnly=.TRUE.,UnFoundFatal=.TRUE. )
+      END IF
+
+      DEALLOCATE(node_count,disps,local_var,PGDOFs_send,PVar_send)
+
+      END FUNCTION GATHER_PVar
+!!!!!
       FUNCTION GET_MMG2D_MESH() RESULT(NewMesh)
       IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -374,6 +529,7 @@
          Element % TYPE => GetElementType( 303 )
          Element % NDOFs = Element % TYPE % NumberOfNodes
          Element % ElementIndex = tt
+         Element % GElementIndex = tt
          Element % PartIndex = ParEnv % myPE
          CALL AllocateVector(Element % NodeIndexes, 3)
          NodeIndexes => Element % NodeIndexes
@@ -485,12 +641,15 @@
       INTEGER :: n
       INTEGER :: ier
       INTEGER :: ii,tt
+      INTEGER :: Ind
       
       NVert=Mesh%NumberOfNodes
       NEle=Mesh%NumberOfBulkElements
       NEdge=Mesh%NumberOfBoundaryElements
       ! support only 303 elements no 404
       Nquad=0
+
+      IF (DEBUG) PRINT*,"-- SET_MMG2D_MESH --"
 
 #if MMG_VERSION_LT(5,5) 
       CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
@@ -512,7 +671,8 @@
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_vertex DONE'
 
       Do tt=1,NEle
-         Element => Solver % Mesh % Elements(tt)
+         Ind = LEtoGE(tt)
+         Element => Mesh % Elements(Ind)
          NodeIndexes => Element % NodeIndexes
 
          IF (Element % TYPE % ElementCode .NE. 303) &
@@ -529,7 +689,8 @@
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_triangle DONE'
 
       Do tt=1,NEdge
-         Element => GetBoundaryElement(tt)
+         !Element => GetBoundaryElement(tt)
+         Element => Mesh % Elements( Mesh % NumberOfBulkElements + tt )
          NodeIndexes => Element % NodeIndexes
 
          IF (Element % TYPE % ElementCode .NE. 202) &

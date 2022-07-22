@@ -50,6 +50,10 @@ MODULE SParIterComm
   USE LoadMod
   USE SParIterGlobals
 
+#ifdef HAVE_XIOS
+  USE XIOS
+#endif
+
   IMPLICIT NONE
 
 #ifdef HAVE_PARMMG
@@ -180,6 +184,16 @@ CONTAINS
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
+! Use XIOS library for IO
+! Must have xios and iodef.xml present
+#ifdef HAVE_XIOS
+    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
+    IF (USE_XIOS) THEN
+     CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
+    ENDIF
+#endif
+
+IF (.NOT.USE_XIOS) THEN
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
     ! software having MPI colour set to zero. 
 #ifndef ELMER_COLOUR
@@ -187,7 +201,10 @@ CONTAINS
 #endif
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+ENDIF
+
     ParEnv % ActiveComm = ELMER_COMM_WORLD
+
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
 
@@ -5127,6 +5144,14 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+#ifdef HAVE_XIOS
+  IF (USE_XIOS) THEN
+    CALL xios_context_finalize()
+    CALL xios_finalize()
+  ENDIF
+#endif
+
   IF (.NOT. ParEnv % ExternalInit) THEN
     CALL MPI_FINALIZE( ierr )
 
