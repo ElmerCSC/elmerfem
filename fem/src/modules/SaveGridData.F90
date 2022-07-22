@@ -912,7 +912,6 @@ END SUBROUTINE SaveGridData
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
                 ELSE
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                   PRINT *,"Error:",FillValue,NetCDFStatus,FileId,VarId(NumVars),NumVars,NF90_NOERR, nf90_enotnc4
                 ENDIF
                 IF ( NetCDFStatus /= NF90_NOERR ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
@@ -925,10 +924,8 @@ END SUBROUTINE SaveGridData
                 END IF
                 IF (SinglePrec) THEN
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue_sp)
-                   PRINT *,"3"
                 ELSE
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
-                   PRINT *,"4"
                 ENDIF
                 IF ( NetCDFStatus /= 0 ) THEN
                   CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
@@ -1127,7 +1124,7 @@ END SUBROUTINE SaveGridData
         !---------------------------------------------------------------------
         IF( WriteData ) THEN
           Array=-HUGE(1.0_dp)
-          PArray=Array
+          !PArray=Array
           DO k = 1,nz
             DO j = 1,ny
               DO i = 1,nx
@@ -1184,10 +1181,13 @@ END SUBROUTINE SaveGridData
             END DO ! j
           END DO ! k
 
-          IF(Parallel) CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
+          IF(Parallel) THEN
+            CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
+            IF(Part == 0) Array=PArray
+          END IF
         
           IF(Part == 0 .OR. (.NOT.Parallel)) THEN
-            Array=PArray
+            !Array=PArray
             WHERE(Array.EQ.-HUGE(1.0_dp)) Array=FillValue
             IF(Dim == 2) THEN
                NetCDFStatus = NF90_PUT_VAR(FileId, VarId(NumVars2), Array(:,:,1), start=(/ 1,1,nTime /))
