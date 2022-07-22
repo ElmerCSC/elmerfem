@@ -87,7 +87,7 @@
   REAL(KIND=dp), POINTER :: VariableValues(:), Zs(:), Zb(:), Nval(:)
 
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, MinH, rhow, sealevel, &
-       PrevUNorm, relativeChange, minv, h
+        relativeChange, minv, h
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
        NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
@@ -421,23 +421,8 @@
     !------------------------------------------------------------------------------
     !     Solve the system and check for convergence
     !------------------------------------------------------------------------------
-    PrevUNorm = UNorm
-
     UNorm = DefaultSolve()
-
-
     RelativeChange = Solver % Variable % NonlinChange
-    !IF ( PrevUNorm + UNorm /= 0.0d0 ) THEN
-    !   RelativeChange = 2.0d0 * ABS( PrevUNorm - UNorm) / ( PrevUnorm + UNorm)
-    !ELSE
-    !   RelativeChange = 0.0d0
-    !END IF
-
-    WRITE( Message, * ) 'Result Norm   : ', UNorm, PrevUNorm
-    CALL Info(SolverName, Message, Level=4 )
-    WRITE( Message, * ) 'Relative Change : ', RelativeChange
-    CALL Info(SolverName, Message, Level=4 )
-
 
     IF ( RelativeChange < NewtonTol .OR. &
          iter > NewtonIter ) Newton = .TRUE.
@@ -539,7 +524,7 @@
                              Element % Type % NodeW(i),  detJ, Basis )
           un=0._dp
           Do j=1,STDOFs
-           un=un+VariableValues(STDOFs*(i-1)+j)*VariableValues(STDOFs*(i-1)+j)
+           un=un+VariableValues(STDOFs*(Permutation(NodeIndexes(i))-1)+j)*VariableValues(STDOFs*(Permutation(NodeIndexes(i))-1)+j)
           End do
           un=sqrt(un)
 

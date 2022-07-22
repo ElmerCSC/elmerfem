@@ -76,7 +76,8 @@
         INTEGER :: XMinIndex,XMaxIndex
         INTEGER :: YMinIndex,YMaxIndex
 
-        CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName,DataF
+        CHARACTER(LEN=MAX_STRING_LEN) :: DataF
+        CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName
         CHARACTER(LEN=MAX_NAME_LEN) :: Name,FName,WName,MName,CSVName,tmpName
         CHARACTER(LEN=MAX_NAME_LEN),parameter :: &
                          SolverName='Scattered2DDataInterpolator'

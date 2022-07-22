@@ -79,8 +79,8 @@
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,k
       INTEGER :: NN,nf
-      CHARACTER (len=MAX_NAME_LEN) :: FName
-      CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName
+      CHARACTER (len=MAX_STRING_LEN) :: FName
+      CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName,T2VarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
       CHARACTER (len=MAX_NAME_LEN) :: MeshName
 
@@ -170,7 +170,7 @@
       ELSE
         TimePoint = ListGetInteger( SolverParams, "Time Index", Found )
         IF (.NOT.Found) THEN
-          Time = ListGetConstReal( SolverParams, "Time Point", Found )
+          Time = ListGetCReal( SolverParams, "Time Point", Found )
           IF (.NOT.Found) Time=GetTime()
           dt = GetTimeStepSize()
           TimePoint = floor(time-dt/2) + 1
@@ -331,12 +331,19 @@
 
         IF (DoInterp.AND.(VarType.EQ.Variable_on_nodes)) THEN
 
+           ! Rename variable in this mesh with the name in the target mesh
+	   ! to do the interpolation
+	   WRITE(Txt,'(A,I0)') 'Target Mesh Variable ',VarIndex
+           T2VarName = ListGetString(SolverParams,TRIM(Txt),Found)
+           IF (.NOT.Found) T2VarName=TRIM(VarName)
+           Var % NameLen = StringToLowerCase( Var % Name,T2VarName)
+
           CALL InterpolateMeshToMesh( ThisMesh, &
                   TargetMesh, Var, TargetMesh % Variables,&
                   UnfoundNodes=UnfoundNodes)
 
           ! Validate the mapped variables
-          pVar => VariableGet( TargetMesh % Variables, TRIM(TVarName), ThisOnly = .TRUE.,UnFoundFatal=.TRUE. )
+          pVar => VariableGet( TargetMesh % Variables, TRIM(Var%Name), ThisOnly = .TRUE.,UnFoundFatal=.TRUE. )
           pVar % Valid = .TRUE.
           pVar % ValuesChanged = .TRUE.
 
