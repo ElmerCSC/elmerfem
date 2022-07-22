@@ -783,7 +783,7 @@ END SUBROUTINE SaveGridData
       REAL :: fvalue
       TYPE(Nodes_t),SAVE :: Nodes      
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp),Allocatable :: Array(:,:,:),Parray(:,:,:)
+      REAL(KIND=dp),SAVE,ALLOCATABLE :: Array(:,:,:),PArray(:,:,:)
       REAL(KIND=dp) :: rt,rt0,rtc
       INTEGER :: nx,ny,nz
 
@@ -811,7 +811,7 @@ END SUBROUTINE SaveGridData
       
       IF (.NOT.AllocationDone) THEN
         Allocate(Array(nx,ny,nz))
-        IF (Parallel.AND.(Part == 0)) Allocate(Parray(nx,ny,nz))
+        IF (Parallel.AND.(Part == 0)) Allocate(PArray(nx,ny,nz))
         n = Mesh % MaxElementNodes
         ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
@@ -914,9 +914,9 @@ END SUBROUTINE SaveGridData
                   NetCDFStatus = NF90_DEF_VAR_Fill(FileId, VarId(NumVars), 0, FillValue)
                    PRINT *,"Error:",FillValue,NetCDFStatus,FileId,VarId(NumVars),NumVars,NF90_NOERR, nf90_enotnc4
                 ENDIF
-                !IF ( NetCDFStatus /= NF90_NOERR ) THEN
-                !  CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
-                !END IF
+                IF ( NetCDFStatus /= NF90_NOERR ) THEN
+                  CALL Fatal( 'WriteNetCDFFile', 'NetCDF no-data fill value could not be defined: '//TRIM(FieldName))
+                END IF
               ELSE IF(Dim==3) THEN
                 NetCDFStatus = NF90_DEF_VAR(FileId, TRIM(FieldName), NFTYPE,&
                              (/ DimId(2), DimId(3), DimId(4), DimId(1) /),VarId(NumVars))
@@ -1127,6 +1127,7 @@ END SUBROUTINE SaveGridData
         !---------------------------------------------------------------------
         IF( WriteData ) THEN
           Array=-HUGE(1.0_dp)
+          PArray=Array
           DO k = 1,nz
             DO j = 1,ny
               DO i = 1,nx
@@ -1185,7 +1186,7 @@ END SUBROUTINE SaveGridData
 
           IF(Parallel) CALL MPI_REDUCE(Array,PArray,nx*ny*nz,MPI_DOUBLE,MPI_MAX,0,ELMER_COMM_WORLD, ierr)
         
-          IF(Part == 0 .OR. .NOT. Parallel) THEN
+          IF(Part == 0 .OR. (.NOT.Parallel)) THEN
             Array=PArray
             WHERE(Array.EQ.-HUGE(1.0_dp)) Array=FillValue
             IF(Dim == 2) THEN
