@@ -5505,7 +5505,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   fail = chdir(directoryname);
   if(fail) {
-#ifdef MINGW32
+#if ( defined(MINGW32) || defined(WIN32) ) 
     fail = mkdir(directoryname);
 #else
     fail = mkdir(directoryname,0750);
