@@ -295,7 +295,7 @@
 
                !! Get X variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
-                       NoVar,'x-Var Name'
+                       NoVar,' x-Var Name'
                Xdim=ListGetString( Params, TRIM(dimName), Found )
                if (.NOT.Found) Xdim='x'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)
@@ -310,7 +310,7 @@
                ENDIF
                !! Get Y variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
-                       NoVar,'y-Var Name'
+                       NoVar,' y-Var Name'
                Xdim=ListGetString( Params, TRIM(dimName), Found )
                if (.NOT.Found) Xdim='y'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)
