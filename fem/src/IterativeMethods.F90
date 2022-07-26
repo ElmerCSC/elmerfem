@@ -678,7 +678,7 @@ CONTAINS
 !> copyright notice of the subroutine has been removed accordingly.  
 !-----------------------------------------------------------------------------------
     SUBROUTINE RealBiCGStabl( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-        Diverged, Halted, OutputInterval, l, StoppingCriterionType )
+        Diverged, Halted, OutputInterval, l)
 !----------------------------------------------------------------------------------- 
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
@@ -686,7 +686,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: zero, one, t(n), kappa0, kappal 
       REAL(KIND=dp) :: dnrm2, rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
@@ -1560,7 +1559,7 @@ CONTAINS
 !   The subroutine RealIDRS has been written by M.B. van Gijzen
 !----------------------------------------------------------------------------------- 
     SUBROUTINE RealIDRS( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-        Diverged, OutputInterval, s, StoppingCriterionType )
+        Diverged, OutputInterval, s)
 !----------------------------------------------------------------------------------- 
       INTEGER :: s   ! IDR parameter
       INTEGER :: n, MaxRounds, OutputInterval   
@@ -1568,7 +1567,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
 
       ! Local arrays:
       REAL(kind=dp) :: P(n,s)
@@ -1592,31 +1590,32 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 !----------------------------------------------------------------------------------- 
-      U = 0.0d0
-
-
       
-      ! Compute initial residual, set absolute tolerance
+      ! Compute initial residual
       normb = normfun(n,b,1)
       CALL C_matvec( x, t, ipar, matvecsubr )
       r = b - t
-      normr = normfun(n,r,1)
-      
-      IF( Smoothing ) THEN
-        ALLOCATE( r_s(n), x_s(n) )
-        x_s = x
-        r_s = r 
-      END IF
-
       
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
-      errorind = normr / normb
+      IF (UseStopCFun) THEN
+        errorind = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        normr = normfun(n,r,1)
+        errorind = normr / normb
+      END IF
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
 
       IF ( Converged .OR. Diverged ) RETURN
+
+      U = 0.0d0
+      IF ( Smoothing ) THEN
+        ALLOCATE( r_s(n), x_s(n) )
+        x_s = x
+        r_s = r 
+      END IF
 
       ! Define P(n,s) and kappa
 #if 1
@@ -1735,9 +1734,7 @@ CONTAINS
             f(k+1:s)   = f(k+1:s) - beta(k)*M(k+1:s,k)
           END IF
 
-          IF( .NOT. Smoothing ) THEN
-            normr = normfun(n,r,1)
-          ELSE
+          IF (Smoothing) THEN
             t = r_s - r
             tr_s = dotprodfun(n, t, 1, r_s, 1 )
             tt = dotprodfun(n, t, 1, t, 1 )
@@ -1745,12 +1742,24 @@ CONTAINS
             
             r_s = r_s - theta * t
             x_s = x_s - theta * (x_s - x)
-            normr = normfun(n,r_s,1)
           END IF
 
           ! Check for convergence
           iter = iter + 1
-          errorind = normr/normb
+          IF (UseStopCFun) THEN
+            IF (Smoothing) THEN
+              errorind = stopcfun(x_s,b,r_s,ipar,dpar)
+            ELSE
+              errorind = stopcfun(x,b,r,ipar,dpar)
+            END IF
+          ELSE
+            IF (Smoothing) THEN
+              normr = normfun(n,r_s,1)  
+            ELSE
+              normr = normfun(n,r,1)
+            END IF
+            errorind = normr/normb
+          END IF
 
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
@@ -1801,22 +1810,31 @@ CONTAINS
         r = r - om*t
         x = x + om*v
         
-        IF( .NOT. Smoothing ) THEN
-          normr = normfun(n,r,1)
-        ELSE
+        IF (Smoothing) THEN
           t = r_s - r
           tr_s = dotprodfun(n, t, 1, r_s, 1 )
           tt = dotprodfun(n, t, 1, t, 1 )
           theta = tr_s / tt
           r_s = r_s - theta * t
           x_s = x_s - theta * (x_s - x)
-          normr = normfun(n,r_s,1)
         END IF
 
         ! Check for convergence
         iter = iter + 1
-        errorind = normr/normb
-
+        IF (UseStopCFun) THEN
+          IF (Smoothing) THEN
+            errorind = stopcfun(x_s,b,r_s,ipar,dpar)
+          ELSE
+            errorind = stopcfun(x,b,r,ipar,dpar)
+          END IF
+        ELSE
+          IF (Smoothing) THEN
+            normr = normfun(n,r_s,1)  
+          ELSE
+            normr = normfun(n,r,1)
+          END IF
+          errorind = normr/normb
+        END IF
         
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
@@ -1827,7 +1845,11 @@ CONTAINS
           IF( errorInd < RobustStep * BestNorm ) THEN
             BestIter = iter
             BestNorm = errorInd
-            Bestx = x
+            IF (Smoothing) THEN
+              Bestx = x_s
+            ELSE
+              Bestx = x
+            END IF
             BadIterCount = 0
           ELSE
             BadIterCount = BadIterCount + 1
@@ -2123,7 +2145,7 @@ CONTAINS
 
     !-----------------------------------------------------------------------------------
     SUBROUTINE ComplexBiCGStabl( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-         Diverged, OutputInterval, l, StoppingCriterionType )
+         Diverged, OutputInterval, l)
     !-----------------------------------------------------------------------------------
     !   This subroutine solves complex linear systems Ax = b by using the BiCGStab(l) algorithm 
     !   with l >= 2 and the right-oriented preconditioning. 
@@ -2140,7 +2162,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
       !------------------------------------------------------------------------------
       COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
       REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &

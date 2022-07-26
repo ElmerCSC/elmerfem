@@ -629,7 +629,7 @@ CONTAINS
        IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) &
            id = Element % BoundaryInfo % Right % BodyId
      END IF
-     IF ( id == 0 ) id=1
+     IF (id==0) id=1
 
      IF (.NOT.ASSOCIATED(Solver % Mesh)) THEN
        IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
@@ -682,34 +682,40 @@ CONTAINS
      EdgeDOFs   = Solver % Mesh % MaxEdgeDOFs
      BubbleDOFs = Solver % Mesh % MaxBDOFs
 
-     IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
-       DO j=1,Element % TYPE % NumberOFEdges
-         EDOFs = Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
-         DO i=1,EDOFs
-           NB = NB + 1
-           Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
-               i + NDOFs * Solver % Mesh % NumberOfNodes
-         END DO
-       END DO
-     END IF
 
-     IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-       DO j=1,Element % TYPE % NumberOFFaces
-         FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-         DO i=1,FDOFs
-           NB = NB + 1
-           Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
-               NDOFs * Solver % Mesh % NumberOfNodes + &
-               EdgeDOFs*Solver % Mesh % NumberOfEdges
-         END DO
-       END DO
-     END IF
+BLOCK
+  LOGICAL  :: EdgesDone, FacesDone
 
-     GB = Solver % GlobalBubbles
-     !ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     !IF (.NOT. Found) GB = .TRUE.
+       EdgesDone = .FALSE.
+       FacesDone = .FALSE.
+
+       IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
+         DO j=1,Element % TYPE % NumberOFEdges
+           EDOFs = Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
+           DO i=1,EDOFs
+             NB = NB + 1
+             Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
+                 i + NDOFs * Solver % Mesh % NumberOfNodes
+           END DO
+         END DO
+         EdgesDone = .TRUE.
+       END IF
+
+       IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+         DO j=1,Element % TYPE % NumberOFFaces
+           FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
+           DO i=1,FDOFs
+             NB = NB + 1
+             Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
+                 NDOFs * Solver % Mesh % NumberOfNodes + &
+                 EdgeDOFs*Solver % Mesh % NumberOfEdges
+           END DO
+         END DO
+         FacesDone = .TRUE.
+       END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+
        Parent => Element % BoundaryInfo % Left
        IF (.NOT.ASSOCIATED(Parent) ) &
            Parent => Element % BoundaryInfo % Right
@@ -717,7 +723,7 @@ CONTAINS
 
        SELECT CASE(ElemFamily)
        CASE(2)
-         IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
+         IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
            IF ( isActivePElement(Element) ) THEN
              Ind=Element % PDefs % LocalNumber
            ELSE
@@ -742,7 +748,7 @@ CONTAINS
          END IF
 
        CASE(3,4)
-         IF ( ASSOCIATED( Parent % FaceIndexes ) ) THEN
+         IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
            IF ( isActivePElement(Element) ) THEN
              Ind=Element % PDefs % LocalNumber
            ELSE
@@ -769,7 +775,10 @@ CONTAINS
            END IF
          END IF
        END SELECT
-     ELSE IF ( GB ) THEN
+     END IF
+end block
+
+     IF ( .NOT. ASSOCIATED(Element % BoundaryInfo) .AND. Solver % GlobalBubbles ) THEN
        IF ( ASSOCIATED(Element % BubbleIndexes) ) THEN
          DO i=1,Element % BDOFs
            NB = NB + 1

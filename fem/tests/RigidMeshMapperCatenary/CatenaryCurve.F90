@@ -17,6 +17,8 @@ FUNCTION CatenaryCurve( Model, n, x ) RESULT(y)
   SAVE :: Mesh,xm,dx,a,dy
   
 
+  y = 0._dp
+
   IF(.NOT. Visited ) THEN
     Mesh => GetMesh()
     Params => Model % Simulation
@@ -43,7 +45,7 @@ FUNCTION CatenaryCurve( Model, n, x ) RESULT(y)
   END IF
 
   ! default displacement
-  dy = 0.0_dp  
+  y = 0.0_dp  
 
   ! curve is symmetric around mid point
   x = Mesh % Nodes % x(n) - xm

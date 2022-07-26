@@ -3,13 +3,13 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 
 # --------------------------------------------------------------------- #
 # -- Compilation Scattered2DDataInterpolator with external libraries -- #
-#                          NetCDF, CSA , NN 
+#                          NETCDF, CSA , NN 
 # --------------------------------------------------------------------- #
 MESSAGE(STATUS "Elmer/Ice package: Looking for [NN] & [CSA] libraries")
-FIND_PACKAGE(NetCDF)
-FIND_PACKAGE(PHDF5)
+#FIND_PACKAGE(NETCDF)
+#FIND_PACKAGE(PHDF5)
 
-IF(NetCDF_FOUND)
+IF(NETCDF_FOUND)
   SET(WITH_NN TRUE)
   SET(WITH_CSA TRUE)
   FIND_PACKAGE(NN)
@@ -32,9 +32,9 @@ IF(NetCDF_FOUND)
     RETURN()
   ENDIF()
 ELSE()
-  MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY< ,>NetCDFF_LIBRARY<,\n >NN_INCLUDE_DIR< , >NN_LIBRARY< , >CSA_INCLUDE_DIR< , >CSA_LIBRARY< \n to compile ScatteredDatainterpolator")
+  MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY< ,>NETCDFF_LIBRARY<,\n >NN_INCLUDE_DIR< , >NN_LIBRARY< , >CSA_INCLUDE_DIR< , >CSA_LIBRARY< \n to compile ScatteredDatainterpolator")
   RETURN()
-ENDIF(NetCDF_FOUND)
+ENDIF(NETCDF_FOUND)
 
 MESSAGE(STATUS "------------------------------------------------")
 
@@ -61,8 +61,8 @@ ADD_LIBRARY(nn STATIC IMPORTED)
 SET_PROPERTY(TARGET nn PROPERTY IMPORTED_LOCATION ${NN_LIBRARY})
 ADD_LIBRARY(csa STATIC IMPORTED)
 SET_PROPERTY(TARGET csa PROPERTY IMPORTED_LOCATION ${CSA_LIBRARY})
-#-- Netcdf & NetCDFF
-INCLUDE_DIRECTORIES(${NetCDF_INCLUDE_DIR})
+#-- Netcdf & NETCDFF
+INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
 #-- Scattered2DDataInterpolator
 ADD_LIBRARY(${BASENAME3} SHARED
         $<TARGET_OBJECTS:${BASENAME}>
@@ -70,9 +70,9 @@ ADD_LIBRARY(${BASENAME3} SHARED
 
 IF(PHDF5_FOUND)
 INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
-TARGET_LINK_LIBRARIES(${BASENAME3} csa nn ${NetCDF_LIBRARIES} ${PHDF5_LIBRARIES} elmersolver)
+TARGET_LINK_LIBRARIES(${BASENAME3} csa nn ${NETCDF_LIBRARIES} ${PHDF5_LIBRARIES} elmersolver)
 ELSE()
-TARGET_LINK_LIBRARIES(${BASENAME3} csa nn ${NetCDF_LIBRARIES} elmersolver)
+TARGET_LINK_LIBRARIES(${BASENAME3} csa nn ${NETCDF_LIBRARIES} elmersolver)
 ENDIF(PHDF5_FOUND)
 
 #-- Library object

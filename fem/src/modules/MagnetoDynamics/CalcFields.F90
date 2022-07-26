@@ -579,15 +579,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
 
-   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
+   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams, PrevMaterial
 
-   LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
+   LOGICAL :: Found, FoundMagnetization, stat, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
+   LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -597,8 +597,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, POINTER :: MasterBodies(:)
 
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
-   REAL(KIND=dp), POINTER :: HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
-     HBBVal(:), HBCval(:), HBHval(:)
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
@@ -614,7 +612,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
 
    REAL(KIND=dp) :: xcoord, grads_coeff, val
-   TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff 
    REAL(KIND=dp) :: line_tangent(3)
    INTEGER :: IOUnit, pIndex
@@ -630,6 +627,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: SurfPower
    INTEGER :: jh_k
    REAL, ALLOCATABLE :: SurfWeight(:)
+   TYPE(ValueHandle_t), SAVE :: mu_h
+   REAL(KIND=dp), POINTER :: muTensor(:,:)
+   LOGICAL :: HasReluctivityFunction
+   REAL(KIND=dp) :: rdummy
+   INTEGER :: mudim
    
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -695,6 +697,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
+   IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
+     IF(.NOT. RealField ) THEN
+       CALL Fatal('MagnetoDynamicsCalcFields','Reluctivity Function not implemented in complex cases!')
+     END IF
+     CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
+         EvaluateAtIp=.TRUE.,DummyCount=3)
+   END IF
+   
+
+   
    LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
        ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
@@ -874,7 +886,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF(.NOT. ConstantMassMatrixInUse ) THEN
      CALL DefaultInitialize()
    END IF
-
+   
+   PrevMaterial => NULL()
    
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
@@ -896,7 +909,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      BodyId = GetBody()
      Material => GetMaterial()
      BodyForce => GetBodyForce()
-
+     
+     NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
+     IF (NewMaterial) THEN
+       HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
+       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
+       PrevMaterial => Material
+     END IF
+     
      ItoJCoeffFound = .FALSE.
      IF(ImposeCircuitCurrent) THEN
        ItoJCoeff = ListGetConstReal(GetBodyParams(Element), &
@@ -1047,32 +1067,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      !---------------------------------------------------------------------------------------------
      R_Z = CMPLX(0.0_dp, 0.0_dp, kind=dp)
      HasTensorReluctivity = .FALSE.
-     CALL GetConstRealArray( Material, HB, 'H-B curve', Found )
-     IF ( ASSOCIATED(HB) ) THEN
-      Cubic = GetLogical( Material, 'Cubic spline for H-B curve', Found)
-      l = SIZE(HB,1)
-      HBBval => HB(:,1)
-      HBHval => HB(:,2)
-      IF(l>1) THEN
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-          ALLOCATE(CubicCoeff(l))
-          CALL CubicSpline(l,HB(:,1),HB(:,2),CubicCoeff)
-        END IF
-        HBCval => CubicCoeff
-      END IF
 
-      IF(l<=1) THEN
-        HBLst => ListFind(Material,'H-B Curve',HBcurve)
-        IF(HBcurve) THEN
-          HBCval => HBLst % CubicCoeff
-          HBBval => HBLst % TValues
-          HBHval => HBLst % FValues(1,1,:)
-        END IF
-      END IF
-     ELSE
-       ! 
+     IF ( .NOT. ( HasHBCurve .OR. HasReluctivityFunction ) ) THEN
        ! Seek reluctivity as complex-valued: A given reluctivity can be a tensor 
-       !
        CALL GetReluctivity(Material,Reluct_Z,n,HasTensorReluctivity)
        IF (HasTensorReluctivity) THEN
          IF (SIZE(Reluct_Z,1)==1 .AND. SIZE(Reluct_Z,2)==1) THEN
@@ -1441,18 +1438,28 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
        
        Nu = CMPLX(0.0d0, 0.0d0, kind=dp)
-       IF ( ASSOCIATED(HB) ) THEN
+       IF ( HasHBCurve ) THEN
          IF (RealField) THEN
            Babs=SQRT(SUM(B(1,:)**2))
          ELSE
            Babs = SQRT(SUM(B(1,:)**2 + B(2,:)**2))
          END IF
          Babs = MAX(Babs, 1.d-8)
-         R_ip = InterpolateCurve(HBBval,HBHval,Babs,HBCval)/Babs
-         w_dens = IntegrateCurve(HBBval,HBHval,HBCval,0._dp,Babs)
+         
+         R_ip = ListGetFun( Material,'h-b curve', x=babs) / Babs
+         BLOCK
+           TYPE(ValueListEntry_t), POINTER :: ptr
+           ptr => ListFind( Material,'h-b curve')
+           w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs)
+         END BLOCK
          DO k=1,3
            Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
          END DO
+       ELSE IF( HasReluctivityFunction ) THEN
+         rdummy = ListGetElementReal( mu_h, Basis, Element, &
+             GaussPoint = j, Rdim=mudim, Rtensor=MuTensor, DummyVals = B(1,:) )             
+         Nu(1:3,1:3) = muTensor(1:3,1:3)                           
+         w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
        ELSE
          IF (HasTensorReluctivity) THEN
            IF (SIZE(Reluct_Z,2) == 1) THEN

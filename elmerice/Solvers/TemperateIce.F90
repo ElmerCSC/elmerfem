@@ -902,9 +902,10 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
      ! compute residual
      !------------------------------------------------------------------------------ 
      IF ( ParEnv % PEs > 1 ) THEN !!!!!!!!!!!!!!!!!!!!!! we have a parallel run
+        L = SIZE( SystemMatrix % RHS )
         CALL ParallelInitSolve( SystemMatrix, Temp, ForceVector, ResidualVector )
         CALL ParallelMatrixVector( SystemMatrix, Temp, StiffVector, .TRUE. )
-        ResidualVector =  StiffVector - ForceVector
+        ResidualVector(1:L) =  StiffVector(1:L) - ForceVector(1:L)
         CALL ParallelSumVector( SystemMatrix, ResidualVector )
      ELSE !!!!!!!!!!!!!!!!!!!!!! serial run 
         CALL CRS_MatrixVectorMultiply( SystemMatrix, Temp, StiffVector)

@@ -5,4 +5,4 @@ CONFIGURE_FILE( radiator3d.sif radiator3d.sif COPYONLY)
 
 file(COPY slab.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(radiator3d_open)
+ADD_ELMER_TEST(radiator3d_open LABELS radiator)

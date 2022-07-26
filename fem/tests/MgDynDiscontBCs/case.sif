@@ -30,7 +30,7 @@ Solver 1
   Linear System Solver = iterative
   Linear System Direct Method = UMFPACK
   Linear System Preconditioning = ilu0
-  Linear System Iterative Method = bicgstabl !
+  Linear System Iterative Method = bicgstab2
   bicgstabl polynomial degree = 4
 
   Linear System Residual Output = 20
@@ -41,7 +41,7 @@ Solver 1
 
   Steady State Convergence Tolerance = 1e-9
 
-  Linear System Normwise Backward Error = Logical true
+  Linear System Componentwise Backward Error = true
 
   Edge Basis = Logical True
   Apply Mortar BCs = Logical true

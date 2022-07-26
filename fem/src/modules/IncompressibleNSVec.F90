@@ -1515,6 +1515,10 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
     CALL DefaultFinishBoundaryAssembly()
     
+    ! This is a matrix level routine for setting friction such that tangential
+    ! traction is the normal traction multiplied by a coefficient.
+    CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient')
+    
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)

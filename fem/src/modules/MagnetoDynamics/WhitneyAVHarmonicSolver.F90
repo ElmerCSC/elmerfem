@@ -164,12 +164,29 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-
+  LOGICAL :: Found 
+  
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
     CALL Fatal('WhitneyAVHarmonicSolver_Init','Solver requires 3D mesh!')
   END IF
-    
+
+  ! Historically a real array could be used for H-B Curve.
+  ! This dirty piece of code makes things backward compatible.
+  BLOCK
+    INTEGER :: i
+    LOGICAL :: Cubic
+    TYPE(ValueList_t), POINTER :: Material
+    DO i=1,Model % NumberOfMaterials
+      Material => Model % Materials(i) % Values
+      IF( ListCheckPresent( Material, 'H-B Curve') ) THEN
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        CALL ListRealArrayToDepReal(Material,'H-B Curve','dummy',&
+            CubicTable=Cubic) !Monotone=.TRUE.)         
+      END IF
+    END DO
+  END BLOCK
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init
 !------------------------------------------------------------------------------
@@ -201,7 +218,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
   LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
-  LOGICAL :: ExtNewton
+  LOGICAL :: ExtNewton, StrandedHomogenization
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
@@ -221,7 +238,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   REAL(KIND=dp) :: NewtonTol
-
+  
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -319,9 +336,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
           //TRIM(HbCurveVarName))
     END IF
   END IF
-
     
-  !
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
@@ -421,7 +436,10 @@ CONTAINS
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              !CALL GetElementRotM(Element, RotM, n)
+              StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+              IF( StrandedHomogenization ) THEN
+                CALL GetElementRotM(Element, RotM, n)
+              END IF
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -1195,9 +1213,9 @@ END BLOCK
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
-            Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-             Element, n, nd, PiolaVersion, SecondOrder )
+      Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
+      LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
+      Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
@@ -1217,21 +1235,18 @@ END BLOCK
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
                         CVelo(3), CVeloSum
 
-    LOGICAL :: Stat, Newton, Cubic, HBCurve, &
+    LOGICAL :: Stat, Newton, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    LOGICAL :: StrandedHomogenization, FoundIm
+    LOGICAL :: StrandedHomogenization, UseRotM, FoundIm
 
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+    INTEGER :: t, i, j, p, q, np, EdgeBasisDegree
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
@@ -1266,31 +1281,8 @@ END BLOCK
       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
-
-    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
-    siz = 0
-    IF ( HBCurve ) THEN
-      siz = SIZE(HB,1)
-      IF(siz>1) THEN
-        Bval=>HB(:,1)
-        Hval=>HB(:,2)
-        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-          ALLOCATE(Cval(siz))
-          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
-        END IF
-        Cval=>CubicCoeff
-      END IF
-    END IF
-
-    IF(siz<=1) THEN
-      Lst => ListFind(Material,'H-B Curve',HBcurve)
-      IF(HBcurve) THEN
-        Cval => Lst % CubicCoeff
-        Bval => Lst % TValues
-        Hval => Lst % FValues(1,1,:)
-      END IF
-    END IF
+    
+    HBCurve = ListCheckPresent(Material,'H-B Curve')
 
     IF(HBCurve) THEN
       Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
@@ -1306,25 +1298,30 @@ END BLOCK
     END IF
 
     StrandedHomogenization = .FALSE.
-    IF (CoilType == 'stranded') THEN 
-       CompParams => GetComponentParams( Element )
-       StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-       IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
-         
-       IF ( StrandedHomogenization ) THEN
-         nu_11 = 0._dp
-         nuim_11 = 0._dp
-         nu_11 = GetReal(CompParams, 'nu 11', Found)
-         nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
-         nu_22 = 0._dp
-         nuim_22 = 0._dp
-         nu_22 = GetReal(CompParams, 'nu 22', Found)
-         nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
-       END IF
-    END IF
+    UseRotM = .FALSE.
+    IF(CoilBody) THEN
+      IF (CoilType == 'stranded') THEN 
+        CompParams => GetComponentParams( Element )
+        StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
 
+        IF ( StrandedHomogenization ) THEN
+          nu_11 = 0._dp
+          nuim_11 = 0._dp
+          nu_11 = GetReal(CompParams, 'nu 11', Found)
+          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+          nu_22 = 0._dp
+          nuim_22 = 0._dp
+          nu_22 = GetReal(CompParams, 'nu 22', Found)
+          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+          UseRotM = .TRUE.
+        END IF
+      ELSE IF( CoilType == 'foil winding') THEN
+        UseRotM = .TRUE.
+      END IF
+    END IF
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1375,8 +1372,8 @@ END BLOCK
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
-       ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') THEN
+       ! --------------------------------------------------------------       
+       IF ( UseRotM ) THEN
          DO i=1,3
            DO j=1,3
              RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
@@ -1388,9 +1385,12 @@ END BLOCK
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(ABS(B_ip)**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/babs
-         IF ( Newton ) THEN
-           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+
+         IF( Newton ) THEN
+           mu = ListGetFun( Material,'h-b curve',babs,dFdx=muder) / Babs
+           muder = (muder-mu)/babs
+         ELSE
+           mu = ListGetFun( Material,'h-b curve',babs) / Babs
          END IF
        ELSE
          mu = SUM( Basis(1:n) * Acoef(1:n) )
@@ -1430,7 +1430,7 @@ END BLOCK
          Nu(2,2) = mu
          Nu(3,3) = mu
 
-         IF (CoilBody .AND. StrandedHomogenization) THEN
+         IF (StrandedHomogenization) THEN
            nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
            nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
            Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)

@@ -740,7 +740,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         !-------------------------------------------------------------------------------
         IF ( DoScaling ) THEN
            IF ( DoEquilibration ) THEN
-              CALL RowEquilibration(Solver % Matrix,Solver % Matrix % RHS,Parallel)
+              CALL RowEquilibration(Solver,Solver % Matrix,Solver % Matrix % RHS,Parallel)
            ELSE
               CALL ScaleLinearSystem(Solver,Solver % Matrix,Solver % Matrix % RHS)
            END IF

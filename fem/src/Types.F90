@@ -87,7 +87,8 @@ MODULE Types
                         SOLVER_EXEC_AFTER_TIME =  4, &
                         SOLVER_EXEC_AHEAD_SAVE =  5, &
                         SOLVER_EXEC_AFTER_SAVE =  6, &
-                        SOLVER_EXEC_PREDCORR = 7
+                        SOLVER_EXEC_PREDCORR = 7,    &
+                        SOLVER_EXEC_WHENCREATED = 8
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
 	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
@@ -185,6 +186,9 @@ MODULE Types
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
 
+    ! Number of degrees of freedom in sparse matrix such that there is always a (ndeg x ndeg) dense block
+    INTEGER :: ndeg = -1
+    
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
     LOGICAL :: NoDirichlet = .FALSE.
@@ -409,9 +413,7 @@ MODULE Types
      INTEGER :: Counter = 0
 #endif
 
-#ifdef HAVE_LUA
      LOGICAL :: LuaFun = .FALSE.
-#endif
      INTEGER :: partag = 0
      LOGICAL :: disttag = .FALSE.
    END TYPE ValueListEntry_t
@@ -757,6 +759,17 @@ MODULE Types
 
 !------------------------------------------------------------------------------
 
+   TYPE NormalTangential_t     
+     CHARACTER(LEN=MAX_NAME_LEN) :: NormalTangentialName
+     INTEGER :: NormalTangentialNOFNodes = 0
+     INTEGER, POINTER :: BoundaryReorder(:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryTangent1(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryTangent2(:,:) => NULL()
+   END TYPE NormalTangential_t
+
+
+   
    TYPE Mesh_t
      CHARACTER(MAX_NAME_LEN) :: Name
      TYPE(Mesh_t), POINTER   :: Next,Parent,Child
@@ -777,6 +790,8 @@ MODULE Types
      TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
      TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
+     INTEGER :: SolverId = 0
+     
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
@@ -801,7 +816,6 @@ MODULE Types
      LOGICAL :: HaveHalo = .FALSE.
 
      LOGICAL :: SingleMesh = .FALSE.
-     
    END TYPE Mesh_t
 
    TYPE Graph_t
@@ -877,6 +891,8 @@ MODULE Types
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
       LOGICAL :: Parallel = .FALSE.
+
+      TYPE(NormalTangential_t) :: NormalTangential      
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -1047,6 +1063,9 @@ MODULE Types
     TYPE(Matrix_t), POINTER :: GlobalMatrix
 
     INTEGER :: ELMER_COMM_WORLD = -1
+
+    LOGICAL :: USE_XIOS=.FALSE.
+    CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------

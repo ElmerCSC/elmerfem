@@ -102,12 +102,12 @@ Solver 2
   Linear System Iterative Method = GCR
   BicGStabL Polynomial Degree = 4
   Linear System GCR Restart = 600
-  Linear System Convergence Tolerance = 1e-14
+  Linear System Convergence Tolerance = 1e-5
   Linear System Abort Not Converged = False
 
   Steady State Convergence Tolerance = 1e-10
 
-  Linear System Normwise Backward Error = Logical True
+  Linear System Componentwise Backward Error = True
 !  Linear System Row Equilibration = True
 
   Edge Basis = Logical True

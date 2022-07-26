@@ -1,0 +1,11 @@
+IF(HAVE_NETCDF)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+  CONFIGURE_FILE(Case.sif Case.sif COPYONLY)
+
+  FILE(COPY ELMERSOLVER_STARTINFO rectangle output_ugrid.nc DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+  ADD_ELMERICE_TEST(UGridDataReader)
+  ADD_ELMERICE_LABEL(UGridDataReader elmerice-fast)
+  ADD_ELMERICE_LABEL(UGridDataReader netcdf)
+ENDIF()

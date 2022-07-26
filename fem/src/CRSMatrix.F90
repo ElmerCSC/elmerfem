@@ -1369,7 +1369,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     NULLIFY( A % ILUValues )
     NULLIFY( A % CILUValues )
-    
+
+    A % ndeg = ndeg
     A % NumberOfRows = n
     A % Rows(1) = 1
     A % Ordered = .FALSE.
@@ -2317,6 +2318,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     A % Values => Values
     A % Cols => Cols
 
+    ! This can no longer have structured blocks
+    A % Ndeg = -1
+    
     IF(.NOT. CheckDiag ) THEN
       IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     END IF
@@ -2912,6 +2916,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         END IF
       END IF
 
+      IF( A % Ndeg > 1 ) THEN
+        IF( Mrow == Mcol ) THEN
+          B % Ndeg = Mrow
+        END IF
+      END IF
+      
       Allocated = .TRUE.
       GOTO 100
     END IF

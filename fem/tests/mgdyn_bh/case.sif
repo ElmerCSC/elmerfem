@@ -122,8 +122,13 @@ Material 2
   Name = "Iron"
   Electric Conductivity = 0.0
 
-  H-B Curve(31,2) = Real
-   INCLUDE HB
+!  H-B Curve(31,2) = Real
+!   INCLUDE HB
+
+  h-b curve = Variable "dummy"
+    Real
+      include HB
+    End 
 End
 
 Material 3

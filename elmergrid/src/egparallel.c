@@ -649,7 +649,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   if( eg->partbcz > 1 || eg->partbcr ) 
     PartitionConnectedElements1D(data,bound,eg,info);
   else if( eg->partbcmetis > 1 ) 
-    PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,3,info); 
+    PartitionConnectedElementsMetis(data,bound,eg,eg->partbcmetis,3,info); 
   else if( eg->connect ) 
    PartitionConnectedElementsStraight(data,bound,eg,info);
      
@@ -1467,7 +1467,6 @@ int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType 
 
 
 
-
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
 				 struct ElmergridType *eg, int info) {
   int i,j,k,l,dim,allocated,debug,partz,partr,parts,hit,bctype;
@@ -1669,18 +1668,37 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 
 
 #if USE_METIS
+static int SetMetisOptions(idx_t *options, struct ElmergridType *eg,int info)  {
+  
+  if(info) printf("Setting default Metis options!\n");
+  METIS_SetDefaultOptions(options);  
+
+  if(info) printf("Setting user defined Metis options!\n");
+  options[METIS_OPTION_NUMBERING] = 0;
+  options[METIS_OPTION_DBGLVL] = 3;
+  options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
+  options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW;
+  options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;    
+
+  if( eg->metis_contig ) options[METIS_OPTION_CONTIG] = 1;
+  if( eg->metis_seed ) options[METIS_OPTION_SEED] = eg->metis_seed;
+  if( eg->metis_ncuts > 1) options[METIS_OPTION_NCUTS] = eg->metis_ncuts;
+  if( eg->metis_volcut) options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_VOL;
+  if( eg->metis_minconn) options[METIS_OPTION_MINCONN] = 1;
+}
+
+
 int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
-				    int nparts,int metisopt,int info) {
+				    struct ElmergridType *eg, int nparts,int metisopt,int info) {
   int i,j,k,l,n,m,dim;
   int noknots,noelements,sidenodes,ind,nohits,totpartelems;
   int dualmaxcon,invmaxcon,totcon,step,bc,bcelem,bcelem2,hit,set;
   int noconnect,minpartelems,maxpartelems,sideelemtype,con,maxbcelem;
   int *elemconnect,*partelems,*nodeperm,*neededby;
   int *bcdualgraph[MAXCONNECTIONS],*bcinvtopo[MAXCONNECTIONS];
-  int sideind[MAXNODESD1];
-  
+  int sideind[MAXNODESD1];  
   int nn;
-  idx_t options[METIS_NOPTIONS];
+  idx_t options[METIS_NOPTIONS]; 
   int *xadj,*adjncy,*vwgt,*adjwgt,wgtflag,*npart;
   int numflag,edgecut,ncon;
   int *nodepart;
@@ -1694,6 +1712,8 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
     printf("There are no connected elements\n");
     return(1);
   }
+  
+  SetMetisOptions(options,eg,info);
   
   dim = data->dim;
   noknots = data->noknots;
@@ -1843,14 +1863,6 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   npart = Ivector(0,nn-1);
   wgtflag = 0;
 
-  METIS_SetDefaultOptions(options);
-  options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
-  options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW;
-  options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;
-  if(metisopt == 4 ) options[METIS_OPTION_MINCONN] = 1;
-  options[METIS_OPTION_DBGLVL] = 3;
-  /* if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed; */
-  
   /* Optional weights */
   vwgt = NULL;
   adjwgt = NULL;
@@ -2386,12 +2398,9 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   idx_t ne,nn,ncommon,edgecut,nparts;
   idx_t options[METIS_NOPTIONS];
 
-  METIS_SetDefaultOptions(options);
-  options[METIS_OPTION_NUMBERING] = 0;
-  options[METIS_OPTION_CONTIG] = eg->metiscontig;
-  options[METIS_OPTION_DBGLVL] = 3;
-  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
-      
+
+  SetMetisOptions(options,eg,info);
+
   if(info) printf("Making a Metis partitioning for %d elements in %d-dimensions.\n",
 		  data->noelements,data->dim);
 
@@ -2621,12 +2630,14 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     dual = FALSE;
   }
 
+  SetMetisOptions(options,eg,info);
+      
   nparts = partitions;
   if( dual ) {
     if( eg->partbcz > 1 || eg->partbcr ) 
       PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
-      PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,metisopt,info);
+      PartitionConnectedElementsMetis(data,bound,eg,eg->partbcmetis,metisopt,info);
     else if( eg->connect ) {
       PartitionConnectedElementsStraight(data,bound,eg,info);
     }    
@@ -2701,18 +2712,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   npart = Ivector(0,nn-1);
   wgtflag = 0;
   ncon = 1;
-
-  METIS_SetDefaultOptions(options);
-
-  options[METIS_OPTION_NUMBERING] = 0; 
-  options[METIS_OPTION_CONTIG] = eg->metiscontig;  
-  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
-
-  options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
-  options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW;
-  options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;    
-  if( metisopt == 4 ) options[METIS_OPTION_MINCONN] = 1;
-  options[METIS_OPTION_DBGLVL] = 3;
   
   /* Optional weights */
   vwgt = NULL;

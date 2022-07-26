@@ -165,16 +165,18 @@ End
 !! Thickness solver
 Solver 4
    Equation = "Thickness"
+    Procedure = "ElmerIceSolvers" "ThicknessSolver"
    Variable = -dofs 1 "H"
 
    Exported Variable 1 = -dofs 1 "H Residual"
 
-   Exported Variable 2 = -dofs 1 "dHdt"
+!! Compute thickness rate of change
+  ! internal solution
+   !Exported Variable 2 = -dofs 1 "dHdt"
+   !Compute dHdT = Logical True
+  ! elmer legacy solution
+   Calculate Velocity = Logical True
 
-   Compute dHdT = Logical True
-
-  Procedure = "ElmerIceSolvers" "ThicknessSolver"
-   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
    Linear System Solver = Iterative
    Linear System Max Iterations = 1500
@@ -190,9 +192,14 @@ Solver 4
    Nonlinear System Relaxation Factor = 1.00
 
 
+ !Stabilisation method [bubbles/stabilized]
   Stabilization Method = stabilized
+
+ ! Use internal min/max : 
   Apply Dirichlet = Logical False
 
+ !!  the convection velocity (mean horizontal velocity) 
+  ! defined in the body forces
   Convection Dimension = Integer 2
 End
 
