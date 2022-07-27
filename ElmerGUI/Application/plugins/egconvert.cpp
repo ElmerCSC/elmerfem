@@ -5043,7 +5043,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("*****************************************************\n");
     printf("The first line did not start with $, assuming Gmsh 1 format\n");
     printf("This version of Gmsh format is no longer supported\n");
-    printf("Please use Gsmh 2 or 4 versions for output\n");
+    printf("Please use Gmsh 2 or 4 versions for output\n");
     printf("*****************************************************\n");
     
     errnum = LoadGmshInput1(data,bound,filename,info);
