@@ -17,7 +17,7 @@ The input file structure should correspond to the **current serial mesh**, and v
 ## Time Index
 
 For variable that have a time dimension, the time index to read can be defined using the following keywords:
-- *Is Time Counter = Logical True [Default: False]*: the time index start at 1 and is incremented by 1 at each visit. So if we have e.g. annual values taht we want to read from the begining and update every year, we can execute this solver every 1/dt time steps.
+- *Is Time Counter = Logical True [Default: False]*: the time index start at 1 and is incremented by 1 at each visit. So if we have e.g. annual values that we want to read from the beginning and update every year, we can execute this solver every 1/dt time steps.
 
 - *Time Point = Real ...*: Define a Time point to read. The Time index is then defined as *TimePoint = floor(time-dt/2) + 1*, i.e. Index=1 for Time Point in ]0,1]; Index=2 for Time Point in ]1,2], etc...
 
@@ -29,7 +29,7 @@ Time Point = Variable Time
 
 ## Known Bugs and Limitations
 
-- Netcdf should have the same structure as the mesh; might be interesting to add a functionnality to read a 2D file for an vertically extruded 3D mesh?
+- Netcdf should have the same structure as the mesh; might be interesting to add a functionality to read a 2D file for an vertically extruded 3D mesh?
 
 - In parallel the same file will be accessed by all partitions. Might become a bottleneck for very large simulations?
 
@@ -59,7 +59,7 @@ Time Point = Variable Time
    ! the Elmer variable (must exist, as a solver or exported variable)
    Target Variable 1 = string "NodeVar"
   
-   ! Optionnal FileName for the variable; if we want to read more than one file...
+   ! Optional FileName for the variable; if we want to read more than one file...
    ! will fall back to the default if not present
    File Name 1 = File "MyFile 1"
   ...
@@ -68,7 +68,7 @@ End
 
 ## Compilation
 
-You need to have ELMER compiled with **NETCDF**, eventualy compiled with the **HDF5** libraries. 
+You need to have ELMER compiled with **NETCDF**, eventually compiled with the **HDF5** libraries. 
 Assuming NETCDF is installed under *NETCDF_DIR* and HDF5 under *HDF5_DIR*
 Adding the following instructions to your cmake configuration file should be sufficient.
 

@@ -246,7 +246,7 @@
    !forcing of the adjoint system comes from the Velocityb variable computed
    !with the cost function
 
-   !! Vb is expressed in the model coodinate system => Rotate to NT
+   !! Vb is expressed in the model coordinate system => Rotate to NT
    CALL RotateNTSystemAll( Vb, VbPerm, NSDOFs )
 
    c = NSDOFs

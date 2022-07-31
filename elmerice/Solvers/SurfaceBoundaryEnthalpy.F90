@@ -115,9 +115,9 @@ if (first_time) then
 		cont=cont-1
 	
 		IF (cont.ne.nb_day) then
-			print*, 'Lenght precip file = ',cont
-			print*, 'Lenght temperature file = ', nb_day
-			CALL FATAL('Surface Boundary', 'Precip and temperature files have to be same lenght')
+			print*, 'Length precip file = ',cont
+			print*, 'Length temperature file = ', nb_day
+			CALL FATAL('Surface Boundary', 'Precip and temperature files have to be same length')
 		ENDIF
 	
 		allocate(Precip(nb_day))
@@ -597,7 +597,7 @@ endif
 !------------------------------------------------------------------------- 
 
 !===============================================================================
-!Get temperature bellow active layer for diricklet surface boundary of enthalpy
+!Get temperature below active layer for diricklet surface boundary of enthalpy
    
 
  call SolveTemp_1D(Model,Solver,Element,zprof_1D,FirnNodes(n),TempAirMean,temp_10m,n)
@@ -613,7 +613,7 @@ ENDDO ! On nodes
 CONTAINS
 
 !===============================================================================
-!Solve 1D temperature evolution on vertical profile with CrankNicholson sheme===
+!Solve 1D temperature evolution on vertical profile with CrankNicholson scheme==
 
 
 subroutine SolveTemp_1D(Model,Solver,Element,z_prof_elmer,firn_thick,TempSurf,temp_10m,surf_node_nb)
@@ -682,7 +682,7 @@ endif
 
   
 !===============================================================================
-!Initilize density============================================================== 
+!Initialize density============================================================= 
 
 z=0.0
 do i=1,n1D
@@ -702,7 +702,7 @@ water=0.0
 old_water=0.0
 
 !===============================================================================
-!Initilize firn/snow thickness and temp profile================================= 
+!Initialize firn/snow thickness and temp profile================================ 
 
   neige=0.0
   Tair_mean=0.0
@@ -888,7 +888,7 @@ enddo
 !===============================================================================
 !Solve 1D diffusion/advection + percolation/refreezing==========================
 
-!Desactivate advection:
+!Deactivate advection:
 vit=0.0
 
 !---------------------------------------------------
@@ -950,7 +950,7 @@ vit=0.0
   b(1)=tsurf
   ldiag=diag
 
-! bottome layer :
+! bottom layer :
 ! condition de Neuman
 b(n1D)=(timeterm(n1D) - beta(n1D))*temp(n1D) + beta(n1D)*temp(n1D-1)
 

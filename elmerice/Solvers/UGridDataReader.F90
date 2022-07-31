@@ -121,7 +121,7 @@
 ! get mesh
       ThisMesh => GetMesh(Solver)
 
-! check if this is a paralell run
+! check if this is a parallel run
       Parallel=(ParEnv % PEs > 1) .AND. ( .NOT. ThisMesh % SingleMesh ) 
 
 ! check if a mesh ha been defined for this solver; in this case will
@@ -266,7 +266,7 @@
         Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
         VarType=Var % TYPE
 
-        ! special cases.... time do not seems to be a gloabl variable by
+        ! special cases.... time do not seems to be a global variable by
         ! default
         IF ( Var % Name  == 'time') VarType=Variable_global
 

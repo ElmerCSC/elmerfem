@@ -31,7 +31,7 @@ Computes the derivatives SSA with respect to the input parameters.
 The sequence in the .sif is usually as follow:
 
 1. Compute the velocity using the [SSA solver](#ssa_direct_solver)
-2. Compute a cost function that measure the diffrence between the model and some observations
+2. Compute a cost function that measures the difference between the model and some observations
 3. Compute the solution of the [adjoint linear system](#adjoint_linearsolver)
 4. **Compute the gradient of your cost function with respect to your input parameters**
 

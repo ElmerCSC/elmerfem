@@ -5,9 +5,9 @@
 - **Required Output Variable(s):** ``Temp`` [user defined]
 - **Required Input Variable(s):** ``Flow Solution Name = Flow Solution`` [else ``Flow Solution`` is default]
 - **Optional Output Variable(s):** ``Temp Homologous``, ``Temp Residual`` [heading name (here ``Temp``) must coincide with variable name]
-- **Optional Input Variable(s):** Variable contianing Deformational Heat [in Source]
+- **Optional Input Variable(s):** Variable containing Deformational Heat [in Source]
 - **Solver Keywords:** 
-  - ``Apply Dirichlet`` (Logical) True [switch in lower/uper limit contraint]
+  - ``Apply Dirichlet`` (Logical) True [switch in lower/uper limit constraint]
   - ``Temp Upper Limit`` (Real) PressureMeltingPoint [in corresponding ``Material`` section]
   - ``Temp Lower Limit`` (Real) 0.0 [in corresponding ``Material`` section]
   - ``Temp Volume Source`` (Real) DeformationalHeat  [in corresponding ``Body Force`` section]

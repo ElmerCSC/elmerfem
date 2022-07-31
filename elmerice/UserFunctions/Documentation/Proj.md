@@ -30,7 +30,7 @@ Initial Condition 1
 End
 ```
 
-The definition of the projectd coordinate system must be given in the **Simulation** section:
+The definition of the projected coordinate system must be given in the **Simulation** section:
 ```
 Simulation 
 
@@ -49,5 +49,5 @@ End
 
 ## Tests and Examples
 
-Functionnality tested in  [ELMER_TRUNK]/elmerice/Tests/Proj_South: compute Lon/Lat and back x,y 
+Functionality tested in [ELMER_TRUNK]/elmerice/Tests/Proj_South: compute Lon/Lat and back x,y 
 

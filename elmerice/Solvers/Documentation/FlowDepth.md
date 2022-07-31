@@ -13,7 +13,7 @@
   - `Flowdepth Skip` [Logical] if set to `True` explicitly skips searching for boundary value of the depth/height variable in a boundary condition
 
 ## General Description
-This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology) in unstructured grids. In structured grids this is a trivial procedure - not so in unstructured FEM meshes. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. Optionally, one can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated. Mind, that the computation is asumed to be aligned with the (either positive or negative) direction of the highest mesh-dimension.
+This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology) in unstructured grids. In structured grids this is a trivial procedure - not so in unstructured FEM meshes. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. Optionally, one can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated. Mind, that the computation is assumed to be aligned with the (either positive or negative) direction of the highest mesh-dimension.
 
 Alternatively, if you are using a structured mesh, you might consider replacing the FlowDepth solver by the *StructuredProjectToPlane* solver, as explained [here](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh).
 

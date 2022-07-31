@@ -26,7 +26,7 @@ This solver is not part of the standard Elmer/Ice installation and has to be com
 ## General Information
 This auxiliary solver enables to read in variables from a NetCDF file and interpolates the values to the mesh as variables of the same name. The interpolation is done by using the Finite Element test functions.
 
-By default the code will loop over the mesh nodes and read only the values required for the interpolation at the given node. This might involve a lot of I/O and become a bottle neck. Loading the whole netcdf at the begining requires to allocate more space in the memory but might be more efficient if possible. This possibility is given by setting: *Read full array = Logical True*
+By default the code will loop over the mesh nodes and read only the values required for the interpolation at the given node. This might involve a lot of I/O and become a bottle neck. Loading the whole netcdf at the beginning requires to allocate more space in the memory but might be more efficient if possible. This possibility is given by setting: *Read full array = Logical True*
 
 ## Known Bugs
 None, so far.

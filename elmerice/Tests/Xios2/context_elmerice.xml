@@ -5,7 +5,7 @@
 
     <field_definition enabled=".TRUE." >
   
-     <!-- id corespond to var names and should be lower case!! -->
+     <!-- id correspond to var names and should be lower case!! -->
       <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" operation="instant" /> 
       <field id="varnode_elem" name="MyNodalVarOnCell"  standard_name="Meanvar"   unit="m" grid_ref="GridCells" operation="instant" /> 
 

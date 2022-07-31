@@ -95,7 +95,7 @@ Boundary Condition 5
   Name = "Glacier snout"
   Target Boundaries = 5
 
-! Take care to choose a value bellow or equals to the upper
+! Take care to choose a value below or equals to the upper
 1 limit of the water head
 
   EPLHead = variable coordinate 3, depth

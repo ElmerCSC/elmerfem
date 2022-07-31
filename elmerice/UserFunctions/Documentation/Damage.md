@@ -31,7 +31,7 @@ Material 1
   Damage Enhancement Factor = Real 2.00 ! damage enhancement factor
   Damage Parameter sigmath = Real 0.05 ! stress threshold for damage increase
 End
-Additionnally, for output visualisation, the damage criterion Chi is saved as a variable named Chi, which need to be exported in a solver, such as :
+Additionally, for output visualisation, the damage criterion Chi is saved as a variable named Chi, which need to be exported in a solver, such as :
 
 Solver 3
   Equation = Sij

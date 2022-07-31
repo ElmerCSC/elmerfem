@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Subroutine to check that output from XIOS was successfull
+! *  Subroutine to check that output from XIOS was successful
 ! *  here we check the connectivity.
 ! *   Netcdf file name and variable names are hard-coded and thus might
 ! *   be specific to this test

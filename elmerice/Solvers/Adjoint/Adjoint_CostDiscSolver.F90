@@ -111,7 +111,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
   LOGICAL :: ParallelFile,ProcessedFile,ActiveNumbering
 
-  INTEGER :: CoordDIM ! Coordinate sytem dimension for the observations points
+  INTEGER :: CoordDIM ! Coordinate system dimension for the observations points
   INTEGER,SAVE :: VarDIM   ! Dimension of the observed Variable
   REAL(KIND=dp),SAVE :: Lambda
 

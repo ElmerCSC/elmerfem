@@ -17,8 +17,8 @@ For details on the routine see the [documentation](https://who.rocq.inria.fr/Jea
 
 This solver calls M1QN3 in *reverse* communication, *i.e.* the optimisation loop is controlled 
 by running steady-state iterations.
-Each iteration  computes the cost function $J$ and its gradient $g$ for the current state then pass these informations
-to M1QN3 which provive a new estimate of the state.
+Each iteration computes the cost function $J$ and its gradient $g$ for the current state then pass these information
+to M1QN3 which provide a new estimate of the state.
 
 ### Specific comments
 
@@ -54,7 +54,7 @@ with this parameter. From M1QN3 documentation, a good compromise should be obtai
 
 - The decrease of *J* in M1QN3 is enforced by the Wolfe line-search. 
 For M1QN3 there is a new *iteration* when $J$ has been sufficiently decreased during the line search. 
-So for a given *iteration* there could be  several *simulations*. We don't make this disctinction in Elmer, so each
+So for a given *iteration* there could be  several *simulations*. We don't make this distinction in Elmer, so each
 **elmer steady-state iteration** correspond to *1 simulation* for M1QN3.
 
 - In general, if the gradient is accurate there should be a small number of *simulations* per *iteration*. If M1QN3
@@ -71,7 +71,7 @@ fix the maximum number of simulations and iterations as the same number os maxim
 - The steady state iterations in Elmer are controlled with the keywords *Steady State Min Iterations* and *Steady State Max Iterations*
 in the simulation section and with the keywords *"Steady State Convergence tolerance = Real ..."* in the different solvers. Setting this
 last value to a too small value may stop the simulation too early. On the contrary if the criterion on *epsg* is reached by M1QN3 
-the same state will be used for the next iterations and the *Steady State Convergence tolerance* should be satified stopping the Elmer Simulation.
+the same state will be used for the next iterations and the *Steady State Convergence tolerance* should be satisfied stopping the Elmer Simulation.
 
 ### Keywords
 
@@ -89,11 +89,11 @@ Solver id
  !# name of the gradient of *J* w.r.t. *x*:
   Gradient Variable Name = String ""  ! [default: DJDB]
 
- !# [Optionnal] : If provided,
+ !# [Optional] : If provided,
  !   x will not be affected by the optimsation where mask.lt.0
    Optimisation Mask Variable = String ""
 
- !# [Optionnal] : compute and save the euclidean norm of *g*
+ !# [Optional] : compute and save the euclidean norm of *g*
   gradient Norm File = String ""
 
   !Note: it may be beneficial to set this to True, which scales
