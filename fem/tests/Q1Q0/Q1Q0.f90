@@ -2,7 +2,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-! A Navier-Stokes solver for Q1/Q0 elemnt
+! A Navier-Stokes solver for Q1/Q0 element
 !
 !  ARGUMENTS:
 !

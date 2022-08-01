@@ -953,7 +953,7 @@ CONTAINS
     END IF
 
     ! In parallel if we have halo the same BC element may occur several times.
-    ! Fetch here the fraction of the assembly to be accounted in this occurance. 
+    ! Fetch here the fraction of the assembly to be accounted in this occurrence.
     AssFrac = BCAssemblyFraction(Element)
     IF( AssFrac < TINY( AssFrac ) ) RETURN
 
@@ -1554,7 +1554,7 @@ CONTAINS
     FoundJump = HaveJump
     IF( .NOT. FoundJump ) RETURN
     
-    ! Swicth the reference body always to Parent1
+    ! Switch the reference body always to Parent1
     IF(.NOT. LeftActive ) THEN
       pElem => Parent1
       Parent1 => Parent2

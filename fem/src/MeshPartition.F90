@@ -4062,7 +4062,7 @@ CONTAINS
          IF( ThisPart < MinPart .OR. ThisPart > MaxPart ) CYCLE
 
          ! Create halo only for master elements.
-         ! This is usefull for mortar & contact BCs. 
+         ! This is useful for mortar & contact BCs. 
          IF( MasterHalo ) THEN           
            IF( .NOT. MasterElement(t) ) CYCLE
          END IF

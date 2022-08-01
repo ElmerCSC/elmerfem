@@ -6930,7 +6930,7 @@ END SUBROUTINE RetrieveLocalFrame
 ! dimensions; see the subroutine SurfaceBasis which defines the chart.
 !
 ! TO DO: Consider moving the subroutine SurfaceBasis elsewhere so that it can be
-!        replaced easily by a user-supplied subroutine wihout modifying this file. 
+!        replaced easily by a user-supplied subroutine without modifying this file. 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrixCartesian(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       NonlinearBending, MassAssembly, HarmonicAssembly, RHSForce, SkipBlending, &

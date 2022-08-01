@@ -74,7 +74,7 @@ Solver 2
   Mesh Update Variable = String "Mesh Update 2"
   Mesh Velocity First Zero  = True
 
-! The old slightly errorneous result can be restored with this flag
+! The old slightly erroneous result can be restored with this flag
 !  Recompute Stabilization = Logical False
 End 
 

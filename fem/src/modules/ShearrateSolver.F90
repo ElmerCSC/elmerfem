@@ -39,7 +39,7 @@
 
 
 !------------------------------------------------------------------------------
-!> Initilization for the primary solver: ShearrateSolver
+!> Initialization for the primary solver: ShearrateSolver
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
   SUBROUTINE ShearrateSolver_Init( Model,Solver,dt,Transient )

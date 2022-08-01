@@ -3530,7 +3530,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   FUNCTION CRS_ComplexIncompleteLU(A,ILUn) RESULT(Status)
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A  !< Strcture holding input matrix, will also hold the factorization on exit.
+    TYPE(Matrix_t) :: A  !< Structure holding input matrix, will also hold the factorization on exit.
     INTEGER, INTENT(IN) :: ILUn   !< Order of fills allowed 0-9
     LOGICAL :: Status  !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------

@@ -552,7 +552,7 @@ if (Container==NULL) ERROR("invalid pointer passed to SolveTrilinos2",__FILE__,_
      CHECK_ZERO(b->Scale(scaleFactor));
      }
 
-   // override the settings for tconv tol and num iter using Elmer inut data:
+   // override the settings for tconv tol and num iter using Elmer input data:
    if (*TOL>=0.0) params->sublist("Belos").set("Convergence Tolerance",*TOL);
    if (*Rounds>0) params->sublist("Belos").set("Maximum Iterations",*Rounds);
    

@@ -463,7 +463,7 @@
     END IF
    
 !------------------------------------------------------------------------------
-!  Save resulst on a timestep (or steady state iteration step)
+!  Save results on a timestep (or steady state iteration step)
 !------------------------------------------------------------------------------
  
     TimeStep   = SavedCount

@@ -377,7 +377,7 @@ CONTAINS
 
       HF = SUM(HF_n*Basis(1:n)) ! heat flux
       ET = SUM(ET_n*Basis(1:n)) ! external temperature
-      HT = SUM(HT_n*Basis(1:n)) ! heat transfer coeffiecient
+      HT = SUM(HT_n*Basis(1:n)) ! heat transfer coefficient
 
       EF = SUM(EF_n*Basis(1:n)) ! electric flux
 
