@@ -1,5 +1,5 @@
 This directory includes some ElmerSolver modules that have been
-deemed obsolite as no one has been asking about them for years
+deemed obsolete as no one has been asking about them for years
 and they probably don't reflect the current best practices of Elmer
 in terms of coding style either.
 
