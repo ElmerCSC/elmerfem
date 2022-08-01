@@ -3115,6 +3115,10 @@ END BLOCK
        END IF
      END IF
 
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
+     END IF
+
      
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
      CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
@@ -3196,6 +3200,7 @@ END BLOCK
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
      TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3207,9 +3212,13 @@ END BLOCK
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
-     CALL Info('DefaultFinish','Finished solver: '//&
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
+     END IF
+     
+     CALL Info('DefaultFinish','Finished solver: '//&         
          TRIM(ListGetString(Solver % Values,'Equation')),Level=8)
-
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------

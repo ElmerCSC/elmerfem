@@ -4360,7 +4360,9 @@ CONTAINS
       END IF          
     END IF
 
-    CALL Info('FindClosestNode','Clocest node found to be: '//TRIM(I2S(MinNode)),Level=20)
+    !PRINT *,'MinNode:',MinNode, ParEnv % MyPe
+    
+    CALL Info('FindClosestNode','Closest node found to be: '//TRIM(I2S(MinNode)),Level=20)
     
   END SUBROUTINE FindClosestNode
 
@@ -16608,9 +16610,10 @@ CONTAINS
       str = 'Control Node Index'
       ControlNode = ListGetInteger( Params,str,Found )    
     END IF
-
    
     IF(.NOT. Found ) THEN        
+      ControlNode = -1
+
       Coord = 0.0_dp
       str = 'Control Node Coordinates'
       RealWork => ListGetConstRealArray( Params,str,Found )           
@@ -16662,15 +16665,19 @@ CONTAINS
     IF(.NOT. ASSOCIATED(Mesh)) CALL Fatal(Caller,'Mesh not associated!')
     IF(.NOT. ASSOCIATED(Params)) CALL Fatal(Caller,'Params not associated!')
     
-    IF(PRESENT(Var)) THEN
-      pVar => Var
-    ELSE
-      str = 'Control Variable'
+    str = 'Control Variable'
+    varname = ListGetString( Params, str, Found )
+    IF(.NOT. Found ) THEN
+      str = 'Control Variable '//TRIM(I2S(iControl))
       varname = ListGetString( Params, str, Found )
-      IF(.NOT. Found ) THEN
-        str = 'Control Variable '//TRIM(I2S(iControl))
-        varname = ListGetString( Params, str, UnfoundFatal=.TRUE. )
-      END IF      
+    END IF
+    IF(.NOT. Found ) THEN
+      IF( PRESENT(Var) ) THEN
+        pVar => Var
+      ELSE
+        CALL Fatal(Caller,'Could not find keyword for: '//TRIM(str))
+      END IF
+    ELSE
       pVar => VariableGet( Mesh % Variables, varname )
       IF(.NOT. ASSOCIATED(pVar) ) THEN
         CALL Fatal(Caller,'Could not find control variable: '//TRIM(varname))
@@ -16678,7 +16685,7 @@ CONTAINS
     END IF
 
     i = GetControlNode(Mesh,pVar % Perm,Params,iControl)
-    IF(i==0) THEN
+    IF(i==-1) THEN
       CALL Fatal(Caller,'Could not find control node!')
     END IF
         
@@ -16688,21 +16695,58 @@ CONTAINS
     ELSE IF( pVar % Dofs > 1) THEN
       dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
     END IF
+
+    IF( i == 0 ) THEN
+      val = -HUGE(val)
+    ELSE
+      j = pVar % dofs*(pVar % Perm(i)-1)+dof0
+      val = pVar % Values(j) 
+    END IF
+
+    val = ParallelReduction(val,2)
     
     str = 'Control Target Value'        
     val0 = ListGetCReal( Params, str, Found )
     IF(.NOT. Found ) THEN
       str = 'Control Target Value '//TRIM(I2S(iControl))
-      val0 = ListGetCReal( Params, str, UnfoundFatal=.TRUE. )
-    END IF
-    
-    j = pVar % dofs*(pVar % Perm(i)-1)+dof0
-    
-    val = pVar % Values(j) - val0 
-    PRINT *,'Control value:',val,val0,pVar % Values(j),i,j
+      val0 = ListGetCReal( Params, str, Found )
+    END IF    
+    val = val - val0 
+  
+    !PRINT *,'Control value:',val,val0,i,j
 
   END FUNCTION GetControlValue
     
+
+  SUBROUTINE ApplyExplicitControl(Solver)
+    TYPE(Solver_t), POINTER :: Solver
+
+    INTEGER :: i, n
+    REAL(KIND=dp), POINTER :: Fvec(:)
+    LOGICAL :: Found
+    TYPE(Variable_t), POINTER :: FVar
+    
+    n = ListGetInteger(Solver % Values,'Number Of Controls',Found )
+    IF( n == 0 ) THEN
+      CALL Warn('ApplyExplicitControl','Explicit control points requested but no controls available!')
+      RETURN
+    END IF
+    
+    FVar => VariableGet( Solver % Mesh % Variables,'cpar' )
+    IF(.NOT. ASSOCIATED( FVar ) ) THEN
+      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver,'cpar',n,Global=.TRUE.)
+      FVar => VariableGet( Solver % Mesh % Variables,'cpar' )
+    END IF
+
+    Fvec => FVar % Values    
+    DO i=1,n
+      Fvec(i) = GetControlValue(Solver % Mesh,Solver % Values,i,Solver % Variable) 
+    END DO
+
+    !PRINT *,'Control values:',Fvec
+       
+  END SUBROUTINE ApplyExplicitControl
+
   
 !------------------------------------------------------------------------------
 !> Given the operation point and an additional r.h.s. source vector find the
