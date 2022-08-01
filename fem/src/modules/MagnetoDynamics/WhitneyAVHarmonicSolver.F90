@@ -2448,7 +2448,7 @@ END BLOCK
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: March 20, 2020
-! *  Last Modifed: June 18, 2021, Juha
+! *  Last Modified: June 18, 2021, Juha
 ! *
 !******************************************************************************
 
@@ -2505,7 +2505,7 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   CALL ListAddString( SolverParams, 'Potential Variable', GetVarName(Model % Solvers(i) % Variable))
 
   ! Solver is using a single linear system to solve complex components,
-  ! assing storage for final complex result.
+  ! assign storage for final complex result.
   ! -------------------------------------------------------------------
   CALL ListAddString( SolverParams, 'Exported Variable 1', 'P[P re:1 P im:1]' )
 
@@ -2852,7 +2852,7 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   END IF
 
   ! Solver is using a single linear system to solve complex components,
-  ! assing storage for final complex result.
+  ! assign storage for final complex result.
   ! -------------------------------------------------------------------
   CALL ListAddString( SolverParams, 'Kernel Variable', 'P' )
 

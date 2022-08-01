@@ -1951,7 +1951,7 @@ CONTAINS
               IF ( Permutation(l) <= 0 ) CYCLE
               StSolver % Variable % Values(Permutation(l)) = NodalStrain(6*(StressPerm(l)-1)+k)            
             END DO
-            ! this solves some convergence problems at the expence of bad convergence      
+            ! this solves some convergence problems at the expense of bad convergence      
             ! StSolver % Variable % Values = 0
 
             WRITE( Message,'(A,I0,A,I0,A)') 'Solving for Strain(',i,',',j,')'

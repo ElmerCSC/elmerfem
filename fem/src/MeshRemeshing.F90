@@ -1147,7 +1147,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   END DO
   IF(Debug) PRINT*, 'Bad Element Count: ', Counter
   IF ( Counter > 0 ) THEN
-    PRINT*,"Bad elements detected - reruning remeshing"
+    PRINT*,"Bad elements detected - rerunning remeshing"
     !! Release mmg mesh
     CALL MMG3D_Free_all(MMG5_ARG_start, &
         MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &

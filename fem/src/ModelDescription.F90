@@ -2120,7 +2120,7 @@ CONTAINS
             GOTO 20
 
           CASE('-distribute')              
-            ! Tag paramaters that will be divided by the entity area/volume
+            ! Tag parameters that will be divided by the entity area/volume
             disttag = .TRUE. 
             str = str(str_beg:slen)
             GOTO 20
@@ -4111,7 +4111,7 @@ CONTAINS
       END IF
       CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE 
-      CALL Fatal(Caller,'Could not dertemine file format, obsolite?')
+      CALL Fatal(Caller,'Could not dertemine file format, obsolete?')
     END IF
     
     IF( Binary ) THEN

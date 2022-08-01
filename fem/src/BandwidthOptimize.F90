@@ -159,7 +159,7 @@ CONTAINS
      END DO
      
      k = 0
-     ! Here we go trough cases 1,2,3
+     ! Here we go through cases 1,2,3
      DO j=1,3
        DO i=1, Mesh % NumberOfNodes
          IF(Perm(i)==0) CYCLE

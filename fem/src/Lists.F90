@@ -4484,7 +4484,7 @@ use spariterglobals
      n = Element % TYPE % NumberOfNodes     
      npar = 0.0_dp
 
-     ! Go throug both potential parents. If we find the information in both then
+     ! Go through both potential parents. If we find the information in both then
      ! take on average. Otherwise use one-side interpolation. 
      DO ipar = 1,2 
        IF( ipar == 1 ) THEN
@@ -4585,7 +4585,7 @@ use spariterglobals
                CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
              END IF
              IF(.NOT. PRESENT(Basis) ) THEN
-               CALL Fatal('VarsToValuesOnIps','We need the "Basis" paremeter to map stuff to boundaries!')
+               CALL Fatal('VarsToValuesOnIps','We need the "Basis" parameter to map stuff to boundaries!')
              END IF             
              T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
            ELSE
@@ -6174,7 +6174,7 @@ use spariterglobals
            NodeIndexes => PElement % NodeIndexes
          END IF
 
-         ! First fetch the nodal fields so that they may be avaluated at IP's         
+         ! First fetch the nodal fields so that they may be evaluated at IP's
          IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
              ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR .OR. &
              ptr % TYPE == LIST_TYPE_VARIABLE_TENSOR .OR. &

@@ -601,7 +601,7 @@ CONTAINS
          weight = IP % s(t) * detJ
        END IF
 
-       ! Coordinates of the intergration point
+       ! Coordinates of the integration point
        x = SUM(Nodes % x(1:n)*Basis(1:n))
        y = SUM(Nodes % y(1:n)*Basis(1:n))
        r = SQRT(x**2+y**2)
@@ -2091,7 +2091,7 @@ CONTAINS
          weight = IP % s(t) * detJ
        END IF
 
-       ! Coordinates of the intergration point
+       ! Coordinates of the integration point
        x = SUM(Nodes % x(1:n)*Basis(1:n))
        y = SUM(Nodes % y(1:n)*Basis(1:n))
        r = SQRT(x**2+y**2)
@@ -2788,7 +2788,7 @@ SUBROUTINE Bsolver_init( Model,Solver,dt,Transient )
         'Current Density[Current Density re:1 Current Density im:1]' )
   END IF
 
-  ! The refrence norm is sum of all solutions. Hence we don't really want to recompute and spoil it externally.
+  ! The reference norm is sum of all solutions. Hence we don't really want to recompute and spoil it externally.
   CALL ListAddNewLogical( SolverParams,'Skip Compute Steady State Change',.TRUE.)
   
 

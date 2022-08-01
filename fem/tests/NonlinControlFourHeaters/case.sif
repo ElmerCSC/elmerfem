@@ -124,7 +124,7 @@ Solver 1
 ! There probably is no gain in assuming the sensitivity be diagonal
 !  Control Diagonal = Logical True
 
-! Relaxation could be usefull in nonlinear cases
+! Relaxation could be useful in nonlinear cases
 !  Control Relaxation Factor = Real 0.7
 End 
 

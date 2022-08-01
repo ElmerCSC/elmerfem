@@ -3326,7 +3326,7 @@
     
     CALL Info('SaveCurrent','Saving information on current step',Level=20)
     
-    ! There are currently global defintions that apply also for solver specific meshes
+    ! There are currently global definitions that apply also for solver specific meshes
     vList => CurrentModel % Simulation       
     BinaryOutput = ListGetLogical( vList,'Binary Output',GotIt )      
     SaveAll = .NOT. ListGetLogical( vList,'Omit unchanged variables in output',GotIt )

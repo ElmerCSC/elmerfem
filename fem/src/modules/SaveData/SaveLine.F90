@@ -316,7 +316,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
  
   SkipBoundaryInfo = ListGetLogical(Params,'Skip Boundary Info',GotIt)
 
-  ! Open just the directory for saving so tha it is create for sure!
+  ! Open just the directory for saving so that it is created for certain!
   !------------------------------------------------------------------------------
   CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
   IF( Solver % TimesVisited == 0 ) THEN
@@ -805,7 +805,7 @@ CONTAINS
           ELSE IF( NoData > 0 ) THEN
             NULLIFY(tmpPosData, tmpLabelData, tmpResultData)
             j = NoData
-            ! Most likely the current tables are too big. In order for succesfull parallel communication
+            ! Most likely the current tables are too big. In order for successful parallel communication
             ! the matrices must have exactly the same size!
             ALLOCATE(tmpPosData(j),tmpLabelData(j,NoLabels),tmpResultData(j,NoResults),STAT=istat)              
             IF( istat /= 0 ) THEN

@@ -208,7 +208,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Projecting field "'//TRIM(Vname)//'" to normal direction',Level=5)
 
       ! We deal with displacement or velocity field with component-wise since
-      ! otherwise we should deal with the 'flow solution' vector separetely.
+      ! otherwise we should deal with the 'flow solution' vector separately.
       Var1 => VariableGet( Mesh % Variables,TRIM(Vname)//' 1')
       IF(.NOT. ASSOCIATED(Var1) ) CALL Fatal(Caller,'Vector field component 1 does not exist: '//TRIM(Vname))
       Var2 => VariableGet( Mesh % Variables,TRIM(Vname)//' 2')

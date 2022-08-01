@@ -1,7 +1,7 @@
 !/******************************************************************************
 ! *
 ! *  Module for defining circuits and dynamic equations.
-! *  This is the original versin of circuit simulator still used by some. 
+! *  This is the original version of circuit simulator still used by some.
 ! *
 ! *  Authors: Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
@@ -128,7 +128,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CALL Info('Circuits2D','Associated circuit with solver index: '//TRIM(I2S(i)),Level=10)
     
     AngVar => DefaultVariableGet( 'Rotor Angle' )
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     IF(.NOT. ASSOCIATED( AngVar ) ) THEN
       CALL Fatal('CurrentSource','Variable > Rotor Angle < does not exist!')
     END IF
@@ -150,7 +150,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Tstep = GetTimestep()
 
     AngVar => DefaultVariableGet( 'Rotor Angle' )
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     IF(.NOT. ASSOCIATED( AngVar ) ) THEN
       CALL Fatal('CurrentSource','Variable > Rotor Angle < does not exist!')
     END IF
@@ -210,7 +210,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     real(kind=dp) :: xxx
 
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
@@ -323,7 +323,7 @@ CONTAINS
      END DO ! i
   END DO ! p
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
 
@@ -367,7 +367,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,p,q,n
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -540,7 +540,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Apply()
 !------------------------------------------------------------------------------
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -849,7 +849,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Init()
 !------------------------------------------------------------------------------
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
@@ -987,7 +987,7 @@ CONTAINS
       END DO
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
 
@@ -1031,7 +1031,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,p,q,n
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -1204,7 +1204,7 @@ return
 !------------------------------------------------------------------------------
     integer :: row, col
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows

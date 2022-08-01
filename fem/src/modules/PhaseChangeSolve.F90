@@ -1009,7 +1009,7 @@ CONTAINS
         ! do nothing, loads already computed
 
       ELSE 
-        ! Compute the flux from normal derivaties
+        ! Compute the flux from normal derivatives
         TGrad = 0.0d0          
         l = 0
         DO i=1,2

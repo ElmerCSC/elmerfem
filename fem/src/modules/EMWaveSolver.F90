@@ -195,7 +195,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     AllocationsDone = .TRUE.
   END IF
 
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
       'Nonlinear System Max Iterations',Found)

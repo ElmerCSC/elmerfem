@@ -1981,7 +1981,7 @@ CONTAINS
         END IF
         
         ! Note that the narrow part of the gap is omitted and here only 
-        ! currents related to the outher parts of the gap (with |sgn|=2) 
+        ! currents related to the outer parts of the gap (with |sgn|=2) 
         ! are accounted for. 
         sgn = Set(j)
         IF( sgn == 0 ) CYCLE

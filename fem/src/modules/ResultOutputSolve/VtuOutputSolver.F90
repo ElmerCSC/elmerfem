@@ -190,7 +190,7 @@ CONTAINS
             END IF
           END IF
         ELSE
-          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! Also add number to the wrapper files as it is difficult otherwise
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    

@@ -8770,8 +8770,8 @@ CONTAINS
       END DO
       
 
-      ! Inherit the normal direction for 2nd order p-elments from the nodes.
-      !---------------------------------------------------------------------
+      ! Inherit the normal direction for 2nd order p-elements from the nodes.
+      !----------------------------------------------------------------------
       IF( pDisp ) THEN
         DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
             Mesh % NumberOfBoundaryElements
@@ -11148,11 +11148,11 @@ END FUNCTION SearchNodeL
           Cost0(CostMode) = c(i)
           Residual0 = r(i)
          
-          CALL Warn('BisectSearch','Bisection method improved but faced local maximium')
+          CALL Warn('BisectSearch','Bisection method improved but faced local maximum')
           ReduceStep = .FALSE.
         ELSE 
           IF( MINVAL ( r ) < Residual0 ) THEN
-            CALL Warn('BisectSearch','Bisection method improved but faced local maximium')
+            CALL Warn('BisectSearch','Bisection method improved but faced local maximum')
           ELSE 
             CALL Warn('BisectSearch','Bisection method cannot handle local maxima')
           END IF
@@ -13379,10 +13379,10 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     IF ( Parallel  ) THEN
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
-        CALL Info('SolveLinearSystem','Creating parallel matrix stuctures',Level=8)
+        CALL Info('SolveLinearSystem','Creating parallel matrix structures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
       ELSE
-        CALL Info('SolveLinearSystem','Using previously created parallel matrix stuctures!',Level=15)
+        CALL Info('SolveLinearSystem','Using previously created parallel matrix structures!',Level=15)
       END IF      
       Parallel = ASSOCIATED(A % ParMatrix)       
     END IF
@@ -14058,7 +14058,7 @@ END FUNCTION SearchNodeL
     ELSE IF ( ConstraintMode ) THEN
       CALL Info('SolveSystem','Solving linear system with constraint matrix',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
-        GloNum = ListGetLogical( Params,'Save Constaint Matrix Global Numbering',Found )
+        GloNum = ListGetLogical( Params,'Save Constraint Matrix Global Numbering',Found )
         CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm',Parallel=GloNum)
       END IF
       CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
@@ -15974,7 +15974,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       DO l=RestMatrix % Rows(m+1)-1, RestMatrix % Rows(m), -1
         j = RestMatrix % Cols(l)
 
-        ! skip l-coeffient entries, handled separately afterwards:
+        ! skip l-coefficient entries, handled separately afterwards:
         ! --------------------------------------------------------
         IF(j > n) CYCLE
 
@@ -16908,7 +16908,7 @@ CONTAINS
           END IF
 
           ! We we use loads then compute the effect of the controlled source to the
-          ! reaction force. Hence some hazzle with the temporal pointers.          
+          ! reaction force. Hence some hassle with the temporal pointers.          
           BulkRhsSave => A % BulkRhs
           A % BulkRhs => f(:,iControl)
           CALL CalculateLoads( Solver, A, dx, dofs, .TRUE., NodalValues = dr ) 
@@ -18791,7 +18791,7 @@ CONTAINS
 
         ! Create weights for the averaging of constraints when the drilling DOFs
         ! formulation is used. For the default shell formulation the counting of
-        ! contraints is more straightforward and the array NodeHits will serve
+        ! constraints is more straightforward and the array NodeHits will serve
         ! for the calculation of weights.
         !
         IF (DrillingDOFs) THEN
@@ -22581,7 +22581,7 @@ CONTAINS
    ! Set the friction for a vector field in an implicit manner by copying matrix rows of
    ! the normal component to matrix rows of the tangential component multiplied by friction
    ! coefficient and direction vector. If the direction is the velocity/displacement field
-   ! this means that the amplitude is treated implicitely while the force direction is
+   ! this means that the amplitude is treated implicitly while the force direction is
    ! explicit. This should be called after assembling the finite element matrices but
    ! before setting the Dirichlet BCs. 
    !---------------------------------------------------------------------------------------

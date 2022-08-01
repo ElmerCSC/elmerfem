@@ -230,7 +230,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   n = BotNodes
   
   ! We just use one parameter to define the timestepping.
-  ! This defines how the coeffcients are to be evaluated. 
+  ! This defines how the coefficients are to be evaluated. 
   Beta = ListGetCReal( Params,'Newmark Beta',Found )
   IF(.NOT. Found ) THEN
     ! Default timestepping is impicit euler

@@ -2518,7 +2518,7 @@ RETURN
 
 
     !------------------------------------------------------------------------
-    ! Use a simple bounding box for initializatin
+    ! Use a simple bounding box for initialization
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
     IF( InitMethod(1:3) == 'box') THEN

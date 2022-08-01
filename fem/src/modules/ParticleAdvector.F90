@@ -96,7 +96,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
   InitAllVelo = .TRUE.
   
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',GotIt)

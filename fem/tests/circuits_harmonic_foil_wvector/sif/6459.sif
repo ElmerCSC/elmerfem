@@ -14,7 +14,7 @@
 ! if J Vector and W Vector are used then source term is of the form (J Vector, W Vector)
 ! if only J Vector is used then (J Vector, grad w)
 ! if only W Vector is used then (C W Vector, W Vector)
-! When neighter are used then (C grad w, grad w)
+! When neither are used then (C grad w, grad w)
 ! Author: Eelis Takala
 ! Original date: May 2021
 ! eelis.takala@gmail.com

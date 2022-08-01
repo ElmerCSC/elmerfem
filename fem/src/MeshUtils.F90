@@ -2311,7 +2311,7 @@ CONTAINS
      VList => Model % Simulation
    END IF
    IF(.NOT. ListGetLogical( VList,'Finalize Meshes Before Extrusion',Found ) ) THEN
-     ! The final preparation for the mesh (including dof defintions) will be
+     ! The final preparation for the mesh (including dof definitions) will be
      ! done only after the mesh has been extruded. 
      IF( ListCheckPresent( VList,'Extruded Mesh Levels') .OR. &
        ListCheckPresent( VList,'Extruded Mesh Layers') ) THEN
@@ -7723,7 +7723,7 @@ CONTAINS
 
     ! We know that two Elements are conforming. But we don't know how the edge basis
     ! directions relate to each other. They depend on the numbering in a complex way
-    ! use this routine to do the checking and returm +/-1 and +/-2 hopefully. 
+    ! use this routine to do the checking and return +/-1 and +/-2 hopefully. 
     !------------------------------------------------------------------------------
     SUBROUTINE CheckFaceBasisDirections(Element, ElementB, edofs, fdofs, QuadraticApproximation, &
         Radial, swap)
@@ -13167,7 +13167,7 @@ CONTAINS
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
     END IF
 
-    ! Add "Rotor Radius" to the simulation section in case it should be usefull elsewhere...
+    ! Add "Rotor Radius" to the simulation section in case it should be useful elsewhere...
     CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
     
     
@@ -14183,7 +14183,7 @@ CONTAINS
       END DO
       
       IF( maxind == 0 ) THEN
-        CALL Fatal(Caller,'Could not determine maxiumum unset index!')
+        CALL Fatal(Caller,'Could not determine maximum unset index!')
       ELSE
         CALL Info(Caller,'Setting the representative node to: '//TRIM(I2S(maxind)),Level=8)
         Projector % InvPerm(1) = maxind
@@ -16824,7 +16824,7 @@ CONTAINS
              CALL AllocateVector( Edges(Edge) % NodeIndexes, Degree+1)
              ALLOCATE( Edges(Edge) % BoundaryInfo, STAT=allocstat )
              IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo alloction')
+               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo allocation')
              END IF
 
              Edges(Edge) % TYPE => GetElementType( 201+Degree, .FALSE. )
@@ -16866,7 +16866,7 @@ CONTAINS
 !            ----------------------
              ALLOCATE( HashPtr, STAT=allocstat )
              IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr alloction')
+               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr allocation')
              END IF
 
              HashPtr % Edge = Edge
@@ -18908,7 +18908,7 @@ END SUBROUTINE FindNeighbourNodes
 
        CASE DEFAULT
           WRITE( Message,* ) 'Element type ', Eold % TYPE % ElementCode, &
-              ' not supprted by the multigrid solver.'
+              ' not supported by the multigrid solver.'
           CALL Fatal( 'SplitMeshEqual', Message )
        END SELECT
     END DO
@@ -20758,7 +20758,7 @@ CONTAINS
        Perm(i) = Perm(j)
        Perm(j) = 1
 
-       ! Minimizing the bandwith of a closed loop is impossible.
+       ! Minimizing the bandwidth of a closed loop is impossible.
        ! So let us break the loop on one node. 
        IF(PRESENT(BreakLoop)) THEN
          IF(BreakLoop) BreakNode = 1
@@ -22398,7 +22398,7 @@ CONTAINS
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
         ! If there are more than two competing parallel hits then use more stringent conditions
-        ! since afterwords there is no way of deciding which one was closer.
+        ! since afterwards there is no way of deciding which one was closer.
         !--------------------------------------------------------------------------------------
         IF( ParallelCands > 1.5_dp ) THEN
           Hit = PointInElement( Element, ElementNodes, &
@@ -25945,7 +25945,7 @@ CONTAINS
 
 
   !> Create interface boundaries consisting of edges defined by the intersection of two higher
-  !> dimensional boundaries. This may be usefull for 3D meshes where 1D meshes have not been
+  !> dimensional boundaries. This may be useful for 3D meshes where 1D meshes have not been
   !> create in advance.
   !-------------------------------------------------------------------
   SUBROUTINE CreateIntersectionBCs(Model, Mesh)

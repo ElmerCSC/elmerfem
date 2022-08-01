@@ -631,7 +631,7 @@
                  AngularVelocity = gWork(1:3,1)
                  Rotating = .TRUE.
                ELSE
-                 CALL Fatal('FlowSolve','Rotating coordinate implemented only for cartesian coodinates')
+                 CALL Fatal('FlowSolve','Rotating coordinate implemented only for cartesian coordinates')
                END IF
              ELSE
                AngularVelocity = 0.0_dp

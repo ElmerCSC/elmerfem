@@ -1846,7 +1846,7 @@ CONTAINS
 
   ! Check if matrix C that is a coupling block in the block matrix system
   ! couples dofs at parallel interfaces. Assume that C := C_ab where a is
-  ! associcated to A and b to B.
+  ! associated to A and b to B.
   !------------------------------------------------------------------------
   FUNCTION CheckParallelCoupling( A, B, C ) RESULT ( Coupled ) 
     TYPE(Matrix_t), POINTER :: A, B, C

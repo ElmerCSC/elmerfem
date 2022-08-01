@@ -26,7 +26,7 @@
 ! * This module solves electrochemical reactions for two phase (solid+electrolyte)
 ! * battery. The model uses the Galerkin method for all equations. The robustness
 ! * of the code still could be improved. The continuous model itself follows very
-! * closely the references while the way how the discrete system is solved is alsmost
+! * closely the references while the way how the discrete system is solved is almost
 ! * completely different.
 ! *
 ! * If you're interested in continuing the work we would appreciate contacting
@@ -132,7 +132,7 @@ CONTAINS
     CALL CalculateAnodeWeight()
 
     ! Using some "inertia" in the flux helps in convergence.
-    ! We may either use natural intertia coming from time,
+    ! We may either use natural inertia coming from time,
     ! or just iteration coming from inertia. 
     IF( UseTimeAveFlux ) THEN      
       JLi0 => JliVar % PrevValues(:,1)    
@@ -493,7 +493,7 @@ CONTAINS
   END FUNCTION ButlerVolmer
 
 
-  ! Given homogenious flux J_Li convert it to flux for the solid phase spheres
+  ! Given homogeneous flux J_Li convert it to flux for the solid phase spheres
   ! The idea is that we can hide scaling of Jli such that what remains is
   ! rather standard PDE and BCs for (3.2) for Cs.
   !----------------------------------------------------------------------------
