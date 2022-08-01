@@ -276,7 +276,7 @@ static void obj_translate_matrix( matrix_t M, double x, double y, double z )
  *
  *     Parameters:
  *
- *         Input:    (double,double,double) scaleings x,y,and z
+ *         Input:    (double,double,double) scalings x,y,and z
  *
  *         Output:   (matrix_t) resulting transformation matrix
  *
@@ -541,7 +541,7 @@ static void obj_rotate_mult_matrix(transform_t *transform,double *x,double *y,do
  *     Name:          obj_compute_matrix( transform_t * )
  *
  *     Purpose:       Return total transformation matrix_t given rotations,
- *                    scaleing, and translations. Internal only.
+ *                    scaling, and translations. Internal only.
  *
  *     Parameters:
  *
@@ -655,7 +655,7 @@ int obj_set_parent( object_t *object,object_t *parent )
  *
  *     Name:          obj_rotate( object_t *,double,double,double,int,int )
  *
- *     Purpose:       Modifify object transformation matrix given rotations
+ *     Purpose:       Modify object transformation matrix given rotations
  *
  *     Parameters:
  *
@@ -762,13 +762,13 @@ void obj_rotate( object_t *object,double x,double y,double z,int which,int relat
  *
  *     Name:          obj_scale( object_t *,double,double,double,int,int )
  *
- *     Purpose:       Modifify object transformation matrix given scaleings
+ *     Purpose:       Modify object transformation matrix given scalings
  *
  *     Parameters:
  *
  *         Input:    (object_t *)
- *                   (double,double,double) input scaleings
- *                   (int) flag if scaleings should be relative (TRUE)
+ *                   (double,double,double) input scalings
+ *                   (int) flag if scalings should be relative (TRUE)
  *                          or absolute (FALSE)
  *
  *         Output:   (object->Transform_t *)->XXXMatrix are modified
@@ -847,7 +847,7 @@ void obj_scale( object_t *object,double x,double y,double z,int which, int relat
  *
  *     Name:          obj_translate( object_t *,double,double,double,int,int  )
  *
- *     Purpose:       Modifify object transformation matrix given translations
+ *     Purpose:       Modify object transformation matrix given translations
  *
  *     Parameters:
  *

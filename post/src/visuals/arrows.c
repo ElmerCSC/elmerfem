@@ -54,7 +54,7 @@
 
 /******************************************************************************
  * 
- * Parameter sructure definitios for arrow visual class
+ * Parameter structure definitions for arrow visual class
  *
  ******************************************************************************/
 typedef struct arrow_s
@@ -93,7 +93,7 @@ typedef struct arrow_s
  *
  *         Output:  graphics
  *
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

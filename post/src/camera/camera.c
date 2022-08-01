@@ -133,7 +133,7 @@ void cam_set_projection( camera_t *camera,camera_proj_t projection )
  *
  *     Parameters:
  *
- *         Input:   (float) intput field angle.
+ *         Input:   (float) input field angle.
  *
  *         Output:  (camera_t *) camera structure is modified
  *
