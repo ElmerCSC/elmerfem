@@ -648,7 +648,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   PeriodicDir => ListGetIntegerArray( Params,'Periodic Directions',&
       DoPeriodic )
 
-  ! allow to define node coordinates from varaibles
+  ! allow to define node coordinates from variables
   CoordName = ListGetString( Params,'Elmer Coordinate 1',Found)
   IF (Found) THEN
      ElmerCoord1 => VariableGet(Mesh%Variables,TRIM(CoordName),UnFoundFatal=.TRUE.)

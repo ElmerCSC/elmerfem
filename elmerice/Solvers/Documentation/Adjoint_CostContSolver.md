@@ -30,7 +30,7 @@ for a 3D model and 2D surface observations.
 
 ### Keywords
 
-Bellow are the related keywords in the *.sif* file.
+Below are the related keywords in the *.sif* file.
 The solver will usually be executed on the bulk for vertically integrated models or on a boundary for 3D models.
 
 ```

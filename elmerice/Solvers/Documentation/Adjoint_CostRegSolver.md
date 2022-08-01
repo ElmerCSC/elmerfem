@@ -30,7 +30,7 @@ where $V^{prior}$ is the *prior* estimate and $s^2$ the variance
 
 ### Keywords
 
-Bellow are the related keywords in the *.sif* file:  
+Below are the related keywords in the *.sif* file:  
 
 
 ```
@@ -76,9 +76,9 @@ Solver *solver id*
 Values for the nodal variable **V** can be given in the body force if  *Optimized Variable Name* was
 not provided in the solver parameters. 
 This can be useful if we want to apply some change of variable compared to the variable that is optimised,
-However it will be to the user responsability to provide the exact derivative of his change of variable 
+However it will be to the user responsibility to provide the exact derivative of his change of variable 
 as, by default, the solver computes the derivative with respect to the nodal value.
-In this cas ethe user can directly provide the derivative with the keyword *CostReg Nodal Variable der = Real ...*
+In this case the user can directly provide the derivative with the keyword *CostReg Nodal Variable der = Real ...*
 see below and *[examples]*
 
 If using *a priori* regularisation, nodal values for the *prior* and *standard deviation* are given in the body force too.
@@ -109,9 +109,9 @@ Body Force i
 End
 ```
 
-### Limitations and possible improvments
+### Limitations and possible improvements
 
-Bellow is a list of features that are not currently possible in this solver but that could be implemented:  
+Below is a list of features that are not currently possible in this solver but that could be implemented:  
 
 - If running on a boundary, we use only the first spatial derivatives, so this solver is intended to be used on a bottom or top surface.
 

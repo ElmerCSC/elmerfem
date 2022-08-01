@@ -142,7 +142,7 @@ end
 !!   where beta is the friction parameter
 !!   and fm the friction exponent (equal to 1 for linear friction)
 !!   !! has to be computed here as it introduvce derivatives w.r.t. the velocity
-!!   !! set Reset DJDBeta = Logical False in AdjointSSA_GradientSolver as this fonction already introduces a derivative
+!!   !! set Reset DJDBeta = Logical False in AdjointSSA_GradientSolver as this function already introduces a derivative
 Solver 3
   Equation = "DJDTau_Reg"
     procedure = "ElmerIceSolvers" "AdjointSSA_CostTaubSolver"

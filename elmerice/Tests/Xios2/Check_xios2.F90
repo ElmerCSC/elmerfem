@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Subroutine to check that output from XIOS was successfull
+! *  Subroutine to check that output from XIOS was successful
 ! *  
 ! ******************************************************************************
 ! *

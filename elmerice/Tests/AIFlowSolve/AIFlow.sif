@@ -27,7 +27,7 @@ Simulation
   Timestep Intervals =  10
   Output Intervals = 10 
   Output File = "AIFlow.result"
-  Post File = "AIFlow.vtu" ! use .ep suffix for leagcy format
+  Post File = "AIFlow.vtu" ! use .ep suffix for legacy format
   Initialize Dirichlet Conditions = Logical False
 End
 

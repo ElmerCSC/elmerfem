@@ -165,8 +165,8 @@ SUBROUTINE IcyMaskSolver( Model,Solver,dt,TransientSimulation )
   END DO
      
   IF (Isolated) THEN 
-     ! Look for Isolated Nodes (one node surounded only by Ice Free nodes)
-     ! These nodes are tagued with Mask value < -1
+     ! Look for Isolated Nodes (one node surrounded only by Ice Free nodes)
+     ! These nodes are tagged with Mask value < -1
     DO t = 1, Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       n = GetElementNOFNodes()

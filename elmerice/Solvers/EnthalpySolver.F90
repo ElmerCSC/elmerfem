@@ -1651,7 +1651,7 @@ CONTAINS
                  Enthalpy_h, EnthalpyPerm, Emissivity, AngleFraction)
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
-!       Go trough surfaces (j) this surface (i) is getting
+!       Go through surfaces (j) this surface (i) is getting
 !       radiated from.
 !------------------------------------------------------------------------------
 

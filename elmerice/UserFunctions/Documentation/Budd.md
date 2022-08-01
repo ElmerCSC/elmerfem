@@ -10,7 +10,7 @@ This is a summary description. See comments in the code module for a more comple
 Basal shear stress is given by:
 
 *tau_b = C.{u_b}^{m - 1} . u_b . Zab^{q}*
-where *Zab* is height above bouyancy, *C* is a friction coefficient, and *m* and *q* are exponents.
+where *Zab* is height above buoyancy, *C* is a friction coefficient, and *m* and *q* are exponents.
 
 The parameters to be given (in the bed boundary condition) are:
 - Budd Friction Coefficient → *C*
