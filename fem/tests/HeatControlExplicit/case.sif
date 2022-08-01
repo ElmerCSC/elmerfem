@@ -72,8 +72,10 @@ Solver 1
   Linear System Residual Output = 10
 
 ! Create an control value on-the-fly at the center point of the square.
+! The control parameter will be available as a global variable "cpar".
   Apply Explicit Control = Logical True
   Number Of Controls = Integer 1
+! This is properly done also in parallel within the library. 
   Control Node Coordinates(1,2) = Real 0.5 0.5
 End 
 
