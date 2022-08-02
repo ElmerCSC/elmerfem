@@ -848,7 +848,7 @@
                 'Scalar Field ',Vari,' compute cell average'
              Project = ListGetLogical(Params,TRIM(Txt),Found)
              IF (Project) THEN
-                ! check if wee need to send the data
+                ! check if we need to send the data
                 FieldActive=xios_field_is_active(TRIM(Solution%Name)//'_elem',.TRUE.)
                 WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Solution%Name)//'_elem',FieldActive
                 CALL Info(Caller,Message,Level=Olevel)
@@ -890,7 +890,7 @@
              ENDIF
           END IF
 
-          ! check if wee need to send the data
+          ! check if we need to send the data
           FieldActive=xios_field_is_active(TRIM(Solution%Name),.TRUE.)
           WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Solution%Name),FieldActive
           CALL Info(Caller,Message,Level=Olevel)

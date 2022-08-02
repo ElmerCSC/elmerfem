@@ -109,7 +109,7 @@ e.g.
 
  End
 ```
-Or using ElmerIce build-in user functions:
+Or using ElmerIce built-in user functions:
 
 ```
  Material *id*

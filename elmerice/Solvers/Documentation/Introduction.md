@@ -41,17 +41,17 @@ Some solvers are model specific.
 The following chapters describe solvers specific to compute the gradients (4), and are model specific.
 
 The adjoint codes have been derived by hand as usually the structure of Elmer is too complex
-to use  automatic differentiation softwares.
+to use automatic differentiation software.
 
 The solvers have been designed to be as generic as possible. A strength of Elmer is its modularity,
 however it means that the configuration can be complex, and it is possible that when writing the code
-whe have not taken into account all the possibilities offered by Elmer.
+we have not taken into account all the possibilities offered by Elmer.
 
 We have done the maximum to test the solvers and they should be accurate for standard simulations. However, it will
 be to the user responsibility to check that his configuarations leads to accurate gradients and smooth optimisation. 
 A cost which is not decreasing is often the sign the the gradients are not accurates.
 
 **Please contribute to improve this documentation and Elmer/Ice capabilities** by reporting errors or inaccuracies,
-and contribute in developping new test cases and functionnalities.
+and contribute in developing new test cases and functionalities.
 
 

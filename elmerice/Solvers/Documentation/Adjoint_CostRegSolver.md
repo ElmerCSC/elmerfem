@@ -38,7 +38,7 @@ Solver *solver id*
   
     Equation = String "CostReg"  
     procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
-    !## No need to declare a variable, this is done internally to insure
+    !## No need to declare a variable, this is done internally to ensure
     !    that Solver structures exist
  
      !# True if cost function and gradient must be initialised 
@@ -115,7 +115,7 @@ Below is a list of features that are not currently possible in this solver but t
 
 - If running on a boundary, we use only the first spatial derivatives, so this solver is intended to be used on a bottom or top surface.
 
-- If Regularisation with respect to the *prior* is used, for the moment we assume no spatial error in the statitics and use only a standard deviation; The cost function could easily be improved if a full background error covariance matrix is known
+- If Regularisation with respect to the *prior* is used, for the moment we assume no spatial error in the statistics and use only a standard deviation; The cost function could easily be improved if a full background error covariance matrix is known
 
 
 ### Tests and Examples

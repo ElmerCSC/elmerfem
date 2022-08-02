@@ -1,5 +1,5 @@
 ! This a test case for a system that depends on values of a control point.
-! The control point is used explicitely. This takes use of some of the
+! The control point is used explicitly. This takes use of some of the
 ! same routines as the implicite control but due to the explicit nature
 ! the user is left in full control how to use the control points coming
 ! from previous timesteps. Maybe a little bit different logic would have

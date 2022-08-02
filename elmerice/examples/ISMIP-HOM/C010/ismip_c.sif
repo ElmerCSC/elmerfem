@@ -101,7 +101,7 @@ Solver 2
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = ILU0
   Linear System Convergence Tolerance = Real 1.0e-6
-  Linear System Abord Not Converged = Logical False
+  Linear System Abort Not Converged = Logical False
 
   Nonlinear System Max Iterations = 50
   Nonlinear System Convergence Tolerance  = 1.0e-5

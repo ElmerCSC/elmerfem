@@ -843,7 +843,7 @@ VARIABLE *com_apply(ptr) VARIABLE *ptr;
 
 void mem_free(void *mem)
 /*======================================================================
-?  Free memory given by argument, and unlink it from alloction list.
+?  Free memory given by argument, and unlink it from allocation list.
 |  Currently FREEMEM(ptr) is defined to be mem_free(ptr).
 |
 &  free()

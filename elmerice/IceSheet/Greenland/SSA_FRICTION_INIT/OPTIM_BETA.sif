@@ -88,7 +88,7 @@ Material 1
   SSA Mean Density = Real $rhoi
 
   SSA Friction Law = String "linear"
-  ! The friction parameter is 10^the optimised variable to insure > 0
+  ! The friction parameter is 10^the optimised variable to ensure > 0
   SSA Friction Parameter = Variable alpha
       REAL procedure "ElmerIceUSF" "TenPowerA"
   SSA Friction Parameter Derivative = Variable alpha

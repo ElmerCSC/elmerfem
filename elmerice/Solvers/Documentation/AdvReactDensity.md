@@ -7,7 +7,7 @@ This page explains how to use the general AdvectionReactionSolver from the Elmer
 
 where *u* is the velocity vector. In the particular case of the mass conservation equation, one has therefore *gamma = 0* and *sigma = 0*. Solving for the true density (kg/m^3) or the relative density is equivalent (but limit values and Dirichlet boundary conditions have to be set accordingly).
 
-Note 1: equation (4.1) in the Elmer Model Manual for the AdvectionReaction sover is not correct. The previous equation is the one implemented.
+Note 1: equation (4.1) in the Elmer Model Manual for the AdvectionReaction solver is not correct. The previous equation is the one implemented.
 
 Note 2: Have a look to this [post](http://elmerfem.org/forum/viewtopic.php?f=7&t=3066&p=9570#p9570) on the Elmer Forum regarding the initialisation of both the DG primary and exported variables of the AdvectionReaction solver (see the example at the end of this page).
 

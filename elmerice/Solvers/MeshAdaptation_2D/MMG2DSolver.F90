@@ -191,7 +191,7 @@
       IF (DEBUG) PRINT *,'--**-- COPY MESH TO MMG FORMAT'
 
        !Permuatation table Local Element => Global E
-       ! to insure consistent numbering for different partitionning
+       ! to ensure consistent numbering for different partitioning
        ALLOCATE(LEtoGE(Mesh % NumberOfBulkElements))
         DO ii=1,Mesh % NumberOfBulkElements
           Element => Mesh % Elements(ii)
