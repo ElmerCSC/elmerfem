@@ -1105,7 +1105,7 @@ omstart:
 
   if( boundarynodes > 0 ) {
     if(info) printf("Number of nodes in boundary sets: %d\n",boundarynodes);      
-    /* Temporarily supress the deallocation while trying to find a bug */
+    /* Temporarily suppress the deallocation while trying to find a bug */
     free_Ivector(nodeindx,1,boundarynodes);
     free_Ivector(boundindx,1,boundarynodes);
   }    

@@ -44,7 +44,7 @@ to small velocities, so that we obtained a good compromise during the optimisati
 area of high velocities - high errors. However, for  applications with unstructured meshes where the mesh size
 is not related to the magnitude of the errors, it may be beneficial to change the inner product and scale the gradients by the mesh size.
 This is automatically achieved when setting the keyword *Mesh Independent=TRUE*.
-This will lead to smoother gradients, however for areas with small errors this will lead to small gradients and theses areas will not be affected by the optimisation. In this case it might be beneficial to have a cost function that also measures the relative error.  
+This will lead to smoother gradients, however for areas with small errors this will lead to small gradients and these areas will not be affected by the optimisation. In this case it might be beneficial to have a cost function that also measures the relative error.  
 *Note* that the change of inner product affects the *conditionning* of the minimisation, so in *perfect simulations* both solutions should lead to the same exact minimum....
 
 - Outputs from M1QN3 are saved in the *M1QN3 OutputFile*. The  verbosity level is controlled with the keyword *impres*.

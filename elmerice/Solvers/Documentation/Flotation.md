@@ -37,7 +37,7 @@ The aim of this solver is to apply the flotation criterion to compute the top an
 - If the GroundedMask variable is present:  
   - GroundedMask=1 where $z_b=bedrock$ (grounded ice)
   - GroundedMask=-1 where $z_b>bedrock$ (floating ice)
-  - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at leat one node floating) element  
+  - GroundedMask=0 at the grounding line (list of nodes where $z_b=bedrock$ but the nodes belong to at least one grounded (all nodes grounded) and one floating (at least one node floating) element  
 
 - IF compute ice area fractions = TRUE, compute the element area fractions sftgif (land_ice_area_fraction), sftgrf (grounded_ice_sheet_area_fraction), sftflf (floating_ice_shelf_area_fraction). No sub-scheme is used so values are 0._dp or 1._dp. An element is considered floating if at least one node is floating, otherwise it is grounded. If the solution for the Thickness is limited, then if all nodal H == Lower Limit, all teh area fractions are set to 0.
 

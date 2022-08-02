@@ -24,7 +24,7 @@ svn co http://forge.ipsl.jussieu.fr/ioserver/svn/XIOS/trunk XIOS
 ```  
 
 2. Compile XIOS, see its documentation   
-   - You will have to add **-fPIC** for the *BASE_CFLAGS* and *BASE_FFLAGS* as we wil need a shared library
+   - You will have to add **-fPIC** for the *BASE_CFLAGS* and *BASE_FFLAGS* as we will need a shared library
    - To use the UGRID format we need to have netcdf with parallel I/O support
 
 
@@ -89,7 +89,7 @@ mpirun -np N ElmerSolver_mpi : -np N2 xios_server
 
 ### Saving variables with XIOS
 
-- To use the UGRID format, geographical coordinates are required (Longitude/Latitude); They are computed using gerenic functionnalities in [ProjUtils](../../Utils/Documentation/ProjUtils.md). The projection description should be provided in the *Simulation* section (only south and north polar stereographic projections are supported by default at the moment). The projected coordinates can be saved by requesting to save the elmer coordinates.
+- To use the UGRID format, geographical coordinates are required (Longitude/Latitude); They are computed using generic functionalities in [ProjUtils](../../Utils/Documentation/ProjUtils.md). The projection description should be provided in the *Simulation* section (only south and north polar stereographic projections are supported by default at the moment). The projected coordinates can be saved by requesting to save the elmer coordinates.
 
 - Elmer variables that have to be transferred to XIOS are defined with the Solver keywords *Scalar Field i* for nodal and elemental variables and *Global Variable i* for global variables. The *id* in the XIOS configuration file should be the elmer variable name :warning: **in lower case**.
 
@@ -130,7 +130,7 @@ Solver ..
 
  ! time-step: optional the duration of the tile step; other time_step=time_units*dt
    timestep=String "15d"
- ! for consitency check we check that taking 1/dt time_step leads 
+ ! for consistency check we check that taking 1/dt time_step leads 
  !  to the same duration than time_units with xx seconds
    timestep tolerance = Real 1.0
 

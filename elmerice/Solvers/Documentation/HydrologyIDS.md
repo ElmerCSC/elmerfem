@@ -13,7 +13,7 @@ This solver treats the diffusion equation with a user-defined upper limit.
 ## SIF contents
 The required keywords in the SIF file for this solver are given below. The IDSSolver can be used alone, coupling between the two layer is treated in the [EPLSolver](./HydrologyEPL.md) section
 
-The hydrological system is only treated at the bed, it requires then a new body with a specific equation and intial condition, the Material and Body Force section are using the one from the ice.
+The hydrological system is only treated at the bed, it requires then a new body with a specific equation and initial condition, the Material and Body Force section are using the one from the ice.
 
 ```
 Body 2

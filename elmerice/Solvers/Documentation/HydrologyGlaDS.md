@@ -73,7 +73,7 @@ In the Body Force section, one can set a water input source:
     Hydraulic Potential Volume Source = Real $Source
   End
 ```
-GlaDSCoupledSolver solves for the three variables Hydraulic Potential, Sheet Thickness and Channel Area in a coupled way inside the solver itself (Coupled Max Iterations and Coupled Convergence Tolerance). Equations for the Hydraulic Potential and Channel Area are non linear. Only the equation for the Hydraulic Potential needs to solve a system. The two others are local and can be solved either explicitely, implcitely or using the Crank-Nicholson method.
+GlaDSCoupledSolver solves for the three variables Hydraulic Potential, Sheet Thickness and Channel Area in a coupled way inside the solver itself (Coupled Max Iterations and Coupled Convergence Tolerance). Equations for the Hydraulic Potential and Channel Area are non linear. Only the equation for the Hydraulic Potential needs to solve a system. The two others are local and can be solved either explicitly, implcitely or using the Crank-Nicholson method.
 
 ```
 Solver 1

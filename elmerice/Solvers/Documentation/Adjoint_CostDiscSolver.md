@@ -45,7 +45,7 @@ Solver *solver id*
   
     Equation = String "Cost"  
     procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
-    !## No need to declare a variable, this is done internally to insure 
+    !## No need to declare a variable, this is done internally to ensure 
     !## that Solver structures exist
 
     !# If the variable is a vector, 
@@ -63,7 +63,7 @@ Solver *solver id*
      !##  the rms (i.e. not normalised by standard error)
      Cost Filename = File ""
      
-     !# Name of the variable that contain the cost value
+     !# Name of the variable that contains the cost value
      !#  must exist and can be a global variable
      Cost Variable Name = String ""
      
@@ -79,15 +79,15 @@ Solver *solver id*
      !## Coordinates dimension of the Obs. must be consistent with Pb dimension;
      !##  i.e. CoordsystemDim if solver is on the bulk or 
      !###      (CoordsystemDim-1) if solver is on a boundary
-     !## If the observation file is in ASCII it must containt the following columns:
+     !## If the observation file is in ASCII it must contain the following columns:
      !##  coordinates(1:ndim), observations(1:vardim), standard errors(1:vardim) (optional)
      Observation File Name = File "" 
      
-     !# If the variable is a vector, how many component do we observe?
+     !# If the variable is a vector, how many components do we observe?
      !## it will be the first *n* components
      Observed Variable dimension = Integer ...
    
-     !# If true data that have been found in the mesh at the 
+     !# If true data that has been found in the mesh at the 
      !#  first visit will be saved in an ascii file
      !## will save coordinates, observation, standard error (optional), element number
      !## there will be one file per partition

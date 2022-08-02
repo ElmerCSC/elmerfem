@@ -1092,7 +1092,7 @@ int main(int argc, char *argv[])
     printf("      wexp  ... (optional, but mandatory if previous was given)\n");
     printf("                  exponent of weight for interpolation w=1/r^wexp\n");
     printf("      noval  ... (optional, but mandatory if previous was given)\n");
-    printf("                  value indicating void/unvalid entry in DEM (e.g. -999.99)\n");
+    printf("                  value indicating void/invalid entry in DEM (e.g. -999.99)\n");
     printf("     corrbed ... (optional) value: 1 or any other number\n");
     printf("                 corrections induced by minimum flowdpeth are by default applied\n");
     printf("                 correctiong the side of the free surface, only of value 1 is defined\n");

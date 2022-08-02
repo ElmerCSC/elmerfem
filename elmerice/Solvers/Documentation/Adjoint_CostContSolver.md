@@ -38,7 +38,7 @@ Solver *solver id*
   
     Equation = String "Cost"  
     procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
-    ## No need to declare a variable, this is done internally to insure that Solver structures exist
+    ## No need to declare a variable, this is done internally to ensure that Solver structures exist
      
      # Name of an ascii file that will contain the cost value as
      ## Time, J, sqrt(2J/Area)

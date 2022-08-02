@@ -2799,7 +2799,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 			&ncon,         /* number of balancing constraints */
 			xadj, adjncy,  /* the adjacency structure of the graph */
 			vwgt,          /* weights of the vertices */
-			&wgtflag,      /* size of the vectices for computing communication */
+			&wgtflag,      /* size of the vertices for computing communication */
 			adjwgt,        /* weight of the edges */     
 			&nparts,       /* number of partitions */
 			NULL,          /* weights for each partition and constraint */
