@@ -1972,7 +1972,7 @@ CONTAINS
 
     NoActive = ParallelReduction( Active ) 
     IF( NoActive == 0 ) THEN
-      CALL Warn('WritePvtuFile','No active partitions for saving')
+      CALL Info('WritePvtuFile','No active partitions for saving',Level=12)
     END IF
     AllActive = ( NoActive == Partitions )
     
