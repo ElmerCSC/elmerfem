@@ -696,7 +696,7 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       ParallelReduce = ListGetLogical(Params,'Parallel Reduce',Found )
     END IF
-
+        
     IF( ParallelReduce ) THEN
       BLOCK 
         INTEGER :: SavePart, MaxSize, TotSize, NoPart
@@ -751,7 +751,7 @@ CONTAINS
             ResultData => tmpResultData
             LabelData => tmpLabelData            
           END IF
-
+          
           ! Sent data sizes:
           !--------------------------
           IF( ParEnv % Mype == SavePart ) THEN
@@ -772,13 +772,13 @@ CONTAINS
           !--------------------------
           IF( ParEnv % Mype == SavePart ) THEN                                   
             offset = NoData
-            PRINT *,'Recieving with offset:',ParEnv % MyPe, offset
+            !PRINT *,'Recieving with offset:',ParEnv % MyPe, offset
             
             DO i=0, ParEnv % PEs-1
               IF( i == SavePart) CYCLE
               j = RecSize(i)
               IF(j==0) CYCLE
-
+              
               NULLIFY(tmpPosData, tmpLabelData, tmpResultData)
               ALLOCATE(tmpPosData(j),tmpLabelData(j,NoLabels),tmpResultData(j,NoResults),STAT=istat)              
               IF( istat /= 0 ) THEN
@@ -801,6 +801,8 @@ CONTAINS
                 CALL Fatal(Caller,'Problems deallocating temporal workspace for parallel communication')
               END IF              
               offset = offset + j
+
+              !PRINT *,'offset:',offset
             END DO
           ELSE IF( NoData > 0 ) THEN
             NULLIFY(tmpPosData, tmpLabelData, tmpResultData)
@@ -849,27 +851,29 @@ CONTAINS
     
     
     IF( NoData > 0 ) THEN
+      ! If we have a meaning full position info:
       NewOrder => NULL()
-      ALLOCATE(NewOrder(NoData),STAT=istat)
-      IF(istat /= 0) CALL Fatal(Caller,'Problems allocating NewOrder vector!')
-
-      CALL Info(Caller,'Sorting and saving '//TRIM(I2S(NoData))//' tabulated rows',Level=7)
-
-      ! Use negative sign so that we go from small coordinates to bigger...
-      PosData = -PosData
-      
-      DO i=1,NoData
-        NewOrder(i) = i
-      END DO      
-      CALL SortR( NoData,NewOrder,PosData)
-
+      IF( PosData(NoData) > 0.0_dp ) THEN
+        ALLOCATE(NewOrder(NoData),STAT=istat)
+        IF(istat /= 0) CALL Fatal(Caller,'Problems allocating NewOrder vector!')
+        CALL Info(Caller,'Sorting and saving '//TRIM(I2S(NoData))//' tabulated rows',Level=7)        
+        DO i=1,NoData
+          NewOrder(i) = i
+        END DO
+        CALL SortR( NoData,NewOrder,PosData)
+      END IF
+        
       CALL OpenLineFile(ParallelReduce)
                 
       DO i = 1, NoData
-        k = NewOrder(i)
-        IF(i>1) THEN
+        k = i
+        IF( ASSOCIATED( NewOrder ) ) THEN
+          ! Go from small coordinates to bigger...
+          k = NewOrder(NoData-i+1)
+        END IF
+        IF(i>1 .AND. PosData(i) > 0.0_dp ) THEN
           dpos = ABS(PosData(i)-PosData(i-1))
-          IF(dpos < EPSILON(dpos) ) THEN 
+          IF( dpos < EPSILON(dpos) ) THEN 
             !PRINT *,'skipping value',PosData(i),PosData(i-1)
             CYCLE
           END IF
@@ -884,8 +888,12 @@ CONTAINS
       END DO
       NoData = 0
       
-      DEALLOCATE( NewOrder,PosData,LabelData,ResultData,STAT=istat)
-      IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating some workspace in the end')
+      IF( ASSOCIATED(NewOrder) ) THEN
+        DEALLOCATE( NewOrder, STAT=istat )
+        IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating NewOrder vector')
+      END IF
+      DEALLOCATE( PosData,LabelData,ResultData,STAT=istat)
+      IF(istat /= 0) CALL Fatal(Caller,'Problems deallocating some temporal workspace')
     END IF
     
     IF(FileIsOpen) THEN
@@ -935,7 +943,9 @@ CONTAINS
     
     ! If we have position on the line then we can sort the entries.
     Tabulate = .FALSE.
-    IF(PRESENT(linepos)) Tabulate = .TRUE. 
+    IF(PRESENT(linepos)) THEN
+      Tabulate = ( linepos > 0 ) .OR. Parallel
+    END IF
     
     IF( .NOT. SkipBoundaryInfo ) THEN      
       Labels = 0
@@ -1238,7 +1248,7 @@ CONTAINS
     IF( Tabulate ) THEN
       NoLabels = MAX(n0, NoLabels) 
       NoData = NoData + 1
-
+      
       BLOCK
         REAL(KIND=dp), POINTER :: tmpPosData(:), tmpResultData(:,:)
         INTEGER, POINTER :: tmpLabelData(:,:)
@@ -1497,6 +1507,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: ValueList
     TYPE(Element_t), POINTER :: Parent
     LOGICAL :: BreakLoop
+    REAL(KIND=dp) :: linepos 
     
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
@@ -1531,7 +1542,7 @@ CONTAINS
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
           CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
         END IF
-        CALL Info(Caller,'Number of nodes in specified boundary: '//TRIM(I2S(SaveNodes(1))))
+        CALL Info(Caller,'Number of nodes in specified boundary: '//TRIM(I2S(SaveNodes(1))),Level=12)
       END IF
     ELSE
       SaveNodes(1) = 0
@@ -1690,13 +1701,14 @@ CONTAINS
             Mesh % Nodes % x(node) = Coord(1) 
             Mesh % Nodes % y(node) = Coord(2) 
             IF( dim == 3 ) Mesh % Nodes % z(node) = Coord(3) 
-            
+
+            linepos = -1.0_dp
             IF( CalculateFlux ) THEN
               CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), linepos = linepos )
             ELSE
               CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE. )
+                  dgnode, UseNode = .TRUE., linepos = linepos )
             END IF
             
             ! and revert 
@@ -1716,14 +1728,15 @@ CONTAINS
       !---------------------------------  
       IF( .NOT. DGVar ) THEN
         dgnode = 0
+        linepos = -1.0_dp
         DO t = 1, SaveNodes(1)    
           node = InvPerm(t)
           IF( CalculateFlux ) THEN
             CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), linepos = linepos )
           ELSE
             CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE. )
+                dgnode, UseNode = .TRUE., linepos = linepos )
           END IF
         END DO
       END IF        
@@ -2294,7 +2307,7 @@ CONTAINS
         No = 0
         Values = 0.0d0
         
-        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0 )         
+        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0, linepos = -1.0_dp )         
       END DO
 
       WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes(4)
@@ -2304,7 +2317,7 @@ CONTAINS
 
     IF(ALLOCATED(LineTag)) THEN
       DEALLOCATE( LineTag, STAT=istat)
-      IF(istat /= 0) CALL Fatal(Caller,'Could not allocate LineTag!')
+      IF(istat /= 0) CALL Fatal(Caller,'Could not deallocate LineTag!')
     END IF
     
   END SUBROUTINE SaveIsoCurves
