@@ -881,7 +881,7 @@ CONTAINS
       RETURN
     END IF
 
-    CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
+    CALL Info('DefineCoilParameters','Fitting the coil by maximizing inertia',Level=7)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
