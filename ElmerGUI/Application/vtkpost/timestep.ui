@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>timeStepDialog</class>
  <widget class="QDialog" name="timeStepDialog" >
@@ -13,7 +14,8 @@
    <string>Time step control</string>
   </property>
   <property name="windowIcon" >
-   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+   <iconset resource="../ElmerGUI.qrc" >
+    <normaloff>:/icons/Mesh3D.png</normaloff>:/icons/Mesh3D.png</iconset>
   </property>
   <layout class="QVBoxLayout" >
    <item>
@@ -364,7 +366,8 @@
         <string>Cancel</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close" >
+         <normaloff>.</normaloff>.</iconset>
        </property>
       </widget>
      </item>
@@ -374,7 +377,7 @@
         <string>Ok</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" />
        </property>
        <property name="default" >
         <bool>false</bool>

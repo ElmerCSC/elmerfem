@@ -62,10 +62,10 @@ DynLineEdit::~DynLineEdit()
 DynamicEditor::DynamicEditor(QWidget *parent)
   : QWidget(parent)
 {
-  newIcon = QIcon(":/icons/document-new.png");
-  addIcon = QIcon(":/icons/list-add.png");
-  okIcon = QIcon(":/icons/dialog-ok-apply.png");
-  removeIcon = QIcon(":/icons/list-remove.png");
+  newIcon = QIcon::fromTheme("document-new");
+  addIcon = QIcon::fromTheme("list-add");
+  okIcon = QIcon::fromTheme("dialog-ok-apply");
+  removeIcon = QIcon::fromTheme("list-remove");
   setWindowFlags(Qt::Window);
 
   menuAction = NULL;

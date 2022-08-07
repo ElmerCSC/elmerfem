@@ -28,8 +28,7 @@
         <string>Ok</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply"/>
        </property>
       </widget>
      </item>
@@ -39,8 +38,7 @@
         <string>Append</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/list-add.png</normaloff>:/icons/list-add.png</iconset>
+        <iconset theme="list-add"/>
        </property>
       </widget>
      </item>
@@ -63,8 +61,7 @@
         <string>Clear</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/edit-clear.png</normaloff>:/icons/edit-clear.png</iconset>
+        <iconset theme="edit-clear"/>
        </property>
       </widget>
      </item>
@@ -74,8 +71,7 @@
         <string>Close</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/dialog-close.png</normaloff>:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close"/>
        </property>
       </widget>
      </item>

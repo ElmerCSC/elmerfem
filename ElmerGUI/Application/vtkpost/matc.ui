@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>mcDialog</class>
  <widget class="QDialog" name="mcDialog" >
@@ -13,7 +14,8 @@
    <string>MATC</string>
   </property>
   <property name="windowIcon" >
-   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+   <iconset resource="../ElmerGUI.qrc" >
+    <normaloff>:/icons/Mesh3D.png</normaloff>:/icons/Mesh3D.png</iconset>
   </property>
   <layout class="QVBoxLayout" >
    <item>
@@ -76,7 +78,7 @@
         <string>OK</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" />
        </property>
        <property name="autoDefault" >
         <bool>false</bool>

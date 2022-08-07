@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>boundaryPropertyDialog</class>
  <widget class="QDialog" name="boundaryPropertyDialog" >
@@ -63,7 +64,7 @@
         <string>Apply</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/list-add.png</iconset>
+        <iconset theme="list-add" />
        </property>
       </widget>
      </item>
@@ -73,7 +74,7 @@
         <string>Discard</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/list-remove.png</iconset>
+        <iconset theme="list-remove" />
        </property>
       </widget>
      </item>

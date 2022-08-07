@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>cadPreferencesDialog</class>
  <widget class="QDialog" name="cadPreferencesDialog" >
@@ -203,8 +204,8 @@
         <string>Apply</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >
-         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" >
+         <normaloff>.</normaloff>.</iconset>
        </property>
       </widget>
      </item>

@@ -523,7 +523,7 @@ void VtkPost::createActions()
 {
   // File menu:
   //-----------
-  exitAct = new QAction(QIcon(":/icons/application-exit.png"), tr("&Quit"), this);
+  exitAct = new QAction(QIcon::fromTheme("application-exit"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   exitAct->setStatusTip("Quit VTK widget");
   connect(exitAct, SIGNAL(triggered()), this, SLOT(exitSlot()));
@@ -540,7 +540,7 @@ void VtkPost::createActions()
   reloadPostAct->setStatusTip("Reloads input file");
   connect(reloadPostAct, SIGNAL(triggered()), this, SLOT(reloadPostSlot()));
 
-  readEpFileAct = new QAction(QIcon(":/icons/document-open.png"), tr("Open..."), this);
+  readEpFileAct = new QAction(QIcon::fromTheme("document-open"), tr("Open..."), this);
   readEpFileAct->setShortcut(tr("Ctrl+O"));
   readEpFileAct->setStatusTip("Read input file");
   connect(readEpFileAct, SIGNAL(triggered()), this, SLOT(readEpFileSlot()));
@@ -683,7 +683,7 @@ void VtkPost::createActions()
 
   // Help menu:
   //-----------
-  showHelpAct = new QAction(QIcon(":/icons/help-about.png"), tr("Help..."), this);
+  showHelpAct = new QAction(QIcon::fromTheme("help-about"), tr("Help..."), this);
   showHelpAct->setStatusTip("Show help dialog");
   connect(showHelpAct, SIGNAL(triggered()), this, SLOT(showHelpSlot()));
 

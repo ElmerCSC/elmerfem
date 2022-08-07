@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>readEpFileDialog</class>
  <widget class="QDialog" name="readEpFileDialog" >
@@ -13,7 +14,8 @@
    <string>Read input file</string>
   </property>
   <property name="windowIcon" >
-   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+   <iconset resource="../ElmerGUI.qrc" >
+    <normaloff>:/icons/Mesh3D.png</normaloff>:/icons/Mesh3D.png</iconset>
   </property>
   <layout class="QVBoxLayout" >
    <item>
@@ -283,7 +285,7 @@
         <string>Close</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close" />
        </property>
       </widget>
      </item>
@@ -293,7 +295,7 @@
         <string>Ok</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" />
        </property>
        <property name="default" >
         <bool>true</bool>

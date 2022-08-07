@@ -597,7 +597,7 @@
              <string>1.25663706e-6</string>
             </property>
            </widget>
-          </item>	  
+          </item>  
           <item row="3" column="0">
            <widget class="QLabel" name="constantsFreeTextLabel">
             <property name="text">
@@ -645,8 +645,7 @@
             <string>Apply</string>
            </property>
            <property name="icon">
-            <iconset resource="../ElmerGUI.qrc">
-             <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+            <iconset theme="dialog-ok-apply"/>
            </property>
           </widget>
          </item>

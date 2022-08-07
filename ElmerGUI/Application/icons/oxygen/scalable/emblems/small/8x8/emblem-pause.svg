@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="8"
+   height="8"
+   id="svg2"
+   sodipodi:version="0.32"
+   inkscape:version="0.91 r13725"
+   version="1.0"
+   sodipodi:docname="emblem-pause.svg"
+   inkscape:output_extension="org.inkscape.output.svgz.inkscape"
+   inkscape:export-filename="/media/daten/git/oxygen-icons/8x8/emblems/emblem-pause.png"
+   inkscape:export-xdpi="1440"
+   inkscape:export-ydpi="1440"
+   sodipodi:modified="TRUE">
+  <defs
+     id="defs4">
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient3584"
+       id="radialGradient3767"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1.3333333,0,0,1,-1.3333333,0)"
+       cx="4"
+       cy="2"
+       fx="4"
+       fy="1"
+       r="3" />
+    <linearGradient
+       id="linearGradient3584">
+      <stop
+         style="stop-color:#f0fa00;stop-opacity:1"
+         offset="0"
+         id="stop3586" />
+      <stop
+         style="stop-color:#5c5300;stop-opacity:1"
+         offset="1"
+         id="stop3588" />
+    </linearGradient>
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     gridtolerance="10000"
+     guidetolerance="10"
+     objecttolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="67.5"
+     inkscape:cx="4.0001132"
+     inkscape:cy="0.65866394"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     width="8px"
+     height="8px"
+     showgrid="true"
+     inkscape:window-width="1883"
+     inkscape:window-height="1051"
+     inkscape:window-x="33"
+     inkscape:window-y="0"
+     inkscape:grid-points="true"
+     showborder="false"
+     inkscape:snap-bbox="true"
+     inkscape:object-nodes="true"
+     inkscape:snap-global="true"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       id="GridFromPre046Settings"
+       type="xygrid"
+       originx="0px"
+       originy="0px"
+       spacingx="1px"
+       spacingy="1px"
+       color="#0000ff"
+       empcolor="#0000ff"
+       opacity="0.2"
+       empopacity="0.4"
+       empspacing="2" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       ry="1.9999994"
+       rx="1.9999994"
+       y="5.7183206e-07"
+       x="9.6197193e-16"
+       height="7.9999995"
+       width="8"
+       id="rect3163"
+       style="opacity:0.79500002;fill:#ffffff;fill-opacity:1;stroke:none"
+       inkscape:export-filename="/media/daten/git/oxygen-icons/8x8/emblems/emblem-pause.png"
+       inkscape:export-xdpi="90"
+       inkscape:export-ydpi="90" />
+    <path
+       style="fill:url(#radialGradient3767);fill-opacity:1;stroke:none"
+       d="M 2,1 C 1.446,1 1,1.446 1,2 L 1,6 C 1,6.554 1.446,7 2,7 L 6,7 C 6.554,7 7,6.554 7,6 L 7,2 C 7,1.446 6.554,1 6,1 Z M 2,2 3.5,2 3.5,6 2,6 Z M 4.5,2 6,2 6,6 4.5,6 Z"
+       id="rect3578"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="ssssssssscccccccccc" />
+  </g>
+</svg>

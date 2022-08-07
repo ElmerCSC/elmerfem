@@ -1,0 +1,136 @@
+[Icon Theme]
+Name=Oxygen
+Name[ast]=Oxíxenu
+Name[bs]=Oxygen
+Name[ca]=Oxygen
+Name[ca@valencia]=Oxygen
+Name[cs]=Oxygen
+Name[da]=Oxygen
+Name[de]=Oxygen
+Name[el]=Oxygen
+Name[en_GB]=Oxygen
+Name[es]=Oxígeno
+Name[et]=Oxygen
+Name[eu]=Oxygen
+Name[fa]=اکسیژن
+Name[fi]=Oxygen
+Name[fr]=Oxygen
+Name[gl]=Oxygen
+Name[hu]=Oxygen
+Name[it]=Oxygen
+Name[kk]=Oxygen
+Name[ko]=Oxygen
+Name[mr]=ऑक्सीजन
+Name[nb]=Oxygen
+Name[nds]=Oxygen
+Name[nl]=Oxygen
+Name[nn]=Oxygen
+Name[pl]=Tlen
+Name[pt]=Oxygen
+Name[pt_BR]=Oxygen
+Name[ro]=Oxygen
+Name[ru]=Oxygen
+Name[sk]=Oxygen
+Name[sl]=Kisik
+Name[sr]=Кисеоник
+Name[sr@ijekavian]=Кисеоник
+Name[sr@ijekavianlatin]=Kiseonik
+Name[sr@latin]=Kiseonik
+Name[sv]=Oxygen
+Name[tr]=Oxygen
+Name[ug]=ئوكسېگىن
+Name[uk]=Oxygen
+Name[x-test]=xxOxygenxx
+Name[zh_CN]=Oxygen(氧气)
+Name[zh_TW]=Oxygen
+
+Comment=Oxygen Team
+Comment[ast]=L'equipu d'Oxíxenu
+Comment[bs]=Oxygen tim
+Comment[ca]=Equip de l'Oxygen
+Comment[ca@valencia]=Equip de l'Oxygen
+Comment[cs]=Tým Oxygen
+Comment[da]=Oxygen-holdet
+Comment[de]=Oxygen-Team
+Comment[el]=Ομάδα Oxygen
+Comment[en_GB]=Oxygen Team
+Comment[es]=Equipo Oxígeno
+Comment[et]=Oxygeni meeskond
+Comment[eu]=Oxygen taldea
+Comment[fa]=تیم اکسیژن
+Comment[fi]=Oxygenin kehitysryhmä
+Comment[fr]=Équipe Oxygen
+Comment[gl]=Equipo de Oxygen
+Comment[hu]=Oxygen csapat
+Comment[it]=La squadra di Oxygen
+Comment[kk]=Oxygen тобы
+Comment[ko]=Oxygen 팀
+Comment[mr]=ऑक्सीजन टीम
+Comment[nb]=Oxygen-laget
+Comment[nds]=Oxygen-Koppel
+Comment[nl]=Oxygen-team
+Comment[nn]=Oxygen-laget
+Comment[pl]=Zespół Oxygen
+Comment[pt]=Equipa do Oxygen
+Comment[pt_BR]=Equipe do Oxygen
+Comment[ro]=Echipa Oxygen
+Comment[ru]=Команда Oxygen
+Comment[sk]=Tím Oxygen
+Comment[sl]=Ekipa Kisika
+Comment[sr]=Тим Кисеоника
+Comment[sr@ijekavian]=Тим Кисеоника
+Comment[sr@ijekavianlatin]=Tim Kiseonika
+Comment[sr@latin]=Tim Kiseonika
+Comment[sv]=Oxygen-gruppen
+Comment[tr]=Oxygen Takımı
+Comment[ug]=ئوكسېگىن ئەترىتى
+Comment[uk]=Команда Oxygen
+Comment[x-test]=xxOxygen Teamxx
+Comment[zh_CN]=Oxygen 团队
+Comment[zh_TW]=Oxygen 開發團隊
+
+DisplayDepth=32
+
+Inherits=hicolor
+
+Example=folder
+
+LinkOverlay=link
+LockOverlay=lockoverlay
+ShareOverlay=share
+ZipOverlay=zip
+
+DesktopDefault=48
+DesktopSizes=16,22,32,48
+ToolbarDefault=22
+ToolbarSizes=16,22,32,48
+MainToolbarDefault=22
+MainToolbarSizes=16,22,32,48
+SmallDefault=16
+SmallSizes=16,22,32,48
+PanelDefault=32
+PanelSizes=16,22,32,48
+DialogDefault=32
+DialogSizes=16,22,32,48
+
+Directories=16x16/actions,22x22/actions,32x32/actions,48x48/actions
+
+[16x16/actions]
+Size=16
+Context=Actions
+Type=Threshold
+
+[22x22/actions]
+Size=22
+Context=Actions
+Type=Threshold
+
+[32x32/actions]
+Size=32
+Context=Actions
+Type=Threshold
+
+[48x48/actions]
+Size=48
+Context=Actions
+Type=Threshold

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>textDialog</class>
  <widget class="QDialog" name="textDialog" >
@@ -13,7 +14,8 @@
    <string>Text</string>
   </property>
   <property name="windowIcon" >
-   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+   <iconset resource="../ElmerGUI.qrc" >
+    <normaloff>:/icons/Mesh3D.png</normaloff>:/icons/Mesh3D.png</iconset>
   </property>
   <layout class="QVBoxLayout" >
    <item>
@@ -248,7 +250,7 @@
      <property name="orientation" >
       <enum>Qt::Vertical</enum>
      </property>
-     <property name="sizeHint" >
+     <property name="sizeHint" stdset="0" >
       <size>
        <width>20</width>
        <height>16</height>
@@ -263,7 +265,7 @@
        <property name="orientation" >
         <enum>Qt::Horizontal</enum>
        </property>
-       <property name="sizeHint" >
+       <property name="sizeHint" stdset="0" >
         <size>
          <width>40</width>
          <height>20</height>
@@ -284,7 +286,7 @@
         <string>Cancel</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close" />
        </property>
       </widget>
      </item>
@@ -294,7 +296,7 @@
         <string>Ok</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" />
        </property>
       </widget>
      </item>

@@ -225,8 +225,7 @@
        </property>
        <property name="icon">
         <iconset>
-         <normaloff/>
-        </iconset>
+         <normaloff>.</normaloff>.</iconset>
        </property>
       </widget>
      </item>
@@ -236,8 +235,7 @@
         <string>Cancel</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/dialog-close.png</normaloff>:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close"/>
        </property>
       </widget>
      </item>
@@ -247,8 +245,7 @@
         <string>Ok</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply"/>
        </property>
       </widget>
      </item>

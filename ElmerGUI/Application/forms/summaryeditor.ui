@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>summaryDialog</class>
  <widget class="QDialog" name="summaryDialog" >
@@ -49,7 +50,7 @@
         <string>Close</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close" />
        </property>
       </widget>
      </item>

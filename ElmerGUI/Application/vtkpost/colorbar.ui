@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0" >
  <class>colorBarDialog</class>
  <widget class="QDialog" name="colorBarDialog" >
@@ -13,7 +14,7 @@
    <string>Color bar</string>
   </property>
   <property name="windowIcon" >
-   <iconset resource="../ElmerGUI.qrc" >
+   <iconset>
     <normaloff>:/icons/Mesh3D.ico</normaloff>:/icons/Mesh3D.ico</iconset>
   </property>
   <layout class="QVBoxLayout" >
@@ -208,11 +209,6 @@
        <property name="text" >
         <string>Apply</string>
        </property>
-       <property name="icon" >
-        <iconset>
-         <normaloff/>
-        </iconset>
-       </property>
        <property name="default" >
         <bool>true</bool>
        </property>
@@ -224,8 +220,8 @@
         <string>Cancel</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >
-         <normaloff>:/icons/dialog-close.png</normaloff>:/icons/dialog-close.png</iconset>
+        <iconset theme="dialog-close" >
+         <normaloff>.</normaloff>.</iconset>
        </property>
       </widget>
      </item>
@@ -235,8 +231,8 @@
         <string>Ok</string>
        </property>
        <property name="icon" >
-        <iconset resource="../ElmerGUI.qrc" >
-         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply" >
+         <normaloff>.</normaloff>.</iconset>
        </property>
       </widget>
      </item>

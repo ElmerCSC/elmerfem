@@ -208,8 +208,7 @@
         <string>Accept</string>
        </property>
        <property name="icon">
-        <iconset resource="../ElmerGUI.qrc">
-         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+        <iconset theme="dialog-ok-apply"/>
        </property>
       </widget>
      </item>
