@@ -7262,11 +7262,6 @@ void MainWindow::showaboutSlot() {
          "<A HREF='http://qwt.sf.net'>http://qwt.sf.net</A></P>"
 #endif
 
-#ifdef EG_MATC
-         "<P>This version of ElmerGUI is based in part on the work of the Qwt project.<BR>"
-         "<A HREF='http://qwt.sf.net'>http://qwt.sf.net</A></P>"
-#endif
-
 #ifdef MPICH2
          "<P>The parallel solver of this package has been linked "
          "against the MPICH2 library v. 1.0.7 from Argonne "
