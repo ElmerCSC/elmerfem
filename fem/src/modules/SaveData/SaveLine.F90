@@ -908,7 +908,7 @@ CONTAINS
   !----------------------------------------------------------------------
   SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
       node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, &
-      GlobalCoord, linepos )
+      GlobalCoord, linepos, ParNode )
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), TARGET :: Basis(:)
@@ -918,6 +918,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
     REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
     REAL(KIND=dp), OPTIONAL :: linepos
+    LOGICAL, OPTIONAL :: ParNode
     
     INTEGER :: i,j,k,l,ivar,ii,i1,i2,n0
     TYPE(Nodes_t) :: Nodes
@@ -961,7 +962,13 @@ CONTAINS
 
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
-      Labels(n0+3) = node_id      
+      k = node_id
+      IF(PRESENT(ParNode)) THEN
+        IF( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) THEN
+          k = Mesh % ParallelInfo % GlobalDOFS(k)
+        END IF
+      END IF
+      Labels(n0+3) = k      
       n0 = n0 + 3
       
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
@@ -1703,12 +1710,15 @@ CONTAINS
             IF( dim == 3 ) Mesh % Nodes % z(node) = Coord(3) 
 
             linepos = -1.0_dp
+            IF( ParEnv % PEs > 1 ) THEN
+            END IF
             IF( CalculateFlux ) THEN
               CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), linepos = linepos )
+                  dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
+                  linepos = linepos, ParNode = Parallel )
             ELSE
               CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
-                  dgnode, UseNode = .TRUE., linepos = linepos )
+                  dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
             END IF
             
             ! and revert 
@@ -1733,10 +1743,11 @@ CONTAINS
           node = InvPerm(t)
           IF( CalculateFlux ) THEN
             CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), linepos = linepos )
+                dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
+                linepos = linepos, ParNode = Parallel )
           ELSE
             CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-                dgnode, UseNode = .TRUE., linepos = linepos )
+                dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
           END IF
         END DO
       END IF        
