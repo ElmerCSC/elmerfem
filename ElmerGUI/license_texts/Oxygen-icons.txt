@@ -1,17 +1,16 @@
 ElmerGUI uses Oxygen Icons which were originaly developed for KDE.
 
- http://www.kde.org/
+  http://www.kde.org/
 
 These icon files are located in the directory "icons/oxygen".
-
- https://techbase.kde.org/Projects/Oxygen/Licensing 
 
 The SVG of the relevant icons are avilalbe at the following URL.
 
   https://github.com/KDE/oxygen-icons/tree/master/scalable
 
- For more details on licensing of Oxygen Icons, please visit the following URL.
+For more details on licensing of Oxygen Icons, please visit the following URL.
 
+  https://techbase.kde.org/Projects/Oxygen/Licensing 
 --------------------------------------------------------------------------------
 
 The Oxygen Icon Theme
