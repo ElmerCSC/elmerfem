@@ -403,7 +403,7 @@ CONTAINS
     REAL(KIND=dp) :: CgwppAtIP,CgwpTAtIP,CgwpYcAtIP,CgwpI1AtIP,KgwAtIP(3,3),KgwppAtIP(3,3),KgwpTAtIP(3,3),&
          meanfactor,MinKgw,gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3),fluxTAtIP(3),fluxgAtIP(3),vstarAtIP(3) ! needed in equation
     REAL(KIND=dp) :: JgwDAtIP(3),JcFAtIP(3), DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3),&
-         fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficent ! from salinity transport
+         fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficient ! from salinity transport
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,ksthAtIP  ! function values needed for KGTT  XiAtIP,
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP,bijAtIP(2,2),bijYctIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
@@ -512,7 +512,7 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
-    MolecularDiffusionCoefficent = GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
+    MolecularDiffusionCoefficient = GetConstReal(Material,"Molecular Diffusion Coefficient", ConstantDiffusion)
     CryogenicSuction = GetLogical(Material,"Compute Cryogenic Suction", Found)
 
     ! check, whether we have globally or element-wise defined values of rock-material parameters
@@ -606,7 +606,7 @@ CONTAINS
 
       ! unfrozen pore-water content at IP
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson') ! classic simpified Anderson model
+      CASE('anderson') ! classic simplified Anderson model
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
@@ -771,7 +771,7 @@ CONTAINS
           KcAtIP = GetConstKC(DispersionCoefficient)
         ELSE
           IF (ConstantDiffusion) THEN
-            DmAtIP = MolecularDiffusionCoefficent
+            DmAtIP = MolecularDiffusionCoefficient
           ELSE
             DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,rhocAtIP,mugwAtIP,TemperatureAtIP)
           END IF

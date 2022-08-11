@@ -312,7 +312,7 @@ CONTAINS
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP, & ! material properties at IP
          CcYcTAtIP, CcYcPAtIP, CcYcYcAtIP, rhocPAtIP, rhocYcAtIP, rhocTAtIP,& ! material properties at IP
          DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3), fcAtIP(3), extforceFlux(3),&
-         DispersionCoefficient, MolecularDiffusionCoefficent ! material properties at IP
+         DispersionCoefficient, MolecularDiffusionCoefficient ! material properties at IP
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          StiffPQ, meanfactor
@@ -380,8 +380,8 @@ CONTAINS
          MinKgw = 1.0D-14
 
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
-    MolecularDiffusionCoefficent = &
-         GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
+    MolecularDiffusionCoefficient = &
+         GetConstReal(Material,"Molecular Diffusion Coefficient", ConstantDiffusion)
     
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
     !      PRINT *,"Here0"
@@ -516,7 +516,7 @@ CONTAINS
         !PRINT *,"DispersionCoefficient",KcAtIP
       ELSE
         IF (ConstantDiffusion) THEN
-          DmAtIP = MolecularDiffusionCoefficent
+          DmAtIP = MolecularDiffusionCoefficient
         ELSE
           DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,CurrentSoluteMaterial % rhoc0,&
                CurrentSolventMaterial % muw0,TemperatureAtIP)

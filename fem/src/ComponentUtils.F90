@@ -721,7 +721,7 @@ MODULE ComponentUtils
         NoVar = NoVar + 1
         OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
         VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
-        CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        CoeffName = ListGetString( CompParams,'Coefficient '//TRIM(I2S(NoVar)), GotCoeff)
         
         IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
           VarName = 'Potential'
