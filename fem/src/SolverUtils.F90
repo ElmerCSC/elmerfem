@@ -13677,7 +13677,11 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-
+    IF (Method=='iterative' ) THEN
+      k = ListGetInteger(Params,'Linear System Dense Dofs',GotIt)
+      IF(GotIt) A % ndeg = k
+    END IF
+     
     IF( InfoActive(30) ) THEN
       CALL VectorValuesRange(A % values,SIZE(A % values),'A')
       pv => b

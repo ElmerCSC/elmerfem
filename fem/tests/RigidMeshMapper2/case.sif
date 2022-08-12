@@ -73,7 +73,7 @@ Solver 1
   Cumulative Displacements = Logical True
 
   Variable = MeshRelax
-  Nonlinear Conductivity Coeffient = Real 1.0
+  Nonlinear Conductivity Coefficient = Real 1.0
   Nonlinear System Relaxation Factor = Real 0.5
   Nonlinear System Relaxation After = Integer 1
   Nonlinear System Max Iterations = 30

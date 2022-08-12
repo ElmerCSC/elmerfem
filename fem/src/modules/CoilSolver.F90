@@ -713,6 +713,8 @@ CONTAINS
          END IF
        END DO
      END DO
+
+     cnt = ParallelReduction(cnt)
      
      CALL Info('CutInterfaceConnections','Number of connections cut: '//TRIM(I2S(cnt)),Level=7)
      
