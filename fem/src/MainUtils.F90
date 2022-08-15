@@ -2053,17 +2053,22 @@ CONTAINS
       ELSE
         TimeOrder = Solver % TimeOrder
       END IF
+
+      k = INDEX(pVar % Name,'[')-1
+      IF( k > 0 ) THEN
+        str = pVar % Name(1:k)//' Velocity'
+      ELSE
+        str = TRIM(pVar % Name)//' Velocity'
+      END IF
       
       IF( TimeOrder < 1 ) THEN
         CALL Warn('CreateTimeDerivativeVariables',&
             'Velocity computation implemented only for time-dependent variables')
       ELSE IF ( TimeOrder == 1 ) THEN
-        str = TRIM(ComponentName(pVar % Name))//' Velocity'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, pVar % Dofs, Perm = pVar % Perm, VarType = pVar % Type )
+            str, pVar % Dofs, Perm = pVar % Perm, VarType = pVar % TYPE )
       ELSE IF ( Solver % TimeOrder >= 2 ) THEN
         Component => pVar % PrevValues(:,1)
-        str = TRIM( ComponentName( pVar % Name ) ) // ' Velocity'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
             str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pVar % Type )
       END IF

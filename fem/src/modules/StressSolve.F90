@@ -773,6 +773,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      END DO ! of nonlinear iter
 !------------------------------------------------------------------------------
 
+     IF (CalcVelocities) THEN
+       CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
+           DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
+     END IF     
+     
      IF ( CalcStressAll .AND. .NOT. StabilityAnalysis ) THEN
          
        IF ( EigenAnalysis ) THEN
@@ -974,11 +979,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
              VonMises, DisplPerm, StressPerm, &
              NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
              EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
-
-         IF (CalcVelocities) THEN
-           CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
-               DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
-         END IF
        END IF
 
        CALL InvalidateVariable( Model % Meshes, Mesh, 'Stress' )
@@ -1625,13 +1625,14 @@ CONTAINS
     INTEGER, POINTER :: DisplPerm(:),DisplVeloPerm(:)
     INTEGER :: DispDofs, VeloDofs
     !---------------------------------
-    INTEGER :: i, j, k
+    INTEGER :: i, di, j, k
     
     DO i=1,SIZE( DisplPerm )
-      IF ( DisplPerm(i) <= 0 ) CYCLE
+      di = DisplPerm(i) 
+      IF(di==0) CYCLE
       DO j=1,VeloDofs
-        k = DispDofs*(DisplPerm(i)-1)+j
-        DisplVelo(VeloDofs*(DisplVeloPerm(i)-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
+        k = DispDofs*(di-1)+j
+        DisplVelo(VeloDofs*(di-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
       END DO
     END DO
     

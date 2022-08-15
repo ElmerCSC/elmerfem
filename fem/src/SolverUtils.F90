@@ -9706,9 +9706,10 @@ END FUNCTION SearchNodeL
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, DoIt
     REAL(KIND=dp) :: dt
-    TYPE(Variable_t), POINTER :: dtVar, VeloVar
+    TYPE(Variable_t), POINTER :: dtVar, VeloVar, pVar
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER, POINTER :: UpdateComponents(:)
+    INTEGER :: k
     CHARACTER(*), PARAMETER :: Caller = 'UpdateDependentObjects'
   
     SolverParams => Solver % Values
@@ -9769,10 +9770,17 @@ END FUNCTION SearchNodeL
         CALL Warn(Caller,'Cannot calculate velocity without previous values!')
       ELSE IF( Solver % TimeOrder == 1) THEN
         dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
-        dt = dtVar % Values(1) 
-        str = TRIM( Solver % Variable % Name ) // ' Velocity'
+        dt = dtVar % Values(1)
+        
+        pVar => Solver % Variable 
+        k = INDEX(pVar % Name,'[')-1
+        IF( k > 0 ) THEN
+          str = pVar % Name(1:k)//' Velocity'
+        ELSE
+          str = TRIM(pVar % Name)//' Velocity'
+        END IF       
         VeloVar => VariableGet( Solver % Mesh % Variables, str )        
-        VeloVar % Values = (Solver % Variable % Values - Solver % Variable % PrevValues(:,1)) / dt
+        VeloVar % Values = (pVar % Values - pVar % PrevValues(:,1)) / dt
       END IF
     END IF
     
