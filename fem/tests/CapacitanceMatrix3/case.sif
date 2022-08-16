@@ -60,6 +60,8 @@ Solver 1
 !  Constraint Modes Lumped = Logical True
 !  Constraint Modes Fluxes = Logical True
 !  Constraint Modes Fluxes Symmetric = Logical True
+
+  Element = p:2
 End
 
 Solver 2
@@ -119,5 +121,5 @@ Boundary Condition 6
   Capacitance Body = 5
 End
 
-Solver 1 :: Reference Norm = Real 0.27012654
+Solver 1 :: Reference Norm = 1.54992843E-01
 
