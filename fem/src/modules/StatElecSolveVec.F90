@@ -63,10 +63,10 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   dim = CoordinateSystemDimension()
 
   CALL ListAddNewString( Params,'Variable','Potential')
-  
+
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
-  
+
   IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
     CalculateNodal = .TRUE.
   END IF
@@ -79,7 +79,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Energy Density' )
   END IF
-  
+
   IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
@@ -88,7 +88,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Elecric Flux[Elecric Flux:'//TRIM(I2S(dim))//']' )       
   END IF
-  
+
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
@@ -115,21 +115,24 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
-    CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
-        'CapacitanceMatrix.dat',.FALSE.)
+    IF( ListCheckPresent( Params,'Capacitance Matrix Filename') ) THEN
+      CALL ListRename( Params,'Capacitance Matrix Filename',&
+          'Constraint Modes Fluxes Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+          'CapacitanceMatrix.dat',.FALSE.)
+    END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
   END IF
+
+  CALL ListAddInteger( Params,'Time Derivative Order', 0 )
   
-   CALL ListAddInteger( Params,'Time Derivative Order', 0 )
+  CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
 
-   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
-
-
-   
- END SUBROUTINE StatElecSolver_Init
+END SUBROUTINE StatElecSolver_Init
 
 
 !-----------------------------------------------------------------------------
