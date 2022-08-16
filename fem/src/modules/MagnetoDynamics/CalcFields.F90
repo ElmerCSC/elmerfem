@@ -347,6 +347,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
         END IF
       END IF
     END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Relative Permeability', Found ) ) THEN
+      i = i + 1
+      IF ( RealField ) THEN
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "Relative Permeability" )
+      ELSE
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "Relative Permeability[Relative Permeability re:1 Relative Permeability im:1]" )
+      END IF
+    END IF
   END IF    
 
   IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
@@ -498,6 +509,18 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
               "-dg Winding Voltage E[Winding Voltage re E:1 Winding Voltage im E:1]" )
         END IF
       END IF
+
+    END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Relative Permeability', Found ) ) THEN
+      i = i + 1
+      IF ( RealField ) THEN
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "-dg Relative Permeability E" )
+      ELSE
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "-dg Relative Permeability E[Relative Permeability re E:1 Relative Permeability im E:1]" )
+      END IF
     END IF
 
     DoIt = ListGetLogicalAnyComponent(Model,'Calculate Magnetic Force') .OR. &
@@ -555,6 +578,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    REAL(KIND=dp) :: R_ip, mu_r
+   REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
 
    COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
    COMPLEX(KIND=dp) :: CST(3,3)
@@ -568,9 +592,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, &
-                                JH, NJH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
+                                JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
-                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, &
+                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_MPerm, EL_JXB, EL_ML, EL_ML2, &
                                 EL_NF
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
@@ -741,6 +765,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CD  => NULL(); EL_CD => NULL();
    JH  => NULL(); EL_JH => NULL();
    FWP => NULL(); EL_FWP => NULL();
+   MPerm => NULL(); EL_MPerm => NULL();
    JXB => NULL(); EL_JXB => NULL();
    ML  => NULL(); EL_ML => NULL();
    ML2 => NULL(); EL_ML2 => NULL();
@@ -754,6 +779,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_EF => VariableGet( Mesh % Variables, 'Electric Field E' )
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
    END IF
+
+   MPerm => VariableGet( Mesh % Variables, 'Relative Permeability' )
+   EL_MPerm => VariableGet( Mesh % Variables, 'Relative Permeability E' )
 
    NF => VariableGet( Mesh % Variables, 'Nodal Force') 
    EL_NF => VariableGet( Mesh % Variables, 'Nodal Force E')
@@ -795,6 +823,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD) ) DOFs=DOFs+vDofs*3
    IF ( ASSOCIATED(JXB) .OR. ASSOCIATED(EL_JXB) ) DOFs=DOFs+vDofs*3
    IF ( ASSOCIATED(FWP) .OR. ASSOCIATED(EL_FWP) ) DOFs=DOFs+vDofs*1
+   IF ( ASSOCIATED(MPerm) .OR. ASSOCIATED(EL_MPerm) ) DOFs=DOFs+vDofs*1
    IF ( ASSOCIATED(MST) .OR. ASSOCIATED(EL_MST) ) DOFs=DOFs+vDofs*6
 
    ! These have just one component even in complex equation
@@ -812,6 +841,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ASSOCIATED(VP) .OR. &
        ASSOCIATED(CD) .OR. &
        ASSOCIATED(FWP) .OR. &
+       ASSOCIATED(MPerm) .OR. &
        ASSOCIATED(EF) .OR. &
        ASSOCIATED(JXB) .OR. &
        ASSOCIATED(MST) .OR. &
@@ -826,6 +856,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ASSOCIATED(EL_VP) .OR. &
        ASSOCIATED(EL_CD)  .OR. &
        ASSOCIATED(EL_FWP) .OR. & 
+       ASSOCIATED(EL_MPerm) .OR. & 
        ASSOCIATED(EL_EF)  .OR. &
        ASSOCIATED(EL_JXB) .OR. &
        ASSOCIATED(EL_MST) .OR. & 
@@ -1715,6 +1746,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
          END IF
 
+         IF ( ASSOCIATED(MPerm).OR.ASSOCIATED(EL_MPerm)) THEN
+           IF (Vdofs == 1) THEN
+              FORCE(p,k+1) = FORCE(p,k+1)+s*1_dp/Nu(1,1)/mu0*Basis(p)
+              k = k+1
+           ELSE
+              FORCE(p,k+1) = FORCE(p,k+1)+s*REAL(1_dp/Nu(1,1)/mu0)*Basis(p)
+              k = k+1
+              FORCE(p,k+1) = FORCE(p,k+1)+s*AIMAG(1_dp/Nu(1,1)/mu0) * Basis(p)
+              k = k+1
+           END IF
+         END IF
+
          IF (vDOFS == 1) THEN
            IF ( JouleHeatingFromCurrent .AND. (ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) ) THEN
              ! The Joule heating power per unit volume: J.E = J.J/sigma 
@@ -1877,6 +1920,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_CD,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JXB,  3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MPerm,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
@@ -2015,6 +2059,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs, EL_CD)
      CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs, EL_JXB)
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs, EL_FWP)
+     CALL GlobalSol(MPerm,  1*vdofs, Gforce, Dofs, EL_MPerm)
      
      ! Nodal heating directly uses the loads 
      IF (ASSOCIATED(NJH)) THEN
