@@ -15,6 +15,8 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Steady State Max Iterations = 1
+
+  Mesh Levels = 1
 End
 
 Constants
@@ -39,22 +41,20 @@ Solver 1
   Procedure = "StatElecSolveVec" "StatElecSolver"
 
   Linear System Solver = Iterative
+!  Linear System Direct Method = mumps
+
   Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 200
-  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
   Linear System Preconditioning = ILU1
-  Linear System ILUT Tolerance = 1.0e-03
 
 !  Linear System Scaling = False
 
   Nonlinear System Max Iterations = 1
-  Nonlinear System Convergence Tolerance = 1.0e-4
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Newton After Iterations = 10
-  Nonlinear System Relaxation Factor = 1
-  Steady State Convergence Tolerance = 1.0e-4
+  Nonlinear System Consistent Norm = True
 
   Calculate Capacitance Matrix = True
+  Fix Constraint Modes p = Logical True
 
 !  Constraint Modes Analysis = Logical True
 !  Constraint Modes Lumped = Logical True
@@ -121,5 +121,5 @@ Boundary Condition 6
   Capacitance Body = 5
 End
 
-Solver 1 :: Reference Norm = 1.54992843E-01
+Solver 1 :: Reference Norm = 1.57909356E-01
 

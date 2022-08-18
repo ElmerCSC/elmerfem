@@ -6599,12 +6599,13 @@ CONTAINS
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
     INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
-    LOGICAL :: Found
+    LOGICAL :: Found, SetP
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: Element
     TYPE(Variable_t), POINTER :: Var
+    INTEGER :: Indexes(50),nb
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, ALLOCATABLE :: BCPerm(:)
 
@@ -6613,7 +6614,10 @@ CONTAINS
     nlen = LEN_TRIM(Name)
     Mesh => Model % Mesh
     Solver => Model % Solver
-    Var => Solver % Variable 
+    Var => Solver % Variable     
+
+    SetP = ListGetLogical( Solver % Values,'Fix Constraint Modes p',Found )  
+    IF(.NOT. Found) SetP = .TRUE.
     
     ! This needs to be allocated only once, hence return if already set
     IF( Var % NumberOfConstraintModes > 0 ) RETURN
@@ -6641,9 +6645,9 @@ CONTAINS
         j = j + 1
         BCPerm(bc_id) = j
       END IF
-    END DO
+    END DO    
+    j = MAXVAL( BCPerm )
     
-    j = MAXVAL( BCPerm ) 
     CALL Info('SetConstraintModesBoundaries','Number of active constraint modes boundaries: '&
         //TRIM(I2S(j)),Level=7)
     IF( j == 0 ) THEN
@@ -6668,12 +6672,20 @@ CONTAINS
       END DO
       IF( bc_id > Model % NumberOfBCs ) CYCLE      
       IF( BCPerm(bc_id) == 0 ) CYCLE
-      
-      NodeIndexes => Element % NodeIndexes
+
+      n = Element % Type % NumberOfNodes
+      nb = mGetElementDOFs( Indexes, Element, Solver )
 
       ! For vector valued problems treat each component as separate dof
-      DO k=1,NDOFs
-        Var % ConstraintModesIndeces( NDOFS*(Perm(NodeIndexes)-1)+k) = NDOFS*(BCPerm(bc_id)-1)+k
+      DO k=1,NDOFs       
+        j = NDOFS*(BCPerm(bc_id)-1)+k
+        Var % ConstraintModesIndeces( NDOFS*(Perm(Indexes(1:n))-1)+k) = j
+
+        ! The constraints related to p-elements should always bet set to zero.
+        ! So we mark them but with a negative index so that they wont be set to unity ever.
+        IF( SetP .AND. nb > n ) THEN
+          Var % ConstraintModesIndeces( NDOFS*(Perm(Indexes(n+1:nb))-1)+k) = -j
+        END IF
       END DO
     END DO
     
@@ -6696,11 +6708,10 @@ CONTAINS
     ! Manipulate the boundaries such that we need to modify only the r.h.s. in the actual linear solver
     ! Do not manipulate if we are setting fluxes!
     IF( .NOT. ListGetLogical(Solver % Values,'Linear System Complex',Found ) ) THEN
-      DO k=1,A % NumberOfRows       
-        IF( Var % ConstraintModesIndeces(k) == 0 ) CYCLE
-        A % ConstrainedDOF(k) = .TRUE.
-        A % DValues(k) = 0.0_dp
-      END DO
+      WHERE( Var % ConstraintModesIndeces /= 0 ) 
+        A % ConstrainedDOF = .TRUE.
+        A % DValues = 0.0_dp
+      END WHERE
     END IF
       
     ALLOCATE( Var % ConstraintModes( Var % NumberOfConstraintModes, A % NumberOfRows ) )
@@ -14211,10 +14222,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     REAL(KIND=dp) CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
-    INTEGER :: i,j,k,n,m,Nmode,Mmode
-    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex
+    INTEGER :: i,j,k,n,m,Nmode,Mmode,ierr
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex, Parallel
     REAL(KIND=dp), POINTER CONTIG :: PValues(:)
-    REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:), ImFluxesMatrix(:,:), b0(:), A0(:)
+    REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:), ImFluxesMatrix(:,:), &
+        b0(:), A0(:), TempRhs(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
     CHARACTER(LEN=MAX_NAME_LEN) :: MatrixFile
@@ -14234,9 +14246,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       CALL Info(Caller,'Number of constraint modes is: '//TRIM(I2S(m)),Level=8)
     END IF
 
+    Parallel = Solver % Parallel
     
     IsComplex = ListGetLogical( Solver % Values,'Linear System Complex',Found)
-    
+   
     ComputeFluxes = ListGetLogical( Solver % Values,'Constraint Modes Fluxes',Found) 
     IF( ComputeFluxes ) THEN
       CALL Info(Caller,'Allocating for lumped fluxes',Level=10)
@@ -14250,6 +14263,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         ImFluxesMatrix = 0.0_dp
       END IF
 
+      IF( Parallel ) THEN
+        ALLOCATE(TempRHS(SIZE(A % BulkRhs)))
+        TempRhs = 0.0_dp
+      END IF
+      
       IF( IsComplex ) THEN
         ALLOCATE( A0(SIZE(A % Values)), b0(n), ConstrainedDOF0(n) )
         A0 = A % Values
@@ -14283,8 +14301,16 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           A % DValues = 0.0_dp
         END WHERE
         CALL EnforceDirichletConditions( Solver, A, b )
-      ELSE
-        WHERE( Var % ConstraintModesIndeces == Nmode ) b = A % Values(A % Diag)
+      ELSE       
+        IF( Nmode > 1 ) THEN
+          WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
+            A % DValues = 0.0_dp
+          END WHERE          
+        END IF
+        WHERE( Var % ConstraintModesIndeces == Nmode ) 
+          A % DValues = 1.0_dp
+        END WHERE
+        CALL EnforceDirichletConditions( Solver, A, b )
       END IF
       
       CALL SolveSystem( A,ParMatrix,b,x,Var % Norm,Var % DOFs,Solver )
@@ -14298,6 +14324,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       IF( ComputeFluxes ) THEN
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
 
+        ! Use the initial bulk values that do not include Dirichlet conditions
         PValues => A % Values
         IF( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
           CALL Fatal(Caller,'BulkValues not associated!')
@@ -14305,9 +14332,19 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         A % Values => A % BulkValues
 
         Fluxes = 0.0_dp
-        CALL MatrixVectorMultiply( A, x, Fluxes ) 
+
+        IF ( Parallel ) THEN
+          TempRHS = A % BulkRhs 
+          CALL ParallelInitSolve( A, x, TempRHS, Fluxes )
+          CALL ParallelMatrixVector( A, x, Fluxes, .TRUE. )
+        ELSE
+          CALL MatrixVectorMultiply( A, x, Fluxes )
+        END IF
+
+        ! Revert pointer back 
         A % Values => PValues
 
+        !n = MIN(n, Solver % Mesh % NumberOfNodes 
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
           IF( k > 0 ) THEN
@@ -14341,6 +14378,23 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     CALL Info(Caller,'Modes computed, doing some postprocessing',Level=10)
     
     IF( ComputeFluxes ) THEN
+
+      IF( Parallel ) THEN
+        BLOCK
+          REAL(KIND=dp), ALLOCATABLE :: tmpFluxesMatrix(:,:)
+          ALLOCATE(tmpFluxesMatrix(m,m))
+          tmpFluxesMatrix = FluxesMatrix
+          CALL MPI_ALLREDUCE(tmpFluxesMatrix, FluxesMatrix, m**2, MPI_DOUBLE_PRECISION, &
+              MPI_SUM, ELMER_COMM_WORLD, ierr)
+          IF( IsComplex ) THEN
+            tmpFluxesMatrix = ImFluxesMatrix
+            CALL MPI_ALLREDUCE(tmpFluxesMatrix, ImFluxesMatrix, m**2, MPI_DOUBLE_PRECISION, &
+                MPI_SUM, ELMER_COMM_WORLD, ierr)
+          END IF
+          DEALLOCATE(tmpFluxesMatrix)
+        END BLOCK
+      END IF
+           
       Symmetric = ListGetLogical( Solver % Values,&
           'Constraint Modes Fluxes Symmetric', Found ) 
       IF( Symmetric ) THEN        
@@ -14366,7 +14420,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           ImFluxesMatrix = 0.5_dp * ( ImFluxesMatrix + TRANSPOSE( ImFluxesMatrix ) )
         END IF
       END IF
-        
+
       CALL Info( Caller,'Constraint Modes Fluxes', Level=5 )
       DO i=1,m
         DO j=1,m
@@ -14379,9 +14433,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           CALL Info( Caller, Message, Level=5 )
         END DO
       END DO
-      
+
+      k = ParallelReduction(ParEnv % MyPe,1)
+                
       MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
-      IF( Found ) THEN
+      IF( Found .AND. k == ParEnv % MyPe ) THEN
         OPEN (10, FILE=MatrixFile)
         IF( IsComplex ) OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
         DO i=1,m
