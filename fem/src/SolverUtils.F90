@@ -6654,7 +6654,7 @@ CONTAINS
       CALL Fatal('SetConstraintModesBoundaries',&
           'Constraint Modes Analysis requested but no constrained BCs given!')
     END IF
-
+      
     IF( LIstGetLogical( Solver % Values,'Linear System Complex',Found) ) THEN
       Ncomplex = 2
     ELSE
@@ -6688,6 +6688,15 @@ CONTAINS
         END IF
       END DO
     END DO
+
+    IF( InfoActive(20) ) THEN
+      DO i=1,Var % NumberOfConstraintModes
+        k = COUNT( Var % ConstraintModesIndeces == i )
+        CALL Info('SetConstaintModesBoundaries',&
+            'Mode '//TRIM(I2S(i))//' has '//TRIM(I2S(k))//' dofs')        
+      END DO
+    END IF
+
     
     ! The constraint modes can be either lumped or not.
     ! If they are not lumped then mark each individually
