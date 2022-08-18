@@ -2790,6 +2790,11 @@ CONTAINS
         END IF
       END IF
 
+      IF( MeshLevels > 1 ) THEN
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+      END IF
+    
+      
       IF ( OneMeshName ) THEN
          i = 0
       ELSE

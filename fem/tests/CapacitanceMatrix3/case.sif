@@ -16,7 +16,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 
-  Mesh Levels = 1
+!  Mesh Levels = 2
 End
 
 Constants
@@ -47,6 +47,7 @@ Solver 1
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
 
 !  Linear System Scaling = False
 
