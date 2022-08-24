@@ -5368,7 +5368,8 @@ CONTAINS
         IF( dofs < 2 ) THEN
           CALL Fatal(Caller,'Curve constraint only makes sense for vector fields!')
         END IF
-                  
+
+#if 0
         ! Move the list matrix because of its flexibility
         CALL Info(Caller,'Using List maxtrix to set curve constraints',Level=8)
         CALL Info(Caller,'Original matrix non-zeros: '&
@@ -5379,8 +5380,8 @@ CONTAINS
           Rows0 = A % Rows
         END IF
         CALL List_toListMatrix(A)
+#endif
         
-        ind = 1
         ALLOCATE(NodeDone(Mesh % NumberOfNodes))
         NodeDone = .FALSE.
         
@@ -5482,12 +5483,13 @@ CONTAINS
           END DO
         END DO
         
-        ! Revert back to CRS matrix
-        CALL List_ToCRSMatrix(A)
-        
         n = COUNT( NodeDone ) 
         CALL Info(Caller,'Number of curved nodes set: '//TRIM(I2S(n)),Level=10)        
 
+#if 0
+        ! Revert back to CRS matrix
+        CALL List_ToCRSMatrix(A)
+        
         IF(n > 0) THEN          
           ! This is needed in order to copy the old BulkValues to a vector that 
           ! has the same size as the new matrix. Otherwise the matrix vector multiplication
@@ -5534,10 +5536,12 @@ CONTAINS
 
           END DO
         END IF
-        
+
         CALL Info(Caller,'Modified matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+#endif
       END IF
+      
     END BLOCK
 
 
