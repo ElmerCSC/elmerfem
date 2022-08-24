@@ -4484,7 +4484,7 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
     LOGICAL :: NeedListMatrix
     INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
-    REAL(KIND=dp), POINTER :: BulkValues0(:)
+    REAL(KIND=dp), POINTER :: BulkValues0(:), MassValues0(:)
     INTEGER :: DirCount
     CHARACTER(*), PARAMETER :: Caller = 'SetDirichletBoundaries'
     LOGICAL, ALLOCATABLE :: CandNodes(:)
@@ -5333,6 +5333,212 @@ CONTAINS
       END IF
     END IF
 
+
+
+    ! Check the boundaries for a curve bc.
+    !--------------------------------------------------------------------------------------------
+    BLOCK
+      INTEGER :: l,dofs,c1,c2,c3,ivec
+      REAL(KIND=dp) :: Coeff,d(3),Dfdx(3),f,x(3),sgn1,sgn2
+      LOGICAL, ALLOCATABLE :: NodeDone(:)
+      LOGICAL :: ResidualMode
+      TYPE(Variable_t), POINTER :: Dvar
+      REAL(KIND=dp), POINTER :: Aold(:), Anew(:)
+      INTEGER, POINTER :: GivenComps(:)
+      INTEGER :: Comps(3)
+
+      
+      DirName = TRIM(Name)//' Curve'
+      AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
+
+      IF( AnySingleBC  ) THEN
+        CALL Info(Caller,'Found BC constraint for curve: '//TRIM(DirName),Level=6)
+        
+        Solver => Model % Solver
+        
+        ResidualMode = ListGetLogical( Solver % Values,'Linear System Residual Mode',GotIt) 
+        
+        Dvar => Solver % Variable
+        IF(.NOT. ASSOCIATED( DVar ) ) THEN
+          CALL Fatal(Caller,'Solver variable not associated for Curve constraint!')
+        END IF
+        
+        dim = CoordinateSystemDimension()        
+        dofs = MIN( dim, DVar % Dofs )
+        IF( dofs < 2 ) THEN
+          CALL Fatal(Caller,'Curve constraint only makes sense for vector fields!')
+        END IF
+                  
+        ! Move the list matrix because of its flexibility
+        CALL Info(Caller,'Using List maxtrix to set curve constraints',Level=8)
+        CALL Info(Caller,'Original matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+        IF( ASSOCIATED( A % BulkValues ) .OR. ASSOCIATED( A % MassValues ) ) THEN
+          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
+          Cols0 = A % Cols
+          Rows0 = A % Rows
+        END IF
+        CALL List_toListMatrix(A)
+        
+        ind = 1
+        ALLOCATE(NodeDone(Mesh % NumberOfNodes))
+        NodeDone = .FALSE.
+        
+        DO bc = 1,Model % NumberOfBCs
+          
+          ValueList => Model % BCs(BC) % Values
+          IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
+
+          Comps = 0
+          GivenComps => ListGetIntegerArray( ValueList, TRIM(Dirname)//' Components',GotIt)
+          IF(GotIt) THEN
+            dofs = MIN(dofs, SIZE(GivenComps) )
+            Comps(1:dofs) = GivenComps(1:dofs)
+          ELSE
+            DO i=1,dofs
+              Comps(i) = i
+            END DO
+          END IF
+                    
+          ElemFirst =  Mesh % NumberOfBulkElements + 1 
+          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+                         
+          DO t = ElemFirst, ElemLast
+            Element => Mesh % Elements(t)
+
+            IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
+            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+            n = Element % TYPE % NumberOfNodes
+            Indexes(1:n) = Element % NodeIndexes
+            
+            DO i=1,n
+              j = Indexes(i)
+              IF(NodeDone(j)) CYCLE
+              NodeDone(j) = .TRUE.
+              k = DVar % Perm(j)
+
+              IF(k==0) CYCLE
+
+              l = DVar % dofs*(k-1)
+              d(1:dofs) = DVar % Values(l+1:l+dofs)
+              IF(dofs<3) d(dofs+1:3) = 0.0_dp
+              
+              x(1) = Mesh % Nodes % x(j) 
+              x(2) = Mesh % Nodes % y(j)
+              x(3) = Mesh % Nodes % z(j)
+              
+              x = x + d             
+              f = ListGetFunVec( ValueList, DirName, x(1:dofs), dofs, DfDx=dfdx(1:dofs) )
+
+              ! We could possible use take the most sensitive component to be the one for
+              ! which the curve constraint is applied ensuring maximum diagonal entry.              ´
+              !IF( ABS( DfDx(comps(1)) ) > ABS( DfDx(comps(2)) ) ) THEN
+              !  c1 = comps(1)
+              !ELSE
+              !  c1 = comps(2)
+              !END IF
+
+              ! But now we just let the 1st component always be the one. 
+              c1 = comps(1)
+              c2 = comps(2)
+              c3 = comps(3)
+
+              ! It may happen that teh rows are linearly dependent on each other.
+              ! Then a solution of type (x+y) for both is not good. Rather use then
+              ! (x-y) for the other to have a unique solution. 
+              sgn1 = GetMatrixElement(A,l+c1,l+c1) * GetMatrixElement(A,l+c2,l+c2)
+              sgn2 = DfDx(c1) * DfDx(c2)
+
+              IF( sgn1 * sgn2 < 0 ) THEN
+                Coeff = 1.0_dp
+              ELSE
+                Coeff = -1.0_dp
+              END IF
+              
+              !PRINT *,'Curve:',bc,j,f,DfDx(1:dofs),c1,coeff
+              !PRINT *,'ref:',(x(1)-1)**2+(x(2)-1)**2-0.5**2
+
+              ! Move all the entries from "c1" to "c2" and nullify the row.
+              CALL MoveRow( A, l+c1, l+c2, Coeff )
+              b(l+c2) = b(l+c2) + Coeff * b(l+c1)
+              b(l+c1) = 0.0_dp
+
+              ! In parallel only the owner makes the curve constraint
+              IF( ParEnv % PEs > 1 ) THEN
+                IF( A % ParallelInfo % NeighbourList(l+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+              END IF
+
+              CALL AddToMatrixElement( A, l+c1, l+1, DfDx(1) )
+              CALL AddToMatrixElement( A, l+c1, l+2, DfDx(2) )
+              IF(dofs>2) CALL AddToMatrixElement( A, l+c1, l+3, DfDx(3) )
+              b(l+c1) = -f
+
+              ! Residual mode is never active at this stage
+              !IF(.NOT. ResidualMode ) THEN
+                b(l+c1) = b(l+c1) + DfDx(1)*d(1) + DfDx(2)*d(2)
+                IF(dofs>2) b(l+1) = b(l+1) + DfDx(3)*d(3)
+              !END IF
+            END DO
+          END DO
+        END DO
+        
+        ! Revert back to CRS matrix
+        CALL List_ToCRSMatrix(A)
+        
+        n = COUNT( NodeDone ) 
+        CALL Info(Caller,'Number of curved nodes set: '//TRIM(I2S(n)),Level=10)        
+
+        IF(n > 0) THEN          
+          ! This is needed in order to copy the old BulkValues to a vector that 
+          ! has the same size as the new matrix. Otherwise the matrix vector multiplication
+          ! with the new Rows and Cols will fail. 
+          DO ivec=1,3
+            NULLIFY(Aold)
+            SELECT CASE(ivec)
+            CASE( 1 )
+              Aold => A % BulkValues
+            CASE( 2 )
+              Aold => A % MassValues
+            CASE( 3 )
+              Aold => A % DampValues
+            END SELECT
+
+            IF( .NOT. ASSOCIATED(Aold) ) CYCLE
+
+            NULLIFY(Anew)
+            ALLOCATE(Anew( SIZE(A % Values)) )
+            Anew = 0.0_dp
+            
+            DO i=1,A % NumberOfRows
+              DO j = Rows0(i), Rows0(i+1)-1
+                k = Cols0(j) 
+                DO j2 = A % Rows(i), A % Rows(i+1)-1
+                  k2 = A % Cols(j2)
+                  IF( k == k2 ) THEN
+                    Anew(j2) = Aold(j)
+                    EXIT
+                  END IF
+                END DO
+              END DO
+            END DO
+            
+            DEALLOCATE( Aold ) 
+            SELECT CASE(ivec)
+            CASE( 1 )
+              A % BulkValues => Anew
+            CASE( 2 )
+              A % MassValues => Anew
+            CASE( 3 )
+              A % DampValues => Anew 
+            END SELECT
+
+          END DO
+        END IF
+        
+        CALL Info(Caller,'Modified matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+      END IF
+    END BLOCK
 
 
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant

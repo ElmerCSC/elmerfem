@@ -5227,6 +5227,128 @@ use spariterglobals
    END FUNCTION ListGetFun
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetFunVec( List,Name,x,dofs,Found,dFdx,eps ) RESULT(F)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     REAL(KIND=dp), OPTIONAL :: x(*)
+     INTEGER, OPTIONAL :: dofs
+     REAL(KIND=dp) :: f
+     CHARACTER(LEN=*), OPTIONAL  :: Name
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), OPTIONAL :: dFdx(*), eps
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     TYPE(ValueListEntry_t), POINTER :: ptr, prevptr, derptr
+     REAL(KIND=dp) :: T(10)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize
+     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
+     LOGICAL :: GotIt
+     REAL(KIND=dp) :: xeps, F2, F1
+!------------------------------------------------------------------------------
+
+     SAVE prevptr, derptr
+     
+     F = 0.0_dp
+     IF( PRESENT( Name ) ) THEN
+       ptr => ListFind(List,Name,Found)
+       IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     ELSE
+       IF(.NOT.ASSOCIATED(List)) RETURN
+       ptr => List % Head
+       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+         CALL Warn('ListGetFunVec','List entry not associated')
+         RETURN
+       END IF
+     END IF
+
+     ! Node number not applicable, hence set to zero
+     k = 0
+     T(1:dofs) = x(1:dofs)
+       
+     SELECT CASE(ptr % TYPE)
+
+     CASE( LIST_TYPE_VARIABLE_SCALAR )
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         !CALL ListPushActiveName(name)
+         F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+         
+         ! Compute derivative at the point if requested
+         IF( PRESENT( dFdx ) ) THEN
+           ! Numerical central difference scheme is used for accuracy. 
+           IF( PRESENT( eps ) ) THEN
+             xeps = eps
+           ELSE
+             xeps = 1.0d-6
+           END IF
+           
+           DO i=1,dofs
+             T(i) = x(i) - xeps
+             F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+             T(i) = x(i) + xeps
+             F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+             dFdx(i) = ( F2 - F1 ) / (2*xeps)
+             T(i) = x(i)
+           END DO
+         END IF
+         !CALL ListPopActiveName()
+       END IF
+
+
+     CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+       WRITE( cmd, * ) 'tx=(', X(1:dofs),')'
+       k1 = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k1 )
+       
+       cmd = ptr % CValue
+       k1 = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k1 )
+       READ( tmp_str(1:k1), * ) F
+       
+       IF( PRESENT( dFdx ) ) THEN
+         ! For speed also one sided difference could be considered. 
+         IF( PRESENT( eps ) ) THEN
+           xeps = eps
+         ELSE
+           xeps = 1.0d-6
+         END IF
+         DO i=1,dofs
+           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)-xeps
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) F1
+
+           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)+xeps
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) F2
+
+           dFdx(i) = (F2-F1) / (2*xeps)
+           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)
+         END DO
+       END IF
+         
+     CASE DEFAULT
+       CALL Fatal('ListGetFunVec','LIST_TYPE not implemented!')
+
+     END SELECT
+
+   END FUNCTION ListGetFunVec
+!------------------------------------------------------------------------------
+
+
+
+   
    RECURSIVE SUBROUTINE ListInitHandle( Handle )
 
      TYPE(ValueHandle_t) :: Handle
