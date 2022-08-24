@@ -3035,7 +3035,7 @@ END BLOCK
      CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
          TRIM(SlaveSolverStr),Level=5)
      
-     dt = GetTimeStep()
+     dt = GetTimeStepsize()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
 
      ! store the nonlinear iteration at the outer loop
