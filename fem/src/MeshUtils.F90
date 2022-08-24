@@ -14300,6 +14300,7 @@ CONTAINS
         Success ) 
 
     IF(.NOT. Success) THEN
+      CALL Info(Caller,'Releasing interface meshes!',Level=20)
       CALL ReleaseMesh(BMesh1)
       CALL ReleaseMesh(BMesh2)
       RETURN
@@ -14515,6 +14516,7 @@ CONTAINS
     
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
+    CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
     !DEALLOCATE( BMesh1 % InvPerm ) 
@@ -14618,6 +14620,7 @@ CONTAINS
     CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
     
     IF(.NOT. Success) THEN
+      CALL Info('PeriodicPermutation','Releasing interface meshes!',Level=20)
       CALL ReleaseMesh(BMesh1)
       CALL ReleaseMesh(BMesh2)
       RETURN
@@ -14717,6 +14720,7 @@ CONTAINS
     
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
+    CALL Info('PeriodicPermutation','Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
     !DEALLOCATE( BMesh1 % InvPerm ) 
@@ -19907,150 +19911,145 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMesh( Mesh )
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
-     TYPE(Projector_t), POINTER :: Projector
-     TYPE(Projector_t), POINTER :: Projector1
-     TYPE(Variable_t), POINTER  :: Var, Var1
-     INTEGER :: i,j,k
-     LOGICAL :: GotIt
-     REAL(KIND=dp), POINTER :: ptr(:)
+    TYPE(Projector_t), POINTER :: Projector
+    TYPE(Projector_t), POINTER :: Projector1
+    TYPE(Variable_t), POINTER  :: Var, Var1
+    INTEGER :: i,j,k
+    LOGICAL :: GotIt
+    REAL(KIND=dp), POINTER :: ptr(:)
 !------------------------------------------------------------------------------
  
 !    Deallocate mesh variables:
 !    --------------------------
 
-
-     CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
-     CALL ReleaseVariableList( Mesh % Variables )
-     Mesh % Variables => NULL()
+    CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
+    CALL ReleaseVariableList( Mesh % Variables )
+    Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
 !    ----------------------------------------------------
-     IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh nodes',Level=15)
-       IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
-       IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
-       IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
-       DEALLOCATE( Mesh % Nodes )
+    IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh nodes',Level=15)
+      IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
+      IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
+      IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+      DEALLOCATE( Mesh % Nodes )
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
+      IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
-         DO i=1,Mesh % NumberOfNodes
-           IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-               DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-         END DO
-         DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
-       END IF
+      IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+        DO i=1,Mesh % NumberOfNodes
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+        DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
+      END IF
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
-     END IF
+      IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
+    END IF
 
-     Mesh % Nodes => NULL()
+    Mesh % Nodes => NULL()
 
-     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
-       CALL ReleaseMeshEdgeTables( Mesh )
-       Mesh % Edges => NULL()
-     END IF
+    IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
+      CALL ReleaseMeshEdgeTables( Mesh )
+      Mesh % Edges => NULL()
+    END IF
 
-     IF ( ASSOCIATED( Mesh % Faces ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh faces',Level=15)
-       CALL ReleaseMeshFaceTables( Mesh )
-       Mesh % Faces => NULL()
-     END IF
+    IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh faces',Level=15)
+      CALL ReleaseMeshFaceTables( Mesh )
+      Mesh % Faces => NULL()
+    END IF
 
-     IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
-     CALL Info('ReleaseMesh','Releasing mesh view factors',Level=15)
-       CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
-       Mesh % ViewFactors => NULL()
-     END IF
+    IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh view factors',Level=15)
+      CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
+      Mesh % ViewFactors => NULL()
+    END IF
 
 
 !    Deallocate mesh to mesh projector structures:
 !    ---------------------------------------------
-     Projector => Mesh % Projector
-     DO WHILE( ASSOCIATED( Projector ) )
-       CALL Info('ReleaseMesh','Releasing mesh projector',Level=15)
-       CALL FreeMatrix( Projector % Matrix )
-       CALL FreeMatrix( Projector % TMatrix )
-       Projector1 => Projector
-       Projector => Projector % Next
-       DEALLOCATE( Projector1 )
-     END DO
-     Mesh % Projector => NULL()
+    Projector => Mesh % Projector
+    DO WHILE( ASSOCIATED( Projector ) )
+      CALL Info('ReleaseMesh','Releasing mesh projector',Level=15)
+      CALL FreeMatrix( Projector % Matrix )
+      CALL FreeMatrix( Projector % TMatrix )
+      Projector1 => Projector
+      Projector => Projector % Next
+      DEALLOCATE( Projector1 )
+    END DO
+    Mesh % Projector => NULL()
 
 
 !    Deallocate quadrant tree (used in mesh to mesh interpolation):
 !    --------------------------------------------------------------
-     IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh quadrant tree',Level=15)
-       CALL FreeQuadrantTree( Mesh % RootQuadrant )
-       Mesh % RootQuadrant => NULL()
-     END IF
+    IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh quadrant tree',Level=15)
+      CALL FreeQuadrantTree( Mesh % RootQuadrant )
+      Mesh % RootQuadrant => NULL()
+    END IF
 
 
-     IF ( ASSOCIATED( Mesh % Elements ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
+    IF ( ASSOCIATED( Mesh % Elements ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
 
-        DO i=1,SIZE(Mesh % Elements)
+      DO i=1,SIZE(Mesh % Elements)
 
 !          Boundaryinfo structure for boundary elements
 !          ---------------------------------------------
-           IF ( Mesh % Elements(i) % Copy ) CYCLE
+        IF ( Mesh % Elements(i) % Copy ) CYCLE
 
-           IF ( i > Mesh % NumberOfBulkElements ) THEN
-             IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-               IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
-                 IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                     GebhardtFactors % Elements ) ) THEN
-                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                       GebhardtFactors % Elements )
-                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                       GebhardtFactors % Factors )
-                 END IF
-                 DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
-               END IF
-               DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
-             END IF
-           END IF
+        IF ( i > Mesh % NumberOfBulkElements ) THEN
+          IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
+            IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
+              IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
+                  GebhardtFactors % Elements ) ) THEN
+                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                    GebhardtFactors % Elements )
+                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                    GebhardtFactors % Factors )
+              END IF
+              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+            END IF
+            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+          END IF
+        END IF
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
-               DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
-           Mesh % Elements(i) % NodeIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+        Mesh % Elements(i) % NodeIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
-           Mesh % Elements(i) % EdgeIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+        Mesh % Elements(i) % DGIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
-           Mesh % Elements(i) % FaceIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+        Mesh % Elements(i) % BubbleIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % DGIndexes )
-           Mesh % Elements(i) % DGIndexes => NULL()
-
-           IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
-             DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
-           Mesh % Elements(i) % BubbleIndexes => NULL()
-
-           ! This creates problems later on!!!
-           !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
-           !   DEALLOCATE( Mesh % Elements(i) % PDefs )
-
-           Mesh % Elements(i) % PDefs => NULL()
- 
-        END DO
-        DEALLOCATE( Mesh % Elements )
-        Mesh % Elements => NULL()
-      END IF
-
-      CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
+        ! This creates problems later on!!!
+        !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+        !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+        
+        Mesh % Elements(i) % PDefs => NULL() 
+      END DO
+      
+      DEALLOCATE( Mesh % Elements )
+      Mesh % Elements => NULL()
+    END IF
      
+    Mesh % NumberOfNodes = 0
+    Mesh % NumberOfBulkElements = 0
+    Mesh % NumberOfBoundaryElements = 0
+    
+    CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMesh
 !------------------------------------------------------------------------------
@@ -20065,6 +20064,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Info('ReleaseMeshEdgeTables','Releasing number of edges: '&
+          //TRIM(I2S(Mesh % NumberOfEdges)),Level=30)
+      
        DO i=1,Mesh % NumberOfEdges
           Edge => Mesh % Edges(i)
           IF ( ASSOCIATED( Edge % NodeIndexes ) ) THEN
@@ -20074,18 +20076,22 @@ CONTAINS
              DEALLOCATE( Edge % BoundaryInfo )
           END IF
        END DO
-
        DEALLOCATE( Mesh % Edges )
-    END IF
-    NULLIFY( Mesh % Edges )
-    Mesh % NumberOfEdges = 0
 
-    DO i=1,SIZE(Mesh % Elements)
-       IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) THEN
-          DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
-          Mesh % Elements(i) % EdgeIndexes => Null()
+       NULLIFY( Mesh % Edges )
+       IF( Mesh % NumberOfEdges == 0 ) RETURN
+       Mesh % NumberOfEdges = 0
+       
+       IF( ASSOCIATED( Mesh % Elements ) ) THEN      
+         DO i=1,SIZE(Mesh % Elements)
+           IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) THEN
+             DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
+             Mesh % Elements(i) % EdgeIndexes => NULL()
+           END IF
+         END DO
        END IF
-    END DO
+     END IF
+       
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshEdgeTables
 !------------------------------------------------------------------------------
@@ -20099,7 +20105,10 @@ CONTAINS
     TYPE(Element_t), POINTER :: Face
 !------------------------------------------------------------------------------
     IF ( ASSOCIATED( Mesh % Faces ) ) THEN
-       DO i=1,Mesh % NumberOfFaces
+      CALL Info('ReleaseMeshFaceTables','Releasing number of faces: '&
+          //TRIM(I2S(Mesh % NumberOfFaces)))
+
+      DO i=1,Mesh % NumberOfFaces
           Face => Mesh % Faces(i)
           IF ( ASSOCIATED( Face % NodeIndexes ) ) THEN
              DEALLOCATE( Face % NodeIndexes )
@@ -20110,16 +20119,21 @@ CONTAINS
        END DO
 
        DEALLOCATE( Mesh % Faces )
-    END IF
-    NULLIFY( Mesh % Faces )
-    Mesh % NumberOfFaces = 0
+       NULLIFY( Mesh % Faces )
+       IF( Mesh % NumberOfFaces == 0 ) RETURN
+       
+       Mesh % NumberOfFaces = 0
 
-    DO i=1,SIZE(Mesh % Elements)
-       IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) THEN
-          DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
-          Mesh % Elements(i) % FaceIndexes => Null()
+       IF( ASSOCIATED( Mesh % Elements ) ) THEN
+         DO i=1,SIZE(Mesh % Elements)
+           IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) THEN
+             DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
+             Mesh % Elements(i) % FaceIndexes => NULL()
+           END IF
+         END DO
        END IF
-    END DO
+     END IF
+       
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshFaceTables
 !------------------------------------------------------------------------------
