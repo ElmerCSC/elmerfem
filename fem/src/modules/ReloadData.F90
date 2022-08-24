@@ -120,6 +120,8 @@ SUBROUTINE ReloadSolution( Model,Solver,dt,TransientSimulation )
       END IF
       CALL Info( 'ReloadSolution', Message, Level=4 )
 
+      IF(ParEnv % PEs > 1) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+
       WRITE( Message, *) 'Loading Timestep: ', k
       CALL Info( 'ReloadSolution', Message, Level=4 )
       IF ( ContReading ) THEN
