@@ -5346,14 +5346,22 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Aold(:), Anew(:)
       INTEGER, POINTER :: GivenComps(:)
       INTEGER :: Comps(3)
-
+      LOGICAL :: AnyHingeBC, HingeBC
+      REAL(KIND=dp) :: cfit(7),Normal(3),Tan1(3),Tan2(3),xt(2)
+      
       
       DirName = TRIM(Name)//' Curve'
       AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
-
-      IF( AnySingleBC  ) THEN
-        CALL Info(Caller,'Found BC constraint for curve: '//TRIM(DirName),Level=6)
-        
+      AnyHingeBC = ListGetLogicalAnyBC( Model, TRIM(Name)//' Hinge' )
+      
+      IF( AnySingleBC .OR. AnyHingeBC ) THEN
+        IF( AnySingleBC ) THEN
+          CALL Info(Caller,'Found BC constraint for curve: '//TRIM(DirName),Level=6)
+        END IF          
+        IF( AnySingleBC ) THEN
+          CALL Info(Caller,'Found BC constraint for hinge: '//TRIM(Name)//' Hinge',Level=6)
+        END IF
+          
         Solver => Model % Solver
         
         ResidualMode = ListGetLogical( Solver % Values,'Linear System Residual Mode',GotIt) 
@@ -5388,8 +5396,26 @@ CONTAINS
         DO bc = 1,Model % NumberOfBCs
           
           ValueList => Model % BCs(BC) % Values
-          IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
 
+          HingeBC = .FALSE.
+          IF( AnyHingeBC ) THEN
+            HingeBC = ListGetLogical( ValueList,TRIM(Name)//' Hinge',GotIt)
+          END IF
+          
+          IF(HingeBC ) THEN            
+            CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
+            IF( dim == 3 ) THEN
+              Normal = cfit(4:6)
+              CALL TangentDirections(Normal,Tan1,Tan2)
+              !PRINT *,'Normal:',Normal
+              !PRINT *,'Tan1',Tan1
+              !PRINT *,'Tan2',Tan2
+            END IF
+            PRINT *,'Hinge Params',cfit
+          ELSE           
+              IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
+          END IF
+            
           Comps = 0
           GivenComps => ListGetIntegerArray( ValueList, TRIM(Dirname)//' Components',GotIt)
           IF(GotIt) THEN
@@ -5401,8 +5427,8 @@ CONTAINS
             END DO
           END IF
                     
-          ElemFirst =  Mesh % NumberOfBulkElements + 1 
-          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          ElemFirst = Mesh % NumberOfBulkElements + 1 
+          ElemLast = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
                          
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
@@ -5428,9 +5454,33 @@ CONTAINS
               x(2) = Mesh % Nodes % y(j)
               x(3) = Mesh % Nodes % z(j)
               
-              x = x + d             
-              f = ListGetFunVec( ValueList, DirName, x(1:dofs), dofs, DfDx=dfdx(1:dofs) )
+              x = x + d
 
+              IF( HingeBC ) THEN
+                ! We can analytically derive the case of 2d hinge
+                IF( dim == 2 ) THEN
+                  x(1:2) = x(1:2) - cfit(1:2)
+                  f = x(1)**2 + x(2)**2 - cfit(3)**2
+                  DfDx(1) = 2*x(1)
+                  DfDx(2) = 2*x(2)
+                ELSE
+                  x = x - cfit(1:3)
+                  xt(1) = SUM(x * Tan1)
+                  xt(2) = SUM(x * Tan2)
+                  f = xt(1)**2 + xt(2)**2 - cfit(7)**2
+                  DfDx(1) = 2*xt(1)*Tan1(1) + 2*xt(2)*Tan2(1)
+                  DfDx(2) = 2*xt(1)*Tan1(2) + 2*xt(2)*Tan2(2)
+                  DfDx(3) = 2*xt(1)*Tan1(3) + 2*xt(2)*Tan2(3)                  
+                END IF
+              ELSE                
+                f = ListGetFunVec( ValueList, DirName, x(1:dofs), dofs, DfDx=dfdx(1:dofs) )
+              END IF
+
+              IF( MODULO(t,10) == 0) THEN
+                !PRINT *,'F:',f,DfDx(1:dofs),x+cfit(1:dofs)
+              END IF
+
+              
               ! We could possible use take the most sensitive component to be the one for
               ! which the curve constraint is applied ensuring maximum diagonal entry.              ´
               !IF( ABS( DfDx(comps(1)) ) > ABS( DfDx(comps(2)) ) ) THEN
@@ -5477,7 +5527,7 @@ CONTAINS
               ! Residual mode is never active at this stage
               !IF(.NOT. ResidualMode ) THEN
                 b(l+c1) = b(l+c1) + DfDx(1)*d(1) + DfDx(2)*d(2)
-                IF(dofs>2) b(l+1) = b(l+1) + DfDx(3)*d(3)
+                IF(dofs>2) b(l+c1) = b(l+c1) + DfDx(3)*d(3)
               !END IF
             END DO
           END DO

@@ -12466,12 +12466,15 @@ CONTAINS
   !    in the chosen plane to three representative points. Currently the fitting
   !    can only be done in x-y plane. 
   !---------------------------------------------------------------------------
-  SUBROUTINE CylinderFit(PMesh, PParams) 
+  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams) 
   !---------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
-
-    INTEGER :: i,j,k,n,t,AxisI,iter
+    INTEGER, OPTIONAL :: BCind
+    INTEGER, OPTIONAL :: dim
+    REAL(KIND=dp), OPTIONAL :: FitParams(:)
+    
+    INTEGER :: i,j,k,n,t,AxisI,iter,cdim
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
@@ -12480,43 +12483,70 @@ CONTAINS
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
         CircleCoord(3,3)
     INTEGER :: CircleInd(3) 
-
-    CALL Info('CylinderFit','Trying to fit a cylinder to the surface patch',Level=10)
-
-    NiNj = 0.0_dp
+    LOGICAL :: BCMode
+    INTEGER :: Tag, t1, t2
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    
+    ! Set the range for the possible active elements. 
+    ! Set the range for the possible active elements. 
+    IF( PRESENT( BCind ) ) THEN
+      BCMode = .TRUE.
+      t1 = PMesh % NumberOfBulkElements + 1
+      t2 = PMesh % NumberOfBulkElements + PMesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+      ALLOCATE( ActiveNode( PMesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
+    ELSE
+      BCMode = .FALSE.
+      t1 = 1
+      t2 = PMesh % NumberOfBulkElements      
+    END IF
 
     n = PMesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-
+    
     ! If the initial mesh is in 2D there is really no need to figure out the 
     ! direction of the rotational axis. It can only be aligned with the z-axis. 
-    IF( CurrentModel % Mesh % MeshDim == 2 ) THEN
+    cdim = CurrentModel % Mesh % MeshDim
+    IF(PRESENT(dim)) cdim = MIN(cdim,dim)
+       
+    IF( cdim == 2 ) THEN
       AxisNormal = 0.0_dp
       AxisNormal(3) = 1.0_dp
-      GOTO 100 
     END IF
 
-
     ! Compute the inner product of <N*N> for the elements
-    DO t=1, PMesh % NumberOfBulkElements
+    NiNj = 0.0_dp
+    DO t=t1, t2
       Element => PMesh % Elements(t)
-      
+
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
-      
+
+      IF( BCMode ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+        ActiveNode(Element % NodeIndexes(1:n)) = .TRUE.
+      END IF
+              
+      ! For 2D we only tag the boundary nodes
+      IF( cdim < 3 ) CYCLE
+
       Nodes % x(1:n) = PMesh % Nodes % x(NodeIndexes(1:n))
       Nodes % y(1:n) = PMesh % Nodes % y(NodeIndexes(1:n))
       Nodes % z(1:n) = PMesh % Nodes % z(NodeIndexes(1:n))           
       
       Normal = NormalVector( Element, Nodes, Check = .FALSE. ) 
-
+      
       DO i=1,3
         DO j=1,3
           NiNj(i,j) = NiNj(i,j) + Normal(i) * Normal(j)
         END DO
-      END DO      
+      END DO
     END DO
 
+    IF( cdim == 2 ) GOTO 100 
+    
     ! Normalize by the number of boundary elements
     NiNj = NiNj / PMesh % NumberOfBulkElements
 
@@ -12566,6 +12596,10 @@ CONTAINS
       Coord(2) = PMesh % Nodes % y(i)
       Coord(3) = PMesh % Nodes % z(i)
 
+      IF( BCMode ) THEN
+        IF( .NOT. ActiveNode(i) ) CYCLE
+      END IF
+      
       d1 = SUM( Tangent1 * Coord )
       IF( d1 < MinDist ) THEN
         MinDist = d1
@@ -12596,6 +12630,10 @@ CONTAINS
         Coord(1) = PMesh % Nodes % x(i)
         Coord(2) = PMesh % Nodes % y(i)
         Coord(3) = PMesh % Nodes % z(i)
+        
+        IF( BCMode ) THEN
+          IF( .NOT. ActiveNode(i) ) CYCLE
+        END IF
         
         ! Minimum distance from the previously defined nodes
         MinDist = HUGE(MinDist)
@@ -12664,14 +12702,28 @@ CONTAINS
     Coord = x0 * Tangent1 + y0 * Tangent2
 
     !PRINT *,'Center point in cartesian coordinates:',Coord
-    
-    CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
-    CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
-    CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
 
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+    IF( PRESENT( FitParams ) ) THEN
+      IF( cdim == 2 ) THEN
+        FitParams(1:2) = Coord(1:2)
+        FitParams(3) = rad
+      ELSE
+        FitParams(1:3) = Coord(1:3)
+        FitParams(4:6) = AxisNormal(1:3)
+        FitParams(7) = rad
+      END IF
+    ELSE      
+      CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
+      CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+      CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
+
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+    END IF
+      
+    DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
+
 
     
   CONTAINS
@@ -12695,10 +12747,11 @@ CONTAINS
 
   ! Code for fitting a sphere. Not yet used.
   !-------------------------------------------------------------------------
-  SUBROUTINE SphereFit(Mesh, Params, BCind ) 
+  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams ) 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, OPTIONAL :: BCind
+    REAL(KIND=dp), OPTIONAL :: FitParams(:)
 
     INTEGER :: i,j,t,t1,t2,NoNodes,Tag
     LOGICAL :: BCMode
@@ -12716,14 +12769,13 @@ CONTAINS
       t1 = Mesh % NumberOfBulkElements + 1
       t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       Tag = CurrentModel % BCs(BCind) % Tag
+      ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
     ELSE
       BCMode = .FALSE.
       t1 = 1
       t2 = Mesh % NumberOfBulkElements
     END IF
-
-    ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
-    ActiveNode = .FALSE.
 
     ! Mark the nodes that belong to the active elements.
     ! 1) Either we only have bulk elements in which case we use all of the nodes or
@@ -12733,18 +12785,14 @@ CONTAINS
       IF( BCMode ) THEN
         IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
         IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+        ActiveNode(Element % NodeIndexes) = .TRUE.
       END IF
-      ActiveNode(Element % NodeIndexes) = .TRUE.              
     END DO
 
     ! If all nodes are active just use pointers to the nodes.
     ! Otherwise create list of the nodes. 
-    NoNodes = COUNT( ActiveNode )
-    IF( NoNodes == Mesh % NumberOfNodes ) THEN
-      x => Mesh % Nodes % x
-      y => Mesh % Nodes % y
-      z => Mesh % Nodes % z
-    ELSE
+    IF( BCMode ) THEN
+      NoNodes = COUNT( ActiveNode )
       ALLOCATE( x(NoNodes), y(NoNodes), z(NoNodes) )
       j = 0
       DO i=1,Mesh % NumberOfNodes
@@ -12754,22 +12802,34 @@ CONTAINS
         y(j) = Mesh % Nodes % y(i)
         z(j) = Mesh % Nodes % z(i)
       END DO
+    ELSE
+      NoNodes = Mesh % NumberOfNodes
+      x => Mesh % Nodes % x
+      y => Mesh % Nodes % y
+      z => Mesh % Nodes % z
     END IF
 
     ! Call the function to set the sphere parameters for the nodes.
     CALL SphereFitfun(NoNodes,x,y,z,xc,yc,zc,Rad)
 
-    IF( NoNodes < Mesh % NumberOfNodes ) THEN
-      DEALLOCATE(x,y,z)
+    IF( BCMode ) THEN
+      DEALLOCATE(ActiveNode,x,y,z)
     END IF
 
     ! Add the sphere parameters to the list so that they can be used later
     ! directly without having to fit the parameters again.  
-    CALL ListAddConstReal( Params,'Sphere Center X',xc )
-    CALL ListAddConstReal( Params,'Sphere Center Y',yc )
-    CALL ListAddConstReal( Params,'Sphere Center Z',zc )
-    CALL ListAddConstReal( Params,'Sphere Radius',Rad )
-    
+    IF( PRESENT( FitParams ) ) THEN
+      FitParams(1) = xc
+      FitParams(2) = yc
+      FitParams(3) = zc
+      FitParams(4) = Rad
+    ELSE   
+      CALL ListAddConstReal( Params,'Sphere Center X',xc )
+      CALL ListAddConstReal( Params,'Sphere Center Y',yc )
+      CALL ListAddConstReal( Params,'Sphere Center Z',zc )
+      CALL ListAddConstReal( Params,'Sphere Radius',Rad )
+    END IF
+      
   CONTAINS
     
 
