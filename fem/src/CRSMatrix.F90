@@ -4976,6 +4976,106 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> At first call register the matrix topology.
+!> At second round change the matrix topology of the vectors.
+!> Without change in topology all matrix operations with BulkValues,
+!> MassValues, and DampValues would break down. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_ChangeTopology( A, Init )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+    LOGICAL :: Init
+!------------------------------------------------------------------------------ 
+    LOGICAL, SAVE :: InitDone = .FALSE.
+    INTEGER, ALLOCATABLE, SAVE :: Rows0(:), Cols0(:)
+    REAL(KIND=dp), POINTER :: Aold(:), Anew(:)
+    INTEGER, SAVE :: n0
+    INTEGER :: i,j,k,j2,k2,ivec,n
+    
+
+    IF( A % NumberOfRows == 0 ) RETURN
+        
+    IF(Init) THEN
+      IF(InitDone) THEN
+        CALL Warn('CRS_ChangeTopology','We already have initialized Cols0 and Rows0!')
+        DEALLOCATE(Cols0,Rows0)
+      END IF
+      n0 = SIZE(A % Cols)
+      CALL Info('CRS_ChangeTopology','Original matrix non-zeros: '//TRIM(I2S(n0)),Level=12)
+      
+      ALLOCATE( Cols0(n0), Rows0( SIZE( A % Rows ) ) )
+      Cols0 = A % Cols
+      Rows0 = A % Rows
+      InitDone = .TRUE.
+    ELSE
+      n = SIZE( A % Cols )
+      
+      IF( n == n0 ) THEN
+        IF( ALL( Cols0 == A % Cols ) ) THEN
+          CALL Info('CRS_ChangeTopology','Topology is unaltered!',Level=20)
+          DEALLOCATE(Cols0,Rows0)
+          InitDone = .FALSE.
+          RETURN
+        END IF
+      END IF
+
+      IF( SIZE(A % Rows) /= SIZE(Rows0) ) THEN
+        CALL Fatal('CRS_ChangeTopology','This routine assumes constant number of rows!')
+      END IF
+      
+      CALL Info('CRS_ChangeTopology','New matrix non-zeros: '//TRIM(I2S(n)),Level=12)
+      DO ivec=1,3
+        NULLIFY(Aold)
+        SELECT CASE(ivec)
+        CASE( 1 )
+          Aold => A % BulkValues
+        CASE( 2 )
+          Aold => A % MassValues
+        CASE( 3 )
+          Aold => A % DampValues
+        END SELECT
+        
+        IF( .NOT. ASSOCIATED(Aold) ) CYCLE
+        
+        NULLIFY(Anew)
+        ALLOCATE(Anew(n))
+        Anew = 0.0_dp
+        
+        DO i=1,A % NumberOfRows
+          DO j = Rows0(i), Rows0(i+1)-1
+            k = Cols0(j) 
+            DO j2 = A % Rows(i), A % Rows(i+1)-1
+              k2 = A % Cols(j2)
+              IF( k == k2 ) THEN
+                Anew(j2) = Aold(j)
+                EXIT
+              END IF
+            END DO
+          END DO
+        END DO
+        
+        DEALLOCATE( Aold ) 
+
+        SELECT CASE(ivec)
+        CASE( 1 )
+          A % BulkValues => Anew
+        CASE( 2 )
+          A % MassValues => Anew
+        CASE( 3 )
+          A % DampValues => Anew 
+        END SELECT
+        
+      END DO
+            
+      DEALLOCATE(Cols0,Rows0)
+      InitDone = .FALSE.
+
+      CALL Info('CRS_ChangeTopology','Matrix topology changed',Level=30)
+    END IF
+          
+  END SUBROUTINE CRS_ChangeTopology
+
 
 END MODULE CRSMatrix
 !------------------------------------------------------------------------------
