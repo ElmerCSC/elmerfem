@@ -5339,7 +5339,7 @@ CONTAINS
     !--------------------------------------------------------------------------------------------
     BLOCK
       INTEGER :: l,dofs,c1,c2,c3,ivec
-      REAL(KIND=dp) :: Coeff,d(3),Dfdx(3),f,x(3),sgn1,sgn2
+      REAL(KIND=dp) :: Coeff,d(3),Dfdx(3),f,x(3),a11,a22
       LOGICAL, ALLOCATABLE :: NodeDone(:)
       LOGICAL :: ResidualMode
       TYPE(Variable_t), POINTER :: Dvar
@@ -5347,7 +5347,8 @@ CONTAINS
       INTEGER, POINTER :: GivenComps(:)
       INTEGER :: Comps(3)
       LOGICAL :: AnyHingeBC, HingeBC
-      REAL(KIND=dp) :: cfit(7),Normal(3),Tan1(3),Tan2(3),xt(2)
+      REAL(KIND=dp) :: Normal(3),Tan1(3),Tan2(3),xt(2),cfit(7)
+      REAL(KIND=dp), POINTER :: cfitmat(:,:)
       
       
       DirName = TRIM(Name)//' Curve'
@@ -5403,17 +5404,34 @@ CONTAINS
           END IF
           
           IF(HingeBC ) THEN            
-            CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
-            IF( dim == 3 ) THEN
+            IF( dim == 2 ) THEN
+              cfitmat => ListGetConstRealArray( ValueList,'Circle Parameters',GotIt )
+              IF(GotIt) THEN
+                cfit(1:3) = cfitmat(1:3,1)
+              ELSE
+                CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
+                ALLOCATE(cfitmat(3,1))
+                cfitmat(1:3,1) = cfit(1:3)
+                CALL ListAddConstRealArray( ValueList,'Circle Parameters', 3, 1, cfitmat )
+                DEALLOCATE(cfitmat)
+              END IF
+            ELSE IF( dim == 3 ) THEN
+              cfitmat => ListGetConstRealArray( ValueList,'Cylinder Parameters',GotIt )
+              IF(GotIt) THEN              
+                cfit(1:7) = cfitmat(1:7,1)
+              ELSE
+                CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
+                ALLOCATE(cfitmat(7,1))
+                cfitmat(1:7,1) = cfit(1:7)
+                CALL ListAddConstRealArray( ValueList,'Cylinder Parameters', 7, 1, cfitmat )
+                DEALLOCATE(cfitmat)
+              END IF
               Normal = cfit(4:6)
               CALL TangentDirections(Normal,Tan1,Tan2)
-              !PRINT *,'Normal:',Normal
-              !PRINT *,'Tan1',Tan1
-              !PRINT *,'Tan2',Tan2
             END IF
-            PRINT *,'Hinge Params',cfit
+            !PRINT *,'Hinge Params',cfit
           ELSE           
-              IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
+            IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
           END IF
             
           Comps = 0
@@ -5448,14 +5466,15 @@ CONTAINS
 
               l = DVar % dofs*(k-1)
               d(1:dofs) = DVar % Values(l+1:l+dofs)
-              IF(dofs<3) d(dofs+1:3) = 0.0_dp
+              IF(dofs==2) d(3) = 0.0_dp
               
               x(1) = Mesh % Nodes % x(j) 
               x(2) = Mesh % Nodes % y(j)
               x(3) = Mesh % Nodes % z(j)
-              
+
               x = x + d
 
+              
               IF( HingeBC ) THEN
                 ! We can analytically derive the case of 2d hinge
                 IF( dim == 2 ) THEN
@@ -5467,7 +5486,9 @@ CONTAINS
                   x = x - cfit(1:3)
                   xt(1) = SUM(x * Tan1)
                   xt(2) = SUM(x * Tan2)
+                                    
                   f = xt(1)**2 + xt(2)**2 - cfit(7)**2
+                  
                   DfDx(1) = 2*xt(1)*Tan1(1) + 2*xt(2)*Tan2(1)
                   DfDx(2) = 2*xt(1)*Tan1(2) + 2*xt(2)*Tan2(2)
                   DfDx(3) = 2*xt(1)*Tan1(3) + 2*xt(2)*Tan2(3)                  
@@ -5475,40 +5496,35 @@ CONTAINS
               ELSE                
                 f = ListGetFunVec( ValueList, DirName, x(1:dofs), dofs, DfDx=dfdx(1:dofs) )
               END IF
-
-              IF( MODULO(t,10) == 0) THEN
-                !PRINT *,'F:',f,DfDx(1:dofs),x+cfit(1:dofs)
-              END IF
-
               
-              ! We could possible use take the most sensitive component to be the one for
-              ! which the curve constraint is applied ensuring maximum diagonal entry.              ´
-              !IF( ABS( DfDx(comps(1)) ) > ABS( DfDx(comps(2)) ) ) THEN
-              !  c1 = comps(1)
-              !ELSE
-              !  c1 = comps(2)
-              !END IF
-
-              ! But now we just let the 1st component always be the one. 
+              ! Let us take the most sensitive component to be the one for
+              ! which the curve constraint is applied ensuring maximum diagonal entry.              ´              
+              ! Then choose 2nd (and 3rd) components in order. 
               c1 = comps(1)
-              c2 = comps(2)
-              c3 = comps(3)
-
+              DO ivec=2,dofs
+                IF( ABS(DfDx(comps(ivec))) > ABS(DfDx(c1))) c1 = comps(ivec)
+              END DO
+              DO ivec=1,dofs
+                IF(comps(ivec) /= c1) THEN
+                  c2 = comps(ivec)
+                  EXIT
+                END IF
+              END DO
+              IF( dofs == 3 ) THEN
+                c3 = 6 - c1 - c2
+              END IF
+                          
               ! It may happen that teh rows are linearly dependent on each other.
               ! Then a solution of type (x+y) for both is not good. Rather use then
               ! (x-y) for the other to have a unique solution. 
-              sgn1 = GetMatrixElement(A,l+c1,l+c1) * GetMatrixElement(A,l+c2,l+c2)
-              sgn2 = DfDx(c1) * DfDx(c2)
+              a11 = GetMatrixElement(A,l+c1,l+c1)
+              a22 = GetMatrixElement(A,l+c2,l+c2)
 
-              IF( sgn1 * sgn2 < 0 ) THEN
-                Coeff = 1.0_dp
-              ELSE
-                Coeff = -1.0_dp
-              END IF
-              
-              !PRINT *,'Curve:',bc,j,f,DfDx(1:dofs),c1,coeff
-              !PRINT *,'ref:',(x(1)-1)**2+(x(2)-1)**2-0.5**2
-
+              ! This is a simple sign rule that avoids two equations being redundant.
+              ! Don't multiply too numbers that could be almost zero!
+              Coeff = -SIGN(1.0_dp,a11) * SIGN(1.0_dp,a22) * &
+                  SIGN(1.0_dp, DfDx(c1)) * SIGN(1.0_dp, DfDx(c2))
+             
               ! Move all the entries from "c1" to "c2" and nullify the row.
               CALL MoveRow( A, l+c1, l+c2, Coeff )
               b(l+c2) = b(l+c2) + Coeff * b(l+c1)
@@ -5521,13 +5537,13 @@ CONTAINS
 
               CALL AddToMatrixElement( A, l+c1, l+1, DfDx(1) )
               CALL AddToMatrixElement( A, l+c1, l+2, DfDx(2) )
-              IF(dofs>2) CALL AddToMatrixElement( A, l+c1, l+3, DfDx(3) )
+              IF(dofs==3) CALL AddToMatrixElement( A, l+c1, l+3, DfDx(3) )
               b(l+c1) = -f
 
               ! Residual mode is never active at this stage
               !IF(.NOT. ResidualMode ) THEN
                 b(l+c1) = b(l+c1) + DfDx(1)*d(1) + DfDx(2)*d(2)
-                IF(dofs>2) b(l+c1) = b(l+c1) + DfDx(3)*d(3)
+                IF(dofs==3) b(l+c1) = b(l+c1) + DfDx(3)*d(3)
               !END IF
             END DO
           END DO
@@ -7406,7 +7422,6 @@ END SUBROUTINE SetNodalSources
         NodeIndexes => ListGetIntegerArray( ValueList,'Target Nodes')
         n = SIZE(NodeIndexes)
 
-!        PRINT *,'ParEnv:',ParEnv % MyPe, NodeIndexes
         IF(ANY(NodeIndexes>0)) THEN
           CALL SetPointLoads(n)
         END IF
