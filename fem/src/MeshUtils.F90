@@ -20240,11 +20240,11 @@ CONTAINS
 
 
 !----------------------------------------------------------------------------------
-  SUBROUTINE DisplaceMesh( Mesh, Update, SIGN, Perm, DOFs, StabRecomp, UpdateDirs )
+  SUBROUTINE DisplaceMesh( Mesh, Update, sgn, Perm, DOFs, StabRecomp, UpdateDirs )
 !----------------------------------------------------------------------------------
     TYPE(Mesh_t) , POINTER :: Mesh 
     REAL(KIND=dp) :: Update(:)
-    INTEGER :: DOFs,SIGN,Perm(:)
+    INTEGER :: DOFs,sgn,Perm(:)
     LOGICAL, OPTIONAL :: StabRecomp
     INTEGER, OPTIONAL :: UpdateDirs
 
@@ -20264,18 +20264,18 @@ CONTAINS
        k = Perm(i)
        IF ( k > 0 ) THEN
          k = DOFs * (k-1)
-         Mesh % Nodes % x(i)   = Mesh % Nodes % x(i) + SIGN * Update(k+1)
+         Mesh % Nodes % x(i)   = Mesh % Nodes % x(i) + sgn * Update(k+1)
          IF ( dim > 1 ) &
-           Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + SIGN * Update(k+2)
+           Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + sgn * Update(k+2)
          IF ( dim > 2 ) &
-           Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + SIGN * Update(k+3)
+           Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + sgn * Update(k+3)
         END IF
     END DO
 
     StabFlag = .TRUE.
     IF ( PRESENT( StabRecomp ) ) StabFlag = StabRecomp
 
-    IF ( SIGN == 1 .AND. StabFlag ) THEN
+    IF ( sgn == 1 .AND. StabFlag ) THEN
        k = Mesh % MaxElementDOFs
        CALL AllocateVector( ElementNodes % x,k )
        CALL AllocateVector( ElementNodes % y,k )
