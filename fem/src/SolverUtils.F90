@@ -4483,8 +4483,6 @@ CONTAINS
     LOGICAL :: AnySingleBC, AnySingleBF
     LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
     LOGICAL :: NeedListMatrix
-    INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
-    REAL(KIND=dp), POINTER :: BulkValues0(:), MassValues0(:)
     INTEGER :: DirCount
     CHARACTER(*), PARAMETER :: Caller = 'SetDirichletBoundaries'
     LOGICAL, ALLOCATABLE :: CandNodes(:)
@@ -5182,16 +5180,9 @@ CONTAINS
         NeedListMatrix = .NOT. ListCheckPresentAnyBodyForce( Model, TRIM(Name)//' Constant Node Index')
       END IF
       
-      ! Move the list matrix because of its flexibility
+      ! Move the list matrix because of its flexibility. Register the initial topology.
       IF( NeedListMatrix ) THEN
-        CALL Info(Caller,'Using List maxtrix to set constant constraints',Level=8)
-        CALL Info(Caller,'Original matrix non-zeros: '&
-            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
-        IF( ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
-          Cols0 = A % Cols
-          Rows0 = A % Rows
-        END IF
+        CALL CRS_ChangeTopology(A, Init=.TRUE.)
         CALL List_toListMatrix(A)
       END IF
 
@@ -5300,33 +5291,9 @@ CONTAINS
       IF( NeedListMatrix ) THEN
         DEALLOCATE( LumpedNodeSet )
 
-        ! Revert back to CRS matrix
+        ! Revert back to CRS matrix and change to the new topology. 
         CALL List_ToCRSMatrix(A)
-
-        ! This is needed in order to copy the old BulkValues to a vector that 
-        ! has the same size as the new matrix. Otherwise the matrix vector multiplication
-        ! with the new Rows and Cols will fail. 
-        IF( ASSOCIATED( A % BulkValues ) ) THEN
-          BulkValues0 => A % BulkValues
-          NULLIFY( A % BulkValues ) 
-          ALLOCATE( A % BulkValues( SIZE( A % Values ) ) )
-          A % BulkValues = 0.0_dp
-
-          DO i=1,A % NumberOfRows
-            DO j = Rows0(i), Rows0(i+1)-1
-              k = Cols0(j) 
-              DO j2 = A % Rows(i), A % Rows(i+1)-1
-                k2 = A % Cols(j2)
-                IF( k == k2 ) THEN
-                  A % BulkValues(j2) = BulkValues0(j)
-                  EXIT
-                END IF
-              END DO
-            END DO
-          END DO
-
-          DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
-        END IF
+        CALL CRS_ChangeTopology(A, Init=.FALSE.)
         
         CALL Info(Caller,'Modified matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
@@ -5343,7 +5310,6 @@ CONTAINS
       LOGICAL, ALLOCATABLE :: NodeDone(:)
       LOGICAL :: ResidualMode
       TYPE(Variable_t), POINTER :: Dvar
-      REAL(KIND=dp), POINTER :: Aold(:), Anew(:)
       INTEGER, POINTER :: GivenComps(:)
       INTEGER :: Comps(3)
       LOGICAL :: AnyHingeBC, HingeBC
@@ -5378,19 +5344,6 @@ CONTAINS
           CALL Fatal(Caller,'Curve constraint only makes sense for vector fields!')
         END IF
 
-#if 0
-        ! Move the list matrix because of its flexibility
-        CALL Info(Caller,'Using List maxtrix to set curve constraints',Level=8)
-        CALL Info(Caller,'Original matrix non-zeros: '&
-            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
-        IF( ASSOCIATED( A % BulkValues ) .OR. ASSOCIATED( A % MassValues ) ) THEN
-          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
-          Cols0 = A % Cols
-          Rows0 = A % Rows
-        END IF
-        CALL List_toListMatrix(A)
-#endif
-        
         ALLOCATE(NodeDone(Mesh % NumberOfNodes))
         NodeDone = .FALSE.
         
@@ -5551,61 +5504,6 @@ CONTAINS
         
         n = COUNT( NodeDone ) 
         CALL Info(Caller,'Number of curved nodes set: '//TRIM(I2S(n)),Level=10)        
-
-#if 0
-        ! Revert back to CRS matrix
-        CALL List_ToCRSMatrix(A)
-        
-        IF(n > 0) THEN          
-          ! This is needed in order to copy the old BulkValues to a vector that 
-          ! has the same size as the new matrix. Otherwise the matrix vector multiplication
-          ! with the new Rows and Cols will fail. 
-          DO ivec=1,3
-            NULLIFY(Aold)
-            SELECT CASE(ivec)
-            CASE( 1 )
-              Aold => A % BulkValues
-            CASE( 2 )
-              Aold => A % MassValues
-            CASE( 3 )
-              Aold => A % DampValues
-            END SELECT
-
-            IF( .NOT. ASSOCIATED(Aold) ) CYCLE
-
-            NULLIFY(Anew)
-            ALLOCATE(Anew( SIZE(A % Values)) )
-            Anew = 0.0_dp
-            
-            DO i=1,A % NumberOfRows
-              DO j = Rows0(i), Rows0(i+1)-1
-                k = Cols0(j) 
-                DO j2 = A % Rows(i), A % Rows(i+1)-1
-                  k2 = A % Cols(j2)
-                  IF( k == k2 ) THEN
-                    Anew(j2) = Aold(j)
-                    EXIT
-                  END IF
-                END DO
-              END DO
-            END DO
-            
-            DEALLOCATE( Aold ) 
-            SELECT CASE(ivec)
-            CASE( 1 )
-              A % BulkValues => Anew
-            CASE( 2 )
-              A % MassValues => Anew
-            CASE( 3 )
-              A % DampValues => Anew 
-            END SELECT
-
-          END DO
-        END IF
-
-        CALL Info(Caller,'Modified matrix non-zeros: '&
-            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
-#endif
       END IF
       
     END BLOCK
@@ -5630,14 +5528,7 @@ CONTAINS
       
       ! Move the list matrix because of its flexibility
       IF( NeedListMatrix ) THEN
-        CALL Info(Caller,'Using List maxtrix to set constant constraints',Level=8)
-        CALL Info(Caller,'Original matrix non-zeros: '&
-            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
-        IF( ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
-          Cols0 = A % Cols
-          Rows0 = A % Rows
-        END IF
+        CALL CRS_ChangeTopology(A,Init=.TRUE.)
         CALL List_toListMatrix(A)
       END IF
 
@@ -5707,37 +5598,10 @@ CONTAINS
 
       IF( NeedListMatrix ) THEN
         DEALLOCATE( LumpedNodeSet )
-
+        
         ! Revert back to CRS matrix
         CALL List_ToCRSMatrix(A)
-
-        ! This is needed in order to copy the old BulkValues to a vector that 
-        ! has the same size as the new matrix. Otherwise the matrix vector multiplication
-        ! with the new Rows and Cols will fail. 
-        IF( ASSOCIATED( A % BulkValues ) ) THEN
-          BulkValues0 => A % BulkValues
-          NULLIFY( A % BulkValues ) 
-          ALLOCATE( A % BulkValues( SIZE( A % Values ) ) )
-          A % BulkValues = 0.0_dp
-
-          DO i=1,A % NumberOfRows
-            DO j = Rows0(i), Rows0(i+1)-1
-              k = Cols0(j) 
-              DO j2 = A % Rows(i), A % Rows(i+1)-1
-                k2 = A % Cols(j2)
-                IF( k == k2 ) THEN
-                  A % BulkValues(j2) = BulkValues0(j)
-                  EXIT
-                END IF
-              END DO
-            END DO
-          END DO
-
-          DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
-        END IF
-        
-        CALL Info(Caller,'Modified matrix non-zeros: '&
-            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+        CALL CRS_ChangeTopology(A,Init=.FALSE.)
       END IF
     END IF
 
