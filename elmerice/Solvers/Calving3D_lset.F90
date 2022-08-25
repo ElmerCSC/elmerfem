@@ -1541,6 +1541,8 @@
          IF(Debug)     PRINT *, ParEnv % MyPE, i, 'Shortest distance to closest segment in crevassepath ',MinDist
          IF(Debug)     PRINT *, ParEnv % MyPE, i, 'jmin is ',jmin
        END DO
+     ELSE
+        SignDistValues = 0.0_dp
      END IF
 
      Debug = .FALSE.
