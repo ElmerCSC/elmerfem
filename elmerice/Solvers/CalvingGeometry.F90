@@ -5681,21 +5681,33 @@ CONTAINS
 
   END SUBROUTINE RemoveInvalidCrevs
 
-  SUBROUTINE GetFrontCorners(Model, FrontLeft, FrontRight)
+  SUBROUTINE GetFrontCorners(Model, Solver, FrontLeft, FrontRight)
 
     TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
     !--------------------------
-    TYPE(Solver_t), POINTER :: NullSolver => NULL()
-    INTEGER :: i,dummyint, LeftRoot, RightRoot, ierr, NNodes
-    REAL(KIND=dp) :: FrontLeft(2), FrontRight(2)
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Solver_t), POINTER :: NullSolver => NULL(), AdvSolver
+    TYPE(Valuelist_t), POINTER :: SolverParams, AdvParams
+    INTEGER :: i,j,k, dummyint, LeftRoot, RightRoot, ierr, NNodes,RCounter, LCounter,&
+        Nl,Nr, Naux, ok, RightTotal, LeftTotal, Nrail, CornersTotal, Counter, side
+    REAL(KIND=dp) :: FrontLeft(2), FrontRight(2), buffer, xx, yy, mindist, tempdist
     INTEGER, POINTER :: FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
-    LOGICAL :: FoundRight, FoundLeft
-    LOGICAL, ALLOCATABLE :: PFoundRight(:), PFoundLeft(:)
+    LOGICAL :: FoundRight, FoundLeft, reducecorners(2), Found
+    LOGICAL, ALLOCATABLE :: PFoundRight(:), PFoundLeft(:), InFront(:)
+    INTEGER, ALLOCATABLE ::  PRightCount(:), PLeftCount(:), disps(:), SidePerm(:),&
+        PCount(:), jmin(:), Corner(:)
+    REAL(kind=dp), ALLOCATABLE :: xL(:),yL(:),xR(:),yR(:), xRail(:), yRail(:),&
+        AllCorners(:), PAllCorners(:), MinDists(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: FrontMaskName, TopMaskName, &
-         LeftMaskName, RightMaskName
+         LeftMaskName, RightMaskName, SolverName = "GetFrontCorners",&
+         RightRailFName, LeftRailFName, Adv_EqName
+    INTEGER, PARAMETER :: io=20
 
     NNodes = Model % Mesh % NumberOfNodes
+    Mesh => Model % Mesh
+    SolverParams => Solver % Values
 
     ALLOCATE(FrontPerm(NNodes), TopPerm(NNodes), LeftPerm(NNodes),&
         RightPerm(NNodes))
@@ -5715,21 +5727,22 @@ CONTAINS
 
     FoundLeft=.FALSE.
     FoundRight=.FALSE.
+    RCounter= 0; LCounter=0
     DO i=1,NNodes
        IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
          IF( LeftPerm(i) >0  ) THEN
             FrontLeft(1) = Model % Mesh % Nodes % x(i)
             FrontLeft(2) = Model % Mesh % Nodes % y(i)
+            LCounter = LCounter + 1
             FoundLeft = .TRUE.
          ELSE IF ( RightPerm(i) >0  ) THEN
             FrontRight(1) = Model % Mesh % Nodes % x(i)
             FrontRight(2) = Model % Mesh % Nodes % y(i)
+            RCounter = RCounter + 1
             FoundRight = .TRUE.
          END IF
        END IF
     END DO
-
-    DEALLOCATE(TopPerm, FrontPerm, LeftPerm, RightPerm)
 
     ALLOCATE(PFoundRight(ParEnv % PEs), PFoundLeft(ParEnv % PEs))
     CALL MPI_ALLGATHER(FoundRight, 1, MPI_LOGICAL, PFoundRight, 1, &
@@ -5745,6 +5758,225 @@ CONTAINS
 
     CALL MPI_BCAST(FrontLeft,2,MPI_DOUBLE_PRECISION, LeftRoot, ELMER_COMM_WORLD, ierr)
     CALL MPI_BCAST(FrontRight,2,MPI_DOUBLE_PRECISION, RightRoot, ELMER_COMM_WORLD, ierr)
+
+    IF(ALL(.NOT. PFoundLeft)) CALL FATAL(SolverName, 'Unable to find left corner')
+    IF(ALL(.NOT. PFoundRight)) CALL FATAL(SolverName, 'Unable to find right corner')
+
+    ALLOCATE(PRightCount(ParEnv % PEs), PLeftCount(ParEnv % PEs))
+    CALL MPI_ALLGATHER(RCounter, 1, MPI_LOGICAL, PRightCount, 1, &
+            MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+    CALL MPI_ALLGATHER(LCounter, 1, MPI_LOGICAL, PLeftCount, 1, &
+            MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
+    RightTotal = SUM(PRightCount)
+    LeftTotal = SUM(PLeftCount)
+
+    reducecorners=.TRUE.
+    IF(LeftTotal == 1) THEN
+      CALL MPI_BCAST(FrontLeft,2,MPI_DOUBLE_PRECISION, LeftRoot, ELMER_COMM_WORLD, ierr)
+      reducecorners(1) = .FALSE.
+    END IF
+
+    IF(RightTotal == 1) THEN
+      CALL MPI_BCAST(FrontRight,2,MPI_DOUBLE_PRECISION, RightRoot, ELMER_COMM_WORLD, ierr)
+      reducecorners(2) = .FALSE.
+    END IF
+
+    IF(ANY(reducecorners)) THEN
+
+      Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+      ! Locate CalvingAdvance Solver
+      Found = .FALSE.
+      DO i=1,Model % NumberOfSolvers
+        IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
+           AdvSolver => Model % Solvers(i)
+           Found = .TRUE.
+           EXIT
+        END IF
+      END DO
+      IF(.NOT. Found) CALL FATAL(SolverName, "Advance Solver Equation not given")
+      AdvParams => AdvSolver % Values
+
+      buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+      IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
+
+      LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(SolverName, "Left Rail File Name not found, assuming './LeftRail.xy'")
+        LeftRailFName = "LeftRail.xy"
+      END IF
+      Nl = ListGetInteger(AdvParams, "Left Rail Number Nodes", Found)
+      IF(.NOT.Found) THEN
+        WRITE(Message,'(A,A)') 'Left Rail Number Nodes not found'
+        CALL FATAL(SolverName, Message)
+      END IF
+      !TO DO only do these things if firsttime=true?
+      OPEN(unit = io, file = TRIM(LeftRailFName), status = 'old',iostat = ok)
+      IF (ok /= 0) THEN
+        WRITE(message,'(A,A)') 'Unable to open file ',TRIM(LeftRailFName)
+        CALL FATAL(Trim(SolverName),Trim(message))
+      END IF
+      ALLOCATE(xL(Nl), yL(Nl))
+
+      ! read data
+      DO i = 1, Nl
+        READ(io,*,iostat = ok, end=200) xL(i), yL(i)
+      END DO
+200   Naux = Nl - i
+      IF (Naux > 0) THEN
+        WRITE(Message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(LeftRailFName)
+        CALL INFO(Trim(SolverName),Trim(message))
+      END IF
+      CLOSE(io)
+      RightRailFName = ListGetString(AdvParams, "Right Rail File Name", Found)
+      IF(.NOT. Found) THEN
+        CALL Info(SolverName, "Right Rail File Name not found, assuming './RightRail.xy'")
+        RightRailFName = "RightRail.xy"
+      END IF
+
+      Nr = ListGetInteger(AdvParams, "Right Rail Number Nodes", Found)
+      IF(.NOT.Found) THEN
+        WRITE(Message,'(A,A)') 'Right Rail Number Nodes not found'
+        CALL FATAL(SolverName, Message)
+      END IF
+      !TO DO only do these things if firsttime=true?
+      OPEN(unit = io, file = TRIM(RightRailFName), status = 'old',iostat = ok)
+
+      IF (ok /= 0) THEN
+        WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(RightRailFName)
+        CALL FATAL(Trim(SolverName),Trim(message))
+      END IF
+      ALLOCATE(xR(Nr), yR(Nr))
+
+      ! read data
+      DO i = 1, Nr
+         READ(io,*,iostat = ok, end=100) xR(i), yR(i)
+      END DO
+100   Naux = Nr - i
+      IF (Naux > 0) THEN
+        WRITE(message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(RightRailFName)
+        CALL INFO(Trim(SolverName),Trim(message))
+      END IF
+      CLOSE(io)
+    END IF
+
+    ALLOCATE(PCount(ParEnv % PEs))
+    DO side=1,2 ! left 1, right 2
+
+      IF(.NOT. reducecorners(side)) CYCLE
+
+      IF (side==1) THEN
+        Nrail= Nl
+        ALLOCATE(xRail(Nrail), yRail(Nrail))
+        xRail = xL
+        yRail = yL
+        ALLOCATE(SidePerm(SIZE(LeftPerm)))
+        SidePerm = LeftPerm
+        Counter = LCounter
+        CornersTotal = LeftTotal
+        PCount = PLeftCount
+      ELSE
+        Nrail= Nr
+        ALLOCATE(xRail(Nrail), yRail(Nrail))
+        xRail = xR
+        yRail = yR ! TO DO use pointers instead?
+        ALLOCATE(SidePerm(SIZE(RightPerm)))
+        SidePerm = RightPerm
+        Counter = RCounter
+        CornersTotal = RightTotal
+        PCount = PRightCount
+      END IF
+
+      ALLOCATE(AllCorners(Counter*2))
+      Counter = 0
+      DO i=1,NNodes
+        IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+          IF ( SidePerm(i) >0  ) THEN
+            Counter = Counter + 1
+            AllCorners(Counter*2-1) = Mesh % Nodes % x(i)
+            AllCorners(Counter*2) = Mesh % Nodes % y(i)
+          END IF
+        END IF
+      END DO
+
+      ALLOCATE(disps(ParEnv % PEs))
+      disps(1) = 0
+      DO i=2,ParEnv % PEs
+        disps(i) = disps(i-1) + PRightCount(i-1)
+      END DO
+      ALLOCATE(PAllCorners(CornersTotal*2))
+      CALL MPI_allGatherV(AllCorners, Counter*2, MPI_DOUBLE_PRECISION, &
+      PAllCorners, PCount*2, disps, MPI_DOUBLE_PRECISION, ELMER_COMM_WORLD, ierr)
+
+      ALLOCATE(jmin(CornersTotal),InFront(CornersTotal),MinDists(CornersTotal))
+      DO i=1, CornersTotal
+
+        xx = PAllCorners(i*2-1)
+        yy = PAllCorners(i*2)
+
+        MinDist=(xRail(1)-xRail(Nrail))**2.+(yRail(1)-yRail(Nrail))**2.
+        ! MinDist is actually maximum distance, needed for finding closest rail node
+        DO j=1,Nrail ! Find closest point on rail
+           TempDist=(xRail(j)-xx)**2.+(yRail(j)-yy)**2.
+           IF(TempDist < MinDist) THEN
+              MinDist=TempDist
+              jmin(i)=j
+           END IF
+        END DO
+        MinDists(i) = MinDist
+        !check if in front or behind node
+        InFront(i) = .TRUE.
+        IF(jmin(i) == Nrail) InFront(i) = .FALSE.
+        IF(jmin(i) > 1 .AND. jmin(i) /= Nrail) THEN
+          MinDist = PointLineSegmDist2D((/xRail(jmin(i)),yRail(jmin(i))/), &
+          (/xRail(jmin(i)+1),yRail(jmin(i)+1)/),(/xx,yy/))
+          TempDist = PointLineSegmDist2D((/xRail(jmin(i)),yRail(jmin(i))/), &
+          (/xRail(jmin(i)-1),yRail(jmin(i)-1)/),(/xx,yy/))
+          IF(MinDist > TempDist) InFront(i) = .FALSE.
+        END IF
+      END DO
+
+      IF(COUNT(jmin == MAXVAL(jmin)) == 1) THEN
+        Corner = MAXLOC(jmin)
+      ELSE IF(COUNT(jmin == MAXVAL(jmin) .AND. InFront) == 1) THEN
+        Corner = PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin) .AND. InFront)
+      ELSE IF(ALL(InFront(PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin))))) THEN
+        ALLOCATE(Corner(1))
+        MinDist = HUGE(1.0_dp)
+        DO i=1, CornersTotal
+          IF(jmin(i) /= MAXVAL(jmin)) CYCLE
+          IF(.NOT. InFront(i)) CYCLE
+          IF(MinDists(i) < mindist) THEN
+            mindist = MinDists(i)
+            Corner(1) = i
+          END IF
+        END DO
+      ELSE IF(ALL(.NOT. InFront(PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin))))) THEN
+        ALLOCATE(Corner(1))
+        MinDist = HUGE(1.0_dp)
+        DO i=1, CornersTotal
+          IF(jmin(i) /= MAXVAL(jmin)) CYCLE
+          IF(MinDists(i) < mindist) THEN
+            mindist = MinDists(i)
+            Corner(1) = i
+          END IF
+        END DO
+      ELSE
+        CALL FATAL(SolverName, 'Problem reducing corners')
+      END IF
+
+      IF(side == 1) THEN
+        FrontLeft(1) = PAllCorners(Corner(1)*2-1)
+        FrontLeft(2) = PAllCorners(Corner(1)*2)
+      ELSE
+        FrontRight(1) = PAllCorners(Corner(1)*2-1)
+        FrontRight(2) = PAllCorners(Corner(1)*2)
+      END IF
+
+      DEALLOCATE(xRail,yRail,SidePerm,AllCorners,disps,PAllCorners,jmin,InFront,Corner,MinDists)
+    END DO
+
+    DEALLOCATE(TopPerm, FrontPerm, LeftPerm, RightPerm)
 
   END SUBROUTINE GetFrontCorners
 
@@ -7237,12 +7469,15 @@ CONTAINS
 
     Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
     ! Locate CalvingAdvance Solver
+    Found = .FALSE.
     DO i=1,Model % NumberOfSolvers
       IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
          AdvSolver => Model % Solvers(i)
+         Found = .TRUE.
          EXIT
       END IF
     END DO
+    IF(.NOT. Found) CALL FATAL(FuncName, "'Front Advance Solver' not given")
     AdvParams => AdvSolver % Values
 
     buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)

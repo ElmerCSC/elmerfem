@@ -1037,7 +1037,7 @@
             MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
      END IF
 
-     CALL GetFrontCorners(Model, FrontLeft, FrontRight)
+     CALL GetFrontCorners(Model, Solver, FrontLeft, FrontRight)
 
      IF(Boss) THEN
 
