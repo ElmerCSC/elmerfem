@@ -4086,7 +4086,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
-        BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain
+        BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain, &
+        BlockDummy
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -4144,7 +4145,8 @@ CONTAINS
     BlockHorVer = ListGetLogical( Params,'Block Hor-Ver System', GotIt)
     BlockCart = ListGetLogical( Params,'Block Cartesian System', GotIt)
     BlockDomain = ListGetLogical( Params,'Block Domain System',GotIt) 
-          
+    BlockDummy = ListGetLogical( Params,'Block Nested System',GotIt)
+    
     SlaveSolvers =>  ListGetIntegerArray( Params, &
          'Block Solvers', GotSlaveSolvers )
 
@@ -4169,6 +4171,8 @@ CONTAINS
       SkipVar = .TRUE.
     ELSE IF( GotSlaveSolvers ) THEN
       BlockDofs = SIZE( SlaveSolvers )
+    ELSE IF( BlockDummy ) THEN
+      BlockDofs = 1
     ELSE
       BlockDofs = Solver % Variable % Dofs      
     END IF
@@ -4216,12 +4220,13 @@ CONTAINS
         CALL BlockPickMatrixHorVer( Solver, VarDofs, BlockCart )       
       ELSE IF( BlockNodal ) THEN
         CALL BlockPickMatrixNodal( Solver, VarDofs )        
-      ELSE IF( VarDofs > 1 ) THEN
-        CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
-        VarDofs = NoVar
-      ELSE
+      ELSE IF( BlockDummy .OR. VarDofs == 1 ) THEN
         CALL Info('BlockSolveInt','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
+        
+      ELSE 
+        CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
+        VarDofs = NoVar
       END IF
 
       IF( SkipVar ) THEN
@@ -4306,7 +4311,7 @@ CONTAINS
     ! The case with one block is mainly for testing and developing features
     ! related to nonlinearity and assembly.
     !----------------------------------------------------------------------
-    IF( NoVar == 1 ) THEN
+    IF( NoVar == 1 .AND. .NOT. BlockDummy ) THEN
       CALL Info('BlockSolveInt','Solving in standard manner',Level=6)
       
       Solver % Variable => TotMatrix % SubVector(1) % Var
