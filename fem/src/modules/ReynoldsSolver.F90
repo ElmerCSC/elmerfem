@@ -1118,23 +1118,32 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
    
   DO Mode = 0, 4  
 
-    IF( Mode == 0 ) THEN
+    SELECT CASE( Mode )
+
+    CASE( 0 ) 
       IF( .NOT. ManningModel ) CYCLE
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Corrected')
-    ELSE IF( Mode == 1 ) THEN
+      
+    CASE( 1 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Force')
-    ELSE IF( Mode == 2 ) THEN
+
+    CASE( 2 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Flux')
-    ELSE IF( Mode == 3 ) THEN
+
+    CASE( 3 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Mean Velocity')
-    ELSE IF( Mode == 4 ) THEN
+
+    CASE( 4 ) 
       VarResult => VariableGet( Solver % Mesh % Variables,TRIM(PressureName)//' Heating')
-    END IF
+
+    CASE DEFAULT
+      CALL Fatal(Caller,'Unknow Mode for operation:'//TRIM(I2S(Mode)))      
+    END SELECT
+    
     IF(.NOT. ASSOCIATED(VarResult)) CYCLE
     Components = VarResult % Dofs
 
-    DO Component = 1, Components
-
+    DO Component = 1, Components      
       CALL DefaultInitialize()
 
       !    Do the bulk assembly:
@@ -1240,8 +1249,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
               - GravityCoeff * ElemDensity(1:n) * ( BotHeight(1:n) + GapHeight(1:n) )  
           CYCLE
         END IF
-        
-      
+              
         STIFF = 0.0d0
         FORCE = 0.0d0
         
@@ -1442,8 +1450,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       TotPres = TotPres - AmbientPres
-      
-      IF( Mode == 1 ) THEN
+
+      Sslide = 0.0_dp
+      Spres = 0.0_dp
+
+      SELECT CASE( Mode )
+
+      CASE( 1 )
         ! Forces resulting from pressure and shear
         Spres = -TotPres * Normal( Component ) 
         IF( OpposingWall ) Spres = -Spres
@@ -1468,16 +1481,17 @@ CONTAINS
             Moment(2) = Moment(2) - Radius(1) * s * source
           END IF
         END IF
-        
-      ELSE IF( Mode == 2 ) THEN
-        ! Flux resulting from pressure gradient and sliding 
 
+      CASE( 2 )
+        ! Flux resulting from pressure gradient and sliding 
+        
         Spres = - (Gap**3 / (12 * Visc) ) * GradPres(Component)
         Sslide = Gap * TangentVelo(Component) / 2        
         ! add contribution of leaking
         
         source = Spres + Sslide 
-      ELSE IF( Mode == 3 ) THEN
+        
+      CASE( 3 ) 
         ! Flux resulting from pressure gradient and sliding 
 
         Spres = - (Gap**2 / (12 * Visc) ) * GradPres(Component)
@@ -1485,7 +1499,8 @@ CONTAINS
         ! add contribution of leaking
         
         source = Spres + Sslide 
-      ELSE      
+
+      CASE( 4 ) 
         ! heating effect of pressure gradient and sliding
         Spres = (Gap**3 / (12 * Visc) ) * SUM(GradPres *GradPres )
         Sslide = (Visc / Gap) * SUM(TangentVelo * TangentVelo )
@@ -1494,7 +1509,11 @@ CONTAINS
         
         HeatPres = HeatPres + s * Spres
         HeatSlide = HeatSlide + s * Sslide
-      END IF
+        
+      CASE DEFAULT
+        CALL Fatal(Caller,'Unknow mode: '//TRIM(I2S(Mode)))
+
+      END SELECT
       
       DO p=1,NBasis
         DO q=1,NBasis
