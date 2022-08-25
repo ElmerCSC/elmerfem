@@ -1838,9 +1838,23 @@ CONTAINS
       END IF
 
       CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//TRIM(I2S(NoVar)))
-      TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVAr % Solver % Matrix
+      TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVar % Solver % Matrix
     END IF  
 
+    ! When we have an inner-outer iteration we could well have a different matrix
+    ! assembled for the purpose of preconditioning. Use it here, if available.
+    IF(ListGetLogical( Params,'Block Nested System',GotIt ) ) THEN
+      Amat => TotMatrix % Submatrix(1,1) % Mat
+      IF( ASSOCIATED( Amat % PrecValues ) ) THEN
+        CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
+        CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(1,1) % Mat, &
+            TotMatrix % Submatrix(1,1) % PrecMat )   
+        PMat => TotMatrix % Submatrix(1,1) % PrecMat
+        PMat % Values => Amat % PrecValues
+        NULLIFY(Amat % PrecValues)
+      END IF
+    END IF
+    
   END SUBROUTINE BlockPrecMatrix
 
 
