@@ -13847,6 +13847,15 @@ END FUNCTION SearchNodeL
     IF (Method=='iterative' ) THEN
       k = ListGetInteger(Params,'Linear System Dense Dofs',GotIt)
       IF(GotIt) A % ndeg = k
+
+      IF( A % ndeg > 1 ) THEN
+        IF( CRS_CheckStructuredDofs( A, A % ndeg) ) THEN
+          CALL Fatal('SolveLinearSystem','CRS matrix failed the dense test of size '//TRIM(I2S(A % ndeg)))
+          A % ndeg = 0
+        ELSE
+          CALL Info('SolveLinearSystem','CRS matrix passed the dense test of size '//TRIM(I2S(A % ndeg)),Level=12)
+        END IF
+      END IF
     END IF
      
     IF( InfoActive(30) ) THEN
@@ -15149,7 +15158,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
       dt = dtVar % Values(1) 
       
-      CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
+      CALL Info('DerivateExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - Var % PrevValues(:,1)) / dt
       Cnt = Cnt + 1
     END IF
@@ -15160,14 +15169,14 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       str = TRIM( ComponentName(var_name) ) // ' Acceleration'
       DerVar => VariableGet( Solver % Mesh % Variables, str )        
       IF(.NOT. ASSOCIATED(DerVar)) THEN
-        CALL Warn('DerivatingExportedVariables','Variable does not exist:'//TRIM(str))
+        CALL Warn('DerivateExportedVariables','Variable does not exist:'//TRIM(str))
         CYCLE
       END IF
 
       dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
       dt = dtVar % Values(1) 
 
-      CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
+      CALL Info('DerivateExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - 2*Var % PrevValues(:,1) - Var % PrevValues(:,2)) / dt**2
       Cnt = Cnt + 1
     END IF

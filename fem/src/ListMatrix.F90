@@ -318,7 +318,12 @@ CONTAINS
     A % Rows => Null()  
     A % Cols => Null()  
     A % Diag => Null()  
-    A % Values => Null()  
+    A % Values => NULL()
+
+    ! If the CRS matrix had a specific structure it is probably spoiled when going into
+    ! free form matrix structure.
+    A % ndeg = -1 
+    
     CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix

@@ -1456,47 +1456,119 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
      REAL(KIND=dp), POINTER  CONTIG :: Values(:)
 
-     INTEGER :: i,j,n
-     REAL(KIND=dp) :: rsum
+     INTEGER :: i,j,n,k,l,m
+     REAL(KIND=dp) :: r1,r2,r3,r4,r5
 #ifdef HAVE_MKL
-	INTERFACE
-		SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-	 		USE Types
-	 		CHARACTER :: transa
-	 		INTEGER :: m
-	 		REAL(KIND=dp) :: a(*)
-	 		INTEGER :: ia(*), ja(*)
-	 		REAL(KIND=dp) :: x(*), y(*)
-	 	END SUBROUTINE mkl_dcsrgemv
-	END INTERFACE
+     INTERFACE
+       SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
+         USE Types
+         CHARACTER :: transa
+         INTEGER :: m
+         REAL(KIND=dp) :: a(*)
+         INTEGER :: ia(*), ja(*)
+         REAL(KIND=dp) :: x(*), y(*)
+       END SUBROUTINE mkl_dcsrgemv
+     END INTERFACE
 #endif
 
 !------------------------------------------------------------------------------
 
-     n = A % NumberOfRows
-     Rows   => A % Rows
-     Cols   => A % Cols
-     Values => A % Values
-
+    n = A % NumberOfRows
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+    
     IF  ( A % MatvecSubr /= 0 ) THEN
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
-   END IF
+    END IF
 
-	! Use MKL to perform mvp if it is available
+    ! Use MKL to perform mvp if it is available
 #ifdef HAVE_MKL
-	CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
+    CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
 #else
-!$omp parallel do private(j,rsum)
-     DO i=1,n
-        rsum = 0.0d0
-!DIR$ IVDEP
-        DO j=Rows(i),Rows(i+1)-1
-           rsum = rsum + u(Cols(j)) * Values(j)
+
+    ! There may be a small structured block in the CRS matrix that is due to the problem
+    ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
+    ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
+    ! indirect memory addressing a little.
+    !-------------------------------------------------------------------------------------------
+    SELECT CASE( A % ndeg )
+      
+    CASE( 5, 10 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(i),Rows(i+1)-1,5
+          l = Cols(j)
+          r1 = r1 + u(l) * Values(j)
+          r2 = r2 + u(l+1) * Values(j+1)
+          r3 = r3 + u(l+2) * Values(j+2)
+          r4 = r4 + u(l+3) * Values(j+3)
+          r5 = r5 + u(l+4) * Values(j+4)
         END DO
-        v(i) = rsum
-     END DO
-!$omp end parallel do
+        v(i) = r1 + r2 + r3 + r4 + r5
+      END DO
+      !$omp end parallel do
+
+    CASE( 4, 8 )
+      !$omp parallel do private(j,l,r1,r2,r3,r4)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(i),Rows(i+1)-1,4
+          l = Cols(j)
+          r1 = r1 + u(l) * Values(j)
+          r2 = r2 + u(l+1) * Values(j+1)
+          r3 = r3 + u(l+2) * Values(j+2)
+          r4 = r4 + u(l+3) * Values(j+3)
+        END DO
+        v(i) = r1 + r2 + r3 + r4
+      END DO
+      !$omp end parallel do
+
+    CASE( 3, 6 )
+      !$omp parallel do private(j,l,r1,r2,r3)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(i),Rows(i+1)-1,3
+          l = Cols(j)
+          r1 = r1 + u(l) * Values(j)
+          r2 = r2 + u(l+1) * Values(j+1)
+          r3 = r3 + u(l+2) * Values(j+2)
+        END DO
+        v(i) = r1 + r2 + r3
+      END DO
+      !$omp end parallel do
+      
+    CASE( 2 )
+      !$omp parallel do private(j,l,r1,r2)
+      DO i=1,n
+        r1 = 0.0_dp; r2 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(i),Rows(i+1)-1,2
+          l = Cols(j)
+          r1 = r1 + u(l) * Values(j)
+          r2 = r2 + u(l+1) * Values(j+1)
+        END DO
+        v(i) = r1 + r2
+      END DO
+      !$omp end parallel do
+      
+    CASE DEFAULT      
+      !$omp parallel do private(j,r1)
+      DO i=1,n
+        r1 = 0.0_dp
+        !DIR$ IVDEP
+        DO j=Rows(i),Rows(i+1)-1
+          r1 = r1 + u(Cols(j)) * Values(j)
+        END DO
+        v(i) = r1 
+      END DO
+      !$omp end parallel do      
+    END SELECT
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_MatrixVectorMultiply
@@ -4339,13 +4411,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        RETURN
     END IF
 
-!--------------------------------------------------------------------
-! The following #ifdefs  seem really necessary, if speed is an issue:
-! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitly, while DEC compiler seems to make a copy of some of the
-! arrays on the subroutine call (destroying performance).
-!--------------------------------------------------------------------
-#ifndef SGI
     IF ( A % Cholesky ) THEN
       !
       ! Forward substitute (solve z from Lz = b)
@@ -4390,35 +4455,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          b(i) = Values(Diag(i)) * s
       END DO
     END IF
-#else
-    CALL LUSolve( n,SIZE(Cols),Rows,Cols,Diag,Values,b )
-
-  CONTAINS
-
-    SUBROUTINE LUSolve( n,m,Rows,Cols,Diag,Values,b )
-      INTEGER :: n,m,Rows(n+1),Cols(m),Diag(n)
-      REAL(KIND=dp) :: Values(m),b(n)
-
-      INTEGER :: i,j
-
-      !
-      ! Forward substitute (solve z from Lz = b)
-      DO i=1,n
-         DO j=Rows(i),Diag(i)-1
-            b(i) = b(i) - Values(j) * b(Cols(j))
-         END DO
-      END DO
-
-      !
-      ! Backward substitute (solve x from UDx = z)
-      DO i=n,1,-1
-         DO j=Diag(i)+1,Rows(i+1)-1
-            b(i) = b(i) - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * b(i)
-      END DO
-    END SUBROUTINE LUSolve
-#endif
 
   END SUBROUTINE CRS_LUSolve
 !------------------------------------------------------------------------------
@@ -4452,13 +4488,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !   -------------------------------------
     IF ( .NOT. ASSOCIATED( Values ) ) RETURN
 
-!---------------------------------------------------------------------
-! The following #ifdefs  seem really necessary, if speed is an issue:
-! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitly, while DEC compiler seems to make a copy of some of the
-! arrays on the subroutine call (destroying performance).
-!--------------------------------------------------------------------
-#ifndef SGI
     IF ( A % Cholesky ) THEN
       !
       ! Forward substitute
@@ -4499,39 +4528,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          b(i) = Values(Diag(i)) * s
       END DO
     END IF
-#else
-    CALL ComplexLUSolve( n,SIZE(Cols),Rows,Cols,Diag,Values,b )
-
-  CONTAINS
-
-    SUBROUTINE ComplexLUSolve( n,m,Rows,Cols,Diag,Values,b )
-      INTEGER :: n,m,Rows(n+1),Cols(m),Diag(n)
-      COMPLEX(KIND=dp) :: Values(m),b(n)
-
-      INTEGER :: i,j
-
-      !
-      ! Forward substitute
-      DO i=1,n
-         DO j=Rows(i),Diag(i)-1
-            b(i) = b(i) - Values(j) * b(Cols(j))
-         END DO
-      END DO
-
-      !
-      ! Backward substitute
-      DO i=n,1,-1
-         DO j=Diag(i)+1,Rows(i+1)-1
-            b(i) = b(i) - Values(j) * b(Cols(j))
-         END DO
-         b(i) = Values(Diag(i)) * b(i)
-      END DO
-    END SUBROUTINE ComplexLUSolve
-#endif
 
   END SUBROUTINE CRS_ComplexLUSolve
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------
@@ -4540,74 +4539,141 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_MatrixVectorProd( u,v,ipar )
 !------------------------------------------------------------------------------
-    INTEGER, DIMENSION(*), INTENT(IN) :: ipar      !< Structure holding info HUTIter-iterative solver package
+    INTEGER, DIMENSION(*), INTENT(IN) :: ipar  !< Structure holding info HUTIter-iterative solver package
     REAL(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)  !< vector to multiply u
-    REAL(KIND=dp) :: v(HUTI_NDIM)  !< result vector
+    REAL(KIND=dp) :: v(HUTI_NDIM)              !< result vector
 
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
-!   INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp), POINTER  CONTIG :: Values(:)
-!   REAL(KIND=dp), POINTER :: Values(:)
 
 #ifdef HAVE_MKL
-	INTERFACE
-		SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
-	 		USE Types
-	 		CHARACTER :: transa
-	 		INTEGER :: m
-	 		REAL(KIND=dp) :: a(*)
-	 		INTEGER :: ia(*), ja(*)
-	 		REAL(KIND=dp) :: x(*), y(*)
-	 	END SUBROUTINE mkl_dcsrgemv
-	END INTERFACE
+    INTERFACE
+      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
+        USE Types
+        CHARACTER :: transa
+        INTEGER :: m
+        REAL(KIND=dp) :: a(*)
+        INTEGER :: ia(*), ja(*)
+        REAL(KIND=dp) :: x(*), y(*)
+      END SUBROUTINE mkl_dcsrgemv
+    END INTERFACE
 #endif
 
-    INTEGER :: i,j,n
-    REAL(KIND=dp) :: s
+    INTEGER :: i,j,l,n,ndeg
+    REAL(KIND=dp) :: s,r1,r2,r3,r4,r5
+    
 !------------------------------------------------------------------------------
 
     n = GlobalMatrix % NumberOfRows
     Rows   => GlobalMatrix % Rows
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
-
+    ndeg = GlobalMatrix % ndeg
+    
     IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
       CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-                  GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
+          GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
-   END IF
-!--------------------------------------------------------------------
-! The following #ifdefs  seem really necessary, if speed is an issue:
-! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitly, while DEC compiler seems to make a copy of some of the
-! arrays on the subroutine call (destroying performance).
-!--------------------------------------------------------------------
-#ifndef SGI
+    END IF
+
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
 #ifdef HAVE_MKL
-    CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
+      CALL mkl_dcsrgemv('N', n, Values, Rows, Cols, u, v)
 #else
-!$omp parallel do private(j,s)
-       DO i=1,n
-          s = 0.0d0
-!DIR$ IVDEP
-          DO j=Rows(i),Rows(i+1)-1
-             s = s + Values(j) * u(Cols(j))
+
+    ! There may be a small structured block in the CRS matrix that is due to the problem
+    ! being initially vector valued. For example, in 3D elasticity we usually have dofs related
+    ! to (x,y,z) displacements following each other. Using this small dense block we may reduce
+    ! indirect memory addressing a little.
+    !-------------------------------------------------------------------------------------------
+      SELECT CASE( ndeg )
+      
+      CASE( 5, 10 )
+        !$omp parallel do private(j,l,r1,r2,r3,r4,r5)
+        DO i=1,n
+          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp; r5 = 0.0_dp
+          !DIR$ IVDEP
+          DO j=Rows(i),Rows(i+1)-1,5
+            l = Cols(j)
+            r1 = r1 + u(l) * Values(j)
+            r2 = r2 + u(l+1) * Values(j+1)
+            r3 = r3 + u(l+2) * Values(j+2)
+            r4 = r4 + u(l+3) * Values(j+3)
+            r5 = r5 + u(l+4) * Values(j+4)
           END DO
-          v(i) = s
-       END DO
-!$omp end parallel do
+          v(i) = r1 + r2 + r3 + r4 + r5
+        END DO
+        !$omp end parallel do
+        
+      CASE( 4, 8 )
+        !$omp parallel do private(j,l,r1,r2,r3,r4)
+        DO i=1,n
+          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp; r4 = 0.0_dp
+          !DIR$ IVDEP
+          DO j=Rows(i),Rows(i+1)-1,4
+            l = Cols(j)
+            r1 = r1 + u(l) * Values(j)
+            r2 = r2 + u(l+1) * Values(j+1)
+            r3 = r3 + u(l+2) * Values(j+2)
+            r4 = r4 + u(l+3) * Values(j+3)
+          END DO
+          v(i) = r1 + r2 + r3 + r4
+        END DO
+        !$omp end parallel do
+        
+      CASE( 3, 6 )
+        !$omp parallel do shared(n,rows,cols,values) private(i,j,l,r1,r2,r3)
+        DO i=1,n
+          r1 = 0.0_dp; r2 = 0.0_dp; r3 = 0.0_dp
+          DO j=Rows(i),Rows(i+1)-1,3
+            l = Cols(j)
+            r1 = r1 + u(l) * Values(j)
+            r2 = r2 + u(l+1) * Values(j+1)
+            r3 = r3 + u(l+2) * Values(j+2)
+          END DO
+          v(i) = r1 + r2 + r3
+        END DO
+        !$omp end parallel do
+        
+      CASE( 2 )
+        !$omp parallel do private(j,l,r1,r2)
+        DO i=1,n
+          r1 = 0.0_dp; r2 = 0.0_dp
+          !DIR$ IVDEP
+          DO j=Rows(i),Rows(i+1)-1,2
+            l = Cols(j)
+            r1 = r1 + u(l) * Values(j)
+            r2 = r2 + u(l+1) * Values(j+1)
+          END DO
+          v(i) = r1 + r2
+        END DO
+        !$omp end parallel do
+        
+      CASE DEFAULT      
+        !$omp parallel do private(j,r1)
+        DO i=1,n
+          r1 = 0.0_dp
+          !DIR$ IVDEP
+          DO j=Rows(i),Rows(i+1)-1
+            r1 = r1 + u(Cols(j)) * Values(j)
+          END DO
+          v(i) = r1
+        END DO        
+        !$omp end parallel do      
+
+      END SELECT
 #endif
     ELSE
-       v(1:n) = 0.0d0
-       DO i=1,n
-          s = u(i)
-          DO j=Rows(i),Rows(i+1)-1
-             v(Cols(j)) = v(Cols(j)) + s * Values(j)
-          END DO
-       END DO
+      v(1:n) = 0.0d0
+      DO i=1,n
+        s = u(i)
+        DO j=Rows(i),Rows(i+1)-1
+          v(Cols(j)) = v(Cols(j)) + s * Values(j)
+        END DO
+      END DO
     END IF
+
 !    IF ( ASSOCIATED( GlobalMatrix % EMatrix ) ) THEN
 !       n = GlobalMatrix % EMatrix % NumberOFRows
 !       Rows   => GlobalMatrix % EMatrix % Rows
@@ -4631,40 +4697,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !       END DO
 !       deallocate( w )
 !    END IF
-#else
-    CALL MatVec( n,SIZE(Cols),Rows,Cols,Values,u,v )
-
-  CONTAINS
-
-    SUBROUTINE MatVec( n,m,Rows,Cols,Values,u,v )
-      INTEGER :: n,m
-      INTEGER :: Rows(n+1),Cols(m)
-      REAL(KIND=dp) :: Values(m),u(n),v(n)
-
-      INTEGER :: i,j
-
-      IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-         v(1:n) = 0.0d0
-         DO i=1,n
-            DO j=Rows(i),Rows(i+1)-1
-               v(i) = v(i) + Values(j) * u(Cols(j))
-            END DO
-         END DO
-      ELSE
-         v(1:n) = 0.0d0
-         DO i=1,n
-            s = u(i)
-            DO j=Rows(i),Rows(i+1)-1
-               v(Cols(j)) = v(Cols(j)) + s * Values(j)
-            END DO
-         END DO
-      END IF
-    END SUBROUTINE MatVec
-#endif
 
   END SUBROUTINE CRS_MatrixVectorProd
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------
@@ -4691,13 +4726,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Cols   => GlobalMatrix % Cols
     Values => GlobalMatrix % Values
 
-!----------------------------------------------------------------------
-! The following #ifdefs  seem really necessary, if speed is an issue:
-! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitly, while DEC compiler seems to make a copy of some of the
-! arrays on the subroutine call (destroying performance).
-!----------------------------------------------------------------------
-#ifndef SGI
     IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
 !$omp parallel do private(rsum,j,s)
        DO i=1,n
@@ -4720,41 +4748,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           END DO
        END DO
     END IF
-#else
-    CALL ComplexMatVec( n,SIZE(Cols),Rows,Cols,Values,u,v )
-
-  CONTAINS
-
-    SUBROUTINE ComplexMatVec( n,m,Rows,Cols,Values,u,v )
-      INTEGER :: n,m
-      INTEGER :: Rows(2*n+1),Cols(m)
-      REAL(KIND=dp) :: Values(m)
-      COMPLEX(KIND=dp) :: u(n),v(n)
-
-      INTEGER :: i,j
-      COMPLEX(KIND=dp) :: s, rsum
-
-      IF ( HUTI_EXTOP_MATTYPE == HUTI_MAT_NOTTRPSED ) THEN
-         DO i=1,n
-            rsum = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-            DO j=Rows(2*i-1),Rows(2*i)-1,2
-               s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-               rsum = rsum + s * u((Cols(j)+1)/2)
-            END DO
-            v(i) = rsum
-         END DO
-      ELSE
-         v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
-         DO i=1,n
-            rsum = u(i)
-            DO j=Rows(2*i-1),Rows(2*i)-1,2
-               s = CMPLX( Values(j), -Values(j+1), KIND=dp )
-               v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum
-            END DO
-         END DO
-      END IF
-    END SUBROUTINE ComplexMatVec
-#endif
 
   END SUBROUTINE CRS_ComplexMatrixVectorProd
 !------------------------------------------------------------------------------
@@ -5025,6 +5018,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
       
       CALL Info('CRS_ChangeTopology','New matrix non-zeros: '//TRIM(I2S(n)),Level=12)
+      
       DO ivec=1,3
         NULLIFY(Aold)
         SELECT CASE(ivec)
@@ -5070,11 +5064,43 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
             
       DEALLOCATE(Cols0,Rows0)
       InitDone = .FALSE.
-
+      
+      A % ndeg = -1 
       CALL Info('CRS_ChangeTopology','Matrix topology changed',Level=30)
     END IF
           
   END SUBROUTINE CRS_ChangeTopology
+
+!------------------------------------------------------------------------------
+!> Check that matrix has a repeating block of size "dofs" that can be
+!> utilized in Matrix-Vector products, for example. 
+!------------------------------------------------------------------------------
+  FUNCTION CRS_CheckStructuredDofs( A, dofs) RESULT ( Failed )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), INTENT(IN) :: A                !< Structure holding matrix
+    INTEGER :: dofs                                !< Size of dense block to be tested
+    LOGICAL :: Failed
+!------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    INTEGER :: i,j,k,n,m
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows
+    Rows   => A % Rows
+    Cols   => A % Cols
+
+    Failed = .FALSE.
+    DO i=1,n
+      DO j=Rows(i),Rows(i+1)-1,dofs
+        DO k=1,dofs-1
+          IF( Cols(j+k)-Cols(j) /= k ) THEN
+            Failed = .TRUE.
+            EXIT
+          END IF
+        END DO
+      END DO
+    END DO
+      
+  END FUNCTION CRS_CheckStructuredDofs
 
 
 END MODULE CRSMatrix
