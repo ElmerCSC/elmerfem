@@ -5290,6 +5290,12 @@ CONTAINS
             t = Offset + Perm(ind)
             b(t) = b(t) + SingleVal
           END IF
+
+          SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Multiplier',GotIt)
+          IF( GotIt ) THEN                        
+            t = Offset + Perm(ind)
+            CALL AddToMatrixElement(A,t,t,SingleVal) 
+          END IF
         END IF
         
         n = COUNT( LumpedNodeSet ) 
