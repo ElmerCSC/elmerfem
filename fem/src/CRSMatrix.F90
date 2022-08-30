@@ -378,6 +378,32 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Check existance of a matrix element.
+!------------------------------------------------------------------------------
+  FUNCTION CRS_CheckMatrixElement( A,i,j ) RESULT ( Found ) 
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A                !< Structure holding the matrix
+    INTEGER, INTENT(IN) :: i           !< row number of the matrix element
+    INTEGER, INTENT(IN) :: j           !< column number of the matrix element
+    LOGICAL :: Found                   !< Does the matrix element exist!
+ !------------------------------------------------------------------------------
+    INTEGER, POINTER :: Cols(:),Rows(:)
+!------------------------------------------------------------------------------
+
+    Found = .FALSE.
+    IF(i > A % NumberOfRows) RETURN
+
+    Rows => A % Rows
+    Cols => A % Cols
+
+    Found = ANY( Cols(Rows(i):Rows(i+1)-1) == j )
+    
+  END FUNCTION CRS_CheckMatrixElement
+!------------------------------------------------------------------------------
+
+
+  
+!------------------------------------------------------------------------------
 !> Check whether matrix has a symmetric topology
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_CheckSymmetricTopo( A )
