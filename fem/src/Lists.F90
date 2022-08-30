@@ -2467,7 +2467,7 @@ use spariterglobals
 !----------------------------------------------------------------
     INTEGER :: i,cnt
 
-    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=5)
+    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=20)
     cnt = 0
     
     CALL ListTagEntry(Model % Simulation, suffix, tagwei, cnt )
@@ -2503,7 +2503,7 @@ use spariterglobals
       CALL Info('ListTagKeywords',&
           'Tagged '//TRIM(I2S(cnt))//' parameters with suffix: '//TRIM(suffix),Level=7)
     ELSE
-      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=7)
+      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=20)
     END IF
 
   CONTAINS
