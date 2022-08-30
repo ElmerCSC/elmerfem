@@ -5343,9 +5343,7 @@ CONTAINS
         END IF
           
         Solver => Model % Solver
-        
-        ResidualMode = ListGetLogical( Solver % Values,'Linear System Residual Mode',GotIt) 
-        
+                
         Dvar => Solver % Variable
         IF(.NOT. ASSOCIATED( DVar ) ) THEN
           CALL Fatal(Caller,'Solver variable not associated for Curve constraint!')
