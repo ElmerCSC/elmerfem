@@ -6766,7 +6766,7 @@ CONTAINS
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
     INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
-    LOGICAL :: Found, SetP
+    LOGICAL :: Found, SetP, Passive
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver
@@ -6843,16 +6843,33 @@ CONTAINS
       n = Element % Type % NumberOfNodes
       nb = mGetElementDOFs( Indexes, Element, Solver )
 
+      IF(.NOT. SetP) nb = n
+        
       ! For vector valued problems treat each component as separate dof
       DO k=1,NDOFs       
         j = NDOFS*(BCPerm(bc_id)-1)+k
-        Var % ConstraintModesIndeces( NDOFS*(Perm(Indexes(1:n))-1)+k) = j
+        DO l=1,nb
+          ! The index to constrain
+          l2 = NDOFS*(Perm(Indexes(l))-1)+k         
 
-        ! The constraints related to p-elements should always bet set to zero.
-        ! So we mark them but with a negative index so that they wont be set to unity ever.
-        IF( SetP .AND. nb > n ) THEN
-          Var % ConstraintModesIndeces( NDOFS*(Perm(Indexes(n+1:nb))-1)+k) = -j
-        END IF
+          ! The constraints related to p-elements should always bet set to zero.
+          ! So we mark them but with a negative index so that they wont be set to unity ever.
+          Passive = .FALSE.
+          IF( l>n ) THEN
+            Passive = .TRUE.
+          ELSE IF( ParEnv % PEs > 1 ) THEN
+            IF( ASSOCIATED( A % ParallelInfo ) ) THEN
+              IF( A % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) Passive = .TRUE.
+            END IF
+          END IF
+
+          ! For passsive dofs set them always to zero
+          IF(Passive) THEN
+            Var % ConstraintModesIndeces(l2) = -j
+          ELSE
+            Var % ConstraintModesIndeces(l2) = j
+          END IF
+        END DO
       END DO
     END DO
 
