@@ -5322,7 +5322,6 @@ CONTAINS
       INTEGER :: l,dofs,c1,c2,c3,ivec
       REAL(KIND=dp) :: Coeff,d(3),Dfdx(3),f,x(3),a11,a22
       LOGICAL, ALLOCATABLE :: NodeDone(:)
-      LOGICAL :: ResidualMode
       TYPE(Variable_t), POINTER :: Dvar
       INTEGER, POINTER :: GivenComps(:)
       INTEGER :: Comps(3)
@@ -5400,7 +5399,7 @@ CONTAINS
           ELSE           
             IF( .NOT. ListCheckPresent( ValueList,DirName) ) CYCLE
           END IF
-            
+
           Comps = 0
           GivenComps => ListGetIntegerArray( ValueList, TRIM(Dirname)//' Components',GotIt)
           IF(GotIt) THEN
@@ -5440,7 +5439,6 @@ CONTAINS
               x(3) = Mesh % Nodes % z(j)
 
               x = x + d
-
               
               IF( HingeBC ) THEN
                 ! We can analytically derive the case of 2d hinge
@@ -5463,35 +5461,52 @@ CONTAINS
               ELSE                
                 f = ListGetFunVec( ValueList, DirName, x(1:dofs), dofs, DfDx=dfdx(1:dofs) )
               END IF
-              
-              ! Let us take the most sensitive component to be the one for
-              ! which the curve constraint is applied ensuring maximum diagonal entry.              ´              
-              ! Then choose 2nd (and 3rd) components in order. 
-              c1 = comps(1)
-              DO ivec=2,dofs
-                IF( ABS(DfDx(comps(ivec))) > ABS(DfDx(c1))) c1 = comps(ivec)
-              END DO
-              DO ivec=1,dofs
-                IF(comps(ivec) /= c1) THEN
-                  c2 = comps(ivec)
-                  EXIT
-                END IF
-              END DO
-              IF( dofs == 3 ) THEN
-                c3 = 6 - c1 - c2
-              END IF
-                          
-              ! It may happen that teh rows are linearly dependent on each other.
-              ! Then a solution of type (x+y) for both is not good. Rather use then
-              ! (x-y) for the other to have a unique solution. 
-              a11 = GetMatrixElement(A,l+c1,l+c1)
-              a22 = GetMatrixElement(A,l+c2,l+c2)
 
-              ! This is a simple sign rule that avoids two equations being redundant.
-              ! Don't multiply too numbers that could be almost zero!
-              Coeff = -SIGN(1.0_dp,a11) * SIGN(1.0_dp,a22) * &
-                  SIGN(1.0_dp, DfDx(c1)) * SIGN(1.0_dp, DfDx(c2))
-             
+              ! Check whether this is an normal-tangential node. If it is then m>0. 
+              ! We already know that this has active perm for DVar. 
+              m = 0
+              IF ( NT % NormalTangentialNOFNodes > 0 ) THEN
+                m = NT % BoundaryReorder(j) 
+              END IF
+                                         
+              IF( m == 0 ) THEN                
+                ! Let us take the most sensitive component to be the one for
+                ! which the curve constraint is applied ensuring maximum diagonal entry.              ´              
+                ! Then choose 2nd (and 3rd) components in order. 
+                c1 = comps(1)
+                DO ivec=2,dofs
+                  IF( ABS(DfDx(comps(ivec))) > ABS(DfDx(c1))) c1 = comps(ivec)
+                END DO
+                DO ivec=1,dofs
+                  IF(comps(ivec) /= c1) THEN
+                    c2 = comps(ivec)
+                    EXIT
+                  END IF
+                END DO
+
+                IF( dofs == 3 ) THEN
+                  c3 = 6 - c1 - c2
+                END IF
+               
+                ! It may happen that the rows are linearly dependent on each other.
+                ! Then a solution of type (x+y) for both is not good. Rather use then
+                ! (x-y) for the other to have a unique solution. 
+                a11 = GetMatrixElement(A,l+c1,l+c1)
+                a22 = GetMatrixElement(A,l+c2,l+c2)
+                
+                ! This is a simple sign rule that avoids two equations being redundant.
+                ! Don't multiply too numbers that could be almost zero!
+                Coeff = -SIGN(1.0_dp,a11) * SIGN(1.0_dp,a22) * &
+                    SIGN(1.0_dp, DfDx(c1)) * SIGN(1.0_dp, DfDx(c2))
+              ELSE
+                ! For normal-tangential system the normal component (1st one) should
+                ! by construction be most sensitive to deviations from the curve. 
+                c1 = 1
+                c2 = 2
+                c3 = 3
+                Coeff = 1.0_dp
+              END IF
+                                                      
               ! Move all the entries from "c1" to "c2" and nullify the row.
               CALL MoveRow( A, l+c1, l+c2, Coeff )
               b(l+c2) = b(l+c2) + Coeff * b(l+c1)
@@ -5502,16 +5517,18 @@ CONTAINS
                 IF( A % ParallelInfo % NeighbourList(l+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
               END IF
 
+              ! Residual mode is never active at this stage
+              b(l+c1) = -f              
+              b(l+c1) = b(l+c1) + DfDx(1)*d(1) + DfDx(2)*d(2)
+              IF(dofs==3) b(l+c1) = b(l+c1) + DfDx(3)*d(3)
+              
+              IF(m>0) THEN                           
+                CALL RotateNTSystem( DfDx, j )
+              END IF
+
               CALL AddToMatrixElement( A, l+c1, l+1, DfDx(1) )
               CALL AddToMatrixElement( A, l+c1, l+2, DfDx(2) )
               IF(dofs==3) CALL AddToMatrixElement( A, l+c1, l+3, DfDx(3) )
-              b(l+c1) = -f
-
-              ! Residual mode is never active at this stage
-              !IF(.NOT. ResidualMode ) THEN
-                b(l+c1) = b(l+c1) + DfDx(1)*d(1) + DfDx(2)*d(2)
-                IF(dofs==3) b(l+c1) = b(l+c1) + DfDx(3)*d(3)
-              !END IF
             END DO
           END DO
         END DO
