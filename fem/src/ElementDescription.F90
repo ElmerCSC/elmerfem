@@ -3807,10 +3807,6 @@ CONTAINS
              EdgeMaxDegree = 0
              IF( CurrentModel % Solver % Mesh % MaxEdgeDofs == 0 ) THEN
                CONTINUE             
-             ELSE IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
-                   CurrentModel % Solver % Mesh % MaxEdgeDOFs) THEN
-               EdgeMaxDegree = Element % BDOFs+1
-               EdgeDegree(1:Element % Type % NumberOfFaces) = EdgeMaxDegree
              ELSE
                DO i=1,6
                  EdgeDegree(i) = CurrentModel % Solver % &
