@@ -5061,6 +5061,10 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
      SAVE prevptr, derptr
+
+     IF(.NOT. PRESENT(x) ) THEN
+       CALL Fatal('ListGetFun','Variable "x" is in fact compulsory!')
+     END IF
      
      F = 0.0_dp
      IF( PRESENT( Name ) ) THEN
@@ -5152,25 +5156,42 @@ use spariterglobals
 
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
-       WRITE( cmd, * ) 'tx=', X
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
        
-       cmd = ptr % CValue
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
-       READ( tmp_str(1:k1), * ) F
-
+#ifdef HAVE_LUA
+       IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+         WRITE( cmd, * ) 'tx=', X
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) F
+#ifdef HAVE_LUA
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T, F, 1 )
+       END IF
+#endif
+         
        IF( PRESENT( dFdx ) ) THEN
          IF( ASSOCIATED( derPtr ) ) THEN
            ! Compute also derivative from MATC expression
            IF( derPtr % TYPE ==  LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
-             cmd = derptr % CValue
-             k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
-             READ( tmp_str(1:k1), * ) dFdx
+#ifdef HAVE_LUA
+             IF ( .NOT. derPtr % LuaFun ) THEN
+#endif       
+               cmd = derptr % CValue 
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               READ( tmp_str(1:k1), * ) dFdx
+#ifdef HAVE_LUA
+             ELSE
+               CALL ElmerEvalLua(LuaState, derPtr, T, dFdx, 1 )
+             END IF
+#endif               
            ELSE
-             CALL Fatal('ListGetFun','Derivative should be MATC if primary keyword is!')
+             CALL Fatal('ListGetFun','Derivative should be given the same was as the primary keyword!')
            END IF
          ELSE           
            ! This is really expensive. 
@@ -5181,24 +5202,35 @@ use spariterglobals
              xeps = 1.0d-8
            END IF
 
-           WRITE( cmd, * ) 'tx=', x-xeps
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
+#ifdef HAVE_LUA
+           IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+             WRITE( cmd, * ) 'tx=', x-xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
-           cmd = ptr % CValue
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) F1
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F1
 
-           WRITE( cmd, * ) 'tx=', x+xeps
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
+             WRITE( cmd, * ) 'tx=', x+xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
-           cmd = ptr % CValue
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) F2
-
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F2
+#ifdef HAVE_LUA
+           ELSE
+             T(1) = x-xeps
+             CALL ElmerEvalLua(LuaState, derPtr, T, F1, 1 )
+             T(1) = x+xeps
+             CALL ElmerEvalLua(LuaState, derPtr, T, F2, 1 )
+             T(1) = x
+           END IF
+#endif             
            dFdx = (F2-F1) / (2*xeps)
          END IF
        END IF
@@ -5209,21 +5241,21 @@ use spariterglobals
      END SELECT
 
      IF ( PRESENT( minv ) ) THEN
-        IF ( F < minv ) THEN
-           WRITE( Message,*) 'Given VALUE ', F, ' for property: ', '[', TRIM(Name),']', &
-               ' smaller than given minimum: ', minv
-           CALL Fatal( 'ListGetFun', Message )
-        END IF
+       IF ( F < minv ) THEN
+         WRITE( Message,*) 'Given value ', F, ' for property: ', '[', TRIM(Name),']', &
+             ' smaller than given minimum: ', minv
+         CALL Fatal( 'ListGetFun', Message )
+       END IF
      END IF
-
+     
      IF ( PRESENT( maxv ) ) THEN
-        IF ( F > maxv ) THEN
-           WRITE( Message,*) 'Given VALUE ', F, ' for property: ', '[', TRIM(Name),']', &
-               ' larger than given maximum ', maxv
-           CALL Fatal( 'ListGetFun', Message )
-        END IF
+       IF ( F > maxv ) THEN
+         WRITE( Message,*) 'Given value ', F, ' for property: ', '[', TRIM(Name),']', &
+             ' larger than given maximum ', maxv
+         CALL Fatal( 'ListGetFun', Message )
+       END IF
      END IF
-
+     
    END FUNCTION ListGetFun
 !------------------------------------------------------------------------------
 
@@ -5249,6 +5281,10 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
      SAVE prevptr, derptr
+
+     IF(.NOT. PRESENT(x) ) THEN
+       CALL Fatal('ListGetFunVec','Variable "x" is in fact compulsory!')
+     END IF
      
      F = 0.0_dp
      IF( PRESENT( Name ) ) THEN
@@ -5298,14 +5334,22 @@ use spariterglobals
 
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
-       WRITE( cmd, * ) 'tx=(', X(1:dofs),')'
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
-       
-       cmd = ptr % CValue
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
-       READ( tmp_str(1:k1), * ) F
+#ifdef HAVE_LUA
+       IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+         WRITE( cmd, * ) 'tx=(', X(1:dofs),')'
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) F
+#ifdef HAVE_LUA
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F, dofs )
+       END IF
+#endif
        
        IF( PRESENT( dFdx ) ) THEN
          ! For speed also one sided difference could be considered. 
@@ -5315,26 +5359,39 @@ use spariterglobals
            xeps = 1.0d-6
          END IF
          DO i=1,dofs
-           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)-xeps
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           
-           cmd = ptr % CValue
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) F1
+#ifdef HAVE_LUA
+           IF ( .NOT. ptr % LuaFun ) THEN
+#endif                  
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)-xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
-           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)+xeps
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F1
 
-           cmd = ptr % CValue
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) F2
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)+xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F2
+
+             ! Revert back to original value
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)
+#ifdef HAVE_LUA
+           ELSE
+             T(i) = T(i) - eps
+             CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F1, dofs )
+             T(i) = T(i) + 2*eps
+             CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F2, dofs )
+             T(i) = T(i) - eps             
+           END IF
+#endif
            dFdx(i) = (F2-F1) / (2*xeps)
-           WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)
          END DO
        END IF
          

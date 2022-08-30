@@ -11851,8 +11851,8 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>   Normal will point from more dense material to less dense
-!>   or outwards, if no elements on the other side.
+!> Normal will point into body with lower body ID.
+!> or outwards, if no elements on the other side.
 !------------------------------------------------------------------------------
   SUBROUTINE CheckNormalDirection( Boundary,Normal,x,y,z,turn )
 !------------------------------------------------------------------------------
@@ -12047,7 +12047,7 @@ END SUBROUTINE PickActiveFace
 !> do not have the luxury of knowing the local coordinates and hence the center
 !> point is used as default.
 !------------------------------------------------------------------------------
-  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
+  RECURSIVE FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
@@ -12062,7 +12062,11 @@ END SUBROUTINE PickActiveFace
     REAL(KIND=dp) :: u,v,Auu,Auv,Avu,Avv,detA,x,y,z
     REAL(KIND=dp) :: dxdu,dxdv,dydu,dydv,dzdu,dzdv
     REAL(KIND=dp), DIMENSION(:), POINTER :: nx,ny,nz
-
+    REAL(KIND=dp) :: Tangent1(3), Tangent2(3)
+    TYPE(Nodes_t) :: ParentNodes
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: n
+    
 !------------------------------------------------------------------------------
 
     nx => BoundaryNodes % x
@@ -12075,26 +12079,71 @@ END SUBROUTINE PickActiveFace
       Normal(1) = 1.0_dp
       Normal(2:3) = 0.0_dp
 
-    CASE ( 1 ) 
-      IF( PRESENT( u0 ) ) THEN
-        u = u0
-      ELSE
-        u = 0.0_dp
-      END IF
+    CASE ( 1 )
+      IF( CurrentModel % Mesh % MeshDim == 3 ) THEN
+        ! We have 1D element but 3D mesh
+        ! Define the normal in the plane defined by the 2D parent element.
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
 
-      dxdu = FirstDerivative1D( Boundary,nx,u )
-      dydu = FirstDerivative1D( Boundary,ny,u )
- 
-      detA = dxdu*dxdu + dydu*dydu
-      IF ( detA <= 0._dp ) THEN
-        Normal = 0._dp
-        RETURN
+        ! 1st tangent vector is defined by the edge direction
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+        dzdu = FirstDerivative1D( Boundary,nz,u )
+        
+        detA = dxdu*dxdu + dydu*dydu + dzdu*dzdu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Tangent1(1) = dxdu * detA
+        Tangent1(2) = dydu * detA
+        Tangent1(3) = dzdu * detA
+
+        ! The 2nd tangent element is the normal vector of the parent element
+        IF( PRESENT( Parent ) ) THEN
+          pParent => Parent
+        ELSE
+          pParent => Boundary % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(pParent) ) THEN
+            pParent => Boundary % BoundaryInfo % Right
+          END IF          
+        END IF
+
+        n = pParent % TYPE % NumberOfNodes
+        ALLOCATE( ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n) )        
+        ParentNodes % x(1:n) = CurrentModel % Nodes % x(pParent % NodeIndexes)
+        ParentNodes % y(1:n) = CurrentModel % Nodes % y(pParent % NodeIndexes)
+        ParentNodes % z(1:n) = CurrentModel % Nodes % z(pParent % NodeIndexes)
+        Tangent2 = NormalVector( pParent, ParentNodes) 
+        DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z)
+        
+        Normal = CrossProduct( Tangent1, Tangent2 )         
+      ELSE        
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
+
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+
+        detA = dxdu*dxdu + dydu*dydu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Normal(1) = -dydu * detA
+        Normal(2) =  dxdu * detA
+        Normal(3) =  0.0d0
       END IF
-      detA = 1.0_dp / SQRT(detA)
-      Normal(1) = -dydu * detA
-      Normal(2) =  dxdu * detA
-      Normal(3) =  0.0d0
-    
+        
     CASE ( 2 ) 
       IF( PRESENT( u0 ) ) THEN
         u = u0
@@ -12169,6 +12218,204 @@ END SUBROUTINE PickActiveFace
   END FUNCTION NormalVector
 !------------------------------------------------------------------------------
 
+#if 0
+!------------------------------------------------------------------------------
+!> More economical normal vector computation assuming linear geometry description.
+!------------------------------------------------------------------------------
+  RECURSIVE FUNCTION NormalVectorLinear( Boundary,BoundaryNodes,Parent) RESULT(Normal)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Nodes_t) :: BoundaryNodes
+    TYPE(Element_t), POINTER, OPTIONAL :: Parent
+    REAL(KIND=dp) :: Normal(3)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    REAL(KIND=dp) :: vec0(3), vec1(3), vec2(3), vec3(3) 
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: i,i1,i2,i3,i4,n,m,ElemDim,MeshDim
+    
+!------------------------------------------------------------------------------
+
+    x => CurrentModel % Nodes % x
+    y => CurrentModel % Nodes % y
+    z => CurrentModel % Nodes % z
+
+    IF( PRESENT( Parent ) ) THEN
+      pParent => Parent
+    ELSE IF( ASSOCIATED( Boundary % BoundaryInfo ) ) THEN
+      pParent => Boundary % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(pParent) ) THEN
+        pParent => Boundary % BoundaryInfo % Right
+      END IF
+    END IF
+
+    ElemDim = Boundary % Type % Dimension 
+    MeshDim = CurrentModel % Mesh % MeshDim 
+    
+    IF(ElemDim <= MeshDim-1 .OR. .NOT. (ASSOCIATED(pParent)) ) THEN
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 ) 
+        Normal(1) = 1.0_dp
+        Normal(2:3) = 0.0_dp
+
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i2) - x(i1)
+        vec1(2) = y(i2) - y(i1)
+        vec1(3) = 0.0_dp
+
+        Normal(1) = -vec1(2)
+        Normal(2) = vec1(1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+        
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+
+      END SELECT
+      
+    ELSE 
+
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 )                
+        i1 = pParent % NodeIndexes(1)
+        i2 = pParent % NodeIndexes(2)
+        
+        Normal(1) = x(i2) - x(i1)
+        Normal(2) = y(i2) - y(i1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+        IF( i1 == Boundary % NodeIndexes(1) ) THEN
+          Normal = -Normal
+        END IF
+                       
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i1)
+        vec1(2) = y(i1)
+        vec1(3) = z(i1)
+
+        vec2(1) = x(i2)
+        vec2(2) = y(i2)
+        vec2(3) = z(i2)
+               
+        vec0 = vec1-vec2
+        vec0 = vec0 / SQRT(SUM(vec0**2))
+        
+        n = pParent % TYPE % ElementCode / 100 
+
+        vec2 = 0.0_dp
+        DO i=1,n
+          i3 = pParent % NodeIndexes(i)
+          IF(i3 == i1 .OR. i3 == i2 ) CYCLE
+
+          ! Vector stretching from edge center to the other nodes
+          ! of the parent elemet. 
+          vec2(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+        END DO
+        ! Subtract the average 
+        vec3 = vec3 - (n-2)*(vec1+vec2)/2 
+        
+        ! Remove projection in the direction of the line
+        Normal = vec3 - SUM(vec0*vec3)*vec0
+        Normal = -Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+        
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+          
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+        m = pParent % TYPE % ElementCode / 100 
+        vec1 = 0.0_dp
+        vec2 = 0.0_dp
+        DO i=1,m
+          i1 = pParent % NodeIndexes(i)
+          IF( ANY( Boundary % NodeIndexes == i1 ) ) THEN
+            vec1(1) = vec1(1) + x(i1)
+            vec1(2) = vec1(2) + y(i1)
+            vec1(3) = vec1(3) + z(i1)            
+          ELSE
+            vec2(1) = vec2(1) + x(i1)
+            vec2(2) = vec2(2) + y(i1)
+            vec2(3) = vec2(3) + z(i1)
+          END IF
+        END DO
+
+        vec1 = vec1 / n
+        vec2 = vec2 / (m-n)
+
+        IF( SUM( (vec1-vec2)*Normal ) < 0.0_dp ) THEN
+          Normal = -Normal
+        END IF
+        
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+        
+      END SELECT
+    END IF
+      
+!------------------------------------------------------------------------------
+  END FUNCTION NormalVectorLinear
+!------------------------------------------------------------------------------
+#endif
+
+
+  
 !------------------------------------------------------------------------------
 !> Returns a point that is most importantly supposed to be on the surface
 !> For noncurved elements this may simply be the mean while otherwise

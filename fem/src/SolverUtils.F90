@@ -5284,6 +5284,20 @@ CONTAINS
           CALL SetLumpedRows(ind,n)
         END DO
 
+        IF( NDOFs == 1 ) THEN
+          SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Flux',GotIt)
+          IF( GotIt ) THEN
+            t = Offset + Perm(ind)
+            b(t) = b(t) + SingleVal
+          END IF
+
+          SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Multiplier',GotIt)
+          IF( GotIt ) THEN                        
+            t = Offset + Perm(ind)
+            CALL AddToMatrixElement(A,t,t,SingleVal) 
+          END IF
+        END IF
+        
         n = COUNT( LumpedNodeSet ) 
         CALL Info(Caller,'Number of lumped nodes set: '//TRIM(I2S(n)),Level=10)
       END DO
@@ -5780,8 +5794,6 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Set values related to a specific boundary or bulk element.
-!> If scaling has been applied the rows need to be scaled when
-!> they are moved.
 !------------------------------------------------------------------------------
     SUBROUTINE SetLumpedRows(ind0,n)
 !------------------------------------------------------------------------------

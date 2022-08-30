@@ -61,19 +61,6 @@
 #define MAX_PATH_LEN 512
 #define ERROR_BUF_LEN 10*MAX_PATH_LEN
 
-#ifndef USE_ISO_C_BINDINGS
-#ifdef SGI64
-void corename_()
-{
-#include <sys/types.h>
-#include <sys/resource.h>
-#include <sys/prctl.h>
-
- prctl( PR_COREPID,0,0 );
-}
-#endif
-#endif
-
 /* pc needs more bits on 64bit arch  */
 #ifdef ARCH_32_BITS
 #define f_ptr int32_t *

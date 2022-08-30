@@ -6099,13 +6099,8 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
 
      str = ListGetString( Params, 'Procedure', Found )
 
-#ifdef SGIn32
-      SolverAddr = Solver % PROCEDURE
-      CALL ExecSolver( SolverAddr, Model, Solver, DTScal*dt, TransientSimulation)
-#else
       CALL ExecSolver( &
              Solver % PROCEDURE, Model, Solver, DTScal*dt, TransientSimulation)
-#endif
 
      IF(NamespaceFound) CALL ListPopNamespace()
      IF ( ASSOCIATED(Solver % Matrix) ) THEN

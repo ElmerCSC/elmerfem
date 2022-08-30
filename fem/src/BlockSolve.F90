@@ -2638,7 +2638,7 @@ CONTAINS
   
 
 !> Create the vectors needed for block matrix scaling. Currently only
-!> real and complex valued row equilibriation is supported. Does not perform
+!> real and complex valued row equilibration is supported. Does not perform
 !> the actual scaling.
 !------------------------------------------------------------------------------
   SUBROUTINE CreateBlockMatrixScaling( )
@@ -2656,7 +2656,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: SolverVar
     CHARACTER(*), PARAMETER :: Caller = 'CreateBlockMatrixScaling'
     
-    CALL Info(Caller,'Starting block matrix row equilibriation',Level=20)
+    CALL Info(Caller,'Starting block matrix row equilibration',Level=20)
 
     NoVar = TotMatrix % NoVar
     
@@ -2670,7 +2670,6 @@ CONTAINS
     
     m = 0
     DO k=1,NoVar
-      GotIt = .FALSE.
       A => TotMatrix % SubMatrix(k,k) % Mat
       n = A % NumberOfRows
       IF(.NOT. ASSOCIATED(TotMatrix % Subvector )) THEN
@@ -2771,6 +2770,12 @@ CONTAINS
         CALL ParallelSumVector(A, Diag)
       END IF
       
+      nrm = MAXVAL(Diag(1:n))
+      IF( ParEnv % PEs > 1 ) THEN
+        nrm = ParallelReduction(nrm,2)
+      END IF
+      blocknrm = MAX(blocknrm,nrm)
+      
       ! Define the actual scaling vector (for real component)
       DO i=1,n,m
         IF (Diag(i) > TINY( nrm ) ) THEN
@@ -2782,12 +2787,6 @@ CONTAINS
 
       ! Scaling of complex component
       IF( ComplexMatrix ) Diag(2::2) = Diag(1::2)
-      
-      nrm = MAXVAL(Diag(1:n))
-      IF( ParEnv % PEs > 1 ) THEN
-        nrm = ParallelReduction(nrm,2)
-      END IF
-      blocknrm = MAX(blocknrm,nrm)
       
       WRITE( Message,'(A,ES12.5)') 'Unscaled matrix norm for block '//TRIM(I2S(k))//': ', nrm    
       CALL Info(Caller, Message, Level=10 )      
@@ -2852,7 +2851,7 @@ CONTAINS
 !> Performs the actual forward or reverse scaling. Optionally the scaling may be
 !> applied to only one matrix with an optional r.h.s. The idea is that for
 !> block preconditioning we may revert to the original symmetric matrix but
-!> still use the optimal row equilibriation scaling for the block system. 
+!> still use the optimal row equilibration scaling for the block system. 
 !------------------------------------------------------------------------------
   SUBROUTINE BlockMatrixScaling( reverse, blockrow, blockcol, bext, SkipMatrixScale  )
 !------------------------------------------------------------------------------
@@ -2876,9 +2875,9 @@ CONTAINS
       BackScale = .FALSE.
     END IF
     IF (BackScale) THEN
-      CALL Info(Caller,'Performing block matrix row equilibriation',Level=10)
+      CALL Info(Caller,'Performing block matrix reverse row equilibration',Level=10)
     ELSE
-      CALL Info(Caller,'Performing block matrix reverse row equilibriation',Level=10)
+      CALL Info(Caller,'Performing block matrix row equilibration',Level=10)
     END IF
 
     NoVar = TotMatrix % NoVar   
@@ -2936,9 +2935,9 @@ CONTAINS
     END DO
 
     IF( BackScale ) THEN
-      CALL Info(Caller,'Finished block matrix reverse row equilibriation',Level=20)           
+      CALL Info(Caller,'Finished block matrix reverse row equilibration',Level=10)           
     ELSE
-      CALL Info(Caller,'Finished block matrix row equilibriation',Level=20)           
+      CALL Info(Caller,'Finished block matrix row equilibration',Level=10)           
     END IF
       
   END SUBROUTINE BlockMatrixScaling
@@ -2951,7 +2950,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: k,NoVar
     
-    CALL Info('DestroyBlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
+    CALL Info('DestroyBlockMatrixScaling','Starting block matrix row equilibration',Level=10)
               
     NoVar = TotMatrix % NoVar   
     DO k=1,NoVar            

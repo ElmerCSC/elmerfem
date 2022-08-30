@@ -86,13 +86,6 @@
      TYPE(Solver_t), POINTER :: Solver
 
 !------------------------------------------------------------------------------
-!    For sgi machines reset the output unit to line buffering, so that
-!    Elmercadi, etc, can follow progress, even if output is to a file.
-!------------------------------------------------------------------------------
-#ifdef SGI
-     CALL SetLineBuf(6)
-#endif
-!------------------------------------------------------------------------------
 !    Read input file name and whether parallel execution is requested
 !------------------------------------------------------------------------------
 
