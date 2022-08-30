@@ -605,7 +605,7 @@ MODULE Types
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1
-     REAL(KIND=dp) :: Value = 0.0
+     REAL(KIND=dp) :: val = 0.0
      TYPE(ListMatrixEntry_t), POINTER :: Next => NULL()
    END TYPE ListMatrixEntry_t
 

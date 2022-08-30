@@ -16357,7 +16357,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              DO WHILE(ASSOCIATED(cTmp))
                 l = cTmp % Index
                 IF ( l /= SlaveIPerm(j) ) &
-                   CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
+                   CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Val )
               cTmp => cTmp % Next
             END DO
             CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)

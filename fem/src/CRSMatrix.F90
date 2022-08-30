@@ -57,9 +57,9 @@ CONTAINS
 !-----------------------------------------------------------------------------
 !> Search CRS matrix for what?
 !-----------------------------------------------------------------------------
-  FUNCTION CRS_Search( N,Array,VALUE ) RESULT ( Index )
+  FUNCTION CRS_Search( N,Array,val ) RESULT ( Index )
 !-----------------------------------------------------------------------------
-    INTEGER :: N,VALUE,Array(:)
+    INTEGER :: N,val,Array(:)
 !-----------------------------------------------------------------------------
     INTEGER :: Lower, Upper,Lou,Index
 !-----------------------------------------------------------------------------
@@ -72,17 +72,17 @@ CONTAINS
     IF ( Upper == 0 ) RETURN
 
     DO WHILE( .TRUE. )
-      IF ( Array(Lower) == VALUE ) THEN
+      IF ( Array(Lower) == val ) THEN
         Index = Lower
         EXIT
-      ELSE IF ( Array(Upper) == VALUE ) THEN
+      ELSE IF ( Array(Upper) == val ) THEN
         Index = Upper
         EXIT
       END IF
 
       IF ( (Upper-Lower)>1 ) THEN
         Lou = ISHFT((Upper+Lower), -1)
-        IF ( Array(Lou) < VALUE ) THEN
+        IF ( Array(Lou) < val ) THEN
           Lower = Lou
         ELSE
           Upper = Lou
@@ -333,12 +333,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a given value to an element of a  CRS format matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_AddToMatrixElement( A,i,j,VALUE )
+  SUBROUTINE CRS_AddToMatrixElement( A,i,j,val )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A     !< Structure holding the matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
-    REAL(KIND=dp), INTENT(IN) :: VALUE   !< value to be added to the matrix element
+    REAL(KIND=dp), INTENT(IN) :: val   !< value to be added to the matrix element
  !------------------------------------------------------------------------------
     INTEGER :: k
     REAL(KIND=dp), POINTER :: Values(:)
@@ -359,7 +359,7 @@ CONTAINS
 
     IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
       k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
-      IF ( k==0 .AND. VALUE/=0 ) THEN
+      IF ( k==0 .AND. val/=0 ) THEN
         CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
         CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
         CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
@@ -372,7 +372,7 @@ CONTAINS
       k = Diag(i)
     END IF
 !$omp atomic
-    Values(k) = Values(k) + VALUE
+    Values(k) = Values(k) + val
   END SUBROUTINE CRS_AddToMatrixElement
 !------------------------------------------------------------------------------
 
@@ -519,12 +519,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Set a given value to an element of a  CRS format matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_SetMatrixElement( A,i,j,VALUE )
+  SUBROUTINE CRS_SetMatrixElement( A,i,j,val )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A     !< Structure holding the matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
-    REAL(KIND=dp), INTENT(IN) :: VALUE   !< new value of the matrix element
+    REAL(KIND=dp), INTENT(IN) :: val   !< new value of the matrix element
 !------------------------------------------------------------------------------ 
     INTEGER :: k
     REAL(KIND=dp), POINTER :: Values(:)
@@ -550,7 +550,7 @@ CONTAINS
     ELSE
        k = Diag(i)
     END IF
-    Values(k) = VALUE
+    Values(k) = val
   END SUBROUTINE CRS_SetMatrixElement
 !------------------------------------------------------------------------------
 
@@ -558,12 +558,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Get a given matrix entry from CRS format matrix.
 !------------------------------------------------------------------------------
-  FUNCTION CRS_GetMatrixElement( A,i,j ) RESULT ( VALUE )
+  FUNCTION CRS_GetMatrixElement( A,i,j ) RESULT ( val )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN):: A     !< Structure holding the matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
-    REAL(KIND=dp) :: VALUE   !< obtained value of the matrix element
+    REAL(KIND=dp) :: val   !< obtained value of the matrix element
 !------------------------------------------------------------------------------ 
     INTEGER :: k
     REAL(KIND=dp), POINTER :: Values(:)
@@ -574,7 +574,7 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    Value = REAL(0,dp)
+    val = REAL(0,dp)
     IF ( .NOT.ASSOCIATED(Diag).OR.i /= j .OR. .NOT. A % Ordered ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
@@ -585,7 +585,7 @@ CONTAINS
     ELSE
        k = Diag(i)
     END IF
-    VALUE = Values(k)
+    val = Values(k)
 
   END FUNCTION CRS_GetMatrixElement
 !------------------------------------------------------------------------------
@@ -593,13 +593,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Get a given matrix entry from CRS format matrix and replace it with a new value
 !------------------------------------------------------------------------------
-  FUNCTION CRS_ChangeMatrixElement( A,i,j, NewValue ) RESULT ( OldValue )
+  FUNCTION CRS_ChangeMatrixElement( A,i,j, NewVal ) RESULT ( OldVal )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), INTENT(IN):: A     !< Structure holding the matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
-    REAL(KIND=dp), INTENT(IN) :: NewValue  !< Value to be set   
-    REAL(KIND=dp) :: OldValue !< Value to be gotten  
+    REAL(KIND=dp), INTENT(IN) :: NewVal  !< Value to be set   
+    REAL(KIND=dp) :: OldVal !< Value to be gotten  
 !------------------------------------------------------------------------------
  
     INTEGER :: k
@@ -612,11 +612,11 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    OldValue = REAL(0, dp)
+    OldVal = REAL(0, dp)
     IF ( .NOT.ASSOCIATED(Diag).OR.i /= j .OR. .NOT. A % Ordered ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
-         PRINT*,'Trying to change value of a nonexistent matrix element: ', i,j,NewValue
+         PRINT*,'Trying to change value of a nonexistent matrix element: ', i,j,NewVal
          RETURN
        END IF
        k = k + Rows(i) - 1
@@ -624,8 +624,8 @@ CONTAINS
        k = Diag(i)
     END IF
 !$omp critical
-    OldValue = Values(k)
-    Values(k) = NewValue
+    OldVal = Values(k)
+    Values(k) = NewVal
 !$omp end critical
 
   END FUNCTION CRS_ChangeMatrixElement

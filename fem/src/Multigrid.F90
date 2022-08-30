@@ -3384,7 +3384,7 @@ CONTAINS
        REAL(KIND=dp), POINTER :: FValues(:)
        INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
        INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
-       REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
+       REAL(KIND=dp) :: bond, val, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
        INTEGER :: inds(FSIZE), posinds(CSIZE), neginds(CSIZE), no, diag, InfoNode, &
@@ -3485,11 +3485,11 @@ CONTAINS
 
                IF(Fixed(ci)) CYCLE
 
-               VALUE = FValues(i)
-               IF(ABS(VALUE) < 1.0d-50) CYCLE
+               val = FValues(i)
+               IF(ABS(val) < 1.0d-50) CYCLE
                no = no + 1
                inds(no) = ci
-               coeffs(no) = VALUE
+               coeffs(no) = val
                IF(ci == ind) THEN
                  diag = no
                ELSE IF(CF(ci) > 0) THEN
@@ -3516,11 +3516,11 @@ CONTAINS
                IF(Fixed(ci)) CYCLE
 
                IF(CF(ci) > 0 .OR. ci == ind) THEN
-                 VALUE = FValues(i)
-                 IF(ABS(VALUE) < 1.0d-50) CYCLE 
+                 val = FValues(i)
+                 IF(ABS(val) < 1.0d-50) CYCLE 
                  no = no + 1
                  inds(no) = ci
-                 coeffs(no) = VALUE
+                 coeffs(no) = val
                  CoeffsInds(ci) = no
                  IF(ci == ind) diag = no
                END IF
@@ -3545,8 +3545,8 @@ CONTAINS
 
                  IF(Fixed(cj)) CYCLE
 
-                 VALUE = Fvalues(i) * Fvalues(j) / Fvalues(Fmat % diag(ci))
-                 IF(ABS(VALUE) < 1.0d-50) CYCLE
+                 val = Fvalues(i) * Fvalues(j) / Fvalues(Fmat % diag(ci))
+                 IF(ABS(val) < 1.0d-50) CYCLE
                  
                  k = CoeffsInds(cj) 
                  IF(k == 0) THEN
@@ -3560,7 +3560,7 @@ CONTAINS
                    PRINT *,'k',k,l,cj,CoeffsInds(cj)
                    CALL Fatal('InterpolateFineToCoarse','There are more neighbours than expected')
                  END IF
-                 coeffs(k) = coeffs(k) - VALUE
+                 coeffs(k) = coeffs(k) - val
                END DO
              END DO
 
@@ -3613,21 +3613,21 @@ CONTAINS
            END IF
 
            DO i=1,no
-             VALUE = coeffs(i)
+             val = coeffs(i)
              IF(i == diag) THEN
-               diagsum = VALUE
-             ELSE IF(VALUE > 0.0) THEN
-               possum = possum + VALUE
+               diagsum = val
+             ELSE IF(val > 0.0) THEN
+               possum = possum + val
                ci = inds(i)
                IF(CF(ci) > 0) THEN
-                 posmax = MAX(posmax, VALUE)
+                 posmax = MAX(posmax, val)
                  posi = posi + 1
                END IF
              ELSE 
-               negsum = negsum + VALUE
+               negsum = negsum + val
                ci = inds(i)
                IF(CF(ci) > 0) THEN
-                 negmax = MIN(negmax, VALUE)
+                 negmax = MIN(negmax, val)
                  negi = negi + 1
                END IF
              END IF
@@ -3662,18 +3662,18 @@ CONTAINS
 
              negcsum = 0.0
              DO i=1,no
-               VALUE = coeffs(i)
+               val = coeffs(i)
                ci = inds(i)
                IF(CF(ci) == 0) CYCLE
-               IF(VALUE < ProjLim * negmax) THEN
+               IF(val < ProjLim * negmax) THEN
                  negno = negno + 1
                  neginds(negno) = ci
-                 negcoeffs(negno) = VALUE
-                 negcsum = negcsum + VALUE
-               ELSE IF(VALUE > ProjLim * posmax) THEN
+                 negcoeffs(negno) = val
+                 negcsum = negcsum + val
+               ELSE IF(val > ProjLim * posmax) THEN
                  posno = posno + 1
                  posinds(posno) = ci
-                 poscoeffs(posno) = VALUE                 
+                 poscoeffs(posno) = val                 
                END IF
              END DO
 
@@ -3733,18 +3733,18 @@ CONTAINS
 
              poscsum = 0.0
              DO i=1,no
-               VALUE = coeffs(i)
+               val = coeffs(i)
                ci = inds(i)
                IF(CF(ci) == 0) CYCLE
-               IF( VALUE > ProjLim * posmax ) THEN
+               IF( val > ProjLim * posmax ) THEN
                  posno = posno + 1
                  posinds(posno) = ci
-                 poscoeffs(posno) = VALUE
-                 poscsum = poscsum + VALUE
-               ELSE IF(VALUE < ProjLim * negmax) THEN
+                 poscoeffs(posno) = val
+                 poscsum = poscsum + val
+               ELSE IF(val < ProjLim * negmax) THEN
                  negno = negno + 1
                  neginds(negno) = ci
-                 negcoeffs(negno) = VALUE
+                 negcoeffs(negno) = val
                END IF
              END DO
 
@@ -3808,21 +3808,21 @@ CONTAINS
              END IF            
 
              DO i=1,negi
-               VALUE = -negsum * negcoeffs(i) / (negcsum * diagsum)
+               val = -negsum * negcoeffs(i) / (negcsum * diagsum)
                ci = neginds(i)
-               IF(Debug) PRINT *,'F-: Pij',ind,CF(ci),VALUE
+               IF(Debug) PRINT *,'F-: Pij',ind,CF(ci),val
                PCols(Prows(node)+i-1) = CF(ci)
-               PValues(Prows(node)+i-1) = VALUE
-               wsum = wsum + VALUE
+               PValues(Prows(node)+i-1) = val
+               wsum = wsum + val
              END DO
 
              DO i=1,posi
-               VALUE = -possum * poscoeffs(i) / (poscsum * diagsum * FavorNeg)
+               val = -possum * poscoeffs(i) / (poscsum * diagsum * FavorNeg)
                ci = posinds(i)
-               IF(Debug) PRINT *,'F+: Pij',ind,CF(ci),VALUE
+               IF(Debug) PRINT *,'F+: Pij',ind,CF(ci),val
                PCols(Prows(node)+i+negi-1) = CF(ci)
-               PValues(Prows(node)+i+negi-1) = VALUE
-               wsum = wsum + VALUE
+               PValues(Prows(node)+i+negi-1) = val
+               wsum = wsum + val
              END DO
 
              IF(Debug) PRINT *,'ind wsum projnodes',ind,wsum,projnodes
@@ -3903,7 +3903,7 @@ CONTAINS
        REAL(KIND=dp), POINTER :: FValues(:)
        INTEGER, POINTER :: FRows(:), FCols(:), CoeffsInds(:)
        INTEGER, POINTER CONTIG :: PRows(:), PCols(:)
-       REAL(KIND=dp) :: bond, VALUE, possum, negsum, poscsum, negcsum, diagsum, &
+       REAL(KIND=dp) :: bond, val, possum, negsum, poscsum, negcsum, diagsum, &
            ProjLim, negbond, posbond, maxbond
        LOGICAL :: Debug, AllocationsDone, DirectInterpolate, Lumping
        INTEGER :: inds(FSIZE), posinds(CSIZE), neginds(CSIZE), no, diag, InfoNode, &
@@ -4018,13 +4018,13 @@ CONTAINS
              z1 = Mesh % Nodes % z(k)
 
              s2 = (x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0)
-             VALUE = s2 ** (-Pow/2.0_dp)
+             val = s2 ** (-Pow/2.0_dp)
 
-             posmax = MAX(posmax,VALUE)
+             posmax = MAX(posmax,val)
              no = no + 1
 
              inds(no) = ci
-             coeffs(no) = VALUE
+             coeffs(no) = val
            END DO
 
 
@@ -4052,13 +4052,13 @@ CONTAINS
                  z1 = Mesh % Nodes % z(k)
 
                  s2 = (x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0)
-                 VALUE = s2 ** (-Pow/2.0_dp)
+                 val = s2 ** (-Pow/2.0_dp)
 
-                 posmax = MAX(posmax,VALUE)
+                 posmax = MAX(posmax,val)
                  no = no + 1
 
                  inds(no) = cj
-                 coeffs(no) = VALUE
+                 coeffs(no) = val
                END DO
              END DO
 
@@ -4082,22 +4082,22 @@ CONTAINS
          
            possum = 0.0d0
            DO i=1,no
-             VALUE = coeffs(i)
-             IF(VALUE > ProjLim * posmax) THEN
+             val = coeffs(i)
+             IF(val > ProjLim * posmax) THEN
                projnodes = projnodes + 1
                posinds(projnodes) = inds(i)
-               poscoeffs(projnodes) = VALUE
-               possum = possum + VALUE
+               poscoeffs(projnodes) = val
+               possum = possum + val
              END IF
            END DO
            
            IF(AllocationsDone) THEN
              DO i=1,projnodes
-               VALUE =  poscoeffs(i) / possum 
+               val =  poscoeffs(i) / possum 
                ci = posinds(i)
-               IF(Debug) PRINT *,'Pij',ind,CF(ci),VALUE
+               IF(Debug) PRINT *,'Pij',ind,CF(ci),val
                PCols(Prows(node)+i-1) = CF(ci)
-               PValues(Prows(node)+i-1) = VALUE
+               PValues(Prows(node)+i-1) = val
              END DO
            END IF
          END IF
@@ -4160,7 +4160,7 @@ CONTAINS
            DirectLimit, projnodes
        REAL(KIND=dp) :: wsum, refbond, posmax
 
-       REAL(KIND=dp) :: poscoeffs(CSIZE), VALUE, poscsum, possum, diagsum
+       REAL(KIND=dp) :: poscoeffs(CSIZE), val, poscsum, possum, diagsum
        COMPLEX(KIND=dp) :: coeffs(FSIZE), cvalue 
 
        Debug = .FALSE.
@@ -4345,14 +4345,14 @@ CONTAINS
            END IF
 
            DO i=1,no
-             VALUE = ABS(coeffs(i))
+             val = ABS(coeffs(i))
              IF(i == diag) THEN
-               diagsum = VALUE
+               diagsum = val
              ELSE 
-               possum = possum + VALUE
+               possum = possum + val
                ci = inds(i)
                IF(CF(ci) > 0) THEN
-                 posmax = MAX(posmax, VALUE )
+                 posmax = MAX(posmax, val )
                  posi = posi + 1
                END IF
              END IF
@@ -4374,14 +4374,14 @@ CONTAINS
            poscsum = 0.0
 
            DO i=1,no
-             VALUE = ABS(coeffs(i))
+             val = ABS(coeffs(i))
              ci = inds(i)
              IF(CF(ci) == 0) CYCLE
-             IF(ABS(VALUE) > ProjLim * posmax) THEN
+             IF(ABS(val) > ProjLim * posmax) THEN
                projnodes = projnodes + 1
                posinds(projnodes) = ci
-               poscoeffs(projnodes) = VALUE                 
-               poscsum = poscsum + VALUE
+               poscoeffs(projnodes) = val                 
+               poscsum = poscsum + val
              END IF
            END DO
 
@@ -4393,14 +4393,14 @@ CONTAINS
 
             wsum = 0.0
             DO i=1,projnodes
-               VALUE = possum * poscoeffs(i) / (poscsum * diagsum)
+               val = possum * poscoeffs(i) / (poscsum * diagsum)
                ci = posinds(i)
-               IF(Debug) PRINT *,'F+: Pij',node,CF(ci),VALUE,poscoeffs(i)
+               IF(Debug) PRINT *,'F+: Pij',node,CF(ci),val,poscoeffs(i)
 
                PCols(Prows(node)+i-1) = CF(ci) 
-               PValues(Prows(node)+i-1) = VALUE
+               PValues(Prows(node)+i-1) = val
                
-               wsum = wsum + VALUE
+               wsum = wsum + val
              END DO
              IF(Debug) PRINT *,'ind projnodes wsum',ind,projnodes,wsum,diagsum,poscsum,possum
 

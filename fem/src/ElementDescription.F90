@@ -11016,7 +11016,7 @@ END SUBROUTINE PickActiveFace
 !>   used to compute the value. This is just a wrapper routine and will call the
 !>   real function according to element dimension.   
 !------------------------------------------------------------------------------
-   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(VALUE)
+   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(val)
 !------------------------------------------------------------------------------
 !
 !  DESCRIPTION:
@@ -11049,7 +11049,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: VALUE
+     REAL(KIND=dp) :: val
      INTEGER :: n
 
      IF ( PRESENT( Basis ) ) THEN
@@ -11057,20 +11057,20 @@ END SUBROUTINE PickActiveFace
 !      Basis function values given, just sum the result ...
 !------------------------------------------------------------------------------
        n = elm % TYPE % NumberOfNodes
-       VALUE = SUM( f(1:n)*Basis(1:n) )
+       val = SUM( f(1:n)*Basis(1:n) )
      ELSE
 !------------------------------------------------------------------------------
 !      ... otherwise compute from the definition.
 !------------------------------------------------------------------------------
        SELECT CASE (elm % TYPE % DIMENSION)
          CASE (0)
-           VALUE = f(1)
+           val = f(1)
          CASE (1)
-           VALUE = InterpolateInElement1D( elm,f,u )
+           val = InterpolateInElement1D( elm,f,u )
          CASE (2)
-           VALUE = InterpolateInElement2D( elm,f,u,v )
+           val = InterpolateInElement2D( elm,f,u,v )
          CASE (3)
-           VALUE = InterpolateInElement3D( elm,f,u,v,w )
+           val = InterpolateInElement3D( elm,f,u,v,w )
        END SELECT
      END IF
   
