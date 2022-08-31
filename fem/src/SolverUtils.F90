@@ -12414,10 +12414,10 @@ END FUNCTION SearchNodeL
       Diag => A % DiagScaling
       Diag = 0._dp
     
-      ComplexMatrix = Solver % Matrix % COMPLEX
-
       IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
         ComplexMatrix = .TRUE.
+      ELSE
+        ComplexMatrix = A % COMPLEX
       END IF
       
       IF ( ComplexMatrix ) THEN
@@ -12651,10 +12651,11 @@ END FUNCTION SearchNodeL
 !-------------------------------------------------------------------------
 
     CALL Info('RowEquilibration','Scaling system such that abs rowsum is unity',Level=15)
-        
 
     n = A % NumberOfRows
     ComplexMatrix = A % COMPLEX
+
+    IF (ComplexMatrix) CALL Info('RowEquilibration','Using complex matrix norm',Level=15)
 
     Rows   => A % Rows
     Cols   => A % Cols
@@ -12926,6 +12927,8 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Rows(:)
     REAL(KIND=dp), POINTER :: Values(:), Diag(:)
 !-----------------------------------------------------------------------------
+    CALL Info('ReverseRowEquilibration','Scaling back to original scale',Level=14)
+
     n = A % NumberOfRows
     Diag => A % DiagScaling   
     Values => A % Values
@@ -13630,22 +13633,22 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
     Params => Solver % Values
- 
-    ComplexSystem = ListGetLogical( Params, 'Linear System Complex', GotIt )
-    IF ( GotIt ) A % COMPLEX = ComplexSystem
-    
-    ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
-    IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
-    
+     
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('SolveLinearSystem','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
+    ELSE
+      ComplexSystem = ListGetLogical( Params, 'Linear System Complex', GotIt )
+      IF ( GotIt ) A % COMPLEX = ComplexSystem
     END IF
 
     IF( ListGetLogical( Params,'Linear System Skip Scaling',GotIt ) ) THEN     
       CALL Info('SolveLinearSystem','This time skipping scaling',Level=20)
       ScaleSystem = .FALSE.
+    ELSE
+      ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
+      IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
     END IF
    
     IF( A % COMPLEX ) THEN
