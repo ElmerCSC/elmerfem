@@ -22943,13 +22943,14 @@ CONTAINS
      REAL(KIND=dp) :: Coeff, Normal(3), LocalNormal(3), LocalT1(3), LocalT2(3), NTT(3,3)
      TYPE(Element_t), POINTER :: Element
      INTEGER, POINTER :: NodeIndexes(:)
-     INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t
+     INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t,nb
      INTEGER :: dofN, dofT1, dofT2, bc_id, dim, dofs
      LOGICAL :: Rotated, Found, ExcludePressure
      REAL(KIND=dp), POINTER :: VeloDir(:,:)
      REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
      CHARACTER(*), PARAMETER :: Caller = 'SetImplicitFriction'
- 
+     INTEGER :: Indexes(100), NodeCoeff(27)
+     
      IF(.NOT. ListCheckPresentAnyBC( Model, FrictionName ) ) RETURN
 
      CALL Info(Caller,'Setting fluid friction for boundaries on matrix level!',Level=7)
@@ -22984,19 +22985,30 @@ CONTAINS
        NodeIndexes => Element % NodeIndexes
        n = Element % TYPE % NumberOfNodes
 
+       nb = mGetElementDOFs( Indexes, Element, Solver )
+
+       
        ! Normal vector may be needed if this is not all normal-tangential nodes
        CALL CopyElementNodesFromMesh( Nodes, Mesh, n, NodeIndexes)
        Normal = NormalVector( Element, Nodes )
-                     
-       DO i = 1, n
-         j = Nodeindexes(i) 
+
+       NodeCoeff(1:n) = ListGetReal( BC, FrictionName, n, NodeIndexes, Found )
+      
+       DO i = 1, nb ! n
+         j = Indexes(i) ! Nodeindexes(i) 
 
          IF( NodeDone( j ) ) CYCLE
          IF( FlowPerm( j ) == 0 ) CYCLE
 
          NodeDone( j ) = .TRUE.         
-         Coeff = ListGetRealAtNode( BC, FrictionName, j, Found )
 
+         IF( i < nb ) THEN
+           Coeff = NodeCoeff(i)
+         ELSE
+           ! Ok, this is a little dirty and only works for constants. 
+           Coeff = SUM(NodeCoeff(1:n)) / n
+         END IF
+           
          ! There is no point of setting too small friction coefficient
          IF(ABS(Coeff) < 1.0d-10) CYCLE
 

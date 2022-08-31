@@ -1189,6 +1189,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 

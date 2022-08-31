@@ -703,6 +703,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
 3000   IF ( Transient .AND.(ConstantBulkMatrix .OR. &
            ConstantBulkSystem .OR. ConstantSystem) ) CALL AddGlobalTime()
+
+       ! This is a matrix level routine for setting friction such that tangential
+       ! traction is the normal traction multiplied by a coefficient.
+       CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+           'Friction Direction')
+    
        CALL DefaultFinishAssembly()
 
        IF( ModelLumping .AND. FixDisplacement) THEN
