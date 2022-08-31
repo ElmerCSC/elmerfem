@@ -6851,28 +6851,33 @@ CONTAINS
         DO l=1,nb
           ! The index to constrain
           l2 = NDOFS*(Perm(Indexes(l))-1)+k         
-
-          ! The constraints related to p-elements should always bet set to zero.
-          ! So we mark them but with a negative index so that they wont be set to unity ever.
-          Passive = .FALSE.
-          IF( l>n ) THEN
-            Passive = .TRUE.
-          ELSE IF( ParEnv % PEs > 1 ) THEN
-            IF( ASSOCIATED( A % ParallelInfo ) ) THEN
-              IF( A % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) Passive = .TRUE.
-            END IF
-          END IF
-
-          ! For passsive dofs set them always to zero
-          IF(Passive) THEN
-            Var % ConstraintModesIndeces(l2) = -j
-          ELSE
-            Var % ConstraintModesIndeces(l2) = j
-          END IF
+          Var % ConstraintModesIndeces(l2) = j
         END DO
       END DO
     END DO
 
+    ! Some single node or edge could stretch to the surface even though it is not
+    ! part of any boundary element in parallel. Hence we need to communicate the tag. 
+    CALL CommunicateLinearSystemTag(A,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
+
+    ! Set the p dofs to negative since we don't ever want to set them to one!
+    IF(SetP) THEN
+      DO l=Mesh % NumberOfNodes+1, SIZE(Perm)
+        j = Perm(l)
+        IF(j==0) CYCLE
+        DO k=1,NDOFs       
+          l2 = NDOFS*(j-1)+k                 
+
+          !This is probably not necessary ever. But here as a reminder. 
+          !IF( ASSOCIATED( A % ParallelInfo ) ) THEN
+          !  IF( A % ParallelInfo % NeighbourList(l2) % Neighbours(1) /= ParEnv % MyPE ) Passive = .TRUE.
+          !END IF
+          
+          Var % ConstraintModesIndeces(l2) = -Var % ConstraintModesIndeces(l2)
+        END DO
+      END DO
+    END IF
+    
     IF( InfoActive(20) ) THEN
       DO i=1,Var % NumberOfConstraintModes
         k = COUNT( Var % ConstraintModesIndeces == i )
@@ -8013,19 +8018,32 @@ CONTAINS
   !> Communicate logical tag related to linear system.
   !> This could related to setting Neumann BCs to zero, for example.
   !-------------------------------------------------------------------------------
-  SUBROUTINE CommunicateLinearSystemTag(A,ZeroDof)
+  SUBROUTINE CommunicateLinearSystemTag(A,Ltag,Itag,CommVal)
   !-------------------------------------------------------------------------------
-     TYPE(Matrix_t) :: A
-     LOGICAL, POINTER :: ZeroDof(:)
-         
-     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
+     TYPE(Matrix_t) :: A                     !< Matrix that the communication relates to
+     LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
+     INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
+     LOGICAL, OPTIONAL :: CommVal            !< If integer tag is used, should we consider also the value
+     
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:), s_i(:,:), r_i(:)
      INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
      INTEGER :: NewZeros
+     LOGICAL :: UseL, GotIt, CommI
      
      IF( ParEnv % PEs<=1 ) RETURN
 
-     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+     UseL = PRESENT(LTag)
+     IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
+       CALL Fatal('CommunicateLinearSystemTag','Give either logical or integer tag!')
+     END IF
+     CommI = .FALSE.
+     IF(.NOT. UseL) THEN
+       IF(PRESENT(CommVal)) CommI = CommVal
+     END IF
 
+     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+     
+     ! Mark the neighbouring entities
      nn = 0
      ineigh = 0
      DO i=0, ParEnv % PEs-1
@@ -8038,32 +8056,62 @@ CONTAINS
        ineigh(k) = nn
      END DO
 
-     n = COUNT(ZeroDof .AND. A % ParallelInfo % NodeInterface)
+     ! Count the maximum number of enties to sent 
+     IF( UseL ) THEN
+       n = COUNT(LTag .AND. A % ParallelInfo % NodeInterface)
+     ELSE
+       n = COUNT((ITag > 0) .AND. A % ParallelInfo % NodeInterface)
+     END IF
+
+     ! Allocate for the data to sent (s_e) and recieve (r_e)       
      ALLOCATE( s_e(n, nn ), r_e(n) )
+     s_e = 0
+     IF( CommI ) THEN
+       ALLOCATE( s_i(n, nn), r_i(n) )
+       s_i = 0
+     END IF
 
-     CALL CheckBuffer( nn*3*n )
-
+     IF( CommI ) THEN
+       CALL CheckBuffer( nn*6*n )
+     ELSE
+       CALL CheckBuffer( nn*3*n )
+     END IF
+       
      ii = 0
      DO i=1, A % NumberOfRows
-       IF(ZeroDof(i) .AND. A % ParallelInfo % NodeInterface(i) ) THEN
-          DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
-            k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
-            IF ( k == ParEnv % MyPE ) CYCLE
-            k = k + 1
-            k = ineigh(k)
-            IF ( k> 0) THEN
-              ii(k) = ii(k) + 1
-              s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
-            END IF
-          END DO
+       IF( UseL ) THEN
+         GotIt = LTag(i) .AND. A % ParallelInfo % NodeInterface(i)
+       ELSE
+         GotIt = Itag(i) > 0 .AND. A % ParallelInfo % NodeInterface(i)
        END IF
+       IF(.NOT. GotIt) CYCLE
+       
+       DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
+         k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+         IF ( k == ParEnv % MyPE ) CYCLE
+         k = k + 1
+         k = ineigh(k)
+         IF ( k> 0) THEN
+           ii(k) = ii(k) + 1
+           s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
+           IF( CommI ) THEN
+             s_i(ii(k),k) = Itag(i)
+           END IF
+         END IF
+       END DO
      END DO
 
      DO i=1, nn
        j = fneigh(i) 
+       ! Sent size data
        CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
        IF( ii(i) > 0 ) THEN
+         ! Sent the global index 
          CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+         IF( CommI ) THEN
+           ! Sent the value of the integer tag, if requested
+           CALL MPI_BSEND( s_i(1:ii(i),i),ii(i),MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,ierr )
+         END IF
        END IF
      END DO
 
@@ -8071,26 +8119,49 @@ CONTAINS
      
      DO i=1, nn
        j = fneigh(i)
+       ! Recieve size of data coming from partition "j"
        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
        IF ( n>0 ) THEN
          IF( n>SIZE(r_e)) THEN
            DEALLOCATE(r_e)
            ALLOCATE(r_e(n))
+           IF(CommI) THEN
+             DEALLOCATE(r_i)
+             ALLOCATE(r_i(n))
+           END IF
          END IF
 
+         ! Recieve the global index
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+         IF( CommI ) THEN
+           ! Recieve the value of the integer tag, if requested
+           CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
+         END IF
          DO j=1,n
+           ! Check that the entry exists in the matrix
            k = SearchNode( A % ParallelInfo, r_e(j), Order=A % ParallelInfo % Gorder )
            IF ( k>0 ) THEN
-             IF(.NOT. ZeroDof(k)) THEN
-               ZeroDof(k) = .TRUE.
-               NewZeros = NewZeros + 1
+             IF( UseL ) THEN
+               IF(.NOT. LTag(k)) THEN
+                 LTag(k) = .TRUE.
+                 NewZeros = NewZeros + 1
+               END IF
+             ELSE
+               IF(ITag(k) == 0) THEN
+                 IF( CommI ) THEN
+                   ITag(k) = r_i(j)
+                 ELSE
+                   ITag(k) = 1
+                 END IF
+                 NewZeros = NewZeros + 1
+               END IF
              END IF
            END IF
          END DO
        END IF
      END DO
      DEALLOCATE(s_e, r_e )
+     IF(CommI) DEALLOCATE(s_i, r_i)
      
      !PRINT *,'New Zeros:',ParEnv % MyPe, NewZeros
      
@@ -14439,7 +14510,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF( SIZE(x) /= n ) THEN
       CALL Fatal(Caller,'Conflicting sizes for matrix and variable!')
     END IF
-    
+       
     m = Var % NumberOfConstraintModes 
     IF( m == 0 ) THEN
       CALL Fatal(Caller,'No constraint modes?!')
@@ -14455,7 +14526,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF( ComputeFluxes ) THEN
       CALL Info(Caller,'Allocating for lumped fluxes',Level=10)
       ALLOCATE( Fluxes( n ) )
-
+      
       ALLOCATE( FluxesMatrix( m, m ) )
       FluxesMatrix = 0.0_dp      
 
@@ -14522,6 +14593,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
             
       Var % ConstraintModes(i,:) = x
 
+      
       IF( ComputeFluxes ) THEN
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
 
@@ -14565,7 +14637,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
               END IF
             ELSE
               Mmode = k 
-              IF( Nmode /= Mmode ) THEN
+              IF( Nmode /= Mmode ) THEN                
                 FluxesMatrix(Nmode,Mmode) = FluxesMatrix(NMode,Mmode) - flux
               END IF
               FluxesMatrix(Nmode,Nmode) = FluxesMatrix(Nmode,Nmode) + flux
