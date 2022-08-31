@@ -130,6 +130,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Omega, mu0inv, eps0
+  REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
   INTEGER :: n,istat,i,nNodes,Active,NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
@@ -272,6 +273,13 @@ CONTAINS
     ! ---------------------------------------------
     CALL DefaultDirichletBCs()
 
+    ! Call DefaultDirichletBCs another time to apply BCs to PrecValues: 
+    IF (ASSOCIATED(Solver % Matrix % PrecValues)) THEN
+      SavedValues => Solver % Matrix % Values
+      Solver % Matrix % Values => Solver % Matrix % PrecValues
+      CALL DefaultDirichletBCs()
+      Solver % Matrix % Values => SavedValues
+    END IF
 
     CALL SingleDipoleLoad() 
     
@@ -506,7 +514,7 @@ CONTAINS
     
     IF( HasPrecDampCoeff ) THEN
       PREC = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
-      !PREC = PrecDampCoeff * (MASS(1:nd,1:nd))
+      !PREC = -PrecDampCoeff * (MASS(1:nd,1:nd))
       !CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + MASS(1:nd,1:nd) + DAMP(1:nd,1:nd))
     END IF
 
@@ -554,7 +562,7 @@ CONTAINS
     END IF
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)     
+      CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
       InitHandles = .FALSE.
@@ -614,8 +622,8 @@ CONTAINS
 
     END DO
 
-   IF( HasPrecDampCoeff ) THEN
-     !CALL DefaultUpdatePrec(2*STIFF)
+   IF( HasPrecDampCoeff .AND. ABS(B)>AEPS) THEN
+     !CALL DefaultUpdatePrec(STIFF)
      CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
    END IF
    
