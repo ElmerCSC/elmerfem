@@ -241,13 +241,13 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
     
-    ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
-    IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
-    
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
+    ELSE
+      ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
+      IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
     END IF
     
     PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 

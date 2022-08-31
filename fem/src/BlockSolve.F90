@@ -2950,7 +2950,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: k,NoVar
     
-    CALL Info('DestroyBlockMatrixScaling','Starting block matrix row equilibration',Level=10)
+    CALL Info('DestroyBlockMatrixScaling','Deallocating the vectors for block system scaling',Level=10)
               
     NoVar = TotMatrix % NoVar   
     DO k=1,NoVar            
@@ -3059,9 +3059,9 @@ CONTAINS
       ALLOCATE( x(TotMatrix % MaxSize), b(TotMatrix % MaxSize) )
     END IF
 
-    ! Initial guess 
+    ! Initial guess:
     !-----------------------------------------
-    u(1:n) = v(1:n)
+    u(1:n) = 0.0_dp
     
     IF( BlockGS ) THEN
       ALLOCATE( vtmp(n), rtmp(n), xtmp(n))
@@ -3096,7 +3096,7 @@ CONTAINS
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
           UsePrecMat = .TRUE.
-          CALL Info('BlockMatrixPrec','Using specialized (Schur) preconditioning block)',Level=9)
+          CALL Info('BlockMatrixPrec','Using specialized (Schur) preconditioning block',Level=9)
         END IF      
         ASolver => Solver
       END IF      
@@ -4236,6 +4236,7 @@ CONTAINS
       ELSE IF( BlockDummy .OR. VarDofs == 1 ) THEN
         CALL Info('BlockSolveInt','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
+        TotMatrix % SubMatrix(1,1) % Mat % Complex = ListGetLogical(Params,'Linear System Complex',Found)
         
       ELSE 
         CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
