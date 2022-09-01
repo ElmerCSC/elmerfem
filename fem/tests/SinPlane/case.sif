@@ -65,6 +65,13 @@ Solver 1
   Linear System Solver = Direct
   Linear System Direct Method = Umfpack
   Element= p:2
+
+! "Nodal norm" only considers the dofs related to the nodal
+! dofs. The idea is that we could compare the effect of p in a more
+! intuitive way. Only works when BW is not optimized. 
+  Optimize Bandwidth = False
+  Nonlinear System Nodal Norm = Logical True
+  Nonlinear System Consistent Norm = Logical True
 End
 
 Solver 2
@@ -77,7 +84,7 @@ End
 
 Equation 1
   Name = "Elast"
-  Calculate Stresses = True
+!  Calculate Stresses = True
   Active Solvers(1) = 1
 End
 
@@ -103,5 +110,5 @@ Boundary Condition 2
   Force 2 =  0
 End
 
-Solver 1 :: Reference Norm = Real 0.96441612 
+Solver 1 :: Reference Norm = 1.81684071E+00
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

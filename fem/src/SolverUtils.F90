@@ -9817,6 +9817,17 @@ END FUNCTION SearchNodeL
       DEALLOCATE(iPerm)
     END IF
 
+    IF( ListGetLogical( Solver % Values,'Nonlinear System Nodal Norm', Stat ) ) THEN
+      i = MAXVAL(Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes))
+      j = MINVAL(Solver % Variable % Perm(1:SIZE(Solver % Variable % Perm))
+      IF(j>i) THEN      
+        n = Dofs * i
+        CALL Info('ComputeNorm','Considering only the nodal entries in norm computation!',Level=7)
+      ELSE
+        CALL Warn('ComputeNorm','Nodal norm is only available if all the p-dofs follow the last nodal dof!')
+      END IF
+    END IF
+    
 
     IF( ConsistentNorm ) THEN
       ! In consistent norm we have to skip the dofs not owned by the partition in order
