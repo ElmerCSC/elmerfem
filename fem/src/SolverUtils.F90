@@ -9735,7 +9735,7 @@ END FUNCTION SearchNodeL
     INTEGER :: nin
     REAL(KIND=dp), TARGET, OPTIONAL :: values(:)
     
-    INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,totn,PermStart
+    INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,nn,totn,PermStart
     INTEGER, POINTER :: NormComponents(:)
     INTEGER, ALLOCATABLE :: iPerm(:)
     REAL(KIND=dp) :: Norm, nscale, val
@@ -9744,6 +9744,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
     LOGICAL :: Parallel
     LOGICAL, ALLOCATABLE :: PassiveDof(:)
+    INTEGER, POINTER :: Perm(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
     
@@ -9799,15 +9800,16 @@ END FUNCTION SearchNodeL
       ConsistentNorm = .FALSE.
     END IF
 
-
+    Perm => Solver % Variable % Perm
+    
     PermStart = ListGetInteger(Solver % Values,'Norm Permutation',Stat)
     IF ( Stat .AND. PermStart > 1 ) THEN
-      ALLOCATE(iPerm(SIZE(Solver % Variable % Perm))); iPerm=0
+      ALLOCATE(iPerm(SIZE(Perm))); iPerm=0
       n = 0
       DO i=PermStart,SIZE(iPerm)
-        IF ( Solver % Variable % Perm(i)>0 ) THEN
+        IF ( Perm(i)>0 ) THEN
           n = n + 1
-          iPerm(n) = Solver % Variable % Perm(i)
+          iPerm(n) = Perm(i)
         END IF
       END DO
       
@@ -9818,9 +9820,12 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( ListGetLogical( Solver % Values,'Nonlinear System Nodal Norm', Stat ) ) THEN
-      i = MAXVAL(Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes))
-      j = MINVAL(Solver % Variable % Perm(1:SIZE(Solver % Variable % Perm))
-      IF(j>i) THEN      
+      nn = Solver % Mesh % NumberOfNodes
+      i = MAXVAL(Perm(1:nn))
+      j = MINVAL(Perm(nn+1:SIZE(Perm)))
+      IF(j==0) THEN
+        CONTINUE
+      ELSE IF(j>i) THEN      
         n = Dofs * i
         CALL Info('ComputeNorm','Considering only the nodal entries in norm computation!',Level=7)
       ELSE

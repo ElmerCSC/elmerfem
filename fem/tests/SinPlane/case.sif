@@ -51,17 +51,9 @@ Solver 1
   Equation = Linear elasticity
   Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement
-  Exec Solver = Always
-  Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
-  Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
-  Nonlinear System Max Iterations = 20
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = 1
+
+  Nonlinear System Max Iterations = 1
+
   Linear System Solver = Direct
   Linear System Direct Method = Umfpack
   Element= p:2
