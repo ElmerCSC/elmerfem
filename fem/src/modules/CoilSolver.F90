@@ -185,7 +185,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params, CoilList 
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
-  REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
+  REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
+      CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
       FitCoil, SelectNodes, CalcCurr, NarrowInterface
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:)
@@ -317,12 +318,15 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   
   MaxNoCoils = MAX( 1, Model % NumberOfComponents ) 
   ALLOCATE( DesiredCoilCurrent( MaxNoCoils ), DesiredCurrentDensity(MaxNoCoils), &
-      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils), NormalizeCoil(MaxNoCoils) )
+      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils), NormalizeCoil(MaxNoCoils), &
+      CoilHelicity(MaxNoCoils),CoilNormals(MaxNoCoils,3))
   DesiredCoilCurrent = 0.0_dp
   GotCurr = .FALSE.
   GotDens = .FALSE.
   NormalizeCoil = .FALSE.
-
+  CoilHelicity = 0.0_dp
+  CoilNormals = 0.0_dp
+  
 
   ! These are different for different coils, would there be many
   !-----------------------------------------------------------------------
@@ -356,6 +360,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
         CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, &
             CoilList, TargetBodies )
+        CoilNormals(NoCoils,:) = CoilNormal
       END IF
     ELSE
       IF( NoCoils > 0 ) EXIT
@@ -413,7 +418,9 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         DesiredCoilCurrent(NoCoils) = DesiredCurrentDensity(NoCoils) * CoilCrossSection 
         GotCurr(NoCoils) = .TRUE.
       END IF
-    END IF    
+    END IF
+
+    CoilHelicity(NoCoils) = ListGetCReal( CoilList,'Coil Helicity',Found )
   END DO
 
   CALL Info(Caller,'Coil system consists of '//TRIM(I2S(NoCoils))//' coils',Level=7)
@@ -2074,7 +2081,7 @@ CONTAINS
     INTEGER :: n, nd, dimi
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Weight,DetJ,LocalCurr(3),AbsCurr,ScaleCurr,&
-        TotCurr,TotVol,TargetDensity
+        TotCurr,TotVol,TargetDensity,alpha
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),NodalCurr(:,:)
     LOGICAL :: Stat
     INTEGER :: i,elem,t,Coil
@@ -2182,6 +2189,13 @@ CONTAINS
           IF( j == 0 ) CYCLE
 
           LocalCurr(1:dim) = FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim )
+          
+          alpha = CoilHelicity(Coil)
+          IF(ABS(alpha) > TINY(alpha) ) THEN
+            AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )            
+            LocalCurr = LocalCurr + alpha * AbsCurr * CoilNormals(Coil,:) 
+          END IF
+          
           AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
           IF( AbsCurr > TINY( AbsCurr ) ) THEN
             ScaleCurr = TargetDensity / AbsCurr 
@@ -2206,6 +2220,13 @@ CONTAINS
             IF( j == 0 ) CYCLE
             
             LocalCurr(1:dim) = FluxVarE % Values( dim*(j-1)+1: dim*(j-1)+dim )
+
+            alpha = CoilHelicity(Coil)
+            IF(ABS(alpha) > TINY(alpha) ) THEN
+              AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )            
+              LocalCurr = LocalCurr + alpha * AbsCurr * CoilNormals(Coil,:) 
+            END IF
+           
             AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
             IF( AbsCurr > TINY( AbsCurr ) ) THEN
               ScaleCurr = TargetDensity / AbsCurr 
