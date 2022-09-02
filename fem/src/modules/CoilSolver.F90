@@ -360,7 +360,6 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL DefineCoilCenter( CoilCenter, CoilList, TargetBodies )
         CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, &
             CoilList, TargetBodies )
-        CoilNormals(NoCoils,:) = CoilNormal
       END IF
     ELSE
       IF( NoCoils > 0 ) EXIT
@@ -370,6 +369,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL DefineCoilCenter( CoilCenter, Params )
         CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, Params )
       END IF
+      CoilNormals(NoCoils,:) = CoilNormal
     END IF
 
     ! Choose nodes where the Dirichlet values are set. 
@@ -422,9 +422,8 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
     CoilHelicity(NoCoils) = ListGetCReal( CoilList,'Coil Helicity',Found )
   END DO
-
+  
   CALL Info(Caller,'Coil system consists of '//TRIM(I2S(NoCoils))//' coils',Level=7)
-
 
   ! Count the fixing nodes just for information 
   Set => SetA
@@ -669,6 +668,17 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   ! Finally, always use the primary variable for testing convergence in
   ! coupled system level etc.
   Solver % Variable % Values = PotVarA % Values
+
+  IF( InfoActive(30) ) THEN
+    CALL Info(Caller,'Final current densities')
+    IF( ASSOCIATED( FLuxVar ) ) THEN
+      CALL VectorValuesRange(FluxVar % Values,SIZE(FluxVar % Values),'Current density')     
+    END IF
+    IF( ASSOCIATED( FLuxVare ) ) THEN
+      CALL VectorValuesRange(FluxVare % Values,SIZE(FluxVare % Values),'Current density e')     
+    END IF
+  END IF
+  
   
   CALL Info(Caller,'All done',Level=7)
   CALL Info(Caller,'--------------------------------------')
@@ -2239,6 +2249,16 @@ CONTAINS
 
     END DO
 
+    IF( InfoActive(30) ) THEN
+      IF( ASSOCIATED( FLuxVar ) ) THEN
+        CALL VectorValuesRange(FluxVar % Values,SIZE(FluxVar % Values),'Current density')     
+      END IF      
+      IF( ASSOCIATED( FLuxVare ) ) THEN
+        CALL VectorValuesRange(FluxVare % Values,SIZE(FluxVare % Values),'Current density e')     
+      END IF
+    END IF
+
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE NormalizeCurrentDensity
 !------------------------------------------------------------------------------

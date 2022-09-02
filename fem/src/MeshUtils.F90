@@ -24071,7 +24071,12 @@ CONTAINS
 
         IF( k == 1 ) THEN
           IF( InfoActive(20) ) THEN
-            AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
+            j = COUNT(BodyCount > 0) 
+            IF( j > 0 ) THEN
+              AveHits = 1.0_dp * SUM( BodyCount ) / j
+            ELSE
+              AveHits = 0.0_dp
+            END IF
             WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
             CALL Info('CalculateBodyAverage',Message) 
           END IF
