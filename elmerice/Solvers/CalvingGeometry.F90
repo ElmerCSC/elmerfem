@@ -5693,10 +5693,10 @@ CONTAINS
         Nl,Nr, Naux, ok, RightTotal, LeftTotal, Nrail, CornersTotal, Counter, side
     REAL(KIND=dp) :: FrontLeft(2), FrontRight(2), buffer, xx, yy, mindist, tempdist
     INTEGER, POINTER :: FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
-        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
+        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), SidePerm(:)
     LOGICAL :: FoundRight, FoundLeft, reducecorners(2), Found
-    LOGICAL, ALLOCATABLE :: PFoundRight(:), PFoundLeft(:), InFront(:)
-    INTEGER, ALLOCATABLE ::  PRightCount(:), PLeftCount(:), disps(:), SidePerm(:),&
+    LOGICAL, ALLOCATABLE :: PFoundRight(:), PFoundLeft(:), InFront(:), Duplicate(:)
+    INTEGER, ALLOCATABLE ::  PRightCount(:), PLeftCount(:), disps(:),&
         PCount(:), jmin(:), Corner(:)
     REAL(kind=dp), ALLOCATABLE :: xL(:),yL(:),xR(:),yR(:), xRail(:), yRail(:),&
         AllCorners(:), PAllCorners(:), MinDists(:)
@@ -5713,16 +5713,16 @@ CONTAINS
         RightPerm(NNodes))
     FrontMaskName = "Calving Front Mask"
     TopMaskName = "Top Surface Mask"
-    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, TopMaskName, &
+    CALL MakePermUsingMask( Model, Solver, Mesh, TopMaskName, &
       .FALSE., TopPerm, dummyint)
-    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, FrontMaskName, &
+    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
       .FALSE., FrontPerm, dummyint)
     LeftMaskName = "Left Sidewall Mask"
     RightMaskName = "Right Sidewall Mask"
     !Generate perms to quickly get nodes on each boundary
-    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, LeftMaskName, &
+    CALL MakePermUsingMask( Model, Solver, Mesh, LeftMaskName, &
       .FALSE., LeftPerm, dummyint)
-    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, RightMaskName, &
+    CALL MakePermUsingMask( Model, Solver, Mesh, RightMaskName, &
          .FALSE., RightPerm, dummyint)
 
     FoundLeft=.FALSE.
@@ -5731,13 +5731,13 @@ CONTAINS
     DO i=1,NNodes
        IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
          IF( LeftPerm(i) >0  ) THEN
-            FrontLeft(1) = Model % Mesh % Nodes % x(i)
-            FrontLeft(2) = Model % Mesh % Nodes % y(i)
+            FrontLeft(1) = Mesh % Nodes % x(i)
+            FrontLeft(2) = Mesh % Nodes % y(i)
             LCounter = LCounter + 1
             FoundLeft = .TRUE.
          ELSE IF ( RightPerm(i) >0  ) THEN
-            FrontRight(1) = Model % Mesh % Nodes % x(i)
-            FrontRight(2) = Model % Mesh % Nodes % y(i)
+            FrontRight(1) = Mesh % Nodes % x(i)
+            FrontRight(2) = Mesh % Nodes % y(i)
             RCounter = RCounter + 1
             FoundRight = .TRUE.
          END IF
@@ -5755,9 +5755,6 @@ CONTAINS
       IF(PFoundLeft(i)) LeftRoot = i-1
       IF(PFoundRight(i)) RightRoot = i-1
     END DO
-
-    CALL MPI_BCAST(FrontLeft,2,MPI_DOUBLE_PRECISION, LeftRoot, ELMER_COMM_WORLD, ierr)
-    CALL MPI_BCAST(FrontRight,2,MPI_DOUBLE_PRECISION, RightRoot, ELMER_COMM_WORLD, ierr)
 
     IF(ALL(.NOT. PFoundLeft)) CALL FATAL(SolverName, 'Unable to find left corner')
     IF(ALL(.NOT. PFoundRight)) CALL FATAL(SolverName, 'Unable to find right corner')
@@ -5860,28 +5857,25 @@ CONTAINS
       CLOSE(io)
     END IF
 
-    ALLOCATE(PCount(ParEnv % PEs))
     DO side=1,2 ! left 1, right 2
 
       IF(.NOT. reducecorners(side)) CYCLE
 
       IF (side==1) THEN
         Nrail= Nl
-        ALLOCATE(xRail(Nrail), yRail(Nrail))
+        ALLOCATE(xRail(Nrail), yRail(Nrail), PCount(ParEnv % PEs))
         xRail = xL
         yRail = yL
-        ALLOCATE(SidePerm(SIZE(LeftPerm)))
-        SidePerm = LeftPerm
+        SidePerm => LeftPerm
         Counter = LCounter
         CornersTotal = LeftTotal
         PCount = PLeftCount
       ELSE
         Nrail= Nr
-        ALLOCATE(xRail(Nrail), yRail(Nrail))
+        ALLOCATE(xRail(Nrail), yRail(Nrail), PCount(ParEnv % PEs))
         xRail = xR
         yRail = yR ! TO DO use pointers instead?
-        ALLOCATE(SidePerm(SIZE(RightPerm)))
-        SidePerm = RightPerm
+        SidePerm => RightPerm
         Counter = RCounter
         CornersTotal = RightTotal
         PCount = PRightCount
@@ -5902,17 +5896,34 @@ CONTAINS
       ALLOCATE(disps(ParEnv % PEs))
       disps(1) = 0
       DO i=2,ParEnv % PEs
-        disps(i) = disps(i-1) + PRightCount(i-1)
+        disps(i) = disps(i-1) + PCount(i-1)*2
       END DO
+
       ALLOCATE(PAllCorners(CornersTotal*2))
-      CALL MPI_allGatherV(AllCorners, Counter*2, MPI_DOUBLE_PRECISION, &
+      CALL MPI_ALLGATHERV(AllCorners, Counter*2, MPI_DOUBLE_PRECISION, &
       PAllCorners, PCount*2, disps, MPI_DOUBLE_PRECISION, ELMER_COMM_WORLD, ierr)
+      IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
+
+      ALLOCATE(Duplicate(CornersTotal*2))
+      Duplicate = .FALSE.
+      DO i=1, CornersTotal
+        IF(Duplicate(i*2)) CYCLE
+        DO j=1, CornersTotal
+          IF(i==j) CYCLE
+          IF(PAllCorners(i*2-1) == PAllCorners(j*2-1) .AND. &
+            PAllCorners(i*2) == PAllCorners(j*2)) Duplicate(j*2-1:j*2) = .TRUE.
+        END DO
+      END DO
+
+      DEALLOCATE(AllCorners)
+      AllCorners = PACK(PAllCorners, .NOT. Duplicate)
+      CornersTotal = INT(SIZE(AllCorners)/2)
 
       ALLOCATE(jmin(CornersTotal),InFront(CornersTotal),MinDists(CornersTotal))
       DO i=1, CornersTotal
 
-        xx = PAllCorners(i*2-1)
-        yy = PAllCorners(i*2)
+        xx = AllCorners(i*2-1)
+        yy = AllCorners(i*2)
 
         MinDist=(xRail(1)-xRail(Nrail))**2.+(yRail(1)-yRail(Nrail))**2.
         ! MinDist is actually maximum distance, needed for finding closest rail node
@@ -5973,10 +5984,9 @@ CONTAINS
         FrontRight(2) = PAllCorners(Corner(1)*2)
       END IF
 
-      DEALLOCATE(xRail,yRail,SidePerm,AllCorners,disps,PAllCorners,jmin,InFront,Corner,MinDists)
+      DEALLOCATE(xRail,yRail,AllCorners,disps,PAllCorners,jmin,InFront,Corner,MinDists,PCount,Duplicate)
+      NULLIFY(SidePerm)
     END DO
-
-    DEALLOCATE(TopPerm, FrontPerm, LeftPerm, RightPerm)
 
   END SUBROUTINE GetFrontCorners
 
