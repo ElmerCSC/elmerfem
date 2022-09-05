@@ -29,8 +29,10 @@
 
 MODULE MeshRemeshing
 
-USE DefUtils
+!USE DefUtils
 USE Types
+USE Lists
+USE Messages
 USE MeshUtils
 USE MeshPartition
 USE SparIterComm
@@ -245,7 +247,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   LOGICAL :: Found,Debug=.FALSE.
 
   ! Minimal mesh size:  hmin
-  Hmin = GetConstReal( SolverParams, 'hmin', Found)
+  Hmin = ListGetConstReal( SolverParams, 'hmin', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hmin,&
          Hmin,ierr)
@@ -253,7 +255,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_DPARAMETER <hmin> Failed')
   END IF
   ! Maximal mesh size - hmax
-  Hmax = GetConstReal( SolverParams, 'hmax', Found)
+  Hmax = ListGetConstReal( SolverParams, 'hmax', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hmax,&
          Hmax,ierr)
@@ -261,7 +263,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_DPARAMETER <hmax> Failed')
   END IF
 
-  hsiz = GetConstReal( SolverParams, 'hsiz', Found)
+  hsiz = ListGetConstReal( SolverParams, 'hsiz', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hsiz,&
          hsiz,ierr)
@@ -271,7 +273,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
 
 !!! PARAMS: generic options (debug, mem, verbosity)
   ! [val] Set the verbosity level to n
-  Verbosity=GetInteger( SolverParams,'verbosity',Found)
+  Verbosity = ListGetInteger( SolverParams,'verbosity',Found)
   IF (Found) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_verbose, &
          Verbosity,ierr)
@@ -279,7 +281,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER Failed')
   END IF
   ! [val] Set the maximal memory size to n MBytes.
-  MemIncrease=GetInteger(SolverParams,'Increase Memory',Found)
+  MemIncrease = ListGetInteger(SolverParams,'Increase Memory',Found)
   IF (FOUND) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_mem,&
          MemIncrease,ierr)
@@ -287,7 +289,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER Failed')
   END IF
   ! [0/1] Turn on the debug mode.
-  DebugMode=GetLogical(SolverParams,'Debug Mode',Found)
+  DebugMode = ListGetLogical(SolverParams,'Debug Mode',Found)
   IF (Found .AND. DebugMode) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_debug,1, &
          ierr)
@@ -298,7 +300,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   ! Control global Hausdorff distance (on all the boundary surfaces of the mesh)
   ! MMG3D_DPARAM_hausd default est 0.01 semble bien trop petit;
   !  il semble qu'il faille mettre une taille > taille des elements.
-  Pval=GetConstReal( SolverParams, 'hausd', Found)
+  Pval = ListGetConstReal( SolverParams, 'hausd', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hausd,&
          Pval,ierr)
@@ -306,7 +308,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_DPARAMETER <hausd> Failed')
   END IF
   ! Control gradation
-  Pval=GetConstReal( SolverParams, 'hgrad', Found)
+  Pval = ListGetConstReal( SolverParams, 'hgrad', Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
          Pval,ierr)
@@ -315,7 +317,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   END IF
 
 !!! OTHER PARAMETERS: NOT ALL TESTED
-  Pval = GetConstReal( SolverParams, 'Angle detection',Found)
+  Pval = ListGetConstReal( SolverParams, 'Angle detection',Found)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
          Pval,ierr)
@@ -323,7 +325,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_DPARAMETER <Angle detection> Failed')
   ENDIF
   ! !< [1/0], Avoid/allow surface modifications */ 
-  AngleDetect=GetLogical(SolverParams,'No Angle detection',Found)
+  AngleDetect = ListGetLogical(SolverParams,'No Angle detection',Found)
   IF (Found.AND.AngleDetect) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
          1,ierr)
@@ -331,7 +333,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER <No Angle detection> Failed')
   END IF
   ! [1/0] Avoid/allow point insertion
-  NoInsert=GetLogical(SolverParams,'No insert',Found)
+  NoInsert = ListGetLogical(SolverParams,'No insert',Found)
   IF (Found .AND. NoInsert) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_noinsert,&
          1,ierr)
@@ -339,7 +341,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER <No insert> Failed') 
   END IF
   ! [1/0] Avoid/allow edge or face flipping
-  NoSwap=GetLogical(SolverParams,'No swap',Found)
+  NoSwap = ListGetLogical(SolverParams,'No swap',Found)
   IF (Found .AND. NoSwap) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_noswap,&
          1,ierr)
@@ -347,7 +349,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER <No swap>Failed')
   END IF
   ! [1/0] Avoid/allow point relocation
-  NoMove=GetLogical(SolverParams,'No move',Found)
+  NoMove = ListGetLogical(SolverParams,'No move',Found)
   IF (Found .AND. NoMove) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nomove,&
          1,ierr)
@@ -355,7 +357,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
          'CALL TO MMG3D_SET_IPARAMETER <No move> Failed')
   END IF
   ! [1/0] Avoid/allow surface modifications
-  NoSurf=GetLogical(SolverParams,'No surf',Found)
+  NoSurf = ListGetLogical(SolverParams,'No surf',Found)
   IF (Found .AND. NoSurf) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nosurf,&
          0,ierr)
@@ -918,11 +920,14 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 
   !Optionally pass valuelist, by default use the Simulation section
   IF(PRESENT(Params)) THEN
-    FuncParams => Params
+     FuncParams => Params
   ELSE
-    FuncParams => GetMaterial(InMesh % Elements(1)) !TODO, this is not generalised
+     i = ListGetInteger( CurrentModel % Bodies(InMesh % Elements(1) % BodyId) % Values, &
+          'Material')      
+     FuncParams => CurrentModel % Materials(i) % Values
+!     FuncParams => GetMaterial(InMesh % Elements(1)) !TODO, this is not generalised
   END IF
-
+  
   !Get parameters from valuelist
   !hausd, hmin, hmax, hgrad, anisoflag, the metric
   !Scalar, vector, tensor metric?
