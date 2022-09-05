@@ -6908,42 +6908,6 @@ END BLOCK
   END FUNCTION GetBoundaryFaceIndex
 !------------------------------------------------------------------------------
 
-
-  
-!-----------------------------------------------------------------------
-!> This routine may be used to terminate the program in the case of an error.
-!-----------------------------------------------------------------------
-   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
-!-----------------------------------------------------------------------
-     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
-     LOGICAL :: Condition
-!-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
-
-     IF(Condition) RETURN !Assertion passed
-
-     WRITE( Message, '(A)') 'ASSERTION ERROR'
-
-     IF(PRESENT(Caller)) THEN
-       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
-     END IF
-
-     IF(PRESENT(ErrorMessage)) THEN
-       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
-     END IF
-
-     WRITE( *, '(A)', ADVANCE='YES' ) Message
-
-     !Provide a stack trace if no caller info provided
-#ifdef __GFORTRAN__
-     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
-#endif
-
-     STOP EXIT_ERROR
-!-----------------------------------------------------------------------
-   END SUBROUTINE Assert
-!-----------------------------------------------------------------------
-
   FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
     IMPLICIT NONE
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
