@@ -151,7 +151,7 @@ void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
     if ( _mkdir( Name ) != 0 ) {
 #else
     if ( mkdir( Name, 0750 ) != 0 ) {
-      chmod( Name, 0750 );
+//      chmod( Name, 0750 );
 #endif
     }
 }
