@@ -109,7 +109,7 @@ END SUBROUTINE VectorHelmholtzSolver_Init0
 
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the rot-rot equation 
-!> rot (1/mu) rot E + i \omega \sigma E - \omega^2 epsilon E = i omega J
+!> rot (1/mu) rot E - i \omega \sigma E - \omega^2 epsilon E = i omega J
 !
 !> using edge elements (vector-valued basis of 1st or 2nd degree) 
 !> \ingroup Solvers
@@ -127,12 +127,9 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff
-  TYPE(Element_t),POINTER :: Element
+  LOGICAL :: Found, HasPrecDampCoeff
   REAL(KIND=dp) :: Omega, mu0inv, eps0
-  REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
-  INTEGER :: n,istat,i,nNodes,Active,NoIterationsMax
+  INTEGER :: i, NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel
@@ -150,12 +147,12 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
-  nNodes = Mesh % NumberOfNodes
   pSolver => Solver
 
   IF( Solver % Variable % dofs /= 2) THEN
     CALL Fatal ('VectorHelmholtzSolver', &
-        'Variable is not of size two ('//TRIM(I2S(i))//'), Use: Variable = E[E re:1 E im:1]')
+        'Variable is not of size two ('//TRIM(I2S(Solver % Variable % dofs))//'), &
+        Use: Variable = E[E re:1 E im:1]')
   ENDIF
 
   Omega = GetAngularFrequency(Found=Found)
@@ -207,8 +204,11 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Norm!, TOL, PrevNorm
-    INTEGER :: k,n,nd,t!, i, j
+    TYPE(Element_t), POINTER :: Element
+    TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
+    REAL(KIND=dp) :: Norm
+    INTEGER :: Active,k,n,nd,t
     LOGICAL  :: Found, InitHandles 
 !---------------------------------------------------------------------------------------------
     ! System assembly:
