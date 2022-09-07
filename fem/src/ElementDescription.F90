@@ -2517,7 +2517,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: PSolver => NULL()
+     TYPE(Solver_t), POINTER :: PSolver => NULL(), PrevSolver => NULL()
      REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
@@ -2532,23 +2532,25 @@ CONTAINS
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found
      
-     SAVE PSolver, EdgeBasisDegree, PerformPiolaTransform
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
+
+     IF( PRESENT( USolver ) ) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+     
      IF(PRESENT(EdgeBasis)) THEN       
-       IF( PRESENT( USolver ) ) THEN
-         IF( .NOT. ASSOCIATED( USolver, PSolver ) ) THEN
-           IF( ListGetLogical(USolver % Values,'Quadratic Approximation', Found ) ) THEN
-             EdgeBasisDegree = 2
-             PerformPiolaTransform = .TRUE.
-           ELSE
-             EdgeBasisDegree = 1
-             PerformPiolaTransform = ListGetLogical(USolver % Values,'Use Piola Transform', Found )
-           END IF
-           PSolver => USolver 
+       IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
+         PrevSolver => pSolver          
+         IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+           EdgeBasisDegree = 2
+           PerformPiolaTransform = .TRUE.
+         ELSE
+           EdgeBasisDegree = 1
+           PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
          END IF
-       ELSE
-         EdgeBasisDegree = 1
-         PerformPiolaTransform = .TRUE.        
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
@@ -2575,22 +2577,16 @@ CONTAINS
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element,USolver) ) THEN
-
-      pSolver => CurrentModel % Solver
-      IF (PRESENT(USolver)) THEN
-        IF (ASSOCIATED(USolver)) pSolver => USolver
-      END IF
-
+     IF ( isActivePElement(element,pSolver) ) THEN
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
       ! ---------------------------------------------------

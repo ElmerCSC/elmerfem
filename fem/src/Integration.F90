@@ -2490,15 +2490,24 @@ CONTAINS
 !       p => IntegStuff(thread)
       p => IntegStuff
 
-      n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
-
-      IF ( n < 1 .OR. n > MAXN ) THEN
-        p % n = 0
-        WRITE( Message, * ) 'Invalid number of points: ', n
-        CALL Error( 'GaussPointsBrick', Message )
-        RETURN
-      END IF
-
+      SELECT CASE( np )
+      CASE( 8 )
+        n = 2
+      CASE( 27 )
+        n = 3
+      CASE( 64 )
+        n = 4
+      CASE DEFAULT
+        n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
+        
+        IF ( n < 1 .OR. n > MAXN ) THEN
+          p % n = 0
+          WRITE( Message, * ) 'Invalid number of points: ', n
+          CALL Error( 'GaussPointsBrick', Message )
+          RETURN
+        END IF
+      END SELECT
+        
       t = 0
       DO i=1,n
         DO j=1,n
@@ -2704,17 +2713,18 @@ CONTAINS
             RETURN
           END IF
         END IF
-
+        
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
         ELSE
            IntegStuff = GaussPointsWedge(n)
         END IF
 
-     CASE (8)
-        IntegStuff = GaussPointsBrick(n)
+     CASE (8)       
+       IntegStuff = GaussPointsBrick(n)
+       
      END SELECT
-
+       
    END FUNCTION GaussPoints
 
 

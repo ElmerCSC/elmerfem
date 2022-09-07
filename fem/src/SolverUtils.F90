@@ -10739,12 +10739,13 @@ END FUNCTION SearchNodeL
 !> need to be remade. 
 !----------------------------------------------------------------------------------------------
 
-  FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement ) RESULT(IntegStuff)
+  FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement, EdgeBasis ) RESULT(IntegStuff)
 
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
     LOGICAL, OPTIONAL :: PReferenceElement           !< For switching to the p-version reference element
+    LOGICAL, OPTIONAL :: EdgeBasis                   !< Choosing IP points for edge basis function
     TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, GaussDef
@@ -10754,10 +10755,11 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
     INTEGER :: i,n,ElementalNp(8),prevVisited = -1
-    LOGICAL :: Debug, InitDone 
+    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC 
+    INTEGER :: EdgeBasisDegree
     
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp, prevVisited
+        ElementalRule, ElementalNp, prevVisited, pRef, prevIsBC 
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -10765,15 +10767,20 @@ END FUNCTION SearchNodeL
       pSolver => CurrentModel % Solver
     END IF
        
-    !Debug = ( Element % ElementIndex == 1)
-
-    InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. ( prevVisited == pSolver % TimesVisited )
-        
+    ! Initialize again when we go from not bulk to bulk, or vice verse
+    IsBC = ASSOCIATED( Element % BoundaryInfo )
+   
+    InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
+        ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. XOR(IsBC,PrevIsBC) )
+    
     IF( .NOT. InitDone ) THEN
+      PrevIsBC = IsBC 
+
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
-      
+
+      ! Elemental explicit rule will dominate over all other rules
       GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
       IF( ElementalRule ) THEN
         CALL ElementalGaussRules( GaussDef )
@@ -10799,11 +10806,66 @@ END FUNCTION SearchNodeL
         !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
       END IF
 
+      pRef = .FALSE.
+      
+      EdgeBasisDegree = 0
+      IF( PRESENT(EdgeBasis) ) THEN
+        IF( EdgeBasis ) THEN
+          EdgeBasisDegree = 1          
+          IF( ListGetLogical( pSolver % Values,'Quadratic Approximation',Found ) ) THEN
+            EdgeBasisDegree = 2
+            pRef = .TRUE.
+          END IF
+          IF( ListGetLogical(pSolver % Values, 'Use Piola Transform', Found) ) THEN
+            pRef = .TRUE.
+          END IF
+
+          ! If elemental rule has not been given then use special edge basis rules
+          ! to overrule any other rule for the gauss points. 
+          IF(.NOT. ElementalRule ) THEN
+            ! We can alter between the two explicit rules of edge basis using relative integration order. 
+            IF( RelOrder /= 0 ) THEN
+              IF( RelOrder == 1 .AND. EdgeBasisDegree == 1 ) THEN
+                EdgeBasisDegree = 2
+              ELSE IF( RelOrder == -1 .AND. EdgeBasisDegree == 2 ) THEN
+                EdgeBasisDegree = 1
+              ELSE
+                CALL Warn('GaussPointsAdapt','Relative integration order does not have any effect for Edge Basis')
+              END IF
+            END IF
+            ! This is inherited info from the rules in: EdgeElementGaussPoints
+            IF( EdgeBasisDegree == 2 ) THEN
+              ElementalNp = [1,2,6,9,11,27,18,27]
+            ELSE IF( Pref ) THEN
+              ElementalNp = [1,2,3,9,11,27,18,27]
+            ELSE
+              ElementalNp = [1,2,3,4,4,27,6,8]
+            END IF
+            ElementalRule = .TRUE.
+          END IF
+
+          IF( UseAdapt ) THEN
+            CALL Fatal('GaussPointsAdapt','Adaptive rules not yet compatible with EdgeBasis')
+          END IF
+        END IF
+      ELSE
+        ! Apart from edge elements we may have p-elements defined.
+        ! If not specified check from the current solver. 
+        IF( PRESENT(pReferenceElement) ) THEN
+          pRef = pReferenceElement 
+        ELSE
+          pRef = isActivePElement(Element,pSolver)
+        END IF
+      END IF
+      
       prevSolver => pSolver
       prevVisited = pSolver % TimesVisited
     END IF
-
-    IF( UseAdapt ) THEN
+    
+    IF( ElementalRule ) THEN
+      ! Elemental explicit rule always has the prevalance
+      Np = ElementalNp( Element % TYPE % ElementCode / 100 )
+    ELSE IF( UseAdapt ) THEN
       RelOrder = 0
       Np = 0
 
@@ -10816,23 +10878,20 @@ END FUNCTION SearchNodeL
         Np = AdaptNp
       END IF
     END IF
-      
+
     !IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
 
-    IF( ElementalRule ) THEN
-      Np = ElementalNp( Element % TYPE % ElementCode / 100 )
-    END IF
+!PRINT *,'Np:',Np, pRef
     
     IF( Np > 0 ) THEN
-      IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = PReferenceElement ) 
+      IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = pRef )
     ELSE IF( RelOrder /= 0 ) THEN
-      IntegStuff = GaussPoints( Element, RelOrder = RelOrder, PReferenceElement = PReferenceElement ) 
+      IntegStuff = GaussPoints( Element, RelOrder = RelOrder, PReferenceElement = pRef )
     ELSE      
-      IntegStuff = GaussPoints( Element, PReferenceElement = PReferenceElement ) 
+      IntegStuff = GaussPoints( Element, PReferenceElement = pRef )
     END IF
 
     !IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
-    
 
   CONTAINS
 
@@ -10848,15 +10907,14 @@ END FUNCTION SearchNodeL
       ElementalNp = 0
 
       !PRINT *,'gauss def:',GaussDef(1:n)
-      
-      DO i=2,8
-        
+
+      DO i=2,8        
         j = 0
         
         SELECT CASE( i )
         CASE( 2 )
           j =  INDEX( GaussDef(1:n), '-line' ) ! position of string "-line"
-          m = 5 ! length of string "-line"
+          m = 5 ! length of string "-line" after which the integer should follow
         CASE( 3 )
           j =  INDEX( GaussDef(1:n), '-tri' ) 
           m = 4
@@ -10891,8 +10949,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     END SUBROUTINE ElementalGaussRules
 !------------------------------------------------------------------------------
-    
-    
+        
   END FUNCTION GaussPointsAdapt
 !------------------------------------------------------------------------------
   
