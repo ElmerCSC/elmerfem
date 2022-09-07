@@ -262,6 +262,22 @@ MODULE PElementBase
     END FUNCTION QuadNodalPBasis
 
 
+    ! As previous except obtain all values at once.
+    SUBROUTINE QuadNodalPBasisVec(u, v, phi) 
+
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: phi(:)
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/4.0_dp      
+      INTEGER, PARAMETER :: usgn(4) = [-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(4) = [-1,-1,1,1]
+      
+      phi(1:4) = c*(1+usgn*u)*(1+vsgn*v)
+      
+    END SUBROUTINE QuadNodalPBasisVec
+       
+
 !------------------------------------------------------------------------------
 !>     Gradient of quadrilateral nodal basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -309,6 +325,24 @@ MODULE PElementBase
     END FUNCTION dQuadNodalPBasis
 
 
+    ! As previous except obtain all values at once 
+    SUBROUTINE dQuadNodalPBasisVec(u, v, gradphi) 
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: gradphi(:,:)
+      
+      INTEGER, PARAMETER :: usgn(4) = [-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(4) = [-1,-1,1,1]
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/4.0_dp      
+     
+      gradphi(1:4,1) = c*(usgn)*(1+vsgn*v)
+      gradphi(1:4,2) = c*(1+usgn*u)*(vsgn)
+      
+    END SUBROUTINE dQuadNodalPBasisVec
+
+
+    
 !------------------------------------------------------------------------------
 !>     Quadrilateral edge basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -1261,6 +1295,24 @@ MODULE PElementBase
       END SELECT
     END FUNCTION BrickNodalPBasis
 
+    ! As previous except obtain all nodal lvalues at once. 
+    SUBROUTINE BrickNodalPBasisVec(u, v, w, phi) 
+      IMPLICIT NONE
+      
+      ! Parameters
+      REAL(Kind=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: phi(:)
+      
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/8.0_dp      
+      INTEGER, PARAMETER :: usgn(8) = [-1,1,1,-1,-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(8) = [-1,-1,1,1,-1,-1,1,1]
+      INTEGER, PARAMETER :: wsgn(8) = [-1,-1,-1,-1,1,1,1,1]
+            
+      phi(1:8) = c*(1+usgn*u)*(1+vsgn*v)*(1+wsgn*w)
+      
+    END SUBROUTINE BrickNodalPBasisVec
+
+    
     FUNCTION dBrickNodalPBasis(node, u, v, w) RESULT(grad)
       IMPLICIT NONE
 
@@ -1311,6 +1363,26 @@ MODULE PElementBase
       END SELECT
     END FUNCTION dBrickNodalPBasis
 
+
+    ! As previus except obtain all nodal values at once. 
+    SUBROUTINE dBrickNodalPBasisVec(u, v, w, gradphi) 
+      IMPLICIT NONE
+
+      ! Parameters
+      REAL(Kind=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/8.0_dp            
+      INTEGER, PARAMETER :: usgn(8) = [-1,1,1,-1,-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(8) = [-1,-1,1,1,-1,-1,1,1]
+      INTEGER, PARAMETER :: wsgn(8) = [-1,-1,-1,-1,1,1,1,1]
+            
+      gradphi(1:8,1) = c*(usgn)*(1+vsgn*v)*(1+wsgn*w)
+      gradphi(1:8,2) = c*(1+usgn*u)*(vsgn)*(1+wsgn*w)
+      gradphi(1:8,3) = c*(1+usgn*u)*(1+vsgn*v)*(wsgn)
+
+    END SUBROUTINE dBrickNodalPBasisVec
+          
 
 !------------------------------------------------------------------------------
 !>     Brick edge basis at point (u,v,w).
