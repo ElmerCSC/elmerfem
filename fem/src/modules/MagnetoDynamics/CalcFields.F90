@@ -2444,7 +2444,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Info("CalcFields", "Found a Thin Line Element", level=10)
          ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
          IF (.NOT. Found) CALL Fatal('CalcFields','Thin Line Conductivity not found!')
-         HasThinLines = .TRUE.
        ELSE
          CYCLE
        END IF
@@ -2479,15 +2478,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
       ! Numerical integration:
       !-----------------------
-      IP = GaussPoints(Element)
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
       np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
       DO j=1,IP % n
-         stat = EdgeElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-              IP % W(j), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-              dBasisdx = dBasisdx, BasisDegree = 1, &
-              ApplyPiolaTransform = .TRUE.)
+
+         stat = EdgeElementInfo(Element, Nodes, IP % U(j), IP % V(j), &
+             IP % W(j), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+             dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
+             ApplyPiolaTransform = .TRUE.)
    
          C_ip  = SUM(Basis(1:n) * ThinLineCond(1:n))
          Area = SUM(Basis(1:n) * ThinLineCrossect(1:n))

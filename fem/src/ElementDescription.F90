@@ -6186,7 +6186,11 @@ END SUBROUTINE PickActiveFace
            IF (.NOT. ASSOCIATED(Parent)) THEN
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF (.NOT. ASSOCIATED(Parent)) RETURN
+
+           IF (.NOT. ASSOCIATED(Parent)) THEN
+             CALL Warn('EdgeElementInfo', 'cannot create curl-conforming basis functions, zeros returned')
+             RETURN
+           END IF
            !
            ! Identify the edge representing the element among the edges of 
            ! the parent element:

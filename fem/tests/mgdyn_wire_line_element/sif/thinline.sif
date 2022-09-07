@@ -31,6 +31,7 @@ Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    Equation = "MGDynamics"
    Variable = "A"
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Use Piola Transform = True
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
    Linear System Solver = Iterative
