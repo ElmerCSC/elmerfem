@@ -42,12 +42,15 @@ Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    Equation = "MGDynamics"
    Variable = "A"
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Use Piola Transform = True
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
    Linear System Solver = Iterative
-   Linear System Iterative Method = BicgstabL
+!   Linear System Iterative Method = BicgstabL
+   Linear System Iterative Method = GCR
+   Linear System GCR Restart = 100
    Linear System preconditioning = none
-   Linear System Convergence Tolerance = 1.e-5
+   Linear System Convergence Tolerance = 1.e-8
    Linear System Max Iterations = 3000
    Linear System Residual Output = 1000
    Linear System ILUT Tolerance=1e-5
@@ -85,6 +88,7 @@ Solver 4  !---- SaveData, SaveScalars
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
    Filename = wire_pair/dat/wire_pair.dat
+   Show Norm Index = 3
 End
 Equation 1
    Active Solvers(3) = 1 2 3
@@ -162,7 +166,7 @@ Boundary Condition 8 ! ---- wire12_t2
    A = Real 0
 End
 
-Solver 2 :: Reference Norm = Real 7.73980E-04
-Solver 2 :: Reference Norm Tolerance = Real 1E-03
+Solver 4 :: Reference Norm = Real 3.3050904582824392E-002
+Solver 4 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
