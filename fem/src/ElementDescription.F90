@@ -1901,6 +1901,8 @@ CONTAINS
    END FUNCTION SecondDerivatives3D
 !------------------------------------------------------------------------------
 
+! This is a test version where all nodes are obtained at once. 
+#define ALLNODES 1
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
 !>  p-element, the values of the lowest-order basis functions corresponding 
@@ -1914,43 +1916,76 @@ CONTAINS
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
-
+     LOGICAL :: pElem
+     
      dim = Element % TYPE % DIMENSION
-
-     IF ( isActivePElement(Element, USolver) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalBasisFunctions1D( Basis, element, u )
+     elemcode = element % Type % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL LineNodalPBasisAll(u, Basis )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL TriangleNodalPBasisAll(u, v, Basis)
+         ELSE
+           CALL TriangleNodalLBasisAll(u, v, Basis)
+         END IF
+       CASE( 4 ) 
+         CALL QuadNodalPBasisAll(u, v, Basis )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL TetraNodalPBasisAll(u, v, w, Basis)
+         ELSE
+           CALL TetraNodalLBasisAll(u, v, w, Basis)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL WedgeNodalPBasisAll(u, v, w, Basis) 
+         ELSE
+           CALL WedgeNodalLBasisAll(u, v, w, Basis) 
+         END IF
+       CASE( 8 ) 
+         CALL BrickNodalPBasisAll(u,v,w,Basis)
+       END SELECT
+       RETURN
+     END IF
+#endif    
+     
+     IF ( pElem ) THEN
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             Basis(q) = TriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             Basis(q) = QuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalBasisFunctions1D( Basis, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             Basis(q) = TetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             Basis(q) = WedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             Basis(q) = PyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             Basis(q) = BrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           Basis(q) = TriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4) 
+         DO q=1,n
+           Basis(q) = QuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           Basis(q) = TetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE(6) 
+         DO q=1,n
+           Basis(q) = PyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE(7)
+         DO q=1,n
+           Basis(q) = WedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE(8) 
+         DO q=1,n
+           Basis(q) = BrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE( dim )
@@ -1959,7 +1994,7 @@ CONTAINS
        CASE(2)
          CALL NodalBasisFunctions2D( Basis, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode/100==6 ) THEN
+         IF ( elemcode/100==6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
@@ -1989,43 +2024,76 @@ CONTAINS
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
+     LOGICAL :: pElem
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
-
+     elemcode = element % TYPE % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL dLineNodalPBasisAll(u, dLBasisdx )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL dTriangleNodalPBasisAll(u, v, dLBasisdx)
+         ELSE
+           CALL dTriangleNodalLBasisAll(u, v, dLBasisdx)
+         END IF
+       CASE( 4 ) 
+         CALL dQuadNodalPBasisAll(u, v, dLBasisdx )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL dTetraNodalPBasisAll(u, v, w, dLBasisdx)
+         ELSE
+           CALL dTetraNodalLBasisAll(u, v, w, dLBasisdx)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL dWedgeNodalPBasisAll(u, v, w, dLBasisdx) 
+         ELSE
+           CALL dWedgeNodalLBasisAll(u, v, w, dLBasisdx) 
+         END IF
+       CASE( 8 ) 
+         CALL dBrickNodalPBasisAll(u,v,w,dLBasisdx)
+       END SELECT
+       RETURN
+     END IF
+#endif         
+     
      IF ( IsActivePElement(Element, USolver ) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4)
+         DO q=1,n
+           dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 6 )
+         DO q=1,n
+           dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 7 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 8 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE(dim)
@@ -2034,7 +2102,7 @@ CONTAINS
        CASE(2)
          CALL NodalFirstDerivatives2D( dLBasisdx, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode / 100 == 6 ) THEN
+         IF ( elemcode / 100 == 6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
