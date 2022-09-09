@@ -29,7 +29,6 @@
 
 MODULE MeshRemeshing
 
-!USE DefUtils
 USE Types
 USE Lists
 USE Messages
@@ -41,6 +40,7 @@ IMPLICIT NONE
 
 #ifdef HAVE_MMG
 #include "mmg/mmg3d/libmmg3df.h"
+#include "mmg/mmg2d/libmmg2df.h"
 #endif
 
 #ifdef HAVE_MMG
@@ -153,7 +153,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   !args: mesh, nvertices, ntetra, nprisms, ntriangless, nquads, nedges
   CALL MMG3D_Set_meshSize(mmgMesh,nverts,ntetras,nprisms,ntris,nquads,nedges,ierr)
-  IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+  IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
        'CALL TO MMG3D_Set_meshSize FAILED')
   IF (DEBUG) PRINT *,'--**-- MMG3D_Set_meshSize DONE'
 
@@ -169,7 +169,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     !PRINT *,'debug: mesh point: ',Mesh%Nodes%x(i), &
     !     Mesh%Nodes%y(i),Mesh%Nodes%z(i), i
 
-    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
          'CALL TO MMG3D_Set_vertex FAILED')
   END DO
   IF (DEBUG) PRINT *,'--**-- MMG3D_Set_vertex DONE'
@@ -228,7 +228,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
 
 #else
-     CALL FATAL('Set_MMG3D_Mesh',&
+     CALL Fatal('Set_MMG3D_Mesh',&
         'Remeshing utility MMG3D has not been installed')
 #endif
 
@@ -251,7 +251,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hmin,&
          Hmin,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <hmin> Failed')
   END IF
   ! Maximal mesh size - hmax
@@ -259,7 +259,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hmax,&
          Hmax,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <hmax> Failed')
   END IF
 
@@ -267,7 +267,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hsiz,&
          hsiz,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <hsiz> Failed')
   END IF
 
@@ -277,7 +277,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_verbose, &
          Verbosity,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
          'CALL TO MMG3D_SET_IPARAMETER Failed')
   END IF
   ! [val] Set the maximal memory size to n MBytes.
@@ -285,7 +285,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (FOUND) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_mem,&
          MemIncrease,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_IPARAMETER Failed')
   END IF
   ! [0/1] Turn on the debug mode.
@@ -293,7 +293,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found .AND. DebugMode) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_debug,1, &
          ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
          'CALL TO MMG3D_SET_IPARAMETER Failed')
   END IF
 !!! PARAMS
@@ -304,7 +304,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hausd,&
          Pval,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <hausd> Failed')
   END IF
   ! Control gradation
@@ -312,7 +312,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
          Pval,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <hgrad> Failed')
   END IF
 
@@ -321,7 +321,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found) THEN
     CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
          Pval,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_DPARAMETER <Angle detection> Failed')
   ENDIF
   ! !< [1/0], Avoid/allow surface modifications */ 
@@ -329,7 +329,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found.AND.AngleDetect) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
          1,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_IPARAMETER <No Angle detection> Failed')
   END IF
   ! [1/0] Avoid/allow point insertion
@@ -337,7 +337,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found .AND. NoInsert) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_noinsert,&
          1,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver', &
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver', &
          'CALL TO MMG3D_SET_IPARAMETER <No insert> Failed') 
   END IF
   ! [1/0] Avoid/allow edge or face flipping
@@ -345,7 +345,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found .AND. NoSwap) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_noswap,&
          1,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
          'CALL TO MMG3D_SET_IPARAMETER <No swap>Failed')
   END IF
   ! [1/0] Avoid/allow point relocation
@@ -353,7 +353,7 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found .AND. NoMove) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nomove,&
          1,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
          'CALL TO MMG3D_SET_IPARAMETER <No move> Failed')
   END IF
   ! [1/0] Avoid/allow surface modifications
@@ -361,12 +361,12 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
   IF (Found .AND. NoSurf) THEN
     CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_nosurf,&
          0,ierr)
-    IF ( ierr == 0 ) CALL FATAL('M/MGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('M/MGSolver',&
          'CALL TO MMG3D_SET_IPARAMETER <No surf> Failed')
   END IF
 !!!
 #else
-     CALL FATAL('Set_MMG3D_Parameters',&
+     CALL Fatal('Set_MMG3D_Parameters',&
         'Remeshing utility MMG3D has not been installed')
 #endif
 END SUBROUTINE Set_MMG3D_Parameters
@@ -403,7 +403,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
   !> a) get the size of the mesh: vertices, tetra,prisms, triangles, quads,edges
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
-  IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+  IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
        'CALL TO MMGS_Get_meshSize FAILED')
   IF (DEBUG) PRINT *,'--**-- MMG3D_Get_meshSize DONE'    
 
@@ -412,9 +412,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   NewMesh => AllocateMesh( NTetras, NTris, NVerts, .TRUE.)
 
   NewMesh % Name = "MMG3D_Output"
-  NewMesh%MaxElementNodes=4
-  NewMesh%MaxElementDOFs=4
-  NewMesh%MeshDim=3
+  NewMesh % MaxElementNodes=4
+  NewMesh % MaxElementDOFs=4
+  NewMesh % MeshDim=3
 
   IF(PRESENT(FixedNodes)) THEN
     ALLOCATE(FixedNodes(NVerts))
@@ -443,7 +443,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          NewMesh % Nodes % y(ii),&
          NewMesh % Nodes % z(ii),&
          ref,corner,required,ierr)
-    IF ( ierr == 0 ) CALL FATAL('MMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('MMGSolver',&
          'CALL TO  MMG3D_Get_vertex FAILED')
     IF(Parallel) THEN
       IF(required > 0) THEN
@@ -501,7 +501,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          NodeIndexes(3), &
          ref   , &
          required,ierr)
-    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
          'CALL TO  MMG3D_Get_triangle FAILED')
 
     Allocate(Element % BoundaryInfo)
@@ -521,13 +521,13 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     CALL MMG3D_GET_TetFromTria(mmgMesh, &
          ii,parent,ied,ierr)
 
-    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
          'CALL TO  MMG3D_Get_TetFromTria FAILED')
     Element => NewMesh % Elements(kk)
     Element % BoundaryInfo % Left => NewMesh % Elements(parent) !TODO - parent ID offset?
   END DO
 #else
-     CALL FATAL('Get_MMG3D_Mesh',&
+     CALL Fatal('Get_MMG3D_Mesh',&
         'Remeshing utility MMG3D has not been installed')
 #endif
 
@@ -933,7 +933,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   !Scalar, vector, tensor metric?
 
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
   MaxRemeshIter= SIZE(WorkArray(:,1))
   ALLOCATE(hminarray(MaxRemeshIter))
   hminarray = WorkArray(:,1)
@@ -941,8 +941,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  DefValue=4000.0_dp)
   hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", DefValue=0.5_dp)
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
-  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(FuncName, 'The number of hmin options &
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL Fatal(FuncName, 'The number of hmin options &
           must equal the number of hausd options')
   ALLOCATE(hausdarray(MaxRemeshIter))
   hausdarray = WorkArray(:,1)
@@ -1121,12 +1121,12 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
         MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
         MMG5_ARG_end)
     WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
-    CALL WARN(FuncName, Message)
+    CALL Warn(FuncName, Message)
     IF(mmgloops==MaxRemeshIter) THEN
       Success=.FALSE.
-      GO TO 20
+      GOTO 20
     ELSE
-      GO TO 10
+      GOTO 10
     END IF
     !STOP MMG5_STRONGFAILURE
   ENDIF
@@ -1147,7 +1147,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   counter=0
   Do i=1, NTetras
     CALL MMG3D_Get_TetrahedronQuality(mmgMesh, mmgSol, i, Quality)
-    IF(Quality == 0) CALL WARN(FuncName, 'Remeshing could not determine elem quality')
+    IF(Quality == 0) CALL Warn(FuncName, 'Remeshing could not determine elem quality')
     IF(Quality <= RemeshMinQuality) counter = counter+1
   END DO
   IF(Debug) PRINT*, 'Bad Element Count: ', Counter
@@ -1158,13 +1158,13 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
         MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
         MMG5_ARG_end)
     WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
-    CALL WARN(FuncName, Message)
+    CALL Warn(FuncName, Message)
     IF(mmgloops==MaxRemeshIter) THEN
       Success=.FALSE.
       PRINT*, 'remesh failed on bad elements'
-      GO TO 20
+      GOTO 20
     ELSE
-      GO TO 10
+      GOTO 10
     END IF
     !STOP MMG5_STRONGFAILURE
   ENDIF
@@ -1265,7 +1265,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   !Scalar, vector, tensor metric?
 
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
   MaxRemeshIter= SIZE(WorkArray(:,1))
   ALLOCATE(hminarray(MaxRemeshIter))
   hminarray = WorkArray(:,1)
@@ -1273,8 +1273,8 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  DefValue=4000.0_dp)
   hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", DefValue=0.5_dp)
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
-  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(FuncName, 'The number of hmin options &
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL Fatal(FuncName, 'The number of hmin options &
             must equal the number of hausd options')
   ALLOCATE(hausdarray(MaxRemeshIter))
   hausdarray = WorkArray(:,1)
@@ -1469,12 +1469,12 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
         PMMG_ARG_ppParMesh,pmmgMesh,         &
         PMMG_ARG_end)
     WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
-    CALL WARN(FuncName, Message)
+    CALL Warn(FuncName, Message)
     IF(mmgloops==MaxRemeshIter) THEN
       Success=.FALSE.
-      GO TO 20
+      GOTO 20
     ELSE
-      GO TO 10
+      GOTO 10
     END IF
     !STOP MMG5_STRONGFAILURE
   ENDIF
@@ -1611,7 +1611,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   !args: mesh, nvertices, ntetra, nprisms, ntriangless, nquads, nedges
   CALL PMMG_Set_meshSize(pmmgMesh,nverts,ntetras,nprisms,ntris,nquads,nedges,ierr)
 
-  IF ( ierr /= 1 ) CALL FATAL('PMMGSolver',&
+  IF ( ierr /= 1 ) CALL Fatal('PMMGSolver',&
        'CALL TO PMMG_Set_meshSize FAILED')
   IF (DEBUG) PRINT *,'--**-- PMMG_Set_meshSize DONE', ParEnv % Mype
 
@@ -1623,7 +1623,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i) + 10
     CALL PMMG_Set_vertex(pmmgMesh, Mesh%Nodes%x(i), &
          Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
-    IF ( ierr /= 1 ) CALL FATAL('PMMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('PMMGSolver',&
          'CALL TO PMMG_Set_vertex FAILED')
   END DO
   IF (DEBUG) PRINT *,'--**-- PMMG_Set_vertex DONE', ParEnv % Mype
@@ -1736,11 +1736,12 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   END DO
 
 #else
-     CALL FATAL('Set_ParMMG_Mesh',&
+     CALL Fatal('Set_ParMMG_Mesh',&
         'Remeshing utility ParMMG has not been installed')
 #endif
 
 END SUBROUTINE Set_ParMMG_Mesh
+
 
 SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
@@ -1777,7 +1778,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
   !> a) get the size of the mesh: vertices, tetra,prisms, triangles, quads,edges
   CALL PMMG_Get_meshSize(pmmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
-  IF ( ierr == 0 ) CALL FATAL('ParMMGSolver',&
+  IF ( ierr == 0 ) CALL Fatal('ParMMGSolver',&
        'CALL TO PMMG_Get_meshSize FAILED')
   IF (DEBUG) PRINT *,'--**-- PMMG_Get_meshSize DONE'    
 
@@ -1817,7 +1818,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          NewMesh % Nodes % y(ii),&
          NewMesh % Nodes % z(ii),&
          ref,corner,required,ierr)
-    IF ( ierr == 0 ) CALL FATAL('ParMMGSolver',&
+    IF ( ierr == 0 ) CALL Fatal('ParMMGSolver',&
          'CALL TO  ParMMG_Get_vertex FAILED')
     IF(PRESENT(FixedNodes)) FixedNodes(ii) = required > 0 .AND. ref > 10
   End do
@@ -1864,7 +1865,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          NodeIndexes(3), &
          ref   , &
          required,ierr)
-    IF ( ierr /= 1 ) CALL FATAL('ParMMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('ParMMGSolver',&
          'CALL TO  PMMG_Get_triangle FAILED')
 
     Allocate(Element % BoundaryInfo)
@@ -1887,7 +1888,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     CALL PMMG_GET_TetFromTria(pmmgMesh, &
          ii,parent,ied,ierr)
 
-    IF ( ierr /= 1 ) CALL FATAL('MMGSolver',&
+    IF ( ierr /= 1 ) CALL Fatal('MMGSolver',&
          'CALL TO  MMG3D_Get_TetFromTria FAILED')
     Element => NewMesh % Elements(kk)
     Element % BoundaryInfo % Left => NewMesh % Elements(parent) !TODO - parent ID offset?
@@ -1938,7 +1939,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 #else
-     CALL FATAL('Get_ParMMG_Mesh',&
+     CALL Fatal('Get_ParMMG_Mesh',&
         'Remeshing utility ParMMG has not been installed')
 #endif
 
@@ -1999,7 +2000,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   !Scalar, vector, tensor metric?
 
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
   MaxRemeshIter= SIZE(WorkArray(:,1))
   ALLOCATE(hminarray(MaxRemeshIter))
   hminarray = WorkArray(:,1)
@@ -2007,8 +2008,8 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  DefValue=4000.0_dp)
   hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", DefValue=0.5_dp)
   WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
-  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
-  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(FuncName, 'The number of hmin options &
+  IF(.NOT. Found) CALL Fatal(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL Fatal(FuncName, 'The number of hmin options &
             must equal the number of hausd options')
   ALLOCATE(hausdarray(MaxRemeshIter))
   hausdarray = WorkArray(:,1)
@@ -2204,14 +2205,13 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
         PMMG_ARG_ppParMesh,pmmgMesh,         &
         PMMG_ARG_end)
     WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
-    CALL WARN(FuncName, Message)
+    CALL Warn(FuncName, Message)
     IF(mmgloops==MaxRemeshIter) THEN
       Success=.FALSE.
-      GO TO 20
+      GOTO 20
     ELSE
-      GO TO 10
+      GOTO 10
     END IF
-    !STOP MMG5_STRONGFAILURE
   ENDIF
 
   IF (DEBUG) PRINT *,'--**-- PMMG_parmmglib_centralized DONE'
@@ -2273,4 +2273,514 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
 
 END SUBROUTINE DistributedRemeshParMMG
 
+
+!------------------------------------------------------------------------------
+! 2D remeshing routine moved from MMG2DSolver.F90 to library of Elmer.
+! Here is the original author information:
+! 
+! ******************************************************************************
+! *
+! *  Author: F. Gillet-Chaulet (IGE)
+! *  Email:  fabien.gillet-chaulet@univ-grenoble-alpes.fr
+! *  Web:    http://elmerice.elmerfem.org
+! *
+! *  Original Date: 13-07-2017, 
+! *****************************************************************************
+!------------------------------------------------------------------------------
+  FUNCTION GET_MMG2D_MESH(MeshNumber,OutputFilename) RESULT(NewMesh)
+    IMPLICIT NONE
+!------------------------------------------------------------------------------
+    INTEGER :: MeshNumber
+    TYPE(Mesh_t), POINTER :: NewMesh
+    CHARACTER(LEN=MAX_NAME_LEN) :: OutPutFileName
+!------------------------------------------------------------------------------
+#if HAVE_MMG
+    TYPE(Element_t),POINTER ::  Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: np,nt,na,nq,ier
+    INTEGER :: ref,corner,required,ridge
+    INTEGER :: parent,ied
+    INTEGER :: tt, ii, jj, kk, ll
+
+    LOGICAL :: Debug = .FALSE.
+    TYPE(Solver_t), POINTER :: Solver
+    
+    Solver => CurrentModel % Solver      
+
+    !> a) get the size of the mesh: vertices,  triangles, edges
+    
+#if MMG_VERSION_LT(5,5) 
+    CALL MMG2D_Get_meshSize(mmgMesh,np,nt,na,ier)
+#else
+    CALL MMG2D_Get_meshSize(mmgMesh,np,nt,nq,na,ier)
+    IF (nq /= 0) CALL Fatal('MMGSolver',&
+        'Sorry no support for 404 elements')
+#endif
+
+    IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+        'CALL TO MMGS_Get_meshSize FAILED')
+    CALL Info('Get_MMG2D_Mesh','MMG2D_Get_meshSize DONE',Level=30)
+      
+! INITIALISE THE NEW MESH STRUCTURE
+    NewMesh => AllocateMesh()
+    IF (MeshNumber > 0 ) THEN
+      WRITE(NewMesh % Name,'(A,A,I0)') TRIM(OutPutFileName),'_N',MeshNumber
+    ELSE
+      NewMesh % Name = TRIM(OutPutFileName)
+    END IF
+    
+    NewMesh % MaxElementNodes = 3
+    NewMesh % MeshDim = Solver % Mesh % MeshDim
+    
+    NewMesh % NumberOfNodes = np
+    NewMesh % NumberOfBulkElements = nt
+    NewMesh % NumberOfBoundaryElements = na
+    
+    CALL AllocateVector( NewMesh % Nodes % x, np )
+    CALL AllocateVector( NewMesh % Nodes % y, np ) 
+    CALL AllocateVector( NewMesh % Nodes % z, np ) 
+    CALL AllocateVector( NewMesh % Elements, nt+na )
+      
+!! GET NEW VERTICES
+    NewMesh % Nodes % z = 0._dp
+    DO ii=1,np
+      CALL MMG2D_Get_vertex(mmgMesh,&
+          NewMesh % Nodes % x(ii),&
+          NewMesh % Nodes % y(ii),&
+          ref,corner,required,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver','CALL TO  MMG2D_Get_vertex FAILED')
+    END DO
+    CALL Info('Get_MMG2D_Mesh','MMG2D_Get_vertex DONE',Level=30)
+    
+!! GET NEW TRIANGLES
+    DO tt=1,NewMesh % NumberOfBulkElements
+      Element => NewMesh % Elements(tt)
+      Element % TYPE => GetElementType( 303 )
+      Element % NDOFs = Element % TYPE % NumberOfNodes
+      Element % ElementIndex = tt
+      Element % GElementIndex = tt
+      Element % PartIndex = ParEnv % myPE
+      CALL AllocateVector(Element % NodeIndexes, 3)
+      NodeIndexes => Element % NodeIndexes
+      CALL MMG2D_Get_triangle(mmgMesh, &
+          NodeIndexes(1), &
+          NodeIndexes(2), &
+          NodeIndexes(3), &
+          Element % BodyId, &
+          required,ier)
+    END DO
+    CALL Info('Get_MMG2D_Mesh','MMG2D_Get_triangle DONE',Level=30)
+      
+!! Get BC Elements
+    kk=NewMesh % NumberOfBulkElements
+    DO ii=1,na
+      kk = kk + 1
+
+      Element => NewMesh % Elements(kk)
+
+      Element % TYPE => GetElementType( 202 )
+      Element % NDOFs = Element % TYPE % NumberOfNodes
+      Element % ElementIndex = kk
+      Element % PartIndex = ParEnv % myPE
+
+      CALL AllocateVector(Element % NodeIndexes, 2)
+      NodeIndexes => Element % NodeIndexes
+      CALL MMG2D_Get_edge(mmgMesh, &
+          NodeIndexes(1), &
+          NodeIndexes(2), &
+          ref   , &
+          ridge,required,ier)
+      IF ( ier /= 1 ) CALL Fatal('MMGSolver','CALL TO  MMG2D_Get_Edge FAILED')
+
+      ALLOCATE(Element % BoundaryInfo)
+      Element % BoundaryInfo % Constraint=ref
+    END DO
+
+    kk=NewMesh % NumberOfBulkElements
+    DO ii=1,na
+      kk = kk + 1
+
+      Element => NewMesh % Elements(kk)
+
+      CALL MMG2D_GET_TRIFROMEDGE(mmgMesh, &
+          ii,parent,ied,ier)
+
+      IF ( ier /= 1 ) CALL Fatal('Get_MMG2D_Mesh','CALL TO  MMG2D_Get_TRIFROMEDGE FAILED')
+      
+      Element % BoundaryInfo % Left => NewMesh % Elements(parent)
+    END DO
+    
+    CALL SetMeshMaxDOFs(NewMesh)
+
+#else
+  CALL Fatal('Get_MMG2D_Mesh', "Remeshing utility MMG has not been installed")
+#endif
+    
+  END FUNCTION GET_MMG2D_MESH
+
+
+  SUBROUTINE SET_MMG2D_SOL(Mesh,MeshSize,Scalar)
+    IMPLICIT NONE
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: MeshSize
+    LOGICAL :: Scalar
+#ifdef HAVE_MMG
+    REAL(KIND=dp) :: M11,M22,M12
+    INTEGER :: NVert
+    INTEGER :: ier
+    INTEGER :: ii,jj
+
+    LOGICAL :: Debug = .FALSE.
+
+    IF(.NOT. ASSOCIATED(Mesh) ) THEN
+      CALL Fatal('Set_MMG2D_Sol','Mesh not associated!')
+    END IF
+    IF(.NOT. ASSOCIATED(MeshSize) ) THEN
+      CALL Fatal('Set_MMG2D_Sol','MeshSize variable not associated!')
+    END IF
+
+    
+    NVert = Mesh % NumberOfNodes
+
+    IF (Scalar) THEN
+      CALL MMG2D_Set_solSize(mmgMesh,mmgSol,MMG5_Vertex,NVert,MMG5_Scalar,ier)
+    ELSE
+      CALL MMG2D_Set_solSize(mmgMesh,mmgSol,MMG5_Vertex,NVert,MMG5_Tensor,ier)
+    END IF
+    IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+        'CALL TO MMG2D_Set_SolSize FAILED')
+    CALL Info('Set_MMG2D_Sol','MMG2D_Set_solSize DONE',Level=30)
+
+    DO ii=1,NVert
+      jj = ii
+      IF( ASSOCIATED( MeshSize % Perm ) ) jj = MeshSize % Perm(ii)
+
+      IF (Scalar) THEN
+        CALL MMG2D_Set_scalarSol(mmgSol,&
+            MeshSize%Values(jj),ii,ier)
+      ELSE
+        M11=MeshSize % Values(3*jj-2)
+        M22=MeshSize % Values(3*jj-1)
+        M12=MeshSize % Values(3*jj-0)
+        CALL MMG2D_Set_tensorSol(mmgSol,&
+            M11,M12,M22,ii,ier)
+      ENDIF
+      IF ( ier == 0 ) CALL Fatal('MMGSolver','CALL TO MMG2D_Set_scalarSo FAILED')
+    END DO    
+    CALL Info('Set_MMG2D_Sol','MMG2D_Set_tensorSol DONE',Level=30)
+
+#else
+  CALL Fatal('Set_MMG2D_Sol', "Remeshing utility MMG has not been installed")
+#endif
+        
+  END SUBROUTINE SET_MMG2D_SOL
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  SUBROUTINE SET_MMG2D_MESH(Mesh)
+    IMPLICIT NONE
+    TYPE(Mesh_t), POINTER :: Mesh
+#ifdef HAVE_MMG
+    TYPE(Element_t),POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: NVert,NEle,NEdge,Nquad
+    INTEGER :: n
+    INTEGER :: ier
+    INTEGER :: ii,tt
+    INTEGER :: Ind
+
+    LOGICAL :: Debug = .FALSE.
+
+    CALL Info('Set_MMG2D_Mesh','Setting 2D mesh using MMG',Level=20)
+    
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal('Set_MMG_Mesh','Mesh not associated!')
+    END IF
+      
+    NVert = Mesh % NumberOfNodes
+    NEle = Mesh % NumberOfBulkElements
+    NEdge = Mesh % NumberOfBoundaryElements
+    ! support only 303 elements no 404
+    Nquad=0
+
+    CALL Info('Set_MMM2D_Mesh','Setting mesh for MMG2D',Level=20)
+    
+#if MMG_VERSION_LT(5,5) 
+    CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
+#else
+    CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,Nquad,NEdge,ier)
+#endif
+
+    IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+        'CALL TO MMG2D_Set_meshSize FAILED')
+    CALL Info('Set_MMM2D_Mesh','MMG2D_Set_meshSize DONE',Level=30)
+
+    DO ii=1,NVert
+      CALL MMG2D_Set_vertex(mmgMesh, Mesh%Nodes%x(ii), &
+          Mesh%Nodes%y(ii), &
+          0, ii , ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver','CALL TO MMG2D_Set_vertex FAILED')
+    END DO
+    CALL Info('Set_MMM2D_Mesh','MMG2D_Set_vertex DONE',Level=30)
+
+    DO tt=1,NEle
+      Element => Mesh % Elements(tt)
+      IF( ParEnv % PEs > 1 ) THEN
+        Ind = Element % GElementIndex
+      ELSE
+        ind = tt
+      END IF
+        
+      NodeIndexes => Element % NodeIndexes
+
+      IF (Element % TYPE % ElementCode /= 303) &
+          CALL Fatal('MMGSolver','Work only with 303 elements')
+      n = Element % TYPE % NumberOfNodes
+      
+      CALL MMG2D_Set_triangle(mmgMesh, NodeIndexes(1), &
+          NodeIndexes(2), &
+          NodeIndexes(3), &
+          Element % BodyId, tt, ier)
+      IF ( ier == 0 ) CALL Fatal('Set_MMG2D_Mesh','CALL TO MMG2D_Set_triangle FAILED')
+    END DO
+    CALL Info('Set_MMG2D_Mesh','MMG2D_Set_triangle DONE',Level=30)
+   
+
+    Do tt=1,NEdge
+      Element => Mesh % Elements( Mesh % NumberOfBulkElements + tt )
+      NodeIndexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+
+      SELECT CASE( Element % TYPE % ElementCode )
+      CASE(101)
+        CYCLE
+      CASE(202)
+        CONTINUE
+      CASE DEFAULT
+        CALL Fatal('MMGSolver','Work only with 202 boundary elements')
+      END SELECT
+        
+      CALL MMG2D_Set_Edge(mmgMesh, NodeIndexes(1), &
+          NodeIndexes(2), &
+          Element % BoundaryInfo % Constraint, &
+          tt, ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+          'CALL TO MMG2D_Set_Edge FAILED')
+    End Do
+    CALL Info('Set_MMG2D_Mesh','MMG2D_Set_Edge DONE',Level=30)
+#else
+    CALL Fatal('Set_MMG2D_Mesh', "Remeshing utility MMG has not been installed")
+#endif
+    
+  END SUBROUTINE SET_MMG2D_MESH
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  SUBROUTINE SET_MMG2D_PARAMETERS(SolverParams)
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: SolverParams
+#ifdef HAVE_MMG   
+    REAL(KIND=dp) :: hsiz,Pval
+    INTEGER :: ier
+    LOGICAL :: AngleDetect
+    INTEGER :: verbosity,MeMIncrease,Bucket,GMSHoption     
+    LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
+    LOGICAL :: Found
+
+    REAL(KIND=dp) :: hmin, hmax
+
+    ! Minimal mesh size:  hmin
+    Hmin = ListGetConstReal( SolverParams, 'hmin', Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_hmin,&
+          Hmin,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <hmin> Failed')
+    END IF
+
+    ! Maximal mesh size - hmax
+    Hmax = ListGetConstReal( SolverParams, 'hmax', Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_hmax,&
+          Hmax,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <hmax> Failed')
+    END IF
+
+    hsiz = ListGetConstReal( SolverParams, 'hsiz', Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_hsiz,&
+          hsiz,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <hsiz> Failed')
+    END IF
+    
+!!! PARAMS: generic options (debug, mem, verbosity)
+    ! [val] Set the verbosity level to n
+    Verbosity = ListGetInteger( SolverParams,'verbosity',Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_verbose, &
+          Verbosity,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+          'CALL TO MMG2D_SET_IPARAMETER Failed')
+    END IF
+    ! [val] Set the maximal memory size to n MBytes.
+    MemIncrease = ListGetInteger(SolverParams,'Increase Memory',Found)
+    IF (FOUND) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_mem,&
+          MemIncrease,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_IPARAMETER Failed')
+    END IF
+    ! [0/1] Turn on the debug mode.
+    DebugMode = ListGetLogical(SolverParams,'Debug Mode',Found)
+    IF (Found .AND. DebugMode) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_debug,1, &
+          ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+          'CALL TO MMG2D_SET_IPARAMETER Failed')
+    END IF
+!!! PARAMS
+    ! Control global Hausdorff distance (on all the boundary surfaces of the mesh)
+    ! MMG2D_DPARAM_hausd default est 0.01 semble bien trop petit;
+    !  il semble qu'il faille mettre une taille > taille des elements.
+    Pval = ListGetConstReal( SolverParams, 'hausd', Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_hausd,&
+          Pval,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <hausd> Failed')
+    END IF
+    ! Control gradation
+    Pval = ListGetConstReal( SolverParams, 'hgrad', Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_hgrad,&
+          Pval,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <hgrad> Failed')
+    END IF
+
+!!! OTHER PARAMETERS: NOT ALL TESTED
+    Pval = ListGetConstReal( SolverParams, 'Angle detection',Found)
+    IF (Found) THEN
+      CALL MMG2D_SET_DPARAMETER(mmgMesh,mmgSol,MMG2D_DPARAM_angleDetection,&
+          Pval,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_DPARAMETER <Angle detection> Failed')
+    ENDIF
+    ! !< [1/0], Avoid/allow surface modifications */ 
+    AngleDetect = ListGetLogical(SolverParams,'No Angle detection',Found)
+    IF (Found.AND.AngleDetect) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_angle, &
+          1,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_IPARAMETER <No Angle detection> Failed')
+    END IF
+    ! [1/0] Avoid/allow point insertion
+    NoInsert = ListGetLogical(SolverParams,'No insert',Found)
+    IF (Found .AND. NoInsert) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_noinsert,&
+          1,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver', &
+          'CALL TO MMG2D_SET_IPARAMETER <No insert> Failed') 
+    END IF
+    ! [1/0] Avoid/allow edge or face flipping
+    NoSwap = ListGetLogical(SolverParams,'No swap',Found)
+    IF (Found .AND. NoSwap) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_noswap,&
+          1,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+          'CALL TO MMG2D_SET_IPARAMETER <No swap>Failed')
+    END IF
+    ! [1/0] Avoid/allow point relocation
+    NoMove = ListGetLogical(SolverParams,'No move',Found)
+    IF (Found .AND. NoMove) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_nomove,&
+          1,ier)
+      IF ( ier == 0 ) CALL Fatal('MMGSolver',&
+          'CALL TO MMG2D_SET_IPARAMETER <No move> Failed')
+    END IF
+    ! [1/0] Avoid/allow surface modifications
+    NoSurf = ListGetLogical(SolverParams,'No surf',Found)
+    IF (Found .AND. NoSurf) THEN
+      CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_nosurf,&
+          1,ier)
+      IF ( ier == 0 ) CALL Fatal('M/MGSolver',&
+          'CALL TO MMG2D_SET_IPARAMETER <No surf> Failed')
+    END IF
+#else
+    CALL Fatal('Set_MMG2D_Parameters', "Remeshing utility MMG has not been installed")
+#endif
+        
+  END SUBROUTINE SET_MMG2D_PARAMETERS
+
+  FUNCTION MMG2D_ReMesh( RefMesh, Hvar ) RESULT ( NewMesh ) 
+
+    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+    TYPE(Variable_t), POINTER :: Hvar
+#ifdef HAVE_MMG    
+    TYPE(ValueList_t), POINTER :: SolverParams
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(LEN=MAX_NAME_LEN) :: FileName
+    LOGICAL :: Found, Numbering
+    INTEGER :: ier, MeshNumber = 0
+            
+    SolverParams => CurrentModel % Solver % Values
+    Mesh => CurrentModel % Solver % Mesh
+        
+    CALL Info('MMG2D_ReMesh','Initialization of MMG',Level=20)
+    mmgMesh = 0
+    mmgSol  = 0
+    CALL MMG2D_Init_mesh(MMG5_ARG_start, &
+        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+        MMG5_ARG_end)
+    
+    CALL Info('MMG2D_ReMesh','Set MMG2D Parameters',Level=20)
+    CALL SET_MMG2D_PARAMETERS(SolverParams)
+    
+    CALL Info('MMG2D_ReMesh','Copy Mesh to MMG format',Level=20)
+    CALL SET_MMG2D_MESH(RefMesh)
+
+    CALL Info('MMGSolver','Set the SOL',Level=20)      
+    CALL SET_MMG2D_SOL(Mesh,HVar,Scalar=.TRUE.)
+    
+    CALL Info('MMGSolver','Check the mesh data',Level=20)              
+    CALL MMG2D_Chk_meshData(mmgMesh,mmgSol,ier)
+    IF ( ier == 0 ) CALL Fatal('MMGSolver','CALL TO MMG2D_Chk_meshData FAILED')
+
+    IF( ListGetLogical(SolverParams,'Save Initial MMG Mesh', Found ) ) THEN
+      filename = "MMGini.mesh"      
+      CALL MMG2D_SaveMesh(mmgMesh,TRIM(filename),len_TRIM(filename),ier)
+      filename = "MMGini.sol"      
+      CALL MMG2D_SaveSol(mmgMesh,mmgSol,TRIM(filename),len_TRIM(filename),ier)
+    END IF
+
+    CALL MMG2D_mmg2dlib(mmgMesh,mmgSol,ier)
+    IF ( ier == MMG5_STRONGFAILURE ) THEN
+      CALL Fatal('MMG2D_ReMesh','BAD ENDING OF MMG3DLIB: UNABLE TO SAVE MESH!')
+    ELSE IF ( ier == MMG5_LOWFAILURE ) THEN
+      CALL Warn('MMG2D_ReMesh','BAD ENDING OF MMG3DLIB: TRYING TO continue!')
+    ENDIF
+    
+    IF( ListGetLogical(SolverParams,'Save Final MMG Mesh', Found ) ) THEN
+      filename = "MMGfinal.mesh"      
+      CALL MMG2D_SaveMesh(mmgMesh,TRIM(filename),len_TRIM(filename),ier)
+    END IF
+
+    Numbering = ListGetLogical(SolverParams,'Increment Mesh Number',Found)
+    IF(.NOT. Found) Numbering = ListGetLogical(SolverParams,'Adaptive Mesh Numbering',Found)
+    IF(.NOT. Found) Numbering = .TRUE.
+    IF( Numbering ) MeshNumber = MeshNumber + 1
+
+    filename = ListGetString( SolverParams, 'Adaptive Mesh Name', Found )
+    IF(.NOT. Found) filename = 'RefinedMesh'
+
+    NewMesh => GET_MMG2D_MESH(MeshNumber,Filename)
+
+#else
+    CALL Fatal('MMG2D_ReMesh', "Remeshing utility MMG has not been installed")
+#endif
+    
+  END FUNCTION MMG2D_ReMesh
+     
 END MODULE MeshRemeshing

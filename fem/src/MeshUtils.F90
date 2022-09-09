@@ -17909,7 +17909,7 @@ END SUBROUTINE FindNeighbourNodes
      TYPE( Solver_t ), TARGET :: Solver
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
-     LOGICAL :: Found, OptimizeBandwidth
+     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
@@ -17930,19 +17930,24 @@ END SUBROUTINE FindNeighbourNodes
 
      CALL AllocateVector( Permutation, SIZE(Solver % Variable % Perm) )
 
+     GlobalBubbles = ListGetLogical( Solver % Values, &
+         'Bubbles in Global System', Found )
+     IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+          
      OptimizeBandwidth = ListGetLogical( Solver % Values, 'Optimize Bandwidth', Found )
      IF ( .NOT. Found ) OptimizeBandwidth = .TRUE.
 
      Matrix => CreateMatrix( CurrentModel, Solver, &
         Mesh, Permutation, DOFs, MATRIX_CRS, OptimizeBandwidth, &
-        ListGetString( Solver % Values, 'Equation' ) )
+        ListGetString( Solver % Values, 'Equation' ), &
+        GlobalBubbles=GlobalBubbles)
 
      Matrix % Symmetric = ListGetLogical( Solver % Values, &
              'Linear System Symmetric', Found )
 
      Matrix % Lumped = ListGetLogical( Solver % Values, &
              'Lumped Mass Matrix', Found )
-
+     
      ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
      Work = Solver % Variable % Values
      DO k=0,DOFs-1

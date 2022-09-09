@@ -48,9 +48,11 @@ MODULE Adaptive
   USE SolverUtils
   USE ModelDescription
   USE LoadMod
+  USE MeshRemeshing
 
   IMPLICIT NONE
 
+  
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -131,7 +133,6 @@ CONTAINS
     IF( RefMesh % DiscontMesh ) THEN
       CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinuous mesh!')
     END IF
-
     
     MaxDepth = ListGetInteger( Solver % Values, 'Adaptive Max Depth', Found )
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
@@ -173,13 +174,16 @@ CONTAINS
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )
 
     IF ( ASSOCIATED( Var ) ) THEN
-       Hvalue      => Var % Values
+       Hvalue => Var % Values
        Var % PrimaryMesh => RefMesh
     ELSE
        CALL AllocateVector( Hvalue, nn )
-
        CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
-                'Hvalue', 1, Hvalue, Output=.FALSE. )
+                'Hvalue', 1, Hvalue, Output=.FALSE. )       
+       Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
+       IF(.NOT. ASSOCIATED(Var) ) THEN
+         CALL Fatal('RefineMesh','Could not add variable Var?')
+       END IF
        Hvalue = 0.0d0
     END IF
 
@@ -230,9 +234,9 @@ CONTAINS
     ELSE
        CALL AllocateVector( hConvergence, nn )
        hConvergence = 1.0d0
-
        CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
             'hConvergence', 1, hConvergence, Output=.FALSE. )
+       Var => VariableGet( RefMesh % Variables, 'hConvergence', ThisOnly=.TRUE. )
     END IF
 
 !   Add nodal average of the computed estimate to the
@@ -397,8 +401,19 @@ CONTAINS
 !   ----------------------
     IF ( ListGetLogical( Solver % Values, 'Adaptive Remesh', Found ) ) THEN
        t = RealTime()
-       NewMesh => ReMesh( RefMesh, ErrorLimit/3, HValue, &
-          NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
+       IF( ListGetLogical( Solver % Values,'Adaptive Remesh Use MMG', Found ) ) THEN
+#ifdef HAVE_MMG
+         CALL Info('RefineMesh','Using MMG libary for mesh refinement',Level=5)
+         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
+                  NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
+#else
+         CALL Fatal('Remesh','Remeshing requested with MMG but not compiled with!')
+#endif          
+       ELSE       
+         CALL Info('RefineMesh','Using file I/O for mesh refinement',Level=5)
+         NewMesh => ReMesh( RefMesh, ErrorLimit/3, HValue, &
+             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
+       END IF
        RemeshTime = RealTime() - t
        WRITE( Message, * ) 'Remeshing time (real-secs):                      ',RemeshTime
        CALL Info( 'RefineMesh', Message, Level=6 )
@@ -411,20 +426,19 @@ CONTAINS
 !   NodalError = PrevNodalError
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
-       CALL Info( 'RefineMesh', &
-                'Current mesh seems fine. I will do nothing.', Level=6 )
-       GOTO 10
+      CALL Info( 'RefineMesh','Current mesh seems fine. I will do nothing.', Level=6 )
+      GOTO 10
     ELSE
-       CALL SetMeshMaxDofs(NewMesh)
+      CALL SetMeshMaxDofs(NewMesh)
     END IF
 
-    CALL Info( 'RefineMesh', 'The new mesh consists of: ', Level=5 )
-    WRITE( Message, * ) NewMesh % NumberOfNodes,' nodal points'
-    CALL Info( 'RefineMesh', Message, Level = 5 )
-    WRITE( Message, * ) NewMesh % NumberOfBulkElements,' bulk elements'
-    CALL Info( 'RefineMesh', Message, Level = 5 )
-    WRITE( Message, * ) NewMesh % NumberOfBoundaryElements,' boundary elements'
-    CALL Info( 'RefineMesh', Message, Level = 5 )
+    CALL Info( 'RefineMesh','The new mesh consists of: ', Level=5 )
+    CALL Info( 'RefineMesh','Nodal points: '&
+        //TRIM(I2S(NewMesh % NumberOfNodes)),Level=5)
+    CALL Info( 'RefineMesh','Bulk elements: '&
+        //TRIM(I2S(NewMesh % NumberOfBulkElements)),Level=5)
+    CALL Info( 'RefineMesh','Boundary elements: '&
+        //TRIM(I2S(NewMesh % NumberOfBoundaryElements)),Level=5)
 
 !-------------------------------------------------------------------
 
@@ -458,16 +472,17 @@ CONTAINS
     END IF
       
     Nlen = LEN_TRIM(OutputPath)
-    IF ( Nlen > 0 ) THEN
+    IF ( Nlen < 0 ) THEN
        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
     ELSE
        Path = TRIM(NewMesh % Name)
     END IF
     CALL MakeDirectory( TRIM(path) // CHAR(0) )
 
-    IF ( ListGetLogical( Solver % Values, 'Adaptive Save Mesh', Found ) ) &
-         CALL WriteMeshToDisk( NewMesh, Path )
-!
+    IF ( ListGetLogical( Solver % Values, 'Adaptive Save Mesh', Found ) ) THEN
+      CALL WriteMeshToDisk( NewMesh, Path )
+    END IF
+      
 !   Initialize local variables for the new mesh:
 !   --------------------------------------------
     NULLIFY( NewMesh % Variables )
@@ -582,8 +597,8 @@ CONTAINS
     END DO
 
 !-------------------------------------------------------------------    
-    WRITE( Message, * )  &
-     'Mesh variable update time (cpu-secs):            ',CPUTime()-t
+    WRITE( Message, * ) &
+        'Mesh variable update time (cpu-secs):            ',CPUTime()-t
     CALL Info( 'RefineMesh', Message, Level = 6 )
 !-------------------------------------------------------------------    
 
@@ -616,6 +631,11 @@ CONTAINS
 !   Try to account for the reordering of DOFs
 !   due to bandwidth optimization:
 !   -----------------------------------------
+#if 1
+    CALL UpdateSolverMesh( Solver, NewMesh )
+
+#else
+
     GlobalBubbles = ListGetLogical( Solver % Values, &
           'Bubbles in Global System', Found )
     IF ( .NOT. Found ) GlobalBubbles = .TRUE.
@@ -705,15 +725,6 @@ CONTAINS
        DEALLOCATE( Permutation, Work )
     END IF
 
-!   TODO: CreateMatrix should do these
-!   -----------------------------------
-
-    Solver % Matrix % Lumped = ListGetLogical( Solver % Values, &
-            'Lumped Mass Matrix', Found )
-
-    Solver % Matrix % Symmetric = ListGetLogical( Solver % Values, &
-            'Linear System Symmetric', Found )
-
     CALL AllocateVector( Solver % Matrix % RHS, SIZE(Solver % Variable % Values) )
     Solver % Matrix % RHS = 0.0d0
 
@@ -735,7 +746,8 @@ CONTAINS
        CALL AllocateVector( Solver % Variable % EigenValues, &
                  Solver % NOFEigenValues )
     END IF
-
+#endif
+    
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
     WRITE( Message, * ) 'Matrix structures update time (cpu-secs):        ',CPUTime()-t
@@ -793,9 +805,76 @@ CONTAINS
 
 CONTAINS
 
-!
-!
-!
+  
+  SUBROUTINE ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
+      hConvergence, minH, maxH, MaxChange, Coarsening ) 
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
+        ErrorLimit, minH, maxH, MaxChange, HValue(:)
+    LOGICAL :: Coarsening
+    TYPE(Mesh_t), POINTER :: RefMesh
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: Lambda
+!------------------------------------------------------------------------------
+
+    DO i=1,RefMesh % NumberOfNodes
+      IF ( NodalError(i) < 100*AEPS ) CYCLE 
+
+      Lambda = ( ErrorLimit / NodalError(i) ) ** ( 1.0d0 / hConvergence(i) )
+
+      IF ( RefMesh % AdaptiveDepth < 1 ) THEN
+        Lambda = HValue(i) * MAX( MIN( Lambda, 1.33d0), 0.75d0)
+      ELSE
+        Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
+      END IF
+
+      IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
+
+      IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
+      IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
+
+      HValue(i) = Lambda        
+    END DO
+  
+  END SUBROUTINE ComputeDesiredHvalue
+
+
+  
+#ifdef HAVE_MMG
+
+!------------------------------------------------------------------------------
+  FUNCTION MMG_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+       hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
+           ErrorLimit, minH, maxH, MaxChange, HValue(:)
+    LOGICAL :: Coarsening
+    TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i,j,k,n
+    REAL(KIND=dp) :: Lambda
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
+!------------------------------------------------------------------------------
+
+    CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
+        hConvergence, minH, maxH, MaxChange, Coarsening ) 
+
+    Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
+
+    IF( RefMesh % MeshDim == 2 ) THEN
+      NewMesh => MMG2D_ReMesh( RefMesh, Var )
+    ELSE
+      CALL Fatal('MMG_ReMesh','Not yet implemented in 3D')
+    END IF
+
+!------------------------------------------------------------------------------
+  END FUNCTION MMG_ReMesh
+!------------------------------------------------------------------------------
+#endif
+
+  
 !------------------------------------------------------------------------------
   FUNCTION ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
