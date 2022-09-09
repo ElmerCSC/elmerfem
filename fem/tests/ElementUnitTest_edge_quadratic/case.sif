@@ -1,0 +1,72 @@
+! This is consistency test for Hcurl conforming elements. 
+! + utility for timing their performance.  
+! This test case with 2nd order Piola version.  
+!
+! P.R. 9.9.2022
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "unitelems"
+!  Mesh DB "." "cube"
+End 
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Test"
+  Procedure = "SingleEdgeElements" "SingleEdgeElements"
+
+! Activate for the proper edge element settings.
+! 2nd order Piola transformed version.  
+  Use Piola Transform = True
+  Quadratic Approximation = True
+
+! Activate for timing 
+! Timing Cycles = Integer 1000000
+End
+
+! 1st test mass matrices
+Solver 1 :: Reference Norm = 169.70370 ! 808
+RUN
+Solver 1 :: Reference Norm = 4.4968636 ! 706
+RUN
+Solver 1 :: Reference Norm = 4.9997899 ! 605
+RUN
+Solver 1 :: Reference Norm = 0.21353204 ! 504
+RUN
+Solver 1 :: Reference Norm = 36.222222 ! 404
+RUN
+Solver 1 :: Reference Norm = 0.77493758 ! 303
+RUN
+! Then test the stiffness matrix
+Solver 1 :: Reference Norm = 2203.5556 ! 808
+RUN
+Solver 1 :: Reference Norm = 150.07378 ! 706
+RUN
+Solver 1 :: Reference Norm = 169.72231 ! 605
+RUN
+Solver 1 :: Reference Norm = 24.101762 ! 504
+RUN
+Solver 1 :: Reference Norm = 338.66667 ! 404
+RUN
+Solver 1 :: Reference Norm = 33.106953 ! 303
+RUN
+
