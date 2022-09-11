@@ -1306,7 +1306,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     IF(FirstTime) SaveFlowMax = MIN(FlowMax,FirstMaxNSValue)
 
     NSChange = FlowMax / SaveFlowMax
-    PRINT *,'Debug, Flow Max (old/new): ',SaveFlowMax, FlowMax,' NSChange: ',NSChange
+    IF(ParEnv % MyPE == 0) PRINT *,'Debug, Flow Max (old/new): ',SaveFlowMax, FlowMax,' NSChange: ',NSChange
 
     IF(NSChange > MaxNSDiverge) THEN
       NSDiverge = .TRUE.
@@ -1328,12 +1328,12 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   ! Joe note: I commented out Eef's testing here during merge:
   ! PRINT *, 'temporarily set NSFail=True for testing'
   ! NSFail=.TRUE.
-
+  IF(ParEnv % MyPE == 0) PRINT*, 'Debug', FlowVar % NonlinConverged, NSDiverge, NSTooFast
   IF(NSFail) THEN
     CALL Info(SolverName, "Skipping solvers except Remesh because NS failed to converge.")
 
     FailCount = FailCount + 1
-    PRINT *, 'FailCount=',FailCount
+    IF(ParEnv % MyPE == 0) PRINT *, 'FailCount=',FailCount
     ! Joe note: I commented out Eef's testing here during merge:
     ! PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
     ! FailCount=2
@@ -1352,7 +1352,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
          "Nonlinear System Newton After Iterations", 10000)
 
     !If this is the second failure in a row, fiddle with the mesh
-    PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
+    !PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
     IF(FailCount >= 2) THEN
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
        CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
