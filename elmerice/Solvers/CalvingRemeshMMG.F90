@@ -1172,12 +1172,12 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
   INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, TimeIntervals, SaveSSiter,&
-       MaxRemeshIter,SaveNLIter,CurrentNLIter
+       MaxRemeshIter,SaveNLIter,CurrentNLIter,NewMeshCount
   CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
 
   SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, FirstTime, FailCount,&
        SaveRelax,SaveMeshHminArray,SaveMeshHmax,SaveMeshHausdArray,SaveMeshHgrad, &
-       SaveSSiter, PseudoSSdt, MaxRemeshIter, SaveNLIter, NewMesh
+       SaveSSiter, PseudoSSdt, MaxRemeshIter, SaveNLIter, NewMesh, NewMeshCount
 
   Mesh => Solver % Mesh
   SolverName = 'CheckFlowConvergenceMMG'
@@ -1205,6 +1205,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   IF(FirstTime) THEN
 
     FailCount = 0
+    NewMeshCount = 0
 
     SaveNewtonTol = ListGetConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Newton After Tolerance", Found)
@@ -1340,7 +1341,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     ! Joe note: I commented out Eef's testing here during merge:
     ! PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
     ! FailCount=2
-    IF(FailCount >= 4) THEN
+    IF(NewMeshCount > 3) THEN
        CALL Fatal(SolverName, "Don't seem to be able to recover from NS failure, giving up...")
     END IF
 
@@ -1359,9 +1360,15 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
       !ie fails from nonconvergence but flow looks ok
       CurrentNLIter = ListGetInteger(FlowVar % Solver % Values, &
           "Nonlinear System Max Iterations", Found)
-      CALL ListAddInteger( FlowVar % Solver % Values, &
-          "Nonlinear System Max Iterations", CurrentNLIter*2)
-      ChangeMesh = .FALSE.
+      IF(CurrentNLIter >= SaveNLIter*4) THEN !clearly not going to converge
+        CALL ListAddInteger( FlowVar % Solver % Values, &
+        "Nonlinear System Max Iterations", SaveNLIter)
+        ChangeMesh = .FALSE.
+      ELSE
+        CALL ListAddInteger( FlowVar % Solver % Values, &
+            "Nonlinear System Max Iterations", CurrentNLIter*2)
+        ChangeMesh = .FALSE.
+      END IF
     END IF
 
     !If this is the second failure in a row, fiddle with the mesh
@@ -1375,6 +1382,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, SaveMeshHausdArray*0.9_dp)
        CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
       NewMesh = .TRUE.
+      NewMeshCount = NewMeshCount + 1
     ELSE
       NewMesh = .FALSE.
     END IF
@@ -1396,6 +1404,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   ELSE
 ! set original values back
     FailCount = 0
+    NewMeshCount = 0
     CALL ListAddConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Newton After Tolerance", SaveNewtonTol)
     CALL ListAddInteger( FlowVar % Solver % Values, &
