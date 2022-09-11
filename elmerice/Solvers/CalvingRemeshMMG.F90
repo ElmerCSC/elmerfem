@@ -1165,19 +1165,19 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   TYPE(Variable_t), POINTER :: FlowVar, TimeVar
   TYPE(ValueList_t), POINTER :: Params, FuncParams
   LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
-       NSDiverge, NSFail, NSTooFast
+       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
        SaveMeshHgrad,SaveMeshHausd, PseudoSSdt
   REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
   INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, TimeIntervals, SaveSSiter,&
-       MaxRemeshIter
+       MaxRemeshIter,SaveNLIter,CurrentNLIter
   CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
 
   SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, FirstTime, FailCount,&
        SaveRelax,SaveMeshHminArray,SaveMeshHmax,SaveMeshHausdArray,SaveMeshHgrad, &
-       SaveSSiter, PseudoSSdt, MaxRemeshIter
+       SaveSSiter, PseudoSSdt, MaxRemeshIter, SaveNLIter, NewMesh
 
   Mesh => Solver % Mesh
   SolverName = 'CheckFlowConvergenceMMG'
@@ -1212,6 +1212,9 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     SaveNewtonIter = ListGetInteger(FlowVar % Solver % Values, &
          "Nonlinear System Newton After Iterations", Found)
     IF(.NOT. Found) SaveNewtonIter = 15
+    SaveNLIter = ListGetInteger(FlowVar % Solver % Values, &
+         "Nonlinear System Max Iterations", Found)
+    IF(.NOT. Found) SaveNewtonIter = 50
 
     SaveRelax = ListGetConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Relaxation Factor", Found)
@@ -1351,16 +1354,29 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     CALL ListAddInteger( FlowVar % Solver % Values, &
          "Nonlinear System Newton After Iterations", 10000)
 
+    IF(failcount > 1) ChangeMesh = .TRUE.
+    IF(.NOT. NSDiverge .AND. .NOT. NSTooFast) THEN
+      !ie fails from nonconvergence but flow looks ok
+      CurrentNLIter = ListGetInteger(FlowVar % Solver % Values, &
+          "Nonlinear System Max Iterations", Found)
+      CALL ListAddInteger( FlowVar % Solver % Values, &
+          "Nonlinear System Max Iterations", CurrentNLIter*2)
+      ChangeMesh = .FALSE.
+    END IF
+
     !If this is the second failure in a row, fiddle with the mesh
     !PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
-    IF(FailCount >= 2) THEN
+    IF(ChangeMesh) THEN
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
        CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
        CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, SaveMeshHminArray*0.9_dp)
        !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax*1.1_dp)
        CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", 1.1_dp) !default 1.3
        CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, SaveMeshHausdArray*0.9_dp)
-
+       CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
+      NewMesh = .TRUE.
+    ELSE
+      NewMesh = .FALSE.
     END IF
 
     IF( .NOT. (NSTooFast .OR. NSDiverge)) THEN
@@ -1386,8 +1402,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
          "Nonlinear System Newton After Iterations", SaveNewtonIter)
     CALL ListAddConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Relaxation Factor", SaveRelax)
-    PRINT*, 'hmin array size', SIZE(SaveMeshHminArray(:,1)), SIZE(SaveMeshHminArray(1,:)), 'him', &
-      SaveMeshHminArray
+    CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
     CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, SaveMeshHminArray)
     !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax)
     CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", SaveMeshHgrad)
