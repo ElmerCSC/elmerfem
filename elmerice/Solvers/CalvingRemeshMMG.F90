@@ -204,7 +204,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !calving events can be predicted. So, turn off CalvingOccurs, and ensure a remesh
   !Also undo this iterations mesh update
   NSFail = ListGetLogical(Model % Simulation, "Flow Solution Failed",CheckFlowConvergence)
-  CalvingOccurs=.TRUE.
+  CalvingOccurs = ListGetLogical( Model % Simulation, 'CalvingOccurs', Found )
   RemeshOccurs=.TRUE.
   IF(CheckFlowConvergence) THEN
     IF(NSFail) THEN
@@ -1165,7 +1165,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   TYPE(Variable_t), POINTER :: FlowVar, TimeVar
   TYPE(ValueList_t), POINTER :: Params, FuncParams
   LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
-       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh
+       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
        SaveMeshHgrad,SaveMeshHausd, PseudoSSdt
@@ -1401,6 +1401,11 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
 
       !TODO: What else? different linear method? more relaxation?
     END IF
+
+    !prevent calving on next time step
+    CalvingOccurs = .FALSE.
+    CALL SParIterAllReduceOR(CalvingOccurs)
+    CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
   ELSE
 ! set original values back
     FailCount = 0

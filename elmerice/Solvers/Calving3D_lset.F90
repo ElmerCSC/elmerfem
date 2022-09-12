@@ -1441,21 +1441,21 @@
         CALL SParIterAllReduceOR(CalvingOccurs)
         CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
 
-        EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
-        DO j=1,Model % NumberOfSolvers
-          IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
-            Found = .TRUE.
+        !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+        !DO j=1,Model % NumberOfSolvers
+        !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        !    Found = .TRUE.
             !Turn off (or on) the solver
             !If CalvingOccurs, (switch) off = .true.
-            CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
-            IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+        !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+        !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
 
             ! if remeshing if skipped need to ensure calving solvers are not paused
-            IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+        !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
 
-            EXIT
-          END IF
-        END DO
+        !    EXIT
+        !  END IF
+        !END DO
         CALL WARN(SolverName, 'No crevasses so returning')
         RETURN
      END IF
@@ -1569,21 +1569,21 @@
     END IF
 
     !if calving doesn't occur then no need to run remeshing solver
-    EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
-    DO j=1,Model % NumberOfSolvers
-      IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
-        Found = .TRUE.
+    !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+    !DO j=1,Model % NumberOfSolvers
+    !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+    !    Found = .TRUE.
         !Turn off (or on) the solver
         !If CalvingOccurs, (switch) off = .true.
-        CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
-        IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+    !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+    !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
 
         ! if remeshing if skipped need to ensure calving solvers are not paused
-        IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+    !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
 
-        EXIT
-      END IF
-    END DO
+    !    EXIT
+    !  END IF
+    !END DO
 
     IF(.NOT. Found) THEN
       WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
