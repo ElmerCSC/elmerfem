@@ -3500,7 +3500,9 @@ CONTAINS
     END IF
     
     FName = FileName
-    IF ( .NOT. FileNameQualified(FileName) ) THEN !.AND. INDEX(Filename,'/') == 0 ) THEN
+#if 0
+! By convention let us have restart file always in "Mesh DB" and never in "Results Directory" 
+    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Filename,'/') == 0 ) THEN
       n = LEN_TRIM(OutputPath)
       IF(n==0) THEN
         CONTINUE
@@ -3510,7 +3512,8 @@ CONTAINS
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
     END IF
-
+#endif
+    
     IF( FileCycle > 0 ) THEN
       Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
     END IF
@@ -3739,11 +3742,13 @@ CONTAINS
 
     IF( FileCycle > 0 .AND. ParEnv % MyPe == 0 ) THEN
       FName = FileName
-      IF ( .NOT. FileNameQualified(FileName) ) THEN !.AND. INDEX(Fname,'/') == 0 ) THEN
+#if 0 
+      IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
         IF ( LEN_TRIM(OutputPath) > 0 ) THEN
           FName = TRIM(OutputPath) // '/' // TRIM(FileName)
         END IF
       END IF
+#endif
       Fname = TRIM(Fname)//'_last_nc'
 
       OPEN( OutputUnit,File=FName,STATUS='UNKNOWN' )
@@ -4001,12 +4006,13 @@ CONTAINS
     j = ListGetInteger( ResList,'Restart File Cycle',Found )
     IF( Found ) THEN
       IF( j == 0 ) THEN
-        IF ( .NOT. FileNameQualified(RestartFile) .AND. & !.AND. INDEX(RestartFile,'/') == 0 .AND. &
+        FName = RestartFile
+#if 0
+        IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
             LEN_TRIM(OutputPath)>0 ) THEN
           FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
-        ELSE
-          FName = RestartFile
         END IF
+#endif
         FName = TRIM(FName)//'_last_nc'
         OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
         READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
@@ -4051,8 +4057,9 @@ CONTAINS
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
     FName = RestartFile
-    ! Check the output directory for the data    
-    IF ( .NOT. FileNameQualified(RestartFile) ) THEN !.AND. INDEX(RestartFile,'/') == 0 ) THEN
+    ! By convention let us use the "Mesh DB" rather than "Results Directory" for restart.    
+#if 0    
+    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 ) THEN
       n = LEN_TRIM(OutputPath)
       IF( n==0 ) THEN
         CONTINUE
@@ -4062,7 +4069,7 @@ CONTAINS
         FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
       END IF
     END IF
-    
+#endif
     OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
 
     IF( iostat == 0 ) THEN
