@@ -1434,7 +1434,7 @@
      CALL MPI_BCAST(CrevOrient,NoPaths*2,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
      CALL MPI_BCAST(CrevLR,NoPaths,MPI_LOGICAL, 0, ELMER_COMM_WORLD, ierr)
 
-     ! if there are no crevasses exit
+     ! if there are no crevasses no need to calculate signed distance
      IF(NoCrevNodes == 0) THEN
         CalvingOccurs = .FALSE.
 
@@ -1456,139 +1456,140 @@
         !    EXIT
         !  END IF
         !END DO
-        CALL WARN(SolverName, 'No crevasses so returning')
-        RETURN
-     END IF
-     !above IF(Parallel) but that's assumed implicitly
-     !make sure that code works for empty isomesh as well!!
-
-     ! get calving polygons
-     IF(Boss) THEN
-      CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
-      IF(Debug) THEN
-        PRINT*, 'Calving Polygons ----'
-        DO i=1, SIZE(PolyStart)
-          PRINT*, PolyStart(i), ',', PolyEnd(i), ','
-        END DO
-        DO i=1, SIZE(Polygon(1,:))
-          PRINT*, Polygon(1,i), ',', Polygon(2,i), ','
-        END DO
-      END IF
-      ! release crevasse paths
-      IF(ASSOCIATED(CrevassePaths)) CALL ReleaseCrevassePaths(CrevassePaths)
-     END IF
-
-     ! send bdrynode info to all procs
-     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-     IF(Boss) counter=SIZE(Polygon(1,:))
-     CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-     IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
-                          PolyEnd(NoPaths))
-     CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-     CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-     CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-
-     CALL CheckLateralCalving(Mesh, Params, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
-      CrevLR, Polygon, PolyStart, PolyEnd)
-     NoPaths = SIZE(CrevStart)
-
-     ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
-     IsCalvingNode=.FALSE.
-
-     IF (NoPaths > 0 ) THEN
-       DO i=1,Solver % Mesh % NumberOfNodes
-         IF (Debug) PRINT *, ParEnv % MyPE, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
-         xx = Solver % Mesh % Nodes % x(i)
-         yy = Solver % Mesh % Nodes % y(i)
-         MinDist = HUGE(1.0_dp)
-
-         inside=.FALSE.
-         ClosestCrev=0
-         DO j=1, NoPaths
-           ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
-           PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
-           inside = PointInPolygon2D(PathPoly, (/xx, yy/))
-           DEALLOCATE(PathPoly)
-           IF(inside) THEN
-             ClosestCrev = j
-             EXIT
-           END IF
-         END DO
-
-         ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
-         DO j=1, NoPaths
-           IF(inside .AND. j/=ClosestCrev) CYCLE
-           DO k=CrevStart(j), CrevEnd(j)-1
-             xl=CrevX(k);yl=CrevY(k)
-             xr=CrevX(k+1);yr=CrevY(k+1)
-             TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
-             IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
-               ! updated so no longer based off an angle. This caused problems when the front was
-               ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
-               ! PointInPolygon2D based of the winding number algorithm
-               IF(j==ClosestCrev) THEN ! inside calved area
-                 IsCalvingNode(i) = .TRUE.
-                 MinDist = -TempDist
-               ELSE
-                 MinDist = TempDist
-               END IF
-               jmin=k ! TO DO rm jmin? not necessary anymore
-             END IF
-           END DO
-         END DO
-
-         SignDistValues(SignDistPerm(i)) =  MinDist
-         IF(Debug)     PRINT *, ParEnv % MyPE, i, 'Shortest distance to closest segment in crevassepath ',MinDist
-         IF(Debug)     PRINT *, ParEnv % MyPE, i, 'jmin is ',jmin
-       END DO
+        CALL WARN(SolverName, 'No crevasses so not calculating signed distance')
+        !RETURN
      ELSE
-        SignDistValues = 0.0_dp
-     END IF
+        !above IF(Parallel) but that's assumed implicitly
+        !make sure that code works for empty isomesh as well!!
 
-     Debug = .FALSE.
-     CalvingValues = SignDistValues
-     IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
+        ! get calving polygons
+        IF(Boss) THEN
+          CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
+          IF(Debug) THEN
+            PRINT*, 'Calving Polygons ----'
+            DO i=1, SIZE(PolyStart)
+              PRINT*, PolyStart(i), ',', PolyEnd(i), ','
+            END DO
+            DO i=1, SIZE(Polygon(1,:))
+              PRINT*, Polygon(1,i), ',', Polygon(2,i), ','
+            END DO
+          END IF
+          ! release crevasse paths
+          IF(ASSOCIATED(CrevassePaths)) CALL ReleaseCrevassePaths(CrevassePaths)
+        END IF
+
+        ! send bdrynode info to all procs
+        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+        IF(Boss) counter=SIZE(Polygon(1,:))
+        CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+        IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
+                              PolyEnd(NoPaths))
+        CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+        CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+        CALL CheckLateralCalving(Mesh, Params, FrontPerm, CrevX,CrevY,CrevStart,CrevEnd, CrevOrient,&
+          CrevLR, Polygon, PolyStart, PolyEnd)
+        NoPaths = SIZE(CrevStart)
+
+        ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
+        IsCalvingNode=.FALSE.
+
+        IF (NoPaths > 0 ) THEN
+          DO i=1,Solver % Mesh % NumberOfNodes
+            IF (Debug) PRINT *, ParEnv % MyPE, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
+            xx = Solver % Mesh % Nodes % x(i)
+            yy = Solver % Mesh % Nodes % y(i)
+            MinDist = HUGE(1.0_dp)
+
+            inside=.FALSE.
+            ClosestCrev=0
+            DO j=1, NoPaths
+              ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
+              PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
+              inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+              DEALLOCATE(PathPoly)
+              IF(inside) THEN
+                ClosestCrev = j
+                EXIT
+              END IF
+            END DO
+
+            ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+            DO j=1, NoPaths
+              IF(inside .AND. j/=ClosestCrev) CYCLE
+              DO k=CrevStart(j), CrevEnd(j)-1
+                xl=CrevX(k);yl=CrevY(k)
+                xr=CrevX(k+1);yr=CrevY(k+1)
+                TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
+                IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+                  ! updated so no longer based off an angle. This caused problems when the front was
+                  ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
+                  ! PointInPolygon2D based of the winding number algorithm
+                  IF(j==ClosestCrev) THEN ! inside calved area
+                    IsCalvingNode(i) = .TRUE.
+                    MinDist = -TempDist
+                  ELSE
+                    MinDist = TempDist
+                  END IF
+                  jmin=k ! TO DO rm jmin? not necessary anymore
+                END IF
+              END DO
+            END DO
+
+            SignDistValues(SignDistPerm(i)) =  MinDist
+            IF(Debug)     PRINT *, ParEnv % MyPE, i, 'Shortest distance to closest segment in crevassepath ',MinDist
+            IF(Debug)     PRINT *, ParEnv % MyPE, i, 'jmin is ',jmin
+          END DO
+        ELSE
+            SignDistValues = 0.0_dp
+        END IF
+
+        Debug = .FALSE.
+        CalvingValues = SignDistValues
+        IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
 
 
-     ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
-     !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
-     ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
-    ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
-    ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
-    ! but significant in total? should something be done to avoid that they're filtered out?
-    !Pass CalvingOccurs to all processes, add to simulation
-    CALL SParIterAllReduceOR(CalvingOccurs)
-    CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
-    
-    IF(CalvingOccurs) THEN
-       CALL Info( SolverName, 'Calving Event',Level=1)
-    ELSE
-       !If only insignificant calving events occur, reset everything
-       !CalvingValues = 0.0_dp
-       IsCalvingNode = .FALSE.
-    END IF
+        ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
+        !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
+        ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
+        ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
+        ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
+        ! but significant in total? should something be done to avoid that they're filtered out?
+        !Pass CalvingOccurs to all processes, add to simulation
+        CALL SParIterAllReduceOR(CalvingOccurs)
+        CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
+        
+        IF(CalvingOccurs) THEN
+          CALL Info( SolverName, 'Calving Event',Level=1)
+        ELSE
+          !If only insignificant calving events occur, reset everything
+          !CalvingValues = 0.0_dp
+          IsCalvingNode = .FALSE.
+        END IF
 
-    !if calving doesn't occur then no need to run remeshing solver
-    !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
-    !DO j=1,Model % NumberOfSolvers
-    !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
-    !    Found = .TRUE.
-        !Turn off (or on) the solver
-        !If CalvingOccurs, (switch) off = .true.
-    !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
-    !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
+        !if calving doesn't occur then no need to run remeshing solver
+        !EqName = ListGetString( Params, "Remesh Equation Name", Found, UnfoundFatal = .TRUE.)
+        !DO j=1,Model % NumberOfSolvers
+        !  IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        !    Found = .TRUE.
+            !Turn off (or on) the solver
+            !If CalvingOccurs, (switch) off = .true.
+        !    CALL SwitchSolverExec(Model % Solvers(j), .NOT. CalvingOccurs)
+        !    IF(.NOT. CalvingOccurs) CALL ResetMeshUpdate(Model, Model % Solvers(j))
 
-        ! if remeshing if skipped need to ensure calving solvers are not paused
-    !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
+            ! if remeshing if skipped need to ensure calving solvers are not paused
+        !    IF(.NOT. CalvingOccurs) CALL PauseCalvingSolvers(Model, Model % Solvers(j) % Values, .FALSE.)
 
-    !    EXIT
-    !  END IF
-    !END DO
+        !    EXIT
+        !  END IF
+        !END DO
 
-    IF(.NOT. Found) THEN
-      WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
-          " to switch off after calving."
-      CALL Fatal(SolverName,Message)
+        IF(.NOT. Found) THEN
+          WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+              " to switch off after calving."
+          CALL Fatal(SolverName,Message)
+        END IF
     END IF
 
     ! because isomesh has no bulk?
