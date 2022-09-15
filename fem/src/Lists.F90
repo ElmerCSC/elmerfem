@@ -3936,10 +3936,11 @@ use spariterglobals
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, UnfoundFatal) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     REAL(KIND=dp), OPTIONAL :: minv,maxv
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
@@ -3959,9 +3960,9 @@ use spariterglobals
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
         IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal )
         ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, UnfoundFatal=UnfoundFatal)
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal)
         END IF
      END IF
      s = x(1)
