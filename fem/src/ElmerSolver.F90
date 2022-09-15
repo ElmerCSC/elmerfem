@@ -3370,6 +3370,9 @@
           i=LEN(TRIM(OutputFile)) + 1
           OutputFile(i:i) = '.'
           OutputFile(i+1:i+LEN(i2s(Time))) = TRIM(i2s(Time))
+
+          ! set saves to zero. This will insure new save file even if remeshing fails
+          Mesh % SavesDone = 0
         END IF
 
         !IF ( ParEnv % PEs > 1 ) THEN
