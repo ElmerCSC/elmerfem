@@ -2225,8 +2225,8 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3),w1(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC, NormalSign
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -2254,19 +2254,10 @@ END SUBROUTINE LocalConstraintMatrix
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     DO t=1,IP % n
-
-       Normal = NormalVector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-
        IF ( PiolaVersion ) THEN
          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
              IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE., &
-             TangentialTrMapping=.TRUE.)
-
-         NormalSign = 1.0d0
-         w0 = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.FALSE.)
-         IF (SUM(w0*Normal) < 0.0d0) NormalSign = -1.0d0
-
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -2289,21 +2280,11 @@ END SUBROUTINE LocalConstraintMatrix
        END DO
 
        DO i = 1,nd-np
-         IF (PiolaVersion) THEN
-           w0 = NormalSign * Wbasis(i,:)
-         ELSE
-           w0 = CrossProduct(Wbasis(i,:),Normal)
-         END IF
          p = i+np
-         FORCE(p) = FORCE(p) - SUM(L*w0)*detJ*IP % s(t)
+         FORCE(p) = FORCE(p) - SUM(L*WBasis(i,:))*detJ*IP % s(t)
          DO j = 1,nd-np
-           IF (PiolaVersion) THEN
-             w1 = NormalSign * Wbasis(j,:)
-           ELSE           
-             w1 = CrossProduct(Wbasis(j,:),Normal)
-           END IF
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * SUM(w1*w0)*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) + B * SUM(WBasis(i,:)*Wbasis(j,:))*detJ*IP % s(t)
          END DO
        END DO
     END DO
