@@ -543,7 +543,7 @@ CONTAINS
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TemPot(:)
     COMPLEX(KIND=dp) :: B, L(3), muinv
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: DetJ, Normal(3), tanWBasis(3)
+    REAL(KIND=dp) :: DetJ
     LOGICAL :: Stat, Found, UpdateStiff
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q
@@ -590,8 +590,6 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, &
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-      
-      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
 
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
@@ -613,14 +611,12 @@ CONTAINS
       END IF
 
       DO i = 1,nd-np
-        tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal* WBasis(i,:))
         p = i+np
-        
-        FORCE(p) = FORCE(p) - muinv * SUM(L*tanWBasis(:)) * detJ * IP%s(t)
+        FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * detJ * IP%s(t)
         DO j = 1,nd-np
           q = j+np
           STIFF(p,q) = STIFF(p,q) - muinv * B * &
-              SUM(tanWBasis(:)*WBasis(j,:)) * detJ * IP%s(t)
+              SUM(WBasis(i,:)*WBasis(j,:)) * detJ * IP%s(t)
         END DO
       END DO
 
