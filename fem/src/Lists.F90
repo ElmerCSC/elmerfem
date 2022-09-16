@@ -2967,6 +2967,48 @@ use spariterglobals
 
 
 !------------------------------------------------------------------------------
+!> Check that obsolite keyword is not used instead of the new one.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListObsoliteWarn( List,OldName,NewName ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: OldName,NewName
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,OldName,Found)
+     IF( Found ) THEN
+       CALL Warn('ListFatalObsolite',&
+           'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListObsoliteWarn
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check that obsolite keyword is not used instead of the new one.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListObsoliteFatal( List,OldName,NewName ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: OldName,NewName
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,OldName,Found)
+     IF( Found ) THEN
+       CALL Fatal('ListFatalObsolite',&
+           'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListObsoliteFatal
+!------------------------------------------------------------------------------
+
+   
+   
+!------------------------------------------------------------------------------
 !> Just checks if there is a untreated keyword in the routine in the list.
 !> In case there is return a warning. 
 !------------------------------------------------------------------------------
