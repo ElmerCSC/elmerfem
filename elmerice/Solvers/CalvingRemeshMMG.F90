@@ -1168,8 +1168,9 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs, GotSaveMetric
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
-       SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange
-  REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:)
+       SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange, NewMetric
+  REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:), &
+       NewMeshHausdArray(:,:), NewMeshHminArray(:,:)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
   INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount, TimeIntervals, SaveSSiter,&
        MaxRemeshIter,SaveNLIter,CurrentNLIter,NewMeshCount
@@ -1178,7 +1179,8 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, FirstTime, FailCount,&
        SaveRelax,SaveMeshHminArray,SaveMeshHmax,SaveMeshHausdArray,SaveMeshHgrad, &
        SaveSSiter, MaxRemeshIter, SaveNLIter, NewMesh, NewMeshCount,&
-       SaveMetric, GotSaveMetric, MeshChange
+       SaveMetric, GotSaveMetric, MeshChange, NewMeshHausdArray, NewMeshHminArray,&
+       NewMetric
 
   Mesh => Solver % Mesh
   SolverName = 'CheckFlowConvergenceMMG'
@@ -1235,14 +1237,14 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
 
     PRINT*, 'workarraysize', SIZE(WorkArray(1,:)), SIZE(WorkArray(:,1))
 
-    ALLOCATE(SaveMeshHminArray(MaxRemeshIter, 1))
+    ALLOCATE(SaveMeshHminArray(MaxRemeshIter, 1), NewMeshHminArray(MaxRemeshIter,1))
     SaveMeshHminArray = WorkArray
     NULLIFY(WorkArray)
     WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
     IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
     IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
             must equal the number of hausd options')
-    ALLOCATE(SaveMeshHausdArray(MaxRemeshIter,1))
+    ALLOCATE(SaveMeshHausdArray(MaxRemeshIter,1), NewMeshHausdArray(MaxRemeshIter,1))
     SaveMeshHausdArray = WorkArray
     NULLIFY(WorkArray)
 
@@ -1263,6 +1265,10 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     IF(SIZE(TimestepSizes,1) > 1) CALL Fatal(SolverName,&
          "Calving solver requires a single constant 'Timestep Sizes'")
     SaveDt = TimestepSizes(1,1)
+
+    NewMeshHminArray = SaveMeshHminArray
+    NewMeshHausdArray = SaveMeshHausdArray
+    NewMetric = SaveMetric
   ELSE
     SaveDt = ListGetCReal( CurrentModel % Simulation,'Timestep Size' )
   END IF
@@ -1378,14 +1384,18 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     !If this is the second failure in a row, fiddle with the mesh
     !PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
     IF(ChangeMesh) THEN
+       NewMeshHminArray = NewMeshHminArray/MeshChange
+       NewMeshHausdArray = NewMeshHausdArray/MeshChange
+       NewMetric = NewMetric/MeshChange
+
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
        CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
-       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, SaveMeshHminArray/MeshChange)
+       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, NewMeshHminArray)
        !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax*1.1_dp)
        CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", 1.1_dp) !default 1.3
-       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, SaveMeshHausdArray/MeshChange)
+       CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, NewMeshHausdArray)
        CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
-       IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", SaveMetric/MeshChange)
+       IF(GotSaveMetric) CALL ListAddConstReal(FuncParams, "GlacierMeshMetric Min LC", NewMetric)
       NewMesh = .TRUE.
       NewMeshCount = NewMeshCount + 1
     ELSE
@@ -1415,6 +1425,11 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
 ! set original values back
     FailCount = 0
     NewMeshCount = 0
+
+    NewMeshHminArray = SaveMeshHminArray
+    NewMeshHausdArray = SaveMeshHausdArray
+    NewMetric = SaveMetric
+
     CALL ListAddConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Newton After Tolerance", SaveNewtonTol)
     CALL ListAddInteger( FlowVar % Solver % Values, &

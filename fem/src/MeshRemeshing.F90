@@ -1109,7 +1109,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
     CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
-  IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS ', ParEnv % MyPE
+  IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS ', ParEnv % MyPE, 'Hmin ',Hmin, ' and Hausd ', Hausd
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
 
   CALL MMG3D_mmg3dlib(mmgMesh,mmgSol,ierr)
