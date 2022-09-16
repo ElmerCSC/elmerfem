@@ -48,6 +48,7 @@ MODULE Adaptive
   USE SolverUtils
   USE ModelDescription
   USE LoadMod
+  USE MeshUtils
   USE MeshRemeshing
 
   IMPLICIT NONE
@@ -112,12 +113,13 @@ CONTAINS
       LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, MeshNumbering
-    INTEGER :: MaxDepth, NLen
+    INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(LEN=1024) :: Path
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
+    LOGICAL :: NoInterp, Parallel
 !---------------------------------------------------------------------------------
 !
 !   Initialize:
@@ -133,13 +135,19 @@ CONTAINS
     IF( RefMesh % DiscontMesh ) THEN
       CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinuous mesh!')
     END IF
-    
+
+    ! Interpolation is constly in parallel. Do it by default only in serial. 
+    Parallel = ( ParEnv % PEs > 1 )
+    NoInterp = ListGetLogical( Solver % Values,'Adaptive Interpolate',Found )
+    IF(.NOT. Found) NoInterp = Parallel 
+
     MaxDepth = ListGetInteger( Solver % Values, 'Adaptive Max Depth', Found )
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
        WRITE( Message, * ) 'Max adaptive depth reached.'
        CALL Info( 'RefineMesh', Message, Level = 6 )
        GOTO 20
     END IF
+    MinDepth = ListGetInteger( Solver % Values, 'Adaptive Min Depth', Found )
 
     DO i=1,RefMesh % NumberOfBulkElements
        RefMesh % Elements(i) % Splitted = 0
@@ -358,10 +366,13 @@ CONTAINS
 
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
-    IF ( MaxError < ErrorLimit ) THEN ! ErrorEstimate < ErrorLimit ) THEN
-       CALL Info( 'RefineMesh', &
-            'Mesh convergence limit reached. I will do nothing.', Level=6 )
-       GOTO 10
+    !PRINT *,'RefMesh level:',RefMesh % AdaptiveDepth, MinDepth, MaxDepth
+    
+    IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
+      CALL Info( 'RefineMesh', 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+      RefMesh % OUtputActive = .TRUE.      
+      RefMesh % Parent % OutputActive = .FALSE.      
+      GOTO 10
     END IF
 
 !
@@ -405,7 +416,7 @@ CONTAINS
 #ifdef HAVE_MMG
          CALL Info('RefineMesh','Using MMG libary for mesh refinement',Level=5)
          NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
-                  NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
+             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
          CALL Fatal('Remesh','Remeshing requested with MMG but not compiled with!')
 #endif          
@@ -427,6 +438,9 @@ CONTAINS
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
       CALL Info( 'RefineMesh','Current mesh seems fine. I will do nothing.', Level=6 )
+      !PRINT *,'Active:',RefMesh % OutputActive, Refmesh % Parent % OutputActive
+      RefMesh % OUtputActive = .TRUE.
+      RefMesh % Parent % OutputActive = .FALSE.
       GOTO 10
     ELSE
       CALL SetMeshMaxDofs(NewMesh)
@@ -480,13 +494,20 @@ CONTAINS
     CALL MakeDirectory( TRIM(path) // CHAR(0) )
 
     IF ( ListGetLogical( Solver % Values, 'Adaptive Save Mesh', Found ) ) THEN
-      CALL WriteMeshToDisk( NewMesh, Path )
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL WriteMeshToDisk2( Model, NewMesh, Path, ParEnv % MyPe )
+      ELSE
+        CALL WriteMeshToDisk( NewMesh, Path )
+      END IF
     END IF
       
 !   Initialize local variables for the new mesh:
 !   --------------------------------------------
     NULLIFY( NewMesh % Variables )
 
+    CALL TransferCoordAndTime( RefMesh, NewMesh ) 
+
+#if 0
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
          'Coordinate 1', 1, NewMesh % Nodes % x )
 
@@ -524,7 +545,8 @@ CONTAINS
     Var => VariableGet( RefMesh % Variables,'Nonlin iter',ThisOnly=.TRUE. )
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
                  'Nonlin iter', 1, Var % Values )
-
+#endif
+    
     ! Initialize the field variables for the new mesh. These are
     ! interpolated from the old meshes variables. Vector variables
     ! are in the variable lists in two ways: as vectors and as
@@ -532,9 +554,17 @@ CONTAINS
     ! first!!!!!
     ! -----------------------------------------------------------
     CALL SetCurrentMesh( Model, NewMesh )
+
+    CALL Info('RefineMesh','Interpolate vectors from old mesh to new mesh!',Level=7)    
     Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
-       IF ( Var % DOFs > 1 ) THEN
+      ! This cycles global variable such as time etc. 
+      IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
+
+      IF ( Var % DOFs > 1 ) THEN
           NewVar => VariableGet( NewMesh % Variables,Var % Name,.FALSE. )
           k = SIZE( NewVar % Values )
           IF ( ASSOCIATED( NewVar % Perm ) ) THEN
@@ -555,24 +585,30 @@ CONTAINS
        END IF
        Var => Var % Next
     END DO
+    CALL Info('RefineMesh','Interpolation to new mesh done!',Level=20)    
 
 !   Second time around, update scalar variables and
 !   vector components:
 !   -----------------------------------------------
+    CALL Info('RefineMesh','Interpolate scalars from old mesh to new mesh!',Level=7)    
     Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
 
+       ! This cycles global variable such as time etc. 
        IF( SIZE( Var % Values ) == Var % DOFs ) THEN
          Var => Var % Next
          CYCLE
        END IF
-
+      
        SELECT CASE( Var % Name )
-       CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3', 'time' , &
-             'timestep', 'timestep size', 'timestep interval', &
-             'coupled iter', 'nonlin iter' )
+         
+       CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
+         CONTINUE
+
        CASE DEFAULT
           IF ( Var % DOFs == 1 ) THEN
+
+             ! Skip the fields related to adaptivity since they are specific to each mesh 
              Found = .FALSE.
              Found = Found .OR. INDEX( Var % Name, '.error'  ) > 0
              Found = Found .OR. INDEX( Var % Name, '.eref'   ) > 0
@@ -585,42 +621,45 @@ CONTAINS
                 END IF
              END IF
 
-             NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
-             k = SIZE( NewVar % Values )
-             IF ( ASSOCIATED( NewVar % Perm ) ) THEN
-                k = COUNT( NewVar % Perm > 0 )
+             IF( NoInterp ) THEN
+               ! Add field without interpolation
+               NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
+               IF(.NOT. ASSOCIATED(NewVar) ) THEN
+                 CALL VariableAddVector( NewMesh % Variables, NewMesh, Solver,&
+                     Var % Name,Var % DOFs)
+                 NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
+               END IF               
+               NewVar % Norm = Var % Norm
+             ELSE
+               ! Interpolate scalar variables using automatic internal interpolation 
+               NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
+               k = SIZE( NewVar % Values )
+               IF ( ASSOCIATED( NewVar % Perm ) ) THEN
+                 k = COUNT( NewVar % Perm > 0 )
+               END IF
+               NewVar % Norm = SQRT( SUM(NewVar % Values**2) / k )
              END IF
-             NewVar % Norm = SQRT( SUM(NewVar % Values**2) / k )
+               
           END IF
        END SELECT
        Var => Var % Next
     END DO
 
 !-------------------------------------------------------------------    
-    WRITE( Message, * ) &
-        'Mesh variable update time (cpu-secs):            ',CPUTime()-t
+    WRITE( Message, * ) 'Mesh variable update time (cpu-secs):            ',CPUTime()-t
     CALL Info( 'RefineMesh', Message, Level = 6 )
 !-------------------------------------------------------------------    
 
 !
 !   Update Solver structure to use the new mesh:
 !   ---------------------------------------------    
-    Solver % Mesh => NewMesh
     CALL MeshStabParams( NewMesh )
 !
 !   Nothing computed on this mesh yet:
 !   ----------------------------------
     NewMesh % SavesDone    = 0  ! start new output file
     NewMesh % OutputActive = .FALSE.
-
     NewMesh % Changed   = .TRUE.
-
-!
-!   Update the solvers variable pointer:
-!   ------------------------------------    
-    Solver % Variable => VariableGet( Solver % Mesh % Variables, &
-            Solver % Variable % Name, ThisOnly=.TRUE. )
-    Solver % Variable % PrimaryMesh => NewMesh
 
 !
 !   Create matrix structures for the new mesh:
@@ -630,11 +669,19 @@ CONTAINS
 !
 !   Try to account for the reordering of DOFs
 !   due to bandwidth optimization:
-!   -----------------------------------------
+    !   -----------------------------------------
 #if 1
-    CALL UpdateSolverMesh( Solver, NewMesh )
+    CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
 
 #else
+!
+!   Update the solvers variable pointer:
+!   ------------------------------------    
+    Solver % Mesh => NewMesh
+
+    Solver % Variable => VariableGet( Solver % Mesh % Variables, &
+            Solver % Variable % Name, ThisOnly=.TRUE. )
+    Solver % Variable % PrimaryMesh => NewMesh
 
     GlobalBubbles = ListGetLogical( Solver % Values, &
           'Bubbles in Global System', Found )
@@ -665,7 +712,7 @@ CONTAINS
     IF ( ASSOCIATED( Solver % Matrix ) ) THEN
        CALL FreeMatrix( Solver % Matrix )
        NULLIFY( Solver % Matrix )
-    END IF
+     END IF
 
 !   Solver % Matrix % Child  => NewMatrix
     NewMatrix % Parent => Solver % Matrix
@@ -685,21 +732,6 @@ CONTAINS
        n = Solver % Variable % DOFs
        ALLOCATE( Work(SIZE(Permutation)) )
        DO i=0,n-1
-#if 0
-          WHERE( Permutation > 0 )
-             Solver % Variable % Values(n*Permutation-i) = &
-                  Solver % Variable % Values(n*Solver % Variable % Perm-i)
-          END WHERE
- 
-          IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-             DO j=1,SIZE( Solver % Variable % PrevValues,2)
-               WHERE( Permutation > 0 )
-                 Solver % Variable % PrevValues(n*Permutation-i,j) = &
-                  Solver % Variable % PrevValues(n*Solver % Variable % Perm-i,j)
-               END WHERE
-             END DO
-          END IF
-#else
           Work = Solver % Variable % Values(i+1::n)
           DO j=1,SIZE(Permutation)
              IF ( Permutation(j) > 0 ) THEN
@@ -718,16 +750,20 @@ CONTAINS
                END DO
              END DO
           END IF
-#endif
        END DO
        k = SIZE(Permutation)
        Solver % Variable % Perm(1:k) = Permutation
        DEALLOCATE( Permutation, Work )
     END IF
 
-    CALL AllocateVector( Solver % Matrix % RHS, SIZE(Solver % Variable % Values) )
-    Solver % Matrix % RHS = 0.0d0
-
+    IF( ASSOCIATED( Solver % Matrix ) ) THEN
+      IF(.NOT. ASSOCIATED( Solver % Matrix % Rhs ) ) THEN
+        CALL AllocateVector( Solver % Matrix % RHS, SIZE(Solver % Variable % Values) )
+        Solver % Matrix % RHS = 0.0d0
+      END IF
+    END IF
+      
+    
 !   Transient case additional allocations:
 !   --------------------------------------
     IF (ListGetString(Model % Simulation,'Simulation Type')=='transient') THEN
@@ -747,7 +783,7 @@ CONTAINS
                  Solver % NOFEigenValues )
     END IF
 #endif
-    
+          
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
     WRITE( Message, * ) 'Matrix structures update time (cpu-secs):        ',CPUTime()-t
@@ -759,23 +795,27 @@ CONTAINS
 !   ---------------------------------------------------------
     Mesh => RefMesh % Parent
     DO WHILE( ASSOCIATED(Mesh) )
-       sMesh => Mesh % Parent
+      sMesh => Mesh % Parent
        IF ( Mesh % AdaptiveDepth /= 0 ) THEN
           IF ( ASSOCIATED( Mesh % Parent ) ) THEN
-             Mesh % Parent % Child => Mesh % Child
+            Mesh % Parent % Child => Mesh % Child                        
           END IF
-
+                   
           IF ( ASSOCIATED(Mesh % Child) ) THEN
-             Mesh % Child % Parent => Mesh % Parent
+            Mesh % Child % Parent => Mesh % Parent
+            ! Eliminate the mesh to be released also from here!
+            Mesh % Child % Next => Mesh % Next 
           END IF
 
+          CALL Info('RefineMesh','Releasing mesh: '//TRIM(Mesh % Name),Level=8)
           CALL ReleaseMesh( Mesh )
-
+                               
           Mesh % Child  => NULL()
           Mesh % Parent => NULL()
        END IF
        Mesh => sMesh
-    END DO
+     END DO
+
 
 !------------------------------------------------------------------------------
 
@@ -816,6 +856,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Lambda
+    INTEGER, ALLOCATABLE :: Hcount(:)
+    TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
 
     DO i=1,RefMesh % NumberOfNodes
@@ -836,7 +878,85 @@ CONTAINS
 
       HValue(i) = Lambda        
     END DO
-  
+    
+    IF( ParEnv % PEs > 1 ) THEN
+      ALLOCATE(Hcount(SIZE(Hvalue)))
+      Hcount = 0
+
+      A => CurrentModel % Solver % Matrix
+
+      DO i=1,RefMesh % NumberOfNodes
+        ! Deal with interface nodes here
+        IF(.NOT. A % ParallelInfo % NodeInterface(i)) CYCLE
+        Hvalue(i) = 0.0_dp
+        ! Go through all connected nodes
+        DO j=A % Rows(i),A % Rows(i+1)-1
+          k = A % Cols(j)
+
+          ! Skip oneself and other interface nodes
+          IF(i==k) CYCLE          
+          IF(A % ParallelInfo % NodeInterface(k)) CYCLE
+
+          ! Add the observation
+          Hvalue(i) = Hvalue(i) + Hvalue(k)
+          Hcount(i) = Hcount(i) + 1
+        END DO
+      END DO
+
+      ! Perform parallel summation
+      CALL ParallelSumVector( A, Hvalue )
+      CALL ParallelSumVectorInt( A, Hcount ) 
+
+      n = 0
+      DO i=1,RefMesh % NumberOfNodes
+          IF(.NOT. A % ParallelInfo % NodeInterface(i)) CYCLE
+        IF( Hcount(i) == 0 ) THEN
+          n = n+1
+        ELSE          
+          Hvalue(i) = Hvalue(i) / Hcount(i) 
+        END IF
+      END DO
+
+      n = ParallelReduction(n)
+      CALL Info('ComputeDesiredHvalue','Nodes '//TRIM(I2S(n))//' surrounded by orphans only!')
+      IF( n > 0 ) THEN
+        Hcount = -Hcount
+                
+        DO i=1,RefMesh % NumberOfNodes
+          IF(.NOT. A % ParallelInfo % NodeInterface(i)) CYCLE
+          IF(Hcount(i) /= 0) CYCLE
+          Hvalue(i) = 0.0_dp
+          DO j=A % Rows(i),A % Rows(i+1)-1
+            k = A % Cols(j)
+            IF(i==k) CYCLE
+            IF(A % ParallelInfo % NodeInterface(k) .AND. Hcount(k)==0) CYCLE
+            Hvalue(i) = Hvalue(i) + Hvalue(k)
+            Hcount(i) = Hcount(i) + 1
+          END DO
+        END DO
+        
+        CALL ParallelSumVector( A, Hvalue )
+        CALL ParallelSumVectorInt( A, Hcount ) 
+
+        n = 0
+        DO i=1,RefMesh % NumberOfNodes
+          IF(.NOT. A % ParallelInfo % NodeInterface(i)) CYCLE
+          IF( Hcount(i) == 0 ) THEN
+            n = n+1
+          ELSE IF( Hcount(i) > 0 ) THEN         
+            Hvalue(i) = Hvalue(i) / Hcount(i) 
+          END IF
+        END DO
+
+        CALL Info('ComputeDesiredHvalue','Nodes '//TRIM(I2S(n))//' surrounded by orphans only again!')        
+      END IF
+                   
+    END IF
+
+    IF( InfoActive(20) ) THEN
+      CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Hvalue')             
+    END IF
+    
   END SUBROUTINE ComputeDesiredHvalue
 
 
@@ -852,10 +972,11 @@ CONTAINS
     LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Lambda
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
+    LOGICAL :: Success, Rebalance
 !------------------------------------------------------------------------------
 
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
@@ -864,13 +985,32 @@ CONTAINS
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
 
     IF( RefMesh % MeshDim == 2 ) THEN
+      CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
       NewMesh => MMG2D_ReMesh( RefMesh, Var )
     ELSE
-      CALL Fatal('MMG_ReMesh','Not yet implemented in 3D')
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
+        CALL DistributedRemeshParMMG(Model, RefMesh, TmpMesh,&
+            Params = Solver % Values, HVar = Var )
+        CALL RenumberGElems(TmpMesh)
+        Rebalance = ListGetLogical(Model % Solver % Values, "Adaptive Rebalance", Found, DefValue = .TRUE.)
+        IF(Rebalance) THEN
+          CALL Zoltan_Interface( Model, TmpMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )          
+          NewMesh => RedistributeMesh(Model, TmpMesh, .TRUE., .FALSE.)
+          CALL ReleaseMesh(TmpMesh)
+        ELSE
+          NewMesh => TmpMesh          
+        END IF
+      ELSE              
+        CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
+        CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Solver % Values, &
+            HVar = Var, Success = Success )
+      END IF
+      CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
     END IF
 
 !------------------------------------------------------------------------------
-  END FUNCTION MMG_ReMesh
+  END FUNCTION MMG_Remesh
 !------------------------------------------------------------------------------
 #endif
 
@@ -1040,8 +1180,6 @@ CONTAINS
 
        IF ( RefElement % Splitted > 0 ) MarkedElements = MarkedElements  + 1
     END DO
-
-!   PRINT*,MarkedElements,' marked elements'
 
     IF ( MarkedElements == 0 ) THEN
        RefMesh % Changed = .FALSE.
