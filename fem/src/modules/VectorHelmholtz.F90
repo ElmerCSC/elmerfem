@@ -209,7 +209,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
     REAL(KIND=dp) :: Norm
     INTEGER :: Active,k,n,nd,t
-    LOGICAL  :: Found, InitHandles 
+    LOGICAL :: InitHandles 
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -544,7 +544,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: B, L(3), muinv
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ, Normal(3), tanWBasis(3)
-    LOGICAL :: Stat
+    LOGICAL :: Stat, Found, UpdateStiff
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q
     TYPE(Nodes_t), SAVE :: Nodes
@@ -585,6 +585,7 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
+    UpdateStiff = .FALSE.
     DO t=1,IP % n      
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, &
@@ -594,6 +595,9 @@ CONTAINS
 
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
+
+      IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      UpdateStiff = .TRUE.
 
       ! The ListGetElement function does not yet work for taking derivatives
       L = L + MATMUL(TemPot(1:n), dBasisdx(1:n,1:3))
@@ -622,13 +626,13 @@ CONTAINS
 
     END DO
 
-   IF( HasPrecDampCoeff .AND. ABS(B)>AEPS) THEN
-     !CALL DefaultUpdatePrec(STIFF)
-     CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
-   END IF
-   
-   CALL DefaultUpdateEquations(STIFF,FORCE,Element)   
-   
+    IF (UpdateStiff) THEN
+      IF (HasPrecDampCoeff) THEN
+        !CALL DefaultUpdatePrec(STIFF)
+        CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
+      END IF
+      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
