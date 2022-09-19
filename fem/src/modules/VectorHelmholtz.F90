@@ -408,7 +408,7 @@ CONTAINS
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat
-    INTEGER :: t, i, j, m
+    INTEGER :: t, i, j, m, np, p, q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
@@ -447,6 +447,8 @@ CONTAINS
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
+    np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
     DO t=1,IP % n
 
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -464,27 +466,31 @@ CONTAINS
       END IF
 
       ! This is present always
-      DO i = 1,nd
-        DO j = 1,nd
+      DO p = 1,nd-np
+        i = p+np
+        DO q = 1,nd-np
+          j = q+np
           ! the mu^-1 curl E . curl v 
           STIFF(i,j) = STIFF(i,j) + muinv * &
-              SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
+              SUM(RotWBasis(p,:) * RotWBasis(q,:)) * weight
         END DO
       END DO
 
       ! Conductivity may also be accounted for
       Cond = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF( Found ) THEN
-        DO i = 1,nd
-          DO j = 1,nd
+        DO p = 1,nd-np
+          i = p+np
+          DO q = 1,nd-np
+            j = q+np
             ! the term i\omega\sigma E.v
             STIFF(i,j) = STIFF(i,j) - im * Omega * Cond * &
-                SUM(WBasis(j,:) * WBasis(i,:)) * weight
+                SUM(WBasis(q,:) * WBasis(p,:)) * weight
           END DO
         END DO
       END IF
 
-      ! If not low frequency model, assembly the term that makes this the wave equation 
+      ! If not low frequency model, assemble the term that makes this the wave equation 
       IF(.NOT. LowFrequencyModel ) THEN
         Eps = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )        
         IF( Found ) THEN
@@ -493,11 +499,13 @@ CONTAINS
           Eps = Eps0 
         END IF
           
-        DO i = 1,nd
-          DO j = 1,nd            
+        DO p = 1,nd-np
+          i = p+np
+          DO q = 1,nd-np
+            j = q+np
             ! the term \omega^2 \epsilon E.v
             MASS(i,j) = MASS(i,j) - Omega**2 * Eps * &
-                SUM(WBasis(j,:) * WBasis(i,:)) * weight
+                SUM(WBasis(q,:) * WBasis(p,:)) * weight
           END DO
         END DO
       END IF
@@ -505,11 +513,21 @@ CONTAINS
       ! Potential current source 
       L = ListGetElementComplex3D( CurrCoeff_h, Basis, Element, Found, GaussPoint = t )      
       IF( Found ) THEN
-        DO i = 1,nd
-          FORCE(i) = FORCE(i) + im * Omega * (SUM(L*WBasis(i,:))) * weight
+        DO p = 1,nd-np
+          i = p+np
+          FORCE(i) = FORCE(i) + im * Omega * (SUM(L*WBasis(p,:))) * weight
         END DO
       END IF
-                  
+      
+      ! Additional terms related to a gauge condition
+      DO i = 1,np
+        DO q = 1,nd-np
+          j = q+np
+          STIFF(i,j) = STIFF(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+          STIFF(j,i) = STIFF(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+        END DO
+      END DO
+            
     END DO
     
     IF( HasPrecDampCoeff ) THEN
@@ -571,7 +589,6 @@ CONTAINS
     CALL GetElementNodes( Nodes, Element )
     
     Parent => GetBulkElementAtBoundary(Element)
-    BC => GetBC(Element) 
     
     STIFF(1:nd,1:nd) = 0.0_dp
     MASS(1:nd,1:nd)  = 0.0_dp
@@ -600,7 +617,6 @@ CONTAINS
       ! The ListGetElement function does not yet work for taking derivatives
       L = L + MATMUL(TemPot(1:n), dBasisdx(1:n,1:3))
            
-      muinv = mu0inv
       IF( ASSOCIATED( Parent ) ) THEN        
         muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
         IF( Found ) THEN
@@ -608,6 +624,8 @@ CONTAINS
         ELSE
           muinv = mu0inv
         END IF
+      ELSE
+        muinv = mu0inv
       END IF
 
       DO i = 1,nd-np
@@ -640,7 +658,7 @@ CONTAINS
  
 !> \ingroup Solvers
 !> Solver for computing derived fields from the electric field.
-!> As the initial field is computed in Hcurl space even the electric field
+!> As the initial field is computed in H(curl) space, even the electric field
 !> needs to be mapped to H0.
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
@@ -657,7 +675,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
   LOGICAL :: Found, ElementalFields
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,k,n,m,vDOFs,soln!,l
+  INTEGER :: mysolver,i,j,n,m,vDOFs,soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
@@ -703,7 +721,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
-  ! If the primary solver computed DG fields then we don't need to create DG solver on-the-fly.
+  ! If the primary solver computed DG fields, then we don't need to create DG solver on-the-fly.
   ! We only need it if we have both nodal and DG solvers needed at the same time.
   !--------------------------------------------------------------------------------------------
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
@@ -820,8 +838,8 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, NodalFields!, FluxFound
-  TYPE(ValueList_t), POINTER :: SolverParams!, EQ
+  LOGICAL :: Found, NodalFields
+  TYPE(ValueList_t), POINTER :: SolverParams
 
   SolverParams => GetSolverParams()
 
@@ -1109,7 +1127,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
 
-       ! The conductivity as a tensor not implemnted yet
+       ! The conductivity as a tensor not implemented yet
        !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
       
        J_ip = ListGetElementComplex3D( CurrCoeff_h, Basis, Element, Found, GaussPoint = j )      
