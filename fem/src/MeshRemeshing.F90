@@ -61,7 +61,6 @@ MMG5_DATA_PTR_T :: mmgMet
 MMG5_DATA_PTR_T :: mmgLs
 
 MMG5_DATA_PTR_T :: pmmgMesh
-MMG5_DATA_PTR_T :: pmmgMet
 #endif
 
 #ifdef HAVE_PARMMG
@@ -410,6 +409,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   ! Minimal mesh size:  hmin
   hmin = ListGetCReal( SolverParams,'adaptive min h', Found ) 
   IF(.NOT. Found) Hmin = ListGetCReal( SolverParams,'mmg hmin', Found)
+  
   IF (Found) THEN
     CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hmin,Hmin,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
@@ -446,7 +446,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   ! Control gradation
   Pval = ListGetConstReal( SolverParams, 'mmg hgrad', Found)
   IF (Found) THEN
-    CALL PMMG_SET_DPARAMETER(mmgMesh,PMMGPARAM_hgrad,Pval,ierr)
+    CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgrad,Pval,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
          'CALL TO MMG3D_SET_DPARAMETER <hgrad> Failed')
   END IF
@@ -1385,7 +1385,8 @@ END SUBROUTINE RemeshMMG3D
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount,&
+    NodeFixed,ElemFixed,Params)
 
  TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
@@ -1414,7 +1415,6 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   CHARACTER(*), PARAMETER :: FuncName = "SequentialRemeshParMMG3D"
   SAVE :: WorkReal 
 
-#if 0
 #ifdef HAVE_PARMMG
 
   Debug = .TRUE.
@@ -1456,7 +1456,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   !ALLOCATE(hausdarray(MaxRemeshIter))
   !hausdarray = WorkArray(:,1)
   !NULLIFY(WorkArray)
-  RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality",DefValue=0.0001_dp)
+  RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality",Found, DefValue=0.0001_dp)
   AnisoFlag = ListGetLogical(FuncParams, "MMG Anisotropic", DefValue=.TRUE.)
 
   SaveMMGMeshes = ListGetLogical(FuncParams,"Save RemeshMMG3D Meshes", DefValue=.FALSE.)
@@ -1478,7 +1478,6 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
     NBdry = InMesh % NumberOfBoundaryElements
 
     IF(AnisoFlag) THEN
-
       WorkMesh => Model % Mesh
       Model % Mesh => InMesh
 
@@ -1488,32 +1487,27 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       Metric = 0.0
       DO i=1,NNodes
         NodeNum = i
-
         CALL ListGetRealArray(FuncParams,"MMG Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
 
         !Metric = 1.0/(edge_length**2)
         Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
         Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
         Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
-
       END DO
 
       Model % Mesh => WorkMesh
       WorkMesh => NULL()
-
     ELSE
-
       SolType = MMG5_Scalar
       ALLOCATE(Metric(NNodes, 1))
       DO i=1,NNodes
         NodeNum = i
         Metric(i,:) = ListGetReal(FuncParams,"MMG Target Length", 1, NodeNum, UnfoundFatal=.TRUE.)
       END DO
-
     END IF
 
     body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-    body_offset = 0
+    !body_offset = 0
 
     nBCs = CurrentModel % NumberOfBCs
     IF( body_offset > 0 ) THEN
@@ -1522,29 +1516,11 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       END DO
     END IF
       
-    MMGVar % Values(1) = 0.0_dp
-    mmgloops = 0
-    
-    Success=.TRUE.
-    mmgloops = 0
 
     DO mmgloops = 1, MaxRemeshIter 
-
       
-      MMGVar % Values(1) = MMGVar % Values(1) + 1.0_dp
-
-      ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
-      CALL Set_PMMG_Parameters(FuncParams, mmgloops > 1, Parallel )
-        
-      !hmin = hminarray(mmgloops)
-      !Hausd = hausdarray(mmgloops)
-      
-      !WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
-      !CALL INFO(FuncName, Message)
-      
-      
-      pmmgMesh = 0
-      pmmgMet  = 0
+      Success = .TRUE.
+      MMGVar % Values(1) = 1.0_dp * mmgloops
       
       !---------------------------------
       ! Issue here: MMG3D will 'helpfully' add any
@@ -1558,11 +1534,21 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       !----------------------------------
       CALL Info(FuncName,'Initiating parmmg mesh',Level=20)
       
+      pmmgMesh = 0
       CALL PMMG_Init_parMesh(PMMG_ARG_start, &
           PMMG_ARG_ppParMesh,pmmgMesh, PMMG_ARG_pMesh,PMMG_ARG_pMet, &
           PMMG_ARG_dim,%val(3),PMMG_ARG_MPIComm,%val(ELMER_COMM_WORLD), &
           PMMG_ARG_end)
       
+      ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
+      CALL Set_PMMG_Parameters(FuncParams, mmgloops > 1 )
+        
+      !hmin = hminarray(mmgloops)
+      !Hausd = hausdarray(mmgloops)
+      
+      !WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
+      !CALL INFO(FuncName, Message)
+            
       IF(Boss) THEN
         CALL Info(FuncName,'Setting mesh ....',Level=20)
         IF (PRESENT(PairCount)) THEN
@@ -1633,6 +1619,9 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
         IF(SaveMMGSols) THEN
           WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
           CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
+        END IF
+        IF( SaveMMGMeshes .OR. SaveMMGSols ) THEN
+          CALL Info(FuncName,'Saving of PMMG files finished', Level=20)
         END IF
       END IF
 
@@ -1709,7 +1698,6 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       END DO
     END IF
   END IF
-#endif
   
 #else
   CALL Fatal(FuncName, "Remeshing utility PMMG has not been installed")
@@ -2204,7 +2192,8 @@ END SUBROUTINE Get_ParMMG_Mesh
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params,HVar,Angle)
+SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
+    NodeFixed,ElemFixed,Params,HVar,Angle)
 
   TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
@@ -2252,8 +2241,11 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   mmgVar % Values(1) = 0.0_dp
 
   ! params must be provided as not a global mesh
+  IF(.NOT. ASSOCIATED( Params ) ) THEN
+    CALL Fatal(FuncName,'"Params" not associated!')
+  END IF
   FuncParams => Params
-
+  
   MaxRemeshIter = ListGetInteger( FuncParams,'Adaptive Max Depth', Found )
   IF(.NOT. Found ) MaxRemeshIter = 10
     
@@ -2330,11 +2322,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
     ! Enable external depende on "mmg loop"
     mmgVar % Values(1) = 1.0_dp * mmgloops 
 
-    ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
-    CALL Set_PMMG_Parameters(FuncParams, mmgloops > 1 )
-    
     pmmgMesh = 0
-    pmmgMet  = 0
     
     !---------------------------------
     ! Issue here: MMG3D will 'helpfully' add any
@@ -2352,6 +2340,9 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
         PMMG_ARG_dim,%val(3),PMMG_ARG_MPIComm,%val(ELMER_COMM_WORLD), &
         PMMG_ARG_end)
 
+    ! If this is retrial then get only selected parameters again that may depend on the variable "MMG Loop".
+    CALL Set_PMMG_Parameters(FuncParams, mmgloops > 1 )
+        
     IF (Present(PairCount)) THEN
       CALL SET_ParMMG_MESH(InMesh,Parallel,EdgePairs,PairCount)
     ELSE
