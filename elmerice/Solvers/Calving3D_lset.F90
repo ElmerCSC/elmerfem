@@ -1585,11 +1585,11 @@
         !  END IF
         !END DO
 
-        IF(.NOT. Found) THEN
-          WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
-              " to switch off after calving."
-          CALL Fatal(SolverName,Message)
-        END IF
+        !IF(.NOT. Found) THEN
+        !  WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+        !      " to switch off after calving."
+        !  CALL Fatal(SolverName,Message)
+        !END IF
     END IF
 
     ! because isomesh has no bulk?
@@ -1885,6 +1885,21 @@ CONTAINS
       DO j=1, Nl-1
         a1 = (/xL(j), yL(j)/)
         a2 = (/xL(j+1), yL(j+1)/)
+        IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a1)) THEN
+          DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+            CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                           intersect, does_intersect )
+            IF(does_intersect) a1 = intersect
+          END DO
+        END IF
+        IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a2)) THEN
+          DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+            CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                           intersect, does_intersect )
+            IF(does_intersect) a2 = intersect
+          END DO
+        END IF
+        IF(a1(1)==a2(1) .AND. a1(2)==a2(2)) CYCLE
         CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
         IF(.NOT. does_intersect) CYCLE
         tempdist = PointDist2D(b1,intersect)
@@ -1900,6 +1915,21 @@ CONTAINS
         DO j=1, Nr-1
           a1 = (/xR(j), yR(j)/)
           a2 = (/xR(j+1), yR(j+1)/)
+          IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a1)) THEN
+            DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+              CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                             intersect, does_intersect )
+              IF(does_intersect) a1 = intersect
+            END DO
+          END IF
+          IF(PointInPolygon2D(Polygon(:, PolyStart(NodeClosestCrev(i)):PolyEnd(NodeClosestCrev(i))),a2)) THEN
+            DO k=CrevStart(NodeClosestCrev(i)), CrevEnd(NodeClosestCrev(i))-1
+              CALL LineSegmentsIntersect (a1, a2, (/CrevX(k), CrevY(k)/), (/CrevX(k+1), CrevY(k+1)/),&
+                             intersect, does_intersect )
+              IF(does_intersect) a2 = intersect
+            END DO
+          END IF
+          IF(a1(1)==a2(1) .AND. a1(2)==a2(2)) CYCLE
           CALL LineSegmLineIntersect (a1, a2, b1, b2, intersect, does_intersect )
           IF(.NOT. does_intersect) CYCLE
           tempdist = PointDist2D(b1,intersect)
@@ -1907,6 +1937,7 @@ CONTAINS
           IF(secdist > tempdist) CYCLE
           IF(tempdist < mindist) THEN
             mindist = tempdist
+            FoundIntersect = .TRUE.
           END IF
         END DO
       END IF
