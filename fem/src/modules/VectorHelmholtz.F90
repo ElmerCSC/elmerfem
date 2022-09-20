@@ -127,7 +127,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, HasPrecDampCoeff
+  LOGICAL :: Found, HasPrecDampCoeff, MassProportional
   REAL(KIND=dp) :: Omega, mu0inv, eps0
   INTEGER :: i, NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
@@ -161,6 +161,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
   HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
+  IF (HasPrecDampCoeff) MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
 
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
@@ -405,9 +406,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: eps, muinv, L(3)
     REAL(KIND=dp) :: DetJ, weight, Cond
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), PREC(:,:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    LOGICAL :: Stat
+    LOGICAL :: Stat, WithGauge
     INTEGER :: t, i, j, m, np, p, q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -415,12 +416,12 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrCoeff_h, MuCoeff_h
 
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, &
-        MASS, STIFF, DAMP, PREC, FORCE
+        MASS, STIFF, Gauge, PREC, FORCE
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), &
-          MASS(m,m), STIFF(m,m), DAMP(m,m), PREC(m,m), FORCE(m) )      
+          MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), FORCE(m) )      
       AllocationsDone = .TRUE.
     END IF
 
@@ -437,17 +438,19 @@ CONTAINS
  
     STIFF(1:nd,1:nd) = 0.0_dp
     MASS(1:nd,1:nd)  = 0.0_dp
-    DAMP(1:nd,1:nd)  = 0.0_dp
     FORCE(1:nd) = 0.0_dp
 
-    
-    IF( HasPrecDampCoeff ) PREC = 0.0_dp    
+    np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    WithGauge = np == n
+    IF (WithGauge) THEN
+      Gauge(1:nd,1:nd)  = 0.0_dp
+    END IF
+
+    IF (HasPrecDampCoeff) PREC = 0.0_dp    
     
     ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-
-    np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     DO t=1,IP % n
 
@@ -520,23 +523,29 @@ CONTAINS
       END IF
       
       ! Additional terms related to a gauge condition
-      DO i = 1,np
-        DO q = 1,nd-np
-          j = q+np
-          STIFF(i,j) = STIFF(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-          STIFF(j,i) = STIFF(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+      IF (WithGauge) THEN
+        DO i = 1,np
+          DO q = 1,nd-np
+            j = q+np
+            Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+            Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+          END DO
         END DO
-      END DO
-            
+      END IF
     END DO
-    
+
     IF( HasPrecDampCoeff ) THEN
-      PREC = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
-      !PREC = -PrecDampCoeff * (MASS(1:nd,1:nd))
-      !CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + MASS(1:nd,1:nd) + DAMP(1:nd,1:nd))
+      IF (MassProportional) THEN
+        PREC = -PrecDampCoeff * (MASS(1:nd,1:nd))
+      ELSE
+        PREC = PrecDampCoeff * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
+      END IF
     END IF
 
     STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
+    IF (WithGauge) THEN 
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Gauge(1:nd,1:nd)
+    END IF
 
     IF( HasPrecDampCoeff ) THEN
       CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + PREC(1:nd,1:nd))
@@ -642,8 +651,11 @@ CONTAINS
 
     IF (UpdateStiff) THEN
       IF (HasPrecDampCoeff) THEN
-        !CALL DefaultUpdatePrec(STIFF)
-        CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
+        IF (MassProportional) THEN
+          CALL DefaultUpdatePrec(STIFF)
+        ELSE
+          CALL DefaultUpdatePrec(PrecDampCoeff*STIFF + STIFF)
+        END IF
       END IF
       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END IF
