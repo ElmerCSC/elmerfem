@@ -77,23 +77,36 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion
+  LOGICAL :: Found, SecondOrder, PiolaVersion, UseGauge
 
   SolverParams => GetSolverParams()  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
+    SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
     IF( SecondOrder ) THEN
       PiolaVersion = .TRUE.
     ELSE
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
     END IF
-    IF( SecondOrder ) THEN
-      CALL ListAddString( SolverParams, "Element", &
-          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-    ELSE IF ( PiolaVersion ) THEN    
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+
+    UseGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
+    IF (UseGauge) THEN
+      IF ( SecondOrder ) THEN
+        CALL ListAddString( SolverParams, "Element", &
+            "n:1 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+      ELSE IF ( PiolaVersion ) THEN    
+        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      END IF      
     ELSE
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      IF( SecondOrder ) THEN
+        CALL ListAddString( SolverParams, "Element", &
+            "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+      ELSE IF ( PiolaVersion ) THEN    
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      END IF
     END IF
   END IF
 
