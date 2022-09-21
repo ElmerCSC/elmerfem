@@ -1471,7 +1471,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     CALL INFO(SolverName, 'Cannot find Calving Pause Solvers so assuming calving has not pasued time.')
     CalvingPauseSolvers = .TRUE.
   END IF
-  IF(.NOT. CalvingPauseSolvers) THEN
+  IF(.NOT. CalvingPauseSolvers .OR. FirstTime) THEN
     !Switch off solvers
     DO Num = 1,999
       WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
