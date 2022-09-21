@@ -72,7 +72,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !--------------------------------------
   TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh,DistMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
@@ -95,7 +95,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
-       SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv
+       SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv,&
+       SecondaryRebalance
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
@@ -190,6 +191,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   END IF
   FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", Default=.TRUE.)
   SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", Default=.FALSE.)
+  SecondaryRebalance = ListGetLogical(SolverParams,"ParMetis Secondary Rebalance", Default=.FALSE.)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -1095,7 +1097,22 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
 
-   FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+   IF(SecondaryRebalance) THEN
+      DistMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+
+      CALL Zoltan_Interface( Model, DistMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+
+      FinalMesh => RedistributeMesh(Model, DistMesh, .TRUE., .FALSE.)
+
+      IF(ASSOCIATED(DistMesh % Repartition)) THEN
+          DEALLOCATE(DistMesh % Repartition)
+          DistMesh % Repartition => NULL()
+      END IF
+
+      CALL ReleaseMesh(DistMesh)
+   ELSE
+      FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+   END IF
 
    CALL CheckMeshQuality(FinalMesh)
 
