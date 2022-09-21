@@ -20231,6 +20231,7 @@ CONTAINS
     Mesh % NumberOfNodes = 0
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
+    Mesh % OutputActive = .FALSE.
     
     CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
     

@@ -398,7 +398,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 #ifdef HAVE_MMG
   REAL(KIND=dp) :: Pval
   LOGICAL :: AngleDetect
-  INTEGER :: verbosity,MeMIncrease,Bucket,GMshOption,ierr
+  INTEGER :: verbosity,MeMIncrease,Bucket,GMshOption,ierr,niter
   REAL(KIND=dp) :: Hmin, Hmax, HSiz
   LOGICAL :: DebugMode,NoInsert,NoSwap,NoMove,NoSurf
   LOGICAL :: Found,Debug=.FALSE.,ParMMG
@@ -530,6 +530,14 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
     IF ( ierr == 0 ) CALL Fatal(FuncName,&
          'CALL TO MMG3D_SET_IPARAMETER <No surf> Failed')
   END IF
+
+  niter = ListGetInteger(SolverParams,'mmg niter',Found ) 
+  IF( Found ) THEN
+    CALL PMMG_SET_IPARAMETER(pmmgMesh, PMMGPARAM_niter,niter,ierr) 
+    IF ( ierr == 0 ) CALL Fatal(FuncName,&
+         'CALL TO MMG3D_SET_IPARAMETER <Niter> Failed')
+  END IF
+
 !!!
 #else
   CALL Fatal('Set_MMG3D_Parameters',&
@@ -1347,10 +1355,10 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   NBdry = OutMesh % NumberOfBoundaryElements
 
   !Reset the BodyIDs (see above)
-  DO i=1,NBulk
-    OutMesh % Elements(i) % BodyID = OutMesh % Elements(i) % BodyID - body_offset
-  END DO
-
+  IF( body_offset > 0 ) THEN 
+    OutMesh % Elements(1:Nbulk) % BodyID = OutMesh % Elements(1:Nbulk) % BodyID - body_offset
+  END IF
+    
   !And delete the unneeded BC elems
   ALLOCATE(RmElement(NBulk+NBdry))
   RmElement = .FALSE.
@@ -1365,10 +1373,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
 20 CONTINUE
 
   ! if remeshing has failed need to reset body ids
-  IF(.NOT. Success) THEN
-    DO i=1,InMesh % NumberOfBulkElements
-      InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID - body_offset
-    END DO
+  IF(.NOT. Success .AND. body_offset > 0 ) THEN
+    i=InMesh % NumberOfBulkElements
+    InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID - body_offset
   END IF
 
 #else
@@ -1507,13 +1514,12 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
     END IF
 
     body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-    !body_offset = 0
+    body_offset = 0
 
     nBCs = CurrentModel % NumberOfBCs
     IF( body_offset > 0 ) THEN
-      DO i=1,InMesh % NumberOfBulkElements
-        InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
-      END DO
+      i=InMesh % NumberOfBulkElements
+      InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID + body_offset
     END IF
       
 
@@ -1672,9 +1678,9 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 
   IF(Boss) THEN
     !Reset the BodyIDs (see above)
-    DO i=1,NBulk
-      OutMesh % Elements(i) % BodyID = OutMesh % Elements(i) % BodyID - body_offset
-    END DO
+    IF( body_offset > 0 ) THEN
+      OutMesh % Elements(1:Nbulk) % BodyID = OutMesh % Elements(1:Nbulk) % BodyID - body_offset
+    END IF
 
     !And delete the unneeded BC elems
     ALLOCATE(RmElement(NBulk+NBdry))
@@ -1692,10 +1698,9 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 
   IF(Boss) THEN
     ! if remeshing has failed need to reset body ids
-    IF(.NOT. Success) THEN
-      DO i=1,InMesh % NumberOfBulkElements
-        InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID - body_offset
-      END DO
+    IF(.NOT. Success .AND. body_offset > 0 ) THEN
+      i=InMesh % NumberOfBulkElements
+      InMesh % Elements(1:i) % BodyID = InMesh % Elements(1:i) % BodyID - body_offset
     END IF
   END IF
   
@@ -1728,7 +1733,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   ALLOCATE(NodeRefs(6))
 
-  CALL Info(FuncName,'Changing MMG mesh format into Elmer mesh format in parallel',Level=10)
+  CALL Info(FuncName,'Changing Elmer mesh format into MMG mesh format in parallel',Level=10)
   
   IF(Parallel) CALL Assert(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs), FuncName,&
        "Parallel sim but no ParallelInfo % GlobalDOFs")
@@ -1944,6 +1949,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   LOGICAL, ALLOCATABLE :: UsedNode(:)
   CHARACTER(*), PARAMETER :: FuncName="Get_ParMMG_Mesh"
 
+  CALL Info(FuncName,'Getting Elmer mesh format from MMG mesh format in parallel',Level=10)
   
   Debug= .FALSE.
 
@@ -2305,8 +2311,7 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   END IF
     
   nBCs = CurrentModel % NumberOfBCs
-  body_offset = CurrentModel % NumberOfBCs + &
-      CurrentModel % NumberOfBodies + 1
+  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
   body_offset = 0
   
   IF( body_offset > 0 ) THEN

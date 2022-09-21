@@ -2489,6 +2489,7 @@ CONTAINS
                  OldMesh % Child  => NewMesh
                  NewMesh % Name = OldMesh % Name
                END IF
+
                Newmesh % OutputActive = .TRUE.
                OldMesh % OutputActive = .FALSE.
                
@@ -5298,12 +5299,29 @@ END BLOCK
      INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar, Var
-        
+     TYPE(Mesh_t), POINTER :: Mesh
+     
      SAVE TimeVar
 !------------------------------------------------------------------------------
      sOutputPE = OutputPE
 
+
+     Mesh => Solver % Mesh 
+
+     IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
+       i = 0
+       DO WHILE( ASSOCIATED( Mesh % Child ) )
+         Mesh => Mesh % Child 
+         i = i+1 
+         IF(Mesh % OutputActive) EXIT 
+       END DO
+       CALL Info('SolverActivate','Changing Solver mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
+           //TRIM(Mesh % Name),Level=7)
+       Solver % Mesh => Mesh
+     END IF
+
      CALL SetCurrentMesh( Model, Solver % Mesh )
+
      Model % Solver => Solver
      Params => ListGetSolverParams(Solver)
 

@@ -12,7 +12,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 7
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Steady State Max Iterations = 5
@@ -20,11 +20,9 @@ Simulation
 
   Output Intervals = 1
 
-  Post File = "case.vtu"
-  vtu: Partitioning Numbering = Logical True
-!  vtu: Save Solver Mesh Index = Integer 1
-!  Output File = "Ldomain.result"
-  vtu: Output Directory = File vtu
+  Post File = "case-a.vtu"
+  vtu: Output Directory = File "results"
+
 !  Max OUtput Partition = 32
 !  Output To File = True
 End
@@ -117,19 +115,22 @@ Solver 1
 
   Adaptive Mesh Refinement = True
   Adaptive Remesh = True
-  Adaptive Error Limit = 0.002
+  Adaptive Error Limit = 0.001
 
   Adaptive Remesh Use MMG = Logical True
   Adaptive Mesh Numbering = Logical False
 
-  Adaptive Max Depth = Integer 5
+  Adaptive Max Depth = Integer 3
   Adaptive Min Depth = Integer 10
+  Adaptive Output = Logical True
+
+  MMG Niter = Integer 1
 
 
 !  mmg debug mode = Logical True
 !  Adaptive Save Mesh = True
   Adaptive Cut At Levelset = Logical False
-  Adaptive Rebalance = Logical True
+  Adaptive Rebalance = Logical False
 End
 
 Solver 2

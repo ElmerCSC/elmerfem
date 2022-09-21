@@ -157,7 +157,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   RefResults => ListGetConstRealArray( Params,'Reference Sums',CalcNrm )
   CALL AscBinInitNorm(CalcNrm) 
-  
+
   ! Loop over the meshes and save them using the selected format(s).
   ! First iteration just count the meshes. 
   !----------------------------------------------------------------------------------  
@@ -167,7 +167,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   DO WHILE( ASSOCIATED(iMesh) )
     
     IF(NowSave) CALL Info(Caller,'Working on mesh: '//TRIM(iMesh % Name), Level=7 )
-    
+
     IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping inactive mesh: '//TRIM(iMesh % Name), Level=7 )
       iMesh => iMesh % next
@@ -246,15 +246,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     MeshDim = Model % Mesh % MeshDim
     nlen = StringToLowerCase( ListMeshName, iMesh % Name)
 
+    Mesh => iMesh
+
     ! In case there are multiple mesh levels one may also save coarser ones
     !----------------------------------------------------------------------
-    Mesh => iMesh
     DO i=1,MeshLevel
+      IF (.NOT.ASSOCIATED(Mesh % Parent)) EXIT
       Mesh => Mesh % Parent
-      IF (.NOT.ASSOCIATED(Mesh)) EXIT
     END DO
-    IF ( ASSOCIATED(Mesh)) THEN
 
+    IF ( ASSOCIATED(Mesh)) THEN
       CALL SetCurrentMesh( Model, Mesh )
       Model % Variables => Mesh % variables 
       SomeMeshSaved = .TRUE.
