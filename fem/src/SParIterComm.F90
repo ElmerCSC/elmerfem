@@ -67,6 +67,7 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
   INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
   INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
+  INTEGER :: PMMGPARAM_niter = PMMG_IPARAM_niter
   INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
   INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
   INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
