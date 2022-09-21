@@ -1182,7 +1182,8 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   TYPE(Variable_t), POINTER :: FlowVar, TimeVar
   TYPE(ValueList_t), POINTER :: Params, FuncParams
   LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
-       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs, GotSaveMetric
+       NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs, GotSaveMetric,&
+       CalvingPauseSolvers
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
        SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange, NewMetric
@@ -1465,29 +1466,36 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   !Set a simulation switch to be picked up by Remesher
   CALL ListAddLogical( Model % Simulation, 'Flow Solution Failed', NSFail )
 
-  !Switch off solvers
-  DO Num = 1,999
-    WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
-    EqName = ListGetString( Params, Message, Found)
-    IF( .NOT. Found) EXIT
+  CalvingPauseSolvers = ListGetLogical( Model % Simulation, 'Calving Pause Solvers', Found )
+  IF(.NOT. Found) THEN
+    CALL INFO(SolverName, 'Cannot find Calving Pause Solvers so assuming calving has not pasued time.')
+    CalvingPauseSolvers = .TRUE.
+  END IF
+  IF(.NOT. CalvingPauseSolvers) THEN
+    !Switch off solvers
+    DO Num = 1,999
+      WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
+      EqName = ListGetString( Params, Message, Found)
+      IF( .NOT. Found) EXIT
 
-    Found = .FALSE.
-    DO j=1,Model % NumberOfSolvers
-      IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
-        Found = .TRUE.
-        !Turn off (or on) the solver
-        !If NS failed to converge, (switch) off = .true.
-        CALL SwitchSolverExec(Model % Solvers(j), NSFail)
-        EXIT
+      Found = .FALSE.
+      DO j=1,Model % NumberOfSolvers
+        IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+          Found = .TRUE.
+          !Turn off (or on) the solver
+          !If NS failed to converge, (switch) off = .true.
+          CALL SwitchSolverExec(Model % Solvers(j), NSFail)
+          EXIT
+        END IF
+      END DO
+
+      IF(.NOT. Found) THEN
+        WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+            " to switch off after calving."
+        CALL Fatal(SolverName,Message)
       END IF
     END DO
-
-    IF(.NOT. Found) THEN
-      WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
-           " to switch off after calving."
-      CALL Fatal(SolverName,Message)
-    END IF
-  END DO
+  END IF
 
   IF(NSFail) THEN
     !CALL ListAddConstReal( Model % Simulation, 'Timestep Size', PseudoSSdt)
