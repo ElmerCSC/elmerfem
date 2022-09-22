@@ -263,7 +263,13 @@ CONTAINS
     
     SELECT CASE(str)
     CASE('bicgstab2')
-      IterType = ITER_BiCGStab2
+      IF (ComplexSystem ) THEN
+        ! The complex implementation of BiCGStab2 seems to suffer an issue.
+        ! Until fixed circumvent it:
+        IterType = ITER_BICGstabl
+      ELSE
+        IterType = ITER_BiCGStab2
+      END IF
     CASE('bicgstabl')
       IterType = ITER_BICGstabl
     CASE('bicgstab')
