@@ -1196,7 +1196,8 @@ CONTAINS
          FinalInterpedValues(:)
     INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,NoUsedNeighbours,&
          proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount
-    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:)
+    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:), WorkInt2(:), &
+         GDOFs(:), PartGDOFs(:), GDOFLoc(:)
     INTEGER, POINTER :: Neighbours(:)
     Debug = .TRUE.
     Parallel = ParEnv % PEs > 1
@@ -1246,8 +1247,8 @@ CONTAINS
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
          COUNT(ValidNode),' valid nodes.'
 
-    ALLOCATE(WorkInt(100))
-    WorkInt = 0
+    ALLOCATE(WorkInt(100), WorkInt2(100))
+    WorkInt = 0; WorkInt2 = 0
 
     !Cycle elements containing our node, adding other nodes to list
     NoSuppNodes = 0
@@ -1274,39 +1275,96 @@ CONTAINS
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
+        WorkInt2(NoSuppNodes) = Mesh % ParallelInfo % GlobalDOFs(idx)
       END DO
     END DO
 
-    ALLOCATE(SuppNodes(NoSuppNodes))
+    ALLOCATE(SuppNodes(NoSuppNodes), GDOFs(NoSuppNodes))
     SuppNodes = WorkInt(:NoSuppNodes)
+    GDOFs = WorkInt2(:NoSuppNodes)
 
-    !Create list of neighbour partitions (this will almost always be 0 :( )
+    !Create list of neighbour partitions
     ALLOCATE(NeighbourParts(NoNeighbours))
     counter = 0
     DO i=1,NoNeighbours+1
       IF(Mesh %  ParallelInfo % NeighbourList(NodeNumber) % &
-           Neighbours(i) == ParEnv % MyPE) CYCLE
+          Neighbours(i) == ParEnv % MyPE) CYCLE
       counter = counter + 1
       NeighbourParts(counter) = Mesh %  ParallelInfo &
-           % NeighbourList(NodeNumber) % Neighbours(i)
+          % NeighbourList(NodeNumber) % Neighbours(i)
     END DO
 
-    !If we aren't the only partition seeking this node, some supporting
-    !nodes will also belong to these partitions. Easiest way to remove
-    !duplicates is to set priority by partition number. So, if a
-    !higher partition number (in NeighbourParts) also has a given supp
-    !node, we delete it.
-    DO i=1,NoSuppNodes
-      Neighbours => Mesh % ParallelInfo % NeighbourList(WorkInt(i)) % Neighbours
-      DO j=1,SIZE(Neighbours)
-        IF(Neighbours(j) > ParEnv % MyPE .AND. ANY(NeighbourParts == Neighbours(j))) THEN
-          WorkInt(i) = 0
-          IF(Debug) PRINT*, ParEnv % MyPE, 'nodenumber', nodenumber, 'neighbours', Neighbours(j)
-          EXIT
+    ! share number of supp nodes
+    ALLOCATE(PartNoSuppNodes(NoNeighbours+1))
+    PartNoSuppNodes(1) = NoSuppNodes
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      CALL MPI_BSEND( NoSuppNodes, 1, MPI_INTEGER, proc, &
+        3998, ELMER_COMM_WORLD,ierr )
+      CALL MPI_RECV( PartNoSuppNodes(i+1) , 1, MPI_INTEGER, proc, &
+        3998, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    ! is the proc used?
+    NoUsedNeighbours=NoNeighbours
+    ALLOCATE(UseProc(NoNeighbours+1))
+    UseProc = .TRUE. ! default is to use proc
+    IF(ANY(PartNoSuppNodes == 0)) THEN
+      DO i=1, NoNeighbours+1
+        IF(PartNoSuppNodes(i) == 0) UseProc(i) = .FALSE.
+      END DO
+      !reassign noneighbours to neighbours with suppnodes
+      NoUsedNeighbours = COUNT(UseProc(2:NoNeighbours+1))
+    END IF
+
+    ! change of strategy here. previously supp nodes dropped if a larger
+    ! neighbour present. However this doesn't work for complex geometries often
+    ! resulting from repartitioning. Instead gather global indexes and remove supp
+    ! node if global index present on higher partition
+    ALLOCATE(PartGDOFs(SUM(PartNoSuppNodes)))
+    counter = 0
+    IF(NoSuppNodes /= 0) THEN
+      PartGDOFs(1:NoSuppNodes) = GDOFs
+      counter=NoSuppNodes
+    END IF
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( GDOFs, NoSuppNodes, MPI_INTEGER, proc, &
+          3999, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+        CALL MPI_RECV( PartGDOFs(counter+1:counter+PartNoSuppNodes(i+1)), &
+          PartNoSuppNodes(i+1), MPI_INTEGER, proc, &
+          3999, ELMER_COMM_WORLD, status, ierr )
+        counter=counter+PartNoSuppNodes(i+1)
+      END IF
+    END DO
+
+    !create list of GDOFS parts
+    ALLOCATE(GDOFLoc(SUM(PartNoSuppNodes)))
+    counter=0
+    DO i=1, NoNeighbours+1
+      IF(PartNoSuppNodes(i) == 0) CYCLE
+      IF(i==1) THEN
+        GDOFLoc(counter+1:counter+PartNoSuppNodes(i)) = ParEnv % MyPE
+      ELSE
+        GDOFLoc(counter+1:counter+PartNoSuppNodes(i)) = NeighbourParts(i-1)
+      END IF
+      counter = counter + PartNoSuppNodes(i)
+    END DO
+
+    ! is global index present on higher part?
+    DO i=1, NoSuppNodes
+      DO j=NoSuppNodes+1, SUM(PartNoSuppNodes)
+        IF(GDOFs(i) == PartGDOFs(j)) THEN
+          IF(GDOFLoc(j) > ParEnv % MyPE) THEN
+            WorkInt(i) = 0
+          END IF
         END IF
       END DO
-
     END DO
+
     NoSuppNodes = COUNT(WorkInt > 0)
     IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, seeking ',NodeNumber,&
           ' higher partition has node, so deleting...'
@@ -1322,7 +1380,6 @@ CONTAINS
     END IF
 
     !share NoSuppNodes
-    ALLOCATE(PartNoSuppNodes(NoNeighbours+1))
     PartNoSuppNodes(1) = NoSuppNodes
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
@@ -1336,7 +1393,6 @@ CONTAINS
     ! if proc has zero supp nodes it needs to receive mpi info but cannot send any
     ! therefore neighbours need to allocate less space to avoid nans
     NoUsedNeighbours=NoNeighbours
-    ALLOCATE(UseProc(NoNeighbours+1))
     UseProc = .TRUE. ! default is to use proc
     IF(ANY(PartNoSuppNodes == 0)) THEN
       DO i=1, NoNeighbours+1
