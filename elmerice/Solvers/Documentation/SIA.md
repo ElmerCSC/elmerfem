@@ -60,4 +60,4 @@ End
 ```
 
 ## Examples
-An example using the SIASolver applied to experiment A160 of ISMIP-HOM benchamrks can be found in [ELMER_TRUNK]/elmerice/Tests/SIA.
+An example using the SIASolver applied to experiment A160 of ISMIP-HOM benchmarks can be found in [ELMER_TRUNK]/elmerice/Tests/SIA.

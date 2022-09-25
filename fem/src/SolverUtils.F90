@@ -8063,7 +8063,7 @@ CONTAINS
        n = COUNT((ITag > 0) .AND. A % ParallelInfo % NodeInterface)
      END IF
 
-     ! Allocate for the data to sent (s_e) and recieve (r_e)       
+     ! Allocate for the data to sent (s_e) and receive (r_e)
      ALLOCATE( s_e(n, nn ), r_e(n) )
      s_e = 0
      IF( CommI ) THEN
@@ -8119,7 +8119,7 @@ CONTAINS
      
      DO i=1, nn
        j = fneigh(i)
-       ! Recieve size of data coming from partition "j"
+       ! Receive size of data coming from partition "j"
        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
        IF ( n>0 ) THEN
          IF( n>SIZE(r_e)) THEN
@@ -8131,10 +8131,10 @@ CONTAINS
            END IF
          END IF
 
-         ! Recieve the global index
+         ! Receive the global index
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
          IF( CommI ) THEN
-           ! Recieve the value of the integer tag, if requested
+           ! Receive the value of the integer tag, if requested
            CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
          END IF
          DO j=1,n
@@ -10084,7 +10084,7 @@ END FUNCTION SearchNodeL
     IF( SteadyState ) THEN
       CALL Info(Caller,'Finished updating steady state objects!',Level=32)
     ELSE
-      CALL Info(Caller,'Finished updaing nonlinear objects!',Level=32)
+      CALL Info(Caller,'Finished updating nonlinear objects!',Level=32)
     END IF
 
   END SUBROUTINE UpdateDependentObjects

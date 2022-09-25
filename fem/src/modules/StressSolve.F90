@@ -2562,7 +2562,7 @@ CONTAINS
            END IF
            
            ! The plane  elements only include the  derivatives in the direction
-           ! of the plane. Therefore compute the derivatives of the displacemnt
+           ! of the plane. Therefore compute the derivatives of the displacement
            ! field from the parent element:
            ! -------------------------------------------------------------------
            Up = SUM( xp(1:n) * Basis(1:n) )

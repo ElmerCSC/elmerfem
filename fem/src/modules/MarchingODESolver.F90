@@ -525,7 +525,7 @@ CONTAINS
 
     
     ! When using different integration we may need to access the
-    ! value of cofficients at previous mesh layer.
+    ! value of coefficients at previous mesh layer.
     IF( PRESENT( Set0 ) ) THEN
       IF( Set0 ) THEN
         IF( HaveF ) f0vec = fvec

@@ -2405,7 +2405,7 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 
-!> Is the actice solver solved in the frequency space
+!> Is the active solver solved in the frequency space
 !------------------------------------------------------------------------------
   FUNCTION EigenOrHarmonicAnalysis(Usolver) RESULT(L)
     LOGICAL :: L

@@ -4530,7 +4530,7 @@ use spariterglobals
 #if 0
 !------------------------------------------------------------------------------
 !> Get field values (one or seveal) at the given point. The point may be either
-!> given by basis functions, local coordinates or node. This is definately not
+!> given by basis functions, local coordinates or node. This is definitely not
 !> gauss point usually so we cannot use that information directly. 
 !> Works with different types of fields.
 !------------------------------------------------------------------------------

@@ -1448,7 +1448,7 @@ MODULE PElementBase
     END FUNCTION dBrickNodalPBasis
 
 
-    ! As previus except obtain all nodal values at once. 
+    ! As previous except obtain all nodal values at once. 
     SUBROUTINE dBrickNodalPBasisAll(u, v, w, gradphi) 
       IMPLICIT NONE
 

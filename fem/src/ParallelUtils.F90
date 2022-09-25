@@ -667,7 +667,7 @@ CONTAINS
        ! This is used for a rare condition:
        !
        ! o Linear system solved using Hypre
-       ! o Some paritions have no degrees of freedom assigned, but have matrix entries
+       ! o Some partitions have no degrees of freedom assigned, but have matrix entries
        ! to contribute to the global system (for example from halo elements).
        BLOCK
          INTEGER :: NameSpaceI

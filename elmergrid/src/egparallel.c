@@ -3489,7 +3489,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 			 int partbw, int info)
 /* Optimize partitioning of elements so that each partition has as closely as possible the 
    desired amount of elements. Also, ir requested, check that there are no odd couplings within 
-   elelements that are not directly present at the given partition. It is a bit unclear 
+   elements that are not directly present at the given partition. It is a bit unclear 
    to which extent these checks are needed in the current Elmer version. */
 {
   int i,j,k,l,n,m,noelements,partitions,ind,hit;
