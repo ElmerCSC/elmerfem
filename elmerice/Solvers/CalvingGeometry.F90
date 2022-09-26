@@ -8323,7 +8323,7 @@ CONTAINS
 
       IF(Normal(3) > -Buffer) THEN
 
-        PRINT*, SolverName,' Inverted base element:',i, 'on part:' ParEnv % MyPE, &
+        PRINT*, SolverName,' Inverted base element:',i, 'on part:', ParEnv % MyPE, &
             'moving to...'
 
         counter=0
