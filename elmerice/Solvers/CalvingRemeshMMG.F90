@@ -1126,6 +1126,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Model, Mesh)
 
+   CALL CheckBaseFreeSurface(Model, Mesh)
+
    IF(FixNodesOnRails) CALL EnforceLateralMargins(Model, Solver % Values)
 
    !Calculate mesh volume

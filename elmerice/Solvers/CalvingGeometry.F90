@@ -8241,5 +8241,127 @@ CONTAINS
 
   END SUBROUTINE CheckFrontBoundary
 
+  ! subroutine to ceck for inverted based elements due to lagrangian movement
+  SUBROUTINE CheckBaseFreeSurface(Model, Mesh)
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    !-------------------------
+    TYPE(Solver_t), POINTER :: NullSolver=>NULL()
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    INTEGER, POINTER :: NodeIndexes(:),BottomPerm(:)=>NULL(),FrontPerm(:)=>NULL(),&
+    LeftPerm(:)=>NULL(),RightPerm(:)=>NULL()
+    INTEGER :: i,j,n,k, counter,BaseBCtag,FrontBCtag,LeftBCtag,RightBCtag,dummyint
+    REAL(KIND=dp) :: Normal(3)
+    LOGICAL :: Found, ThisBC
+    CHARACTER(MAX_NAME_LEN) :: SolverName, BottomMaskName, FrontMaskName,&
+        LeftMaskName, RightMaskName, Message
+
+    FrontMaskName = "Calving Front Mask"
+    BottomMaskName = "Bottom Surface Mask"
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, BottomMaskName, &
+      .FALSE., BottomPerm, dummyint)
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
+      .FALSE., FrontPerm, dummyint)
+    LeftMaskName = "Left Sidewall Mask"
+    RightMaskName = "Right Sidewall Mask"
+    !Generate perms to quickly get nodes on each boundary
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
+      .FALSE., LeftPerm, dummyint)
+    CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
+         .FALSE., RightPerm, dummyint)
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,BottomMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      BaseBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,FrontMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      FrontBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,LeftMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      LeftBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,RightMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      RightBCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    !check element how much this deforms elements near front
+    !if the element is above a 45 degree vertical angle from xy plane change to front boundary
+    DO i=Mesh % NumberOfBulkElements +1, &
+      Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Element => Mesh % Elements(i)
+      IF(Element % BoundaryInfo % Constraint /= BaseBCtag) CYCLE
+      n = Element % TYPE % NumberOfNodes
+
+      NodeIndexes => Element % NodeIndexes
+
+      ALLOCATE(Nodes % x(n), Nodes % y(n), Nodes % z(n))
+
+      Nodes % x = Mesh % Nodes % x(NodeIndexes)
+      Nodes % y = Mesh % Nodes % y(NodeIndexes)
+      Nodes % z = Mesh % Nodes % z(NodeIndexes)
+
+      Normal = NormalVector(Element, Nodes)
+
+      IF(Normal(3) > 0) THEN
+        WRITE(Message,'(A,i0,A)') 'Inverted base element:',i, 'moving to...'
+        CALL INFO(SolverName, Message)
+
+        counter=0
+        DO k=1,n
+          IF(LeftPerm(NodeIndexes(k)) > 0) counter = counter+1
+        END DO
+        IF(Counter == 2) THEN
+          CALL INFO(SolverName, 'Left boundary')
+          Element % BoundaryInfo % Constraint = LeftBCtag
+          CYCLE
+        END IF
+
+        counter=0
+        DO k=1,n
+          IF(RightPerm(NodeIndexes(k)) > 0) counter = counter+1
+        END DO
+        IF(Counter == 2) THEN
+          CALL INFO(SolverName, 'Right boundary')
+          Element % BoundaryInfo % Constraint = RightBCtag
+          CYCLE
+        END IF
+
+        counter=0
+        DO k=1,n
+          IF(FrontPerm(NodeIndexes(k)) > 0) counter = counter+1
+        END DO
+        IF(Counter == 2) THEN
+          CALL INFO(SolverName, 'Front boundary')
+          Element % BoundaryInfo % Constraint = FrontBCtag
+          CYCLE
+        END IF
+
+        IF(Element % BoundaryInfo % Constraint == BaseBCtag) &
+          CALL FATAL(SolverName, 'Inverted base element not on edge so &
+            cannot tranfer to other boundary')
+      END IF
+
+    END DO
+    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z,&
+        FrontPerm,BottomPerm,LeftPerm,RightPerm)
+
+  END SUBROUTINE CheckBaseFreeSurface
+
 END MODULE CalvingGeometry
 
