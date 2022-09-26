@@ -8253,12 +8253,17 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:),BottomPerm(:)=>NULL(),FrontPerm(:)=>NULL(),&
     LeftPerm(:)=>NULL(),RightPerm(:)=>NULL()
     INTEGER :: i,j,n,k, counter,BaseBCtag,FrontBCtag,LeftBCtag,RightBCtag,dummyint
-    REAL(KIND=dp) :: Normal(3)
+    REAL(KIND=dp) :: Normal(3), NBuffer
     LOGICAL :: Found, ThisBC
     CHARACTER(MAX_NAME_LEN) :: SolverName, BottomMaskName, FrontMaskName,&
         LeftMaskName, RightMaskName, Message
+    SolverName="CheckBaseFreeSurface"
 
-    IF(.NOT. PRESENT(Buffer)) Buffer = 0.01_dp
+    IF(.NOT. PRESENT(Buffer)) THEN
+      NBuffer = -0.01_dp
+    ELSE
+      NBuffer = -Buffer
+    END IF
 
     FrontMaskName = "Calving Front Mask"
     BottomMaskName = "Bottom Surface Mask"
@@ -8321,7 +8326,7 @@ CONTAINS
 
       Normal = NormalVector(Element, Nodes)
 
-      IF(Normal(3) > -Buffer) THEN
+      IF(Normal(3) > NBuffer) THEN
 
         PRINT*, SolverName,' Inverted base element:',i, 'on part:', ParEnv % MyPE, &
             'moving to...'
@@ -8361,9 +8366,10 @@ CONTAINS
             cannot tranfer to other boundary')
       END IF
 
+      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+
     END DO
-    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z,&
-        FrontPerm,BottomPerm,LeftPerm,RightPerm)
+    DEALLOCATE(FrontPerm,BottomPerm,LeftPerm,RightPerm)
 
   END SUBROUTINE CheckBaseFreeSurface
 
