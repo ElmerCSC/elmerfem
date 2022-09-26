@@ -7215,12 +7215,12 @@ CONTAINS
     ALLOCATE(disps(ParEnv % PEs))
     disps(1) = 0
     DO i=2,ParEnv % PEs
-      disps(i) = disps(i-1) + PartNoGDOFs(i-1)*2
+      disps(i) = disps(i-1) + PartNoGDOFs(i-1)
     END DO
 
     ALLOCATE(PartGDOFs(SUM(PartNoGDOFs)))
     CALL MPI_AllGatherV(GDOFs(:counter), counter, MPI_INTEGER, &
-      PartNoGDOFs, PartGDOFs, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+      PartGDOFs, PartNoGDOFs, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
     DO i=1, Mesh % NumberOfNodes
       IF(ANY(PartGDOFs == Mesh % ParallelInfo % GlobalDOFs(i))) THEN
