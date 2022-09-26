@@ -7100,9 +7100,10 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), POINTER :: GMask(:)
     REAL(KIND=dp) :: zb, xydist, zdist
-    INTEGER :: i,j,k,n,BaseBCtag,FrontBCtag, dummyint
+    INTEGER :: i,j,k,n,BaseBCtag,FrontBCtag, dummyint, counter, NoNeighbours, ierr
     INTEGER, POINTER :: GMaskPerm(:), FrontPerm(:)=>NULL()
-    LOGICAL :: ConstraintChanged, ThisBC, Found
+    INTEGER, ALLOCATABLE :: GDOFs(:), PartNoGDOFs(:), PartGDOFs(:), disps(:)
+    LOGICAL :: ConstraintChanged, ThisBC, Found, HasNeighbours
     CHARACTER(MAX_NAME_LEN) :: FuncName="EnforceGroundedMask", GMaskVarName
 
     GMaskVarName = "GroundedMask"
@@ -7134,15 +7135,31 @@ CONTAINS
       EXIT
     END DO
 
+    ALLOCATE(GDOFs(Mesh % NumberOfNodes))
+    counter=0
     DO i=1,Mesh % NumberOfNodes
       IF(GMaskPerm(i) == 0) CYCLE
       zb = ListGetRealAtNode(Material, "Min Zs Bottom",i,UnfoundFatal=.TRUE.)
 
+      NoNeighbours = SIZE(Mesh %  ParallelInfo % &
+          NeighbourList(i) % Neighbours) - 1
+      HasNeighbours = NoNeighbours > 0
+
       !Floating -> check no penetration
       !Grounded -> set to bedrock height
       IF(GMask(GMaskPerm(i)) < -0.5) THEN
-        IF(Mesh % Nodes % z(i) < zb) Mesh % Nodes % z(i) = zb
+        IF(Mesh % Nodes % z(i) < zb) THEN
+          Mesh % Nodes % z(i) = zb
+          IF(HasNeighbours) THEN
+            counter = counter+1
+            GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+          END IF
+        END IF
       ELSE
+        IF(HasNeighbours) THEN
+          counter = counter+1
+          GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        END IF
         Mesh % Nodes % z(i) = zb
 
         !check element how much this deforms elements near front
@@ -7183,6 +7200,32 @@ CONTAINS
             FrontPerm(Element % NodeIndexes) = 1
           END IF
         END DO
+      END IF
+    END DO
+
+    ! sometimes if a shared node is on a partition without a bsae boundary element then
+    ! GMaskPerm will be zero on this partition but be above zero ot other partitions
+    ! therefore we need to share any gdofs that have been moved to ensure they are movoed
+    ! on all partitions so coords are consistent
+
+    ALLOCATE(PartNoGDOFs(ParEnv % PEs))
+    CALL MPI_ALLGATHER(counter, 1, MPI_INTEGER, &
+        PartNoGDOFs, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+    ALLOCATE(disps(ParEnv % PEs))
+    disps(1) = 0
+    DO i=2,ParEnv % PEs
+      disps(i) = disps(i-1) + PartNoGDOFs(i-1)*2
+    END DO
+
+    ALLOCATE(PartGDOFs(SUM(PartNoGDOFs)))
+    CALL MPI_AllGatherV(GDOFs(:counter), counter, MPI_INTEGER, &
+      PartNoGDOFs, PartGDOFs, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+    DO i=1, Mesh % NumberOfNodes
+      IF(ANY(PartGDOFs == Mesh % ParallelInfo % GlobalDOFs(i))) THEN
+        zb = ListGetRealAtNode(Material, "Min Zs Bottom",i,UnfoundFatal=.TRUE.)
+        Mesh % Nodes % z(i) = zb
       END IF
     END DO
 
