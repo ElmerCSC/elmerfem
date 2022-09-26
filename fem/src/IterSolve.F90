@@ -192,7 +192,7 @@ CONTAINS
     EXTERNAL NormwiseBackwardErrorGeneralized
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondrProc, mvProc, iterProc, StopcProc
+        pcondlProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
@@ -230,7 +230,7 @@ CONTAINS
     
     ipar = 0
     dpar = 0.0D0
-    pcondrProc = 0
+    pcondlProc = 0
 !------------------------------------------------------------------------------
     Params => Solver % Values
     str = ListGetString( Params,'Linear System Iterative Method',Found )
@@ -263,13 +263,10 @@ CONTAINS
     
     SELECT CASE(str)
     CASE('bicgstab2')
-      IF (ComplexSystem ) THEN
-        ! The complex implementation of BiCGStab2 seems to suffer an issue.
-        ! Until fixed circumvent it:
-        IterType = ITER_BICGstabl
-      ELSE
-        IterType = ITER_BiCGStab2
-      END IF
+      ! BiCGStab2 should be nearly the same as BiCGStabl with the parameter l=2, but
+      ! the implementation of BiCGStabl seems to have a relative merit. Now we
+      ! use the BiCGStabl version and never call BiCGStab2:
+      IterType = ITER_BICGstabl
     CASE('bicgstabl')
       IterType = ITER_BICGstabl
     CASE('bicgstab')
@@ -920,7 +917,7 @@ CONTAINS
 
       CALL Info('IterSolver','Calling complex iterative solver',Level=32)
       CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+          mvProc, pcondlProc, pcondProc, dotProc, normProc, stopcProc )
 
       ! Copy result back
       DO i=1,HUTI_NDIM
@@ -932,7 +929,7 @@ CONTAINS
       CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
 
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+          mvProc, pcondlProc, pcondProc, dotProc, normProc, stopcProc )
     ENDIF
 
     GlobalMatrix => SaveGlobalM

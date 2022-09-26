@@ -370,6 +370,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -810,6 +812,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -1118,6 +1122,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -1427,6 +1433,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
