@@ -73,7 +73,7 @@
 !  Variable 1 Supporting Points = Integer 3 !minimum of points to be used for interpolation
 !  Variable 1 Dimensions = Integer 2 !dimension of variable, here needs a file with two columns, NOTE numbers have to be written as 0.04 and not 4e-2
 !  Variable 1 Exponent = Real 3.0 ! inverse distance weighting exponent (has to be positive) - default 2.0
-!  Variable 1 Area Scaling Factor = Real 2.0 ! increases the max search distance by factor 2 of the maximum distance of dataset poitns
+!  Variable 1 Area Scaling Factor = Real 2.0 ! increases the max search distance by factor 2 of the maximum distance of dataset points
 !  Variable 1 Directions(2) = Integer 1 2 !which dimensions are these? Here direction 1 and 2 (x and y)
 !  Exported Variable 1 = mb !Variablename in Elmer
 !  Exported Variable 1 DOFS = Integer 1 !degrees of freedom
@@ -378,7 +378,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                 //TRIM(ADJUSTL(temp))//TRIM(VariableDataNameEnd(VariableNo))
 
         ELSE
-           WRITE(Message,'(A,I2)') "Varialbe DataI has to be 0,1 or 2, but is" , VariableDataIName(VariableNo)
+           WRITE(Message,'(A,I2)') "Variable DataI has to be 0,1 or 2, but is" , VariableDataIName(VariableNo)
            CALL FATAL(SolverName,Message)
         ENDIF
 

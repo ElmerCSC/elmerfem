@@ -42,7 +42,7 @@ There are two extra output variables for the coupling code which you can view in
 
 - Error Estimation Intervals = Integer 20 How often you want to do error estimation, in this case it will be every 20th timestep
 
-- Error Estimation Method = String “solution” The options are in theory “solution”, “functional” and “residual” It will estimate the error based on the horizontal velocity error directly, in a fucntional of the solution or in the residual of the solution.
+- Error Estimation Method = String “solution” The options are in theory “solution”, “functional” and “residual” It will estimate the error based on the horizontal velocity error directly, in a functional of the solution or in the residual of the solution.
 
 **Keywords for solution based estimate**
 - Relative Error Allowed In Percent = Real 15.0 Maximum allowed relative error of SIA in percent, in this case 15 %

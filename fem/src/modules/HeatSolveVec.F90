@@ -131,7 +131,7 @@ END SUBROUTINE HeatSolver_Init
 !-----------------------------------------------------------------------------
 !> A modern version for the heat equation supporting multi-threading and
 !> SIMD friendly ElmerSolver kernels. This tries to be backward compatible
-!> with the lagacy HeatSolver but some rarely used features are missing. 
+!> with the legacy HeatSolver but some rarely used features are missing. 
 !------------------------------------------------------------------------------
 SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------

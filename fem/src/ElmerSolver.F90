@@ -369,9 +369,9 @@
          INQUIRE(Unit=InFileUnit, Opened=GotIt)
          IF ( gotIt ) CLOSE(inFileUnit)
 
-         ! Here we read the whole model including command file and detault mesh file
+         ! Here we read the whole model including command file and default mesh file
          !---------------------------------------------------------------------------------
-         OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
+         OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)
          IF( iostat /= 0 ) THEN
            CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
                TRIM(Modelname) // '], can not execute.' )

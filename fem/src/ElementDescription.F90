@@ -12411,7 +12411,7 @@ END SUBROUTINE PickActiveFace
           IF(i3 == i1 .OR. i3 == i2 ) CYCLE
 
           ! Vector stretching from edge center to the other nodes
-          ! of the parent elemet. 
+          ! of the parent element. 
           vec2(1) = vec3(1) + x(i3) 
           vec3(1) = vec3(1) + x(i3) 
           vec3(1) = vec3(1) + x(i3) 

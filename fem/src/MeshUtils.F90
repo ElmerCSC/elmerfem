@@ -935,7 +935,7 @@ CONTAINS
    CALL Info(Caller,'Number of bulk elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8)
 
-   ! Set discontinuous nodes only if there is a real moving node associted with it
+   ! Set discontinuous nodes only if there is a real moving node associated with it
    ! Otherwise we would create a zero to the permutation vector. 
    ! If there is just a staying node then no need to create discontinuity at this node.
    DiscontNode = DiscontNode .AND. MovingNode 

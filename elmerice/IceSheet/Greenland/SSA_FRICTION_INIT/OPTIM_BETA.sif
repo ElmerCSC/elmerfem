@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! .sif file for the inverse method
 !   Optimize the friction coefficient to reduce mismatch with obs. surface velocities
-!   with contrains on the flux divergence and assume smoothness of the friction field
+!   with constraints on the flux divergence and assume smoothness of the friction field
 !  
 ! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
