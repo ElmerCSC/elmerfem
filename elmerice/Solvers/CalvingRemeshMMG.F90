@@ -1126,7 +1126,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Model, Mesh)
 
-   CALL CheckBaseFreeSurface(Model, Mesh)
+   CALL CheckBaseFreeSurface(Model, Mesh, 0.01_dp)
 
    IF(FixNodesOnRails) CALL EnforceLateralMargins(Model, Solver % Values)
 

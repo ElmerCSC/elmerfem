@@ -8242,9 +8242,10 @@ CONTAINS
   END SUBROUTINE CheckFrontBoundary
 
   ! subroutine to ceck for inverted based elements due to lagrangian movement
-  SUBROUTINE CheckBaseFreeSurface(Model, Mesh)
+  SUBROUTINE CheckBaseFreeSurface(Model, Mesh, Buffer)
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), OPTIONAL :: Buffer
     !-------------------------
     TYPE(Solver_t), POINTER :: NullSolver=>NULL()
     TYPE(Element_t), POINTER :: Element
@@ -8256,6 +8257,8 @@ CONTAINS
     LOGICAL :: Found, ThisBC
     CHARACTER(MAX_NAME_LEN) :: SolverName, BottomMaskName, FrontMaskName,&
         LeftMaskName, RightMaskName, Message
+
+    IF(.NOT. PRESENT(Buffer)) Buffer = 0.01_dp
 
     FrontMaskName = "Calving Front Mask"
     BottomMaskName = "Bottom Surface Mask"
@@ -8318,16 +8321,17 @@ CONTAINS
 
       Normal = NormalVector(Element, Nodes)
 
-      IF(Normal(3) > 0) THEN
-        WRITE(Message,'(A,i0,A)') 'Inverted base element:',i, 'moving to...'
-        CALL INFO(SolverName, Message)
+      IF(Normal(3) > -Buffer) THEN
+
+        PRINT*, SolverName,' Inverted base element:',i, 'on part:' ParEnv % MyPE, &
+            'moving to...'
 
         counter=0
         DO k=1,n
           IF(LeftPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
         IF(Counter == 2) THEN
-          CALL INFO(SolverName, 'Left boundary')
+          PRINT*, SolverName, ' Left boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = LeftBCtag
           CYCLE
         END IF
@@ -8337,7 +8341,7 @@ CONTAINS
           IF(RightPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
         IF(Counter == 2) THEN
-          CALL INFO(SolverName, 'Right boundary')
+          PRINT*, SolverName, ' Right boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = RightBCtag
           CYCLE
         END IF
@@ -8347,7 +8351,7 @@ CONTAINS
           IF(FrontPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
         IF(Counter == 2) THEN
-          CALL INFO(SolverName, 'Front boundary')
+          PRINT*, SolverName, ' Front boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = FrontBCtag
           CYCLE
         END IF
