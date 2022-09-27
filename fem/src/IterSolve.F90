@@ -150,7 +150,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
 !> There are two main sources of iterations within Elmer.
-!> 1) The old HUTiter C++ library that includes the most classic iterative Krylov
+!> 1) The old HUTiter library that includes the most classic iterative Krylov
 !>    methods.
 !> 2) The internal MODULE IterativeMethods that includes some classic iterative
 !>    methods and also some more recent Krylov methods. 
@@ -179,7 +179,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal
+    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal, LeftOriented
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -192,7 +192,7 @@ CONTAINS
     EXTERNAL NormwiseBackwardErrorGeneralized
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondlProc, mvProc, iterProc, StopcProc
+        pconddProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
@@ -230,7 +230,7 @@ CONTAINS
     
     ipar = 0
     dpar = 0.0D0
-    pcondlProc = 0
+    pconddProc = 0
 !------------------------------------------------------------------------------
     Params => Solver % Values
     str = ListGetString( Params,'Linear System Iterative Method',Found )
@@ -263,10 +263,12 @@ CONTAINS
     
     SELECT CASE(str)
     CASE('bicgstab2')
+      ! NOTE:
       ! BiCGStab2 should be nearly the same as BiCGStabl with the parameter l=2, but
-      ! the implementation of BiCGStabl seems to have a relative merit. Now we
-      ! use the BiCGStabl version and never call BiCGStab2:
-      IterType = ITER_BICGstabl
+      ! the implementation of BiCGStabl uses the right-oriented preconditioning, while
+      ! BiCGStab2 works as expected only with the left-oriented preconditioning. Due to
+      ! the difference in the preconditioning the convergence histories may quite different.
+      IterType = ITER_BICGstab2
     CASE('bicgstabl')
       IterType = ITER_BICGstabl
     CASE('bicgstab')
@@ -464,6 +466,19 @@ CONTAINS
       
     
 !------------------------------------------------------------------------------
+
+    ! By default the right-oriented preconditioning is applied, but BiCGStab2,
+    ! GMRES and TFQMR are called with the left-oriented preconditining since 
+    ! the right-oriented preconditioning does not work as expected. The methods
+    ! from the module IterativeMethods use always the right-oriented preconditioning:
+    !
+    SELECT CASE ( IterType )
+    CASE (ITER_BiCGStab2, ITER_GMRES, ITER_TFQMR)
+      LeftOriented = .TRUE.
+    CASE DEFAULT
+      LeftOriented = ListGetLogical(Params, 'Linear System Left Preconditioning', GotIt)
+      IF (Internal) LeftOriented = .FALSE.
+    END SELECT
 
     
     IF ( .NOT. PRESENT(PrecF) ) THEN
@@ -916,8 +931,14 @@ CONTAINS
       END DO
 
       CALL Info('IterSolver','Calling complex iterative solver',Level=32)
-      CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-          mvProc, pcondlProc, pcondProc, dotProc, normProc, stopcProc )
+
+      IF (LeftOriented) THEN
+        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )
+      ELSE
+        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
+      END IF
 
       ! Copy result back
       DO i=1,HUTI_NDIM
@@ -926,10 +947,15 @@ CONTAINS
       END DO
       DEALLOCATE(bC,xC)
     ELSE
-      CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+      CALL Info('IterSolver','Calling real-valued iterative solver',Level=32)
 
-      CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-          mvProc, pcondlProc, pcondProc, dotProc, normProc, stopcProc )
+      IF (LeftOriented) THEN
+        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )          
+      ELSE
+        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+            mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
+      END IF
     ENDIF
 
     GlobalMatrix => SaveGlobalM
