@@ -1185,11 +1185,11 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   TYPE(ValueList_t), POINTER :: Params, FuncParams
   LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
        NSDiverge, NSFail, NSTooFast, ChangeMesh, NewMesh, CalvingOccurs, GotSaveMetric,&
-       CalvingPauseSolvers
+       CalvingPauseSolvers, PNSFail=.FALSE.
   REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
        SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
        SaveMeshHgrad,SaveMeshHausd, SaveMetric, MeshChange, NewMetric, NewMeshDist,&
-       SaveMeshDist
+       SaveMeshDist, NewMeshHGrad
   REAL(KIND=dp), ALLOCATABLE :: SaveMeshHausdArray(:,:), SaveMeshHminArray(:,:), &
        NewMeshHausdArray(:,:), NewMeshHminArray(:,:)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:), WorkArray(:,:)
@@ -1201,7 +1201,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        SaveRelax,SaveMeshHminArray,SaveMeshHmax,SaveMeshHausdArray,SaveMeshHgrad, &
        SaveSSiter, MaxRemeshIter, SaveNLIter, NewMesh, NewMeshCount,&
        SaveMetric, GotSaveMetric, MeshChange, NewMeshHausdArray, NewMeshHminArray,&
-       NewMetric, SaveMeshDist, NewMeshDist
+       NewMetric, SaveMeshDist, NewMeshDist, NewMeshHGrad, PNSFail
 
   Mesh => Solver % Mesh
   SolverName = 'CheckFlowConvergenceMMG'
@@ -1292,6 +1292,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     NewMeshHausdArray = SaveMeshHausdArray
     NewMetric = SaveMetric
     NewMeshDist = SaveMeshDist
+    NewMeshHGrad = SaveMeshHgrad
   ELSE
     SaveDt = ListGetCReal( CurrentModel % Simulation,'Timestep Size' )
   END IF
@@ -1411,12 +1412,13 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
        NewMeshHausdArray = NewMeshHausdArray/MeshChange
        NewMetric = NewMetric/MeshChange
        NewMeshDist = NewMeshDist*MeshChange
+       NewMeshHGrad = NewMeshHGrad/MeshChange
 
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
        CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
        CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hmin", MaxRemeshIter, 1, NewMeshHminArray)
        !CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax*1.1_dp)
-       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", 1.1_dp) !default 1.3
+       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", NewMeshHGrad) !default 1.3
        CALL ListAddConstReal(RemeshSolver % Values, "Remeshing Distance", NewMeshDist)
        CALL ListAddConstRealArray(FuncParams, "RemeshMMG3D Hausd", MaxRemeshiter, 1, NewMeshHausdArray)
        CALL ListAddInteger( FlowVar % Solver % Values, "Nonlinear System Max Iterations", SaveNLIter)
@@ -1455,6 +1457,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     NewMeshHausdArray = SaveMeshHausdArray
     NewMetric = SaveMetric
     NewMeshDist = SaveMeshDist
+    NewMeshHGrad = SaveMeshHgrad
 
     CALL ListAddConstReal(FlowVar % Solver % Values, &
          "Nonlinear System Newton After Tolerance", SaveNewtonTol)
@@ -1480,7 +1483,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
     CALL INFO(SolverName, 'Cannot find Calving Pause Solvers so assuming calving has not pasued time.')
     CalvingPauseSolvers = .TRUE.
   END IF
-  IF(.NOT. CalvingPauseSolvers .OR. FirstTime) THEN
+  IF(.NOT. CalvingPauseSolvers .OR. FirstTime .OR. NSFail .OR. PNSFail) THEN
     !Switch off solvers
     DO Num = 1,999
       WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
@@ -1516,5 +1519,6 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   END IF
 
   FirstTime = .FALSE.
+  PNSFail = NSFail
 
 END SUBROUTINE CheckFlowConvergenceMMG
