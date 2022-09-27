@@ -267,8 +267,13 @@ CONTAINS
       ! BiCGStab2 should be nearly the same as BiCGStabl with the parameter l=2, but
       ! the implementation of BiCGStabl uses the right-oriented preconditioning, while
       ! BiCGStab2 works as expected only with the left-oriented preconditioning. Due to
-      ! the difference in the preconditioning the convergence histories may quite different.
-      IterType = ITER_BICGstab2
+      ! the difference in the preconditioning the convergence histories may be quite different.
+      ! The complex BiCGStab2 does not convince, use BiCGStabl instead:
+      IF (ComplexSystem ) THEN
+        IterType = ITER_BICGstabl
+      ELSE
+        IterType = ITER_BiCGStab2
+      END IF
     CASE('bicgstabl')
       IterType = ITER_BICGstabl
     CASE('bicgstab')
