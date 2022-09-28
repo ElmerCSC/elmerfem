@@ -63,6 +63,7 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_hmax = PMMG_DPARAM_hmax
   INTEGER :: PMMGPARAM_iso = PMMG_IPARAM_iso
   INTEGER :: PMMGPARAM_hgrad = PMMG_DPARAM_hgrad
+  INTEGER :: PMMGPARAM_hgradreq = PMMG_DPARAM_hgradreq
   INTEGER :: PMMGPARAM_angle = PMMG_IPARAM_angle
   INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
   INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug

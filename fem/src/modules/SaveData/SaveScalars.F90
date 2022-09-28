@@ -1970,7 +1970,13 @@ CONTAINS
 
       IF(j > 0) THEN
         IF( IsParallel .AND. ASSOCIATED(nlist) ) THEN
-          IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( ASSOCIATED( nlist(j) % Neighbours ) ) THEN
+            IF( SIZE( nlist ) >= j ) THEN
+              IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+            ELSE
+              PRINT *,'Nlist too small:',SIZE(nlist), j
+            END IF
+          END IF
         END IF
 
         IF(NoDofs <= 1) THEN

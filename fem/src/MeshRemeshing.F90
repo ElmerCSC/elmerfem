@@ -451,9 +451,18 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
          'CALL TO MMG3D_SET_DPARAMETER <hgrad> Failed')
   END IF
 
+  Pval = ListGetConstReal( SolverParams, 'mmg hgradreq', Found, minv=2.0, maxv=4.0)
+  IF (Found) THEN
+    CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgradreq,Pval,ierr)
+    IF ( ierr == 0 ) CALL Fatal(FuncName, &
+         'CALL TO MMG3D_SET_DPARAMETER <hgradreq> Failed')
+  END IF
+
+
+  
   ! If this is a ReTrial then we only change some real valued keywords!
   IF( PRESENT( ReTrial ) ) THEN
-    IF( ReTrial ) RETURN
+    !IF( ReTrial ) RETURN
   END IF
     
 !!! PARAMS: generic options (debug, mem, verbosity)

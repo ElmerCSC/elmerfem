@@ -604,6 +604,7 @@ CONTAINS
 
              ! Skip the fields related to adaptivity since they are specific to each mesh 
              Found = .FALSE.
+             Found = Found .OR. INDEX( Var % Name, 'ave test' ) > 0 
              Found = Found .OR. INDEX( Var % Name, '.error'  ) > 0
              Found = Found .OR. INDEX( Var % Name, '.eref'   ) > 0
              Found = Found .OR. INDEX( Var % Name, '.perror' ) > 0
@@ -880,16 +881,18 @@ CONTAINS
   END SUBROUTINE ComputeDesiredHvalue
 
 
+! Compute the desired Hvalue at the interface where the adaptive error computation currently
+! fails. This way parallel adaptivity can be done in some way at least...
+!-------------------------------------------------------------------------------------------
   SUBROUTINE ParallelAverageHvalue( RefMesh, HValue ) 
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: HValue(:)
     TYPE(Mesh_t), POINTER :: RefMesh
 
-    INTEGER :: i,j,k,n
+    INTEGER :: i,j,k,n,minnei,maxnei
     INTEGER, ALLOCATABLE :: Hcount(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
-
   
     IF( ParEnv % PEs == 1 ) RETURN
 
@@ -920,6 +923,17 @@ CONTAINS
     ! Perform parallel summation, only interface gets summed. 
     CALL ParallelSumVector( A, Hvalue )
     CALL ParallelSumVectorInt( A, Hcount ) 
+
+
+    maxnei = MAXVAL( Hcount )
+    minnei = MINVAL( Hcount, Hcount > 0 ) 
+
+    maxnei = ParallelReduction(maxnei,2)
+    minnei = ParallelReduction(minnei,1)     
+
+    CALL Info('ParallelAverageHvalue','Averaging count range is ['//TRIM(I2S(minnei)) &
+        //','//TRIM(I2S(maxnei))//']',Level=7)
+    
     
     ! Compute the average
     n = 0
@@ -934,7 +948,7 @@ CONTAINS
     END DO
     
     n = ParallelReduction(n)
-    CALL Info('ComputeDesiredHvalue','Nodes '//TRIM(I2S(n))//' surrounded by orphans only!')
+    CALL Info('ParallelAverageHvalue','Nodes '//TRIM(I2S(n))//' surrounded by orphans only!')
 
     ! Check dofs that have not been defined by averaging
     IF( n > 0 ) THEN
@@ -1002,6 +1016,35 @@ CONTAINS
     LOGICAL :: Success, Rebalance
 !------------------------------------------------------------------------------
 
+#if 0
+    ! This is just some debugging code to check that the averaging works as intended.
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp), POINTER :: AveTest(:)
+    TYPE(Matrix_t), POINTER :: A
+
+    n = RefMesh % NumberOfNodes 
+    ALLOCATE(AveTest(n))
+    AveTest(1:n) = RefMesh % Nodes % x(1:n) + & 
+        RefMesh % Nodes % y(1:n) + RefMesh % Nodes % z(1:n) 
+
+    A => CurrentModel % Solver % Matrix       
+    WHERE( A % ParallelInfo % NodeInterface(1:n) ) 
+      AveTest(1:n) = -1000.0
+    END WHERE
+      
+    CALL VariableAdd( RefMesh % Variables, RefMesh, Solver, &
+        'Ave Test', 1, AveTest, Output = .TRUE.) 
+    CALL ParallelAverageHvalue( RefMesh, AveTest )
+
+    AveTest(1:n) = AveTest(1:n) - ( RefMesh % Nodes % x(1:n) + & 
+        RefMesh % Nodes % y(1:n) + RefMesh % Nodes % z(1:n) )
+   
+    IF( InfoActive(20) ) THEN
+      CALL VectorValuesRange(Hvalue,SIZE(Hvalue),'Ave Test')             
+    END IF
+#endif
+
+    
     CALL ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
         hConvergence, minH, maxH, MaxChange, Coarsening ) 
     CALL ParallelAverageHvalue( RefMesh, HValue ) 
