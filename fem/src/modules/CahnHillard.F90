@@ -197,7 +197,7 @@ CONTAINS
           M => MASS(i+1:i+2,j+1:j+2)
           A => STIFF(i+1:i+2,j+1:j+2)
 
-          ! Phi-eq: DPhi/Dt - div(m*l/h**2*grad(theta) = 0
+          ! Phi-eq: DPhi/Dt - div(m*l/h**2*grad(theta)) = 0
  
           ! Time derivative
           ! ---------------
@@ -217,8 +217,7 @@ CONTAINS
 
           A(2,2) = A(2,2) + s*Basis(q)*Basis(p)
           A(2,1) = A(2,1) - s*h**2*SUM(dBasisdx(q,:)*dBasisdx(p,:))
-          A(2,1) = A(2,1) + s*Basis(q)*Basis(p)
-          A(2,1) = A(2,1) - s*3*Phi**2*Basis(q)*Basis(p)
+          A(2,1) = A(2,1) + s*(1-3*Phi**2)*Basis(q)*Basis(p)
              
           IF (NewtonLinearization) THEN
           END IF
