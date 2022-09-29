@@ -128,7 +128,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: Velo(3), h, MixEnergyDensity, Mobility
-    REAL(KIND=dp) :: Velo_n(n,3), h_n(n), MixEnergyDensity_n(n), Mobility_n(n)
+    REAL(KIND=dp) :: Velo_n(n,3), h_n(n), MixEnergyDensity_n(n), Mobility_n(n), st_n(n)
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
@@ -156,8 +156,10 @@ CONTAINS
       Mobility_n = ElementDiameter(Element,Nodes)**2
     END IF
 
-    mixEnergyDensity_n = GetReal( Material, 'Mixing Energy Density',Found,Element )
-    IF(.NOT. Found ) mixEnergyDensity = 1._dp
+    mixEnergyDensity_n = GetReal( Material, 'Mixing Energy Density',Found_dens )
+    IF(.NOT. Found_dens ) THEN
+      st_n = Getreal( Material, 'Surface Tension Coefficient, Found_scoeff)
+    END IF
 
     CALL GetVectorLocalSolution(SOL,UElement=Element)
 
@@ -173,8 +175,17 @@ CONTAINS
        IP % W(t), detJ, Basis, dBasisdx )
 
       Mobility = SUM(mobility_n*Basis(1:n))
-      MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
       Velo = MATMUL(Velo_n,Basis(1:n))
+
+      h = MATMUL(h_n,Basis(1:n))
+
+      IF(Found_dens) THEN
+        MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
+      ELSE IF (Found_scoeff) THEN
+        MixEnergyDensity = 3*h/2/SQRT(2._dp)*SUM(st_n*Basis(1:n))
+      ELSE
+        MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
+      END IF
 
       Phi = SUM( SOL(1,1:nd)*Basis(1:nd))
 
