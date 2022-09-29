@@ -179,15 +179,14 @@ CONTAINS
 
       h = SUM(h_n*Basis(1:n))
 
+      MixEnergyDensity = 1._dp
       IF(Found_dens) THEN
         MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
       ELSE IF (Found_scoeff) THEN
         MixEnergyDensity = 3*h/2/SQRT(2._dp)*SUM(st_n*Basis(1:n))
-      ELSE
-        MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
       END IF
 
-      Phi = SUM( SOL(1,1:nd)*Basis(1:nd))
+      Phi = SUM( SOL(1,1:nd)*Basis(1:nd) )
 
       s = IP % s(t) * DetJ
 
@@ -219,7 +218,7 @@ CONTAINS
           A(2,2) = A(2,2) + s*Basis(q)*Basis(p)
           A(2,1) = A(2,1) - s*h**2*SUM(dBasisdx(q,:)*dBasisdx(p,:))
           A(2,1) = A(2,1) + s*Basis(q)*Basis(p)
-          A(2,1) = A(2,1) - s*3*Phi*Basis(q)*Basis(p)
+          A(2,1) = A(2,1) - s*3*Phi**2*Basis(q)*Basis(p)
              
           IF (NewtonLinearization) THEN
           END IF
