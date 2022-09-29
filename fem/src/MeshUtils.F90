@@ -17168,7 +17168,7 @@ CONTAINS
 
     LOGICAL :: Found,Masked,LG
     INTEGER :: n1,n2,n3,n4
-    INTEGER :: i,j,k,n,NofFaces,Face,Swap,Node1,Node2,Node3,istat,Degree
+    INTEGER :: i,j,k,n,NofFaces,Face,Swap,Node1,Node2,Node3,istat,Degree,facenodes
      
     TYPE(Element_t), POINTER :: Element, Faces(:)
 
@@ -17283,15 +17283,12 @@ CONTAINS
         IF(.NOT. BulkMask(j)) CYCLE
       END IF
 
-
       ! For P elements mappings are different
       IF ( ASSOCIATED(Element % PDefs) ) THEN
         CALL GetElementFaceMap(Element, FaceMap)
         n = Element % TYPE % NumberOfFaces
       ELSE
         SELECT CASE( Element % TYPE % ElementCode / 100 )
-        CASE(1,2)
-          CYCLE
         CASE(3)
           n = 1
           FaceMap => TriFaceMap
@@ -17320,59 +17317,56 @@ CONTAINS
 !      --------------------------------------
       DO k=1,n
                     
-!         We use MIN(Node1,Node2,Node3) as the hash table key:
-!         ---------------------------------------------------
         SELECT CASE( Element % TYPE % ElementCode / 100 )
+          
         CASE(3)
-          ! Ttriangle:
+          ! Triangle:
           !=======
-          nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-          CALL sort( 3, nf )
+          facenodes = 3
+
         CASE(4)
           ! Quad:
           !=======
-          nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-          CALL sort( 4, nf )
+          facenodes = 4
 
         CASE(5)
           ! Tetras:
           !=======
-          nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-          CALL sort( 3, nf )
+          facenodes = 3
 
         CASE(6)
           ! Pyramids:
           !=========
           IF ( k == 1 ) THEN
-            nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-            CALL sort( 4, nf )
+            facenodes = 4
           ELSE
-            nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-            CALL sort( 3, nf )
+            facenodes = 3
           END IF
           
         CASE(7)
           ! Wedges:
           !=======
           IF ( k <= 2 ) THEN
-            nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-            CALL sort( 3, nf )
+            facenodes = 3
           ELSE
-            nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-            CALL sort( 4, nf )
+            facenodes = 4
           END IF
                 
         CASE(8)
           ! Bricks:
           !=======
-          nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-          CALL sort( 4, nf )
+          facenodes = 4
           
         CASE DEFAULT
           WRITE(Message,*) 'Element type',Element % TYPE % ElementCode,'not implemented.' 
           CALL Fatal('FindMeshFaces',Message)
         END SELECT
+
+        nf(1:facenodes) = Element % NodeIndexes(FaceMap(k,1:facenodes))
+        CALL sort( facenodes, nf )
         
+!         We use MIN(Node1,Node2,Node3) as the hash table key:
+!         ---------------------------------------------------
         Node1 = nf(1)
         Node2 = nf(2)
         Node3 = nf(3)
@@ -20297,9 +20291,11 @@ END SUBROUTINE FindNeighbourNodes
 !   ---------
     DEALLOCATE( Child )
     IF(.NOT.EdgesPresent) THEN
+      CALL Info('SplitMeshEqual','Releasing edges from the old mesh as they are not needed!',Level=20)
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
     ELSE
+      CALL Info('SplitMeshEqual','Generating edges in the new mesh as thet were present in the old!',Level=20)
       CALL FindMeshEdges( NewMesh )
     END IF
 
