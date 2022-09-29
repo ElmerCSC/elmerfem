@@ -123,7 +123,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), DetJ, SOL(2,nd), Phi, s
-    LOGICAL :: Stat,isScalar,Found
+    LOGICAL :: Stat,isScalar,Found, Found_dens, Found_scoeff
     INTEGER :: i,j,p,q,t,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -158,7 +158,7 @@ CONTAINS
 
     mixEnergyDensity_n = GetReal( Material, 'Mixing Energy Density',Found_dens )
     IF(.NOT. Found_dens ) THEN
-      st_n = Getreal( Material, 'Surface Tension Coefficient, Found_scoeff)
+      st_n = Getreal( Material, 'Surface Tension Coefficient', Found_scoeff)
     END IF
 
     CALL GetVectorLocalSolution(SOL,UElement=Element)
@@ -177,7 +177,7 @@ CONTAINS
       Mobility = SUM(mobility_n*Basis(1:n))
       Velo = MATMUL(Velo_n,Basis(1:n))
 
-      h = MATMUL(h_n,Basis(1:n))
+      h = SUM(h_n*Basis(1:n))
 
       IF(Found_dens) THEN
         MixEnergyDensity = SUM(MixEnergyDensity_n*Basis(1:n))
