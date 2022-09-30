@@ -976,11 +976,13 @@ CONTAINS
       IF ( UseMassValsL ) THEN
         DO i=1,ParEnv % PEs
           IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-              ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
+            IF( ALLOCATED( SP % IfMatrix(i) % Values ) ) DEALLOCATE( SP % IfMatrix(i) % Values )
+            ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
               SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
            END IF
 
            IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+             IF( ALLOCATED( SP % NbsIfMatrix(i) % Values ) ) DEALLOCATE( SP % NbsIfMatrix(i) % Values )
               ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
               SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
            END IF
