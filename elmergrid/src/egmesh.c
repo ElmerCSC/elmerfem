@@ -4108,8 +4108,13 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    
 	    k = mapbc[j][elemdim];
 	    if(k) {
-	      if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
-	      strcpy(data->boundaryname[k],boundaryname0[j]);
+	      if(boundaryname0[j]) {
+		if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+		strcpy(data->boundaryname[k],boundaryname0[j]);
+	      }
+	      else if(data->boundaryname[k]) {
+		free_Cvector(data->boundaryname[k],0,MAXNAMESIZE);
+	      }
 	    }
 	  }
 	}
@@ -6955,7 +6960,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
   int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
   int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
-  int notfound,*notfounds=NULL;
+  int notfound,*notfounds=NULL,movenames;
 
 
   if(info) {
@@ -6970,6 +6975,14 @@ void ElementsToBoundaryConditions(struct FemType *data,
 
   noelements = data->noelements;
   noknots = data->noknots;
+  
+  movenames = (data->bodynamesexist && !data->boundarynamesexist);
+  if(data->bodynamesexist && info) {
+    if(movenames)
+      printf("Moving boundarynames together with elements\n");
+    else
+      printf("Assuming that boundaries names are already Ok!\n");
+  }
 
   maxelemtype = GetMaxElementType(data);
   if(info) printf("Leading bulk elementtype is %d\n",maxelemtype);
@@ -7077,7 +7090,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   for(i=1;i<=noelements;i++) {
     moveelement[i] = FALSE;
     sideelemdim = GetElementDimension(data->elementtypes[i]);
-
+    
     /* Lower dimensional elements are candidates to become BC elements */
     moveelement[i] = maxelemdim - sideelemdim;
     if(moveelement[i]) sideelements++;
@@ -7245,18 +7258,24 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	    if((sideind[0]-sideind[1])*(sideind2[0]-sideind2[1])<0) 	      
 	      bound->normal[sideelem] = -1;
 	  }		
-	  if(data->bodynamesexist) {
+	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
 	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
 	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
-	      if(data->bodyname[material]) 
+	      if(data->bodyname[material]) {
 		strcpy(data->boundaryname[material],data->bodyname[material]);
+		free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
+	      }
 	      else
 		sprintf(data->boundaryname[material],"body%d",material);
 	    }
 	    if(!strncmp(data->boundaryname[material],"body",4)) {
 	      strncpy(data->boundaryname[material],"bnry",4);
 	    }
+	  } else {
+	    if( data->boundarynamesexist ) {
+	      // printf("boundary name: %d %s\n",material,data->boundaryname[material]);
+	    }	       
 	  }
 
 	  /* Only try to find two parents if the boundary element is one degree smaller than maximum dimension */
