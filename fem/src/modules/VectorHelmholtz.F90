@@ -633,11 +633,11 @@ CONTAINS
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
-      IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
-      UpdateStiff = .TRUE.
-
       ! The ListGetElement function does not yet work for taking derivatives
       L = L + MATMUL(TemPot(1:n), dBasisdx(1:n,1:3))
+
+      IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      UpdateStiff = .TRUE.
            
       IF( ASSOCIATED( Parent ) ) THEN        
         muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
@@ -970,7 +970,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, InitHandles
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, InitHandles, WithGauge
    INTEGER :: soln
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrCoeff_h, MuCoeff_h
@@ -1119,6 +1119,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+!     WithGauge = np == n
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
      CALL GetElementNodes( Nodes )
@@ -1173,6 +1174,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        END IF
                      
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
+!       IF (WithGauge) EF_ip = EF_ip + &
+!           CMPLX(MATMUL(SOL(1,1:np),dBasisdx(1:np,:)), MATMUL(SOL(2,1:np),dBasisdx(1:np,:)))
 
        ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
 
