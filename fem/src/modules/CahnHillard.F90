@@ -175,7 +175,7 @@ CONTAINS
        IP % W(t), detJ, Basis, dBasisdx )
 
       Mobility = SUM(mobility_n*Basis(1:n))
-      Velo = MATMUL(Velo_n,Basis(1:n))
+      Velo = MATMUL(Velo_n(1:3,1:n),Basis(1:n))
 
       h = SUM(h_n*Basis(1:n))
 
@@ -185,6 +185,7 @@ CONTAINS
       ELSE IF (Found_scoeff) THEN
         MixEnergyDensity = 3*h/2/SQRT(2._dp)*SUM(st_n*Basis(1:n))
       END IF
+
 
       Phi = SUM( SOL(1,1:nd)*Basis(1:nd) )
 
