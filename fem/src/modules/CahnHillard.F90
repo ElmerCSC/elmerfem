@@ -123,12 +123,12 @@ CONTAINS
     REAL(KIND=dp), POINTER :: A(:,:),M(:,:)
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3), DetJ, SOL(2,nd), Phi, s
-    LOGICAL :: Stat,isScalar,Found, Found_dens, Found_scoeff
+    LOGICAL :: Stat,isScalar,Found, Found_dens, Found_scoeff, Found_mobil
     INTEGER :: i,j,p,q,t,dim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: Velo(3), h, MixEnergyDensity, Mobility
-    REAL(KIND=dp) :: Velo_n(n,3), h_n(n), MixEnergyDensity_n(n), Mobility_n(n), st_n(n)
+    REAL(KIND=dp) :: Velo_n(3,n), h_n(n), MixEnergyDensity_n(n), Mobility_n(n), st_n(n)
 
     TYPE(ValueList_t), POINTER :: Material, BF
 
@@ -141,7 +141,7 @@ CONTAINS
 
     dim = CoordinateSystemDimension()
 
-    Velo = 0._dp
+    Velo_n = 0._dp
     DO i=1,dim
       Velo_n(i,:) = GetReal( Material, 'Convection Velocity '//TRIM(i2s(i)), Found )
     END DO
@@ -151,10 +151,7 @@ CONTAINS
       h_n = ElementDiameter(Element,Nodes)/2
     END IF
 
-    mobility_n = GetReal( Material, 'Mobility',Found,Element )
-    IF(.NOT.Found) THEN
-      Mobility_n = ElementDiameter(Element,Nodes)**2
-    END IF
+    Mobility_n = GetReal( Material, 'Mobility',Found_mobil,Element )
 
     mixEnergyDensity_n = GetReal( Material, 'Mixing Energy Density',Found_dens )
     IF(.NOT. Found_dens ) THEN
@@ -174,10 +171,18 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
        IP % W(t), detJ, Basis, dBasisdx )
 
-      Mobility = SUM(mobility_n*Basis(1:n))
-      Velo = MATMUL(Velo_n(1:3,1:n),Basis(1:n))
+      Velo = 0._dp
+      DO i=1,dim
+        Velo(i) = SUM(Velo_n(i,:)*Basis(1:n))
+      END DO
 
       h = SUM(h_n*Basis(1:n))
+
+      IF (Found_mobil) THEN
+        Mobility = SUM(mobility_n*Basis(1:n))
+      ELSE
+        Mobility = h**2
+      END IF
 
       MixEnergyDensity = 1._dp
       IF(Found_dens) THEN
@@ -185,7 +190,6 @@ CONTAINS
       ELSE IF (Found_scoeff) THEN
         MixEnergyDensity = 3*h/2/SQRT(2._dp)*SUM(st_n*Basis(1:n))
       END IF
-
 
       Phi = SUM( SOL(1,1:nd)*Basis(1:nd) )
 
@@ -219,9 +223,6 @@ CONTAINS
           A(2,2) = A(2,2) + s*Basis(q)*Basis(p)
           A(2,1) = A(2,1) - s*h**2*SUM(dBasisdx(q,:)*dBasisdx(p,:))
           A(2,1) = A(2,1) + s*(1-3*Phi**2)*Basis(q)*Basis(p)
-             
-          IF (NewtonLinearization) THEN
-          END IF
         END DO
 
         FORCE(i+2) = FORCE(i+2) - s * 2*Phi**3 * Basis(p)
