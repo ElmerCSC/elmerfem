@@ -89,6 +89,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     END IF
 
     UseGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
+    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorentz Condition', Found)
     IF (UseGauge) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
@@ -145,7 +146,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   INTEGER :: i, NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
-  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel
+  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
 !------------------------------------------------------------------------------
@@ -188,7 +189,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   END IF
   IF(.NOT. Found ) eps0 = 8.854187817d-12
 
-  LowFrequencyModel = GetLogical( SolverParams,'Low Frequency Model',Found)
+  LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
+  LorentzCondition = GetLogical(SolverParams, 'Lorentz Condition', Found)
   
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
@@ -543,6 +545,11 @@ CONTAINS
             Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
             Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
           END DO
+          IF (LorentzCondition) THEN
+            DO j = 1,np
+              Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+            END DO
+          END IF
         END DO
       END IF
     END DO
