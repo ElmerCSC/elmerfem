@@ -54,6 +54,7 @@ INTEGER :: MMGPARAM_rmc = MMG3D_DPARAM_rmc
 INTEGER :: MMGPARAM_nosurf = MMG3D_IPARAM_nosurf
 INTEGER :: MMGPARAM_aniso = MMG3D_IPARAM_anisosize
 INTEGER :: MMGPARAM_hgradreq = MMG3D_DPARAM_hgradreq
+INTEGER :: MMGPARAM_nosizreq = MMG3D_IPARAM_nosizreq
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 MMG5_DATA_PTR_T :: mmgMet
@@ -1079,6 +1080,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_HgradReq,&
     -1.0_dp,ierr)
+
+  CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosizreq, &
+     1,ierr)
 
   !Take care of fixed nodes/elements if requested
   IF(PRESENT(NodeFixed)) THEN
