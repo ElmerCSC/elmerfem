@@ -239,8 +239,6 @@ CONTAINS
       Method = 'Zoltan'
       CALL Info(FuncName, 'used in serial so using Zoltan partition')
     END IF
-    !IF(.NOT. Found) CALL FATAL('iain', 'not got it')
-    !IF(Found) CALL FATAL('iain', 'got it')
 
 10  CONTINUE
 
