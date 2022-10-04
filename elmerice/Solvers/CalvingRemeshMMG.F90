@@ -72,7 +72,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !--------------------------------------
   TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh,DistMesh
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh,ParMetisMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
@@ -91,14 +91,15 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
-       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
+       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:), PartGotNodes(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence, NoNewNodes, RSuccess, Success,&
        SaveMMGMeshes, SaveMMGSols, PauseSolvers, PauseAfterCalving, FixNodesOnRails, &
        SolversPaused, NewIceberg, GotNodes(4), CalvingFileCreated=.FALSE., SuppressCalv,&
-       SecondaryRebalance
+       DistributedMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
-       premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
+       premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
+       RepartMethod
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
@@ -191,7 +192,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   END IF
   FixNodesOnRails = ListGetLogical(SolverParams,"Fix Nodes On Rails", Default=.TRUE.)
   SuppressCalv = ListGetLogical(SolverParams,"Suppress Calving", Default=.FALSE.)
-  SecondaryRebalance = ListGetLogical(SolverParams,"ParMetis Secondary Rebalance", Default=.FALSE.)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -1095,24 +1095,60 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    ! then do the redistribution
    !-------------------------------
 
-   CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+   RepartMethod = ListGetString(Model % Solver % Values,"Repartition Method", Found)
+   SELECT CASE( RepartMethod )
+   CASE( 'parmetis' ) ! bit of a hack here. Parmetis requires fully distributed mesh so ensure all parts have one element
+      ALLOCATE(PartGotNodes(ParEnv % PEs))
+      CALL MPI_ALLGATHER(GatheredMesh % NumberOfNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
+          1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
 
-   IF(SecondaryRebalance) THEN
-      DistMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+      DistributedMesh = ALL(PartGotNodes)
 
-      CALL Zoltan_Interface( Model, DistMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
-
-      FinalMesh => RedistributeMesh(Model, DistMesh, .TRUE., .FALSE.)
-
-      IF(ASSOCIATED(DistMesh % Repartition)) THEN
-          DEALLOCATE(DistMesh % Repartition)
-          DistMesh % Repartition => NULL()
+      IF(.NOT. ASSOCIATED(GatheredMesh % Repartition)) THEN
+        ALLOCATE(GatheredMesh % Repartition(GatheredMesh % NumberOfBulkElements+&
+                GatheredMesh % NumberOfBoundaryElements), STAT=ierr)
+        IF(ierr /= 0) PRINT *,ParEnv % MyPE,' could not allocate Mesh % Repartition'
       END IF
 
-      CALL ReleaseMesh(DistMesh)
-   ELSE
-      FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
-   END IF
+      GatheredMesh % Repartition = ParEnv % MyPE + 1
+      IF(ImBoss) THEN
+        counter=0
+        DO i=1,ParEnv % PEs
+          IF(PartGotNodes(i)) CYCLE ! got nodes
+          counter=counter+1
+          IF(counter > GatheredMesh % NumberOfNodes) &
+            CALL FATAL(SolverName, 'CalvBoss does not have enough elems to share for ParMetis repartitioning')
+          GatheredMesh % Repartition(counter) = i
+          DO j=GatheredMesh % NumberOfBulkElements+1, GatheredMesh % NumberOfBulkElements+&
+            GatheredMesh % NumberOfBoundaryElements
+            Element => GatheredMesh % Elements(j)
+            ParentElem => Element % BoundaryInfo % Left
+            IF(.NOT. ASSOCIATED(ParentElem)) THEN
+              ParentElem => Element % BoundaryInfo % Right
+            END IF
+            CALL Assert(ASSOCIATED(ParentElem),SolverName,"Boundary element has no parent!")
+            IF(ParentElem % ElementIndex == counter) THEN
+              GatheredMesh % Repartition(j) = i
+            END IF
+          END DO
+        END DO
+      END IF
+
+      ParMetisMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
+
+      IF(ASSOCIATED(ParMetisMesh % Repartition)) THEN
+        DEALLOCATE(ParMetisMesh % Repartition)
+        ParMetisMesh % Repartition => NULL()
+      END IF
+
+      CALL ReleaseMesh(GatheredMesh)
+      GatheredMesh => ParMetisMesh
+      ParMetisMesh => NULL()
+   END SELECT
+
+   CALL Zoltan_Interface( Model, GatheredMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )
+
+   FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
    CALL CheckMeshQuality(FinalMesh)
 
