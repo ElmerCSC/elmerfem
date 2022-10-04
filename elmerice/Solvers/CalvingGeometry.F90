@@ -8335,7 +8335,7 @@ CONTAINS
         DO k=1,n
           IF(LeftPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
-        IF(Counter == 2) THEN
+        IF(Counter >= 2) THEN
           PRINT*, SolverName, ' Left boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = LeftBCtag
           CYCLE
@@ -8345,7 +8345,7 @@ CONTAINS
         DO k=1,n
           IF(RightPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
-        IF(Counter == 2) THEN
+        IF(Counter >= 2) THEN
           PRINT*, SolverName, ' Right boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = RightBCtag
           CYCLE
@@ -8355,7 +8355,7 @@ CONTAINS
         DO k=1,n
           IF(FrontPerm(NodeIndexes(k)) > 0) counter = counter+1
         END DO
-        IF(Counter == 2) THEN
+        IF(Counter >= 2) THEN
           PRINT*, SolverName, ' Front boundary', ParEnv % MyPE
           Element % BoundaryInfo % Constraint = FrontBCtag
           CYCLE
