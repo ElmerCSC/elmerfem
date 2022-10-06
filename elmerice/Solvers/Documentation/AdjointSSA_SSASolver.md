@@ -45,7 +45,7 @@ and make sure that they are consistent.
   !   Require: GroundedMask and Bedrork variables
   Sub-Element GL parameterization = logical True
   !# You can set the number of IP points to evaluated the friction in the
-  !   first floating elemnt
+  !   first floating element
   GL integration points number = Integer 20
 
   !# Keywords related to linear system

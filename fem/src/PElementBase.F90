@@ -92,6 +92,22 @@ MODULE PElementBase
     END FUNCTION LineNodalPBasis
 
 
+    ! As previous except obtain all values at once.
+    SUBROUTINE LineNodalPBasisAll(u, phi) 
+
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u
+      REAL (KIND=dp) :: phi(:)
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/2.0_dp      
+      INTEGER, PARAMETER :: usgn(2) = [-1,1]
+      
+      phi(1:2) = c*(1+usgn*u)
+      
+    END SUBROUTINE LineNodalPBasisAll
+
+
+    
 !------------------------------------------------------------------------------
 !>     Derivative of line elements nodal basis at point (u).
 !------------------------------------------------------------------------------
@@ -127,6 +143,22 @@ MODULE PElementBase
       END SELECT
     END FUNCTION dLineNodalPBasis
 
+
+    ! As previous except obtain all values at once.
+    SUBROUTINE dLineNodalPBasisAll(u, gradphi) 
+
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u
+      REAL (KIND=dp) :: gradphi(:,:)
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/2.0_dp      
+      INTEGER, PARAMETER :: usgn(2) = [-1,1]
+      
+      gradphi(1:2,1) = c*(usgn)
+      
+    END SUBROUTINE dLineNodalPBasisAll
+
+    
 
 !------------------------------------------------------------------------------
 !>     Bubble function i of line element.
@@ -262,6 +294,22 @@ MODULE PElementBase
     END FUNCTION QuadNodalPBasis
 
 
+    ! As previous except obtain all values at once.
+    SUBROUTINE QuadNodalPBasisAll(u, v, phi) 
+
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: phi(:)
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/4.0_dp      
+      INTEGER, PARAMETER :: usgn(4) = [-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(4) = [-1,-1,1,1]
+      
+      phi(1:4) = c*(1+usgn*u)*(1+vsgn*v)
+      
+    END SUBROUTINE QuadNodalPBasisAll
+       
+
 !------------------------------------------------------------------------------
 !>     Gradient of quadrilateral nodal basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -309,6 +357,24 @@ MODULE PElementBase
     END FUNCTION dQuadNodalPBasis
 
 
+    ! As previous except obtain all values at once 
+    SUBROUTINE dQuadNodalPBasisAll(u, v, gradphi) 
+      IMPLICIT NONE
+
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: gradphi(:,:)
+      
+      INTEGER, PARAMETER :: usgn(4) = [-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(4) = [-1,-1,1,1]
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/4.0_dp      
+     
+      gradphi(1:4,1) = c*(usgn)*(1+vsgn*v)
+      gradphi(1:4,2) = c*(1+usgn*u)*(vsgn)
+      
+    END SUBROUTINE dQuadNodalPBasisAll
+
+
+    
 !------------------------------------------------------------------------------
 !>     Quadrilateral edge basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -832,6 +898,30 @@ MODULE PElementBase
     END FUNCTION TriangleNodalPBasis
 
 
+    SUBROUTINE TriangleNodalPBasisAll(u, v, phi) 
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: phi(:)
+      REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c3=1.0_dp/SQRT(3.0_dp)
+      
+      phi(1) = half*(1-u-c3*v)
+      phi(2) = half*(1+u-c3*v)
+      phi(3) = c3*v
+    END SUBROUTINE TriangleNodalPBasisAll
+
+
+    SUBROUTINE TriangleNodalLBasisAll(u, v, phi) 
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: phi(:)
+      
+      phi(1) = 1.0_dp-u-v
+      phi(2) = u
+      phi(3) = v
+    END SUBROUTINE TriangleNodalLBasisAll
+
+
+    
 !------------------------------------------------------------------------------
 !>     Gradient of triangle nodal basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -877,6 +967,34 @@ MODULE PElementBase
     END FUNCTION dTriangleNodalPBasis
 
 
+    SUBROUTINE dTriangleNodalPBasisAll(u, v, gradphi)
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: gradphi(:,:)
+      REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c6=SQRT(3.0_dp)/6.0_dp
+
+      gradphi(1,1) = -half
+      gradphi(1,2) = -c6
+      gradphi(2,1) = half
+      gradphi(2,2) = -c6
+      gradphi(3,1) = 0
+      gradphi(3,2) = 2*c6
+    END SUBROUTINE dTriangleNodalPBasisAll
+
+    SUBROUTINE dTriangleNodalLBasisAll(u, v, gradphi)
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      REAL (KIND=dp) :: gradphi(:,:)
+
+      gradphi(1,1) = -1.0_dp
+      gradphi(1,2) = -1.0_dp
+      gradphi(2,1) = 1.0_dp
+      gradphi(2,2) = 0.0_dp
+      gradphi(3,1) = 0.0_dp
+      gradphi(3,2) = 1.0_dp
+    END SUBROUTINE dTriangleNodalLBasisAll
+
+    
 !------------------------------------------------------------------------------
 !>     Triangle edge basis at point (u,v).
 !------------------------------------------------------------------------------
@@ -1261,6 +1379,24 @@ MODULE PElementBase
       END SELECT
     END FUNCTION BrickNodalPBasis
 
+    ! As previous except obtain all nodal lvalues at once. 
+    SUBROUTINE BrickNodalPBasisAll(u, v, w, phi) 
+      IMPLICIT NONE
+      
+      ! Parameters
+      REAL(Kind=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: phi(:)
+      
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/8.0_dp      
+      INTEGER, PARAMETER :: usgn(8) = [-1,1,1,-1,-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(8) = [-1,-1,1,1,-1,-1,1,1]
+      INTEGER, PARAMETER :: wsgn(8) = [-1,-1,-1,-1,1,1,1,1]
+            
+      phi(1:8) = c*(1+usgn*u)*(1+vsgn*v)*(1+wsgn*w)
+      
+    END SUBROUTINE BrickNodalPBasisAll
+
+    
     FUNCTION dBrickNodalPBasis(node, u, v, w) RESULT(grad)
       IMPLICIT NONE
 
@@ -1311,6 +1447,26 @@ MODULE PElementBase
       END SELECT
     END FUNCTION dBrickNodalPBasis
 
+
+    ! As previous except obtain all nodal values at once. 
+    SUBROUTINE dBrickNodalPBasisAll(u, v, w, gradphi) 
+      IMPLICIT NONE
+
+      ! Parameters
+      REAL(Kind=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+
+      REAL(Kind=dp), PARAMETER :: c = 1.0_dp/8.0_dp            
+      INTEGER, PARAMETER :: usgn(8) = [-1,1,1,-1,-1,1,1,-1]
+      INTEGER, PARAMETER :: vsgn(8) = [-1,-1,1,1,-1,-1,1,1]
+      INTEGER, PARAMETER :: wsgn(8) = [-1,-1,-1,-1,1,1,1,1]
+            
+      gradphi(1:8,1) = c*(usgn)*(1+vsgn*v)*(1+wsgn*w)
+      gradphi(1:8,2) = c*(1+usgn*u)*(vsgn)*(1+wsgn*w)
+      gradphi(1:8,3) = c*(1+usgn*u)*(1+vsgn*v)*(wsgn)
+
+    END SUBROUTINE dBrickNodalPBasisAll
+          
 
 !------------------------------------------------------------------------------
 !>     Brick edge basis at point (u,v,w).
@@ -2045,7 +2201,32 @@ MODULE PElementBase
          END SELECT
     END FUNCTION TetraNodalPBasis
 
+    
+    SUBROUTINE TetraNodalPBasisAll(u, v, w, phi) 
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v,w
+      REAL (KIND=dp) :: phi(:)
+      REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp, &
+          c3 = 1.0_dp/SQRT(3.0_dp), c6 = 1.0_dp/SQRT(6.0_dp), c8 = SQRT(3.0_dp/8.0_dp)
 
+      phi(1) = half*(1-u-c3*v-c6*w)
+      phi(2) = half*(1+u-c3*v-c6*w)
+      phi(3) = c3*v - half*c6*w 
+      phi(4) = c8*w
+    END SUBROUTINE TetraNodalPBasisAll
+
+    SUBROUTINE TetraNodalLBasisAll(u, v, w, phi) 
+      IMPLICIT NONE
+      REAL (KIND=dp), INTENT(IN) :: u,v,w
+      REAL (KIND=dp) :: phi(:)
+      phi(1) = 1.0_dp-u-v-w
+      phi(2) = u
+      phi(3) = v
+      phi(4) = w
+    END SUBROUTINE TetraNodalLBasisAll
+
+    
+    
 !------------------------------------------------------------------------------
 !>     Gradient of tetrahedrons nodal basis at point (u,v,w)
 !------------------------------------------------------------------------------
@@ -2098,6 +2279,40 @@ MODULE PElementBase
     END FUNCTION dTetraNodalPBasis
 
 
+    SUBROUTINE dTetraNodalPBasisAll(u, v, w, gradphi )
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+      REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp, &
+          c3 = 1.0_dp/SQRT(3.0_dp), c6 = 1.0_dp/SQRT(6.0_dp), c8 = SQRT(3.0_dp/8.0_dp)
+      
+      gradphi(1,1) = -half
+      gradphi(1,2) = -c3*half
+      gradphi(1,3) = -c6*half
+      gradphi(2,1) = half
+      gradphi(2,2) = -c3*half
+      gradphi(2,3) = -c6*half
+      gradphi(3,1) = 0
+      gradphi(3,2) = c3
+      gradphi(3,3) = -c6*half
+      gradphi(4,1) = 0
+      gradphi(4,2) = 0
+      gradphi(4,3) = c8
+    END SUBROUTINE dTetraNodalPBasisAll
+
+    SUBROUTINE dTetraNodalLBasisAll(u, v, w, gradphi )
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+      
+      gradphi(1,1:3) = -1.0_dp
+      gradphi(2:4,1:3) = 0.0_dp
+      gradphi(2,1) = 1.0_dp
+      gradphi(3,2) = 1.0_dp
+      gradphi(4,3) = 1.0_dp
+    END SUBROUTINE dTetraNodalLBasisAll
+
+    
 !------------------------------------------------------------------------------    
 !>     Tetra edge basis at point (u,v,w)
 !------------------------------------------------------------------------------    
@@ -2678,6 +2893,44 @@ MODULE PElementBase
     END FUNCTION WedgeNodalPBasis
 
 
+    SUBROUTINE WedgeNodalPBasisAll(u, v, w, phi) 
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: phi(:)
+      REAL(KIND=dp) :: tri(3),line(2)
+      REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp, c3 = 1.0_dp/SQRT(3.0_dp)
+                 
+      tri(1) = half*(1d0-u-c3*v)
+      tri(2) = half*(1d0+u-c3*v)
+      tri(3) = c3*v
+
+      line(1) = half*(1-w)
+      line(2) = half*(1+w)
+      
+      phi(1:3) = line(1)*tri
+      phi(4:6) = line(2)*tri
+    END SUBROUTINE WedgeNodalPBasisAll
+
+    SUBROUTINE WedgeNodalLBasisAll(u, v, w, phi) 
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: phi(:)
+      REAL(KIND=dp) :: tri(3),line(2)
+      REAL(KIND=dp), PARAMETER :: half = 1.0_dp/2.0_dp
+                 
+      tri(1) = 1.0_dp-u-v
+      tri(2) = u
+      tri(3) = v
+
+      line(1) = half*(1-w)
+      line(2) = half*(1+w)
+      
+      phi(1:3) = line(1)*tri
+      phi(4:6) = line(2)*tri
+    END SUBROUTINE WedgeNodalLBasisAll
+
+    
+    
 !------------------------------------------------------------------------------
 !>     Gradient of wedges nodal basis at point (u,v,w)
 !------------------------------------------------------------------------------
@@ -2725,6 +2978,72 @@ MODULE PElementBase
     END FUNCTION dWedgeNodalPBasis
 
 
+    SUBROUTINE dWedgeNodalPBasisAll(u, v, w, gradphi) 
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+      REAL(KIND=dp) :: tri(3),line(2),gradtri(3,2),gradline(2)
+
+      REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c3=1.0_dp/SQRT(3.0_dp)
+
+      tri(1) = half*(1d0-u-c3*v)
+      tri(2) = half*(1d0+u-c3*v)
+      tri(3) = c3*v
+
+      line(1) = half*(1-w)
+      line(2) = half*(1+w)
+      
+      gradtri(1,1) = -half
+      gradtri(1,2) = -half*c3
+      gradtri(2,1) = half
+      gradtri(2,2) = -half*c3
+      gradtri(3,1) = 0
+      gradtri(3,2) = c3
+
+      gradline(1) = -half
+      gradline(2) = half
+          
+      gradphi(1:3,1:2) = gradtri * line(1)
+      gradphi(4:6,1:2) = gradtri * line(2)
+      
+      gradphi(1:3,3) = tri * gradline(1)
+      gradphi(4:6,3) = tri * gradline(2)
+      
+    END SUBROUTINE dWedgeNodalPBasisAll
+
+    SUBROUTINE dWedgeNodalLBasisAll(u, v, w, gradphi) 
+      IMPLICIT NONE
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      REAL(KIND=dp), INTENT(OUT) :: gradphi(:,:)
+      REAL(KIND=dp) :: tri(3),line(2),gradtri(3,2),gradline(2)
+      REAL(KIND=dp), PARAMETER :: half=1.0_dp/2.0_dp
+
+      tri(1) = 1.0_dp-u-v
+      tri(2) = u
+      tri(3) = v
+
+      line(1) = half*(1-w)
+      line(2) = half*(1+w)
+
+      gradtri(1,1) = -1.0_dp
+      gradtri(1,2) = -1.0_dp
+      gradtri(2,1) = 1.0_dp
+      gradtri(2,2) = 0.0_dp
+      gradtri(3,1) = 0.0_dp
+      gradtri(3,2) = 1.0_dp
+
+      gradline(1) = -half
+      gradline(2) = half
+          
+      gradphi(1:3,1:2) = gradtri * line(1)
+      gradphi(4:6,1:2) = gradtri * line(2)
+      
+      gradphi(1:3,3) = tri * gradline(1)
+      gradphi(4:6,3) = tri * gradline(2)
+      
+    END SUBROUTINE dWedgeNodalLBasisAll
+
+    
 !------------------------------------------------------------------------------      
 !>     Wedge edge basis at point (u,v,w)
 !------------------------------------------------------------------------------      

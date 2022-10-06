@@ -10,7 +10,7 @@ c     M1qn3 has two running modes: the SID (Scalar Initial Scaling) mode
 c     and the DIS (Diagonal Initial Scaling) mode. Both do not require
 c     the same amount of storage, the same subroutines, ...
 c     In the description below, items that differ in the DIS mode with
-c     respect to the SIS mode are given in brakets.
+c     respect to the SIS mode are given in brackets.
 c
 c     Use the following subroutines:
 c         M1QN3A

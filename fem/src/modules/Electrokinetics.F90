@@ -257,13 +257,13 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
      ALLOCATE(Nodes % x(N), Nodes % y(N), Nodes % z(N),&
           STAT = istat)
      IF (istat /= 0) THEN
-        CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','Allocations failed')
+        CALL Fatal('electrokinetics (helmholtz_smoluchowski_comp)','Allocations failed')
      END IF
      vacuumPerm = ListGetConstReal( Model % Constants, 'Permittivity of Vacuum', GotIt )
      IF (.NOT. GotIt) THEN
-        CALL WARN('electrokinetics (helmholtz_smoluchowski_comp)',&
+        CALL Warn('electrokinetics (helmholtz_smoluchowski_comp)',&
              'No value for >Permittivity of Vacuum< found in section Constants')
-        CALL WARN('electrokinetics (helmholtz_smoluchowski_comp)',&
+        CALL Warn('electrokinetics (helmholtz_smoluchowski_comp)',&
              '         Using default SI value 8.8542E-12')
         vacuumPerm = 8.8542D-12
      END IF
@@ -275,7 +275,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   !-------------------------------------------------------------------------
   BoundaryElement => Model % CurrentElement
   IF ( .NOT. ASSOCIATED(BoundaryElement) ) THEN
-     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No boundary element found')
+     CALL Fatal('electrokinetics (helmholtz_smoluchowski_comp)','No boundary element found')
   END IF
   other_body_id = BoundaryElement % BoundaryInfo % outbody
   IF (other_body_id < 1) THEN ! only one body in calculation
@@ -287,14 +287,14 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   END IF
   ! just to be on the save side, check again
   IF ( .NOT. ASSOCIATED(ParentElement) ) THEN
-     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boundary element')
+     CALL Fatal('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boundary element')
   END IF
 
   body_id = ParentElement % BodyId
   material_id = ListGetInteger(Model % Bodies(body_id) % Values, 'Material', GotIt)
   ParentMaterial => Model % Materials(material_id) % Values
   IF (.NOT. ASSOCIATED(ParentMaterial)) THEN
-     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No material values could be found')
+     CALL Fatal('electrokinetics (helmholtz_smoluchowski_comp)','No material values could be found')
   END IF
   eq_id = ListGetInteger( Model % Bodies(body_id) % Values,'Equation', &
        minv=1,maxv=Model % NumberOfEquations )
@@ -329,7 +329,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
     dummyArray  = ListGetReal( ParentMaterial, 'Viscosity', 1, NodeNumberArray, GotIt)
     IF (.NOT. GotIt) THEN
       WRITE(Message,'(a,i0)' )'No viscosity found in material section no. ', material_id
-      CALL FATAL( 'electrokinetics (helmholtz_smoluchowski)',Message )
+      CALL Fatal( 'electrokinetics (helmholtz_smoluchowski)',Message )
     ELSE
       viscosity = dummyArray(1)
     END IF
@@ -387,7 +387,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
       IF (.NOT. ElectricFieldExists) THEN
         WRITE(Message,'(a,i0)' )'No component for >Electric Field {1,2,3}< found in Material ',&
             material_id, ' although defined as constant'
-        CALL WARN('electrokinetics (helmholtz_smoluchowski)',Message)
+        CALL Warn('electrokinetics (helmholtz_smoluchowski)',Message)
       END IF
     ELSE IF ( ElectricFieldMethod == 'computed') THEN ! get Electric Field from Electrostatic Solver
       electricField = 0.0_dp      
@@ -402,7 +402,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
     ELSE         
       WRITE(Message,'(a,a,a,i0)' ) 'Unknown entry, ', ElectricFieldMethod,&
           ',for keyword >Electric Field< for Equation no. ', eq_id
-      CALL WARN('electrokinetics (helmholtz_smoluchowski)',Message)
+      CALL Warn('electrokinetics (helmholtz_smoluchowski)',Message)
       ElectricFieldExists = .FALSE.
       hs_velocity = 0.0D00        
     END IF
@@ -478,7 +478,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   Material => Model % Materials(material_id) % Values
   IF (.NOT. ASSOCIATED(Material)) THEN
      WRITE(Message, '(a,i3)' )'No Material found for body-id ', body_id
-     CALL WARN('electrokinetics (getJouleHeat)',Message)
+     CALL Warn('electrokinetics (getJouleHeat)',Message)
      RETURN
   END IF
   !-----------------------------------------------------------------
@@ -489,7 +489,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   IF (.NOT. GotIt) THEN
     WRITE(Message, '(a,i0)' )&
         'No >Electric Conductivity< found in Material section ',material_id
-    CALL WARN('electrokinetics (getJouleHeat)',Message)
+    CALL Warn('electrokinetics (getJouleHeat)',Message)
     RETURN
   ELSE
     elConductivity = dummyArray(1)
@@ -499,8 +499,8 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
   IF (.NOT. GotIt) THEN
     WRITE(Message, '(a,i0)' )'No >Density< found in Material section ',&
         material_id 
-    CALL WARN('electrokinetics (getJouleHeat)',Message)
-    CALL WARN('electrokinetics (getJouleHeat)','setting reference density to 1')
+    CALL Warn('electrokinetics (getJouleHeat)',Message)
+    CALL Warn('electrokinetics (getJouleHeat)','setting reference density to 1')
     density = 1.0D00
   ELSE
     density = dummyArray(1) 
@@ -533,7 +533,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
       IF (.NOT. ElectricFieldExists) THEN
         WRITE(Message,'(a,i3)' )'No component for >Electric Field {1,2,3}< found in Material',&
             material_id, ' although defined as constant'
-        CALL WARN('electrokinetics (getJouleHeat)',Message)
+        CALL Warn('electrokinetics (getJouleHeat)',Message)
       END IF
     ELSE IF ( ElectricFieldMethod == 'computed') THEN ! get Electric Field from Electrostatic Solver
       electricField = 0.0_dp      
@@ -548,7 +548,7 @@ FUNCTION getJouleHeat( Model, NodeNumber, realDummy ) RESULT(jouleHeat)
     ELSE         
       WRITE(Message,'(a,a,a,i3)' ) 'Unknown entry, ', ElectricFieldMethod,&
           ',for keyword >Electric Field< for Equation no.', eq_id
-      CALL WARN('electrokinetics (getJouleHeat)',Message)
+      CALL Warn('electrokinetics (getJouleHeat)',Message)
       ElectricFieldExists = .FALSE.
     END IF
   END IF

@@ -7,7 +7,7 @@ $Lambda=<Lambda>
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 $OBSERVATION_FILE="<OBS_FILE>"
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! number of iterrations
+!! number of iterations
 $niter=200
 !
 ! Exps. definitions.

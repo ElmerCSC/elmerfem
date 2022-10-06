@@ -38,10 +38,12 @@ Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    Equation = "MGDynamics"
    Variable = "A"
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Use Piola Transform = True
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
    Linear System Solver = Iterative
-   Linear System Iterative Method = BicgstabL
+   Linear System Iterative Method = GCR
+   Linear System GCR Restart = 200
    Linear System preconditioning = none
    Linear System Convergence Tolerance = 1.e-8
    Linear System Max Iterations = 3000
@@ -58,7 +60,7 @@ Solver 2  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Potential Variable = String "A"
    Calculate Current Density = Logical True
    Steady State Convergence Tolerance = 0
-   Linear System Solver = "Iterative"
+   Linear System Solver = Direct
    Linear System Preconditioning = None
    Linear System Residual Output = 1000
    Linear System Max Iterations = 5000
@@ -81,6 +83,7 @@ Solver 4  !---- SaveData, SaveScalars
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
    Filename = wires_and_core/dat/wires_and_core.dat
+   Show Norm Index = 3
 End
 Equation 1
    Active Solvers(3) = 1 2 3
@@ -154,7 +157,6 @@ End
 
 
 
-Solver 2 :: Reference Norm = Real 1.04018381E-01
-Solver 2 :: Reference Norm Tolerance = Real 1E-03
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 1 :: Reference Norm = 6.59507372E-05
+Solver 4 :: Reference Norm = 5.04667804E+13
+Solver 4 :: Reference Norm Tolerance = Real 1E-03

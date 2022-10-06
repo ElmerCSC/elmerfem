@@ -212,7 +212,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
     ALLOCATE(Crt(Model % Circuit_tot_n))
@@ -224,7 +224,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     END IF      
   END IF
   
-  ! If we have angle given explicitely, do not compute it 
+  ! If we have angle given explicitly, do not compute it 
   IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
     IF( TransientSimulation ) CALL SetDynamicAngle()
   END IF
@@ -246,7 +246,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END IF
       
       IF( n < Model % Circuit_tot_n ) THEN
-        CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
+        CALL Fatal(Caller,'Lagrange multiplier is too small for circuits!')
       END IF
       
       ! We want to associate the variable of this solver to the LagrangeVar so that the library routines take
@@ -1108,7 +1108,7 @@ CONTAINS
     
     SAVE ang0, velo0, imom, tStepPrev
     
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     AngVar => DefaultVariableGet( 'Rotor Angle' )
     IF(.NOT. ASSOCIATED( AngVar ) ) RETURN
     
@@ -1305,7 +1305,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
   END IF

@@ -55,10 +55,10 @@ from FreeCADBatchFEMTools import faces_with_vertices_in_symmetry_plane
 from FreeCADBatchFEMTools import create_xor_object
 from FreeCADBatchFEMTools import reduce_half_symmetry
 
-def create_bar(box_size, bar_lenght, center, name, symmetry_planes=None, mesh_size=None):
+def create_bar(box_size, bar_length, center, name, symmetry_planes=None, mesh_size=None):
     bar_obj = doc.addObject('Part::Box', name+'_obj')
     bar_obj.Height = box_size
-    bar_obj.Width = bar_lenght
+    bar_obj.Width = bar_length
     bar_obj.Length = box_size
     bar_obj.Placement.Base = FreeCAD.Vector(center)- FreeCAD.Vector(box_size/2,0,box_size/2)
     doc.recompute()

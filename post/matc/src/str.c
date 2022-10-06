@@ -248,7 +248,7 @@ void str_com_init()
   static char *sprintfHelp =
   {
      "str = sprintf( fmt[, vec] )\n"
-     "Return a string formated using fmt and values from vec. A call to\n"
+     "Return a string formatted using fmt and values from vec. A call to\n"
      "corresponding C-language function is made.\n\n"
   };
 

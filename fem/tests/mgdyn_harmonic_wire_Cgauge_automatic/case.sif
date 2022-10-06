@@ -11,7 +11,7 @@
 
 !
 ! This version enforces Coulomb gauge (div(A)=0) as an afterthought. Automation
-! of the process actived.
+! of the process activated.
 !
 ! J.R. 7.9.2021
 !
@@ -220,7 +220,7 @@ End
 
 Solver 1 :: Reference Norm = 0.98223088E-05
 Solver 1 :: Reference Norm Tolerance = 1e-4
-Solver 4 :: Reference Norm = 1.42277551E+03
+Solver 4 :: Reference Norm = 1.60131867E+03
 Solver 4 :: Reference Norm Tolerance = 1e-3
 Solver 5 :: Reference Norm = 1.51603302E-06
 Solver 5 :: Reference Norm Tolerance = 1e-3

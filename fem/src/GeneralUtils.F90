@@ -2055,7 +2055,7 @@ INCLUDE "mpif.h"
       Matrix % Symmetric = .FALSE.
       Matrix % SolveCount   = 0
       Matrix % NumberOfRows = 0
-
+      Matrix % Ndeg = -1
       Matrix % ProjectorBC = 0
       Matrix % ProjectorType = PROJECTOR_TYPE_DEFAULT
       

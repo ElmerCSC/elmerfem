@@ -115,14 +115,6 @@ PROGRAM ResultToResult
      TYPE(Quadrant_t), POINTER :: RootQuadrant
      LOGICAL :: QuadrantTreeExists=.FALSE.
 
-
-!------------------------------------------------------------------------------
-!    For sgi machines reset the output unit to line buffering, so that
-!    ElmerFront, etc, can follow progress, even if output is to a file.
-!------------------------------------------------------------------------------
-#if defined(SGI) || defined(SGI64)
-     CALL SetLineBuf(6)
-#endif
 !------------------------------------------------------------------------------
 !    Read input file name (the old model .sif file)
 !------------------------------------------------------------------------------
@@ -142,13 +134,6 @@ PROGRAM ResultToResult
      ELSE
        ParEnv % PEs  = 1 
        ParEnv % MyPE = 0
-!------------------------------------------------------------------------------
-!     For sgi machines reset the core dump name to 'core' from 'core.$pid'
-!     for single processor runs.
-!------------------------------------------------------------------------------
-#if defined(SGI) || defined(SGI64)
-       CALL CoreName
-#endif
      END IF
 
 !------------------------------------------------------------------------------

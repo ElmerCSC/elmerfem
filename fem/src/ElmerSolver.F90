@@ -314,6 +314,12 @@ CONTAINS
 #ifdef HAVE_PARDISO
         CALL Info( 'MAIN', ' PARDISO library linked in.')
 #endif
+#ifdef HAVE_MMG
+         CALL Info( 'MAIN', ' MMG library linked in.')
+#endif
+#ifdef HAVE_PARMMG
+         CALL Info( 'MAIN', ' ParMMG library linked in.')
+#endif         
 #ifdef HAVE_MKL
         CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
@@ -347,11 +353,10 @@ CONTAINS
 #endif
         IF( ModelName(1:1) /= '-') THEN 
           GotModelName = .TRUE.
-
 #ifdef USE_ISO_C_BINDINGS
           IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
 #else
-          IF ( NoArgs > 1 ) CALL getarg( 2,eq )
+          IF (NoArgs > 1) CALL getarg( 2,eq )
 #endif 
         END IF
       END IF
@@ -2590,10 +2595,19 @@ CONTAINS
     !------------------------------------------------------------------------------
     INTEGER :: ii, jj,kk,ll,nn,qq,CurrentStep,nlen
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul
-    LOGICAL :: BinaryOutput, SaveAll
-
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    TYPE(ValueList_t), POINTER :: vList
+    TYPE(Solver_t), POINTER :: pSolver
+    
+    CALL Info('SaveCurrent','Saving information on current step',Level=20)
+    
+    ! There are currently global definitions that apply also for solver specific meshes
+    vList => CurrentModel % Simulation       
+    BinaryOutput = ListGetLogical( vList,'Binary Output',GotIt )      
+    SaveAll = .NOT. ListGetLogical( vList,'Omit unchanged variables in output',GotIt )
+    IF ( .NOT.GotIt ) SaveAll = .TRUE.
+    
     Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
 
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)

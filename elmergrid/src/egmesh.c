@@ -5796,7 +5796,9 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   for(i=1;i<=dataxy->noelements;i++) 
     origtype = MAX( origtype, dataxy->elementtypes[i]);
 
-  if(origtype == 303)  
+  if(origtype == 202)
+    elemtype = 404;
+  else if(origtype == 303)  
     elemtype = 706;
   else if(origtype == 404)  
     elemtype = 808;
@@ -5909,15 +5911,16 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
     for(k=1;k<=kmax; k++) {
       
-      if(0) printf("elem0=%d  knot0=%d  knot1=%d\n",elem0,knot0,knot1);
       level++;
       
       for(element=1;element <= dataxy->noelements;element++)  {
 
 	origtype = dataxy->elementtypes[element];
 	nonodes2d = origtype % 100;
-	
-	if(origtype == 303)  
+
+	if(origtype == 202)
+	  elemtype = 404;
+	else if(origtype == 303)  
 	  elemtype = 706;
 	else if(origtype == 404)  
 	  elemtype = 808;
@@ -5988,6 +5991,12 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  data->topology[elem0][25] = dataxy->topology[element][8]+knot1;
 	  data->topology[elem0][26] = dataxy->topology[element][8]+knot2;
 	}
+	else if(elemtype == 404) {
+	  data->topology[elem0][0] = dataxy->topology[element][0]+knot0;
+	  data->topology[elem0][1] = dataxy->topology[element][1]+knot0;
+	  data->topology[elem0][2] = dataxy->topology[element][1]+knot1;
+	  data->topology[elem0][3] = dataxy->topology[element][0]+knot1;
+	}	
       }
       knot0 += layers*dataxy->noknots;
       knot1 += layers*dataxy->noknots;
@@ -6136,6 +6145,12 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	      bound[j].side2[side] = boundxy[j].side[i];
 	      bound[j].material[side] = material2;	      
 	    }
+
+	    /* The sides have different convention for 1D initial elements */
+	    if(elemtype == 404) {
+	      if(bound[j].side[side] == 0) bound[j].side[side] = 3; 
+	      if(bound[j].side2[side] == 0) bound[j].side2[side] = 3; 
+	    }
 	  }
 	}
       }
@@ -6235,8 +6250,10 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  for(i=1;i<=dataxy->noelements;i++){
 	    origtype = dataxy->elementtypes[i];
 	    nonodes2d = origtype % 100;
-	
-	    if(origtype == 303)  
+
+	    if(origtype == 202)
+	      elemtype = 404;
+	    else if(origtype == 303)  
 	      elemtype = 706;
 	    else if(origtype == 404)  
 	      elemtype = 808;
@@ -6407,13 +6424,16 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     for(element=1;element<=data->noelements;element++) {
 
       for(side=0;side<6;side++) {
-	GetElementSide(element,side,1,data,&sideind[0],&sideelemtype);
-
+	GetElementSide(element,side,1,data,&sideind[0],&sideelemtype);	
+	
 	meanrad = 0.0;
 	maxrad = 0.0;
 	maxradi = 0;
 
-	for(i=0;i<4;i++) {
+	j = sideelemtype/100;
+	if(j==1) break;
+	
+	for(i=0;i<j;i++) {
 	  xc = data->x[sideind[i]];
 	  yc = data->y[sideind[i]];
 
@@ -6427,7 +6447,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	    maxrad = rad;
 	    maxradi = i;
 	  }
-	  meanrad += 0.25 * rad;
+	  meanrad += rad / j;
 	}
 
        	fii0 = fiis[maxradi];
@@ -7298,7 +7318,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
     printf("Found correctly %d side elements.\n",sideelem);
   }
   else {
-    printf("Studied %d lower dimensional elememnts\n",sideelements);
+    printf("Studied %d lower dimensional elements\n",sideelements);
     printf("Defined %d side elements\n",sideelem);
     printf("Defined %d lower dimensional bulk elements\n",lowdimbulk);
 

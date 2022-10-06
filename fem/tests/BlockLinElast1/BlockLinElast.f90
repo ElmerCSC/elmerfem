@@ -139,7 +139,7 @@ SUBROUTINE BoundaryAssembly( Model,Solver,dt,Transient, &
   BC => GetBC( )
   
   Flux(1:n) = GetReal( BC,'Flux',Found )
-  Coeff(1:n) = GetReal( BC,'Coeffient',Found2 )
+  Coeff(1:n) = GetReal( BC,'Coefficient',Found2 )
   IF(.NOT. (Found .OR. Found2)) RETURN
   Text(1:n) = GetReal( BC,'External',Found )
 

@@ -248,7 +248,8 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-
+  LOGICAL :: Found
+  
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
     CALL Fatal('WhitneyAVSolver_Init','Solver requires 3D mesh!')
@@ -258,6 +259,23 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
       CurrentCoordinateSystem() == CylindricSymmetric ) THEN
     CALL Fatal('WhitneyAVSolver_Init','Solver not applicable to axially axisymmetric cases!')
   END IF
+
+  ! Historically a real array could be used for H-B Curve.
+  ! This dirty piece of code makes things backward compatible.
+  BLOCK
+    INTEGER :: i
+    LOGICAL :: Cubic
+    TYPE(ValueList_t), POINTER :: Material
+    DO i=1,Model % NumberOfMaterials
+      Material => Model % Materials(i) % Values
+      IF( ListCheckPresent( Material, 'H-B Curve') ) THEN
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        CALL ListRealArrayToDepReal(Material,'H-B Curve','dummy',&
+            CubicTable=Cubic) !Monotone=.TRUE.)         
+      END IF
+    END DO
+  END BLOCK
+
   
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init
@@ -281,9 +299,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -311,7 +328,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-  LOGICAL :: LaminateStack, CoilBody, Cubic, HasHBCurve, HasReluctivityFunction, &
+  LOGICAL :: LaminateStack, CoilBody, HasHBCurve, HasReluctivityFunction, &
       NewMaterial
 
   INTEGER, POINTER :: Perm(:)
@@ -324,11 +341,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, mass_reg_epsilon
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, &
+      mass_reg_epsilon, newton_eps
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
+  LOGICAL :: Newton
   
   TYPE(Variable_t), POINTER :: Var, JFixVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
@@ -346,7 +364,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: CurrAmp
 
   TYPE(ValueHandle_t), SAVE :: mu_h 
-
+  TYPE(Solver_t), POINTER :: pSolver
+  
   
   SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
@@ -358,7 +377,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
 
   SolverParams => GetSolverParams()
-
+  pSolver => Solver
+  
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
@@ -425,6 +445,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     END IF
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
+
+  Newton = .FALSE.
+  newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found ) 
+  IF(.NOT. Found) newton_eps = 1.0e-3
   
   mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
@@ -591,7 +615,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL DefaultStart()
   
   DO i=1,NoIterationsMax
-    ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
+    Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+    IF(.NOT. Found ) Newton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
@@ -729,9 +754,8 @@ CONTAINS
 
      Material => GetMaterial( Element )
      NewMaterial = .NOT. ASSOCIATED(Material, PrevMaterial)
-     IF (NewMaterial) THEN
+     IF (NewMaterial) THEN              
        HasHBCurve = ListCheckPresent(Material, 'H-B Curve')
-       Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
        HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
        PrevMaterial => Material
      END IF
@@ -774,7 +798,7 @@ CONTAINS
        IF ( .NOT. ( HasHBCurve .OR. HasReluctivityFunction ) ) THEN
          CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
          IF (HasTensorReluctivity) THEN
-           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+           IF (SIZE(Acoef_t,1)==1 .AND. SIZE(Acoef_t,2)==1) THEN
              i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
              Acoef(1:i) = Acoef_t(1,1,1:i) 
              HasTensorReluctivity = .FALSE.
@@ -934,7 +958,14 @@ CONTAINS
        CALL Info("WhitneyAVSolver", "Found a Thin Line Element", level=10)
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('DoSolve','Thin Line Conductivity not found!')
-       CALL LocalMatrixThinLine(MASS,STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
+
+       ! The basis function evaluation is not implemented for all basis types
+       ! within LocalMatrixThinLine, check for the consistency:
+       IF (.NOT. PiolaVersion) CALL Warn('WhitneyAVSolver', &
+           'The implementation of thin line element may need Use Piola Transform = True')
+
+       CALL LocalMatrixThinLine(MASS,STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd, &
+           SecondOrder)
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
        IF (Transient) CALL DefaultUpdateMass(MASS)
        CYCLE
@@ -1034,7 +1065,6 @@ BLOCK
         IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
       END IF
 
-
       DO i=1,Element % Type % NumberOfNodes
         j = Solver % Variable % Perm(Element % NodeIndexes(i))
         A % ConstrainedDOF(j) = .TRUE.
@@ -1093,12 +1123,9 @@ END BLOCK
   IF (TG) THEN
     IF ( .NOT.ALLOCATED(TreeEdges) ) &
         CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
-
-    WRITE(Message,*) 'Volume tree edges: ', &
-           TRIM(i2s(COUNT(TreeEdges))),     &
-             ' of total: ',Mesh % NumberOfEdges
-    CALL Info('WhitneyAVSolver: ', Message, Level=5)
-
+    CALL Info('WhitneyAVSolver', 'Volume tree edges: '//TRIM(i2s(COUNT(TreeEdges)))// &
+        ' of total: '//TRIM(I2S(Mesh % NumberOfEdges)),Level=5)
+    
     DO i=1,SIZE(TreeEdges)
       IF(TreeEdges(i)) CALL SetDOFToValue(Solver,i,0._dp)
     END DO
@@ -1636,12 +1663,10 @@ SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondO
     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
   REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
 
-  INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, r, s, Indexes(1:nd)
+  INTEGER :: t, i, j, p, q, np, EdgeBasisDegree, r, s, Indexes(1:nd)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   TYPE(Nodes_t), SAVE :: Nodes
-
-  TYPE(ValueListEntry_t), POINTER :: Lst
   !------------------------------------------------------------------------------
   IF (SecondOrder) THEN
     EdgeBasisDegree = 2
@@ -1719,20 +1744,16 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3)
+                     A_t(3,3), A_t_der(3,3), eps=1.0e-3
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
-    LOGICAL :: Stat, Found, Newton, &  
-        HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree, mudim
+    LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
+    INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
-
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueListEntry_t), POINTER :: Lst
+    
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1746,7 +1767,6 @@ END SUBROUTINE LocalConstraintMatrix
     FORCE = 0.0_dp
     MASS  = 0.0_dp
     JAC = 0.0_dp
-    Newton = .FALSE.
 
     IF( JFix ) THEN
       ! If we are solving for the JFix field we cannot yet use it!
@@ -1768,80 +1788,64 @@ END SUBROUTINE LocalConstraintMatrix
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
     
-    IF ( HasHBCurve ) THEN
-      siz = 0
-      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )     
-      IF (Found) siz = SIZE(HB,1)
-
-      IF(siz>1) THEN
-        Bval=>HB(:,1)
-        Hval=>HB(:,2)
-        IF (Cubic .AND. NewMaterial) THEN
-          IF (.NOT.ASSOCIATED(CubicCoeff)) THEN
-            ALLOCATE(CubicCoeff(siz))
-          ELSE
-            IF (SIZE(CubicCoeff) < siz) THEN
-              DEALLOCATE(CubicCoeff)
-              ALLOCATE(CubicCoeff(siz))
-            END IF
-          END IF
-          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
-        END IF
-        Cval=>CubicCoeff
-      ELSE 
-        Lst => ListFind(Material,'H-B Curve')
-        IF (ASSOCIATED(Lst)) THEN
-          Cval => Lst % CubicCoeff
-          Bval => Lst % TValues
-          Hval => Lst % FValues(1,1,:)
-        ELSE
-          HasHBCurve = .FALSE.
-          CALL GetReluctivity(Material,Acoef,n)
-        END IF
-      END IF
-
-      IF (HasHBCurve) THEN
-        CALL GetScalarLocalSolution(Aloc)
-        Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
-        IF(.NOT. Found ) Newton = ExtNewton
-      END IF
-    ELSE IF( HasReluctivityFunction ) THEN
+    IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
     END IF
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree )
+    IP = GaussPointsAdapt(Element, Solver, EdgeBasis=.TRUE. )
+!    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+!        EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
-       IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+          RotBasis = RotWBasis, USolver = pSolver )
 
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
+!      IF (PiolaVersion) THEN
+!          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+!               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+!               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+!               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+!       ELSE
+!          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+!               IP % W(t), detJ, Basis, dBasisdx )
+!
+!          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+!       END IF
 
        IF ( HasHBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
-         IF ( Newton ) THEN
-           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+
+         ! h-b
+         IF( Newton ) THEN
+           mu = ListGetFun( Material,'h-b curve',babs,dFdx=muder) / Babs
+           muder = (muder-mu)/babs
+         ELSE
+           mu = ListGetFun( Material,'h-b curve',babs) / Babs
          END IF
        ELSE IF( HasReluctivityFunction ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )        
+         babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
          mu = ListGetElementReal( mu_h, Basis, Element, &
              GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = B_ip )
          IF (mudim < 2) CALL Fatal('WhitneyAVSolver', &
              'Specify Reluctivity Function as a full (3x3)-tensor')
          A_t(1:3,1:3) = muTensor(1:3,1:3)         
+         
+         IF( Newton ) THEN
+           ! Use central differencing 
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1+newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = muTensor(1:3,1:3)
+           mu = ListGetElementReal( mu_h, Basis, Element, &
+               GaussPoint = t, Rdim=mudim, Rtensor=MuTensor, DummyVals = (1-newton_eps)*B_ip )
+           A_t_der(1:3,1:3) = ( A_t_der(1:3,1:3) - muTensor(1:3,1:3) ) / ( 2*newton_eps*babs)
+         END IF
+         
        ELSE IF( HasTensorReluctivity ) THEN
          IF (SIZE(Acoef_t,2) == 1) THEN
            A_t = 0.0d0
@@ -2057,8 +2061,16 @@ END SUBROUTINE LocalConstraintMatrix
              STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
-             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             IF ( HasHBCurve ) THEN
+               JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
+                   SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             ELSE IF( HasReluctivityFunction ) THEN
+               ! Note: check this though for unisotropic cases!!!
+               DO k=1,3
+                 JAC(p,q) = JAC(p,q) + SUM(A_t_der(k,:) *  B_ip(k) * RotWBasis(j,:)) * &
+                     SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+               END DO
+             END IF
            END IF
 
            ! Compute the conductivity term <C A,eta> for 
@@ -2125,8 +2137,10 @@ END SUBROUTINE LocalConstraintMatrix
     END DO
 
     IF ( Newton ) THEN
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
-      FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      IF( HasHBCurve .OR. HasReluctivityFunction ) THEN
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
+        FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      END IF
     END IF
 
 !------------------------------------------------------------------------------
@@ -2211,8 +2225,8 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3),w1(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC, NormalSign
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -2240,19 +2254,10 @@ END SUBROUTINE LocalConstraintMatrix
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     DO t=1,IP % n
-
-       Normal = NormalVector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-
        IF ( PiolaVersion ) THEN
          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
              IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE., &
-             TangentialTrMapping=.TRUE.)
-
-         NormalSign = 1.0d0
-         w0 = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.FALSE.)
-         IF (SUM(w0*Normal) < 0.0d0) NormalSign = -1.0d0
-
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -2275,21 +2280,11 @@ END SUBROUTINE LocalConstraintMatrix
        END DO
 
        DO i = 1,nd-np
-         IF (PiolaVersion) THEN
-           w0 = NormalSign * Wbasis(i,:)
-         ELSE
-           w0 = CrossProduct(Wbasis(i,:),Normal)
-         END IF
          p = i+np
-         FORCE(p) = FORCE(p) - SUM(L*w0)*detJ*IP % s(t)
+         FORCE(p) = FORCE(p) - SUM(L*WBasis(i,:))*detJ*IP % s(t)
          DO j = 1,nd-np
-           IF (PiolaVersion) THEN
-             w1 = NormalSign * Wbasis(j,:)
-           ELSE           
-             w1 = CrossProduct(Wbasis(j,:),Normal)
-           END IF
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * SUM(w1*w0)*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) + B * SUM(WBasis(i,:)*Wbasis(j,:))*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -2397,23 +2392,31 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinLine( MASS,STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
+  SUBROUTINE LocalMatrixThinLine( MASS,STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, &
+      n, nd, SecondOrder)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), CrossectArea(:), Conductivity(:)
     REAL(KIND=dp) :: MASS(:,:),STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
+    LOGICAL :: SecondOrder
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: C, Area
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, np, p, q
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
+
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+    ELSE
+      EdgeBasisDegree = 1
+    END IF
 
     MASS  = 0.0_dp
     STIFF = 0.0_dp
@@ -2421,16 +2424,16 @@ END SUBROUTINE LocalConstraintMatrix
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
+        EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-!        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-!               IP % W(t), detJ, Basis, dBasisdx )
-       stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            dBasisdx = dBasisdx, BasisDegree = 1, &
-            ApplyPiolaTransform = .TRUE.)
+
+      stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+          dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
+          ApplyPiolaTransform = .TRUE.)
 
        C  = SUM(Basis(1:n) * Conductivity(1:n))
        Area= SUM(Basis(1:n) * CrossectArea(1:n))
@@ -2580,11 +2583,9 @@ END SUBROUTINE LocalConstraintMatrix
     ! ---------------------------------
     CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
-    WRITE(Message,*) 'Boundary tree edges: ', &
-      TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
-             ' of total: ',TRIM(i2s(FluxCount))
-    CALL Info('WhitneyAVSolver: ', Message, Level=5)
-
+    CALL Info('WhitneyAVSolver', 'Boundary tree edges: '//TRIM(i2s(COUNT(TreeEdges(FluxMap)))) // &
+        ' of total: '//TRIM(I2S(FluxCount)),Level=5)
+    
     ! Get (B,n) for BC faces:
     ! -----------------------
     ALLOCATE(Bn(Faces))
@@ -2907,27 +2908,6 @@ END SUBROUTINE LocalConstraintMatrix
 
 !/*****************************************************************************/
 ! *
-! *  Elmer, A Finite Element Software for Multiphysical Problems
-! *
-! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
-! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
-! *
-! *****************************************************************************/
-! *
 ! *  Utilities written as solvers to compute the Helmholtz projection P(A)
 ! *  of a curl-conforming vector field A. The projection can be obtained as 
 ! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
@@ -2945,7 +2925,7 @@ END SUBROUTINE LocalConstraintMatrix
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: March 20, 2020
-! *  Last Modifed: June 18, 2021, Juha
+! *  Last Modified: June 18, 2021, Juha
 ! *
 !******************************************************************************
 

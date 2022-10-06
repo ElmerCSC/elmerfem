@@ -718,7 +718,7 @@ CONTAINS
         END IF
       END IF
 
-      ! We have either none or both parents as actice.
+      ! We have either none or both parents as active.
       ! The BCs will be set only to outer boundaries of the domain. 
       IF( ActParents /= 1 ) CYCLE
       

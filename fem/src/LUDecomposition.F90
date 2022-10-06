@@ -209,7 +209,7 @@ MODULE LUDecomposition
       END DO
 
       IF ( ABS(A(i,j)) == 0.0d0) THEN
-        CALL Error( 'LUDecomp', 'Matrix is singluar.' )
+        CALL Error( 'LUDecomp', 'Matrix is singular.' )
         RETURN
       END IF
 
@@ -355,7 +355,7 @@ MODULE LUDecomposition
       END DO
 
       IF ( ABS(A(i,j))==0.0d0 ) THEN
-        CALL Error( 'ComplexLUDecomp', 'Matrix is singluar.' )
+        CALL Error( 'ComplexLUDecomp', 'Matrix is singular.' )
         RETURN
       END IF
 

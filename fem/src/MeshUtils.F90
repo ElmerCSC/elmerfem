@@ -935,7 +935,7 @@ CONTAINS
    CALL Info(Caller,'Number of bulk elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8)
 
-   ! Set discontinuous nodes only if there is a real moving node associted with it
+   ! Set discontinuous nodes only if there is a real moving node associated with it
    ! Otherwise we would create a zero to the permutation vector. 
    ! If there is just a staying node then no need to create discontinuity at this node.
    DiscontNode = DiscontNode .AND. MovingNode 
@@ -2311,7 +2311,7 @@ CONTAINS
      VList => Model % Simulation
    END IF
    IF(.NOT. ListGetLogical( VList,'Finalize Meshes Before Extrusion',Found ) ) THEN
-     ! The final preparation for the mesh (including dof defintions) will be
+     ! The final preparation for the mesh (including dof definitions) will be
      ! done only after the mesh has been extruded. 
      IF( ListCheckPresent( VList,'Extruded Mesh Levels') .OR. &
        ListCheckPresent( VList,'Extruded Mesh Layers') ) THEN
@@ -7723,7 +7723,7 @@ CONTAINS
 
     ! We know that two Elements are conforming. But we don't know how the edge basis
     ! directions relate to each other. They depend on the numbering in a complex way
-    ! use this routine to do the checking and returm +/-1 and +/-2 hopefully. 
+    ! use this routine to do the checking and return +/-1 and +/-2 hopefully. 
     !------------------------------------------------------------------------------
     SUBROUTINE CheckFaceBasisDirections(Element, ElementB, edofs, fdofs, QuadraticApproximation, &
         Radial, swap)
@@ -12466,12 +12466,15 @@ CONTAINS
   !    in the chosen plane to three representative points. Currently the fitting
   !    can only be done in x-y plane. 
   !---------------------------------------------------------------------------
-  SUBROUTINE CylinderFit(PMesh, PParams) 
+  SUBROUTINE CylinderFit(PMesh, PParams, BCind, dim, FitParams) 
   !---------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     TYPE(Valuelist_t), POINTER :: PParams
-
-    INTEGER :: i,j,k,n,t,AxisI,iter
+    INTEGER, OPTIONAL :: BCind
+    INTEGER, OPTIONAL :: dim
+    REAL(KIND=dp), OPTIONAL :: FitParams(:)
+    
+    INTEGER :: i,j,k,n,t,AxisI,iter,cdim
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
@@ -12480,43 +12483,70 @@ CONTAINS
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
         CircleCoord(3,3)
     INTEGER :: CircleInd(3) 
-
-    CALL Info('CylinderFit','Trying to fit a cylinder to the surface patch',Level=10)
-
-    NiNj = 0.0_dp
+    LOGICAL :: BCMode
+    INTEGER :: Tag, t1, t2
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    
+    ! Set the range for the possible active elements. 
+    ! Set the range for the possible active elements. 
+    IF( PRESENT( BCind ) ) THEN
+      BCMode = .TRUE.
+      t1 = PMesh % NumberOfBulkElements + 1
+      t2 = PMesh % NumberOfBulkElements + PMesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+      ALLOCATE( ActiveNode( PMesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
+    ELSE
+      BCMode = .FALSE.
+      t1 = 1
+      t2 = PMesh % NumberOfBulkElements      
+    END IF
 
     n = PMesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-
+    
     ! If the initial mesh is in 2D there is really no need to figure out the 
     ! direction of the rotational axis. It can only be aligned with the z-axis. 
-    IF( CurrentModel % Mesh % MeshDim == 2 ) THEN
+    cdim = CurrentModel % Mesh % MeshDim
+    IF(PRESENT(dim)) cdim = MIN(cdim,dim)
+       
+    IF( cdim == 2 ) THEN
       AxisNormal = 0.0_dp
       AxisNormal(3) = 1.0_dp
-      GOTO 100 
     END IF
 
-
     ! Compute the inner product of <N*N> for the elements
-    DO t=1, PMesh % NumberOfBulkElements
+    NiNj = 0.0_dp
+    DO t=t1, t2
       Element => PMesh % Elements(t)
-      
+
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
-      
+
+      IF( BCMode ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+        ActiveNode(Element % NodeIndexes(1:n)) = .TRUE.
+      END IF
+              
+      ! For 2D we only tag the boundary nodes
+      IF( cdim < 3 ) CYCLE
+
       Nodes % x(1:n) = PMesh % Nodes % x(NodeIndexes(1:n))
       Nodes % y(1:n) = PMesh % Nodes % y(NodeIndexes(1:n))
       Nodes % z(1:n) = PMesh % Nodes % z(NodeIndexes(1:n))           
       
       Normal = NormalVector( Element, Nodes, Check = .FALSE. ) 
-
+      
       DO i=1,3
         DO j=1,3
           NiNj(i,j) = NiNj(i,j) + Normal(i) * Normal(j)
         END DO
-      END DO      
+      END DO
     END DO
 
+    IF( cdim == 2 ) GOTO 100 
+    
     ! Normalize by the number of boundary elements
     NiNj = NiNj / PMesh % NumberOfBulkElements
 
@@ -12566,6 +12596,10 @@ CONTAINS
       Coord(2) = PMesh % Nodes % y(i)
       Coord(3) = PMesh % Nodes % z(i)
 
+      IF( BCMode ) THEN
+        IF( .NOT. ActiveNode(i) ) CYCLE
+      END IF
+      
       d1 = SUM( Tangent1 * Coord )
       IF( d1 < MinDist ) THEN
         MinDist = d1
@@ -12596,6 +12630,10 @@ CONTAINS
         Coord(1) = PMesh % Nodes % x(i)
         Coord(2) = PMesh % Nodes % y(i)
         Coord(3) = PMesh % Nodes % z(i)
+        
+        IF( BCMode ) THEN
+          IF( .NOT. ActiveNode(i) ) CYCLE
+        END IF
         
         ! Minimum distance from the previously defined nodes
         MinDist = HUGE(MinDist)
@@ -12664,14 +12702,28 @@ CONTAINS
     Coord = x0 * Tangent1 + y0 * Tangent2
 
     !PRINT *,'Center point in cartesian coordinates:',Coord
-    
-    CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
-    CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
-    CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
 
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
-    CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+    IF( PRESENT( FitParams ) ) THEN
+      IF( cdim == 2 ) THEN
+        FitParams(1:2) = Coord(1:2)
+        FitParams(3) = rad
+      ELSE
+        FitParams(1:3) = Coord(1:3)
+        FitParams(4:6) = AxisNormal(1:3)
+        FitParams(7) = rad
+      END IF
+    ELSE      
+      CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
+      CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+      CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
+
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+    END IF
+      
+    DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
+
 
     
   CONTAINS
@@ -12695,10 +12747,11 @@ CONTAINS
 
   ! Code for fitting a sphere. Not yet used.
   !-------------------------------------------------------------------------
-  SUBROUTINE SphereFit(Mesh, Params, BCind ) 
+  SUBROUTINE SphereFit(Mesh, Params, BCind, FitParams ) 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, OPTIONAL :: BCind
+    REAL(KIND=dp), OPTIONAL :: FitParams(:)
 
     INTEGER :: i,j,t,t1,t2,NoNodes,Tag
     LOGICAL :: BCMode
@@ -12716,14 +12769,13 @@ CONTAINS
       t1 = Mesh % NumberOfBulkElements + 1
       t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       Tag = CurrentModel % BCs(BCind) % Tag
+      ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
     ELSE
       BCMode = .FALSE.
       t1 = 1
       t2 = Mesh % NumberOfBulkElements
     END IF
-
-    ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
-    ActiveNode = .FALSE.
 
     ! Mark the nodes that belong to the active elements.
     ! 1) Either we only have bulk elements in which case we use all of the nodes or
@@ -12733,18 +12785,14 @@ CONTAINS
       IF( BCMode ) THEN
         IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
         IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+        ActiveNode(Element % NodeIndexes) = .TRUE.
       END IF
-      ActiveNode(Element % NodeIndexes) = .TRUE.              
     END DO
 
     ! If all nodes are active just use pointers to the nodes.
     ! Otherwise create list of the nodes. 
-    NoNodes = COUNT( ActiveNode )
-    IF( NoNodes == Mesh % NumberOfNodes ) THEN
-      x => Mesh % Nodes % x
-      y => Mesh % Nodes % y
-      z => Mesh % Nodes % z
-    ELSE
+    IF( BCMode ) THEN
+      NoNodes = COUNT( ActiveNode )
       ALLOCATE( x(NoNodes), y(NoNodes), z(NoNodes) )
       j = 0
       DO i=1,Mesh % NumberOfNodes
@@ -12754,22 +12802,34 @@ CONTAINS
         y(j) = Mesh % Nodes % y(i)
         z(j) = Mesh % Nodes % z(i)
       END DO
+    ELSE
+      NoNodes = Mesh % NumberOfNodes
+      x => Mesh % Nodes % x
+      y => Mesh % Nodes % y
+      z => Mesh % Nodes % z
     END IF
 
     ! Call the function to set the sphere parameters for the nodes.
     CALL SphereFitfun(NoNodes,x,y,z,xc,yc,zc,Rad)
 
-    IF( NoNodes < Mesh % NumberOfNodes ) THEN
-      DEALLOCATE(x,y,z)
+    IF( BCMode ) THEN
+      DEALLOCATE(ActiveNode,x,y,z)
     END IF
 
     ! Add the sphere parameters to the list so that they can be used later
     ! directly without having to fit the parameters again.  
-    CALL ListAddConstReal( Params,'Sphere Center X',xc )
-    CALL ListAddConstReal( Params,'Sphere Center Y',yc )
-    CALL ListAddConstReal( Params,'Sphere Center Z',zc )
-    CALL ListAddConstReal( Params,'Sphere Radius',Rad )
-    
+    IF( PRESENT( FitParams ) ) THEN
+      FitParams(1) = xc
+      FitParams(2) = yc
+      FitParams(3) = zc
+      FitParams(4) = Rad
+    ELSE   
+      CALL ListAddConstReal( Params,'Sphere Center X',xc )
+      CALL ListAddConstReal( Params,'Sphere Center Y',yc )
+      CALL ListAddConstReal( Params,'Sphere Center Z',zc )
+      CALL ListAddConstReal( Params,'Sphere Radius',Rad )
+    END IF
+      
   CONTAINS
     
 
@@ -13167,7 +13227,7 @@ CONTAINS
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
     END IF
 
-    ! Add "Rotor Radius" to the simulation section in case it should be usefull elsewhere...
+    ! Add "Rotor Radius" to the simulation section in case it should be useful elsewhere...
     CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
     
     
@@ -14183,7 +14243,7 @@ CONTAINS
       END DO
       
       IF( maxind == 0 ) THEN
-        CALL Fatal(Caller,'Could not determine maxiumum unset index!')
+        CALL Fatal(Caller,'Could not determine maximum unset index!')
       ELSE
         CALL Info(Caller,'Setting the representative node to: '//TRIM(I2S(maxind)),Level=8)
         Projector % InvPerm(1) = maxind
@@ -14300,6 +14360,7 @@ CONTAINS
         Success ) 
 
     IF(.NOT. Success) THEN
+      CALL Info(Caller,'Releasing interface meshes!',Level=20)
       CALL ReleaseMesh(BMesh1)
       CALL ReleaseMesh(BMesh2)
       RETURN
@@ -14515,6 +14576,7 @@ CONTAINS
     
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
+    CALL Info(Caller,'Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
     !DEALLOCATE( BMesh1 % InvPerm ) 
@@ -14618,6 +14680,7 @@ CONTAINS
     CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, Success ) 
     
     IF(.NOT. Success) THEN
+      CALL Info('PeriodicPermutation','Releasing interface meshes!',Level=20)
       CALL ReleaseMesh(BMesh1)
       CALL ReleaseMesh(BMesh2)
       RETURN
@@ -14717,6 +14780,7 @@ CONTAINS
     
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
+    CALL Info('PeriodicPermutation','Releasing interface meshes!',Level=20)
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
     !DEALLOCATE( BMesh1 % InvPerm ) 
@@ -16824,7 +16888,7 @@ CONTAINS
              CALL AllocateVector( Edges(Edge) % NodeIndexes, Degree+1)
              ALLOCATE( Edges(Edge) % BoundaryInfo, STAT=allocstat )
              IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo alloction')
+               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo allocation')
              END IF
 
              Edges(Edge) % TYPE => GetElementType( 201+Degree, .FALSE. )
@@ -16866,7 +16930,7 @@ CONTAINS
 !            ----------------------
              ALLOCATE( HashPtr, STAT=allocstat )
              IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr alloction')
+               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr allocation')
              END IF
 
              HashPtr % Edge = Edge
@@ -18908,7 +18972,7 @@ END SUBROUTINE FindNeighbourNodes
 
        CASE DEFAULT
           WRITE( Message,* ) 'Element type ', Eold % TYPE % ElementCode, &
-              ' not supprted by the multigrid solver.'
+              ' not supported by the multigrid solver.'
           CALL Fatal( 'SplitMeshEqual', Message )
        END SELECT
     END DO
@@ -19907,150 +19971,145 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseMesh( Mesh )
 !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
-     TYPE(Projector_t), POINTER :: Projector
-     TYPE(Projector_t), POINTER :: Projector1
-     TYPE(Variable_t), POINTER  :: Var, Var1
-     INTEGER :: i,j,k
-     LOGICAL :: GotIt
-     REAL(KIND=dp), POINTER :: ptr(:)
+    TYPE(Projector_t), POINTER :: Projector
+    TYPE(Projector_t), POINTER :: Projector1
+    TYPE(Variable_t), POINTER  :: Var, Var1
+    INTEGER :: i,j,k
+    LOGICAL :: GotIt
+    REAL(KIND=dp), POINTER :: ptr(:)
 !------------------------------------------------------------------------------
  
 !    Deallocate mesh variables:
 !    --------------------------
 
-
-     CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
-     CALL ReleaseVariableList( Mesh % Variables )
-     Mesh % Variables => NULL()
+    CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
+    CALL ReleaseVariableList( Mesh % Variables )
+    Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
 !    ----------------------------------------------------
-     IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh nodes',Level=15)
-       IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
-       IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
-       IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
-       DEALLOCATE( Mesh % Nodes )
+    IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh nodes',Level=15)
+      IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
+      IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
+      IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+      DEALLOCATE( Mesh % Nodes )
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
+      IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
-         DO i=1,Mesh % NumberOfNodes
-           IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-               DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-         END DO
-         DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
-       END IF
+      IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+        DO i=1,Mesh % NumberOfNodes
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+        DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
+      END IF
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
-     END IF
+      IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
+          DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
+    END IF
 
-     Mesh % Nodes => NULL()
+    Mesh % Nodes => NULL()
 
-     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
-       CALL ReleaseMeshEdgeTables( Mesh )
-       Mesh % Edges => NULL()
-     END IF
+    IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
+      CALL ReleaseMeshEdgeTables( Mesh )
+      Mesh % Edges => NULL()
+    END IF
 
-     IF ( ASSOCIATED( Mesh % Faces ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh faces',Level=15)
-       CALL ReleaseMeshFaceTables( Mesh )
-       Mesh % Faces => NULL()
-     END IF
+    IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh faces',Level=15)
+      CALL ReleaseMeshFaceTables( Mesh )
+      Mesh % Faces => NULL()
+    END IF
 
-     IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
-     CALL Info('ReleaseMesh','Releasing mesh view factors',Level=15)
-       CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
-       Mesh % ViewFactors => NULL()
-     END IF
+    IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh view factors',Level=15)
+      CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
+      Mesh % ViewFactors => NULL()
+    END IF
 
 
 !    Deallocate mesh to mesh projector structures:
 !    ---------------------------------------------
-     Projector => Mesh % Projector
-     DO WHILE( ASSOCIATED( Projector ) )
-       CALL Info('ReleaseMesh','Releasing mesh projector',Level=15)
-       CALL FreeMatrix( Projector % Matrix )
-       CALL FreeMatrix( Projector % TMatrix )
-       Projector1 => Projector
-       Projector => Projector % Next
-       DEALLOCATE( Projector1 )
-     END DO
-     Mesh % Projector => NULL()
+    Projector => Mesh % Projector
+    DO WHILE( ASSOCIATED( Projector ) )
+      CALL Info('ReleaseMesh','Releasing mesh projector',Level=15)
+      CALL FreeMatrix( Projector % Matrix )
+      CALL FreeMatrix( Projector % TMatrix )
+      Projector1 => Projector
+      Projector => Projector % Next
+      DEALLOCATE( Projector1 )
+    END DO
+    Mesh % Projector => NULL()
 
 
 !    Deallocate quadrant tree (used in mesh to mesh interpolation):
 !    --------------------------------------------------------------
-     IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh quadrant tree',Level=15)
-       CALL FreeQuadrantTree( Mesh % RootQuadrant )
-       Mesh % RootQuadrant => NULL()
-     END IF
+    IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh quadrant tree',Level=15)
+      CALL FreeQuadrantTree( Mesh % RootQuadrant )
+      Mesh % RootQuadrant => NULL()
+    END IF
 
 
-     IF ( ASSOCIATED( Mesh % Elements ) ) THEN
-       CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
+    IF ( ASSOCIATED( Mesh % Elements ) ) THEN
+      CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
 
-        DO i=1,SIZE(Mesh % Elements)
+      DO i=1,SIZE(Mesh % Elements)
 
 !          Boundaryinfo structure for boundary elements
 !          ---------------------------------------------
-           IF ( Mesh % Elements(i) % Copy ) CYCLE
+        IF ( Mesh % Elements(i) % Copy ) CYCLE
 
-           IF ( i > Mesh % NumberOfBulkElements ) THEN
-             IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-               IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
-                 IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                     GebhardtFactors % Elements ) ) THEN
-                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                       GebhardtFactors % Elements )
-                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                       GebhardtFactors % Factors )
-                 END IF
-                 DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
-               END IF
-               DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
-             END IF
-           END IF
+        IF ( i > Mesh % NumberOfBulkElements ) THEN
+          IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
+            IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
+              IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
+                  GebhardtFactors % Elements ) ) THEN
+                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                    GebhardtFactors % Elements )
+                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                    GebhardtFactors % Factors )
+              END IF
+              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+            END IF
+            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+          END IF
+        END IF
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
-               DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
-           Mesh % Elements(i) % NodeIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+        Mesh % Elements(i) % NodeIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
-           Mesh % Elements(i) % EdgeIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % DGIndexes )
+        Mesh % Elements(i) % DGIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
-           Mesh % Elements(i) % FaceIndexes => NULL()
+        IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
+            DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+        Mesh % Elements(i) % BubbleIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % DGIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % DGIndexes )
-           Mesh % Elements(i) % DGIndexes => NULL()
-
-           IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
-             DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
-           Mesh % Elements(i) % BubbleIndexes => NULL()
-
-           ! This creates problems later on!!!
-           !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
-           !   DEALLOCATE( Mesh % Elements(i) % PDefs )
-
-           Mesh % Elements(i) % PDefs => NULL()
- 
-        END DO
-        DEALLOCATE( Mesh % Elements )
-        Mesh % Elements => NULL()
-      END IF
-
-      CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
+        ! This creates problems later on!!!
+        !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+        !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+        
+        Mesh % Elements(i) % PDefs => NULL() 
+      END DO
+      
+      DEALLOCATE( Mesh % Elements )
+      Mesh % Elements => NULL()
+    END IF
      
+    Mesh % NumberOfNodes = 0
+    Mesh % NumberOfBulkElements = 0
+    Mesh % NumberOfBoundaryElements = 0
+    
+    CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMesh
 !------------------------------------------------------------------------------
@@ -20065,6 +20124,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Edge
 !------------------------------------------------------------------------------
     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Info('ReleaseMeshEdgeTables','Releasing number of edges: '&
+          //TRIM(I2S(Mesh % NumberOfEdges)),Level=30)
+      
        DO i=1,Mesh % NumberOfEdges
           Edge => Mesh % Edges(i)
           IF ( ASSOCIATED( Edge % NodeIndexes ) ) THEN
@@ -20074,18 +20136,22 @@ CONTAINS
              DEALLOCATE( Edge % BoundaryInfo )
           END IF
        END DO
-
        DEALLOCATE( Mesh % Edges )
-    END IF
-    NULLIFY( Mesh % Edges )
-    Mesh % NumberOfEdges = 0
 
-    DO i=1,SIZE(Mesh % Elements)
-       IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) THEN
-          DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
-          Mesh % Elements(i) % EdgeIndexes => Null()
+       NULLIFY( Mesh % Edges )
+       IF( Mesh % NumberOfEdges == 0 ) RETURN
+       Mesh % NumberOfEdges = 0
+       
+       IF( ASSOCIATED( Mesh % Elements ) ) THEN      
+         DO i=1,SIZE(Mesh % Elements)
+           IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) THEN
+             DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
+             Mesh % Elements(i) % EdgeIndexes => NULL()
+           END IF
+         END DO
        END IF
-    END DO
+     END IF
+       
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshEdgeTables
 !------------------------------------------------------------------------------
@@ -20099,7 +20165,10 @@ CONTAINS
     TYPE(Element_t), POINTER :: Face
 !------------------------------------------------------------------------------
     IF ( ASSOCIATED( Mesh % Faces ) ) THEN
-       DO i=1,Mesh % NumberOfFaces
+      CALL Info('ReleaseMeshFaceTables','Releasing number of faces: '&
+          //TRIM(I2S(Mesh % NumberOfFaces)))
+
+      DO i=1,Mesh % NumberOfFaces
           Face => Mesh % Faces(i)
           IF ( ASSOCIATED( Face % NodeIndexes ) ) THEN
              DEALLOCATE( Face % NodeIndexes )
@@ -20110,16 +20179,21 @@ CONTAINS
        END DO
 
        DEALLOCATE( Mesh % Faces )
-    END IF
-    NULLIFY( Mesh % Faces )
-    Mesh % NumberOfFaces = 0
+       NULLIFY( Mesh % Faces )
+       IF( Mesh % NumberOfFaces == 0 ) RETURN
+       
+       Mesh % NumberOfFaces = 0
 
-    DO i=1,SIZE(Mesh % Elements)
-       IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) THEN
-          DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
-          Mesh % Elements(i) % FaceIndexes => Null()
+       IF( ASSOCIATED( Mesh % Elements ) ) THEN
+         DO i=1,SIZE(Mesh % Elements)
+           IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) THEN
+             DEALLOCATE( Mesh % Elements(i) % FaceIndexes )
+             Mesh % Elements(i) % FaceIndexes => NULL()
+           END IF
+         END DO
        END IF
-    END DO
+     END IF
+       
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshFaceTables
 !------------------------------------------------------------------------------
@@ -20166,11 +20240,11 @@ CONTAINS
 
 
 !----------------------------------------------------------------------------------
-  SUBROUTINE DisplaceMesh( Mesh, Update, SIGN, Perm, DOFs, StabRecomp, UpdateDirs )
+  SUBROUTINE DisplaceMesh( Mesh, Update, sgn, Perm, DOFs, StabRecomp, UpdateDirs )
 !----------------------------------------------------------------------------------
     TYPE(Mesh_t) , POINTER :: Mesh 
     REAL(KIND=dp) :: Update(:)
-    INTEGER :: DOFs,SIGN,Perm(:)
+    INTEGER :: DOFs,sgn,Perm(:)
     LOGICAL, OPTIONAL :: StabRecomp
     INTEGER, OPTIONAL :: UpdateDirs
 
@@ -20190,18 +20264,18 @@ CONTAINS
        k = Perm(i)
        IF ( k > 0 ) THEN
          k = DOFs * (k-1)
-         Mesh % Nodes % x(i)   = Mesh % Nodes % x(i) + SIGN * Update(k+1)
+         Mesh % Nodes % x(i)   = Mesh % Nodes % x(i) + sgn * Update(k+1)
          IF ( dim > 1 ) &
-           Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + SIGN * Update(k+2)
+           Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + sgn * Update(k+2)
          IF ( dim > 2 ) &
-           Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + SIGN * Update(k+3)
+           Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + sgn * Update(k+3)
         END IF
     END DO
 
     StabFlag = .TRUE.
     IF ( PRESENT( StabRecomp ) ) StabFlag = StabRecomp
 
-    IF ( SIGN == 1 .AND. StabFlag ) THEN
+    IF ( sgn == 1 .AND. StabFlag ) THEN
        k = Mesh % MaxElementDOFs
        CALL AllocateVector( ElementNodes % x,k )
        CALL AllocateVector( ElementNodes % y,k )
@@ -20758,7 +20832,7 @@ CONTAINS
        Perm(i) = Perm(j)
        Perm(j) = 1
 
-       ! Minimizing the bandwith of a closed loop is impossible.
+       ! Minimizing the bandwidth of a closed loop is impossible.
        ! So let us break the loop on one node. 
        IF(PRESENT(BreakLoop)) THEN
          IF(BreakLoop) BreakNode = 1
@@ -22398,7 +22472,7 @@ CONTAINS
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
         ! If there are more than two competing parallel hits then use more stringent conditions
-        ! since afterwords there is no way of deciding which one was closer.
+        ! since afterwards there is no way of deciding which one was closer.
         !--------------------------------------------------------------------------------------
         IF( ParallelCands > 1.5_dp ) THEN
           Hit = PointInElement( Element, ElementNodes, &
@@ -23997,7 +24071,12 @@ CONTAINS
 
         IF( k == 1 ) THEN
           IF( InfoActive(20) ) THEN
-            AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
+            j = COUNT(BodyCount > 0) 
+            IF( j > 0 ) THEN
+              AveHits = 1.0_dp * SUM( BodyCount ) / j
+            ELSE
+              AveHits = 0.0_dp
+            END IF
             WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
             CALL Info('CalculateBodyAverage',Message) 
           END IF
@@ -25945,7 +26024,7 @@ CONTAINS
 
 
   !> Create interface boundaries consisting of edges defined by the intersection of two higher
-  !> dimensional boundaries. This may be usefull for 3D meshes where 1D meshes have not been
+  !> dimensional boundaries. This may be useful for 3D meshes where 1D meshes have not been
   !> create in advance.
   !-------------------------------------------------------------------
   SUBROUTINE CreateIntersectionBCs(Model, Mesh)

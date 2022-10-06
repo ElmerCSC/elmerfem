@@ -1105,7 +1105,7 @@ omstart:
 
   if( boundarynodes > 0 ) {
     if(info) printf("Number of nodes in boundary sets: %d\n",boundarynodes);      
-    /* Temporarily supress the deallocation while trying to find a bug */
+    /* Temporarily suppress the deallocation while trying to find a bug */
     free_Ivector(nodeindx,1,boundarynodes);
     free_Ivector(boundindx,1,boundarynodes);
   }    
@@ -5043,7 +5043,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("*****************************************************\n");
     printf("The first line did not start with $, assuming Gmsh 1 format\n");
     printf("This version of Gmsh format is no longer supported\n");
-    printf("Please use Gsmh 2 or 4 versions for output\n");
+    printf("Please use Gmsh 2 or 4 versions for output\n");
     printf("*****************************************************\n");
     
     errnum = LoadGmshInput1(data,bound,filename,info);

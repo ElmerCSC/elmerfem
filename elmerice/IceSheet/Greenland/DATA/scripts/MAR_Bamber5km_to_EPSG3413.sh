@@ -76,7 +76,7 @@ do
    ## extract current_time
    ncks  -O -F -v SMBCORR -d TIME,$c,$c,1 $FILE_IN tmp1.nc
 
-   #Fix the corrdinates to the Bamber 5km grid definition
+   #Fix the coordinates to the Bamber 5km grid definition
    ncap2 -O -v -s "smb=SMBCORR" -s "X=1.0*(X-5)-800.0" -s "Y=1.0*(Y-5)-3400.0" tmp1.nc tmp2.nc
 
    ### reprojection using gdalwrap

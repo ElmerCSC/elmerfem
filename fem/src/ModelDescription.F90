@@ -2120,7 +2120,7 @@ CONTAINS
             GOTO 20
 
           CASE('-distribute')              
-            ! Tag paramaters that will be divided by the entity area/volume
+            ! Tag parameters that will be divided by the entity area/volume
             disttag = .TRUE. 
             str = str(str_beg:slen)
             GOTO 20
@@ -2790,6 +2790,11 @@ CONTAINS
         END IF
       END IF
 
+      IF( MeshLevels > 1 ) THEN
+      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+      END IF
+    
+      
       IF ( OneMeshName ) THEN
          i = 0
       ELSE
@@ -3493,13 +3498,22 @@ CONTAINS
     ELSE
       InitFile = ( Mesh % SavesDone == 0 )
     END IF
-          
+    
     FName = FileName
-    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
-      IF ( LEN_TRIM(OutputPath) > 0 ) THEN
+#if 0
+! By convention let us have restart file always in "Mesh DB" and never in "Results Directory" 
+    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Filename,'/') == 0 ) THEN
+      n = LEN_TRIM(OutputPath)
+      IF(n==0) THEN
+        CONTINUE
+      ELSE IF(n==1 .AND. OutputPath(1:1) == '.') THEN
+        CONTINUE
+      ELSE
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
     END IF
+#endif
+    
     IF( FileCycle > 0 ) THEN
       Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
     END IF
@@ -3728,11 +3742,13 @@ CONTAINS
 
     IF( FileCycle > 0 .AND. ParEnv % MyPe == 0 ) THEN
       FName = FileName
+#if 0 
       IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
         IF ( LEN_TRIM(OutputPath) > 0 ) THEN
           FName = TRIM(OutputPath) // '/' // TRIM(FileName)
         END IF
       END IF
+#endif
       Fname = TRIM(Fname)//'_last_nc'
 
       OPEN( OutputUnit,File=FName,STATUS='UNKNOWN' )
@@ -3990,12 +4006,13 @@ CONTAINS
     j = ListGetInteger( ResList,'Restart File Cycle',Found )
     IF( Found ) THEN
       IF( j == 0 ) THEN
+        FName = RestartFile
+#if 0
         IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
             LEN_TRIM(OutputPath)>0 ) THEN
           FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
-        ELSE
-          FName = RestartFile
         END IF
+#endif
         FName = TRIM(FName)//'_last_nc'
         OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
         READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
@@ -4039,13 +4056,20 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    ! Check the output directory for the data    
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
-        LEN_TRIM(OutputPath)>0 ) THEN
-      FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
-    ELSE
-      FName = RestartFile
+    FName = RestartFile
+    ! By convention let us use the "Mesh DB" rather than "Results Directory" for restart.    
+#if 0    
+    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 ) THEN
+      n = LEN_TRIM(OutputPath)
+      IF( n==0 ) THEN
+        CONTINUE
+      ELSE IF( n==1 .AND. OutputPath(1:1) == '.') THEN
+        CONTINUE
+      ELSE
+        FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+      END IF
     END IF
+#endif
     OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
 
     IF( iostat == 0 ) THEN
@@ -4111,7 +4135,7 @@ CONTAINS
       END IF
       CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE 
-      CALL Fatal(Caller,'Could not dertemine file format, obsolite?')
+      CALL Fatal(Caller,'Could not dertemine file format, obsolete?')
     END IF
     
     IF( Binary ) THEN

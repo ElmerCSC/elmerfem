@@ -1,6 +1,5 @@
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
-CONFIGURE_FILE(sif/wires_and_core.sif COPYONLY) 
+CONFIGURE_FILE(sif/wires_and_core.sif sif/wires_and_core.sif COPYONLY) 
 file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 file(COPY wires_and_core DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
-file(COPY sif/wires_and_core.sif DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sif")
-ADD_ELMER_TEST(mgdyn_core_wire_line_element LABELS slow 3D thin_region mgdyn)
+ADD_ELMER_TEST(mgdyn_core_wire_line_element LABELS 3D thin_region mgdyn)

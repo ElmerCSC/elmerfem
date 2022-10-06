@@ -211,7 +211,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
        'Nonlinear System Max Iterations',Found)
     IF(.NOT. Found) MaxNonlinIter = 1
     
-    Coeff = GetCReal( SolverParams,'Nonlinear Conductivity Coeffient',Found)
+    Coeff = GetCReal( SolverParams,'Nonlinear Conductivity Coefficient',Found)
     Source = GetCReal( SolverParams,'Mesh Relax Source',Found)
 
 

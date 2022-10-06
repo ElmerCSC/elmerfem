@@ -12,5 +12,5 @@ Usually ELMER_POST_HOME is defined as
 $ export ELMER_POST_HOME=$ELMER_HOME/share/elmerpost
 
 If the configuration script fails to determine correct
-setting, compilation intructions can be found from the
+setting, compilation instructions can be found from the
 headers of the individual files (*.c).

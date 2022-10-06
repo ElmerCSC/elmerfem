@@ -183,6 +183,9 @@ MODULE Types
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
 
+    ! Number of degrees of freedom in sparse matrix such that there is always a (ndeg x ndeg) dense block
+    INTEGER :: ndeg = -1
+    
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
     LOGICAL :: NoDirichlet = .FALSE.
@@ -602,7 +605,7 @@ MODULE Types
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1
-     REAL(KIND=dp) :: Value = 0.0
+     REAL(KIND=dp) :: val = 0.0
      TYPE(ListMatrixEntry_t), POINTER :: Next => NULL()
    END TYPE ListMatrixEntry_t
 
@@ -1057,6 +1060,9 @@ MODULE Types
     TYPE(Matrix_t), POINTER :: GlobalMatrix
 
     INTEGER :: ELMER_COMM_WORLD = -1
+
+    LOGICAL :: USE_XIOS=.FALSE.
+    CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------

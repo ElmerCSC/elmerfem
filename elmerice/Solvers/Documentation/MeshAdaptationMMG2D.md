@@ -59,4 +59,4 @@ End
 
 ## Example
 An example for isotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Iso.
-Examples for anisotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso1 and [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2, where the mesh size is adapted using 1 or 2 variables (i.e. combining metric informations), respectively.
+Examples for anisotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso1 and [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2, where the mesh size is adapted using 1 or 2 variables (i.e. combining metric information), respectively.

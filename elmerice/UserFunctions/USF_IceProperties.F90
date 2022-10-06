@@ -147,15 +147,25 @@ FUNCTION IcePressureMeltingPoint(Model, Node, press) RESULT(Tpmp)
   REAL(KIND=dp) :: ClausiusClapeyron, tmpoffset
   TYPE(ValueList_t), POINTER :: Constants
   LOGICAL :: FirstTime = .TRUE., GotIt, InCelsius
-  REAL(KIND=dp) :: scalingfactor
+  REAL(KIND=dp) :: scalingfactor=1.0_dp
   TYPE(Element_t), POINTER :: Element
-  TYPE(ValueList_t), POINTER  :: Material
+  TYPE(ValueList_t), POINTER  :: Material, BC
   
   SAVE FirstTime, ClausiusClapeyron
 
   Element => Model % CurrentElement
   Material => GetMaterial(Element)
-  scalingfactor = GetConstReal(Material,"Pressure Scaling Factor",GotIt)
+  IF (.NOT.ASSOCIATED(Material)) THEN
+    BC => GetBC(Element)
+    IF (.NOT.ASSOCIATED(BC)) THEN
+      scalingfactor=1.0_dp
+      CALL INFO("IcePressureMeltingPoint", 'No "Pressure Scaling Factor" found - setting to 1.0',Level=9)
+    ELSE
+      scalingfactor = GetConstReal(BC,"Pressure Scaling Factor",GotIt)
+    END IF
+  ELSE
+    scalingfactor = GetConstReal(Material,"Pressure Scaling Factor",GotIt)
+  END IF
   IF (.NOT.GotIt) scalingfactor = 1.0_dp
   InCelsius = GetLogical(Material, "Pressure Melting Point Celsius", GotIt)
   IF (InCelsius) THEN

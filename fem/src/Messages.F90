@@ -49,8 +49,7 @@ MODULE Messages
 #else
 #define stdout 6
 #endif
-
-
+   
    IMPLICIT NONE
 
    CHARACTER(LEN=512) :: Message = ' '
@@ -73,6 +72,17 @@ CONTAINS
 !-----------------------------------------------------------------------
    SUBROUTINE Info( Caller, String, noAdvance, Level )
 !-----------------------------------------------------------------------
+#define MEMDEBUG 0     
+#if MEMDEBUG
+     INTERFACE
+       FUNCTION cpumemory() RESULT(dbl) BIND(C,name='cpumemory')
+         USE, INTRINSIC :: ISO_C_BINDING
+         REAL(C_DOUBLE) :: dbl
+       END FUNCTION cpumemory
+     END INTERFACE
+     INTEGER(KIND=8) :: CurrUse
+#endif
+     
      CHARACTER(LEN=*) :: Caller, String
      INTEGER, OPTIONAL :: Level
      LOGICAL, OPTIONAL :: noAdvance
@@ -81,6 +91,7 @@ CONTAINS
      INTEGER :: n
      INTEGER, PARAMETER :: DefLevel = 4
      LOGICAL :: StdoutSet = .FALSE.
+    
      SAVE nadv1
 
 !-----------------------------------------------------------------------          
@@ -122,15 +133,27 @@ CONTAINS
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
        END IF
      ELSE
+#if MEMDEBUG
+       CurrUse = NINT( CPUMemory() ) 
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
+         WRITE( InfoOutUnit,'(A,I0,A,A,T50,A,I0)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String), &
+             'MEM: ',CurrUse
+       ELSE
+         WRITE( InfoOutUnit,'(A,T50,A,I0)', ADVANCE = 'YES' ) TRIM(String),'MEM: ',CurrUse
+       END IF
+#else
        IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
          WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
        END IF
+#endif
      END IF
      nadv1 = nadv
 
      CALL FLUSH(InfoOutUnit)
+
+          
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -155,7 +178,6 @@ CONTAINS
 !-----------------------------------------------------------------------
    END FUNCTION InfoActive
 !-----------------------------------------------------------------------
-
 
 
 !-----------------------------------------------------------------------

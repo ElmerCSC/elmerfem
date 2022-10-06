@@ -1,0 +1,85 @@
+<!-- Context elmerice -->
+   <context id="elmerice">
+
+    <calendar type="D360" start_date="2015-01-01 00:00:00" time_origin="2013-01-01 00:00:00" />
+
+    <field_definition enabled=".TRUE." >
+  
+     <!-- id correspond to var names and should be lower case!! -->
+      <field id="varelem"  name="MyElemVar"   standard_name="elem_var"   unit="m" grid_ref="GridCells" operation="average" />
+      <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" operation="instant"> this/2 </field> 
+      <field id="varnode velocity"  name="MyVelocity"  standard_name="nodal_var_velocity"   unit="m" grid_ref="GridNodes" operation="average" />
+
+      <!-- saving a global scalar variable -->
+      <field id="time" operation="average"  grid_ref="ScalarGrid" />
+
+      <!-- reduction sum cell areas -->
+       <field id="area" name="area" field_ref="cell_area" grid_ref="ScalarGrid" />
+
+    </field_definition>
+
+    <file_definition type="one_file" par_access="collective" output_freq="1y" enabled=".TRUE.">
+
+	 <!-- Rq sync_freq is here to force writing for the test; and should not be set in general -->
+	 <!-- Rq variables have their own time variable (instant or centered); but might be useful to set the default time_counter to time -->
+         <file id="file" name="output_ugrid" convention="UGRID" time_counter_name="time" time_counter="instant" sync_freq="1ts" time_units="days" >
+	        <!-- Rq. mesh info group is defined by default internally -->	    
+		<field_group group_ref="mesh_info" />		    
+		<field field_ref="varnode" />
+		<field field_ref="varnode velocity" />
+		<field field_ref="varelem" />
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
+		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
+	</file>
+
+	<!-- Rq can be visualized with qgis if we output only edge variable and set the topology diemnsion to 1
+	    ncatted -a topology_dimension,mesh2D,o,i,1 output_edge.nc -->
+       <file id="output_edge" name="output_edge" convention="UGRID"  type="one_file" output_freq="1y" time_counter_name="time" time_counter="instant"   time_units="days">
+               <field field_ref="boundary_condition" />
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
+               <variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
+       </file>
+
+       <file id="output_Scalar" name="output_Scalar" type="one_file" output_freq="1y" time_units="days" >
+	       <field field_ref="time" />
+	       <field field_ref="area"/>
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
+		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
+       </file>
+
+    </file_definition>
+
+    <domain_definition> 
+      <!-- mandatory domains ...  -->
+      <domain id="cells" name="mesh2D"/>
+      <domain id="edges" name="mesh2D"/>
+      <domain id="nodes" name="mesh2D"/>
+      <!-- ...  -->
+    </domain_definition>
+
+    <grid_definition>
+     
+      <!-- mandatory grids... -->
+      <grid id="GridCells">
+        <domain domain_ref="cells"/>
+      </grid>
+
+      <grid id="GridNodes">
+        <domain domain_ref="nodes"/>
+      </grid>
+
+      <grid id="GridEdges">
+        <domain domain_ref="edges"/>
+      </grid>
+      <!-- ...  -->
+
+      <grid id="ScalarGrid">
+        <scalar id="scalar">
+	      <reduce_domain operation="sum" />
+        </scalar>
+       </grid>
+
+    </grid_definition>
+
+  </context>
+

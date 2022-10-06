@@ -189,12 +189,12 @@ End
 Solver 5
 
   Equation = "Save Scalars"
-  Exec Solver = After TimeStep  ! For transient simualtion
+  Exec Solver = After TimeStep  ! For transient simulation
   
   Procedure = File "SaveData" "SaveScalars"
   !Filename =  "hydro_scalars_$Name".dat" !"
   Filename = results.dat
-  File Append = Logical True     ! For transient simualtion
+  File Append = Logical True     ! For transient simulation
 
   Variable 1 = String "Time"
  ! Operator 2 = String "cpu time"

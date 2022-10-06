@@ -13,7 +13,7 @@ End
 Simulation
   Max Output Level = 7
 
-! This should be divisible wit the number of partitions!
+! This should be divisible with the number of partitions!
   Extruded Mesh Layers  = Integer 24
 
 ! There activate partitioning in z-direction while doing

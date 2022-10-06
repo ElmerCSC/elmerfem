@@ -183,9 +183,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PotVar, FixVar, SolVar, FluxVar, FluxVarE, LoadVar, DistVar
   TYPE(Variable_t), POINTER :: PotVarA,PotVarB,PotSelect,CoilIndexVar,CoilSetVar
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(ValueList_t), POINTER :: Params, CoilList 
+  TYPE(ValueList_t), POINTER :: Params, CoilList, BC
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
-  REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
+  REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
+      CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
       FitCoil, SelectNodes, CalcCurr, NarrowInterface
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:)
@@ -317,12 +318,15 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   
   MaxNoCoils = MAX( 1, Model % NumberOfComponents ) 
   ALLOCATE( DesiredCoilCurrent( MaxNoCoils ), DesiredCurrentDensity(MaxNoCoils), &
-      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils), NormalizeCoil(MaxNoCoils) )
+      GotCurr( MaxNoCoils ), GotDens( MaxNoCoils), NormalizeCoil(MaxNoCoils), &
+      CoilHelicity(MaxNoCoils),CoilNormals(MaxNoCoils,3))
   DesiredCoilCurrent = 0.0_dp
   GotCurr = .FALSE.
   GotDens = .FALSE.
   NormalizeCoil = .FALSE.
-
+  CoilHelicity = 0.0_dp
+  CoilNormals = 0.0_dp
+  
 
   ! These are different for different coils, would there be many
   !-----------------------------------------------------------------------
@@ -365,6 +369,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL DefineCoilCenter( CoilCenter, Params )
         CALL DefineCoilParameters( CoilNormal, CoilTangent1, CoilTangent2, Params )
       END IF
+      CoilNormals(NoCoils,:) = CoilNormal
     END IF
 
     ! Choose nodes where the Dirichlet values are set. 
@@ -413,11 +418,12 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         DesiredCoilCurrent(NoCoils) = DesiredCurrentDensity(NoCoils) * CoilCrossSection 
         GotCurr(NoCoils) = .TRUE.
       END IF
-    END IF    
+    END IF
+
+    CoilHelicity(NoCoils) = ListGetCReal( CoilList,'Coil Helicity',Found )
   END DO
-
+  
   CALL Info(Caller,'Coil system consists of '//TRIM(I2S(NoCoils))//' coils',Level=7)
-
 
   ! Count the fixing nodes just for information 
   Set => SetA
@@ -504,9 +510,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL CutInterfaceConnections( StiffMatrix, Set )
       END IF
 
-      ! Only Default dirichlet conditions activate the BCs above!
       CALL DefaultDirichletBCs()
-
       
       ! Solve the potential field
       !--------------------------
@@ -565,17 +569,20 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           CALL LocalFluxMatrix(  Element, n, nd, dimi )
         END DO
         
-        IF(.NOT. ASSOCIATED( FluxVar ) ) CYCLE
+        IF(ASSOCIATED( FluxVar ) ) THEN
+          ! Solve the flux in direction dimi
+          !--------------------------------------
+          CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
+          Norm = DefaultSolve()
+          
+          MinCurr(dimi) = MINVAL( SolVar % Values ) 
+          MaxCurr(dimi) = MAXVAL( SolVar % Values )
 
-        ! Solve the flux in direction dimi
-        !--------------------------------------
-        CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.) 
-        Norm = DefaultSolve()
-
-        MinCurr(dimi) = MINVAL( SolVar % Values ) 
-        MaxCurr(dimi) = MAXVAL( SolVar % Values )
-
-        FluxVar % Values = SolVar % Values
+          FluxVar % Values = SolVar % Values
+        ELSE
+          MinCurr(dimi) = MINVAL( FluxVarE % Values(dimi::dim) )
+          MaxCurr(dimi) = MAXVAL( FluxVarE % Values(dimi::dim) )
+        END IF
       END DO
 
       IF( ParEnv % PEs > 1 ) THEN
@@ -615,16 +622,39 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CALL LocalCorrMatrix(  Element, n, nd )
     END DO
 
-    ! Set just one Dirichlet node.
-    ! In serial it can be as well the 1st one. 
-    CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)        
-      
+    ! Only Default dirichlet conditions activate the BCs above!   
+    IF( .NOT. CoilClosed ) THEN
+      DO i=1,Model % NumberOfBCs
+        BC => Model % BCs(i) % Values
+        IF( ListGetLogical( BC,'Coil Start', Found ) .OR. ListGetLogical( BC,'Coil End', Found ) ) THEN
+          CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp ) 
+        END IF
+      END DO
+    ELSE
+      i = ParEnv % MyPe
+      i = ParallelReduction(i,1)
+      IF(i==ParEnv % MyPe) THEN
+        ! Set just one Dirichlet node.
+        ! This is always set in the 1st partition.
+        CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)         
+      END IF
+    END IF
+           
     ! Only Default dirichlet conditions activate the BCs above!
     CALL DefaultDirichletBCs()
     
     Solver % Variable % Values = 0
     Norm = DefaultSolve()
-    
+
+    IF( .NOT. CoilClosed ) THEN
+      DO i=1,Model % NumberOfBCs
+        BC => Model % BCs(i) % Values
+        IF( ListGetLogical( BC,'Coil Start', Found ) .OR. ListGetLogical( BC,'Coil End', Found ) ) THEN
+          CALL ListRemove( BC,Solver % Variable % Name ) 
+        END IF
+      END DO
+    END IF
+      
     CALL Info(Caller,'Fixing elemental current density to be divergence free!')
     DO t=1,Active
       Element => GetActiveElement(t)
@@ -659,6 +689,17 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   ! Finally, always use the primary variable for testing convergence in
   ! coupled system level etc.
   Solver % Variable % Values = PotVarA % Values
+
+  IF( InfoActive(30) ) THEN
+    CALL Info(Caller,'Final current densities')
+    IF( ASSOCIATED( FLuxVar ) ) THEN
+      CALL VectorValuesRange(FluxVar % Values,SIZE(FluxVar % Values),'Current density')     
+    END IF
+    IF( ASSOCIATED( FLuxVare ) ) THEN
+      CALL VectorValuesRange(FluxVare % Values,SIZE(FluxVare % Values),'Current density e')     
+    END IF
+  END IF
+  
   
   CALL Info(Caller,'All done',Level=7)
   CALL Info(Caller,'--------------------------------------')
@@ -710,6 +751,8 @@ CONTAINS
          END IF
        END DO
      END DO
+
+     cnt = ParallelReduction(cnt)
      
      CALL Info('CutInterfaceConnections','Number of connections cut: '//TRIM(I2S(cnt)),Level=7)
      
@@ -878,7 +921,7 @@ CONTAINS
       RETURN
     END IF
 
-    CALL Info('DefineCoilParametes','Fitting the coil by maximizing inertia',Level=7)
+    CALL Info('DefineCoilParameters','Fitting the coil by maximizing inertia',Level=7)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
@@ -1978,7 +2021,7 @@ CONTAINS
         END IF
         
         ! Note that the narrow part of the gap is omitted and here only 
-        ! currents related to the outher parts of the gap (with |sgn|=2) 
+        ! currents related to the outer parts of the gap (with |sgn|=2) 
         ! are accounted for. 
         sgn = Set(j)
         IF( sgn == 0 ) CYCLE
@@ -2069,7 +2112,7 @@ CONTAINS
     INTEGER :: n, nd, dimi
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Weight,DetJ,LocalCurr(3),AbsCurr,ScaleCurr,&
-        TotCurr,TotVol,TargetDensity
+        TotCurr,TotVol,TargetDensity,alpha
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),NodalCurr(:,:)
     LOGICAL :: Stat
     INTEGER :: i,elem,t,Coil
@@ -2122,11 +2165,17 @@ CONTAINS
           END IF
 
           CALL GetElementNodes( Nodes )
-          
-          DO dimi=1,dim
-            NodalCurr(dimi,1:n) = FluxVar % Values( dim*(Perm( Element % NodeIndexes )-1) + dimi )
-          END DO
-          
+
+          IF( ASSOCIATED( FluxVarE ) ) THEN
+            DO dimi=1,dim
+              NodalCurr(dimi,1:n) = FluxVarE % Values( dim*(FluxVarE % Perm( Element % DGIndexes )-1) + dimi )
+            END DO
+          ELSE
+            DO dimi=1,dim
+              NodalCurr(dimi,1:n) = FluxVar % Values( dim*(FluxVar % Perm( Element % NodeIndexes )-1) + dimi )
+            END DO
+          END IF
+            
           ! Numerical integration:
           !----------------------
           IP = GaussPoints( Element )
@@ -2171,6 +2220,13 @@ CONTAINS
           IF( j == 0 ) CYCLE
 
           LocalCurr(1:dim) = FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim )
+          
+          alpha = CoilHelicity(Coil)
+          IF(ABS(alpha) > TINY(alpha) ) THEN
+            AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )            
+            LocalCurr = LocalCurr + alpha * AbsCurr * CoilNormals(Coil,:) 
+          END IF
+          
           AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
           IF( AbsCurr > TINY( AbsCurr ) ) THEN
             ScaleCurr = TargetDensity / AbsCurr 
@@ -2195,6 +2251,13 @@ CONTAINS
             IF( j == 0 ) CYCLE
             
             LocalCurr(1:dim) = FluxVarE % Values( dim*(j-1)+1: dim*(j-1)+dim )
+
+            alpha = CoilHelicity(Coil)
+            IF(ABS(alpha) > TINY(alpha) ) THEN
+              AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )            
+              LocalCurr = LocalCurr + alpha * AbsCurr * CoilNormals(Coil,:) 
+            END IF
+           
             AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
             IF( AbsCurr > TINY( AbsCurr ) ) THEN
               ScaleCurr = TargetDensity / AbsCurr 
@@ -2207,6 +2270,16 @@ CONTAINS
 
     END DO
 
+    IF( InfoActive(30) ) THEN
+      IF( ASSOCIATED( FLuxVar ) ) THEN
+        CALL VectorValuesRange(FluxVar % Values,SIZE(FluxVar % Values),'Current density')     
+      END IF      
+      IF( ASSOCIATED( FLuxVare ) ) THEN
+        CALL VectorValuesRange(FluxVare % Values,SIZE(FluxVare % Values),'Current density e')     
+      END IF
+    END IF
+
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE NormalizeCurrentDensity
 !------------------------------------------------------------------------------

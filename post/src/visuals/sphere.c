@@ -56,7 +56,7 @@
 #include "../elmerpost.h"
 /******************************************************************************
  * 
- * Parameter sructure definitios for sphere visual class
+ * Parameter structure definitions for sphere visual class
  *
  ******************************************************************************/
 typedef struct shpere_s
@@ -89,7 +89,7 @@ typedef struct shpere_s
  *
  *         Output:  graphics
  *   
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

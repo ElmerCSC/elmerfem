@@ -17,7 +17,7 @@ Example of conservative interpolation of SMB forçing for ISMIP6
 
 ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------
--* Required external softwares and librairies:
+-* Required external software and libraries:
 	* CDO
 	* netcdf
 	* fortrangis with proj support
@@ -31,7 +31,7 @@ RUN the example:
 	3. Compile the solvers: make -f Makefile.IN
 	4. RUN MakeCDOGridDesc.sif : 
 		- this will produce an unstructured grid description file of the mesh for CDO
-		- rquired fortrangis to compute (lon,lat) from (x,y) coordinates
-		- restructed to 2D meshes with 303 elements only
+		- required fortrangis to compute (lon,lat) from (x,y) coordinates
+		- restructured to 2D meshes with 303 elements only
 	5. The script Interpolate.sh uses CDO for the conservative interpolation from the initial structured Grid to the Elmer unstructured grid. Results are given as cell values
 	6. READ_CELL_NETCDF.sif shows how to read the unstructured netcdf to get the variable on the 2D mesh; eventually use conservative FE interpolation to convert the elemental variable to a nodal variable 

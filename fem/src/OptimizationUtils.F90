@@ -415,7 +415,7 @@ PRINT *,'niter minpack:',niter
    FinishEarly = .FALSE.
 
    ! The MATC parameters must be present before reading the sif file
-   ! The coeffcients must be set after reading the sif file.
+   ! The coefficients must be set after reading the sif file.
    ! Hence we need a second, later, slot for the coefficient setup. 
    IF( PRESENT(SetCoeffs)) THEN
      IF( SetCoeffs ) THEN       

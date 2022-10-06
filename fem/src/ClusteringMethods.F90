@@ -857,7 +857,7 @@ CONTAINS
       CALL CMGClusterForm(Amat, Bonds, Passive, Fixed, Components, Component1, CF)
 
       IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('ChooseClusterNodes','Implement paralle stuff')
+        CALL Fatal('ChooseClusterNodes','Implement parallel stuff')
         ! Things to implement here:
         ! 1) Global numbering for CF
         ! 2) ParallelInfo for algebraic systems
@@ -880,7 +880,7 @@ CONTAINS
     SUBROUTINE SetParallelPassive()
       INTEGER :: i,j
 
-      ! If not paralle then return
+      ! If not parallel then return
       IF( ParEnv % PEs <= 1 ) RETURN
 
       ! Note that the ParallelInfo for matrices equals the size of the matrix
@@ -1289,7 +1289,7 @@ CONTAINS
       HalfSize = ListGetInteger(Solver % Values,'MG Cluster Half Size',GotIt)
       IF(.NOT. GotIt) HalfSize = (ClusterSize-1)/2 
       
-      ! Paricularly for small clusters the orphan control seems to be important
+      ! Particularly for small clusters the orphan control seems to be important
       ClusterOrphans = ListGetLogical(Solver % Values,'MG Cluster Orphans',GotIt)
       IF(.NOT. GotIt) ClusterOrphans = .TRUE.
       OrphansBest = ListGetLogical(Solver % Values,'MG Cluster Orphans Best',GotIt)

@@ -31,6 +31,7 @@ Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    Equation = "MGDynamics"
    Variable = "A"
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Use Piola Transform = True
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
    Linear System Solver = Iterative
@@ -70,10 +71,10 @@ Solver 3  !---- ResultOutputSolve, ResultOutputSolver
 End
 Solver 4  !---- SaveData, SaveScalars
    Exec Solver = After timestep
-   Exec Solver = Never
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
-   Filename = cable/dat/cable.dat
+   Show Norm Index = 3
+!   Filename = cable1d/dat/cable.dat
 End
 Equation 1
    Active Solvers(3) = 1 2 3
@@ -121,7 +122,7 @@ Boundary Condition 5 !---- cable
    Thin Line Crossection Area = Real 1e-6
 End
  
-Solver 2 :: Reference Norm = Real 1.848E-01
-Solver 2 :: Reference Norm Tolerance = Real 1E-03
+Solver 4 :: Reference Norm = Real 4.53494045E+14
+Solver 4 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

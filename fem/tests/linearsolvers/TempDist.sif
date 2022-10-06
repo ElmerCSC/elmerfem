@@ -166,5 +166,13 @@ Solver 1 :: Reference Norm = Real 13
 Boundary Condition 1 :: Temperature = 13
 RUN
 
+Solver 1 :: Reference Norm = Real 14
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = GCR
+Solver 1 :: Linear System GCR Restart = 100
+Solver 1 :: Reference Norm = Real 14
+
+Boundary Condition 1 :: Temperature = 14
+RUN
 
 !End Of File

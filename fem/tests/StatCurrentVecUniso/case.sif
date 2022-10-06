@@ -19,6 +19,8 @@ Simulation
 
   Post File = "case.vtu"
   Output Version Numbers = Logical True
+
+  Mesh Levels = 1
 End
 
 Body 1
@@ -49,12 +51,15 @@ Solver 1
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-4
 
+  Vector Assembly = False
+
   Calculate Volume Current = True
   Calculate Electric Field = True
 End
 
 Material 1
   Electric Conductivity(2,2) = 1.0 0.5 0.0 2.0 
+!  Electric Conductivity = 1.0
 End
 
 Boundary Condition 1

@@ -61,6 +61,8 @@ Solver 2
   Procedure = "SaveData" "SaveLine"
   Filename = f.dat
 
+  Parallel Reduce = True
+
   Show Norm = True
   Show Norm Index = 1
 

@@ -1,0 +1,8 @@
+INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
+
+SET(NPROCS 2)
+
+EXECUTE_PROCESS(COMMAND ${ELMERGRID_BIN} 1 2 rectangle -metis ${NPROCS} )
+
+RUN_ELMERICE_TEST(WITH_MPI)
+

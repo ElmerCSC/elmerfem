@@ -1028,7 +1028,7 @@ CONTAINS
 
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('SaveGsmhGeo2D','Not implemented yet in parallel')
+      CALL Warn('SaveGmshGeo2D','Not implemented yet in parallel')
     END IF
     
     Filename = ListGetString(Params,'Geo Filename',Found)

@@ -2405,7 +2405,7 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 
-!> Is the actice solver solved in the frequency space
+!> Is the active solver solved in the frequency space
 !------------------------------------------------------------------------------
   FUNCTION EigenOrHarmonicAnalysis(Usolver) RESULT(L)
     LOGICAL :: L
@@ -3035,7 +3035,7 @@ END BLOCK
      CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
          TRIM(SlaveSolverStr),Level=5)
      
-     dt = GetTimeStep()
+     dt = GetTimeStepsize()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
 
      ! store the nonlinear iteration at the outer loop
@@ -3113,6 +3113,10 @@ END BLOCK
          CALL RestoreBulkMatrix(Solver % Matrix)
          RETURN
        END IF
+     END IF
+
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
      END IF
 
      
@@ -3196,6 +3200,7 @@ END BLOCK
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
      TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3207,9 +3212,13 @@ END BLOCK
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
-     CALL Info('DefaultFinish','Finished solver: '//&
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
+     END IF
+     
+     CALL Info('DefaultFinish','Finished solver: '//&         
          TRIM(ListGetString(Solver % Values,'Equation')),Level=8)
-
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------

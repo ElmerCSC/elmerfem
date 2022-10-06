@@ -76,7 +76,8 @@
         INTEGER :: XMinIndex,XMaxIndex
         INTEGER :: YMinIndex,YMaxIndex
 
-        CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName,DataF
+        CHARACTER(LEN=MAX_STRING_LEN) :: DataF
+        CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName
         CHARACTER(LEN=MAX_NAME_LEN) :: Name,FName,WName,MName,CSVName,tmpName
         CHARACTER(LEN=MAX_NAME_LEN),parameter :: &
                          SolverName='Scattered2DDataInterpolator'
@@ -294,7 +295,7 @@
 
                !! Get X variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
-                       NoVar,'x-Var Name'
+                       NoVar,' x-Var Name'
                Xdim=ListGetString( Params, TRIM(dimName), Found )
                if (.NOT.Found) Xdim='x'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)
@@ -309,7 +310,7 @@
                ENDIF
                !! Get Y variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
-                       NoVar,'y-Var Name'
+                       NoVar,' y-Var Name'
                Xdim=ListGetString( Params, TRIM(dimName), Found )
                if (.NOT.Found) Xdim='y'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)

@@ -1,5 +1,5 @@
 
-! Fortran preprocessor definitons for HUTIter library
+! Fortran preprocessor definitions for HUTIter library
 !
 ! $Id: huti_fdefs.h,v 1.1.1.1 2005/04/15 10:31:18 vierinen Exp $
 

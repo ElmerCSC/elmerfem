@@ -28,7 +28,7 @@
 ! *
 ! *  Original Date: 03-2018, 
 ! *  11-2020
-! *  O. Gagliardini (IGE) modified the initial version from Fabien to adpat it for Glacier
+! *  O. Gagliardini (IGE) modified the initial version from Fabien to adapt it for Glacier
 ! *****************************************************************************
 !!! Compute standard 1D variables:
 !   1: Time

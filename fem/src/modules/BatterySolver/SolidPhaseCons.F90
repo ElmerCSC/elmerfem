@@ -51,7 +51,7 @@ SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
   ! This variable is used to solve one stride at a time.
   CALL ListAddNewString( Params,'Variable','Cs OneDim')
 
-  ! This is 1D mesh: never optimize the bandwith so we know it is identity!
+  ! This is 1D mesh: never optimize the bandwidth so we know it is identity!
   CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
 
   ! We will assembly mass & stiffness matrices only once and use them

@@ -1187,7 +1187,7 @@ CONTAINS
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
   ! for the reduced basis DG. Even there it works only at intersections
-  ! if there is an additinal mask that is used to pick the correct element.
+  ! if there is an additional mask that is used to pick the correct element.
   ! For generic cases we would need a table to all DG indexes. 
   !------------------------------------------------------------------------
   SUBROUTINE CreateOneDGIndex()
