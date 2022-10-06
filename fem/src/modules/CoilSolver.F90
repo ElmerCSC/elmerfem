@@ -183,7 +183,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PotVar, FixVar, SolVar, FluxVar, FluxVarE, LoadVar, DistVar
   TYPE(Variable_t), POINTER :: PotVarA,PotVarB,PotSelect,CoilIndexVar,CoilSetVar
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(ValueList_t), POINTER :: Params, CoilList 
+  TYPE(ValueList_t), POINTER :: Params, CoilList, BC
   REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
       CoilHelicity(:),CoilNormals(:,:)
@@ -510,9 +510,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
         CALL CutInterfaceConnections( StiffMatrix, Set )
       END IF
 
-      ! Only Default dirichlet conditions activate the BCs above!
       CALL DefaultDirichletBCs()
-
       
       ! Solve the potential field
       !--------------------------
@@ -624,16 +622,39 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CALL LocalCorrMatrix(  Element, n, nd )
     END DO
 
-    ! Set just one Dirichlet node.
-    ! In serial it can be as well the 1st one. 
-    CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)        
-      
+    ! Only Default dirichlet conditions activate the BCs above!   
+    IF( .NOT. CoilClosed ) THEN
+      DO i=1,Model % NumberOfBCs
+        BC => Model % BCs(i) % Values
+        IF( ListGetLogical( BC,'Coil Start', Found ) .OR. ListGetLogical( BC,'Coil End', Found ) ) THEN
+          CALL ListAddConstReal( BC,Solver % Variable % Name, 0.0_dp ) 
+        END IF
+      END DO
+    ELSE
+      i = ParEnv % MyPe
+      i = ParallelReduction(i,1)
+      IF(i==ParEnv % MyPe) THEN
+        ! Set just one Dirichlet node.
+        ! This is always set in the 1st partition.
+        CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)         
+      END IF
+    END IF
+           
     ! Only Default dirichlet conditions activate the BCs above!
     CALL DefaultDirichletBCs()
     
     Solver % Variable % Values = 0
     Norm = DefaultSolve()
-    
+
+    IF( .NOT. CoilClosed ) THEN
+      DO i=1,Model % NumberOfBCs
+        BC => Model % BCs(i) % Values
+        IF( ListGetLogical( BC,'Coil Start', Found ) .OR. ListGetLogical( BC,'Coil End', Found ) ) THEN
+          CALL ListRemove( BC,Solver % Variable % Name ) 
+        END IF
+      END DO
+    END IF
+      
     CALL Info(Caller,'Fixing elemental current density to be divergence free!')
     DO t=1,Active
       Element => GetActiveElement(t)

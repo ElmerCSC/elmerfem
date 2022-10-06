@@ -234,7 +234,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
   REAL(KIND=dp) :: Norm, Omega
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:), ReLoad(:,:)
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   REAL(KIND=dp) :: NewtonTol
@@ -249,6 +249,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
   TYPE(ValueList_t), POINTER :: CompParams
 
+  CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
+  LOGICAL :: UseCoilCurrent, ElemCurrent
+  TYPE(Variable_t), POINTER :: CoilCurrentVar
+  REAL(KIND=dp) :: CurrAmp
+  
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
@@ -272,6 +277,32 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'The option > Use Tree Gauge < is not available',Level=4)
   END IF
 
+  CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
+  IF(.NOT. UseCoilCurrent ) THEN
+    UseCoilCurrent = GetLogical(SolverParams,'Use Nodal CoilCurrent',Found )
+    IF(UseCoilCurrent) THEN
+      CoilCurrentName = 'CoilCurrent'
+    ELSE
+      UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
+      IF(Found) CoilCurrentName = 'CoilCurrent e'
+    END IF
+  END IF
+  ElemCurrent = .FALSE.
+  IF( UseCoilCurrent ) THEN
+    CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
+    IF( ASSOCIATED( CoilCurrentVar ) ) THEN
+      CALL Info('WhitneyAVHarmonicSolver','Using precomputed field for current density: '//TRIM(CoilCurrentName),Level=5)
+      IF( CoilCurrentVar % TYPE == Variable_on_nodes_on_elements ) THEN
+        ElemCurrent = .TRUE.
+      ELSE
+        CALL Warn('WhitneyAVHarmonicSolver','Precomputed CoilCurrent is not an elemental field!')
+      END IF
+    ELSE
+      CALL Fatal('WhitneyAVHarmonicSolver','Elemental current requested but not found:'//TRIM(CoilCurrentName))
+    END IF
+  END IF
+
+  
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
@@ -286,7 +317,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
          'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
@@ -395,6 +426,7 @@ CONTAINS
     !-----------------
     CALL DefaultInitialize()
     Active = GetNOFActive()
+
     DO t=1,active
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! vertices
@@ -408,14 +440,31 @@ CONTAINS
        LOAD = 0.0d0
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
-       IF ( ASSOCIATED(BodyForce) ) THEN
-          CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
-          CALL GetComplexVector( BodyForce, Load(4:6,1:n), &
-                 'Magnetization', FoundMagnetization )
 
-          Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
-          Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
-              GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
+       ! If the coil current field is elemental it is discontinuous and need not be limited
+       ! to the body force. For nodal ones we don't have the same luxury.
+       IF( UseCoilCurrent ) THEN
+         IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
+           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar)       
+           LOAD(1:3,1:n) = ReLoad(1:3,1:n)
+         END IF
+       END IF
+              
+       IF ( ASSOCIATED(BodyForce) ) THEN
+         ! If not already given by CoilCurrent, request for current density
+         IF( .NOT. UseCoilCurrent ) THEN           
+           CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+         END IF
+
+         CurrAmp = ListGetCReal( BodyForce,'Current Density Multiplier',Found ) 
+         IF(Found) Load(1:3,1:n) = CurrAmp * Load(1:3,1:n)
+                    
+         CALL GetComplexVector( BodyForce, Load(4:6,1:n), &
+             'Magnetization', FoundMagnetization )
+
+         Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
+         Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
+             GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
        END IF
 
        Material => GetMaterial( Element )
@@ -619,7 +668,7 @@ CONTAINS
            END IF
          END IF
        END IF
-       
+
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -1639,7 +1688,7 @@ END BLOCK
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    LOGICAL :: Stat
+    LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
@@ -1658,21 +1707,32 @@ END BLOCK
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
+    ! We may have line elements that define BC for the conductivie layers, for example.
+    ! However, line elements do not have all the features of edge elements. Only
+    ! certains BCs are possible. 
+    LineElem = ( Element % TYPE % ElementCode / 100 <= 2 ) 
+        
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree)
-
+    IF( LineElem ) THEN
+      IP = GaussPoints(Element)
+    ELSE
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    END IF
+      
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+       IF( LineElem ) THEN        
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx )        
+       ELSE IF ( PiolaVersion ) THEN
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE       
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
-
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
@@ -1692,6 +1752,9 @@ END BLOCK
          END DO
        END DO
 
+       ! We cannot do the following for line elements
+       IF( LineElem ) CYCLE
+       
        DO i = 1,nd-np
          p = i+np
          FORCE(p) = FORCE(p) - SUM(L*Wbasis(i,:))*detJ*IP%s(t)
