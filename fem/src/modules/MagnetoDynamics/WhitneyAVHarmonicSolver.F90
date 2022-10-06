@@ -426,6 +426,7 @@ CONTAINS
     !-----------------
     CALL DefaultInitialize()
     Active = GetNOFActive()
+
     DO t=1,active
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! vertices
@@ -667,7 +668,7 @@ CONTAINS
            END IF
          END IF
        END IF
-       
+
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -1687,7 +1688,7 @@ END BLOCK
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    LOGICAL :: Stat
+    LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
@@ -1706,21 +1707,32 @@ END BLOCK
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
+    ! We may have line elements that define BC for the conductivie layers, for example.
+    ! However, line elements do not have all the features of edge elements. Only
+    ! certains BCs are possible. 
+    LineElem = ( Element % TYPE % ElementCode / 100 <= 2 ) 
+        
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree)
-
+    IF( LineElem ) THEN
+      IP = GaussPoints(Element)
+    ELSE
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    END IF
+      
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+       IF( LineElem ) THEN        
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx )        
+       ELSE IF ( PiolaVersion ) THEN
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE       
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
-
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
@@ -1740,6 +1752,9 @@ END BLOCK
          END DO
        END DO
 
+       ! We cannot do the following for line elements
+       IF( LineElem ) CYCLE
+       
        DO i = 1,nd-np
          p = i+np
          FORCE(p) = FORCE(p) - SUM(L*Wbasis(i,:))*detJ*IP%s(t)

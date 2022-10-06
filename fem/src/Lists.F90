@@ -2765,6 +2765,8 @@ use spariterglobals
               IF( Weights(i) > TINY(Weights(i)) ) THEN
                 ptr % coeff = 1.0_dp / Weights(i)
                 cnt = cnt + 1
+                WRITE( Message,'(A,ES12.3)') 'Scaling parameter "'//TRIM(ptr % name)//'" with:',ptr % coeff 
+                CALL Info('ListSetParameters',Message,Level=15)
               ELSE
                 CALL Warn('ListSetParameters','Refusing division with zero!')
               END IF
