@@ -95,7 +95,7 @@ MODULE ElmerSolver_mod
   INTEGER(KIND=AddrInt), SAVE   :: ControlProcedure
   LOGICAL, SAVE                 :: InitDirichlet, ExecThis  
   TYPE(ParEnv_t),POINTER,SAVE   :: ParallelEnv  
-  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: ModelName, eq, ExecCommand, ExtrudedMeshName
+  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: ModelName, eq, ExecCommand
   CHARACTER(LEN=MAX_STRING_LEN),SAVE :: OutputFile, PostFile, RestartFile, &
        OutputName=' ',PostName=' ', When, OptionString  
   TYPE(Variable_t),POINTER,SAVE :: Var ! used in comparetoreferencesolution, setinitialconditions, initcond, restart, savecurrent, savetopost, could probably be just local in all cases.
@@ -435,12 +435,7 @@ CONTAINS
 
       IF (Found) THEN
         IF(ExtrudeLayers > 1) THEN
-          ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
-          IF (Found) THEN
-            ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1, ExtrudedMeshName)
-          ELSE
-            ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
-          END IF
+          ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
           DO ii=1,CurrentModel % NumberOfSolvers
             IF(ASSOCIATED(CurrentModel % Solvers(ii) % Mesh,CurrentModel % Meshes)) &
                  CurrentModel % Solvers(ii) % Mesh => ExtrudedMesh 
