@@ -174,7 +174,18 @@ CONTAINS
           Parent => Element % BoundaryInfo % Right        
         END IF
         IF ( ASSOCIATED(Parent) ) THEN
-          IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+          IF (.NOT. ASSOCIATED(Parent % DGIndexes) ) THEN
+            ! This could happen if we have parents of parents i.e. the original element
+            ! is a line element, has parents that are face elements, having parents being volume elements. 
+            IF( ASSOCIATED( Parent % BoundaryInfo ) ) THEN
+              IF( ASSOCIATED( Parent % BoundaryInfo % Left ) ) THEN
+                Parent => Parent % BoundaryInfo % Left
+              ELSE IF( ASSOCIATED( Parent % BoundaryInfo % Right ) ) THEN
+                Parent => Parent % BoundaryInfo % Right
+              END IF
+            END IF
+          END IF
+          IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
             n = Element % TYPE % NumberOfNodes 
             hits = 0
             DO j=1,n
@@ -195,10 +206,8 @@ CONTAINS
       ENDIF
 
       IF(.NOT. ASSOCIATED( UseIndexes ) ) THEN
-        PRINT *,'Problematic BC elem:',Element % BodyId, Element % ElementIndex, Element % NodeIndexes, &
-            ASSOCIATED( Element % DgIndexes ), ASSOCIATED( Element % BoundaryInfo ), DGelem, &
-            Element % TYPE % ElementCode
-        CALL Fatal('Elmer2VtkIndexes','Could not set indexes for boundary element!')        
+        CALL Warn('Elmer2VtkIndexes','Could not set DG indexes for boundary element!')        
+        UseIndexes => Element % NodeIndexes
       END IF
     ELSE
       UseIndexes => Element % NodeIndexes

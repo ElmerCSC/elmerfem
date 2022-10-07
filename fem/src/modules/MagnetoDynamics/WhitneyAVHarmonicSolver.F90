@@ -1686,7 +1686,7 @@ END BLOCK
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
-    COMPLEX(KIND=dp) :: B, F, TC, L(3)
+    COMPLEX(KIND=dp) :: B, F, TC, L(3), imu
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1703,6 +1703,8 @@ END BLOCK
 
     CALL GetElementNodes( Nodes )
 
+    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
+    
     STIFF = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
@@ -1742,6 +1744,14 @@ END BLOCK
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
 
+
+       ! Experimental so far...
+       IF( LineElem ) THEN
+         F = F * (1-imu)
+         TC = TC * (1-imu)
+       END IF
+
+       
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
