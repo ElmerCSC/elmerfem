@@ -8376,7 +8376,7 @@ CONTAINS
         END IF
 
         IF(Element % BoundaryInfo % Constraint == BaseBCtag) &
-          CALL FATAL(SolverName, 'Inverted base element not on edge so &
+          CALL WARN(SolverName, 'Inverted base element not on edge so &
             cannot tranfer to other boundary')
       END IF
 
