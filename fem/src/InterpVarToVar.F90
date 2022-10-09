@@ -939,7 +939,7 @@ CONTAINS
   !Subroutine designed to interpolate single missing points which sometimes
   !occur on the base and top interpolation, from surrounding nodes of the same mesh.
   SUBROUTINE InterpolateUnfoundPoint( NodeNumber, Mesh, HeightName, HeightDimensions,&
-    ElemMask, NodeMask, Variables, UnfoundDOFS )
+    ElemMask, NodeMask, Variables, UnfoundDOFS, Found )
 
     ! reworked
     ! search for suppnodes
@@ -953,6 +953,7 @@ CONTAINS
     INTEGER, POINTER :: HeightDimensions(:)
     LOGICAL, POINTER, OPTIONAL :: ElemMask(:),NodeMask(:)
     INTEGER, ALLOCATABLE, OPTIONAL :: UnfoundDOFS(:)
+    LOGICAL, OPTIONAL :: Found
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
@@ -1053,6 +1054,14 @@ CONTAINS
 
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
         NoSuppNodes,' supporting nodes.'
+
+    IF(PRESENT(Found)) THEN
+      Found = .TRUE.
+      IF(NoSuppNodes == 0) THEN
+        Found = .FALSE.
+        RETURN
+      END IF
+    END IF
 
     !create suppnode mask and get node values
     ! get node weights too
@@ -1167,7 +1176,7 @@ CONTAINS
   END SUBROUTINE InterpolateUnfoundPoint
 
   SUBROUTINE InterpolateUnfoundSharedPoint( NodeNumber, Mesh, HeightName, HeightDimensions,&
-    ElemMask, NodeMask, Variables, UnfoundDOFS )
+    ElemMask, NodeMask, Variables, UnfoundDOFS, Found )
 
     ! similar process to InterpolateUnfoundPont but includes parallel communication
     !! new method
@@ -1184,6 +1193,7 @@ CONTAINS
     INTEGER, POINTER :: HeightDimensions(:)
     LOGICAL, POINTER, OPTIONAL :: ElemMask(:),NodeMask(:)
     INTEGER, ALLOCATABLE, OPTIONAL :: UnfoundDOFS(:)
+    LOGICAL, OPTIONAL :: Found
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
@@ -1388,6 +1398,14 @@ CONTAINS
       CALL MPI_RECV( PartNoSuppNodes(i+1) , 1, MPI_INTEGER, proc, &
         4000, ELMER_COMM_WORLD, status, ierr )
     END DO
+
+    IF(PRESENT(Found)) THEN
+      Found = .TRUE.
+      IF(SUM(PartNoSuppNodes) == 0) THEN
+        Found = .FALSE.
+        RETURN
+      END IF
+    END IF
 
     ! an mpi_error can occur if one proc has zero supp nodes
     ! if proc has zero supp nodes it needs to receive mpi info but cannot send any

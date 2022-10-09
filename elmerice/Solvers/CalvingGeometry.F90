@@ -3943,10 +3943,10 @@ CONTAINS
     REAL(KIND=dp) :: geps,leps
     LOGICAL :: Debug, skip, PartMask
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
-    LOGICAL, ALLOCATABLE :: PartsMask(:)
+    LOGICAL, ALLOCATABLE :: PartsMask(:), FoundNode(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
     INTEGER, ALLOCATABLE :: PartUnfoundCount(:), AllUnfoundDOFS(:), UnfoundDOFS(:), disps(:), Unique(:), &
-                           FinalDOFs(:), UnfoundIndex(:), UnfoundShared(:), Repeats(:)
+                           FinalDOFs(:), UnfoundIndex(:), UnfoundShared(:), Repeats(:), RemainingDOFs(:)
     LOGICAL, ALLOCATABLE :: PartHasUnfoundNodes(:)
     INTEGER :: ClusterSize, ierr, UnfoundCount, min_val, max_val, CountDOFs, CountRepeats, Previous, NodeCount
     SolverName = 'InterpMaskedBCReduced'
@@ -4006,6 +4006,7 @@ CONTAINS
          UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
          GlobalEps=geps, LocalEps=leps)
 
+
     UnfoundCount = COUNT(UnfoundNodes)
 
     ClusterSize = ParEnv % PEs
@@ -4052,6 +4053,7 @@ CONTAINS
     END IF 
     ALLOCATE(FinalDOFs(CountDOFs), source=Unique(1:countDOFs))
     ALLOCATE(UnfoundShared(CountRepeats), source=Repeats(1:CountRepeats))
+    ALLOCATE(FoundNode(SIZE(UnfoundNodes)))
 
       !What you should do here is, rather than looping over the size of UnfoundNodes is
       ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
@@ -4066,45 +4068,57 @@ CONTAINS
     PRINT*, ParEnv % MyPE, MaskName, ' NumberofUnfoundpoints', Size(FinalDOFs), UnfoundCount
     !Loop through all DOFS with barrier before shared nodes 
     NodeCount = 0
-    DO i=1, SIZE(FinalDOFs)
-      IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-        DO j=1, UnfoundCount
-          IF(UnfoundDOFS(j) == FinalDOFs(i)) nodecount = j
-        END DO
-      END IF
-      ! no need for a mask since nodes in both arrays in ascending order
-      IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
-         ! ok to barrier since all parts enter loop and
-         ! have same AllUnfoundDOFs/UnfoundShared
-         ! barrier for shared nodes to endsure these are found at same time
-         CALL MPI_Barrier(ELMER_COMM_WORLD, ierr)
-         !nodenumber = UnfoundIndex(nodecount) since different on each process
-         !always finds correct translation from DOFs to process nodenumber since
-         !all arrays in ascending order
-         IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-            PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
-            ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
-            ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
-            ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
-            'GDOF', FinalDOFs(i), &
-            NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
-            CALL InterpolateUnfoundSharedPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
-               NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFS=FinalDOFs)
-         END IF
-      ! no need for a mask since nodes in both arrays in ascending order
-      ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
-         !nodenumber = UnfoundIndex(nodecount) since different on each process
-         !always finds correct translation from DOFs to process nodenumber since
-         !all arrays in ascending order
-         PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
-         ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
-         ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
-         ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
-         'GDOF', FinalDOFs(i), &
-         NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
-         CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
-            NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFs=FinalDOFs)
-      END IF
+    FoundNode = .FALSE.
+    DO WHILE(COUNT(.NOT. FoundNode) == 0)
+      DO i=1, SIZE(FinalDOFs)
+        IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+          DO j=1, UnfoundCount
+            IF(UnfoundDOFS(j) == FinalDOFs(i)) THEN
+              nodecount = j
+              EXIT
+            END IF
+          END DO
+        END IF
+        ! no need for a mask since nodes in both arrays in ascending order
+        IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
+          ! ok to barrier since all parts enter loop and
+          ! have same AllUnfoundDOFs/UnfoundShared
+          ! barrier for shared nodes to endsure these are found at same time
+          CALL MPI_Barrier(ELMER_COMM_WORLD, ierr)
+          !nodenumber = UnfoundIndex(nodecount) since different on each process
+          !always finds correct translation from DOFs to process nodenumber since
+          !all arrays in ascending order
+          IF(FoundNode(nodecount)) CYCLE
+          IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+              PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
+              ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+              ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+              ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+              'GDOF', FinalDOFs(i), &
+              NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+              RemainingDOFs = PACK(UnfoundDOFs,.NOT. FoundNode)
+              CALL InterpolateUnfoundSharedPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
+                NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFS=RemainingDOFs, &
+                Found=FoundNode(nodecount))
+          END IF
+        ! no need for a mask since nodes in both arrays in ascending order
+        ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+          IF(FoundNode(nodecount)) CYCLE
+          !nodenumber = UnfoundIndex(nodecount) since different on each process
+          !always finds correct translation from DOFs to process nodenumber since
+          !all arrays in ascending order
+          PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
+          ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+          ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+          ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+          'GDOF', FinalDOFs(i), &
+          NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+          RemainingDOFs = PACK(UnfoundDOFs,.NOT. FoundNode)
+          CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
+              NodeMask=NewMaskLogical, Variables=NewMesh % Variables, UnfoundDOFs=RemainingDOFs, &
+              Found=FoundNode(nodecount))
+        END IF
+      END DO
     END DO
 
     DEALLOCATE(OldMaskLogical, &
