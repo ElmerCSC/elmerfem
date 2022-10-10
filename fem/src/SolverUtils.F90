@@ -7999,8 +7999,8 @@ CONTAINS
            k = SearchNode( A % ParallelInfo, r_e(j), Order=A % ParallelInfo % Gorder )
            IF ( k>0 ) THEN
              IF(.NOT. A % ConstrainedDOF(k)) THEN
-               CALL ZeroRow(A, k )
-               A % Values(A % Diag(k)) = 1._dp
+!               CALL ZeroRow(A, k )
+!               A % Values(A % Diag(k)) = 1._dp
                A % Dvalues(k) = g_e(j)
                A % ConstrainedDOF(k) = .TRUE.
              END IF
@@ -8265,6 +8265,20 @@ CONTAINS
         ! Off-diagonal entries for a block matrix are neglected since the code will
         ! also go through the diagonal entries where the r.h.s. target value will be set.
         IF(.NOT. NoDiag ) THEN
+#if 0
+          ! It is not clear whether we want to set the Dirichlet conditions only
+          ! for the owner partition, or to all partitions. The latter may perhaps
+          ! help when using partition-specific preconditioners...
+          IF( Parallel ) THEN
+            IF( SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours) > 1 ) THEN
+              IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
+                b(k) = 0.0_dp
+                CYCLE
+              END IF
+            END IF
+          END IF
+#endif
+          
           CALL SetMatrixElement(A,k,k,s)
           b(k) = s * dval
         END IF
