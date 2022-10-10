@@ -7170,6 +7170,7 @@ CONTAINS
           END IF
         END IF
       ELSE
+        IF(FrontPerm(i) > 0) CYCLE ! need to allow the new front be ungrounded
         IF(HasNeighbours) THEN
           counter = counter+1
           GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
