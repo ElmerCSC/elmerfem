@@ -31,6 +31,7 @@
 #include "../config.h"
 
 PROGRAM Solver
+   USE ElmerSolver_mod
    USE Types
    USE GeneralUtils
    USE ParallelUtils
