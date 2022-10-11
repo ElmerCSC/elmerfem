@@ -378,7 +378,7 @@ CONTAINS
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
-        READ(name(13:j-1),*) CompId
+        READ(name(slen-1:j-1),*) CompId
         IF (.NOT. ANY(ComponentIDs == CompID)) nofc = nofc + 1
         ComponentIDs(i) = CompId
       END IF
@@ -398,7 +398,9 @@ FUNCTION isComponentName(name, len) RESULT(L)
    
    L = .FALSE.
    IF(len<12) RETURN
-   IF(name(1:12)=='i_component(' .OR. name(1:12)=='v_component(') L=.TRUE.
+   IF(name(1:12)=='i_component(' .OR. &
+      name(1:12)=='v_component(' .OR. &
+      name(1:14)=='phi_component(') L=.TRUE.
 !------------------------------------------------------------------------------
 END FUNCTION isComponentName
 !------------------------------------------------------------------------------
@@ -408,10 +410,11 @@ END FUNCTION isComponentName
   SUBROUTINE ReadCircuitVariables(CId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc
+    INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc, ibracket
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
+    LOGICAL :: LondonEquations = .FALSE.
 
     Circuit => CurrentModel % Circuits(CId)
 
@@ -433,10 +436,14 @@ END FUNCTION isComponentName
       CVar % Component => Null()
 
       IF(isComponentName(name,slen)) THEN
-        DO j=13,slen
+        DO ibracket=1,slen
+          IF(name(ibracket:ibracket)=='(') EXIT 
+        END DO
+
+        DO j=ibracket+1,slen
           IF(name(j:j)==')') EXIT 
         END DO
-        READ(name(13:j-1),*) ComponentId
+        READ(name(ibracket+1:j-1),*) ComponentId
 
         CVar % BodyId = ComponentId
         
@@ -452,13 +459,33 @@ END FUNCTION isComponentName
 
         Cvar % Component % ComponentId = ComponentId
 
-        SELECT CASE (name(1:12))
+        SELECT CASE (name(1:ibracket))
         CASE('i_component(')
           CVar % isIvar = .TRUE.
           CVar % Component % ivar => CVar
         CASE('v_component(')
+          LondonEquations = ListGetLogical(CurrentModel % Components (ComponentId) % Values, &
+                                           'London Equations', LondonEquations)
+          IF (.NOT. LondonEquations) THEN
+            CVar % isVvar = .TRUE.
+            CVar % Component % vvar => CVar
+          ELSE
+            CompInd = CompInd - 1
+            Cvar % Component => Null()
+            CVar % isIvar = .FALSE.
+            CVar % isVvar = .FALSE.
+            CVar % dofs = 1
+            CVar % pdofs = 0
+            CVar % BodyId = 0
+          END IF
+        CASE('phi_component(')
+          ! London equations lead to driving the a-formulation 
+          ! with the so called node flux. Thus we replace 'v_component'
+          ! variable with phi_component:
+          ! (beta a, phi') + phi_component(1) (beta grad phi_0, grad phi') = i_component(1)
+          !--------------------------------------------------------------------------------
           CVar % isVvar = .TRUE.
-          CVar % Component % vvar => CVar
+          CVar % Component % vvar => CVar 
         CASE DEFAULT
           CALL Fatal('Circuits_Init()', 'Circuit variable should be either i_component or v_component!')
         END SELECT
