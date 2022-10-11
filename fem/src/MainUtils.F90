@@ -1995,6 +1995,60 @@ CONTAINS
         Solver % Matrix % MassValues=0._dp
       END IF
     END IF
+
+
+    !------------------------------------------------------------------
+    ! Check for special solvers, to be executed only 
+    ! at a certain instances during the simulation:
+    !------------------------------------------------------------------
+
+    Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+
+    str = ListGetString( SolverParams, 'Exec Solver', Found )
+    IF( Found ) THEN    
+      SELECT CASE( TRIM(str) )
+      CASE( 'never' )
+        Solver % SolverExecWhen = SOLVER_EXEC_NEVER
+      CASE( 'always' )
+        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+      CASE( 'after simulation', 'after all' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+      CASE( 'before simulation', 'before all' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+      CASE( 'before timestep' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+      CASE( 'after timestep' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+      CASE( 'before saving' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+      CASE( 'after saving' )
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+      CASE( 'predictor-corrector' )
+        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+      CASE DEFAULT
+        Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+      END SELECT      
+    ELSE      
+      IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Simulation', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'After All', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'After Simulation', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_ALL
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Timestep', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_TIME
+      ELSE IF ( ListGetLogical( SolverParams, 'After Timestep', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_TIME
+      ELSE IF ( ListGetLogical( SolverParams, 'Before Saving', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AHEAD_SAVE
+      ELSE IF ( ListGetLogical( SolverParams, 'After Saving', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
+      ELSE IF ( ListGetLogical( SolverParams, 'Predictor-Corrector', Found ) ) THEN
+        Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
+      END IF
+    END IF
      
     Solver % LinBeforeProc = 0
     str = ListGetString( Solver % Values, 'Before Linsolve', Found )
