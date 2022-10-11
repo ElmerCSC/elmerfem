@@ -911,17 +911,12 @@ void InitializeKnots(struct FemType *data)
     strcpy(data->dofname[i],""); 
   }
 
-#if 0
-  /* Currently allocated dynamically! */
   for(i=0;i<MAXBODIES;i++) {
-    strcpy(data->bodyname[i],""); 
-    sprintf(data->bodyname[i],"body%d",i);
+    data->bodyname[i] = NULL;
   }
   for(i=0;i<MAXBCS;i++) {
-    strcpy(data->boundaryname[i],""); 
-    sprintf(data->boundaryname[i],"bc%d",i);
+    data->boundaryname[i] = NULL;
   }
-#endif
 }
 
 
@@ -4007,7 +4002,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,doinit,isordered;
   int minbc=0,maxbc=0,**mapbc;
   int elemdim=0,elemtype=0,sideind[MAXNODESD1];
-  int bctype;
+  int bctype,havename,isname;
 
   if(renumber) {
     if(0) printf("Renumbering boundary types\n");
@@ -4057,21 +4052,43 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     j = 0;
     /* Give the larger dimension always a smaller BC type */
     isordered = TRUE;
-    for(elemdim=2;elemdim>=0;elemdim--) {
-      for(i=minbc;i<=maxbc;i++) {
-	if(!mapbc[i][elemdim]) continue;
-	j++;
-	if(i == j) {
-	  printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim); 
+    for(isname=1;isname>=0;isname--) {      
+      for(elemdim=2;elemdim>=0;elemdim--) {
+	for(i=minbc;i<=maxbc;i++) {
+	  if(!mapbc[i][elemdim]) continue;
+
+	  /* Give index 1st to the named entities, then to unnamed. */
+	  havename = FALSE;
+	  if(data->boundarynamesexist) {
+	    if(i<MAXBCS) { 
+	      if(data->boundaryname[i]) havename = TRUE;
+	    }
+	  }
+	  if(havename != isname) break;
+
+	  j++;
+	  if(i == j) {
+	    if( isname ) {
+	      printf("BC index unaltered %d in %d %dD elements of %s\n",i,mapbc[i][elemdim],elemdim,data->boundaryname[i]); 
+	    }
+	    else {	      
+	      printf("BC index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  else {
+	    isordered = FALSE;
+	    if( isname ) {
+	      printf("BC index changed %d -> %d in %d %dD elements of %s\n",i,j,mapbc[i][elemdim],elemdim,data->boundaryname[i]);
+	    }
+	    else {
+	      printf("BC index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  mapbc[i][elemdim] = j;
 	}
-	else {
-	  isordered = FALSE;
-	  printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim); 
-	}
-	mapbc[i][elemdim] = j;
       }
     }
-
+      
     if(0) {
       for(i=minbc;i<=maxbc;i++) 
 	for(j=0;j<=2;j++)
@@ -4096,25 +4113,36 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
       if(data->boundarynamesexist) {
 	char *boundaryname0[MAXBCS];
 
+	for(j=0;j<MAXBODIES;j++)
+	  boundaryname0[j] = NULL;
+	
 	/* We need some temporal place is name mapping might not be unique */
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  if(data->boundaryname[j]) {
-	    if(data->boundaryname[j]) boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
-	    strcpy(boundaryname0[j],data->boundaryname[j]);
+	  k = 0;
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	    k = mapbc[j][elemdim];
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(data->boundaryname[j]) {
+	      boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
+	      strcpy(boundaryname0[j],data->boundaryname[j]);
+	      free_Cvector(data->boundaryname[j],0,MAXNAMESIZE);
+	    }
 	  }
 	}
 	
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	  k = 0;
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
 	    k = mapbc[j][elemdim];
-	    if(k) {
-	      if(boundaryname0[j]) {
-		if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
-		strcpy(data->boundaryname[k],boundaryname0[j]);
-	      }
-	      else if(data->boundaryname[k]) {
-		free_Cvector(data->boundaryname[k],0,MAXNAMESIZE);
-	      }
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(boundaryname0[j]) {
+	      if(!data->boundaryname[k]) 
+		data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	      strcpy(data->boundaryname[k],boundaryname0[j]);
 	    }
 	  }
 	}
@@ -4236,7 +4264,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
 
   /* Nothing to remove if the bulk mesh has 1D elements */
   if(minelemdim < 2) return(2);
-
+  
   oldnosides = 0;
   newnosides = 0;
   for(j=0;j < MAXBOUNDARIES;j++) {
@@ -4270,7 +4298,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
     bound[j].nosides = nosides;
     newnosides += nosides;
   }
-
+  
   if(info) printf("Removed %d (out of %d) less than %dD boundary elements\n",
 		  oldnosides-newnosides,oldnosides,minelemdim-1);
   return(0);
