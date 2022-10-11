@@ -5691,7 +5691,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  else if(bcdim == 1) {
 	    fprintf(out,"$ line_bc%d = %d\n",i,i);
 	  }
-	  else if(bcdim == 1) {
+	  else if(bcdim == 0) {
 	    fprintf(out,"$ node_bc%d = %d\n",i,i);
 	  }
 	}

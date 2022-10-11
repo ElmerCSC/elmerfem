@@ -4525,8 +4525,9 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
-  int tagmat,verno,meshdim;
-  int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4],mintag[4],maxphystag[4],minphystag[4],tagoffset[4];
+  int tagmat,verno,meshdim,tagdim;
+  int physvolexist, physsurfexist,**tagmap,tagsize;
+  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4],maxphystag[4],minphystag[4],tagoffset[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -4548,6 +4549,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   usetaggeom = TRUE; /* The default */
   for(i=0;i<4;i++)  {    
     maxtag[i] = mintag[i] = -1;
+    minreadtag[i] = maxreadtag[i] = -1;
     maxphystag[i] = minphystag[i] = -1;
     tagoffset[i] = 0;
   }
@@ -4639,7 +4641,7 @@ omstart:
 
     else if(strstr(line,"$Entities")) {
       int numPoints, numCurves, numSurfaces, numVolumes, numEnt;
-      int tag,tagdim,nophys,phystag;
+      int tag,nophys,phystag;
       int nobound, idum;
       Real rdum;
 
@@ -4682,11 +4684,16 @@ omstart:
 	    if( minphystag[tagdim] == -1) minphystag[tagdim] = maxphystag[tagdim];
 	    printf("Defined %d %dDIM entities:\n",numEnt,tagdim);	    
 	    printf("Geometric tag range is [%d %d]\n",mintag[tagdim],maxtag[tagdim]);
-	    if( maxphystag[tagdim] > 0 ) {
-	      printf("Physical tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
+	    if( maxphystag[tagdim] > 0 || maxreadtag[tagdim] > 0 ) {
+	      printf("Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
+	      if( maxreadtag[tagdim] != maxphystag[tagdim] || minreadtag[tagdim] != minphystag[tagdim]) {
+		printf("Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
+		smallerror("Physical names not used consistently!"); 
+	      }
 	    } else  {
 	      printf("No physical tags defined, using geometric entities!\n");
-	    }	      
+	    }
+	    
 	  }
 	  if( tagdim > meshdim ) {
 	    printf("We have %d %dDIM tags that are beyond mesh dimension %d!\n",numEnt, tagdim, meshdim );
@@ -4726,17 +4733,19 @@ omstart:
 	  // Number of physical tags
 	  nophys = next_int(&cp);
 
+	  
 	  // Read the first physical tag if there are any
 	  if( nophys > 0 ) {	    
+	    if(info) printf("Reading number of physical tags: %d\n",nophys); 
 	    phystag = next_int(&cp);
 	    if(!allocated) {
 	      printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
-	      maxphystag[tagdim] = MAX( maxphystag[tagdim], phystag );
-	      if( minphystag[tagdim] == -1 ) {
-		minphystag[tagdim] = phystag;
+	      maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
+	      if( minreadtag[tagdim] == -1 ) {
+		minreadtag[tagdim] = phystag;
 	      }
 	      else {
-		minphystag[tagdim] = MIN( minphystag[tagdim], phystag );
+		minreadtag[tagdim] = MIN( minreadtag[tagdim], phystag );
 	      }
 	    }
 	    else {
@@ -4814,7 +4823,7 @@ omstart:
 	if(!allocated) meshdim = MAX(meshdim, GetElementDimension(elementtype));
 		
 	if( allocated && tagsize > 0 ) {
-	  printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
+	  if(0) printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
 	    if( tagmap[dimEntity][tagEntity] ) {
 	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
@@ -4865,15 +4874,23 @@ omstart:
       for(i=0;i<nophysical;i++) {
 	GETLINE;
 	cp = line;
-	gmshtype = next_int(&cp);
-	
-	if(allocated) {
-	  tagphys = next_int(&cp);
+	tagdim = next_int(&cp);	
+	tagphys = next_int(&cp);
 
+	if(!allocated) {
+	  maxphystag[tagdim] = MAX( maxphystag[tagdim], tagphys );
+	  if( minphystag[tagdim] == -1 ) {
+	    minphystag[tagdim] = tagphys;
+	  }
+	  else {
+	    minphystag[tagdim] = MIN( minphystag[tagdim], tagphys );
+	  }
+	}
+	else if(allocated) {
 	  // We must not let different tags be overrun
-	  l = tagoffset[gmshtype]; 
+	  l = tagoffset[tagdim]; 
 	  
-	  if(gmshtype < meshdim) {
+	  if(tagdim < meshdim) {
 	    physsurfexist = TRUE;
 	    if(tagphys+l < MAXBCS)  {
 	      data->boundarynamesexist = TRUE;
@@ -4882,10 +4899,10 @@ omstart:
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
 	    }
 	    else {
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
 	    }	    
 	  }
-	  else if(gmshtype == meshdim) {
+	  else if(tagdim == meshdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
 	      data->bodynamesexist = TRUE;
@@ -4894,12 +4911,12 @@ omstart:
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
 	    else {
-	      printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	      printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
 	    }
 	  }
 	  else {
 	    printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
-		   "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
+		   "ignoring group %d %s",tagdim,dim,tagphys,cp+1);
 	  }
         }
       }
