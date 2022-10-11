@@ -2607,7 +2607,6 @@ CONTAINS
 
     OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
 
-
     IF ( GotIt ) THEN
       ii = INDEX( OutputFile,'/')
       IF( ii > 0 ) THEN
@@ -2615,13 +2614,13 @@ CONTAINS
              //TRIM(OutputFile))
       END IF
 
-      IF ( ParEnv % PEs > 1 ) THEN
-        DO ii=1,MAX_NAME_LEN
-          IF ( OutputFile(ii:ii) == ' ' ) EXIT
-        END DO
-        OutputFile(ii:ii) = '.'
-        WRITE( OutputFile(ii+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
-      END IF
+      !IF ( ParEnv % PEs > 1 ) THEN
+      !  DO ii=1,MAX_NAME_LEN
+      !    IF ( OutputFile(ii:ii) == ' ' ) EXIT
+      !  END DO
+      !  OutputFile(ii:ii) = '.'
+      !  WRITE( OutputFile(ii+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+      !END IF
 
       BinaryOutput = ListGetLogical( CurrentModel % Simulation,'Binary Output',GotIt )
       IF ( .NOT.GotIt ) BinaryOutput = .FALSE.
