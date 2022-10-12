@@ -3941,7 +3941,7 @@ CONTAINS
     INTEGER, POINTER  :: InterpDim(:)
     INTEGER :: i,j,dummyint
     REAL(KIND=dp) :: geps,leps
-    LOGICAL :: Debug, skip, PartMask
+    LOGICAL :: Debug, skip, PartMask, Complete
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
     LOGICAL, ALLOCATABLE :: PartsMask(:), FoundNode(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
@@ -4053,7 +4053,7 @@ CONTAINS
     END IF 
     ALLOCATE(FinalDOFs(CountDOFs), source=Unique(1:countDOFs))
     ALLOCATE(UnfoundShared(CountRepeats), source=Repeats(1:CountRepeats))
-    ALLOCATE(FoundNode(SIZE(UnfoundNodes)))
+    ALLOCATE(FoundNode(UnfoundCount))
 
       !What you should do here is, rather than looping over the size of UnfoundNodes is
       ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
@@ -4069,7 +4069,9 @@ CONTAINS
     !Loop through all DOFS with barrier before shared nodes 
     NodeCount = 0
     FoundNode = .FALSE.
-    DO WHILE(COUNT(.NOT. FoundNode) == 0)
+
+    Complete = .FALSE.
+    DO WHILE(.NOT. Complete)
       DO i=1, SIZE(FinalDOFs)
         IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
           DO j=1, UnfoundCount
@@ -4119,6 +4121,8 @@ CONTAINS
               Found=FoundNode(nodecount))
         END IF
       END DO
+      IF(COUNT(FoundNode) == UnfoundCount) Complete = .TRUE.
+      CALL MPI_AllReduce(MPI_IN_PLACE, Complete, 1, MPI_LOGICAL, MPI_LAND, ELMER_COMM_WORLD, ierr)
     END DO
 
     DEALLOCATE(OldMaskLogical, &
@@ -7170,7 +7174,6 @@ CONTAINS
           END IF
         END IF
       ELSE
-        IF(FrontPerm(i) > 0) CYCLE ! need to allow the new front be ungrounded
         IF(HasNeighbours) THEN
           counter = counter+1
           GDOFs(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
