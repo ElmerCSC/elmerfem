@@ -4896,7 +4896,7 @@ omstart:
 	      data->boundarynamesexist = TRUE;
 	      if(!data->boundaryname[tagphys+l]) data->boundaryname[tagphys+l] = Cvector(0,MAXNAMESIZE);
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys+l]);
-	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
+	      printf("BC name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys+l]);
 	    }
 	    else {
 	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
@@ -4913,10 +4913,6 @@ omstart:
 	    else {
 	      printf("Index %d too large: ignoring physical %s %s",tagphys,manifoldname[tagdim],cp+1);
 	    }
-	  }
-	  else {
-	    printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
-		   "ignoring group %d %s",tagdim,dim,tagphys,cp+1);
 	  }
         }
       }
