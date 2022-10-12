@@ -758,9 +758,10 @@ CONTAINS
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), &
-        LOAD(nd),R(2,2,n),C(n), mu,muder,Babs,POT(nd), &
+        LOAD(nd),R(2,2,n),LondonLambda(nd), C(n), mu,muder,Babs,POT(nd), &
         JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y,&
         Lorentz_velo(3,nd), Velo(3), omega_velo
+    REAL(KIND=dp) :: LondonLambda_ip
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
     REAL(KIND=dp) :: B_ip(2), Alocal, H_ip(2)
@@ -774,6 +775,7 @@ CONTAINS
 
     ! Zirka related
     LOGICAL :: Zirka
+    LOGICAL :: LondonEquations = .TRUE.
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
@@ -820,6 +822,7 @@ CONTAINS
 
     CoilBody = .FALSE.
     StrandedCoil = .FALSE.
+    LondonEquations = .TRUE.
     CompParams => GetComponentParams( Element )
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
@@ -830,6 +833,7 @@ CONTAINS
           StrandedCoil = .TRUE.
         CASE ('massive')
           CoilBody = .TRUE.
+          LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
           CoilBody = .TRUE.
 !          CALL GetElementRotM(Element, RotM, n)
@@ -839,6 +843,11 @@ CONTAINS
       END IF
     END IF
 
+    IF ( LondonEquations ) THEN
+      ! Lambda = m/(n_s * e^2):
+      ! -------------------
+      LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
+    END IF
     
     !Numerical integration:
     !----------------------
@@ -910,6 +919,17 @@ CONTAINS
         END DO
       END IF
 
+      IF ( LondonEquations ) THEN
+        LondonLambda_ip = SUM( Basis(1:n) * LondonLambda(1:n) )
+        DO p=1,nd
+          DO q=1,nd
+            ! (LondonLambda a,  a'):
+            ! --------------
+            STIFF(p,q) = STIFF(p,q) + IP % s(t) * detJ / LondonLambda_ip * Basis(q)*Basis(p)
+          END DO
+        END DO
+      END IF
+      
       ! Is the sign correct?
       !---------------------
       Bt(1:nd,1) =  dbasisdx(1:nd,2)
@@ -2272,6 +2292,8 @@ CONTAINS
     REAL(KIND=dp) :: nu_val, nuim_val
     REAL(KIND=dp) :: foilthickness, coilthickness, nofturns, skindepth, mu0 
     REAL(KIND=dp) :: Lorentz_velo(3,nd), Velo(3), omega_velo
+    REAL(KIND=dp) :: LondonLambda(nd)
+    REAL(KIND=dp) :: LondonLambda_ip
 
     INTEGER :: i,p,q,t
 
@@ -2279,6 +2301,7 @@ CONTAINS
     LOGICAL :: CoilBody    
     LOGICAL :: InPlaneProximity = .FALSE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
+    LOGICAL :: LondonEquations = .TRUE.
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
@@ -2300,7 +2323,7 @@ CONTAINS
     CompParams => GetComponentParams( Element )
     StrandedHomogenization = .FALSE.
     StrandedCoil = .FALSE.
-    
+    LondonEquations = .TRUE.
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
@@ -2325,6 +2348,7 @@ CONTAINS
 
         CASE ('massive')
           CoilBody = .TRUE.
+          LondonEquations = ListGetLogical(CompParams, 'London Equations', LondonEquations)
         CASE ('foil winding')
           CoilBody = .TRUE.
   !         CALL GetElementRotM(Element, RotM, n)
@@ -2340,6 +2364,12 @@ CONTAINS
           CALL Fatal (Caller, 'Non existent Coil Type Chosen!')
         END SELECT
       END IF
+    END IF
+
+    IF ( LondonEquations ) THEN
+      ! Lambda = m/(n_s * e^2):
+      ! -------------------
+      LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
     END IF
 
     HBCurve = ListCheckPresent(Material,'H-B Curve')
@@ -2437,6 +2467,17 @@ CONTAINS
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + &
                 IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
+          END DO
+        END DO
+      END IF
+
+      IF ( LondonEquations ) THEN
+        LondonLambda_ip = SUM( Basis(1:n) * LondonLambda(1:n) )
+        DO p=1,nd
+          DO q=1,nd
+            ! (LondonLambda a,  a'):
+            ! --------------
+            STIFF(p,q) = STIFF(p,q) + IP % s(t) * detJ / LondonLambda_ip * Basis(q)*Basis(p)
           END DO
         END DO
       END IF

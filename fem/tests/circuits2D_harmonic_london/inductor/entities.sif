@@ -1,0 +1,26 @@
+!------ Skeleton for body section -----
+Body 1
+  Name = vacuum
+End
+
+Body 2
+  Name = L1
+End
+
+Body 3
+  Name = L2
+End
+
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = symmetry
+End
+
+Boundary Condition 2
+  Name = outer_boundary
+End
+
+Boundary Condition 3
+  Name = bnry6
+End
+
