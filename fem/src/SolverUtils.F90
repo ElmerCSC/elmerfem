@@ -1317,11 +1317,15 @@ CONTAINS
                ! Go through the active set and free nodes with wrong sign in contact force
                !--------------------------------------------------------------------------       
                IF( GotInit .AND. ElemInit(i) > 0.0_dp ) THEN
-                 added = added + 1
-                 LimitActive(ind) = .TRUE.
+                 IF(.NOT. LimitActive(ind)) THEN
+                   added = added + 1
+                   LimitActive(ind) = .TRUE.
+                 END IF
                ELSE IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
-                 added = added + 1
-                 LimitActive(ind) = .TRUE.
+                 IF(.NOT. LimitActive(ind)) THEN
+                   added = added + 1
+                   LimitActive(ind) = .TRUE.
+                 END IF
                ELSE
                  LimitActive(ind) = .FALSE.
                END IF
@@ -1331,18 +1335,18 @@ CONTAINS
                !--------------------------------------------------------------
                IF( LimitActive(ind) ) THEN
                  IF( Upper == 0 ) THEN
-                   Var % Values(ind) = MAX( val, ElemLimit(i) )
+                   Var % Values(ind) = MAX( Var % Values(ind), ElemLimit(i) )
                  ELSE
-                   Var % Values(ind) = MIN( val, ElemLimit(i) )
+                   Var % Values(ind) = MIN( Var % Values(ind), ElemLimit(i) )
                  END IF
                END IF
-               
+
                LimitDone(ind) = .TRUE.             
              END DO
            END DO
 
            CYCLE
-         END IF
+         END IF ! FirstTime
 
 
          IF( Conservative ) THEN
@@ -1518,9 +1522,10 @@ CONTAINS
                  ! This means that set is released only at the boundaries. 
                  IF( ConservativeRemove ) DoRemove = InterfaceDof( ind ) 
                  IF( DoRemove ) THEN
-                   removed = removed + 1
-                   LimitActive(ind) = .FALSE.
-                   CYCLE
+                   IF(LimitActive(ind)) THEN
+                     removed = removed + 1
+                     LimitActive(ind) = .FALSE.
+                   END IF
                  END IF
                END IF
              ELSE
@@ -1549,12 +1554,12 @@ CONTAINS
              !--------------------------------------------------------------
              IF( LimitActive(ind) ) THEN
                IF( Upper == 0 ) THEN
-                 Var % Values(ind) = MAX( val, ElemLimit(i) )
+                 Var % Values(ind) = MAX( Var % Values(ind), ElemLimit(i) )
                ELSE
-                 Var % Values(ind) = MIN( val, ElemLimit(i) )
+                 Var % Values(ind) = MIN( Var % Values(ind), ElemLimit(i) )
                END IF
              END IF
-
+             
              LimitDone(ind) = .TRUE.             
            END DO
          END DO
