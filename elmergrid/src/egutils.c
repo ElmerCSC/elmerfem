@@ -486,16 +486,16 @@ void timer_show()
 void bigerror(const char error_text[])
 {
   fprintf(stderr,"***** ERROR: We cannot continue with this! *****\n");
-  fprintf(stderr,"%s\n",error_text);
-  fprintf(stderr,"...now exiting to system...\n");
+  fprintf(stderr,"***** %s\n",error_text);
+  fprintf(stderr,"***** ...now exiting to system!\n");
   exit(1);
 }
 
 
 void smallerror(const char error_text[])
 {
-  fprintf(stderr,"***** WARNING: This should happen but we try to continue! *****\n");
-  fprintf(stderr,"%s\n",error_text);
+  fprintf(stderr,"***** WARNING: This should not happen but we try to continue! *****\n");
+  fprintf(stderr,"***** %s\n",error_text);
 }
 
 

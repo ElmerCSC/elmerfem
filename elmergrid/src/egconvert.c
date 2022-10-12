@@ -4241,6 +4241,7 @@ omstart:
 	  for(j=1;j<=6;j++) rdum = next_real(&cp);
 	  nophys = next_int(&cp);
 
+	  phystag = 0;
 	  if( nophys > 0 ) phystag = next_int(&cp);
 	  
 	  if(allocated) tagmap[tagdim][tag] = phystag;
@@ -4527,7 +4528,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno,meshdim,tagdim;
   int physvolexist, physsurfexist,**tagmap,tagsize;
-  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4],maxphystag[4],minphystag[4],tagoffset[4];
+  int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4],maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -4551,7 +4552,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
     maxtag[i] = mintag[i] = -1;
     minreadtag[i] = maxreadtag[i] = -1;
     maxphystag[i] = minphystag[i] = -1;
-    tagoffset[i] = 0;
+    tagoffset[i] = phystagoffset[i] = 0;
   }
     
 omstart:
@@ -4682,16 +4683,19 @@ omstart:
 	  if( maxtag[tagdim] > 0 ) {
 	    if( mintag[tagdim] == -1 ) mintag[tagdim] = maxtag[tagdim];
 	    if( minphystag[tagdim] == -1) minphystag[tagdim] = maxphystag[tagdim];
-	    printf("Defined %d %dDIM entities:\n",numEnt,tagdim);	    
-	    printf("Geometric tag range is [%d %d]\n",mintag[tagdim],maxtag[tagdim]);
+	    printf("Defined %d %dDIM entities with geometric tag range [%d %d]\n",
+		   numEnt,tagdim,mintag[tagdim],maxtag[tagdim]);
 	    if( maxphystag[tagdim] > 0 || maxreadtag[tagdim] > 0 ) {
-	      printf("Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
+	      printf("   Physical given tag range is [%d %d]\n",minphystag[tagdim],maxphystag[tagdim]);
 	      if( maxreadtag[tagdim] != maxphystag[tagdim] || minreadtag[tagdim] != minphystag[tagdim]) {
-		printf("Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
-		smallerror("Physical names not used consistently!"); 
+		if(maxreadtag[tagdim] > 0 ) 
+		  printf("   Physical read tag range is [%d %d]\n",minreadtag[tagdim],maxreadtag[tagdim]);
+		else
+		  printf("   No physical tags read for real!\n");
+		if(0) smallerror("Physical names not used consistently!"); 
 	      }
 	    } else  {
-	      printf("No physical tags defined, using geometric entities!\n");
+	      if(0) printf("No physical tags defined, using geometric entities!\n");
 	    }
 	    
 	  }
@@ -4736,10 +4740,10 @@ omstart:
 	  
 	  // Read the first physical tag if there are any
 	  if( nophys > 0 ) {	    
-	    if(info) printf("Reading number of physical tags: %d\n",nophys); 
+	    if(0) printf("Reading number of physical tags: %d\n",nophys); 
 	    phystag = next_int(&cp);
 	    if(!allocated) {
-	      printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
+	      if(0) printf("Phystag: %d %d %d %d\n",tagdim,tag,i,phystag);
 	      maxreadtag[tagdim] = MAX( maxreadtag[tagdim], phystag );
 	      if( minreadtag[tagdim] == -1 ) {
 		minreadtag[tagdim] = phystag;
@@ -4779,9 +4783,16 @@ omstart:
 	}
       }
 
-      for(tagdim=meshdim-2;tagdim>=0;tagdim--) {	
-	tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(maxtag[tagdim+1],maxphystag[tagdim+1]);
-	printf("Tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);
+      for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
+	phystagoffset[tagdim] = phystagoffset[tagdim+1]+MAX(0,maxphystag[tagdim+1]);
+	printf("Physical tag offset for %dD is %d\n",tagdim,phystagoffset[tagdim]);
+      }
+
+      tagoffset[meshdim] = maxphystag[meshdim];
+      tagoffset[meshdim-1] = phystagoffset[0];
+      for(tagdim=meshdim-2;tagdim>=0;tagdim--) {
+	tagoffset[tagdim] = tagoffset[tagdim+1]+MAX(0,maxtag[tagdim+1]);
+	printf("Geometric tag offset for %dD is %d\n",tagdim,tagoffset[tagdim]);
       }
             
       GETLONGLINE;
@@ -4822,20 +4833,22 @@ omstart:
 
 	if(!allocated) meshdim = MAX(meshdim, GetElementDimension(elementtype));
 		
-	if( allocated && tagsize > 0 ) {
+	if( allocated ) {
 	  if(0) printf("Reading %d elements with tag %d of type %d\n", numElements, tagEntity, elementtype);
 	  if( tagsize > 0 ) {
 	    if( tagmap[dimEntity][tagEntity] ) {
 	      printf("Mapping mesh tag %d to physical tag %d in %dDIM\n",tagEntity,tagmap[dimEntity][tagEntity],dimEntity);	    
-	      tagEntity = tagmap[dimEntity][tagEntity];
+	      tagEntity = tagmap[dimEntity][tagEntity] + phystagoffset[dimEntity];
 	    }
 	    else {
-	      if(0) printf("Mesh tag %d is not associated to any physical tag!\n",tagEntity);
+	      tagEntity += tagoffset[dimEntity];
 	    }
 	  }
+	  else {
+	    tagEntity += tagoffset[dimEntity];
+	  }
 	}
-	tagEntity += tagoffset[dimEntity];
-
+	  
 	
 	for(i=1; i <= numElements; i++) {
 	  GETLINE;	
@@ -4888,7 +4901,7 @@ omstart:
 	}
 	else if(allocated) {
 	  // We must not let different tags be overrun
-	  l = tagoffset[tagdim]; 
+	  l = phystagoffset[tagdim]; 
 	  
 	  if(tagdim < meshdim) {
 	    physsurfexist = TRUE;
