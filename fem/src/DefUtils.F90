@@ -1267,7 +1267,13 @@ CONTAINS
          IF( .NOT. ASSOCIATED( Material ) ) CYCLE
 
          IF ( ListCheckPresent( Material,Name) ) THEN
-           x(1:n) = ListGetReal(Material, Name, n, Indexes)
+           BLOCK
+             TYPE(Element_t), POINTER :: se
+             se => CurrentModel % CurrentElement
+             CurrentModel % CurrentElement => Element
+             x(1:n) = ListGetReal(Material, Name, n, Indexes)
+             CurrentModel % CurrentElement => se
+           END BLOCK
            IF( PRESENT( UParent ) ) UParent => Parent
            Gotit = .TRUE.
            EXIT
