@@ -2012,7 +2012,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
 
-         ! and current density
+         ! and surface current density (here SCD should give the tangential trace H x n)
          IF( ASSOCIATED( SCD ) ) THEN
            DO p=1,n
              k = SCD % Perm(Element % NodeIndexes(p))

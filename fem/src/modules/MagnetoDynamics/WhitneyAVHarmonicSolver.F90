@@ -1709,7 +1709,7 @@ END BLOCK
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-    ! We may have line elements that define BC for the conductivie layers, for example.
+    ! We may have line elements that define BC for the conductive layers, for example.
     ! However, line elements do not have all the features of edge elements. Only
     ! certains BCs are possible. 
     LineElem = ( Element % TYPE % ElementCode / 100 <= 2 ) 
@@ -1746,6 +1746,20 @@ END BLOCK
 
 
        ! Experimental so far...
+       !
+       ! After integration over the layer the surface current Lambda_S is expressed as
+       !
+       !    Lambda_S = sigma*delta/(1+i)E_S = -inv(Z)E_S. 
+       !
+       ! In order to maintain the relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S] we multiply 
+       ! the given surface current with (1-i) and then consider instead
+       !
+       !   (1-i) Lambda_S = sigma*delta/(1+i)E_S 
+       !
+       ! which gives Lambda_S = sigma*delta/2 E_S = Re[-inv(Z)] E_S and also
+       ! the desired relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S]. This modification of
+       ! the input surface current is done in the following.
+       !   
        IF( LineElem ) THEN
          F = F * (1-imu)
          TC = TC * (1-imu)
