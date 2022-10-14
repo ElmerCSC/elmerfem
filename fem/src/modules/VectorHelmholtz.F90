@@ -93,18 +93,18 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     IF (UseGauge) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
-            "n:1 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+            "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
       ELSE IF ( PiolaVersion ) THEN    
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       END IF      
     ELSE
       IF( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
-            "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+            "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
       ELSE IF ( PiolaVersion ) THEN    
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
       END IF
@@ -156,6 +156,11 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
     PiolaVersion = .TRUE.
   ELSE
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  END IF
+
+  IF (CoordinateSystemDimension() == 2) THEN
+    IF (.NOT. PiolaVersion) &
+        CALL Fatal('VectorHelmholtzSolver', 'A 2D model needs Use Piola Transform = True')
   END IF
     
   ! Allocate some permanent storage, this is done first time only:
@@ -632,10 +637,19 @@ CONTAINS
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
 
     UpdateStiff = .FALSE.
-    DO t=1,IP % n      
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+    DO t=1,IP % n  
+      !
+      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! is to call EdgeElementInfo:
+      !
+      IF (GetElementFamily(Element) == 2) THEN
+        stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+      ELSE    
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+      END IF
 
       B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
