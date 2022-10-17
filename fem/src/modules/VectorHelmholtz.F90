@@ -1230,9 +1230,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
            k=k+1
            FORCE(p,k+1) = FORCE(p,k+1) + s*AIMAG(divS)*Basis(p)
            k=k+1
-           FORCE(p,k+1) = FORCE(p,k+1) + s*REAL(EdotJ)*Basis(p)
+           FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*REAL(EdotJ)*Basis(p)
            k=k+1
-           FORCE(p,k+1) = FORCE(p,k+1) + s*AIMAG(EdotJ)*Basis(p)
+           FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*AIMAG(EdotJ)*Basis(p)
            k=k+1
          END IF
 
