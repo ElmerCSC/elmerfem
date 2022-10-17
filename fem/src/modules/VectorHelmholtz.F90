@@ -433,7 +433,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
-    TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrCoeff_h, MuCoeff_h
+    TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrDens_h, MuCoeff_h
 
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, &
         MASS, STIFF, Gauge, PREC, FORCE
@@ -450,7 +450,7 @@ CONTAINS
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
-      CALL ListInitElementKeyword( CurrCoeff_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
       InitHandles = .FALSE.
     END IF
     
@@ -534,7 +534,7 @@ CONTAINS
       END IF
 
       ! Potential current source 
-      L = ListGetElementComplex3D( CurrCoeff_h, Basis, Element, Found, GaussPoint = t )      
+      L = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = t )      
       IF( Found ) THEN
         DO p = 1,nd-np
           i = p+np
@@ -990,7 +990,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    ! LOGICAL :: WithGauge
    TYPE(ValueList_t), POINTER :: SolverParams 
-   TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrCoeff_h, MuCoeff_h
+   TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
 
@@ -1130,7 +1130,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
    CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
    CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
-   CALL ListInitElementKeyword( CurrCoeff_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
+   CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
 
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
@@ -1149,7 +1149,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      MASS  = 0._dp
      FORCE = 0._dp
-     B=0._dp; divS=0._dp
 
      ! Loop over Gaussian integration points
      !---------------------------------------
@@ -1167,7 +1166,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ! The conductivity as a tensor not implemented yet
        !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
       
-       J_ip = ListGetElementComplex3D( CurrCoeff_h, Basis, Element, Found, GaussPoint = j )      
+       J_ip = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = j )      
              
        R_ip = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = j )      
        IF( .NOT. Found ) THEN
@@ -1191,7 +1190,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
 
        EdotJ = SUM(EF_ip*CONJG(J_ip))
-       divS = 0.5_dp*(im * Omega * (SUM(B*CONJG(H)) - SUM(EF_ip * CONJG(PR_ip * EF_ip))) - EdotJ)
+       divS = 0.5_dp*(im * Omega * (SUM(B*CONJG(H)) + SUM(EF_ip * CONJG(PR_ip * EF_ip))) - EdotJ)
 
        s = IP % s(j) * detJ
 
