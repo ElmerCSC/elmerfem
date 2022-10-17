@@ -99,7 +99,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        DistributedMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
        premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile,&
-       RepartMethod
+       RepartMethod, Filename
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
@@ -1040,6 +1040,17 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    CALL MPI_BCAST(CalvingFileCreated, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
    CALL MPI_BCAST(RSuccess, 1, MPI_LOGICAL, my_cboss, ELMER_COMM_WORLD, ierr)
    IF(.NOT. RSuccess) THEN
+      IF(ImBoss .AND. CalvingFileCreated) THEN
+        Filename = ListGetString(SolverParams,"Calving Stats File Name", Found)
+        IF(.NOT. Found) THEN
+          CALL WARN('CalvingStat', 'Output file name not given so using CalvingStats.txt')
+          Filename = "CalvingStats.txt"
+        END IF
+        OPEN( 36, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+        WRITE(36, '(A,i0)') 'Remeshing failed: ', GetTimestep()
+        CLOSE(36)
+      END IF
+
       CALL ReleaseMesh(GatheredMesh)
       ! Release GatheredMesh % Redistribution
       IF(ASSOCIATED(GatheredMesh % Repartition)) THEN
