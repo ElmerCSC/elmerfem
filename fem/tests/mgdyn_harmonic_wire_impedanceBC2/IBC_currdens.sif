@@ -1,5 +1,5 @@
 ! A sif file to test a surface impedance BC
-! Axperimental test case for 1D Neumann conditions trying to get same results as the base case.
+! An experimental test case for 1D Neumann conditions trying to get same results as the base case.
 !
 ! P.R. 7.10.2022
 

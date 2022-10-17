@@ -721,7 +721,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
   LOGICAL :: Found, ElementalFields
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,n,m,vDOFs,soln
+  INTEGER :: mysolver,i,j,n,m,soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
@@ -739,7 +739,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
       EXIT
     END IF
   END DO
-
   
   pname = GetString(SolverParams, 'Potential variable', Found)
   IF( Found ) THEN
@@ -789,9 +788,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
       CALL ListAddIntegerArray( Model % Equations(i) % Values,  &
            'Active Solvers', m+1, [Active, n+1] )
   END DO
-
-  ! This is always two for now since the Helmholtz equation is complex valued!
-  vDOFs = 2
 
   ALLOCATE(Solvers(n+1))
   Solvers(1:n) = Model % Solvers
@@ -961,16 +957,17 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), SOL(:,:), RotWBasis(:,:), Basis(:), &
        dBasisdx(:,:)
-   REAL(KIND=dp) :: s,u,v,w,Norm, E(2,3)
-   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im, C_ip
-   COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), &
+   REAL(KIND=dp) :: s,u,v,w,Norm
+   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im
+   ! REAL(KIND=dp) :: C_ip
+   COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), &
        EdotJ, EF_ip(3), R_ip, B(3)
-   COMPLEX(KIND=dp), ALLOCATABLE :: R(:)
 
    TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
-   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,edofs,ndofs,dofcount,vDOFs,dim,BodyId
+   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,edofs,ndofs,dofcount,vDOFs
+   INTEGER :: soln
 
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:), TempVector(:), TempRHS(:)
@@ -978,7 +975,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   TYPE(ValueList_t), POINTER :: Material, BodyForce
    LOGICAL :: Found, stat
 
    TYPE(GaussIntegrationPoints_t) :: IP
@@ -991,10 +987,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, InitHandles, WithGauge
-   INTEGER :: soln
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields
+   ! LOGICAL :: WithGauge
    TYPE(ValueList_t), POINTER :: SolverParams 
-   TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrCoeff_h, MuCoeff_h
+   TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrCoeff_h, MuCoeff_h
+   ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
 
 !-------------------------------------------------------------------------------------------
@@ -1087,10 +1084,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    n = Mesh % MaxElementDOFs
    
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
-   ALLOCATE( WBasis(n,3), SOL(2,n), RotWBasis(n,3), Basis(n), dBasisdx(n,3), R(n) )
+   ALLOCATE( WBasis(n,3), SOL(2,n), RotWBasis(n,3), Basis(n), dBasisdx(n,3) )
    
    SOL = 0._dp
-   R=0._dp; PR=0._dp
    Energy = 0._dp; Energy_im = 0._dp
 
    xx => pSolver % Variable % Values
@@ -1131,7 +1127,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    CALL DefaultInitialize()
 
-   CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+   ! CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
    CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
    CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
    CALL ListInitElementKeyword( CurrCoeff_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
@@ -1147,19 +1143,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
 
-     BodyForce => GetBodyForce(Element)
-     BodyId = GetBody(Element)
-     Material => GetMaterial(Element)
-
-     dim = 3
-
      ! Calculate nodal fields:
      ! -----------------------
      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
      MASS  = 0._dp
      FORCE = 0._dp
-     E = 0._dp; B=0._dp; divS=0._dp
+     B=0._dp; divS=0._dp
 
      ! Loop over Gaussian integration points
      !---------------------------------------
@@ -1276,15 +1266,15 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    Energy = ParallelReduction(Energy)
    Energy_im = ParallelReduction(Energy_im)
 
-    ! Assembly of the face terms:
-    !----------------------------
-
-    IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
-        FORCE = 0.0_dp
-        CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
-      END IF
-    END IF
+   ! Assembly of the face terms:
+   !----------------------------
+   
+   IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
+     IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+       FORCE = 0.0_dp
+       CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
+     END IF
+   END IF
 
    IF(NodalFields) THEN
      Fsave => Solver % Matrix % RHS
