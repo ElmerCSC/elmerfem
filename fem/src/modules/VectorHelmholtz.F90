@@ -839,7 +839,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
         "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
-        "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
+        "Joule Heating E[Joule Heating re E:1 Joule Heating im E:1]")
   END IF
 
   DEALLOCATE(Model % Solvers)
@@ -933,7 +933,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       "Div Poynting Vector[Div Poynting Vector re:1 Div Poynting Vector im:1]" )
     CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
-      "Electric Work[Electric Work re:1 Electric Work im:1]")
+      "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
@@ -1053,8 +1053,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    DIVPV => VariableGet( Mesh % Variables, 'Div Poynting Vector')
    EL_DIVPV => VariableGet( Mesh % variables, 'Div Poynting Vector E')
 
-   EW => VariableGet( Mesh % Variables, 'Electric Work')
-   EL_EW => VariableGet( Mesh % Variables, 'Electric Work E')
+   EW => VariableGet( Mesh % Variables, 'Joule Heating')
+   EL_EW => VariableGet( Mesh % Variables, 'Joule Heating E')
  
    ndofs = 0 
    IF ( ASSOCIATED(MFD) ) ndofs=ndofs+3
