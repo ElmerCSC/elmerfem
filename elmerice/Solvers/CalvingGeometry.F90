@@ -8391,5 +8391,319 @@ CONTAINS
 
   END SUBROUTINE CheckBaseFreeSurface
 
+  ! only serial. Will need to write parallel routine but will only be needed will parallel]
+  ! remeshing properly ingrated into calving routines
+  SUBROUTINE SaveTerminusPosition(Model, Solver, Mesh, Boss)
+
+    IMPLICIT NONE
+    !------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL :: Boss
+    !------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: AdvSolver
+    TYPE(Valuelist_t), POINTER :: SolverParams, AdvParams
+    INTEGER, POINTER :: TopPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
+            LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), SidePerm(:)=> NULL(),&
+            NodeIndexes(:)
+    LOGICAL :: FileCreated = .FALSE.,Found,FoundRight,FoundLeft,FirstTime,reducecorners(2),&
+            ThisBC
+    INTEGER :: i,j,k, NNodes, NBulk, NBdry, RCounter, LCounter,dummyint,&
+            Nl,Nr, Naux, ok, Nrail, Counter,FrontBCtag,side,LastNode,CornersTotal
+    REAL(KIND=dp) :: buffer, xx, yy, mindist, tempdist
+    REAL(kind=dp), ALLOCATABLE :: xL(:),yL(:),xR(:),yR(:), xRail(:), yRail(:),&
+             PAllCorners(:), MinDists(:)
+    INTEGER, ALLOCATABLE :: FrontRight(:), FrontLeft(:), NodeList(:), jmin(:), Corner(:),&
+              AllCorners(:)
+    LOGICAL, ALLOCATABLE :: GotNode(:), InFront(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename, SolverName, LeftRailFName, RightRailFName,&
+            Adv_EqName
+    INTEGER, PARAMETER :: io=20
+
+    SAVE :: FileCreated
+
+    SolverName ="SaveTerminusPosition"
+    SolverParams => Solver % Values
+
+    NBulk = Mesh % NumberOfBulkElements
+    NBdry = Mesh % NumberOfBoundaryElements
+    NNodes = Mesh % NumberOfNodes
+
+    CALL MakePermUsingMask( Model, Solver, Mesh, "Calving Front Mask", &
+            .FALSE., FrontPerm, dummyint)
+    CALL MakePermUsingMask( Model, Solver, Mesh, "Top Surface Mask", &
+            .FALSE., TopPerm, dummyint)
+    CALL MakePermUsingMask( Model, Solver, Mesh, "Left Sidewall Mask", &
+            .FALSE., LeftPerm, dummyint)
+    CALL MakePermUsingMask( Model, Solver, Mesh, "Right Sidewall Mask", &
+            .FALSE., RightPerm, dummyint)
+
+    IF(Boss) THEN
+      FoundLeft=.FALSE.
+      FoundRight=.FALSE.
+      RCounter= 0; LCounter=0
+      ALLOCATE(FrontRight(100), FrontLeft(100))
+      DO i=1,NNodes
+        IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+          IF( LeftPerm(i) >0  ) THEN
+              LCounter = LCounter + 1
+              FrontLeft(LCounter) = i
+              FoundLeft = .TRUE.
+          ELSE IF ( RightPerm(i) >0  ) THEN
+              RCounter = RCounter + 1
+              FrontRight(RCounter) = i
+              FoundRight = .TRUE.
+          END IF
+        END IF
+      END DO
+
+      IF(.NOT. FoundLeft .OR. .NOT. FoundRight) CALL FATAL(SolverName, 'Unable to find terminus corners')
+
+      reducecorners = .FALSE.
+      IF(LCounter > 1) reducecorners(1)=.TRUE.
+      IF(RCounter > 1) reducecorners(2)=.TRUE.
+
+      IF(ANY(reducecorners)) THEN
+
+        Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+        ! Locate CalvingAdvance Solver
+        Found = .FALSE.
+        DO i=1,Model % NumberOfSolvers
+          IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
+            AdvSolver => Model % Solvers(i)
+            Found = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Found) CALL FATAL(SolverName, "Advance Solver Equation not given")
+        AdvParams => AdvSolver % Values
+
+        buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+        IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
+
+        LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
+        IF(.NOT. Found) THEN
+          CALL Info(SolverName, "Left Rail File Name not found, assuming './LeftRail.xy'")
+          LeftRailFName = "LeftRail.xy"
+        END IF
+        Nl = ListGetInteger(AdvParams, "Left Rail Number Nodes", Found)
+        IF(.NOT.Found) THEN
+          WRITE(Message,'(A,A)') 'Left Rail Number Nodes not found'
+          CALL FATAL(SolverName, Message)
+        END IF
+        !TO DO only do these things if firsttime=true?
+        OPEN(unit = io, file = TRIM(LeftRailFName), status = 'old',iostat = ok)
+        IF (ok /= 0) THEN
+          WRITE(message,'(A,A)') 'Unable to open file ',TRIM(LeftRailFName)
+          CALL FATAL(Trim(SolverName),Trim(message))
+        END IF
+        ALLOCATE(xL(Nl), yL(Nl))
+
+        ! read data
+        DO i = 1, Nl
+          READ(io,*,iostat = ok, end=200) xL(i), yL(i)
+        END DO
+200     Naux = Nl - i
+        IF (Naux > 0) THEN
+          WRITE(Message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(LeftRailFName)
+          CALL INFO(Trim(SolverName),Trim(message))
+        END IF
+        CLOSE(io)
+        RightRailFName = ListGetString(AdvParams, "Right Rail File Name", Found)
+        IF(.NOT. Found) THEN
+          CALL Info(SolverName, "Right Rail File Name not found, assuming './RightRail.xy'")
+          RightRailFName = "RightRail.xy"
+        END IF
+
+        Nr = ListGetInteger(AdvParams, "Right Rail Number Nodes", Found)
+        IF(.NOT.Found) THEN
+          WRITE(Message,'(A,A)') 'Right Rail Number Nodes not found'
+          CALL FATAL(SolverName, Message)
+        END IF
+        !TO DO only do these things if firsttime=true?
+        OPEN(unit = io, file = TRIM(RightRailFName), status = 'old',iostat = ok)
+
+        IF (ok /= 0) THEN
+          WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(RightRailFName)
+          CALL FATAL(Trim(SolverName),Trim(message))
+        END IF
+        ALLOCATE(xR(Nr), yR(Nr))
+
+        ! read data
+        DO i = 1, Nr
+          READ(io,*,iostat = ok, end=100) xR(i), yR(i)
+        END DO
+100     Naux = Nr - i
+        IF (Naux > 0) THEN
+          WRITE(message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(RightRailFName)
+          CALL INFO(Trim(SolverName),Trim(message))
+        END IF
+        CLOSE(io)
+      END IF
+
+      DO side=1,2 ! left 1, right 2
+
+        IF(.NOT. reducecorners(side)) CYCLE
+
+        IF (side==1) THEN
+          Nrail= Nl
+          ALLOCATE(xRail(Nrail), yRail(Nrail))
+          xRail = xL
+          yRail = yL
+          SidePerm => LeftPerm
+          CornersTotal = LCounter
+        ELSE
+          Nrail= Nr
+          ALLOCATE(xRail(Nrail), yRail(Nrail))
+          xRail = xR
+          yRail = yR ! TO DO use pointers instead?
+          SidePerm => RightPerm
+          CornersTotal = RCounter
+        END IF
+
+        ALLOCATE(AllCorners(CornersTotal))
+        Counter = 0
+        DO i=1,NNodes
+          IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+            IF ( SidePerm(i) >0  ) THEN
+              Counter = Counter + 1
+              AllCorners(Counter) = i
+            END IF
+          END IF
+        END DO
+
+        ALLOCATE(jmin(CornersTotal),InFront(CornersTotal),MinDists(CornersTotal))
+        DO i=1, CornersTotal
+
+          xx = Mesh % Nodes % x(AllCorners(i))
+          yy = Mesh % Nodes % y(AllCorners(i))
+
+          MinDist=(xRail(1)-xRail(Nrail))**2.+(yRail(1)-yRail(Nrail))**2.
+          ! MinDist is actually maximum distance, needed for finding closest rail node
+          DO j=1,Nrail ! Find closest point on rail
+            TempDist=(xRail(j)-xx)**2.+(yRail(j)-yy)**2.
+            IF(TempDist < MinDist) THEN
+                MinDist=TempDist
+                jmin(i)=j
+            END IF
+          END DO
+          MinDists(i) = MinDist
+          !check if in front or behind node
+          InFront(i) = .TRUE.
+          IF(jmin(i) == Nrail) InFront(i) = .FALSE.
+          IF(jmin(i) > 1 .AND. jmin(i) /= Nrail) THEN
+            MinDist = PointLineSegmDist2D((/xRail(jmin(i)),yRail(jmin(i))/), &
+            (/xRail(jmin(i)+1),yRail(jmin(i)+1)/),(/xx,yy/))
+            TempDist = PointLineSegmDist2D((/xRail(jmin(i)),yRail(jmin(i))/), &
+            (/xRail(jmin(i)-1),yRail(jmin(i)-1)/),(/xx,yy/))
+            IF(MinDist > TempDist) InFront(i) = .FALSE.
+          END IF
+        END DO
+
+        IF(COUNT(jmin == MAXVAL(jmin)) == 1) THEN
+          Corner = MAXLOC(jmin)
+        ELSE IF(COUNT(jmin == MAXVAL(jmin) .AND. InFront) == 1) THEN
+          Corner = PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin) .AND. InFront)
+        ELSE IF(ALL(InFront(PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin))))) THEN
+          ALLOCATE(Corner(1))
+          MinDist = HUGE(1.0_dp)
+          DO i=1, CornersTotal
+            IF(jmin(i) /= MAXVAL(jmin)) CYCLE
+            IF(.NOT. InFront(i)) CYCLE
+            IF(MinDists(i) < mindist) THEN
+              mindist = MinDists(i)
+              Corner(1) = i
+            END IF
+          END DO
+        ELSE IF(ALL(.NOT. InFront(PACK((/ (k, k=1, CornersTotal) /),jmin == MAXVAL(jmin))))) THEN
+          ALLOCATE(Corner(1))
+          MinDist = HUGE(1.0_dp)
+          DO i=1, CornersTotal
+            IF(jmin(i) /= MAXVAL(jmin)) CYCLE
+            IF(MinDists(i) < mindist) THEN
+              mindist = MinDists(i)
+              Corner(1) = i
+            END IF
+          END DO
+        ELSE
+          CALL FATAL(SolverName, 'Problem reducing corners')
+        END IF
+
+        IF(side == 1) THEN
+          FrontLeft(1) = AllCorners(Corner(1))
+        ELSE
+          FrontRight(1) = AllCorners(Corner(1))
+        END IF
+      END DO
+
+      DO i=1,Model % NumberOfBCs
+        ThisBC = ListGetLogical(Model % BCs(i) % Values,"Calving Front Mask",Found)
+        IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+        FrontBCtag =  Model % BCs(i) % Tag
+        EXIT
+      END DO
+
+      ALLOCATE(GotNode(NNodes), NodeList(NNodes))
+      FirstTime=.TRUE.
+      GotNode = .FALSE.
+      counter = 0
+      DO WHILE(LastNode /= FrontRight(1))
+        Found = .FALSE.
+        DO i= NBulk+1, NBulk+NBdry
+          IF(Mesh % Elements(i) % BoundaryInfo % constraint /= FrontBCtag) CYCLE
+          IF(FirstTime) THEN
+            LastNode = FrontLeft(1)
+            GotNode(FrontLeft(1)) = .TRUE.
+            NodeList(1) = LastNode
+          END IF
+          NodeIndexes => Mesh % Elements(i) % NodeIndexes
+          IF(.NOT. ANY(NodeIndexes == LastNode)) CYCLE
+          DO j=1,Mesh % Elements(i) % TYPE % NumberOfNodes
+            IF(GotNode(NodeIndexes(j))) CYCLE
+            IF(TopPerm(NodeIndexes(j)) > 0) THEN
+              LastNode = NodeIndexes(j)
+              Found = .TRUE.
+              GotNode(LastNode) = .TRUE.
+              counter = counter + 1
+              NodeList(counter) = LastNode
+              EXIT
+            END IF
+          END DO
+        IF(Found) EXIT
+        END DO
+        FirstTime=.FALSE.
+      END DO
+
+      Filename = ListGetString(SolverParams,"Output Terminus File Name", Found)
+      IF(.NOT. Found) THEN
+        CALL WARN(SolverName, 'Output file name not given so using TerminusPosition.txt')
+        Filename = "TerminusPosition.txt"
+      END IF
+
+      ! write to file
+      IF(FileCreated) THEN
+        OPEN( 37, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
+      ELSE
+        OPEN( 37, FILE=filename, STATUS='UNKNOWN')
+        WRITE(37, '(A)') "Terminus Position File"
+        WRITE(37, '(A)') "TimeStep, Time, NumberOfNodes"
+        WRITE(37, '(A)') "xx, yy"
+      END IF
+
+      !Write out the left and rightmost points
+      WRITE(37, *) 'NewTime:', GetTimestep(), GetTime(), counter
+      DO i=1, counter
+        WRITE(37, *) Mesh % Nodes % x(NodeList(i)), Mesh % Nodes % y(NodeList(i))
+      END DO
+
+      CLOSE(37)
+    END IF
+
+    FileCreated = .TRUE.
+    DEALLOCATE(FrontPerm,TopPerm,LeftPerm,RightPerm)
+
+  END SUBROUTINE SaveTerminusPosition
+
 END MODULE CalvingGeometry
 

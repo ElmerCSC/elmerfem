@@ -1105,6 +1105,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      END IF
    END DO
 
+   CALL SaveTerminusPosition(Model, Solver, GatheredMesh, ImBoss)
+
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
    !-------------------------------
