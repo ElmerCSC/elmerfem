@@ -27,7 +27,7 @@
 ! *  Utilizes multithreading and vectorization features initially introduced by Mikko Byckling.
 ! *  Replaces partly the legacy solver FlowSolve which is not optimized.
 ! *
-! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback
+! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback, Thomas Zwinger
 ! *  Email:   elmeradm@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -1204,7 +1204,7 @@ END BLOCK
               END DO
             END DO
           END DO        
-        CASE DEFAULT ! full entry matrix FSSA       
+        CASE DEFAULT ! full entry matrix FSSA
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
@@ -1379,13 +1379,13 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles,InitBCHandles
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles,InitBCHandles=.TRUE.
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
   CHARACTER(*), PARAMETER :: Caller = 'IncompressibleNSSolver'
 
-  SAVE AllocationsDone, stimestep
+  SAVE AllocationsDone, InitBCHandles, stimestep
 
 !------------------------------------------------------------------------------
 ! Local variables to be accessed by the contained subroutines:
@@ -1515,8 +1515,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     
     CALL DefaultFinishBulkAssembly()
     
-    Active = GetNOFBoundaryElements()
-    InitBCHandles = .TRUE.  
+    Active = GetNOFBoundaryElements() 
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
