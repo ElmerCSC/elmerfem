@@ -4080,6 +4080,8 @@ CONTAINS
               EXIT
             END IF
           END DO
+        ELSE
+          nodecount = 0
         END IF
         ! no need for a mask since nodes in both arrays in ascending order
         IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
@@ -4090,6 +4092,7 @@ CONTAINS
           !nodenumber = UnfoundIndex(nodecount) since different on each process
           !always finds correct translation from DOFs to process nodenumber since
           !all arrays in ascending order
+          IF(nodecount == 0) CYCLE
           IF(FoundNode(nodecount)) CYCLE
           IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
               PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
