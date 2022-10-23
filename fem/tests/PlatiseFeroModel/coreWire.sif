@@ -1,0 +1,217 @@
+!
+! uros@isotel.org. 4 Oct 2022
+
+Header
+  Check Keywords "Warn"
+  Mesh DB "." "coreWire"
+  Results Directory "results"
+End
+
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Timing = True
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Max Output Level = 7
+
+  Post File = coreWire.vtu
+  vtu: Save Geometry IDs = Logical True
+
+  Use Mesh Names = Logical True  
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+
+Body 1
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Wire"
+  Equation = 1
+  Material = 2
+End
+
+Body 3
+  Name = "Core"
+  Equation = 1
+  Material = 3
+End
+
+
+Boundary Condition 1
+  Name = "Sky"
+  AV {e} = real 0                   ! only specify the a vector, not the scalar field, AV = ... as it would create a shortcut
+End
+
+Boundary Condition 2
+  Name = "Wire End 1"
+  !AV = Real 0.001                  ! or specify voltage across wire 1..2 terminals
+  Electric Current Density = 1e7    ! 125.6 A for A=1.256e-5, core saturation is expected
+  AV {e} = real 0
+End
+
+Boundary Condition 3
+  Name = "Wire End 2"
+  AV = Real 0
+  AV {e} = real 0
+End
+
+Boundary Condition 4
+  Name = "Core Flux 1"
+  !Magnetic Flux Average = Logical True
+  Save Scalars = Logical True
+End
+
+Boundary Condition 5
+  Name = "Core Flux 2"
+  !Magnetic Flux Average = Logical True
+  Save Scalars = Logical True
+End
+
+
+Material 1
+  Name = "Air (room temperature)"
+  Relative Permittivity = 1.00059
+  Relative Permeability = 1.00000037
+  Heat expansion Coefficient = 3.43e-3
+  Heat Conductivity = 0.0257
+  Heat Capacity = 1005.0
+  Viscosity = 1.983e-5
+  Sound speed = 343.0
+  Density = 1.205
+End
+
+Material 2
+  Name = "Copper (generic)"
+  Relative Permeability = 0.999994
+  Relative Permittivity = 2.5
+  Electric Conductivity = 59.59e6
+  Heat expansion Coefficient = 16.5e-6
+  Heat Conductivity = 401.0
+  Heat Capacity = 385.0
+  Sound speed = 3810.0
+  Mesh Poisson ratio = 0.34
+  Poisson ratio = 0.34
+  Youngs modulus = 115.0e9
+  Density = 8960.0
+End
+
+Material 3
+  Name = "Core"
+  Relative Permittivity = 1.00059
+  Relative Permeability = 3000
+
+  PFM Dipoles Field Strength(2) = 2.63089794e2 1.96053253e4
+  PFM Dipoles Flux Density(2)   = 1.56587017   5.70574118e-1
+  !PFM Relative Tolerance = 1e-5
+  !PFM Max Iterations = 100
+  H-B Curve = Variable "dummy"
+    Procedure "PlatiseFeroModel" "HB"
+
+  !H-B Curve = Variable "dummy"
+  !Real Cubic Monotone
+  !  INCLUDE curve_BH-CERN.dat
+  !End
+
+  Density = Real 1220.0
+  Heat Conductivity = Real 0.1
+  Youngs Modulus = Real 140e9
+  Poisson Ratio = Real 0.3
+  Heat Expansion Coefficient = Real 12e-6
+End
+
+
+Equation 1
+  Name = "Field Simulation"
+  Active Solvers(2) = 1 2 3
+End
+
+
+Solver 1
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  !Fix Input Current Density = Logical False  ! Unclear when to use it
+  !Static Conductivity = True                 ! Use when AV is selected as applied voltage border condition on wire terminal
+
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1e-9
+  Nonlinear System Newton After Iterations = 3  ! This is critical for convergence of non-linear systems
+  Nonlinear System Newton After Tolerance = 1.0e-9
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Consistent Norm = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning = none
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 1000
+  Linear System Abort Not Converged = False   ! At least we can review latest status
+  Linear System Iterative Method = BiCGStabL
+  BiCGStabL Polynomial Degree = 4
+  !Idrs Parameter = 6                         ! Unclear
+
+  !Optimize Bandwidth = Logical False
+  Linear System Row Equilibration = True      ! Also works about 10% faster
+  !Solver Timing = True
+End
+
+Solver 2
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Calculate JxB = True                        ! Unclear why sim is faster if it is default (True)
+  Calculate Current Density = True
+  Calculate Magnetic Field Strength = True
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = True
+  Calculate Joule Heating = True
+
+  Linear System Symmetric = True              ! Unclear why it works faster ~20% if False?
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Exec Solver = After Timestep
+  Equation = MGSaveCalc
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "coreWire.dat"
+  File Append = Logical True
+  !Parallel Reduce = True
+
+  !Variable 1 = Magnetic Flux Density 1
+  !Operator 1 = boundary int mean
+  Variable 1 = Magnetic Flux Density 2
+  Operator 1 = boundary int mean
+  !Variable 3 = Magnetic Flux Density 3
+  !Operator 3 = boundary int mean
+
+  Variable 2 = Magnetic Field Strength 2
+  Operator 2 = boundary int mean
+  !Variable 3 = Magnetic Field Strength 2
+  !Operator 3 = boundary int mean
+  !Variable 4 = Magnetic Field Strength 3
+  !Operator 4 = boundary int mean
+
+End
