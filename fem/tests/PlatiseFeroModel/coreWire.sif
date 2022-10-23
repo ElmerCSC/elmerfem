@@ -122,7 +122,7 @@ Material 3
   !PFM Relative Tolerance = 1e-5
   !PFM Max Iterations = 100
   H-B Curve = Variable "dummy"
-    Procedure "PlatiseFeroModel" "HB"
+    Procedure "PlatiseFerroModel" "HB"
 
   !H-B Curve = Variable "dummy"
   !Real Cubic Monotone

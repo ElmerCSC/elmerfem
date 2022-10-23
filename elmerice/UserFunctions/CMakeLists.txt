@@ -1,7 +1,7 @@
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
-SET(ElmerIceUSF_SRC CaffeFlow.F90 Buoyancy.F90 PlatiseFeroModel.F90 
+SET(ElmerIceUSF_SRC CaffeFlow.F90 Buoyancy.F90 PlatiseFerroModel.F90 
                     USF_GetFrictionHeating.F90 USF_Sliding.F90
                     USF_LateralFriction.F90 USF_WaterTransfer.F90
                     USF_Contact.F90 USF_ShapeFactor.F90 USF_Zs.F90 USF_Damage.F90

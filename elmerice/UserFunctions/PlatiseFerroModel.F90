@@ -1,8 +1,8 @@
 !/*****************************************************************************/
 ! *
-! * PlatiseFeroModel.F90
+! * PlatiseFerroModel.F90
 ! * 
-! * Provides imeplementation of the inverse H-B Platise Feromagnetic model 
+! * Provides imeplementation of the inverse H-B Platise Ferromagnetic model 
 ! * without hysteresis. Model functions are smooth and monotonic.
 ! *
 ! * References:
@@ -63,7 +63,7 @@ FUNCTION HB( model, n, B ) RESULT( H )
         
         material => GetMaterial()
         IF (.NOT. ASSOCIATED(material)) THEN
-            CALL Fatal('PlatiseFeroModel', 'No material found')
+            CALL Fatal('PlatiseFerroModel', 'No material found')
         END IF
 
         u0 = GetConstReal( model % Constants, 'Permeability Of Vacuum', gotIt);
@@ -73,12 +73,12 @@ FUNCTION HB( model, n, B ) RESULT( H )
 
         Hm_sqr_ptr => ListGetConstRealArray(material, 'PFM Dipoles Field Strength', gotIt);
         IF (.NOT. gotIt) THEN
-            CALL Fatal('PlatiseFeroModel', 'PFM Dipoles Field Strength(n): undefined')
+            CALL Fatal('PlatiseFerroModel', 'PFM Dipoles Field Strength(n): undefined')
         END IF
 
         Bs_ptr => ListGetConstRealArray(material, 'PFM Dipoles Flux Density', gotIt);
         IF (.NOT. gotIt) THEN
-            CALL Fatal('PlatiseFeroModel', 'PFM Dipoles Flux Density(n): undefined')
+            CALL Fatal('PlatiseFerroModel', 'PFM Dipoles Flux Density(n): undefined')
         END IF
        
         tol = GetConstReal(material, 'PFM Relative Tolerance', gotIt);
@@ -92,7 +92,7 @@ FUNCTION HB( model, n, B ) RESULT( H )
         END IF
         
         IF (SIZE( Hm_sqr_ptr, 1 ) /= SIZE( Bs_ptr, 1 )) THEN
-            CALL Fatal('PlatiseFeroModel', 'Array Sizes of PFM Dipoles Field Strength and Flux Density missmatch')
+            CALL Fatal('PlatiseFerroModel', 'Array Sizes of PFM Dipoles Field Strength and Flux Density missmatch')
         END IF
         
         ALLOCATE( Hm_sqr(SIZE(Hm_sqr_ptr,1)), HHm_sqr(SIZE(Hm_sqr_ptr,1)), HHm_sqrt(SIZE(Hm_sqr_ptr,1)), Bs(SIZE(Bs_ptr,1)) )
@@ -101,7 +101,7 @@ FUNCTION HB( model, n, B ) RESULT( H )
     END IF
     
     IF (B < 0) THEN
-        CALL Fatal('PlatiseFeroModel', 'Assuming positive B >= 0 only')
+        CALL Fatal('PlatiseFerroModel', 'Assuming positive B >= 0 only')
     END IF
     
     H = 0
@@ -117,7 +117,7 @@ FUNCTION HB( model, n, B ) RESULT( H )
             H        = H - B_ii / B_ii_
             
             IF (IsNaN(H)) THEN
-                CALL Fatal('PlatiseFeroModel', 'Inverse of Double Term Method diverged')
+                CALL Fatal('PlatiseFerroModel', 'Inverse of Double Term Method diverged')
             END IF
             IF (ABS(B_ii) < tol_abs) THEN
                 EXIT
@@ -125,7 +125,7 @@ FUNCTION HB( model, n, B ) RESULT( H )
         END DO
         
         IF (k > max_iter) THEN
-            CALL Fatal('PlatiseFeroModel', 'Inverse did not converge, may need to increase: PFM Max Iterations')
+            CALL Fatal('PlatiseFerroModel', 'Inverse did not converge, may need to increase: PFM Max Iterations')
         END IF
     END IF
     
