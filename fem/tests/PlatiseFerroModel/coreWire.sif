@@ -22,7 +22,7 @@ Simulation
   Post File = coreWire.vtu
   vtu: Save Geometry IDs = Logical True
 
-  Use Mesh Names = Logical True  
+  Use Mesh Names = Logical True
 End
 
 
