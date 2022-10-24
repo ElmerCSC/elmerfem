@@ -609,7 +609,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DN
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
@@ -2036,22 +2036,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END DO
 
    END IF
-   
-   
+
+   DoAve = GetLogical(SolverParams,'Average Within Materials',Found)
+      
    ! Assembly of the face terms:
    !----------------------------
    IF(.NOT. ConstantMassMatrixInUse ) THEN
      IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
-       IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
+       IF (DoAve) THEN
          FORCE = 0.0_dp
          CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
        END IF
      END IF
    END IF
-
-   DN = ListGetLogical(SolverParams,'Discontinuous Bodies',Found )
    
-   IF(NodalFields .OR. DN ) THEN
+   IF(NodalFields .OR. DoAve ) THEN
      FSave => NULL()
      IF( ASSOCIATED( Solver % Matrix ) ) THEN
        Fsave => Solver % Matrix % RHS
@@ -3180,8 +3179,8 @@ CONTAINS
    IF(PRESENT(EL_Var)) THEN
      IF(ASSOCIATED(El_Var)) THEN
        El_Var % DgAveraged = .FALSE.
-       IF( DN ) THEN
-         CALL Info('MagnetoDynamicsCalcFields','Averaging for field: '//TRIM(El_Var % Name),Level=6)
+       IF( DoAve ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Averaging for field: '//TRIM(El_Var % Name),Level=10)
          CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
        END IF
        IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN

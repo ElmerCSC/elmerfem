@@ -975,7 +975,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   LOGICAL :: Found, stat
+   LOGICAL :: Found, stat, DoAve
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -1268,23 +1268,26 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! Assembly of the face terms:
    !----------------------------
    
+   DoAve = GetLogical( SolverParams,'Average Within Materials',Found) 
+   
    IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
-     IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+     IF (DoAve ) THEN
        FORCE = 0.0_dp
        CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
      END IF
    END IF
 
-   IF(NodalFields) THEN
-     Fsave => Solver % Matrix % RHS
+   IF(NodalFields .OR. DoAve) THEN
+     Fsave => NULL()
+     IF(ASSOCIATED(Solver % Matrix)) Fsave => Solver % Matrix % RHS
      dofcount = 0
-     CALL GlobalSol(MFD,  6, Gforce, dofcount)
-     CALL GlobalSol(MFS,  6, Gforce, dofcount)
-     CALL GlobalSol(EF ,  6, Gforce, dofcount)
-     CALL GlobalSol(PV,   6, Gforce, dofcount)
-     CALL GlobalSol(DIVPV,2, Gforce, dofcount)
-     CALL GlobalSol(EW,   2, Gforce, dofcount)
-     Solver % Matrix % RHS => Fsave
+     CALL GlobalSol(MFD,  6, Gforce, dofcount, EL_MFD)
+     CALL GlobalSol(MFS,  6, Gforce, dofcount, EL_MFS)
+     CALL GlobalSol(EF ,  6, Gforce, dofcount, EL_EF)
+     CALL GlobalSol(PV,   6, Gforce, dofcount, EL_PV)
+     CALL GlobalSol(DIVPV,2, Gforce, dofcount, EL_DIVPV)
+     CALL GlobalSol(EW,   2, Gforce, dofcount, EL_EW)
+     IF(ASSOCIATED(FSave)) Solver % Matrix % RHS => Fsave
    END IF
 
    WRITE(Message,*) '(Electro) Integral of Divergence of Poynting Vector: ', Energy, Energy_im
@@ -1306,25 +1309,43 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
   
 CONTAINS
 
- 
+
 !------------------------------------------------------------------------------
- SUBROUTINE GlobalSol(Var, m, b, dofs )
+ SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
+   TYPE(Variable_t), POINTER, OPTIONAL :: EL_Var
 !------------------------------------------------------------------------------
    INTEGER :: i
 !------------------------------------------------------------------------------
-   IF(.NOT. ASSOCIATED(var)) RETURN
 
+   IF(PRESENT(EL_Var)) THEN
+     IF(ASSOCIATED(El_Var)) THEN
+       El_Var % DgAveraged = .FALSE.
+       IF( DoAve ) THEN
+         CALL Info('VectorHelmholtz','Averaging for field: '//TRIM(El_Var % Name),Level=10)
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+       END IF
+       IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
+         dofs = dofs+m
+         RETURN
+       END IF
+     END IF
+   END IF
+
+   IF(.NOT. ASSOCIATED(Var) ) RETURN
+   
+   CALL Info('VectorHelmholtz','Solving for field: '//TRIM(Var % Name),Level=6)   
    DO i=1,m
      dofs = dofs+1
      Solver % Matrix % RHS => b(:,dofs)
      Solver % Variable % Values=0
      Norm = DefaultSolve()
      var % Values(i::m) = Solver % Variable % Values
-   END DO
+  END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalSol
 !------------------------------------------------------------------------------

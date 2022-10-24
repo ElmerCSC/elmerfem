@@ -86,13 +86,25 @@ CONTAINS
     
     TYPE(Mesh_t), POINTER :: Mesh
 
-    TYPE(Variable_t), POINTER :: Var
-    INTEGER :: NoAve
-    LOGICAL :: BodySum 
-
-    NoAve = 0
-    Var => Mesh % Variables
+    TYPE(Variable_t), POINTER :: Var, Var1
+    INTEGER :: NoAve, i
+    LOGICAL :: BodySum    
     
+    ! The variables may have been averaged already in vector form. 
+    ! Inherit the DgAveraged flag to the components. 
+    Var => Mesh % Variables    
+    DO WHILE( ASSOCIATED( Var ) )       
+      IF ( Var % DOfs > 1 .AND. Var % TYPE == Variable_on_nodes_on_elements ) THEN        
+        DO i=1,Var % Dofs
+          Var1 => VariableGet( Mesh % Variables,ComponentName(Var % Name,i), ThisOnly = .TRUE.)
+          IF( ASSOCIATED(Var1)) Var1 % DgAveraged = Var % DgAveraged 
+        END DO
+      END IF
+      Var => Var % Next
+    END DO
+
+
+    Var => Mesh % Variables    
     DO WHILE( ASSOCIATED( Var ) ) 
       
       ! Skip if variable is not active for saving       
@@ -250,7 +262,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN
+  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
   CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
@@ -305,7 +317,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ! Sometimes we have a request to save in DG format even though no equation has been solved as dg.
       ! Then we need to create the Element % DgIndexes for the saving only. If already done this does nothing.
       CALL CheckAndCreateDGIndexes( Mesh )
-      IF( DN ) CALL AverageBodyFields( Mesh )  
+
+      DoAve = GetLogical( Params,'Average Within Materials', GotIt)
+      IF(.NOT. GotIt) DoAve = .TRUE. 
+      
+      IF( DoAve ) CALL AverageBodyFields( Mesh )  
     END IF
   END IF
   

@@ -24717,9 +24717,9 @@ CONTAINS
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
 
-    IF( Var % DnAveraged ) THEN
+    IF( Var % DgAveraged ) THEN
       CALL Info('CalculateBodyAverage','Nodal average already computed for: '&
-          //TRIM(Var % Name), Level=12)
+          //TRIM(Var % Name), Level=15)
       RETURN
     END IF
     
@@ -24798,7 +24798,7 @@ CONTAINS
       END DO
     END DO
 
-    Var % DnAveraged = .TRUE.
+    Var % DgAveraged = .TRUE.
     
 CONTAINS
 
