@@ -609,7 +609,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
+              ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DN
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
@@ -2048,9 +2048,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
      END IF
    END IF
+
+   DN = ListGetLogical(SolverParams,'Discontinuous Bodies',Found )
    
-   IF(NodalFields) THEN
-     Fsave => Solver % Matrix % RHS
+   IF(NodalFields .OR. DN ) THEN
+     FSave => NULL()
+     IF( ASSOCIATED( Solver % Matrix ) ) THEN
+       Fsave => Solver % Matrix % RHS
+     END IF
+
      DOFs = 0
      CALL GlobalSol(MFD,  fdim*vdofs, Gforce, Dofs, EL_MFD)
      CALL GlobalSol(MFS,  fdim*vdofs, Gforce, Dofs, EL_MFS)
@@ -2072,13 +2078,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(ML ,  1      , Gforce, Dofs, EL_ML)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs, EL_ML2)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs, EL_MST)
+
      IF (ASSOCIATED(NF)) THEN
        DO i=1,fdim
          dofs = dofs + 1
          NF % Values(i::fdim) = Gforce(:,dofs)
        END DO
      END IF
-     Solver % Matrix % RHS => Fsave
+     IF(ASSOCIATED(FSave)) Solver % Matrix % RHS => Fsave
    END IF
    
    ! surface current density uses the loads
@@ -3169,15 +3176,24 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER :: i
 !------------------------------------------------------------------------------
-   IF(.NOT. ASSOCIATED(var)) THEN
-     IF(PRESENT(EL_Var)) THEN
-       IF(ASSOCIATED(El_Var)) dofs = dofs+m
+
+   IF(PRESENT(EL_Var)) THEN
+     IF(ASSOCIATED(El_Var)) THEN
+       El_Var % DgAveraged = .FALSE.
+       IF( DN ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Averaging for field: '//TRIM(El_Var % Name),Level=6)
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+       END IF
+       IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
+         dofs = dofs+m
+         RETURN
+       END IF
      END IF
-     RETURN
    END IF
+
+   IF(.NOT. ASSOCIATED(Var) ) RETURN
    
-   CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)
-   
+   CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)   
    DO i=1,m
      dofs = dofs+1
 

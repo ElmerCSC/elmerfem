@@ -576,7 +576,8 @@ MODULE Types
      TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
      LOGICAL :: ValuesChanged = .TRUE.
-
+     LOGICAL :: DgAveraged = .FALSE.
+     
 ! Some variables are created from pointers to the primary variables
      LOGICAL :: Secondary = .FALSE.
 
