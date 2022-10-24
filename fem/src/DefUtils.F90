@@ -520,13 +520,14 @@ CONTAINS
   END FUNCTION GetNOFBoundaryElements
 
 !> Returns a scalar field in the nodes of the element
-  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep, UVariable )
+  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep, UVariable, Found)
      REAL(KIND=dp) :: x(:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t)  , OPTIONAL, TARGET :: USolver
      TYPE(Element_t),  OPTIONAL, TARGET :: UElement
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
+     LOGICAL, OPTIONAL :: Found
 
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
@@ -535,11 +536,13 @@ CONTAINS
 
      INTEGER :: i, j, k, n, lr
      INTEGER, POINTER :: Indexes(:)
-
+     LOGICAL :: Found0
+     
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
      x = 0.0d0
+     IF(PRESENT(Found)) Found = .FALSE.
 
      IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
@@ -563,7 +566,8 @@ CONTAINS
      END IF
 
      Element => GetCurrentElement(UElement)
-
+     Found0 = .FALSE.
+     
      ! Some variables do not really follow the numbering
      ! nodes + faces + edges etc. of the standard solver.
      ! For example, if we want to request DG values from a variable
@@ -577,6 +581,7 @@ CONTAINS
        DO i=1,n
          x(i) = Values(Variable % Perm(j) + i)
        END DO
+       IF(PRESENT(Found)) Found = (n>1)
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
        n = Element % TYPE % NumberOfNodes
@@ -584,7 +589,10 @@ CONTAINS
        IF(ASSOCIATED( Indexes ) ) THEN
          DO i=1,n
            j = Variable % Perm(Indexes(i))
-           IF(j>0) x(i) = Values(j)
+           IF(j>0) THEN
+             Found0 = .TRUE.
+             x(i) = Values(j)
+           END IF
          END DO
        ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          DO lr=1,2
@@ -594,12 +602,15 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
            END IF
            IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                                     
            DO i=1,n
              DO j=1,Parent % TYPE % NumberOfNodes
                IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
                  k = Variable % Perm( Parent % DGIndexes(j) )
-                 IF(k>0) x(i) = Values(k)
+                 IF(k>0) THEN
+                   Found0 = .TRUE.
+                   x(i) = Values(k)
+                 END IF
                  EXIT
                END IF
              END DO
@@ -607,6 +618,7 @@ CONTAINS
            EXIT
          END DO
        END IF
+       IF(PRESENT(Found)) Found = Found0
        RETURN       
      END IF
 
@@ -626,6 +638,7 @@ CONTAINS
            IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
              k = Variable % Perm(j)
              IF ( k>0 ) THEN
+               Found0 = .TRUE.
                x(i) = Values(k)
                IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
              END IF
@@ -636,30 +649,39 @@ CONTAINS
            j = Indexes(i)
            IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
              j = Variable % Perm(j)
-             IF ( j>0 ) x(i) = Values(j)
+             IF ( j>0 ) THEN
+               Found0 = .TRUE.
+               x(i) = Values(j)
+             END IF
            END IF
          END DO
        END IF
      ELSE
         DO i=1,n
           j = Indexes(i)
-          IF ( j>0 .AND. j<=SIZE(Variable % Values) ) &
+          IF ( j>0 .AND. j<=SIZE(Variable % Values) ) THEN
+            Found0 = .TRUE.
             x(i) = Values(Indexes(i))
+          END IF
         END DO
-     END IF
+      END IF
+
+      IF(PRESENT(Found)) Found = Found0 
+      
   END SUBROUTINE GetScalarLocalSolution
 
 
 
 !> Returns a vector field in the nodes of the element
-  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep, UVariable )
+  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep, UVariable, Found)
      REAL(KIND=dp) :: x(:,:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
-
+     LOGICAL, OPTIONAL :: Found
+     
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element, Parent
@@ -667,12 +689,14 @@ CONTAINS
      INTEGER :: i, j, k, l, lr, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
-
+     LOGICAL :: Found0
+     
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
      x = 0.0d0
-
+     IF(PRESENT(Found)) Found = .FALSE.
+     
      IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
      ELSE
@@ -695,6 +719,7 @@ CONTAINS
      END IF
      
      Element => GetCurrentElement(UElement)
+     Found0 = .FALSE.
 
        
      ! If variable is defined on gauss points return that instead
@@ -714,6 +739,7 @@ CONTAINS
              END DO
            END ASSOCIATE
          END DO
+         IF(PRESENT(Found)) Found = (n>1)
          RETURN
        END ASSOCIATE
      ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
@@ -724,12 +750,14 @@ CONTAINS
            DO i=1,n
              j = variable % perm(indexes(i))
              IF( j==0 ) CYCLE
+             Found0 = .TRUE.
              DO k=1,dofs
                x(k,i) = Values((j-1)*dofs + k)
              END DO
            END DO
-           RETURN
          END ASSOCIATE
+         IF(PRESENT(Found)) Found = Found0
+         RETURN         
        ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          DO lr=1,2
            IF(lr==1) THEN
@@ -746,6 +774,7 @@ CONTAINS
                  IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
                    l = Variable % Perm( Parent % DGIndexes(j) )
                    IF(l>0) THEN
+                     Found0 = .TRUE.
                      DO k=1,dofs
                        x(k,i) = Values((l-1)*dofs + k )
                      END DO
@@ -758,6 +787,7 @@ CONTAINS
            EXIT
          END DO
        END IF
+       IF(PRESENT(Found)) Found = Found0
        RETURN       
      END IF
 
@@ -778,6 +808,7 @@ CONTAINS
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
                IF( l>0 ) THEN
+                 Found0 = .TRUE.
                  x(i,j) = Values(Variable % DOFs*(l-1)+i)
                  IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
                END IF
@@ -788,7 +819,10 @@ CONTAINS
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
-               IF (l>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               IF (l>0) THEN
+                 Found0 = .TRUE.
+                 x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               END IF
              END IF
            END DO
          END IF
@@ -796,11 +830,14 @@ CONTAINS
          DO j=1,n
            IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
                SIZE( Variable % Values ) ) THEN
+             Found0 = .TRUE.
              x(i,j) = Values(Variable % DOFs*(Indexes(j)-1)+i)
            END IF
          END DO
        END IF
      END DO
+     IF( PRESENT(Found)) Found = Found0
+     
   END SUBROUTINE GetVectorLocalSolution
 
 

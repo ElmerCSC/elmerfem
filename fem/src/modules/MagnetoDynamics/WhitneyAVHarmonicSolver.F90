@@ -420,7 +420,7 @@ CONTAINS
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
     INTEGER :: i,j,k,n,nd,t
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found, ConstraintActive
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -443,16 +443,17 @@ CONTAINS
 
        ! If the coil current field is elemental it is discontinuous and need not be limited
        ! to the body force. For nodal ones we don't have the same luxury.
+       GotCoil = .FALSE.
        IF( UseCoilCurrent ) THEN
          IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
-           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar)       
+           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar,Found=GotCoil)       
            LOAD(1:3,1:n) = ReLoad(1:3,1:n)
          END IF
        END IF
               
        IF ( ASSOCIATED(BodyForce) ) THEN
          ! If not already given by CoilCurrent, request for current density
-         IF( .NOT. UseCoilCurrent ) THEN           
+         IF( .NOT. GotCoil ) THEN           
            CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
          END IF
 
