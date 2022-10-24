@@ -472,11 +472,21 @@ CONTAINS
           IF ( k<=nlen ) THEN
              MeshName(i:i) = '/'
              i = i + 1
+#if 1
+             ! This is a dummy fix for the problem that no white spaces
+             ! were allowed in the mesh name.
+             DO WHILE( k <= nlen )
+               MeshName(i:i) = Name(k:k)
+               k = k + 1
+               i = i + 1
+             END DO
+#else             
              DO WHILE( Name(k:k) /= ' ' )
                MeshName(i:i) = Name(k:k)
                k = k + 1
                i = i + 1
              END DO
+#endif
           ELSE
              MeshDir = "." // CHAR(0)
           END IF
