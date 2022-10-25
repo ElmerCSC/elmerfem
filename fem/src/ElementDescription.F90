@@ -10484,11 +10484,10 @@ END SUBROUTINE PickActiveFace
 !    Local variables
 !------------------------------------------------------------------------------
 
-     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s
+     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-     INTEGER :: GeomId
-     
-     INTEGER :: cdim,dim,i,j,k,n
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n,imin,jmin
 !------------------------------------------------------------------------------
      success = .TRUE.
 
@@ -10600,11 +10599,25 @@ END SUBROUTINE PickActiveFace
        WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
      END DO
-     DO i=2,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' dCoord:',&
-           x(i)-x(1),y(i)-y(1),z(i)-z(1)       
-       CALL Info( 'ElementMetric', Message, Level=3 )
+
+     ! Find the two nodes closest to each other:
+     smin = HUGE(smin)
+     DO i=1,n
+       DO j=i+1,n
+         s = (x(i)-x(j))**2 + (y(i)-y(j))**2 + (z(i)-z(j))**2
+         IF( s < smin ) THEN
+           imin = i
+           jmin = j
+           smin = s           
+         END IF
+       END DO
      END DO
+     smin = SQRT(smin)
+
+     WRITE( Message,'(A,I0,A,I0,A,I0,A,I0,A,ES12.3)') 'Closest distance: ',imin,'-',jmin,&
+         ' (',Elm % NodeIndexes(imin),'-',Elm % NodeIndexes(jmin),') |dCoord|:',smin
+     CALL Info( 'ElementMetric', Message, Level=3 )
+
      IF ( cdim < dim ) THEN
        WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
        CALL Info( 'ElementMetric', Message, Level=3 )
