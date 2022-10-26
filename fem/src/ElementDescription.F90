@@ -10464,7 +10464,7 @@ END SUBROUTINE PickActiveFace
    END SUBROUTINE GetEdgeBasis
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
 !>    system, and square root of determinant of covariant metric tensor
@@ -10483,8 +10483,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin
+     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
      INTEGER :: GeomId     
      INTEGER :: cdim,dim,i,j,k,n,imin,jmin
@@ -10499,6 +10498,8 @@ END SUBROUTINE PickActiveFace
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
 
+     eps = (EPSILON(eps))**dim
+     
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
 !------------------------------------------------------------------------------
@@ -10511,13 +10512,13 @@ END SUBROUTINE PickActiveFace
 !    Compute the covariant metric tensor of the element coordinate system
 !------------------------------------------------------------------------------
      DO i=1,dim
-        DO j=1,dim
-           s = 0.0d0
-           DO k=1,cdim
-             s = s + dx(k,i)*dx(k,j)
-           END DO
-           G(i,j) = s
-        END DO
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
      END DO
 !------------------------------------------------------------------------------
 !    Convert the metric to contravariant base, and compute the SQRT(DetG)
@@ -10526,43 +10527,43 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !      Line elements
 !------------------------------------------------------------------------------
-       CASE (1)
-         DetG  = G(1,1)
+     CASE (1)
+       DetG  = G(1,1)
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) = 1.0d0 / DetG
-         DetG  = SQRT( DetG )
+       Metric(1,1) = 1.0d0 / DetG
+       DetG  = SQRT( DetG )
 
 !------------------------------------------------------------------------------
 !      Surface elements
 !------------------------------------------------------------------------------
-       CASE (2)
-         DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+     CASE (2)
+       DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) =  G(2,2) / DetG
-         Metric(1,2) = -G(1,2) / DetG
-         Metric(2,1) = -G(2,1) / DetG
-         Metric(2,2) =  G(1,1) / DetG
-         DetG = SQRT(DetG)
+       Metric(1,1) =  G(2,2) / DetG
+       Metric(1,2) = -G(1,2) / DetG
+       Metric(2,1) = -G(2,1) / DetG
+       Metric(2,2) =  G(1,1) / DetG
+       DetG = SQRT(DetG)
 
 !------------------------------------------------------------------------------
 !      Volume elements
 !------------------------------------------------------------------------------
-       CASE (3)
-         DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
-                G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
-                G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+     CASE (3)
+       DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         CALL InvertMatrix3x3( G,GI,detG )
-         Metric = GI
-         DetG = SQRT(DetG)
+       CALL InvertMatrix3x3( G,GI,detG )
+       Metric = GI
+       DetG = SQRT(DetG)
      END SELECT
-
+     
 !--------------------------------------------------------------------------------------
 !    Construct a transformation X = LtoGMap such that (grad B)(f(p)) = X(p) Grad b(p),
 !    with Grad the gradient with respect to the reference element coordinates p and 
@@ -10580,23 +10581,28 @@ END SUBROUTINE PickActiveFace
        END DO
      END DO
 
-! Return here also implies success = .TRUE.
+     ! Return here also implies success = .TRUE.
      RETURN
-  
 
-100  Success = .FALSE.
+100  CONTINUE
+
+     ! Try recursively with quadratic precision.
+     ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
+     Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
+     IF( Success ) RETURN
+     
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
      
      IF( ASSOCIATED( Elm % BoundaryInfo ) ) THEN
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
      ELSE
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
      END IF
      CALL Info( 'ElementMetric', Message, Level=3 )
 
      DO i=1,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
+       WRITE( Message,'(A,I0,A,3ES14.6)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
      END DO
 
@@ -10614,7 +10620,7 @@ END SUBROUTINE PickActiveFace
      END DO
      smin = SQRT(smin)
 
-     WRITE( Message,'(A,I0,A,I0,A,I0,A,I0,A,ES12.3)') 'Closest distance: ',imin,'-',jmin,&
+     WRITE( Message,'(A,I0,A,I0,A,I0,A,I0,A,ES14.6)') 'Closest distance: ',imin,'-',jmin,&
          ' (',Elm % NodeIndexes(imin),'-',Elm % NodeIndexes(jmin),') |dCoord|:',smin
      CALL Info( 'ElementMetric', Message, Level=3 )
 
@@ -10622,11 +10628,128 @@ END SUBROUTINE PickActiveFace
        WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
        CALL Info( 'ElementMetric', Message, Level=3 )
      END IF
-     
+
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous that is called when the DetJ appear
+! to be close to zero or negative. 
+!------------------------------------------------------------------------------
+   FUNCTION ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) RESULT(Success)
+!------------------------------------------------------------------------------
+     INTEGER :: nDOFs                !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm         !< Element structure
+     TYPE(Nodes_t)    :: Nodes       !< Element nodal coordinates
+     REAL(KIND=dp) :: Metric(:,:)    !< Contravariant metric tensor
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
+     REAL(KIND=dp) :: DetG           !< SQRT of determinant of metric tensor
+     REAL(KIND=dp) :: LtoGMap(3,3)   !< Transformation to obtain the referential description of the spatial gradient
+     LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n
+
+! Local Quadratic precision variables     
+     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     REAL(KIND=qp) :: dx(3,3),G(3,3),GI(3,3),s,DetGqp
+!------------------------------------------------------------------------------
+     success = .FALSE.
+
+     x => Nodes % x
+     y => Nodes % y
+     z => Nodes % z
+
+     cdim = CoordinateSystemDimension()
+     n = MIN( SIZE(x), nDOFs )
+     dim  = elm % TYPE % DIMENSION
+     DetG = 0.0_dp
+
+!------------------------------------------------------------------------------
+!    Partial derivatives of global coordinates with respect to local coordinates
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+     END DO
+!------------------------------------------------------------------------------
+!    Compute the covariant metric tensor of the element coordinate system
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+!    Convert the metric to contravariant base, and compute the SQRT(DetG)
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+!------------------------------------------------------------------------------
+!      Line elements
+!------------------------------------------------------------------------------
+     CASE (1)
+       DetGqp  = G(1,1)
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) = 1.0d0 / DetGqp
+
+!------------------------------------------------------------------------------
+!      Surface elements
+!------------------------------------------------------------------------------
+     CASE (2)
+       DetGqp = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) =  G(2,2) / DetGqp
+       Metric(1,2) = -G(1,2) / DetGqp
+       Metric(2,1) = -G(2,1) / DetGqp
+       Metric(2,2) =  G(1,1) / DetGqp
+
+!------------------------------------------------------------------------------
+!      Volume elements
+!------------------------------------------------------------------------------
+     CASE (3)
+       DetGqp = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       CALL InvertMatrix3x3QP( G,GI,detGqp )
+       Metric = GI
+     END SELECT
+
+     DetG = SQRT(DetGqp)     
+     Success = .TRUE.
+     
+!--------------------------------------------------------------------------------------
+     DO i=1,cdim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,dim
+           s = s + dx(i,k) * Metric(k,j)
+         END DO
+         LtoGMap(i,j) = s
+       END DO
+     END DO
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ElementMetricQP
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
    FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
 !------------------------------------------------------------------------------
@@ -12939,7 +13062,6 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE GlobalToLocal
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3( G,GI,detG )
 !------------------------------------------------------------------------------
@@ -12963,7 +13085,34 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE InvertMatrix3x3
 !------------------------------------------------------------------------------
 
+  
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous routine!
+!------------------------------------------------------------------------------
+  SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
+!------------------------------------------------------------------------------
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    REAL(KIND=qp) :: G(3,3),GI(3,3)
+    REAL(KIND=qp) :: detG, s
+!------------------------------------------------------------------------------
+    s = 1.0 / DetG
+    
+    GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
+    GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
+    GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
+    
+    GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
+    GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
+    GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
 
+    GI(1,3) =  s * (G(1,2)*G(2,3) - G(2,2)*G(1,3));
+    GI(2,3) = -s * (G(1,1)*G(2,3) - G(2,1)*G(1,3));
+    GI(3,3) =  s * (G(1,1)*G(2,2) - G(2,1)*G(1,2));
+!------------------------------------------------------------------------------
+  END SUBROUTINE InvertMatrix3x3QP
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !>     Given element and its face map (for some triangular face of element ), 
 !>     this routine returns global direction of triangle face so that 
