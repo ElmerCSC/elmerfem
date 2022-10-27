@@ -653,7 +653,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
    REAL(KIND=dp), POINTER :: muTensor(:,:)
-   LOGICAL :: HasReluctivityFunction
+   LOGICAL :: HasReluctivityFunction, HBIntegProblem 
    REAL(KIND=dp) :: rdummy
    INTEGER :: mudim
    
@@ -728,7 +728,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
          EvaluateAtIp=.TRUE.,DummyCount=3)
    END IF
-   
+   HbIntegProblem = .FALSE.
 
    
    LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
@@ -1478,10 +1478,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          Babs = MAX(Babs, 1.d-8)
          
          R_ip = ListGetFun( Material,'h-b curve', x=babs) / Babs
+
          BLOCK
            TYPE(ValueListEntry_t), POINTER :: ptr
            ptr => ListFind( Material,'h-b curve')
-           w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs)
+           w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs,Found=Found)
+           IF(.NOT. Found ) HbIntegProblem = .TRUE.
          END BLOCK
          DO k=1,3
            Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
@@ -1573,7 +1575,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
        END IF
-
+       
        Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
        Energy(2) = Energy(2) + s*w_dens
        Energy(3) = Energy(3) + (HdotB - w_dens) * s
@@ -1897,7 +1899,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO ! p
      END DO ! j
 
-
      IF(NodalFields) THEN
        IF(.NOT. ConstantMassMatrixInUse ) THEN
          CALL DefaultUpdateEquations( MASS,Force(:,1))
@@ -2215,6 +2216,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          TotalLoss(j) = SUM( BodyLoss(j,:) )
        END DO
      END IF
+   END IF
+
+   IF( HbIntegProblem ) THEN
+     CALL Warn('MagnetoDynamicsCalcFields','Could not integrate over H-B curve for magnetic energy!')
    END IF
    
    WRITE(Message,'(A,ES15.6)') 'Eddy current power: ', Power
