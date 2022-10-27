@@ -1684,7 +1684,7 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Integrate a curve given by linear table or splines.
 !------------------------------------------------------------------------------
-   PURE FUNCTION IntegrateCurve(TValues,FValues,CubicCoeff,T0,T1,Cumulative) RESULT(sumf)
+   FUNCTION IntegrateCurve(TValues,FValues,CubicCoeff,T0,T1,Cumulative,Found) RESULT(sumf)
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: sumf
 
@@ -1692,22 +1692,35 @@ END FUNCTION ComponentNameVar
      REAL(KIND=dp), OPTIONAL, INTENT(in) :: T0, T1
      REAL(KIND=dp), OPTIONAL, INTENT(in) :: Cumulative(:)
      REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+     LOGICAL, OPTIONAL :: Found 
 !------------------------------------------------------------------------------
      INTEGER :: i,n,i0,i1
      LOGICAL :: Cubic
      REAL(KIND=dp) :: t(2), y(2), r(2), h, a, b, c, d, s0, s1, tt0, tt1
 !------------------------------------------------------------------------------
-     n = SIZE(TValues)
 
+     sumf = 0.0_dp
+     IF(PRESENT(Found)) Found = .FALSE.
+     
+     n = SIZE(TValues)
+     IF(n<2) RETURN
+
+     IF(SIZE(FValues) /= n ) THEN
+       CALL Warn('IntegrateCurve','TValues and Fvalues should be of same size!')
+       RETURN
+     END IF
+             
      tt0 = TValues(1)
      IF(PRESENT(t0)) tt0=t0
 
      tt1 = TValues(n)
      IF(PRESENT(t1)) tt1=t1
 
-     sumf = 0._dp
      IF(tt0>=tt1) RETURN
 
+     IF(PRESENT(Found)) Found = .TRUE.
+
+     
      ! t0 < first, t1 <= first
      IF(tt1<=Tvalues(1)) THEN
        t(1) = Tvalues(1)
