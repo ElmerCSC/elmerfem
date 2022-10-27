@@ -3437,7 +3437,7 @@ module minpack_module
                         qtbpj = -sin*Wa(k) + cos*qtbpj
                         Wa(k) = temp
 !
-!           accumulate the tranformation in the row of s.
+!           accumulate the transformation in the row of s.
 !
                         kp1 = k + 1
                         if (n >= kp1) then

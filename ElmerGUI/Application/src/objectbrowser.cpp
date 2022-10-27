@@ -1374,7 +1374,9 @@ int ObjectBrowser::boundaryListToBodyIndex(list_t *l) {
       mainwindow->glWidget->currentlySelectedBody = found;
       ret = found;
       // cout << "*****boundary found: " << found << endl;
-    }
+    }else{
+	  ret = mainwindow->glWidget->mostVisibleBody(MAX_BULK_INDEX, tmp1);
+	}
     delete[] tmp1;
     delete[] tmp2;
   }

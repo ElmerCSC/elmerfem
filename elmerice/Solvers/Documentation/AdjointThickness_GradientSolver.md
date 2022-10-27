@@ -29,7 +29,7 @@ Computes the derivatives of a cost function that involves the thickness $H$, sol
 The sequence in the .sif is usually as follow:
 
 1. Compute the setady-state thickness using the [thickness solver](#thickness_direct_solver)
-2. Compute a cost function that measure the diffrence between the model and some observations, usually the observations are discrete along flow lines and the *Adjoint_CostDiscSolver* will be used.
+2. Compute a cost function that measures the difference between the model and some observations, usually the observations are discrete along flow lines and the *Adjoint_CostDiscSolver* will be used.
 3. Impose some constraint on the spacial variations of $H$. This can be done by penalising first spatial derivatives of $H$ with the *Adjoint_CostRegSolver* (This has to be done before the next step as it involves the variable $H$.)    
 4. Compute the solution of the [adjoint linear system](#adjoint_linearsolver)
 5. **Compute the gradient of your cost function with respect to your input parameters**
@@ -87,7 +87,7 @@ Body Force *id*
   Top Surface Accumulation = Real ...
   Bottom Surface Accumulation = Real ...
 
-  !# If <Flow Solution Name> is not privided in the solver section
+  !# If <Flow Solution Name> is not provided in the solver section
   !#  the convection velocity can be read here:
   ! x-componenent
   Convection Velocity 1 = Real ...

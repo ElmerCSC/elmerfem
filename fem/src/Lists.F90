@@ -519,31 +519,59 @@ CONTAINS
 
      ! Here we create the initial permutation such that the conforming dofs are eliminated. 
      IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
-       Solver % PeriodicFlipActive = .FALSE.
-       n = 0
-       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
-         ! Set the eliminated dofs to zero and renumber
-         WHERE( Mesh % PeriodicPerm > 0 ) Perm = -Perm
-
-         k = 0                  
-         DO i=1,SIZE( Perm )
-           IF( Perm(i) > 0 ) THEN
-             k = k + 1
-             Perm(i) = k
+       BLOCK
+         INTEGER, POINTER :: TmpPerm(:)
+         LOGICAL, POINTER :: TmpFlip(:)
+         
+         IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+           CALL Warn(Caller,'Conforming BC is requested but not generated!')
+         ELSE       
+           Solver % PeriodicFlipActive = .FALSE.
+           n = SIZE( Mesh % PeriodicPerm )
+           IF( n < SIZE( Perm ) ) THEN
+             CALL Info(Caller,'Increasing size of periodic tables from '&
+                 //TRIM(I2S(n))//' to '//TRIM(I2S(SIZE(Perm)))//'!',Level=7)
+             ALLOCATE( TmpPerm(SIZE(Perm)) )
+             TmpPerm = 0
+             TmpPerm(1:n) = Mesh % PeriodicPerm(1:n)
+             DEALLOCATE(Mesh % PeriodicPerm)
+             Mesh % PeriodicPerm => TmpPerm
+             
+             IF(ASSOCIATED(Mesh % PeriodicFlip ) ) THEN
+               ALLOCATE( TmpFlip(SIZE(Perm)) )
+               TmpFlip = .FALSE.
+               TmpFlip(1:n) = Mesh % PeriodicFlip(1:n)
+               DEALLOCATE(Mesh % PeriodicFlip)
+               Mesh % PeriodicFlip => TmpFlip
+             END IF
            END IF
-         END DO
-                          
-         DO i=1,SIZE( Mesh % PeriodicPerm )
-           j = Mesh % PeriodicPerm(i)
-           IF( j > 0 .AND. Perm(i) /= 0 ) THEN             
-             Perm(i) = Perm(j)
-             IF(Mesh % PeriodicFlip(i)) n = n + 1
-           END IF
-         END DO
+           
+           n = 0
+           IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+             ! Set the eliminated dofs to zero and renumber
+             WHERE( Mesh % PeriodicPerm > 0 ) Perm = -Perm
+             
+             k = 0                  
+             DO i=1,SIZE( Perm )
+               IF( Perm(i) > 0 ) THEN
+                 k = k + 1
+                 Perm(i) = k
+               END IF
+             END DO
+             
+             DO i=1,SIZE( Mesh % PeriodicPerm )
+               j = Mesh % PeriodicPerm(i)
+               IF( j > 0 .AND. Perm(i) /= 0 ) THEN             
+                 Perm(i) = Perm(j)
+                 IF(Mesh % PeriodicFlip(i)) n = n + 1
+               END IF
+             END DO
 
-         Solver % PeriodicFlipActive = ( n > 0 )
-         CALL Info(Caller,'Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
-       END IF
+             Solver % PeriodicFlipActive = ( n > 0 )
+             CALL Info(Caller,'Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+           END IF
+         END IF
+       END BLOCK
      END IF
     
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
@@ -1283,10 +1311,8 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-         !GlobalBubbles = ListGetLogical(Pvar % Solver % Values, &
-         !      'Bubbles in Global System', Found)
-         !IF (.NOT.Found) GlobalBubbles=.TRUE.
-        GlobalBubbles = Pvar % Solver % GlobalBubbles
+        GlobalBubbles = .FALSE.
+        IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
@@ -2009,7 +2035,7 @@ use spariterglobals
        IF( Found ) n = n + 1
      END DO
      IF( n > 0 ) CALL Info('ListRenameAllBCs',&
-         TRIM(Name)//' ranamed to '//TRIM(Name2)//' on '//TRIM(I2S(n))//' BCs',Level=6)
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//TRIM(I2S(n))//' BCs',Level=6)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE ListRenameAllBC
@@ -2441,7 +2467,7 @@ use spariterglobals
 !----------------------------------------------------------------
     INTEGER :: i,cnt
 
-    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=5)
+    CALL Info('ListTagKeywords','Setting weight for keywords!',Level=20)
     cnt = 0
     
     CALL ListTagEntry(Model % Simulation, suffix, tagwei, cnt )
@@ -2477,7 +2503,7 @@ use spariterglobals
       CALL Info('ListTagKeywords',&
           'Tagged '//TRIM(I2S(cnt))//' parameters with suffix: '//TRIM(suffix),Level=7)
     ELSE
-      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=7)
+      CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=20)
     END IF
 
   CONTAINS
@@ -2739,6 +2765,8 @@ use spariterglobals
               IF( Weights(i) > TINY(Weights(i)) ) THEN
                 ptr % coeff = 1.0_dp / Weights(i)
                 cnt = cnt + 1
+                WRITE( Message,'(A,ES12.3)') 'Scaling parameter "'//TRIM(ptr % name)//'" with:',ptr % coeff 
+                CALL Info('ListSetParameters',Message,Level=15)
               ELSE
                 CALL Warn('ListSetParameters','Refusing division with zero!')
               END IF
@@ -3329,7 +3357,7 @@ use spariterglobals
     END SUBROUTINE ListAddConstRealArray
 !------------------------------------------------------------------------------
 
-
+    
 !------------------------------------------------------------------------------
 !> Adds a real array where the components are linearly dependent.
 !------------------------------------------------------------------------------
@@ -3372,6 +3400,84 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! Given real array transform it to dependence array. This can only be done
+! if the size of the array is suitable. 
+!------------------------------------------------------------------------------ 
+   SUBROUTINE ListRealArrayToDepReal(List,Name,DepName,CubicTable,Monotone)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*) :: DepName
+     LOGICAL, OPTIONAL :: CubicTable, Monotone
+     
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: n,m
+     REAL(KIND=dp), ALLOCATABLE :: TmpValues(:,:,:)
+     
+     ptr => ListFind( List, Name )
+
+     ! Change only constant real array!
+     IF( ptr % TYPE /= LIST_TYPE_CONSTANT_TENSOR ) RETURN
+
+     IF(.NOT. ASSOCIATED(ptr) ) THEN
+       CALL Warn('ListRealArrayToDepArray','Could not find: '//TRIM(Name))
+       RETURN
+     END IF
+
+     IF( ptr % Fdim < 2 ) THEN
+       CALL Warn('ListRealArrayToDepArray','No array form to transform!')
+       RETURN
+     END IF
+
+     n = SIZE(ptr % FValues,1)
+     m = SIZE(ptr % FValues,2)
+
+     IF( m /= 2 ) THEN
+       CALL Warn('ListRealArrayToDepArray','Number of columns must be 2!')
+       RETURN
+     END IF
+
+     ALLOCATE( TmpValues(n,m,1) )
+     TmpValues = ptr % FValues
+     DEALLOCATE( ptr % FValues )
+
+     ALLOCATE( ptr % FValues(1,1,n), ptr % TValues(n) )
+     ptr % FValues(1,1,1:n) = TmpValues(1:n,2,1)
+     ptr % TValues(1:n) = TmpValues(1:n,1,1)
+     DEALLOCATE( TmpValues ) 
+          
+     ! The (x,y) table should be such that values of x are increasing in size
+     IF( .NOT. CheckMonotone( n, ptr % FValues(1,1,:) ) ) THEN
+       CALL Fatal('ListRealArrayToDepReal',&
+           'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
+     END IF
+
+     ! Make it cubic if asked
+     IF ( n>3 .AND. PRESENT(CubicTable)) THEN
+       IF ( CubicTable ) THEN
+         ALLOCATE(ptr % CubicCoeff(n))
+         CALL CubicSpline(n,ptr % TValues,Ptr % Fvalues(1,1,:), &
+             Ptr % CubicCoeff, Monotone )
+       END IF
+     END IF
+
+     ALLOCATE(ptr % Cumulative(n))
+     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+          Ptr % CubicCoeff, Ptr % Cumulative )
+     
+     ! Copy the depname     
+     ptr % DepNameLen = StringToLowerCase( ptr % DependName,DepName )
+
+     ! Finally, change the type 
+     ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
+
+     CALL Info('ListRealArrayToDepReal',&
+         'Changed constant array to dependence table of size '//TRIM(I2S(n))//'!')
+     
+   END SUBROUTINE ListRealArrayToDepReal
+
+
+   
 !------------------------------------------------------------------------------
 !> Adds a logical entry to the list if it does not exist previously.
 !------------------------------------------------------------------------------
@@ -3454,17 +3560,23 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal ) RESULT(L)
+   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal,DefValue) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     INTEGER, OPTIONAL :: DefValue
      INTEGER :: L
      LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER, OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     L = 0
+     IF(PRESENT(DefValue)) THEN
+       L = DefValue
+     ELSE
+       L = 0
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3599,16 +3711,21 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a logical value from the list, if not found return False.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal ) RESULT(L)
+   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal,DefValue ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL :: L
-     LOGICAL, OPTIONAL :: Found, UnfoundFatal
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal, DefValue
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     L = .FALSE.
+     IF(PRESENT(DefValue)) THEN
+       L = DefValue
+     ELSE
+       L = .FALSE.
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3678,16 +3795,22 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a string from the list by its name, if not found return empty string.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal ) RESULT(S)
+   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal,DefValue ) RESULT(S)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      CHARACTER(LEN=MAX_NAME_LEN) :: S
+     CHARACTER(*), OPTIONAL :: DefValue
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     S = ' '
+     IF(PRESENT(DefValue)) THEN
+       S = TRIM(DefValue)
+     ELSE
+       S = ' '
+     END IF
+
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
@@ -3713,13 +3836,13 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Get a constant real from the list by its name. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal ) RESULT(F)
+   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal,DefValue) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      REAL(KIND=dp) :: F
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
-     REAL(KIND=dp), OPTIONAL :: x,y,z
+     REAL(KIND=dp), OPTIONAL :: x,y,z,DefValue
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
@@ -3728,7 +3851,11 @@ use spariterglobals
      INTEGER :: i,j,k,n
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd,tmp_str
 !------------------------------------------------------------------------------
-     F = 0.0_dp
+     IF(PRESENT(DefValue)) THEN
+       F = DefValue
+     ELSE
+       F = 0.0_dp
+     END IF
 
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
@@ -3861,6 +3988,9 @@ use spariterglobals
      REAL(KIND=dp) :: x(1)
      INTEGER, PARAMETER :: one = 1
 
+     !$omp threadprivate(Dnodes)
+
+     
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
      IF ( ASSOCIATED(List % Head) ) THEN
@@ -4069,16 +4199,16 @@ use spariterglobals
 !> and obtains the corresponding variables to a table.
 !------------------------------------------------------------------------------
   SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
-      SomeAtIp, SomeAtNodes, AllGlobal )
+      SomeAtIp, SomeAtNodes, AllGlobal, DummyCount )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      INTEGER :: slen, count
      TYPE(VariableTable_t) :: VarTable(:)
      LOGICAL :: SomeAtIp, SomeAtNodes, AllGlobal
+     INTEGER :: DummyCount
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
-     LOGICAL :: IsNumber
      REAL(KIND=dp) :: Val
      
      SomeAtIp = .FALSE.
@@ -4105,45 +4235,53 @@ use spariterglobals
          l1=slen
        END IF
 
-       IF ( str(l0:l1) == 'coordinate' ) THEN
+       ! This is a special case of internal variables that should not be parsed
+       ! to point to actual variables. 
+       IF( count < DummyCount ) THEN
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
+         IF(ASSOCIATED(Var)) THEN 
+           CALL Fatal('ListParseStrToVars','Function has '//TRIM(I2S(DummyCount))//&
+               ' internal variables, use dummy names not: '//str(l0:l1))
+         END IF
+         AllGlobal = .FALSE.
+         count = count + 1
+         SomeAtIp = .TRUE.
+         VarTable(count) % Variable => NULL()
+         VarTable(count) % ParamValue = -1.0_dp
+         
+       ELSE IF ( str(l0:l1) == 'coordinate' ) THEN
          VarTable(count+1) % Variable => VariableGet( CurrentModel % Variables,"coordinate 1")
          VarTable(count+2) % Variable => VariableGet( CurrentModel % Variables,"coordinate 2")
          VarTable(count+3) % Variable => VariableGet( CurrentModel % Variables,"coordinate 3")
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
+
        ELSE 
-         IsNumber = .FALSE.
-         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
-         IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           IF( VERIFY( str(l0:l1),'-.0123456789') == 0 ) THEN
-             IsNumber = .TRUE.
-             READ(str(l0:l1),*) Val
-           ELSE           
-             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
-             CALL Info('ListParseStrToVars','Parse counters: '&
-                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
-             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
-           END IF
-         END IF
-
-         count = count + 1
-
-         IF( IsNumber ) THEN
-           !PRINT *,'We do have a number:',Val
-           VarTable(count) % Variable => NULL()
-           VarTable(count) % ParamValue = Val
-         ELSE
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )                          
+         count = count + 1         
+         IF ( ASSOCIATED( Var ) ) THEN
            VarTable(count) % Variable => Var           
            IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
            IF( Var % TYPE == Variable_on_gauss_points ) THEN
              SomeAtIp = .TRUE.
            ELSE
              SomeAtNodes = .TRUE.
+           END IF           
+         ELSE
+           IF( VERIFY( str(l0:l1),'-.0123456789eE') == 0 ) THEN
+             !PRINT *,'We do have a number:',Val
+             READ(str(l0:l1),*) Val
+             VarTable(count) % Variable => NULL()
+             VarTable(count) % ParamValue = Val
+           ELSE
+             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count))//' of '//str(1:slen),Level=3)
+             CALL Info('ListParseStrToVars','Parse counters: '&
+                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
            END IF
          END IF
-           
        END IF
 
        ! New start after the comma
@@ -4158,23 +4296,29 @@ use spariterglobals
 !-------------------------------------------------------------------------------------
 !> Given a table of variables and a node index return the variable values on the node.
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count )
+  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
      INTEGER :: ind
      INTEGER :: count
+     INTEGER, OPTIONAL :: intvarcount
      REAL(KIND=dp) :: T(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      
-     count = 0
+
      Failed = .FALSE.
-     
-     DO Vari = 1, VarCount
+
+     ! Do not even try to treat the internal variables 
+     vari0 = 0
+     IF(PRESENT(intvarcount)) vari0 = IntVarCount
+     count = vari0
+    
+     DO Vari = vari0+1, VarCount
        
        Var => VarTable(Vari) % Variable
 
@@ -4216,8 +4360,26 @@ use spariterglobals
                    EXIT
                  END IF
                END DO
-             ELSE
-               CALL Fatal('VarsToValuesOnNodes','DG field requires DGIndexes: '//TRIM(Var % Name))              
+             ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+               BLOCK
+                 TYPE(Element_t), POINTER :: Parent
+                 DO j=1,2
+                   IF(j==1) THEN
+                     Parent => Element % BoundaryInfo % Left
+                   ELSE
+                     Parent => Element % BoundaryInfo % Right
+                   END IF
+                   DO i=1,Parent % TYPE % NumberOfNodes
+                     IF( Parent % NodeIndexes(i) == ind) THEN
+                       k1 = Parent % DGIndexes(i)
+                       EXIT
+                     END IF
+                   END DO
+                   IF( k1 > 0 ) THEN
+                     IF(Var % Perm(k1) > 0) EXIT
+                   END IF
+                 END DO
+               END BLOCK
              END IF
              IF( k1 == 0 ) THEN
                CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
@@ -4249,6 +4411,48 @@ use spariterglobals
    END SUBROUTINE VarsToValuesOnNodes
  !------------------------------------------------------------------------------
 
+
+!-------------------------------------------------------------------------------------
+!> Check which variables actually are on nodal ones. 
+!> Didn't want to crowd the previous routine. 
+!-------------------------------------------------------------------------------------
+  SUBROUTINE VarsToValuesOnNodesWhich( VarCount, VarTable, IsNodalVar, count )
+!------------------------------------------------------------------------------
+     INTEGER :: Varcount
+     TYPE(VariableTable_t) :: VarTable(:)
+     INTEGER :: count
+     LOGICAL :: IsNodalVar(:)
+!------------------------------------------------------------------------------
+     INTEGER :: vari
+     TYPE(Variable_t), POINTER :: Var
+     LOGICAL :: Failed
+     
+     count = 0
+     
+     DO Vari = 1, VarCount       
+       Var => VarTable(Vari) % Variable
+
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         IsNodalVar(count) = .FALSE.
+       ELSE IF( SIZE(Var % Values) / Var % Dofs == 1 ) THEN
+         IsNodalVar(count+1:count+var % dofs) = .FALSE.
+         count = count + var % dofs
+       ELSE
+         IF ( Var % TYPE == Variable_on_gauss_points ) THEN
+           IsNodalVar(count+1:count+var%dofs) = .FALSE.
+           count = count + Var % DOFs
+         ELSE
+           IsNodalVar(count+1:count+var%dofs) = .TRUE.
+           count = count + Var % DOFs
+         END IF
+       END IF
+     END DO
+     
+   END SUBROUTINE VarsToValuesOnNodesWhich
+ !------------------------------------------------------------------------------
+
+   
    
  !------------------------------------------------------------------------------
  !> Some variable may be given on the IP points of the bullk only. In that case
@@ -4282,7 +4486,7 @@ use spariterglobals
      n = Element % TYPE % NumberOfNodes     
      npar = 0.0_dp
 
-     ! Go throug both potential parents. If we find the information in both then
+     ! Go through both potential parents. If we find the information in both then
      ! take on average. Otherwise use one-side interpolation. 
      DO ipar = 1,2 
        IF( ipar == 1 ) THEN
@@ -4325,12 +4529,232 @@ use spariterglobals
    END FUNCTION InterpolateIPVariableToBoundary
 !------------------------------------------------------------------------------
 
+#if 0
+!------------------------------------------------------------------------------
+!> Get field values (one or seveal) at the given point. The point may be either
+!> given by basis functions, local coordinates or node. This is definitely not
+!> gauss point usually so we cannot use that information directly. 
+!> Works with different types of fields.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetPointSolution( Var, Element, Basis, node, Found, &
+       Mode, dof  ) RESULT ( Val )
+     
+     TYPE(VariableHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: dof
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: Val
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: i,j, k, n
+     INTEGER, POINTER :: Indexes(:)
+     LOGICAL :: SameElement
+
+
+     No = 0
+     IF( .NOT. ASSOCIATED( Var ) ) RETURN
+
+
+     DoEigen = .FALSE.
+     IF( PRESENT( NoEigen ) ) THEN       
+       IF( NoEigen > 0 ) THEN
+         IF( .NOT. ASSOCIATED( Var % EigenValues ) ) THEN
+           CALL Fatal('ListGetPointSolution','Eigenvalues not associated')
+         END IF
+         cValues => Var % EigenVectors(NoEigen,:)
+         comps = 1
+         dofs = Var % Dofs
+         IF( PRESENT( Var2 ) ) THEN
+           IF( ASSOCIATED( Var2 ) ) cValues2 = Var2 % EigenVectors(NoEigen,:)
+           comps = 2
+           IF( PRESENT( Var3 ) ) THEN
+             IF( ASSOCIATED( Var3 ) ) cValues3 = Var3 % EigenVectors(NoEigen,:)
+             comps = 3
+           END IF
+         END IF
+         DoEigen = .TRUE.
+       END IF
+     END IF
+
+     DoModes = .FALSE.
+     IF( PRESENT( NoMode ) ) THEN       
+       IF( NoMode > 0 ) THEN
+         IF( .NOT. ASSOCIATED( Var % ConstraintModes ) ) THEN
+           CALL Fatal('ListGetPointSolution','ConstraintModes not associated')
+         END IF
+         Values => Var % ConstraintModes(NoMode,:)
+         comps = 1
+         dofs = Var % Dofs
+         IF( PRESENT( Var2 ) ) THEN
+           IF( ASSOCIATED( Var2 ) ) Values2 = Var2 % ConstraintModes(NoMode,:)
+           comps = 2
+           IF( PRESENT( Var3 ) ) THEN
+             IF( ASSOCIATED( Var3 ) ) Values3 = Var3 % ConstraintModes(NoMode,:)
+             comps = 3
+           END IF
+         END IF
+         DoModes = .TRUE.
+       END IF
+     END IF
+     
+     IF(.NOT. ( DoEigen .OR. DoModes ) ) THEN     
+       Values => Var % Values
+       comps = 1
+       dofs = Var % Dofs
+       IF( PRESENT( Var2 ) ) THEN
+         IF( ASSOCIATED( Var2 ) ) Values2 = Var2 % Values
+         comps = 2
+         IF( PRESENT( Var3 ) ) THEN
+           IF( ASSOCIATED( Var3 ) ) Values3 = Var3 % Values
+           comps = 3
+         END IF
+       END IF
+     END IF
+
+     EdgeBasis = ( Var % TYPE == variable_on_edges )
+     DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
+     NodalVar = ( Var % TYPE == variable_on_nodes ) 
+     IpVar = ( Var % TYPE == variable_on_gauss_points )
+     ElemVar = ( Var % TYPE == Variable_on_elements ) 
+     pElem = .FALSE.
+     
+     ! Elemental variable is easy - no basis functions needed, treat it 1st. 
+     IF( ElemVar ) THEN
+       j = Var % Perm( pElement % ElementIndex ) 
+       IF( j == 0 ) RETURN             
+
+       IF( dofs == 1 ) THEN
+         vals(1) = Values( j )
+         IF(comps >= 2) vals(2) = Values2( j ) 
+         IF(comps >= 3) vals(3) = Values3( j ) 
+         No = comps
+       ELSE IF( dof > 0 ) THEN
+         vals(1) = Values( dofs*(j-1) + dof )
+         No = 1
+       ELSE
+         vals(1:dofs) = Values( dofs*(j-1)+1:dofs*j)
+         No = dofs 
+       END IF
+     END IF
+
+
+     !  Edge basis may have different variations 
+     IF( EdgeBasis ) THEN
+       IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
+         PiolaVersion = .TRUE.
+       ELSE
+         PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
+       END IF
+       np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+       stat = ElementInfo( Element, Nodes, u, v, w, &
+           detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
+           RotBasis = RotWBasis, USolver = Var % Solver)       
+       IF( ASSOCIATED( Var % Solver ) ) THEN
+         nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
+       ELSE
+         nd = GetElementDOFs( Indexes, Element )  
+       END IF
+       pToIndexes => Indexes
+     
+     ELSE IF( NodalVar ) THEN
+       n = Element % TYPE % NumberOfNodes                       
+       IF( ASSOCIATED( Var % Solver ) ) THEN
+         nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
+       ELSE
+         nd = GetElementDOFs( Indexes, Element )  
+       END IF
+       IF(nd > n) THEN
+         pElem = isActivePElement(Element,Var % Solver)
+       END IF
+       pToIndexes => Indexes
+       
+     ELSE IF( DgVar ) THEN
+       PtoIndexes => Element % DgIndexes
+     END IF
+
+       
+       
+       
+
+
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Var % TYPE == Variable_on_gauss_points ) THEN
+       IF( .NOT. PRESENT( GaussPoint ) ) THEN
+         CALL Fatal('ListGetElementScalarSolution','Argument "GaussPoint" required as an argument!')
+       END IF
+       
+       j = pElement % ElementIndex
+
+       IF( .NOT. SameElement ) THEN
+         n = Handle % Perm(j+1) - Handle % Perm(j)
+         Handle % ActiveElement = ( n > 0 )        
+         IF( n == 0 ) RETURN
+       END IF
+         
+       k = Handle % Perm(j) + GaussPoint
+
+       IF( Handle % Dofs == 1 ) THEN
+         val = Handle % Values( k )
+       ELSE         
+         val = Handle % Values( Handle % Dofs * (k-1) + dof )
+       END IF
+
+     
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('ListGetElementScalarSolution',&
+             'Argument "Basis" required for non gauss-point variable!')
+       END IF
+       
+       IF( .NOT. SameElement ) THEN
+         IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+           n = pElement % TYPE % NumberOfNodes
+           Indexes => pElement % DGIndexes
+           IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+             CALL Fatal('ListGetElementScalarSolution','DGIndexes not associated!')
+           END IF
+         ELSE
+           n = pElement % TYPE % NumberOfNodes
+           Indexes => pElement % NodeIndexes
+         END IF
+
+         Handle % n = n         
+         
+         IF( ASSOCIATED( Handle % Perm ) ) THEN
+           Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+           Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
+           IF(.NOT. Handle % ActiveElement ) RETURN
+         ELSE
+           Handle % Indexes(1:n) = [(i,i=1,4)]
+           Handle % ActiveElement = .TRUE.
+         END IF
+       END IF
+
+       n = Handle % n
+       IF( Handle % Dofs == 1 ) THEN
+         val = SUM( Basis(1:n) * Handle % Values( Handle % Indexes(1:n) ) )
+       ELSE
+         val = SUM( Basis(1:n) * Handle % Values( &
+             Handle % dofs*(Handle % Indexes(1:n)-1)+dof ) )
+       END IF
+
+     END IF
+              
+     IF( PRESENT( Found ) ) Found = .TRUE.
+     
+   END FUNCTION ListGetElementScalarSolution
+!------------------------------------------------------------------------------
+#endif
+
    
 !-------------------------------------------------------------------------------------
 !> Given a table of variables return the variable values on the gauss point.
 !> This only deals with the gauss point variables, all other are already treated. 
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis )
+  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis, intvarcount)
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
@@ -4338,16 +4762,21 @@ use spariterglobals
      REAL(KIND=dp) :: T(:)
      INTEGER, OPTIONAL :: ind
      REAL(KIND=dp), OPTIONAL :: Basis(:)
+     INTEGER, OPTIONAL :: intvarcount 
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
      
-     count = 0
      Failed = .FALSE.
-     
-     DO Vari = 1, VarCount 
+     vari0 = 0
+     IF( PRESENT(intvarcount)) THEN
+       vari0 = intvarcount
+     END IF
+     count = vari0  
+
+     DO Vari = vari0+1, VarCount 
        Var => VarTable(Vari) % Variable
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
@@ -4378,7 +4807,7 @@ use spariterglobals
                CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
              END IF
              IF(.NOT. PRESENT(Basis) ) THEN
-               CALL Fatal('VarsToValuesOnIps','We need the "Basis" paremeter to map stuff to boundaries!')
+               CALL Fatal('VarsToValuesOnIps','We need the "Basis" parameter to map stuff to boundaries!')
              END IF             
              T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
            ELSE
@@ -4693,7 +5122,7 @@ use spariterglobals
        CALL ListPushActiveName(Name)
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
-           SomeAtIp, SomeAtNodes, AllGlobal )
+           SomeAtIp, SomeAtNodes, AllGlobal, 0 )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -4742,13 +5171,8 @@ use spariterglobals
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
-       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-       WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-       k = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k )
-
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
-           VarTable, SomeAtIp, SomeAtNodes, AllGlobal )
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -4763,11 +5187,13 @@ use spariterglobals
          IF ( .NOT. ptr % LuaFun ) THEN
 #endif
            IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
-             DO l=1,j
-               WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-               k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
-             END DO
+             IF(j==0) THEN
+               WRITE(cmd,*) 'tx=0.0'
+             ELSE
+               WRITE(cmd,*) 'tx=(',T(1:j),')'
+             END IF             
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
@@ -4775,7 +5201,6 @@ use spariterglobals
              READ( tmp_str(1:k1), * ) F(i)
              F(i) = Ptr % Coeff * F(i)
            END IF
-
 #ifdef HAVE_LUA
          ELSE
            CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
@@ -4849,14 +5274,20 @@ use spariterglobals
      REAL(KIND=dp), OPTIONAL :: dFdx, eps
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr, prevptr, derptr
      REAL(KIND=dp) :: T(1)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
-     LOGICAL :: AllGlobal
+     LOGICAL :: AllGlobal, GotIt
      REAL(KIND=dp) :: xeps, F2, F1
 !------------------------------------------------------------------------------
 
+     SAVE prevptr, derptr
+
+     IF(.NOT. PRESENT(x) ) THEN
+       CALL Fatal('ListGetFun','Variable "x" is in fact compulsory!')
+     END IF
+     
      F = 0.0_dp
      IF( PRESENT( Name ) ) THEN
        ptr => ListFind(List,Name,Found)
@@ -4874,6 +5305,15 @@ use spariterglobals
      k = 0
      T(1) = x
 
+     ! See if we have analytical derivative available.
+     ! This is list-specific, hence memorize it. 
+     IF( PRESENT( DfDx) ) THEN
+       IF( .NOT. ASSOCIATED( Ptr, PrevPtr ) ) THEN
+         PrevPtr => Ptr
+         derPtr => ListFind(List,TRIM(Name)//' Derivative',GotIt )       
+       END IF
+     END IF
+       
      SELECT CASE(ptr % TYPE)
 
      CASE( LIST_TYPE_CONSTANT_SCALAR )
@@ -4897,18 +5337,27 @@ use spariterglobals
          F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
 
          ! Compute derivative at the point if requested
-         ! Numerical central difference scheme is used for accuracy. 
          IF( PRESENT( dFdx ) ) THEN
-           IF( PRESENT( eps ) ) THEN
-             xeps = eps
+           IF( ASSOCIATED( derPtr ) ) THEN
+             ! Analytical derivative available in another UDF
+             IF(derptr % PROCEDURE /= 0) THEN
+               dFdx = ExecRealFunction( derptr % PROCEDURE, CurrentModel, k, T(1) )
+             ELSE
+               CALL Fatal('ListGetFun','Derivative should be UDF if primary keyword is!')
+             END IF
            ELSE
-             xeps = 1.0d-8
+             ! Numerical central difference scheme is used for accuracy. 
+             IF( PRESENT( eps ) ) THEN
+               xeps = eps
+             ELSE
+               xeps = 1.0d-8
+             END IF
+             T(1) = x - xeps
+             F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+             T(1) = x + xeps
+             F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+             dFdx = ( F2 - F1 ) / (2*xeps)
            END IF
-           T(1) = x - xeps
-           F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
-           T(1) = x + xeps
-           F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
-           dFdx = ( F2 - F1 ) / (2*xeps)
          END IF
          CALL ListPopActiveName()
        ELSE
@@ -4929,69 +5378,256 @@ use spariterglobals
 
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
-       WRITE( cmd, * ) 'tx=', X
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
        
-       cmd = ptr % CValue
-       k1 = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k1 )
-       READ( tmp_str(1:k1), * ) F
-
-       ! This is really expensive. 
-       ! For speed also one sided difference could be considered. 
-       IF( PRESENT( dFdx ) ) THEN
-         IF( PRESENT( eps ) ) THEN
-           xeps = eps
-         ELSE
-           xeps = 1.0d-8
-         END IF
-         
-         WRITE( cmd, * ) 'tx=', x-xeps
+#ifdef HAVE_LUA
+       IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+         WRITE( cmd, * ) 'tx=', X
          k1 = LEN_TRIM(cmd)
          CALL matc( cmd, tmp_str, k1 )
          
          cmd = ptr % CValue
          k1 = LEN_TRIM(cmd)
          CALL matc( cmd, tmp_str, k1 )
-         READ( tmp_str(1:k1), * ) F1
-         
-         WRITE( cmd, * ) 'tx=', x+xeps
-         k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
-         
-         cmd = ptr % CValue
-         k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
-         READ( tmp_str(1:k1), * ) F2
-
-         dFdx = (F2-F1) / (2*xeps)
+         READ( tmp_str(1:k1), * ) F
+#ifdef HAVE_LUA
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T, F, 1 )
        END IF
+#endif
+         
+       IF( PRESENT( dFdx ) ) THEN
+         IF( ASSOCIATED( derPtr ) ) THEN
+           ! Compute also derivative from MATC expression
+           IF( derPtr % TYPE ==  LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
+#ifdef HAVE_LUA
+             IF ( .NOT. derPtr % LuaFun ) THEN
+#endif       
+               cmd = derptr % CValue 
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               READ( tmp_str(1:k1), * ) dFdx
+#ifdef HAVE_LUA
+             ELSE
+               CALL ElmerEvalLua(LuaState, derPtr, T, dFdx, 1 )
+             END IF
+#endif               
+           ELSE
+             CALL Fatal('ListGetFun','Derivative should be given the same was as the primary keyword!')
+           END IF
+         ELSE           
+           ! This is really expensive. 
+           ! For speed also one sided difference could be considered. 
+           IF( PRESENT( eps ) ) THEN
+             xeps = eps
+           ELSE
+             xeps = 1.0d-8
+           END IF
 
+#ifdef HAVE_LUA
+           IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+             WRITE( cmd, * ) 'tx=', x-xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F1
+
+             WRITE( cmd, * ) 'tx=', x+xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F2
+#ifdef HAVE_LUA
+           ELSE
+             T(1) = x-xeps
+             CALL ElmerEvalLua(LuaState, derPtr, T, F1, 1 )
+             T(1) = x+xeps
+             CALL ElmerEvalLua(LuaState, derPtr, T, F2, 1 )
+             T(1) = x
+           END IF
+#endif             
+           dFdx = (F2-F1) / (2*xeps)
+         END IF
+       END IF
+         
      CASE DEFAULT
        CALL Fatal('ListGetFun','LIST_TYPE not implemented!')
 
      END SELECT
 
      IF ( PRESENT( minv ) ) THEN
-        IF ( F < minv ) THEN
-           WRITE( Message,*) 'Given VALUE ', F, ' for property: ', '[', TRIM(Name),']', &
-               ' smaller than given minimum: ', minv
-           CALL Fatal( 'ListGetFun', Message )
-        END IF
+       IF ( F < minv ) THEN
+         WRITE( Message,*) 'Given value ', F, ' for property: ', '[', TRIM(Name),']', &
+             ' smaller than given minimum: ', minv
+         CALL Fatal( 'ListGetFun', Message )
+       END IF
      END IF
-
+     
      IF ( PRESENT( maxv ) ) THEN
-        IF ( F > maxv ) THEN
-           WRITE( Message,*) 'Given VALUE ', F, ' for property: ', '[', TRIM(Name),']', &
-               ' larger than given maximum ', maxv
-           CALL Fatal( 'ListGetFun', Message )
-        END IF
+       IF ( F > maxv ) THEN
+         WRITE( Message,*) 'Given value ', F, ' for property: ', '[', TRIM(Name),']', &
+             ' larger than given maximum ', maxv
+         CALL Fatal( 'ListGetFun', Message )
+       END IF
      END IF
-
+     
    END FUNCTION ListGetFun
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetFunVec( List,Name,x,dofs,Found,dFdx,eps ) RESULT(F)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     REAL(KIND=dp), OPTIONAL :: x(*)
+     INTEGER, OPTIONAL :: dofs
+     REAL(KIND=dp) :: f
+     CHARACTER(LEN=*), OPTIONAL  :: Name
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), OPTIONAL :: dFdx(*), eps
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     TYPE(ValueListEntry_t), POINTER :: ptr, prevptr, derptr
+     REAL(KIND=dp) :: T(10)
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize
+     CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
+     LOGICAL :: GotIt
+     REAL(KIND=dp) :: xeps, F2, F1
+!------------------------------------------------------------------------------
+
+     SAVE prevptr, derptr
+
+     IF(.NOT. PRESENT(x) ) THEN
+       CALL Fatal('ListGetFunVec','Variable "x" is in fact compulsory!')
+     END IF
+     
+     F = 0.0_dp
+     IF( PRESENT( Name ) ) THEN
+       ptr => ListFind(List,Name,Found)
+       IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     ELSE
+       IF(.NOT.ASSOCIATED(List)) RETURN
+       ptr => List % Head
+       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+         CALL Warn('ListGetFunVec','List entry not associated')
+         RETURN
+       END IF
+     END IF
+
+     ! Node number not applicable, hence set to zero
+     k = 0
+     T(1:dofs) = x(1:dofs)
+       
+     SELECT CASE(ptr % TYPE)
+
+     CASE( LIST_TYPE_VARIABLE_SCALAR )
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         !CALL ListPushActiveName(name)
+         F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+         
+         ! Compute derivative at the point if requested
+         IF( PRESENT( dFdx ) ) THEN
+           ! Numerical central difference scheme is used for accuracy. 
+           IF( PRESENT( eps ) ) THEN
+             xeps = eps
+           ELSE
+             xeps = 1.0d-6
+           END IF
+           
+           DO i=1,dofs
+             T(i) = x(i) - xeps
+             F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+             T(i) = x(i) + xeps
+             F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:dofs) )
+             dFdx(i) = ( F2 - F1 ) / (2*xeps)
+             T(i) = x(i)
+           END DO
+         END IF
+         !CALL ListPopActiveName()
+       END IF
+
+
+     CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+#ifdef HAVE_LUA
+       IF ( .NOT. ptr % LuaFun ) THEN
+#endif       
+         WRITE( cmd, * ) 'tx=(', X(1:dofs),')'
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) F
+#ifdef HAVE_LUA
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F, dofs )
+       END IF
+#endif
+       
+       IF( PRESENT( dFdx ) ) THEN
+         ! For speed also one sided difference could be considered. 
+         IF( PRESENT( eps ) ) THEN
+           xeps = eps
+         ELSE
+           xeps = 1.0d-6
+         END IF
+         DO i=1,dofs
+#ifdef HAVE_LUA
+           IF ( .NOT. ptr % LuaFun ) THEN
+#endif                  
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)-xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F1
+
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)+xeps
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) F2
+
+             ! Revert back to original value
+             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)
+#ifdef HAVE_LUA
+           ELSE
+             T(i) = T(i) - eps
+             CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F1, dofs )
+             T(i) = T(i) + 2*eps
+             CALL ElmerEvalLua(LuaState, ptr, T(1:dofs), F2, dofs )
+             T(i) = T(i) - eps             
+           END IF
+#endif
+           dFdx(i) = (F2-F1) / (2*xeps)
+         END DO
+       END IF
+         
+     CASE DEFAULT
+       CALL Fatal('ListGetFunVec','LIST_TYPE not implemented!')
+
+     END SELECT
+
+   END FUNCTION ListGetFunVec
+!------------------------------------------------------------------------------
+
+
+
+   
    RECURSIVE SUBROUTINE ListInitHandle( Handle )
 
      TYPE(ValueHandle_t) :: Handle
@@ -5041,7 +5677,7 @@ use spariterglobals
 !------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
        DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
-       FoundSomewhere,InitIm,InitVec3D)
+       FoundSomewhere,InitIm,InitVec3D,DummyCount)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -5053,7 +5689,8 @@ use spariterglobals
      LOGICAL, OPTIONAL :: EvaluateAtIp
      LOGICAL, OPTIONAL :: FoundSomewhere
      LOGICAL, OPTIONAL :: InitIm
-     LOGICAL, OPTIONAL :: InitVec3D     
+     LOGICAL, OPTIONAL :: InitVec3D
+     INTEGER, OPTIONAL :: DummyCount
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
@@ -5061,12 +5698,17 @@ use spariterglobals
      TYPE(Model_t), POINTER :: Model
      REAL(KIND=dp)  :: val, Rvalue
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
-     LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Lvalue, FirstList, Found
+     LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Lvalue, FirstList, AllGlobal, Found
      REAL(KIND=dp), POINTER :: Basis(:)
      INTEGER, POINTER :: NodeIndexes(:)
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: GotIt, FoundSomewhere1, FoundSomewhere2
      !------------------------------------------------------------------------------
+
+     ! Number of internal variables that should be present on all function calls
+     IF( PRESENT( DummyCount ) ) THEN
+       Handle % IntVarCount = DummyCount
+     END IF
      
      IF( PRESENT( InitIm ) ) THEN
        IF( InitIm ) THEN
@@ -5272,8 +5914,16 @@ use spariterglobals
 
        ELSE IF( ValueType >= LIST_TYPE_CONSTANT_SCALAR .AND. &
            ValueType <= List_TYPE_CONSTANT_SCALAR_PROC ) THEN         
-         
-         IF(.NOT. ListCheckAllGlobal( Handle % ptr, name ) ) THEN
+
+         IF( PRESENT( DummyCount ) ) THEN
+           ! If we feed internal variables then the eveluation cannot be global
+           AllGlobal = .FALSE.
+         ELSE
+           ! If the matc depends on only global variable, like time, we know that the values
+           ! of the MATC functions will be constant for each list. 
+           AllGlobal = ListCheckAllGlobal( Handle % ptr, name ) 
+         END IF
+         IF(.NOT. AllGlobal ) THEN
            Handle % GlobalEverywhere = .FALSE.
            Handle % ConstantEverywhere = .FALSE.           
            IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
@@ -5645,12 +6295,13 @@ use spariterglobals
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      LOGICAL, OPTIONAL :: Found
      REAL(KIND=dp) :: RValue
-     
      LOGICAL :: IntFound
      LOGICAL :: lefttest = .TRUE. ! first start with left test 1st
      TYPE(Element_t), POINTER :: Parent, PElement
-
+     
      SAVE lefttest
+
+     !$omp threadprivate(lefttest)
 
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
@@ -5694,7 +6345,7 @@ use spariterglobals
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes,&
-       GaussPoint,Rdim,Rtensor) RESULT(Rvalue)
+       GaussPoint,Rdim,Rtensor,DummyVals) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      REAL(KIND=dp), OPTIONAL :: Basis(:)
@@ -5704,6 +6355,7 @@ use spariterglobals
      INTEGER, OPTIONAL :: GaussPoint
      INTEGER, OPTIONAL :: Rdim
      REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     REAL(KIND=dp), OPTIONAL :: DummyVals(:)
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
@@ -5711,10 +6363,9 @@ use spariterglobals
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z
-!     TYPE(VariableTable_t), SAVE :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
-     INTEGER :: i,j,k,j2,k2,k1,l,l0,l1,lsize,n,bodyid,id,n1,n2
+     INTEGER :: i,j,j0,k,j2,k2,k1,l,l0,l1,lsize,n,bodyid,id,n1,n2
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
      LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound, &
          ElementSame
@@ -5776,6 +6427,10 @@ use spariterglobals
          END IF
        ELSE
          ptr => Handle % ptr % head
+         IF (PRESENT(Rdim) .AND. PRESENT(Rtensor)) THEN 
+           Rdim = Handle % Rdim
+           Rtensor => Handle % Rtensor
+         END IF
        END IF
      ELSE IF( ListFound ) THEN
 
@@ -5790,9 +6445,9 @@ use spariterglobals
        END IF
 
        Handle % Ptr % Head => ptr
-       Handle % Rdim = ptr % Fdim
+       Handle % Rdim = ptr % Fdim 
        
-       IF( Handle % Rdim > 0 ) THEN
+       IF( ptr % Fdim > 0 ) THEN
          N1 = SIZE(ptr % FValues,1)
          N2 = SIZE(ptr % FValues,2)       
          IF ( ASSOCIATED( Handle % Rtensor) ) THEN
@@ -5828,7 +6483,7 @@ use spariterglobals
        IF( Ptr % DepNameLen > 0 ) THEN         
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal )
+             SomeAtIp, SomeAtNodes, AllGlobal, Handle % IntVarCount )
 
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
          
@@ -5857,6 +6512,24 @@ use spariterglobals
        RETURN
      END IF
 
+     ! This is a later addition by which we add internal variables to be dummy arguments in the
+     ! list when calling Real valued keywords. The number of internal keywords is set on the
+     ! initialization phase of the handle and it is fixed per handle. The hope is that we can
+     ! pass internally computed stuff to the user defined subroutines beyond the typical
+     ! use of existing fields. For example, we can internally compute normal velocity, magnetic
+     ! field, strain velocity etc. This is almost never used.
+     !------------------------------------------------------------------------------------------
+     IF( Handle % IntVarCount > 0 ) THEN
+       IF(.NOT. PRESENT( DummyVals ) ) THEN
+         CALL Fatal('ListGetElementReal','This handle expects '&
+             //TRIM(I2S(Handle % IntVarCount))//' internal variables: '//TRIM(Handle % Name))
+       END IF
+       IF( SIZE( DummyVals ) /= Handle % IntVarCount ) THEN
+         CALL Fatal('ListGetElementReal','We are expecting '&
+             //TRIM(I2S(Handle % IntVarCount))//' internal variables: '//TRIM(Handle % Name))
+       END IF
+       !Handle % VarTable(1:Handle % IntVarCount) % ParamValue = DummyVals
+     END IF
      
     
      ! Either evaluate parameter directly at IP, 
@@ -5865,7 +6538,7 @@ use spariterglobals
      !------------------------------------------------------------------
      IF( Handle % EvaluateAtIp ) THEN       
        IF(.NOT. PRESENT(Basis)) THEN
-         CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+         CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
        END IF
        
        ! If we get back to the same element than last time use the data already 
@@ -5887,8 +6560,9 @@ use spariterglobals
            n = CurrentModel % Mesh % MaxElementNodes
            ALLOCATE( Handle % Values(n) )
            Handle % Values = 0.0_dp
-           ALLOCATE( Handle % ParValues(MAX_FNC,n) )
+           ALLOCATE( Handle % ParValues(MAX_FNC,n), Handle % ParUsed(MAX_FNC) )
            Handle % ParValues = 0.0_dp
+           Handle % ParUsed = .FALSE.
            Handle % AllocationsDone = .TRUE.
          END IF
          
@@ -5900,48 +6574,61 @@ use spariterglobals
            n = PElement % TYPE % NumberOfNodes 
            NodeIndexes => PElement % NodeIndexes
          END IF
-           
-         IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
-             ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
 
-           ! These might not have been initialized if this is has mixed evaluation strategies           
+         ! First fetch the nodal fields so that they may be evaluated at IP's
+         IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+             ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR .OR. &
+             ptr % TYPE == LIST_TYPE_VARIABLE_TENSOR .OR. &
+             ptr % Type == LIST_TYPE_VARIABLE_TENSOR_STR ) THEN
+
+           ! These might not have been initialized if this has mixed evaluation strategies           
            IF(.NOT. ASSOCIATED( Handle % ParValues )) THEN
-             ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes) )
+             ALLOCATE( Handle % ParValues(MAX_FNC,CurrentModel % Mesh % MaxElementNodes), &
+                 Handle % ParUsed(MAX_FNC) )             
              Handle % ParValues = 0.0_dp
+             Handle % ParUsed = .FALSE.
            END IF
+
+           CALL VarsToValuesOnNodesWhich( Handle % VarCount, Handle % VarTable, &
+               Handle % ParUsed, j)
+           j0 = Handle % IntVarCount+1
            
            DO i=1,n
              k = NodeIndexes(i)
-
-             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+             
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
+                 k, T, j, Handle % IntVarCount )
              
              Handle % ParNo = j 
-             Handle % ParValues(1:j,i) = T(1:j)
+             Handle % ParValues(j0:j,i) = T(j0:j)
 
              ! If the dependency table includes just global values (such as time) 
              ! the values will be the same for all element entries.
              IF( Handle % GlobalInList ) EXIT
-            
            END DO
          END IF
          ParF => Handle % ParValues         
        END IF
 
-
+       
        SELECT CASE(ptr % TYPE)
          
        CASE( LIST_TYPE_VARIABLE_SCALAR )
-         
-         DO j=1,Handle % ParNo 
-           T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+
+         IF( Handle % IntVarCount > 0 ) THEN
+           T(1:Handle % IntVarCount) = DummyVals
+         END IF                 
+         j0 = Handle % IntVarCount+1
+         DO j=j0,Handle % VarCount
+           IF( Handle % ParUsed(j) ) THEN
+             T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+           END IF
          END DO
          
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
-           !IF( .NOT. PRESENT( GaussPoint ) ) THEN
-           !  CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
-           !END IF
-           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis )
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, &
+               GaussPoint, Basis, Handle % IntVarCount )           
          END IF         
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
@@ -5952,6 +6639,7 @@ use spariterglobals
              j = 0
            END IF
            !CALL ListPushActiveName(Handle % name)
+
            Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
            !CALL ListPopActiveName()
          ELSE
@@ -5961,34 +6649,40 @@ use spariterglobals
          
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
-         DO j=1,Handle % ParNo 
-           T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+         IF( Handle % IntVarCount > 0 ) THEN
+           T(1:Handle % IntVarCount) = DummyVals
+         END IF        
+         j0 = Handle % IntVarCount + 1
+         DO j=j0,Handle % ParNo 
+           IF( Handle % ParUsed(j) ) THEN
+             T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+           END IF
          END DO
          
          ! This one only deals with the variables on IPs, nodal ones have been fecthed already
          IF( Handle % SomeVarAtIp ) THEN
-           !IF( .NOT. PRESENT( GaussPoint ) ) THEN
-           !  CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
-           !END IF
-           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis )
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
+               Handle % IntVarCount)
          END IF
-                          
-         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-         WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-         k = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k )
          
-         DO l=1,Handle % ParNo
-           WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+         IF ( ptr % LuaFun ) THEN
+           CALL Fatal('ListGetElementReal','Variable scalar API for LUA not available!')
+         ELSE
+           IF( Handle % ParNo == 0 ) THEN
+             WRITE( cmd,*) 'tx=0.0'
+           ELSE
+             WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
+           END IF
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )             
+                              
+           cmd = ptr % CValue
            k1 = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k1 )
-         END DO
-         
-         cmd = ptr % CValue
-         k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
-         READ( tmp_str(1:k1), * ) RValue
-         
+           READ( tmp_str(1:k1), * ) RValue
+         END IF
+
+           
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
          IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -6002,7 +6696,106 @@ use spariterglobals
          ELSE
            CALL Fatal('ListGetElementReal','Constant scalar evaluation failed at ip!')
          END IF
+
+       CASE ( LIST_TYPE_CONSTANT_TENSOR )
+         
+         n1 = SIZE( Handle % Rtensor, 1 )
+         n2 = SIZE( Handle % Rtensor, 2 )
+         
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL Fatal('ListGetElementReal','No proper API exists for constant tensors?!')
+         ELSE
+           Handle % Rtensor(:,:) = ptr % FValues(:,:,1)
+         END IF
            
+         IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+           Handle % Rtensor = ptr % Coeff * Handle % Rtensor
+         END IF
+
+         
+       CASE( LIST_TYPE_VARIABLE_TENSOR )
+
+         IF( Handle % IntVarCount > 0 ) THEN
+           T(1:Handle % IntVarCount) = DummyVals
+         END IF                 
+         j0 = Handle % IntVarCount + 1
+         DO j=j0,Handle % ParNo 
+           IF( Handle % ParUsed(j) ) THEN
+             T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+           END IF
+         END DO
+         
+         ! This one only deals with the variables on IPs, nodal ones are fetched separately
+         IF( Handle % SomeVarAtIp ) THEN
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
+              Handle % IntVarCount )           
+         END IF
+         
+         ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           IF( PRESENT( GaussPoint ) ) THEN
+             j = -GaussPoint
+           ELSE
+             j = 0
+           END IF
+           !CALL ListPushActiveName(Handle % name)
+           CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
+               j, T, Handle % RTensor )
+           !CALL ListPopActiveName()
+         ELSE
+           IF( Handle % ParNo /= 1 ) THEN
+             CALL Fatal('ListGetElementReal','Table dependence only for one variable!')
+           END IF
+           DO j2=1,N1
+             DO k2=1,N2
+               Handle % Rtensor(j2,k2) = InterpolateCurve(ptr % TValues, ptr % FValues(j2,k2,:), &
+                   T(1), ptr % CubicCoeff )
+             END DO
+           END DO
+         END IF
+         
+       CASE( LIST_TYPE_VARIABLE_TENSOR_STR ) 
+
+         Handle % GlobalInList = .FALSE.
+
+         IF( Handle % IntVarCount > 0 ) THEN
+           T(1:Handle % IntVarCount) = DummyVals
+         END IF                 
+         j0 = Handle % IntVarCount + 1
+         DO j=j0,Handle % ParNo 
+           IF( Handle % ParUsed(j) ) THEN
+             T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+           END IF
+         END DO
+         
+         ! This one only deals with the variables on IPs, nodal ones are fetched separately
+         IF( Handle % SomeVarAtIp ) THEN
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
+               Handle % IntVarCount)           
+         END IF
+               
+#ifdef HAVE_LUA
+         IF ( .NOT. ptr % LuaFun ) THEN
+#endif
+           IF(Handle % ParNo == 0) THEN
+             WRITE(cmd,*) 'tx=0.0'
+           ELSE
+             WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
+           END IF           
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )             
+           
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) ((Handle % Rtensor(j,k),k=1,N2),j=1,N1)
+                 
+#ifdef HAVE_LUA
+         ELSE
+           CALL ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
+         END IF
+#endif
+         
        CASE DEFAULT
          
          CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip: '//TRIM(I2S(ptr % Type)))
@@ -6014,6 +6807,10 @@ use spariterglobals
        ! If we get back to the same element than last time use the data already 
        ! retrieved. If the element is new then get the data in every node of the 
        ! current element, or only in the 1st node if it is constant. 
+
+       IF( Handle % IntVarCount > 0 ) THEN
+         CALL Fatal('ListGetElementReal','It is assumed that dummy variables are given on IP points only!')
+       END IF
        
        IF( ASSOCIATED( PElement, Handle % Element ) ) THEN
          IF( PRESENT( Indexes ) ) THEN
@@ -6032,8 +6829,9 @@ use spariterglobals
            ALLOCATE( Handle % Values(n) )
            Handle % Values = 0.0_dp
            IF( Handle % SomewhereEvaluateAtIp .OR. Handle % EvaluateAtIp ) THEN
-             ALLOCATE( Handle % ParValues(MAX_FNC,n) )
+             ALLOCATE( Handle % ParValues(MAX_FNC,n), Handle % ParUsed(MAX_FNC) )
              Handle % ParValues = 0.0_dp
+             Handle % ParUsed = .FALSE.
            END IF             
            Handle % AllocationsDone = .TRUE.
          END IF
@@ -6065,71 +6863,69 @@ use spariterglobals
          CASE( LIST_TYPE_VARIABLE_SCALAR )
            !CALL ListPushActiveName(Handle % name)
 
-           T = 1.0_dp
-           
            DO i=1,n
              k = NodeIndexes(i)
 
-             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
+                 k, T, j )
 
-             IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
-               IF ( ptr % PROCEDURE /= 0 ) THEN
-                 F(i) = ptr % Coeff * &
-                     ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
-                     NodeIndexes(i), T )              
-               ELSE
-                 IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-                   WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                       '] not used consistently.'
-                   CALL Fatal( 'ListGetElementReal', Message )
-                   RETURN
-                 END IF
-                 F(i) = ptr % Coeff * &
-                     InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
-                     T(1), ptr % CubicCoeff )
-
-                 ! If the dependency table includes just global values (such as time) 
-                 ! the values will be the same for all element entries.
-                 IF( Handle % GlobalInList ) EXIT
-
+             IF ( ptr % PROCEDURE /= 0 ) THEN
+               F(i) = ptr % Coeff * &
+                   ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
+                   NodeIndexes(i), T )              
+             ELSE
+               IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+                 CALL Fatal('ListGetElementReal','Value type for property ['//TRIM(Handle % Name)// &
+                     '] not used consistently!')
                END IF
+               F(i) = ptr % Coeff * &
+                   InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                   T(1), ptr % CubicCoeff )
+
+               ! If the dependency table includes just global values (such as time) 
+               ! the values will be the same for all element entries.
+               IF( Handle % GlobalInList ) EXIT
+               
              END IF
            END DO
            !CALL ListPopActiveName()
            
          CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
-           
-           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-           WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )
-           
-           cmd = ptr % CValue
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )
-           READ( tmp_str(1:k), * ) F(1)
-           F(1) = ptr % Coeff * F(1) 
 
+           IF ( ptr % LuaFun ) THEN
+             CALL Fatal('ListGetElementReal','No routine for constant scalars LUA available!')
+           ELSE
+             TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+             WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
+             k = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k )
+             
+             cmd = ptr % CValue
+             k = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k )
+             READ( tmp_str(1:k), * ) F(1)
+             F(1) = ptr % Coeff * F(1) 
+           END IF
+
+             
          CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
-
-           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-           WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )
-           
+             
            DO i=1,n
              k = NodeIndexes(i)
-             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
+                 k, T, j )
 #ifdef HAVE_LUA
              IF ( .NOT. ptr % LuaFun ) THEN
 #endif
-
                IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
-                 DO l=1,j
-                   WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-                   k1 = LEN_TRIM(cmd)
-                   CALL matc( cmd, tmp_str, k1 )
-                 END DO
+                 
+                 IF(j==0) THEN
+                   WRITE(cmd,*) 'tx=0.0'
+                 ELSE
+                   WRITE(cmd,*) 'tx=(',T(1:j),')'
+                 END IF
+                 k1 = LEN_TRIM(cmd)
+                 CALL matc( cmd, tmp_str, k1 )
                  
                  cmd = ptr % CValue
                  k1 = LEN_TRIM(cmd)
@@ -6149,10 +6945,8 @@ use spariterglobals
          CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
            
            IF ( ptr % PROCEDURE == 0 ) THEN
-             WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                 '] not used consistently.'
-             CALL Fatal( 'ListGetElementReal', Message )
-             RETURN
+             CALL Fatal('ListGetElementReal','Value type for property ['//TRIM(Handle % Name)// &
+                 '] not used consistently!')
            END IF
            
            !CALL ListPushActiveName(Handle % name)
@@ -6189,19 +6983,11 @@ use spariterglobals
            END IF
            
            
-         CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
+         CASE( LIST_TYPE_VARIABLE_TENSOR )
 
            Handle % GlobalInList = .FALSE.
-           
-           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-           WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )
-           
+                        
            !CALL ListPushActiveName(Handle % name)
-           
-           !CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-           !    Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes, AllGlobal )
            
            IF( PRESENT( Indexes ) ) THEN
              n = SIZE( Indexes )
@@ -6212,34 +6998,15 @@ use spariterglobals
            END IF
 
            n1 = SIZE( Handle % Rtensor, 1 )
-           n2 = SIZE( Handle % Rtensor, 2 )
+           n2 = SIZE( Handle % Rtensor, 2 )           
            
            DO i=1,n
              k = NodeIndexes(i)
              
-             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
+                 k, T, j )
              
-             IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
-#ifdef HAVE_LUA
-             IF ( .not. ptr % LuaFun ) THEN
-#endif
-               DO l=1,j
-                 WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-                 k1 = LEN_TRIM(cmd)
-                 CALL matc( cmd, tmp_str, k1 )
-               END DO
-               
-               cmd = ptr % CValue
-               k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
-               READ( tmp_str(1:k1), * ) ((Handle % Rtensor(j,k),k=1,N2),j=1,N1)
-               
-#ifdef HAVE_LUA
-             ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
-             END IF
-#endif
-             ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
+             IF ( ptr % PROCEDURE /= 0 ) THEN
                CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
                    NodeIndexes(i), T, Handle % RTensor )
              ELSE
@@ -6256,20 +7023,70 @@ use spariterglobals
              IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
                Handle % Rtensor = ptr % Coeff * Handle % Rtensor
              END IF
+
+             ! If all variables are global the Rtensor will be constant
+             IF( Handle % GlobalInList ) EXIT
+
+             Handle % RtensorValues(1:n1,1:n2,i) = Handle % Rtensor(1:n1,1:n2)
+           END DO
+
+         CASE( LIST_TYPE_VARIABLE_TENSOR_STR )
+
+           Handle % GlobalInList = .FALSE.
+                        
+           !CALL ListPushActiveName(Handle % name)
+           
+           IF( PRESENT( Indexes ) ) THEN
+             n = SIZE( Indexes )
+             NodeIndexes => Indexes
+           ELSE
+             n = Handle % Element % TYPE % NumberOfNodes 
+             NodeIndexes => Handle % Element % NodeIndexes
+           END IF
+
+           n1 = SIZE( Handle % Rtensor, 1 )
+           n2 = SIZE( Handle % Rtensor, 2 )
+           
+           DO i=1,n
+             k = NodeIndexes(i)
              
-             IF( Handle % GlobalInList ) THEN
-               EXIT              
-             ELSE
-               DO j2=1,N1
-                 DO k2=1,N2               
-                   Handle % RtensorValues(j2,k2,i) = Handle % Rtensor(j2,k2)
-                 END DO
-               END DO
-             END IF
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
+                 k, T, j )
+             
+#ifdef HAVE_LUA
+             IF ( .NOT. ptr % LuaFun ) THEN
+#endif
                
+               IF(j==0) THEN
+                 WRITE(cmd,*) 'tx=0.0'
+               ELSE
+                 WRITE(cmd,*) 'tx=(',T(1:j),')'
+               END IF
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               
+               cmd = ptr % CValue
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               READ( tmp_str(1:k1), * ) ((Handle % Rtensor(j,k),k=1,N2),j=1,N1)
+               
+#ifdef HAVE_LUA
+             ELSE
+               CALL ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
+             END IF
+#endif             
+             !CALL ListPopActiveName()
+             
+             IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+               Handle % Rtensor = ptr % Coeff * Handle % Rtensor
+             END IF
+             
+             IF( Handle % GlobalInList ) EXIT              
+
+             Handle % RtensorValues(1:n1,1:n2,i) = Handle % Rtensor(1:n1,1:n2)
            END DO
          END SELECT
-
+         
        END IF
 
        
@@ -6278,7 +7095,7 @@ use spariterglobals
            RValue = F(1)
          ELSE
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
            ELSE
              RValue = SUM( Basis(1:n) * F(1:n) )
            END IF
@@ -6289,7 +7106,7 @@ use spariterglobals
 
          IF( .NOT. Handle % GlobalInList ) THEN
            IF(.NOT. PRESENT(Basis)) THEN
-             CALL Fatal('ListGetElementRealArray','Parameter > Basis < is required!')
+             CALL Fatal('ListGetElementReal','Parameter > Basis < is required for: '//TRIM(Handle % Name))
            ELSE
              DO j2=1,SIZE( Handle % RTensor, 1 )
                DO k2=1,SIZE( Handle % RTensor, 2 )               
@@ -6557,11 +7374,9 @@ use spariterglobals
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z, RValue
-!     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
-     !,varcount
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd, tmp_str
      LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
      TYPE(Element_t), POINTER :: PElement
@@ -6609,7 +7424,6 @@ use spariterglobals
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
 
-     
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
      IF( ListSame ) THEN
@@ -6654,16 +7468,19 @@ use spariterglobals
        IF( ptr % DepNameLen > 0 ) THEN
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal )
+             SomeAtIp, SomeAtNodes, AllGlobal, 0 )
          IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
-         IF( SomeAtIP ) Handle % EvaluateAtIp = .TRUE.
          IF( AllGlobal ) Handle % EvaluateAtIp = .FALSE.
          Handle % SomeVarAtIp = SomeAtIp 
        ELSE
          Handle % GlobalInList = ( ptr % PROCEDURE == 0 )
        END IF
 
+       IF( Handle % IntVarCount > 0 ) THEN
+         CALL Fatal('ListGetElementRealVec','Not yet implemented for dummy variables!')
+       END IF
+            
      ELSE
        IF( Handle % UnfoundFatal ) THEN
          CALL Fatal('ListGetElementRealVec','Could not find list for required keyword: '//TRIM(Handle % Name))
@@ -6673,8 +7490,9 @@ use spariterglobals
          ALLOCATE( Handle % Values(n) )
          Handle % Values = 0.0_dp
          IF( Handle % SomewhereEvaluateAtIp .OR. Handle % EvaluateAtIp ) THEN
-           ALLOCATE( Handle % ParValues(MAX_FNC,n) )
+           ALLOCATE( Handle % ParValues(MAX_FNC,n), Handle % ParUsed(MAX_FNC) )
            Handle % ParValues = 0.0_dp
+           Handle % ParUsed = .FALSE.
          END IF
          Handle % AllocationsDone = .TRUE.
        END IF
@@ -6693,7 +7511,7 @@ use spariterglobals
      IF( Handle % EvaluateAtIp ) THEN
 
        IF(.NOT. PRESENT(BasisVec)) THEN
-         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required!')
+         CALL Fatal('ListGetElementRealVec','Parameter > Basis < is required for: '//TRIM(Handle % Name))
        END IF
 
        IF( .NOT. Handle % AllocationsDone ) THEN
@@ -6711,7 +7529,9 @@ use spariterglobals
 
        
        IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
-           ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
+           ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR .OR. &
+           ptr % TYPE == LIST_TYPE_VARIABLE_TENSOR .OR. &
+           ptr % TYPE == LIST_TYPE_VARIABLE_TENSOR_STR ) THEN
 
          ! These might not have been initialized if this is has mixed evaluation strategies           
          IF(.NOT. ASSOCIATED( Handle % ParValues )) THEN
@@ -6767,17 +7587,6 @@ use spariterglobals
 
          ! there is no node index, so use zero
          node = 0 
-
-#ifdef HAVE_LUA
-         IF ( .not. ptr % LuaFun ) THEN
-#endif
-           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-           WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )         
-#ifdef HAVE_LUA
-         END IF
-#endif
          
          DO gp = 1, ngp          
            DO j=1,Handle % ParNo 
@@ -6790,17 +7599,18 @@ use spariterglobals
            END IF
 
 #ifdef HAVE_LUA
-           IF ( .not. ptr % LuaFun ) THEN
+           IF ( .NOT. ptr % LuaFun ) THEN
 #endif
-             DO l=1,Handle % ParNo
-               WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-               k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
-             END DO
+             IF( Handle % ParNo == 0 ) THEN
+               WRITE(cmd,*) 'tx=0.0'               
+             ELSE
+               WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
+             END IF               
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-
              CALL matc( cmd, tmp_str, k1 )
              READ( tmp_str(1:k1), * ) RValue
 
@@ -6926,32 +7736,23 @@ use spariterglobals
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
-#ifdef HAVE_LUA
-         IF ( .not. ptr % LuaFun ) THEN
-#endif
-           TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-           WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
-           k = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k )
-#ifdef HAVE_LUA
-         END IF
-#endif
-
          DO i=1,n
            k = NodeIndexes(i)
            
            CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
 
 #ifdef HAVE_LUA
-           IF ( .not. ptr % LuaFun ) THEN
+           IF ( .NOT. ptr % LuaFun ) THEN
 #endif
              IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
-               DO l=1,j
-                 WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-                 k1 = LEN_TRIM(cmd)
-                 CALL matc( cmd, tmp_str, k1 )
-               END DO
-
+               IF(j==0) THEN                 
+                 WRITE(cmd,*) 'tx=0.0'
+               ELSE
+                 WRITE(cmd,*) 'tx=(',T(1:j),')'
+               END IF
+               k1 = LEN_TRIM(cmd)
+               CALL matc( cmd, tmp_str, k1 )
+               
                cmd = ptr % CValue
                k1 = LEN_TRIM(cmd)
                CALL matc( cmd, tmp_str, k1 )
@@ -6994,7 +7795,9 @@ use spariterglobals
          Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
 
        CASE DEFAULT
-         CALL Fatal('ListGetElementRealVec','Impossible entry type: '//TRIM(I2S(ptr % Type)))
+         CALL Info('ListGetElementRealVec','This one implemented ONLY for "ListGetElementReal"',Level=3)
+         CALL Fatal('ListGetElementRealVec','Impossible entry type for "'&
+             //TRIM(Handle % Name)//'": '//TRIM(I2S(ptr % TYPE)))
          
        END SELECT
 
@@ -7018,7 +7821,7 @@ use spariterglobals
 !------------------------------------------------------------------------------     
      TYPE(ValueList_t), POINTER :: List
      TYPE(Element_t), POINTER :: PElement
-     LOGICAL :: ListSame, ListFound
+     LOGICAL :: ListSame, ListFound, LFound
      INTEGER :: id, BodyId
 !------------------------------------------------------------------------------
 
@@ -7052,20 +7855,17 @@ use spariterglobals
        IF( PRESENT( Found ) ) Found = Handle % Found 
        LValue = Handle % LValue
      ELSE IF( ListFound ) THEN
-       LValue = ListGetLogical( List, Handle % Name, Found, &
-           UnfoundFatal = Handle % UnfoundFatal  )
-       IF( .NOT. Found ) Lvalue = Handle % DefLValue
-       Handle % LValue = LValue       
-       IF(PRESENT(Found)) Handle % Found = Found 
+       LValue = ListGetLogical( List, Handle % Name, LFound, UnfoundFatal = Handle % UnfoundFatal )       
+       Handle % LValue = LValue
+       Handle % Found = LFound
+       IF(PRESENT(Found)) Found = .TRUE.
      ELSE     
        IF( Handle % UnfoundFatal ) THEN
          CALL Fatal('ListGetElementLogical','Could not find list for required keyword: '//TRIM(Handle % Name))
        END IF         
        Lvalue = Handle % DefLValue 
-       IF( PRESENT(Found) ) THEN
-         Found = .FALSE.
-         Handle % Found = .FALSE.
-       END IF
+       Handle % Found = .FALSE.
+       IF( PRESENT(Found) ) Found = .FALSE.
      END IF
                    
    END FUNCTION ListGetElementLogical
@@ -7295,14 +8095,13 @@ use spariterglobals
    END FUNCTION ListCompareElementString
 !------------------------------------------------------------------------------
 
-
      
 !------------------------------------------------------------------------------
 !> Initializes the variable handle in a similar manner as the keyword handle is
 !> initialized. This handle is more compact. Does not support p-fields or
 !> Hcurl & Hdiv fields yet. 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep, Found)
+   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep, Found )
 !------------------------------------------------------------------------------
      TYPE(VariableHandle_t) :: Handle
      CHARACTER(LEN=*), OPTIONAL  :: Name
@@ -7310,7 +8109,7 @@ use spariterglobals
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
      LOGICAL, OPTIONAL :: Found
-
+     
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
@@ -7867,11 +8666,11 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Gets a real array from the list by its name,
 !------------------------------------------------------------------------------
-   RECURSIVE SUBROUTINE ListGetRealArray( List,Name,F,N,NodeIndexes,Found )
+   RECURSIVE SUBROUTINE ListGetRealArray( List,Name,F,N,NodeIndexes,Found, UnfoundFatal)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp), POINTER :: F(:,:,:), G(:,:)
 !------------------------------------------------------------------------------
@@ -7885,8 +8684,14 @@ use spariterglobals
      LOGICAL :: AllGlobal
 !------------------------------------------------------------------------------
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
-
+     IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           CALL Fatal("ListGetConstRealArray","Failed to find: "//TRIM(Name))
+         END IF
+       END IF
+       RETURN
+     END IF
      
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
        CALL Fatal( 'ListGetRealArray', &
@@ -7924,11 +8729,7 @@ use spariterglobals
    
      
      CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
-       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
-       k = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k )
-
+         
        CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
@@ -7937,13 +8738,15 @@ use spariterglobals
 
          IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
 #ifdef HAVE_LUA
-           IF ( .not. ptr % LuaFun ) THEN
+           IF ( .NOT. ptr % LuaFun ) THEN
 #endif
-             DO l=1,j
-               WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
-               k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
-             END DO
+             IF(j==0) THEN
+               WRITE(cmd,*) 'tx=0.0'
+             ELSE               
+               WRITE(cmd,*) 'tx=(',T(1:j),')'
+             END IF
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
@@ -8069,11 +8872,7 @@ use spariterglobals
        END IF
      
      CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
-       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
-       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
-       k = LEN_TRIM(cmd)
-       CALL matc( cmd, tmp_str, k )
-
+         
        CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
@@ -8082,21 +8881,23 @@ use spariterglobals
 
          IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
 #ifdef HAVE_LUA
-           IF ( .not. ptr % LuaFun ) THEN
+           IF ( .NOT. ptr % LuaFun ) THEN
 #endif
-           DO l=1,j
-             WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             IF( j==0) THEN
+               WRITE(cmd,*) 'tx=0.0'               
+             ELSE
+               WRITE(cmd,*) 'tx=(',T(1:j),')'
+             END IF
              k1 = LEN_TRIM(cmd)
              CALL matc( cmd, tmp_str, k1 )
-           END DO
 
-           cmd = ptr % CValue
-           k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
+             cmd = ptr % CValue
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+             READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
 #ifdef HAVE_LUA
            ELSE
-             call ElmerEvalLuaV(LuaState, ptr, T, G(:,i), j)
+             CALL ElmerEvalLuaV(LuaState, ptr, T, G(:,i), j)
            END IF
 #endif
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -8129,9 +8930,9 @@ use spariterglobals
        G = 0.0d0
        DO i=1,N1
          IF ( PRESENT( Found ) ) THEN
-           G(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
+           G(i,1:n) = ListGetReal( List,Name,N,NodeIndexes,Found )
          ELSE
-           G(i,:) = ListGetReal( List,Name,N,NodeIndexes )
+           G(i,1:n) = ListGetReal( List,Name,N,NodeIndexes )
          END IF
        END DO
      END SELECT
@@ -9005,6 +9806,7 @@ use spariterglobals
     END IF
 
   END SUBROUTINE CreateListForSaving
+
   
 
 !------------------------------------------------------------------------------
@@ -9204,16 +10006,18 @@ use spariterglobals
       END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the given element...
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
       IF(PRESENT(UElement)) THEN
         Element => UElement
-        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-        w = 2 * PI * ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-        IF(.NOT. GotIt) w = ListGetCReal( &
-            CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF( GotIt ) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
       END IF
     END IF
 
@@ -9230,27 +10034,34 @@ use spariterglobals
         CurrentModel % Solver % Values,'Angular Frequency',GotIt)
 
     ! It seems that the equation section is used to allow compliance with ElmerGUI
+    ! If element given, don't do this as it has been done before already.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-       elem_id = CurrentModel % Solver % ActiveElements(1)
-       Element => CurrentModel % Elements(elem_id)
-       eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
-       w = 2 * PI * ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
-       IF(.NOT. GotIt) w = ListGetCReal( &
-           CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+        w = 2 * PI * ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      END IF
     END IF
 
-    ! Check also the material section...
+    ! Check also the material section of the 1st element, if not element given.
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
-      elem_id = CurrentModel % Solver % ActiveElements(1)
-      Element => CurrentModel % Elements(elem_id)
-      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-      w = 2 * PI * ListGetCReal( &
-        CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+      IF(.NOT. PRESENT(UElement)) THEN
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material',GotIt)
+        IF(GotIt) THEN
+          w = 2 * PI * ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+          IF(.NOT. GotIt) w = ListGetCReal( &
+              CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        END IF
+      END IF
     END IF
 
     IF( PRESENT( Found ) ) THEN
@@ -9276,7 +10087,7 @@ use spariterglobals
 !------------------------------------------------------------------------------
    END FUNCTION ListGetSolverParams
 !------------------------------------------------------------------------------
-   
+
 #ifdef HAVE_LUA
 !-------------------------------------------------------------------------------
 !> evaluates lua string to real array 
@@ -9293,8 +10104,8 @@ SUBROUTINE ElmerEvalLuaT(L, ptr, T, F, varcount)
 
   L % tx(1:varcount) = T(1:varcount) ! this should be superfluous
   call lua_exec_fun(L, ptr % cvalue, 0, size(F,1)*size(F,2))
-
   CALL lua_poptensor(L, F)
+  
 !-------------------------------------------------------------------------------
 END SUBROUTINE
 !-------------------------------------------------------------------------------
@@ -9314,8 +10125,8 @@ SUBROUTINE ElmerEvalLuaV(L, ptr, T, F, varcount)
 
   L % tx(1:varcount) = T(1:varcount) ! this should be superfluous
   call lua_exec_fun(L, ptr % cvalue, 0, size(F,1))
-
   CALL lua_popvector(L, F)
+  
 !-------------------------------------------------------------------------------
 END SUBROUTINE
 !-------------------------------------------------------------------------------
@@ -9336,10 +10147,12 @@ SUBROUTINE ElmerEvalLuaS(L, ptr, T, F, varcount)
   L % tx(1:varcount) = T(1:varcount) ! this should be superfluous
   call lua_exec_fun(L, ptr % cvalue, 0, 1)
   F = lua_popnumber(LuaState)
+  
 !-------------------------------------------------------------------------------
 END SUBROUTINE
 !-------------------------------------------------------------------------------
 #endif
+
 
 #ifdef DEVEL_LISTCOUNTER
    

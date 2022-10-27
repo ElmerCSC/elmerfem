@@ -263,7 +263,7 @@ CONTAINS
         IF (graphOk) THEN
             WRITE (*,'(A)') 'Dual graph matches Metis output'
         ELSE
-            WRITE (*,*) 'ERROR: Dual graph noes not match Metis output'
+            WRITE (*,*) 'ERROR: Dual graph nodes do not match Metis output'
         END IF
 
         ! Free memory allocated by Metis

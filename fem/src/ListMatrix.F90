@@ -212,7 +212,7 @@ CONTAINS
       DO WHILE(ASSOCIATED(P))
         j = j + 1
         Cols(j)   = P % Index
-        Values(j) = P % Value
+        Values(j) = P % Val
         P => P % Next
       END DO
     END DO
@@ -282,7 +282,7 @@ CONTAINS
           CList % Next => Null()
         END IF
 
-        CList % Value = A % Values(j)
+        CList % Val = A % Values(j)
         CList % Index = A % Cols(j)
         A % ListMatrix(i) % Degree = A % ListMatrix(i) % Degree + 1
       END DO
@@ -318,7 +318,12 @@ CONTAINS
     A % Rows => Null()  
     A % Cols => Null()  
     A % Diag => Null()  
-    A % Values => Null()  
+    A % Values => NULL()
+
+    ! If the CRS matrix had a specific structure it is probably spoiled when going into
+    ! free form matrix structure.
+    A % ndeg = -1 
+    
     CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
@@ -489,7 +494,7 @@ CONTAINS
         CALL Fatal('List_GetMatrixEntry','Could not allocate entry!')
      END IF
 
-     ListEntry % Value = REAL(0,dp)
+     ListEntry % Val = REAL(0,dp)
      ListEntry % INDEX = ind
      ListEntry % Next => next
 !-------------------------------------------------------------------------------
@@ -602,24 +607,24 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_AddToMatrixElement( List,k1,k2,Value,SetValue )
+   SUBROUTINE List_AddToMatrixElement( List,k1,k2,Val,SetVal )
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     REAL(KIND=dp) :: Value
-     LOGICAL, OPTIONAL :: SetValue 
+     REAL(KIND=dp) :: Val
+     LOGICAL, OPTIONAL :: SetVal 
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
      LOGICAL :: Set     
 
      Set = .FALSE.
-     IF( PRESENT(SetValue)) Set = SetValue
+     IF( PRESENT(SetVal)) Set = SetVal
 
      Entry => List_GetMatrixIndex(List,k1,k2)
      IF ( Set ) THEN
-       Entry % Value = Value
+       Entry % Val = Val
      ELSE
-       Entry % Value = Entry % Value + Value
+       Entry % Val = Entry % Val + Val
      END IF
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_AddToMatrixElement
@@ -641,30 +646,30 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_SetMatrixElement( List,k1,k2,Value,SetValue )
+   SUBROUTINE List_SetMatrixElement( List,k1,k2,Val,SetVal )
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
      TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
-     REAL(KIND=dp) :: Value
-     LOGICAL, OPTIONAL :: SetValue 
+     REAL(KIND=dp) :: Val
+     LOGICAL, OPTIONAL :: SetVal 
 
-     CALL List_AddToMatrixElement( List,k1,k2,Value,.TRUE.)
+     CALL List_AddToMatrixElement( List,k1,k2,Val,.TRUE.)
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_SetMatrixElement
 !-------------------------------------------------------------------------------
 
 
 !-------------------------------------------------------------------------------
-   FUNCTION List_GetMatrixElement( List,k1,k2 ) RESULT ( Value )
+   FUNCTION List_GetMatrixElement( List,k1,k2 ) RESULT ( Val )
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
      TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
-     REAL(KIND=dp) :: Value
+     REAL(KIND=dp) :: Val
 !-------------------------------------------------------------------------------
 
-     Value = 0.0_dp
+     Val = 0.0_dp
 
      IF ( .NOT. ASSOCIATED(List) ) RETURN
      IF ( k1>SIZE(List) ) RETURN
@@ -673,7 +678,7 @@ CONTAINS
 
      NULLIFY( Prev )
      DO WHILE( ASSOCIATED(CList) )
-        IF ( Clist % INDEX == k2 ) Value = CList % Value
+        IF ( Clist % INDEX == k2 ) Val = CList % Val
         IF ( Clist % INDEX >= k2 ) RETURN
         Prev  => Clist
         CList => CList % Next
@@ -708,7 +713,7 @@ CONTAINS
      END IF
      
      DO WHILE( ASSOCIATED(CList) )
-       Clist % Value = 0.0_dp
+       Clist % Val = 0.0_dp
        CList => CList % Next
      END DO
 !-------------------------------------------------------------------------------
@@ -757,8 +762,8 @@ CONTAINS
      
      DO WHILE( ASSOCIATED(CList) )
        k2 = Clist % Index
-       Val = Clist % Value
-       Clist % VALUE = d * Val 
+       Val = Clist % Val
+       Clist % VAL = d * Val 
 
 ! This could be made more optimal as all the entries are for the same row!
        CALL List_AddToMatrixElement(List,n2,k2,c*Val)
@@ -828,7 +833,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Value
+     REAL(KIND=dp) :: Val
      INTEGER :: i,j,k,l,c,Row,Col
      
      DO i=1,n
@@ -839,8 +844,8 @@ CONTAINS
            IF (Indexes(j)<=0) CYCLE
            DO l=0,Dofs-1
              Col = Dofs * Indexes(j) - l
-             Value = LocalMatrix(Dofs*i-k,Dofs*j-l)
-             CALL List_AddToMatrixElement(A,Row,Col,Value)
+             Val = LocalMatrix(Dofs*i-k,Dofs*j-l)
+             CALL List_AddToMatrixElement(A,Row,Col,Val)
            END DO
          END DO
 
@@ -862,7 +867,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Value
+     REAL(KIND=dp) :: Val
      INTEGER :: i,j,k,l,c,Row,Col
      
      DO i=1,Nrow
@@ -874,8 +879,8 @@ CONTAINS
            DO l=0,ColDofs-1
              IF ( ColInds(j) <= 0 ) CYCLE
              Col  = Col0 + ColDofs * ColInds(j) - l
-             Value = LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-             CALL List_AddToMatrixElement(List,Row,Col,Value)
+             Val = LocalMatrix(RowDofs*i-k,ColDofs*j-l)
+             CALL List_AddToMatrixElement(List,Row,Col,Val)
            END DO
          END DO
 

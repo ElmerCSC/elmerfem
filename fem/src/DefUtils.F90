@@ -520,13 +520,14 @@ CONTAINS
   END FUNCTION GetNOFBoundaryElements
 
 !> Returns a scalar field in the nodes of the element
-  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep, UVariable )
+  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep, UVariable, Found)
      REAL(KIND=dp) :: x(:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t)  , OPTIONAL, TARGET :: USolver
      TYPE(Element_t),  OPTIONAL, TARGET :: UElement
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
+     LOGICAL, OPTIONAL :: Found
 
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
@@ -535,11 +536,13 @@ CONTAINS
 
      INTEGER :: i, j, k, n, lr
      INTEGER, POINTER :: Indexes(:)
-
+     LOGICAL :: Found0
+     
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
      x = 0.0d0
+     IF(PRESENT(Found)) Found = .FALSE.
 
      IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
@@ -563,7 +566,8 @@ CONTAINS
      END IF
 
      Element => GetCurrentElement(UElement)
-
+     Found0 = .FALSE.
+     
      ! Some variables do not really follow the numbering
      ! nodes + faces + edges etc. of the standard solver.
      ! For example, if we want to request DG values from a variable
@@ -577,6 +581,7 @@ CONTAINS
        DO i=1,n
          x(i) = Values(Variable % Perm(j) + i)
        END DO
+       IF(PRESENT(Found)) Found = (n>1)
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
        n = Element % TYPE % NumberOfNodes
@@ -584,7 +589,10 @@ CONTAINS
        IF(ASSOCIATED( Indexes ) ) THEN
          DO i=1,n
            j = Variable % Perm(Indexes(i))
-           IF(j>0) x(i) = Values(j)
+           IF(j>0) THEN
+             Found0 = .TRUE.
+             x(i) = Values(j)
+           END IF
          END DO
        ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          DO lr=1,2
@@ -594,12 +602,15 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
            END IF
            IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                                     
            DO i=1,n
              DO j=1,Parent % TYPE % NumberOfNodes
                IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
                  k = Variable % Perm( Parent % DGIndexes(j) )
-                 IF(k>0) x(i) = Values(k)
+                 IF(k>0) THEN
+                   Found0 = .TRUE.
+                   x(i) = Values(k)
+                 END IF
                  EXIT
                END IF
              END DO
@@ -607,6 +618,7 @@ CONTAINS
            EXIT
          END DO
        END IF
+       IF(PRESENT(Found)) Found = Found0
        RETURN       
      END IF
 
@@ -626,6 +638,7 @@ CONTAINS
            IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
              k = Variable % Perm(j)
              IF ( k>0 ) THEN
+               Found0 = .TRUE.
                x(i) = Values(k)
                IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
              END IF
@@ -636,30 +649,39 @@ CONTAINS
            j = Indexes(i)
            IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
              j = Variable % Perm(j)
-             IF ( j>0 ) x(i) = Values(j)
+             IF ( j>0 ) THEN
+               Found0 = .TRUE.
+               x(i) = Values(j)
+             END IF
            END IF
          END DO
        END IF
      ELSE
         DO i=1,n
           j = Indexes(i)
-          IF ( j>0 .AND. j<=SIZE(Variable % Values) ) &
+          IF ( j>0 .AND. j<=SIZE(Variable % Values) ) THEN
+            Found0 = .TRUE.
             x(i) = Values(Indexes(i))
+          END IF
         END DO
-     END IF
+      END IF
+
+      IF(PRESENT(Found)) Found = Found0 
+      
   END SUBROUTINE GetScalarLocalSolution
 
 
 
 !> Returns a vector field in the nodes of the element
-  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep, UVariable )
+  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep, UVariable, Found)
      REAL(KIND=dp) :: x(:,:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
-
+     LOGICAL, OPTIONAL :: Found
+     
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element, Parent
@@ -667,12 +689,14 @@ CONTAINS
      INTEGER :: i, j, k, l, lr, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
-
+     LOGICAL :: Found0
+     
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
      x = 0.0d0
-
+     IF(PRESENT(Found)) Found = .FALSE.
+     
      IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
      ELSE
@@ -695,6 +719,7 @@ CONTAINS
      END IF
      
      Element => GetCurrentElement(UElement)
+     Found0 = .FALSE.
 
        
      ! If variable is defined on gauss points return that instead
@@ -714,6 +739,7 @@ CONTAINS
              END DO
            END ASSOCIATE
          END DO
+         IF(PRESENT(Found)) Found = (n>1)
          RETURN
        END ASSOCIATE
      ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
@@ -724,12 +750,14 @@ CONTAINS
            DO i=1,n
              j = variable % perm(indexes(i))
              IF( j==0 ) CYCLE
+             Found0 = .TRUE.
              DO k=1,dofs
                x(k,i) = Values((j-1)*dofs + k)
              END DO
            END DO
-           RETURN
          END ASSOCIATE
+         IF(PRESENT(Found)) Found = Found0
+         RETURN         
        ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          DO lr=1,2
            IF(lr==1) THEN
@@ -746,6 +774,7 @@ CONTAINS
                  IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
                    l = Variable % Perm( Parent % DGIndexes(j) )
                    IF(l>0) THEN
+                     Found0 = .TRUE.
                      DO k=1,dofs
                        x(k,i) = Values((l-1)*dofs + k )
                      END DO
@@ -758,6 +787,7 @@ CONTAINS
            EXIT
          END DO
        END IF
+       IF(PRESENT(Found)) Found = Found0
        RETURN       
      END IF
 
@@ -778,6 +808,7 @@ CONTAINS
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
                IF( l>0 ) THEN
+                 Found0 = .TRUE.
                  x(i,j) = Values(Variable % DOFs*(l-1)+i)
                  IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
                END IF
@@ -788,7 +819,10 @@ CONTAINS
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
-               IF (l>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               IF (l>0) THEN
+                 Found0 = .TRUE.
+                 x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               END IF
              END IF
            END DO
          END IF
@@ -796,11 +830,14 @@ CONTAINS
          DO j=1,n
            IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
                SIZE( Variable % Values ) ) THEN
+             Found0 = .TRUE.
              x(i,j) = Values(Variable % DOFs*(Indexes(j)-1)+i)
            END IF
          END DO
        END IF
      END DO
+     IF( PRESENT(Found)) Found = Found0
+     
   END SUBROUTINE GetVectorLocalSolution
 
 
@@ -1084,9 +1121,9 @@ CONTAINS
 
      REAL(KIND=dp) :: r,xx,yy,zz
 
-     xx = 0
-     yy = 0
-     zz = 0
+     xx = 0.0_dp
+     yy = 0.0_dp
+     zz = 0.0_dp
      IF ( PRESENT( x ) ) xx = x
      IF ( PRESENT( y ) ) yy = y
      IF ( PRESENT( z ) ) zz = z
@@ -1267,7 +1304,13 @@ CONTAINS
          IF( .NOT. ASSOCIATED( Material ) ) CYCLE
 
          IF ( ListCheckPresent( Material,Name) ) THEN
-           x(1:n) = ListGetReal(Material, Name, n, Indexes)
+           BLOCK
+             TYPE(Element_t), POINTER :: se
+             se => CurrentModel % CurrentElement
+             CurrentModel % CurrentElement => Element
+             x(1:n) = ListGetReal(Material, Name, n, Indexes)
+             CurrentModel % CurrentElement => se
+           END BLOCK
            IF( PRESENT( UParent ) ) UParent => Parent
            Gotit = .TRUE.
            EXIT
@@ -1739,6 +1782,12 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
+BLOCK
+ LOGICAL :: EdgesDone, FacesDone
+ INTEGER :: Ind, i,j,k, EDOFs, FDOFs
+ TYPE(Element_t), POINTER :: Parent, Edge, Face
+
+     EdgesDone = .FALSE.; FacesDone = .FALSE.
      IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
         IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
            n =  n + Element % Type % NumberOfEdges * Solver % Mesh % MaxEdgeDOFs
@@ -1748,6 +1797,7 @@ CONTAINS
              n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
           END DO
        END IF
+       EdgesDone = .TRUE.
      END IF
 
      IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
@@ -1759,13 +1809,69 @@ CONTAINS
              n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
           END DO
         END IF
+        FacesDone = .TRUE.
      END IF
 
-     !GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     !IF (.NOT.Found) GB = .TRUE.
-     GB = Solver % GlobalBubbles
-     
-     IF ( GB .OR. ASSOCIATED(Element % BoundaryInfo) ) n=n+MAX(0,Element % BDOFs)
+     IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+
+       Parent => Element % BoundaryInfo % Left
+       IF (.NOT.ASSOCIATED(Parent) ) &
+           Parent => Element % BoundaryInfo % Right
+       IF (.NOT.ASSOCIATED(Parent) ) RETURN
+
+       SELECT CASE(ElemFamily)
+       CASE(2)
+         IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
+           IF ( isActivePElement(Element) ) THEN
+             Ind=Element % PDefs % LocalNumber
+           ELSE
+             DO Ind=1,Parent % TYPE % NumberOfEdges
+               Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(ind))
+               k = 0
+               DO i=1,Edge % TYPE % NumberOfNodes
+                 DO j=1,Element % TYPE % NumberOfNodes
+                   IF ( Edge % NodeIndexes(i)==Element % NodeIndexes(j) ) k=k+1
+                 END DO
+               END DO
+               IF ( k==Element % TYPE % NumberOfNodes) EXIT
+             END DO
+           END IF
+
+           EDOFs = Element % BDOFs
+           DO i=1,EDOFs
+             n = n + 1
+           END DO
+         END IF
+
+       CASE(3,4)
+         IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
+           IF ( isActivePElement(Element) ) THEN
+             Ind=Element % PDefs % LocalNumber
+           ELSE
+             DO Ind=1,Parent % TYPE % NumberOfFaces
+               Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
+               k = 0
+               DO i=1,Face % TYPE % NumberOfNodes
+                 DO j=1,Element % TYPE % NumberOfNodes
+                   IF ( Face % NodeIndexes(i)==Element % NodeIndexes(j)) k=k+1
+                 END DO
+               END DO
+               IF ( k==Face % TYPE % NumberOfNodes) EXIT
+             END DO
+           END IF
+
+           IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
+             FDOFs = Element % BDOFs
+             DO i=1,FDOFs
+               n = n + 1
+             END DO
+           END IF
+         END IF
+       END SELECT
+     END IF
+END BLOCK
+
+     IF ( .NOT.ASSOCIATED(Element % BoundaryInfo).AND.Solver % GlobalBubbles ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
 
 
@@ -2342,7 +2448,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> Is the actice solver solved in the frequency space
+!> Is the active solver solved in the frequency space
 !------------------------------------------------------------------------------
   FUNCTION EigenOrHarmonicAnalysis(Usolver) RESULT(L)
     LOGICAL :: L
@@ -2972,7 +3078,7 @@ CONTAINS
      CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
          TRIM(SlaveSolverStr),Level=5)
      
-     dt = GetTimeStep()
+     dt = GetTimeStepsize()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
 
      ! store the nonlinear iteration at the outer loop
@@ -3050,6 +3156,10 @@ CONTAINS
          CALL RestoreBulkMatrix(Solver % Matrix)
          RETURN
        END IF
+     END IF
+
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
      END IF
 
      
@@ -3133,6 +3243,7 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
 
      TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: Found
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -3144,9 +3255,13 @@ CONTAINS
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
 
-     CALL Info('DefaultFinish','Finished solver: '//&
+     IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
+       CALL ApplyExplicitControl( Solver )
+     END IF
+     
+     CALL Info('DefaultFinish','Finished solver: '//&         
          TRIM(ListGetString(Solver % Values,'Equation')),Level=8)
-
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
@@ -4750,7 +4865,9 @@ CONTAINS
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
-
+     LOGICAL, ALLOCATABLE :: ReleaseDir(:)
+     LOGICAL :: ReleaseAny
+     
      CHARACTER(LEN=MAX_NAME_LEN) :: name
 
      SAVE gInd, lInd, STIFF, Work
@@ -4792,6 +4909,8 @@ CONTAINS
        ALLOCATE(A % Dvalues(A % NumberOfRows))
        A % Dvalues = 0._dp
      END IF
+
+       
      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
@@ -4808,6 +4927,12 @@ CONTAINS
           CALL Fatal('DefUtils::DefaultDirichletBCs','Memory allocation failed.' )
      END IF
 
+     ReleaseAny = ListCheckPrefixAnyBC(CurrentModel, 'release '//TRIM(x % name)//' {e}')
+     IF( ReleaseAny ) THEN
+       CALL Info('DefaultDirichletBCs','Getting ready to block some Dirichlet BCs!',Level=7)
+       ALLOCATE( ReleaseDir( SIZE( A % DValues ) ) )
+       ReleaseDir = .FALSE.
+     END IF
 
      IF ( x % DOFs > 1 ) THEN
        CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
@@ -4816,25 +4941,22 @@ CONTAINS
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=6)
      
+
+
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
      ! ----------------------------------------------------------------------
-     ConstantValue = .FALSE.
      DO DOF=1,x % DOFs
         name = x % name
         IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
 
         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
         
-        CALL Info('DefUtils::DefaultDirichletBCs', &
-            'p-element preparations: '//TRIM(name), Level=15)
-        
-        ! Clearing for p-approximation dofs associated with faces & edges:
         SaveElement => GetCurrentElement() 
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
+           
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
@@ -5060,6 +5182,75 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+
+
+     ! BLOCK
+     !------------------------------------
+     QuadraticApproximation = ListGetLogical(Solver % Values, 'Quadratic Approximation', Found)
+     SecondKindBasis = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+     DO DOF=1,x % DOFs
+       IF(.NOT. ReleaseAny) CYCLE
+       
+       name = x % name
+       IF (x % DOFs>1) name=ComponentName(name,DOF)
+
+       IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, 'release '//TRIM(Name)//' {e}') ) CYCLE
+
+       CALL Info('SetDefaultDirichlet','Release edge dofs from intersecting BCs',Level=15)
+
+       SaveElement => GetCurrentElement()
+       DO i=1,Solver % Mesh % NumberOfBoundaryElements
+         Element => GetBoundaryElement(i)
+         
+         BC => GetBC()
+         IF ( .NOT.ASSOCIATED(BC) ) CYCLE
+         IF ( .NOT. ListGetLogical(BC, 'release '//TRIM(Name)//' {e}', Found ) ) CYCLE
+         
+         ! Get parent element:
+         ! -------------------
+         Parent => Element % BoundaryInfo % Left
+         IF ( .NOT. ASSOCIATED( Parent ) ) THEN
+           Parent => Element % BoundaryInfo % Right
+         END IF
+         IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
+         np = Parent % TYPE % NumberOfNodes
+         
+         IF(.NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
+         SELECT CASE(GetElementFamily())
+             
+         CASE(3,4)
+           CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
+
+           IF (.NOT. ASSOCIATED(Face)) CYCLE
+           IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+           DO l=1,Face % TYPE % NumberOfEdges
+             Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+             EDOFs = Edge % BDOFs
+             IF (EDOFs == 0) CYCLE
+
+             n = GetElementDOFs(gInd,Edge)
+
+             IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+               n_start = Edge % NDOFs
+             ELSE
+               n_start = 0
+             END IF
+
+             DO j=1,EDOFs
+               k = n_start + j
+               nb = x % Perm(gInd(k))
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs*(nb-1) + DOF
+               ReleaseDir(nb) = .TRUE.
+             END DO
+           END DO
+         END SELECT
+       END DO
+       SaveElement => SetCurrentElement(SaveElement)
+     END DO
+     
+     
      !
      ! Apply special couple loads for 3-D models of solids:
      !
@@ -5170,7 +5361,6 @@ CONTAINS
                      END IF
  
                      DO j=1,EDOFs
-
                        k = n_start + j
                        nb = x % Perm(gInd(k))
                        IF ( nb <= 0 ) CYCLE
@@ -5397,7 +5587,21 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
-
+     IF( ReleaseAny) THEN
+       IF( InfoActive(10) ) THEN
+         k = COUNT( A % ConstrainedDOF ) 
+         PRINT *,'Original number of of Dirichlet BCs:',k       
+         k = COUNT( ReleaseDir )
+         PRINT *,'Marked number of Dirichlet BCs not to set:',k       
+         k = COUNT( ReleaseDir .AND. A % ConstrainedDOF )
+         PRINT *,'Ignoring number of Dirichlet BCs:',k
+       END IF         
+       WHERE( ReleaseDir )
+         A % ConstrainedDOF = .FALSE.
+       END WHERE
+     END IF
+                
+     
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
@@ -5516,9 +5720,15 @@ CONTAINS
     END IF
 
     ! Get the nodes of the boundary and parent elements:
-    CALL GetElementNodes(Nodes, Element)
-    CALL GetElementNodes(PNodes, Parent)
-
+    !CALL GetElementNodes(Nodes, Element)
+    !CALL GetElementNodes(PNodes, Parent)
+    !Remove references to DefUtils
+    CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        n, Element % NodeIndexes)
+    CALL CopyElementNodesFromMesh(PNodes, CurrentModel % Solver % Mesh, &
+        np, Parent % NodeIndexes)
+    
+    
     ReverseSign = .FALSE.
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
     DO i=1,SIZE(EdgeMap,1)
@@ -5668,7 +5878,10 @@ CONTAINS
     Mass = 0.0d0
     Force = 0.0d0
 
-    CALL GetElementNodes(Nodes, Element)
+    ! Remove dependencies to DefUtils
+    CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        n, Element % NodeIndexes)
+    !CALL GetElementNodes(Nodes, Element)
 
     i = LEN_TRIM(Name)
     VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
@@ -5796,8 +6009,10 @@ CONTAINS
       ELSE
         ElementCopy => Element
       END IF
-      CALL GetElementNodes(Nodes, ElementCopy)
-
+      !CALL GetElementNodes(Nodes, ElementCopy)
+      CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
+      
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
@@ -5872,8 +6087,11 @@ CONTAINS
         ElementCopy => Element
       END IF
 
-      CALL GetElementNodes(Nodes, ElementCopy)
+      !CALL GetElementNodes(Nodes, ElementCopy)
+      CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
+        ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
 
+      
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
@@ -6657,6 +6875,82 @@ CONTAINS
       NewtonActive = CurrentModel % Solver % NewtonActive
     END IF
   END FUNCTION GetNewtonActive
+
+
+!------------------------------------------------------------------------------
+  FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: n,nedge
+    TYPE(Element_t) :: Boundary
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,jb1,jb2,je1,je2
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Parent, Edge, Face
+!------------------------------------------------------------------------------
+    Mesh => GetMesh()
+    n = 0
+    SELECT CASE(GetElementFamily())
+    CASE(1)
+      RETURN
+    CASE(2)
+      IF ( nedge==1 ) THEN
+        Parent => Boundary % BoundaryInfo % Left
+        IF ( .NOT. ASSOCIATED(Parent) ) &
+            Parent => Boundary % BoundaryInfo % Right
+ 
+        jb1 = Boundary % NodeIndexes(1)
+        jb2 = Boundary % NodeIndexes(2)
+        DO i=1,Parent % TYPE % NumberOfEdges
+          Edge => Mesh % Edges(Parent % EdgeIndexes(i))
+          je1 = Edge % NodeIndexes(1)
+          je2 = Edge % NodeIndexes(2)
+          IF ( jb1==je1.AND.jb2==je2 .OR. jb1==je2.AND.jb2==je1) EXIT
+        END DO
+        n = Parent % EdgeIndexes(i)
+      END IF
+    CASE(3,4)
+      j = GetBoundaryFaceIndex(Boundary)
+      Face => Mesh % Faces(j)
+      IF ( nedge>0.AND.nedge<=Face % TYPE % NumberOfEdges ) &
+        n = Face % EdgeIndexes(nedge) 
+    END SELECT
+!------------------------------------------------------------------------------
+  END FUNCTION GetBoundaryEdgeIndex
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: n
+    TYPE(Element_t) :: Boundary
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,m
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Parent, Face
+!------------------------------------------------------------------------------
+    Mesh => GetMesh()
+    Parent => Boundary % BoundaryInfo % Left
+    IF ( .NOT. ASSOCIATED(Parent) ) &
+       Parent => Boundary % BoundaryInfo % Right
+
+    DO i=1,Parent % TYPE % NumberOfFaces
+      Face => Mesh % Faces(Parent % FaceIndexes(i))
+      m = 0
+      DO j=1,Face % TYPE % NumberOfNodes
+        DO k=1,Boundary % TYPE % NumberOfNodes
+          IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
+        END DO
+      END DO
+      IF ( m==Face % TYPE % NumberOfNodes) EXIT
+    END DO
+    n = Parent % FaceIndexes(i)
+!------------------------------------------------------------------------------
+  END FUNCTION GetBoundaryFaceIndex
+!------------------------------------------------------------------------------
+
 
   
 !-----------------------------------------------------------------------

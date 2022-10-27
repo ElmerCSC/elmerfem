@@ -30,7 +30,7 @@ Simulation
   Output Intervals(1) = 5
 
 !  Output File = ../init_bin.result
-  Output File = ../init_asc.result
+  Output File = init_asc.result
   Output Global Variables = Logical True
   Output File Cycle = Integer 3
 

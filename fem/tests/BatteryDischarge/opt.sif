@@ -48,7 +48,7 @@ $dcsmax=1.0    ! largest allowed change in concentration in one iteration
 $sstol=1.0e-6  ! ss convergence tolerance, this one determines number of iterations!
 $nonliniter=30
 $nonlintol=1.0e-5 ! we can have this lower resulting often to just one nonlin iter for solver 1 & 2 
-$dmethod="banded" ! For once, this is the fastest method. This is because the bandwith is so thin.
+$dmethod="banded" ! For once, this is the fastest method. This is because the bandwidth is so thin.
 
 $diffmult=1.0
 ! umfpack

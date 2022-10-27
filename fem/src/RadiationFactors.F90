@@ -103,7 +103,8 @@
          ComputeViewFactors, OptimizeBW, TopologyTest, TopologyFixed, &
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
          ConstantEmissivity, Found, Debug, gSymm, gTriv, BinaryMode, UpdateRadiatorFactors, &
-            ComputeRadiatorFactors, RadiatorsFound, DiffuseGrayRadiationFound
+         ComputeRadiatorFactors, RadiatorsFound, DiffuseGrayRadiationFound, &
+         UpdateGeometry
      LOGICAL, POINTER :: ActiveNodes(:)
      LOGICAL :: DoScale
      INTEGER, PARAMETER :: VFUnit = 10
@@ -210,11 +211,6 @@
      ConstantEmissivity = FirstTime .AND. &
             ( UpdateGebhardtFactors .OR. UpdateViewFactors .OR. UpdateRadiatorFactors )
 
-     IF(GeometryFixedAfter == TimesVisited) THEN
-       x0(1) = 1.0
-       y0(1) = 1.0
-     END IF
-
      FullMatrix = GetLogical( Params, 'Gebhardt Factors Solver Full',GotIt) 
      IF( FullMatrix ) THEN
        CALL Info('RadiationFactors','Using full matrix for Gebhardt factors',Level=6)
@@ -276,6 +272,7 @@
              RadiationSurfaces = RadiationSurfaces + 1
                  
              IF(GeometryFixedAfter == TimesVisited) THEN
+               x0(1) = 1.0; y0(1) = 1.0               
                MeshU(1:n) = GetReal(BC, 'Mesh Update 1',GotIt, Element)
                IF(.NOT. GotIt) THEN
                  WRITE (Message,'(A,I3)') 'Freezing Mesh Update 1 for bc',i
@@ -309,6 +306,7 @@
            ' out of '//TRIM(I2S(Model % NumberOfBoundaryElements)),Level=5)
      END IF
 
+       
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
 
@@ -434,67 +432,68 @@
 !    and compute the ViewFactors with an external function call.
 !------------------------------------------------------------------------------
 
-     IF(ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
-           (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))) THEN
-
+     UpdateGeometry = ListGetLogical(Params,'Update Factors Geometry',Found )  
+     IF(.NOT. Found ) THEN 
+       UpdateGeometry = ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
+           (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))
+     END IF
        
-       ! This is a dirty thrick where the input mesh is scaled after loading.
-       ! We need to perform scaling and backscaling then here too. 
+       
+     ! This is a dirty thrick where the input mesh is scaled after loading.
+     ! We need to perform scaling and backscaling then here too. 
+     IF( UpdateGeometry ) THEN
+       CALL Info('RadiationFactors','Temporarily updating the mesh.nodes file!',Level=5)
+       
+       OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
+       OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
+       CALL Rename(OutputName, OutputName2)         
 
-       IF(.NOT. FirstTime) THEN
-         CALL Info('RadiationFactors','Temporarily updating the mesh.nodes file!',Level=5)
-
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
-         OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         CALL Rename(OutputName, OutputName2)         
-
-         DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
-
-         IF( DoScale ) THEN
-           Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
-           BackScale = 1.0_dp
-           DO i=1,Mesh % MeshDim 
-             j = MIN( i, SIZE(Wrk,1) )
-             BackScale(i) = 1.0_dp / Wrk(j,1)
-           END DO
-         END IF
-
-         OPEN( VFUnit,FILE=TRIM(OutputName), STATUS='unknown' )                 
-         DO i=1,Mesh % NumberOfNodes
-           Coord(1) = Mesh % Nodes % x(i)
-           Coord(2) = Mesh % Nodes % y(i)
-           Coord(3) = Mesh % Nodes % z(i)
-
-           IF( DoScale ) Coord = BackScale * Coord
-           
-           WRITE( VFUnit,'(i7,i3,3f20.12)' ) i,-1, Coord
+       DoScale = ListCheckPresent( Model % Simulation,'Coordinate Scaling')
+       
+       IF( DoScale ) THEN
+         Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
+         BackScale = 1.0_dp
+         DO i=1,Mesh % MeshDim 
+           j = MIN( i, SIZE(Wrk,1) )
+           BackScale(i) = 1.0_dp / Wrk(j,1)
          END DO
-         CLOSE(VFUnit)
        END IF
-       
-       ! Compute the factors using an external program call
-       IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
-         cmd = 'ViewFactors '//TRIM(GetSifName())
+
+       OPEN( VFUnit,FILE=TRIM(OutputName), STATUS='unknown' )                 
+       DO i=1,Mesh % NumberOfNodes
+         Coord(1) = Mesh % Nodes % x(i)
+         Coord(2) = Mesh % Nodes % y(i)
+         Coord(3) = Mesh % Nodes % z(i)
+
+         IF( DoScale ) Coord = BackScale * Coord
+
+         WRITE( VFUnit,'(i7,i3,3f20.12)' ) i,-1, Coord
+       END DO
+       CLOSE(VFUnit)
+     END IF
+
+     ! Compute the factors using an external program call
+     IF (ComputeViewFactors .OR.  .NOT.FirstTime .AND. UpdateViewFactors ) THEN
+       cmd = 'ViewFactors '//TRIM(GetSifName())
+       CALL SystemCommand( cmd )
+     END IF
+
+     IF( RadiatorsFound ) THEN
+       IF (ComputeRadiatorFactors .OR. .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
+         cmd = 'Radiators '//TRIM(GetSifName())
          CALL SystemCommand( cmd )
        END IF
+     END IF
 
-       IF( RadiatorsFound ) THEN
-         IF (ComputeRadiatorFactors .OR.  .NOT.FirstTime .AND. UpdateRadiatorFactors ) THEN
-           cmd = 'Radiators '//TRIM(GetSifName())
-           CALL SystemCommand( cmd )
-         END IF
-       END IF
-       
-       ! Set back the original node coordinates to prevent unwanted user errors
-       IF(.NOT. FirstTime) THEN
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
-         OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'         
-         CALL Rename(OutputName, OutputName2)
-         
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
-         OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
-         CALL Rename(OutputName, OutputName2)
-       END IF
+     ! Set back the original node coordinates to prevent unwanted user errors
+     IF( UpdateGeometry ) THEN
+       OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
+       OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'         
+       CALL Rename(OutputName, OutputName2)
+
+       OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
+       OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
+       CALL Rename(OutputName, OutputName2)
      END IF
 
 !------------------------------------------------------------------------------
@@ -610,58 +609,61 @@
        END IF
 
 
-BLOCK
+       ! This is an add-on for including point like radiators into the system.
+       ! They act as heat sources with known total power that is distributed among the
+       ! surface elements that the point sees.
+       !----------------------------------------------------------------------------------
+       BLOCK
+         REAL(KIND=dp), ALLOCATABLE :: Vals(:)
+         INTEGER, ALLOCATABLE ::  Cols(:)
+         INTEGER :: NofRadiators
+         REAL(KIND=dp), POINTER :: Radiators(:,:)
+         TYPE(ValueList_t), POINTER :: RadList
 
-       REAL(KIND=dp), ALLOCATABLE :: Vals(:)
-       INTEGER, ALLOCATABLE ::  Cols(:)
-       INTEGER :: NofRadiators
-       REAL(KIND=dp), POINTER :: Radiators(:,:)
-       TYPE(ValueList_t), POINTER :: RadList
-       
-       IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
-           RadList => Params
+         IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
+             RadList => Params
 
-       CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
-       IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
+         CALL GetConstRealArray( RadList, Radiators, 'Radiator Coordinates', Found )
+         IF(.NOT. Found ) CALL Fatal( 'RadiationFactors', 'No radiators present, quitting' )
 
-       NofRadiators = SIZE(Radiators,1)
-     
-       ! Read in the ViewFactors
-       DO i=1,NofRadiators
-         IF( BinaryMode ) THEN
-           READ( VFUnit ) n
-         ELSE
-           READ( VFUnit,* ) n
-         END IF
-           
-         ALLOCATE( Vals(n), Cols(n) )
-	 Vals = 0; Cols = 0
-  
-         DO j=1,n
+         NofRadiators = SIZE(Radiators,1)
+
+         ! Read in the ViewFactors
+         DO i=1,NofRadiators
            IF( BinaryMode ) THEN
-             READ(VFUnit) Cols(j),Vals(j)         
+             READ( VFUnit ) n
            ELSE
-             READ(VFUnit,*) t,Cols(j),Vals(j)         
-           END IF
-           Vals(j) = Vals(j) / Areas(Cols(j))
-           Cols(j) = ElementNumbers(Cols(j))
-         END DO
-
-
-         DO j=1,n
-           BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
-           IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
-             ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
-             BoundaryInfo % Radiators = 0
+             READ( VFUnit,* ) n
            END IF
 
-           BoundaryInfo % Radiators(i) = Vals(j)
-         END DO
+           ALLOCATE( Vals(n), Cols(n) )
+           Vals = 0; Cols = 0
 
-         DEALLOCATE( Cols, Vals )
-       END DO
-       CLOSE(VFUnit)
-END BLOCK
+           DO j=1,n
+             IF( BinaryMode ) THEN
+               READ(VFUnit) Cols(j),Vals(j)         
+             ELSE
+               READ(VFUnit,*) t,Cols(j),Vals(j)         
+             END IF
+             Vals(j) = Vals(j) / Areas(Cols(j))
+             Cols(j) = ElementNumbers(Cols(j))
+           END DO
+
+
+           DO j=1,n
+             BoundaryInfo => Mesh % Elements(Cols(j)) % BoundaryInfo
+             IF ( .NOT.ALLOCATED( BoundaryInfo % Radiators ) ) THEN
+               ALLOCATE( BoundaryInfo % Radiators(NofRadiators) )
+               BoundaryInfo % Radiators = 0
+             END IF
+
+             BoundaryInfo % Radiators(i) = Vals(j)
+           END DO
+
+           DEALLOCATE( Cols, Vals )
+         END DO
+         CLOSE(VFUnit)
+       END BLOCK
      END IF
 
 !--------------------------------------------------

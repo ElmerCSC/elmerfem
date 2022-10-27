@@ -48,78 +48,6 @@ MODULE EMWaveSolverUtils
 CONTAINS
 
 
-!------------------------------------------------------------------------------
-  FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
-!------------------------------------------------------------------------------
-    INTEGER :: n,nedge
-    TYPE(Element_t) :: Boundary
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,jb1,jb2,je1,je2
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Edge, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    n = 0
-    SELECT CASE(GetElementFamily(Boundary))
-    CASE(1)
-      RETURN
-    CASE(2)
-      IF ( nedge==1 ) THEN
-        Parent => Boundary % BoundaryInfo % Left
-        IF ( .NOT. ASSOCIATED(Parent) ) &
-            Parent => Boundary % BoundaryInfo % Right
- 
-        jb1 = Boundary % NodeIndexes(1)
-        jb2 = Boundary % NodeIndexes(2)
-        DO i=1,Parent % TYPE % NumberOfEdges
-          Edge => Mesh % Edges(Parent % EdgeIndexes(i))
-          je1 = Edge % NodeIndexes(1)
-          je2 = Edge % NodeIndexes(2)
-          IF ( jb1==je1.AND.jb2==je2 .OR. jb1==je2.AND.jb2==je1) EXIT
-        END DO
-        n = Parent % EdgeIndexes(i)
-      END IF
-    CASE(3,4)
-      j = GetBoundaryFaceIndex(Boundary)
-      Face => Mesh % Faces(j)
-      IF ( nedge>0.AND.nedge<=Face % TYPE % NumberOfEdges ) &
-        n = Face % EdgeIndexes(nedge) 
-    END SELECT
-!------------------------------------------------------------------------------
-  END FUNCTION GetBoundaryEdgeIndex
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
-!------------------------------------------------------------------------------
-    INTEGER :: n
-    TYPE(Element_t) :: Boundary
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,m
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    Parent => Boundary % BoundaryInfo % Left
-    IF ( .NOT. ASSOCIATED(Parent) ) &
-       Parent => Boundary % BoundaryInfo % Right
-
-    DO i=1,Parent % TYPE % NumberOfFaces
-      Face => Mesh % Faces(Parent % FaceIndexes(i))
-      m = 0
-      DO j=1,Face % TYPE % NumberOfNodes
-        DO k=1,Boundary % TYPE % NumberOfNodes
-          IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
-        END DO
-      END DO
-      IF ( m==Boundary % TYPE % NumberOfNodes) EXIT
-    END DO
-    n = Parent % FaceIndexes(i)
-!------------------------------------------------------------------------------
-  END FUNCTION GetBoundaryFaceIndex
-!------------------------------------------------------------------------------
-
-  
 END MODULE EMWaveSolverUtils
 
 
@@ -267,7 +195,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     AllocationsDone = .TRUE.
   END IF
 
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
       'Nonlinear System Max Iterations',Found)
@@ -775,7 +703,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    TYPE(Solver_t), POINTER :: pSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   LOGICAL :: Found, stat
+   LOGICAL :: Found, stat, DoAve
 
    TYPE(Element_t), POINTER :: Element
 
@@ -904,27 +832,33 @@ END SUBROUTINE EMWaveCalcFields_Init
    ! Assembly of the face terms in case we have DG method where we
    ! want to average the fields within materials making them continuous.
    !-----------------------------------------------------------------
-   IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
-     IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+
+   DoAve = GetLogical( SolverParams,'Average Within Materials',Found) 
+
+   ! For DG averaging means adding glue terms
+   IF( DoAve ) THEN
+     IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
        IF(.NOT. ConstantBulkInUse ) THEN
          FORCE = 0.0_dp
          CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
        END IF
      END IF
    END IF
-
-   IF (NodalFields) THEN
+        
+   IF (NodalFields .OR. DoAve ) THEN
+     ! For DG fields without real DG solver averaging is done a posteriori within GlobalSol
      IF (ConstantBulkMatrix .AND. .NOT. ConstantBulkInUse) THEN
        CALL Info('EMWaveCalcFields', 'Saving the system matrix', Level=6)
        CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
      END IF
 
-     Fsave => Solver % Matrix % RHS
+     Fsave => NULL()
+     IF( ASSOCIATED( Solver % Matrix ) ) Fsave => Solver % Matrix % RHS
      dofcount = 0
-     CALL GlobalSol(EF ,  3, Gforce, dofcount)
-     CALL GlobalSol(dEF , 3, Gforce, dofcount)
-     CALL GlobalSol(ddEF ,3, Gforce, dofcount)
-     Solver % Matrix % RHS => Fsave
+     CALL GlobalSol(EF ,  3, Gforce, dofcount, EF_e)
+     CALL GlobalSol(dEF , 3, Gforce, dofcount, dEF_e)
+     CALL GlobalSol(ddEF ,3, Gforce, dofcount, ddEF_e)
+     IF(ASSOCIATED(Fsave)) Solver % Matrix % RHS => Fsave
    END IF
 
 
@@ -1046,26 +980,44 @@ CONTAINS
     
   END SUBROUTINE LocalAssembly
     
-  
+
 !------------------------------------------------------------------------------
- SUBROUTINE GlobalSol(Var, m, b, dofs )
+ SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
-!------------------------------------------------------------------------------
-   INTEGER :: i
+   TYPE(Variable_t), POINTER, OPTIONAL :: EL_Var
    REAL(KIND=dp) :: Norm
 !------------------------------------------------------------------------------
-   IF(.NOT. ASSOCIATED(var)) RETURN
+   INTEGER :: i
+!------------------------------------------------------------------------------
 
+   IF(PRESENT(EL_Var)) THEN
+     IF(ASSOCIATED(El_Var)) THEN
+       El_Var % DgAveraged = .FALSE.
+       IF( DoAve ) THEN
+         CALL Info('EMWaveSolver','Averaging for field: '//TRIM(El_Var % Name),Level=10)
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+       END IF
+       IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
+         dofs = dofs+m
+         RETURN
+       END IF
+     END IF
+   END IF
+
+   IF(.NOT. ASSOCIATED(Var) ) RETURN
+   
+   CALL Info('EMWaveSolver','Solving for field: '//TRIM(Var % Name),Level=6)   
    DO i=1,m
      dofs = dofs+1
      Solver % Matrix % RHS => b(:,dofs)
      Solver % Variable % Values=0
      Norm = DefaultSolve()
      var % Values(i::m) = Solver % Variable % Values
-   END DO
+  END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalSol
 !------------------------------------------------------------------------------

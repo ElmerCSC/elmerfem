@@ -381,9 +381,9 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF( PRESENT( ControlOnly ) ) THEN
       IF( ControlOnly ) THEN
-        CALL Info(Caller,'Trying to read "Run Control" section only',Level=20)    
         DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
           IF( SEQL(Section,'run control') ) THEN                        
+            CALL Info(Caller,'Reading "Run Control" section only',Level=6)    
             IF(.NOT.ASSOCIATED(Model % Control)) &
                 Model % Control => ListAllocate()
             List => Model % Control
@@ -472,11 +472,21 @@ CONTAINS
           IF ( k<=nlen ) THEN
              MeshName(i:i) = '/'
              i = i + 1
+#if 1
+             ! This is a dummy fix for the problem that no white spaces
+             ! were allowed in the mesh name.
+             DO WHILE( k <= nlen )
+               MeshName(i:i) = Name(k:k)
+               k = k + 1
+               i = i + 1
+             END DO
+#else             
              DO WHILE( Name(k:k) /= ' ' )
                MeshName(i:i) = Name(k:k)
                k = k + 1
                i = i + 1
              END DO
+#endif
           ELSE
              MeshDir = "." // CHAR(0)
           END IF
@@ -2120,7 +2130,7 @@ CONTAINS
             GOTO 20
 
           CASE('-distribute')              
-            ! Tag paramaters that will be divided by the entity area/volume
+            ! Tag parameters that will be divided by the entity area/volume
             disttag = .TRUE. 
             str = str(str_beg:slen)
             GOTO 20
@@ -2489,7 +2499,7 @@ CONTAINS
       Solver => Model % Solvers(i)
       Model % Solver => Solver
 
-      Name = ListGetString( Solver  % Values, 'Procedure', Found )
+      Name = ListGetString( Solver % Values, 'Procedure', Found )
       IF ( Found ) THEN
         InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
         IF ( InitProc /= 0 ) THEN
@@ -2780,6 +2790,21 @@ CONTAINS
       END DO
 
 
+      IF( ListGetLogical( Model % Simulation,'Mesh Split Levelset', GotIt) ) THEN
+        OldMesh => Model % Meshes      
+        NewMesh => SplitMeshLevelset(OldMesh,Model % Simulation)
+        IF(ASSOCIATED(NewMesh) ) THEN
+          CALL SetMeshMaxDofs(NewMesh)
+          CALL ReleaseMesh(OldMesh)
+          Model % Meshes => NewMesh
+        END IF
+      END IF
+
+      IF( MeshLevels > 1 ) THEN
+      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+      END IF
+    
+      
       IF ( OneMeshName ) THEN
          i = 0
       ELSE
@@ -2813,7 +2838,9 @@ CONTAINS
 
     MeshCount = 0
     DO s=1,Model % NumberOfSolvers
-      Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+
+      Solver => Model % Solvers(s)
+      Name = ListGetString( Solver % Values, 'Mesh', GotIt )
 
       DO MeshI=1,MeshCount
         IF(Name==MeshNames(MeshI)) EXIT
@@ -2827,9 +2854,7 @@ CONTAINS
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
         CALL Info('LoadModel',Message,Level=7)
 
-
-        single=.FALSE.
-      
+        single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.          
           Name=Name(9:)
@@ -2893,7 +2918,7 @@ CONTAINS
         ! If we have requested a unique copy of the mesh then do not check
         ! whether the mesh is already loaded as the primary mesh, or as some
         ! other solver-specific mesh. 
-        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Enforce Local Copy',Found ) ) THEN
+        IF(ListGetLogical( Solver % Values,'Mesh Enforce Local Copy',Found ) ) THEN
           CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
         ELSE
           Found = .FALSE.
@@ -2917,7 +2942,7 @@ CONTAINS
 
           IF ( Found ) THEN
             CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
-            Model % Solvers(s) % Mesh => Mesh
+            Solver % Mesh => Mesh
             CYCLE
           END IF
         END IF
@@ -2934,33 +2959,41 @@ CONTAINS
         END DO
 
         IF ( Single ) THEN
-          Model % Solvers(s) % Mesh => &
+          Solver % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs, s )
         ELSE
           IF ( mype < nprocs ) THEN
-            Model % Solvers(s) % Mesh => &
+            Solver % Mesh => &
                 LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,nprocs,mype,Def_Dofs, s )
           ELSE
             ! There are more partitions than partitions in mesh, just allocate
-            Model % Solvers(s) % Mesh => AllocateMesh()
+            Solver % Mesh => AllocateMesh()
           END IF
         END IF
-        Model % Solvers(s) % Mesh % OutputActive = .TRUE.
-        Model % Solvers(s) % Mesh % SingleMesh = Single
+
+        ! Make the solver-specific mesh remember its 
+        Solver % Mesh % SolverId = s
+
+        ! Control whether to save mesh-specific data or not
+        Solver % Mesh % OutputActive = &
+            ListGetLogical( Solver % Values,'Mesh Output',GotIt)
+        IF(.NOT. GotIt) Solver % Mesh % OutputActive = .TRUE.
+
+        Solver % Mesh % SingleMesh = Single
         
         Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Single)
         
-        MeshLevels = ListGetInteger( Model % Solvers(s) % Values, 'Mesh Levels', GotIt )
+        MeshLevels = ListGetInteger( Solver % Values, 'Mesh Levels', GotIt )
         IF ( .NOT. GotIt ) MeshLevels=1
 
-        MeshKeep = ListGetInteger( Model % Solvers(s) % Values, 'Mesh keep',  GotIt )
+        MeshKeep = ListGetInteger( Solver % Values, 'Mesh keep',  GotIt )
         IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
         MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
         MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
         DO i=2,MeshLevels
-          OldMesh => Model % Solvers(s) % Mesh
+          OldMesh => Solver % Mesh
 
           IF (MeshGrading) THEN
             ALLOCATE(h(OldMesh % NumberOfNodes))
@@ -3001,16 +3034,16 @@ CONTAINS
           ELSE
             CALL ReleaseMesh(OldMesh)
           END IF
-          Model % Solvers(s) % Mesh => NewMesh
+          Solver % Mesh => NewMesh
         END DO
 
         IF ( OneMeshName ) i = 0
 
         k = 1
         i = i + 1
-        Model % Solvers(s) % Mesh % Name = ' '
+        Solver % Mesh % Name = ' '
         DO WHILE( MeshName(i:i) /= CHAR(0) )
-          Model % Solvers(s) % Mesh % Name(k:k) = MeshName(i:i)
+          Solver % Mesh % Name(k:k) = MeshName(i:i)
           k = k + 1
           i = i + 1
         END DO
@@ -3020,9 +3053,9 @@ CONTAINS
           DO WHILE( ASSOCIATED( Mesh1 % Next ) ) 
             Mesh1 => Mesh1 % Next
           END DO
-          Mesh1 % Next => Model % Solvers(s) % Mesh
+          Mesh1 % Next => Solver % Mesh
         ELSE
-          Model % Meshes => Model % Solvers(s) % Mesh
+          Model % Meshes => Solver % Mesh
         END IF
       END IF
     END DO
@@ -3425,7 +3458,7 @@ CONTAINS
 !> The data may be saved either in ascii and binary formats.
 !------------------------------------------------------------------------------
   FUNCTION SaveResult( Filename,Mesh,Time,SimulationTime,Binary,SaveAll,&
-                       FreeSurface ) RESULT(SaveCount)
+                       FreeSurface, vList ) RESULT(SaveCount)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: Time,SaveCount
@@ -3433,7 +3466,7 @@ CONTAINS
     REAL(KIND=dp) :: SimulationTime
     LOGICAL :: Binary,SaveAll
     LOGICAL, OPTIONAL :: FreeSurface
-
+    TYPE(ValueList_t), POINTER, OPTIONAL :: vList
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
@@ -3451,15 +3484,19 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
     SAVE SaveCoordinates
-
+    
 !------------------------------------------------------------------------------
 !   If first time here, count number of variables
 !------------------------------------------------------------------------------
     SavesDone = Mesh % SavesDone 
 
     ! The list from where to fetch the values.
-    ResList => CurrentModel % Simulation
-    
+    IF( PRESENT( vList ) ) THEN
+      ResList => vList
+    ELSE      
+      ResList => CurrentModel % Simulation
+    END IF
+      
     ! If we have cyclic files then each file includes all data but we cyclicly write the
     ! data on top of previous files. 
     FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )
@@ -3467,25 +3504,33 @@ CONTAINS
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
-      FileInd = MODULO( Mesh % SavesDone, FileCycle ) 
+      FileInd = MODULO( Mesh % SavesDone, FileCycle ) + 1 
     ELSE
       InitFile = ( Mesh % SavesDone == 0 )
     END IF
-          
+    
     FName = FileName
-    IF ( .NOT. FileNameQualified(FileName) ) THEN
-      IF ( LEN_TRIM(OutputPath) > 0 ) THEN
+#if 0
+! By convention let us have restart file always in "Mesh DB" and never in "Results Directory" 
+    IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Filename,'/') == 0 ) THEN
+      n = LEN_TRIM(OutputPath)
+      IF(n==0) THEN
+        CONTINUE
+      ELSE IF(n==1 .AND. OutputPath(1:1) == '.') THEN
+        CONTINUE
+      ELSE
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
     END IF
+#endif
+    
     IF( FileCycle > 0 ) THEN
       Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
     END IF
 
     IF( ParEnv % PEs > 1 ) THEN
       Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
-    END IF
-        
+    END IF        
     PosName = TRIM(FName) // ".pos"
 
     CALL Info(Caller,'-----------------------------------------',Level=5)
@@ -3704,6 +3749,26 @@ CONTAINS
       CLOSE( OutputUnit )
     END IF
 
+
+    IF( FileCycle > 0 .AND. ParEnv % MyPe == 0 ) THEN
+      FName = FileName
+#if 0 
+      IF ( .NOT. FileNameQualified(FileName) .AND. INDEX(Fname,'/') == 0 ) THEN
+        IF ( LEN_TRIM(OutputPath) > 0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(FileName)
+        END IF
+      END IF
+#endif
+      Fname = TRIM(Fname)//'_last_nc'
+
+      OPEN( OutputUnit,File=FName,STATUS='UNKNOWN' )
+      WRITE( OutputUnit,'("!File created at: ",A)' ) TRIM(DateStr)
+      WRITE( OutputUnit,'(A)') '!Last Saved File Cycle:'
+      WRITE( OutputUnit,'(I0)') FileInd
+      CLOSE( OutputUnit ) 
+    END IF
+      
+       
     CALL Info(Caller,'Done writing results file',Level=5)
     CALL Info(Caller,'-----------------------------------------',Level=5)
 
@@ -3940,15 +4005,36 @@ CONTAINS
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
-    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
-
+    
     ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
       ResList => CurrentModel % Solvers(SolverId) % Values
     ELSE
       ResList => CurrentModel % Simulation
     END IF
+
+    j = ListGetInteger( ResList,'Restart File Cycle',Found )
+    IF( Found ) THEN
+      IF( j == 0 ) THEN
+        FName = RestartFile
+#if 0
+        IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
+            LEN_TRIM(OutputPath)>0 ) THEN
+          FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+        END IF
+#endif
+        FName = TRIM(FName)//'_last_nc'
+        OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
+        READ( RestartUnit, *, IOSTAT=iostat ) j                
+        CLOSE( RestartUnit)
+        CALL Info(Caller,'Using latest saved data for restart: '//TRIM(I2S(j)),Level=6)
+      END IF
+      RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(j))//'nc'
+    END IF
     
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
     
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
@@ -3980,12 +4066,20 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    ! Check the output directory for the data
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. LEN_TRIM(OutputPath)>0 ) THEN
-      FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
-    ELSE
-      FName = RestartFile
+    FName = RestartFile
+    ! By convention let us use the "Mesh DB" rather than "Results Directory" for restart.    
+#if 0    
+    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 ) THEN
+      n = LEN_TRIM(OutputPath)
+      IF( n==0 ) THEN
+        CONTINUE
+      ELSE IF( n==1 .AND. OutputPath(1:1) == '.') THEN
+        CONTINUE
+      ELSE
+        FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+      END IF
     END IF
+#endif
     OPEN( RestartUnit,File=TRIM(FName),STATUS='OLD',IOSTAT=iostat )
 
     IF( iostat == 0 ) THEN
@@ -4051,7 +4145,7 @@ CONTAINS
       END IF
       CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE 
-      CALL Fatal(Caller,'Could not dertemine file format, obsolite?')
+      CALL Fatal(Caller,'Could not dertemine file format, obsolete?')
     END IF
     
     IF( Binary ) THEN

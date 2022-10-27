@@ -1957,7 +1957,7 @@ void Meshutils::increaseElementOrder(mesh_t *mesh)
     delete [] hash;
   }
 
-  // Then redifine the mesh using the additional nodes
+  // Then redefine the mesh using the additional nodes
   int quadnodes = mesh->getNodes() + noedges;  
   node_t *quadnode = new node_t[quadnodes];
   

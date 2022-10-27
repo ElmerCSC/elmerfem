@@ -67,8 +67,8 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
       READ(10,*)NameMsh
       READ(10,*)Rien
       READ(10,*)XConstraint
-! Xcontraint = 0 -> xnode given by the mesh       
-! Xcontraint = 1 -> xnode given by the dataset
+! Xconstraint = 0 -> xnode given by the mesh
+! Xconstraint = 1 -> xnode given by the dataset
       IF (XConstraint > 0.5) Constraint = .TRUE.
 ! xCubic = 0 -> Linear interpolation
 ! xCubic = 1 -> Cubic Spline

@@ -111,7 +111,7 @@ void STDCALLBULL FC_FUNC(postgrid,POSTGRID) (float  *xi, /* unscaled x coordinat
 /*     free(staggered_grid[0]);free(staggered_grid[1]);free(iced);  */
 /*     return; */
   }else{
-    printf("| number of iced colums:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
+    printf("| number of iced columns:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
     boundary = (int *) malloc((size_t) number_of_iced_collums*4*sizeof(int));
   }
   if (boundary==NULL){
@@ -248,7 +248,7 @@ void STDCALLBULL FC_FUNC(postgrid,POSTGRID) (float  *xi, /* unscaled x coordinat
    *     3\  |     2\  |          *
    *       \ |        E|          *
    *      W \|        \|          *
-   *         +---------+  ­­­­>i  *
+   *         +---------+  ï¿½ï¿½ï¿½ï¿½>i  *
    *         0    S    1          *
    ********************************/
   boundary_nr=0;
@@ -612,7 +612,7 @@ void STDCALLBULL FC_FUNC(elmerdata,ELMERDATA) (int   *imax_in, /* grid steps in 
   number_of_iced_nodes = get_grid_map(imax,jmax,iced,gridmap);
   if (*flag) number_of_written_nodes=nodes_in_layer_of_staggered_grid+number_of_iced_nodes*(ktmax+kcmax);
   else number_of_written_nodes=nodes_in_layer_of_staggered_grid+number_of_iced_nodes*(kcmax);
-  printf("| number of iced colums:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
+  printf("| number of iced columns:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
   printf("| number of iced nodes in layer of staggered grid: %d out of %d\n", number_of_iced_nodes, nodes_in_layer_of_staggered_grid);
   printf("| number of nodes in written grid: %d of %d\n", number_of_written_nodes, number_of_nodes);
   printf("| number of properties written for each node: %d\n", number_of_properties);
@@ -982,7 +982,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
 /*     free(staggered_grid[0]);free(staggered_grid[1]);free(iced);  */
 /*     return; */
   }else{
-    printf("| number of iced colums:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
+    printf("| number of iced columns:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
   }
   gridmap = (int *) malloc((size_t) nodes_in_one_layer*sizeof(int));
   if (gridmap==NULL){
@@ -1066,7 +1066,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
   fprintf(ptFile,"2\n");
   fprintf(ptFile,"808 %d\n", number_of_bulk_elements);
   fprintf(ptFile,"404 %d\n", number_of_boundary_elements);
-  printf("| succeeded in writting mesh header file %s.\n",filename);
+  printf("| succeeded in writing mesh header file %s.\n",filename);
   printf("---------------------------------------------------------------\n");
   fclose(ptFile);
   /* check min/max values of grid */
@@ -1165,7 +1165,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
     fclose(ptFile);
     return;
   }
-  printf("| succeeded in writting node file %s.\n",filename);
+  printf("| succeeded in writing node file %s.\n",filename);
   printf("---------------------------------------------------------------\n");
   /* writing element file */
   sprintf(filename,"mesh.elements");
@@ -1286,7 +1286,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
     free(staggered_grid[0]);free(staggered_grid[1]);free(iced);free(boundary);free(gridmap);free(nodes_of_side_element);free(parent_of_side_element);
     return;
   }
-  printf("| succeeded in writting bulk element file %s.\n",filename);
+  printf("| succeeded in writing bulk element file %s.\n",filename);
   printf("---------------------------------------------------------------\n");  
   fclose(ptFile);
   /* writing boundary element file */
@@ -1364,7 +1364,7 @@ void STDCALLBULL FC_FUNC(pregrid,PREGRID) (float  *xi, /* unscaled x coordinate 
   if (boundary_nr!=number_of_boundary_elements){
     printf("ERROR: Number of written boundary elements %d does not match calculated %d.\n", boundary_nr, number_of_boundary_elements);
   }else{
-    printf("| succeeded in writting boundary element file %s.\n",filename);
+    printf("| succeeded in writing boundary element file %s.\n",filename);
     printf("---------------------------------------------------------------\n");
   }
   fclose(ptFile);
@@ -1435,7 +1435,7 @@ void STDCALLBULL FC_FUNC(asciidata,ASCIIDATA) (float  *xi, /* unscaled x coordin
     }
     else if (errno ==  EACCES)
       printf("WARNING: No permission to read file .sico2elmer.rc. Writing all output-components by default\n");
-    else printf("WARNING: Error occured during reading  preference-file .sico2elmer.rc. Writing all output-components by default\n");
+    else printf("WARNING: Error occurred during reading  preference-file .sico2elmer.rc. Writing all output-components by default\n");
     failed=1;
   }else{
     if((ptFile=fopen(".sico2elmer.rc", "r"))==NULL){
@@ -1506,7 +1506,7 @@ void STDCALLBULL FC_FUNC(asciidata,ASCIIDATA) (float  *xi, /* unscaled x coordin
   }
   if (failed){
     for (n=0;n<12;++n) outputflags[n]=1;
-    printf("| Error occured during reading of file\n");
+    printf("| Error occurred during reading of file\n");
     printf("| Taking default values\n");
   }else printf("| Loading of preferences succeessful\n");
   printf("| Following values for output are set (1=yes,0=no):\n");
@@ -2152,7 +2152,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
   if (number_of_iced_collums<1){
     printf("WARNING: domain seems to be ice-free\n");
   }
-  printf("| number of iced colums:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
+  printf("| number of iced columns:       %d out of %d (%3.2f %%)\n", number_of_iced_collums, (imax+1)*(jmax+1), ((float) number_of_iced_collums)*100.0/((float) (imax+1)*(jmax+1)));
   printf("---------------------------------------------------------------\n");
   printf("| number of nodes:             %d=%d * %d\n",number_of_nodes, nodes_in_one_layer, kmax+1);
   printf("| number of bulk elements:     %d=%d * %d\n",number_of_bulk_elements, elements_in_one_layer, kmax);
@@ -2177,7 +2177,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
   fprintf(ptFile,"404 %d\n", number_of_boundary_elements + sidebulk*elements_in_one_layer);
   fprintf(ptFile,"808 %d\n", number_of_bulk_elements);
 
-  printf("| succeeded in writting mesh header file %s.\n",filename);
+  printf("| succeeded in writing mesh header file %s.\n",filename);
   printf("---------------------------------------------------------------\n");
   fclose(ptFile);
 
@@ -2294,7 +2294,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
   }else{
     printf("| %d number of bulk elements written.\n", n);
     printf("| %d number of sidebulk elements written.\n", m);
-    printf("| succeeded in writting bulk element file %s.\n",filename);
+    printf("| succeeded in writing bulk element file %s.\n",filename);
     printf("---------------------------------------------------------------\n");
   }
   
@@ -2319,7 +2319,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       nodes_of_element[3] = (j+1)*(imax+1) + i;
       parent_element = j*imax + i;
       if (parent_element+1 > number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element+1, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element+1, number_of_bulk_elements);
 	return;
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2338,7 +2338,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       nodes_of_element[3] = kmax*nodes_in_one_layer + (j+1)*(imax+1) + i;
       parent_element = (kmax-1)*elements_in_one_layer + j*imax + i; /* same numbering as in bulk */
       if (parent_element > number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element+1, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element+1, number_of_bulk_elements);
 	return;
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2359,7 +2359,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       nodes_of_element[3] = (k+1)*nodes_in_one_layer + j*(imax+1) + i;
       parent_element = k*elements_in_one_layer + j*imax + i; /* same numbering as in bulk */
       if (parent_element+1 > number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element+1, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element+1, number_of_bulk_elements);
 	return;
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2379,7 +2379,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       nodes_of_element[3] = (k+1)*nodes_in_one_layer + j*(imax+1) + i;
       parent_element = k*elements_in_one_layer + j*imax + i; /* same numbering as in bulk */ 
       if (parent_element+1 > number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element+1, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element+1, number_of_bulk_elements);
 	return;
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2399,7 +2399,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       ++n;
       parent_element = k*elements_in_one_layer + (jmax-1)*imax + i; /* same numbering as in bulk */
       if (parent_element+1 > number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element+1, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element+1, number_of_bulk_elements);
 	return;
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2419,7 +2419,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
       ++n;
       parent_element = k*elements_in_one_layer + j*imax + i-1; /* same numbering as in bulk */
       if (parent_element >= number_of_bulk_elements){
-	printf("parent element %d > number of bulk elments %d\n",parent_element, number_of_bulk_elements);
+	printf("parent element %d > number of bulk elements %d\n",parent_element, number_of_bulk_elements);
 /* 	return; */
       }
       fprintf(ptFile,"%d %d %d 0 404 %d %d %d %d\n",
@@ -2486,7 +2486,7 @@ void STDCALLBULL FC_FUNC(solvergrid,SOLVERGRID)(float  *xi, /* unscaled x coordi
   }else{
     printf("| %d number of boundary elements for bulk written.\n", n);
     printf("| %d number of boundary elements for sidebulk written.\n", m);
-    printf("| succeeded in writting boundary element file %s.\n",filename);
+    printf("| succeeded in writing boundary element file %s.\n",filename);
     printf("---------------------------------------------------------------\n");
   }
 

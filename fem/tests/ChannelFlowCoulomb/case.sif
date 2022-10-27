@@ -1,0 +1,138 @@
+!---------------------------------------------------------------------------
+! Simple channel flow to test the implicit friction law where
+! drag force is relative to normal force with a user specified coefficient.
+! Here upper wall uses slip coefficient and lower wall friction coefficient. 
+!
+! P.R. 25.3.2022
+!---------------------------------------------------------------------------
+
+
+$ v0 = 1.0
+$ slipc = 10.0
+$ fricc = 5.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = case.vtu
+  Set Dirichlet BCs by BC Numbering = True
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = 1.0e-6
+  Velocity 2 = 0.0
+End 
+
+Body Force 1
+  Flow BodyForce 2 = -10.0
+End 
+
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Procedure = "FlowSolve" "FlowSolver"
+!  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+ 
+  Stabilization Method = Stabilized
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+! activates also the newtonian linearization of viscosity
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = BicgstabL
+  BiCGStabl polynomial degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU2
+
+  Calculate Loads = True
+  Implicit Friction Exclude Pressure = Logical True
+
+
+End
+
+
+Equation 1 :: Active Solvers=1
+
+Material 1
+  Density = 1.0
+  Viscosity = 1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "4*tx*(1-tx)*v0"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 1
+  Name = "Bottom"
+!  Velocity 1 = 0.0
+!  Slip Coefficient 1 = $slipc
+  Implicit Friction Coefficient = Real $fricc
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  Name = "Top"
+!  Velocity 1 = 0.0
+  Slip Coefficient 1 = $slipc
+!  Implicit Friction Coefficient = Real $fricc
+  Velocity 2 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 4.50911443E-01
+

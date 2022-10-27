@@ -305,8 +305,9 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
+    SAVE Eps0
     
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
+    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, DetJVec, &
     !$OMP               MASS, STIFF, FORCE, Nodes, &
     !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h, &
     !$OMP               SourceAtIpVec, CondAtIpVec, EpsAtIpVec )
@@ -378,7 +379,7 @@ CONTAINS
     IF( Found ) THEN
       CALL LinearForms_GradUdotGradU(ngp, nd, Element % TYPE % DIMENSION, dBasisdx, DetJVec, STIFF, CondAtIpVec )
     END IF
-
+    
     ! time derivative of potential: MASS=MASS+(eps*grad(u),grad(v))
     IF( Transient ) THEN
       EpsAtIpVec => ListGetElementRealVec( EpsCoeff_h, ngp, Basis, Element, Found ) 
@@ -421,9 +422,15 @@ CONTAINS
     INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h    
+    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
+
+    SAVE Eps0
 !------------------------------------------------------------------------------
 
+    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, &
+    !$OMP               MASS, STIFF, FORCE, Nodes, &
+    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h )
+    
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( SourceCoeff_h,'Body Force','Current Source')
@@ -739,7 +746,17 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   InitHandles = .TRUE.
   HeatingTot = 0.0_dp
   VolTot = 0.0_dp
-  DO t = 1, GetNOFActive()
+
+  !$OMP PARALLEL &
+  !$OMP SHARED(Solver, Active) &
+  !$OMP PRIVATE(t,Element, n, InitHandles, MASS, FORCE)
+  
+  !$OMP SINGLE
+  Active = GetNOFActive(Solver)
+  !$OMP END SINGLE
+
+  !$OMP DO
+  DO t = 1, Active
     Element => GetActiveElement(t)
     IF( ParEnv % PEs > 1 ) THEN
       IF( ParEnv % MyPe /= Element % PartIndex ) CYCLE
@@ -748,6 +765,8 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     CALL LocalPostAssembly( Element, n, InitHandles, MASS, FORCE )
     CALL LocalPostSolve( Element, n, MASS, FORCE )
   END DO
+  !$OMP END DO 
+  !$OMP END PARALLEL
   
   IF( NeedScaling ) THEN
     CALL Info(Caller,'Scaling the field values with weights',Level=12)
@@ -803,6 +822,11 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
+    SAVE Eps0
+    
+    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, ElementPot, &
+    !$OMP               Nodes,SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
+
     
 !------------------------------------------------------------------------------
     ! This InitHandles flag might be false on threaded 1st call

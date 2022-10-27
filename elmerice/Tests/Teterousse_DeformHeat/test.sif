@@ -8,7 +8,7 @@
 ! Updated January 2014: comment Solver 5 (top freesurface)
 !    because of implementation problems when using 2 of
 !    the same solvers without recompiling one of them
-! Updated Sept 2020 for making it faster and somme cleanning
+! Updated Sept 2020 for making it faster and some cleaning
 
 check keywords warn
 echo on

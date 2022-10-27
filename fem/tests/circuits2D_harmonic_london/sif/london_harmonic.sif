@@ -1,0 +1,148 @@
+! A simple testcase for testing London equations in time-harmonic domain.
+! Author: Eelis Takala, IQM
+! Original date: October 2022
+! eelis@meetiqm.com
+Check Keywords "Warn"
+INCLUDE sif/circuits_london.definitions
+INCLUDE inductor/mesh.names
+Header
+   Mesh DB "." "inductor"
+End
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian
+   Coordinate Scaling = 1e-6
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Angular Frequency = $ 2 * pi * 5e9
+End
+Solver 1 !---- Circuits
+!   Exec Solver = Never
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 2
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Solver = Direct
+!   Linear System Iterative Method = BicgStabL
+   Linear System Preconditioning = None
+   Linear System Complex = Logical True
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 10
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   BicgStabL Polynomial Degree = 6
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 3  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 4 !---- ResultOutput
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = inductor-harmonic
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 5 !---- CircuitsOutput
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 6 !---- SaveData
+   Exec Solver = Always
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = inductor/dat/inductor.dat
+End
+Equation 1 !---- Circuits, MagnetoDynamics2D, MagnetoDynamicsCalcFields
+   Active Solvers(5) = 1 2 3 4 5
+End
+Equation 2 !---- MagnetoDynamics2D, MagnetoDynamicsCalcFields
+   Active Solvers(4) = 2 3 4 5
+End
+Material 1 !---- Vacuum
+   Name = vacuum
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+Material 2 !---- SC
+   Name = SC
+   Electric Conductivity = 0
+   Relative Permeability = 1
+   $ lambda_l = 20e-9
+!   $ lambda_l = 20e-7
+   $ mu_0 = 4e-7*pi
+   London Lambda = Real $ mu_0 * lambda_l^2
+End
+Body 1 !---- Vacuum
+   Name = Vacuum
+   Target Bodies(1) = $ vacuum
+   Equation = 2
+   Material = 1
+End
+Body 2 !---- L1
+   Name = L1
+   Target Bodies(1) = $ L1
+   Equation = 1
+   Material = 2
+End
+Body 3 !---- L2
+   Name = L2
+   Target Bodies = $ L2
+   Equation = 1
+   Material = 2
+End
+Component 1 !---- L1
+   Name = "L1"
+   Master Bodies = 2
+   Coil Type = Massive
+   London Equations = Logical True
+End
+Component 2 !---- L2
+   Name = "L2"
+   Master Bodies = 3	
+   Coil Type = Massive
+   London Equations = Logical True
+End
+Body Force 1
+   Name = "Circuit"
+   testsource Re = Real 1.0
+   testsource Im = Real 0.0
+End
+Boundary Condition 1 !---- Symmetry
+   Target Boundaries(1) = $ symmetry
+   A re = Real 0
+   A im = Real 0
+End
+Boundary Condition 2 !---- Outer boundary
+   Target Boundaries(1) = $ outer_boundary
+!   Infinity BC = Logical True
+   A re = Real 0
+   A im = Real 0
+End
+
+Solver 2 :: Reference Norm = 1.22224538E-11

@@ -15,7 +15,7 @@ SurfEnthBoundarySolver is a pseudo-solver which compute surface mass balance and
 The solver uses the provided air temperature (and precipitation) daily record to compute the associated mean surface characteristic of the glacier over the period covered by the provided data time series. It can output the following variables:
 
 - Mass Balance (m w.eq./yr): Mean surface mass balance
-- Surf Enth (J/kg) : Enthalpy value bellow active layer. Can be use as a Dirichlet condition in the Enthalpy Solver
+- Surf Enth (J/kg) : Enthalpy value below active layer. Can be use as a Dirichlet condition in the Enthalpy Solver
 - Densi (kg/m3): Density field in 3D
 - Firn (m w. eq.) : Firn thickness
 - Melting (m w.eq./yr) : Surface melting

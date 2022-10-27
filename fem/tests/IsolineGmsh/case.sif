@@ -61,7 +61,7 @@ End
 
 ! This solver extracts the 1D isolines from 2D temperature field
 ! and stores them to a mesh called "isosurf" (when saving other stuff too)
-! Also now saves in gsmh geo format.
+! Also now saves in gmsh geo format.
 !---------------------------------------------------------------------
 Solver 2
   Exec Solver = after all

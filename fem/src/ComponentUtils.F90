@@ -83,7 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode, IsParallel
+     LOGICAL :: BcMode, isParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -97,7 +97,7 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
-     IsParallel = CurrentModel % Solver % Parallel
+     isParallel = CurrentModel % Solver % Parallel
      
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
@@ -201,9 +201,11 @@ MODULE ComponentUtils
          ! Only compute the parallel reduction once
          IF( isParallel ) THEN
            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-           IF( VisitNodeOnlyOnce ) THEN           
-             IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-           END IF
+
+! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
+!          IF( VisitNodeOnlyOnce ) THEN           
+!            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+!          END IF
          END IF
            
          F(1) = NF % Values( dofs*(k-1) + 1)
@@ -231,7 +233,8 @@ MODULE ComponentUtils
 
            ! Calculate torque around an axis
            IF( PRESENT( Torque ) ) THEN
-             v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             !v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
              Torque = Torque + SUM(Axis*v2)        
            END IF
@@ -718,7 +721,7 @@ MODULE ComponentUtils
         NoVar = NoVar + 1
         OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
         VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
-        CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        CoeffName = ListGetString( CompParams,'Coefficient '//TRIM(I2S(NoVar)), GotCoeff)
         
         IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
           VarName = 'Potential'

@@ -2,7 +2,7 @@
 // parameters: resolution and rectangle length and width
 //  (can be changed in line using e.g. "-setnumber lc [VALUE]")
 DefineConstant[ lc = {1.0e3, Name "resolution"},
-                x = {200.0e3, Name "lenght"},
+                x = {200.0e3, Name "length"},
 		y = {50.0e3, Name "width"}];
 
 ////////////////////////////////////////////////////////

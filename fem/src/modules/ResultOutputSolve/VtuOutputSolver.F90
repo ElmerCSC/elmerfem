@@ -86,13 +86,25 @@ CONTAINS
     
     TYPE(Mesh_t), POINTER :: Mesh
 
-    TYPE(Variable_t), POINTER :: Var
-    INTEGER :: NoAve
-    LOGICAL :: BodySum 
-
-    NoAve = 0
-    Var => Mesh % Variables
+    TYPE(Variable_t), POINTER :: Var, Var1
+    INTEGER :: NoAve, i
+    LOGICAL :: BodySum    
     
+    ! The variables may have been averaged already in vector form. 
+    ! Inherit the DgAveraged flag to the components. 
+    Var => Mesh % Variables    
+    DO WHILE( ASSOCIATED( Var ) )       
+      IF ( Var % DOfs > 1 .AND. Var % TYPE == Variable_on_nodes_on_elements ) THEN        
+        DO i=1,Var % Dofs
+          Var1 => VariableGet( Mesh % Variables,ComponentName(Var % Name,i), ThisOnly = .TRUE.)
+          IF( ASSOCIATED(Var1)) Var1 % DgAveraged = Var % DgAveraged 
+        END DO
+      END IF
+      Var => Var % Next
+    END DO
+
+
+    Var => Mesh % Variables    
     DO WHILE( ASSOCIATED( Var ) ) 
       
       ! Skip if variable is not active for saving       
@@ -190,7 +202,7 @@ CONTAINS
             END IF
           END IF
         ELSE
-          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! Also add number to the wrapper files as it is difficult otherwise
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
@@ -250,7 +262,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN
+  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
   CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
@@ -305,7 +317,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ! Sometimes we have a request to save in DG format even though no equation has been solved as dg.
       ! Then we need to create the Element % DgIndexes for the saving only. If already done this does nothing.
       CALL CheckAndCreateDGIndexes( Mesh )
-      IF( DN ) CALL AverageBodyFields( Mesh )  
+
+      DoAve = GetLogical( Params,'Average Within Materials', GotIt)
+      IF(.NOT. GotIt) DoAve = .TRUE. 
+      
+      IF( DoAve ) CALL AverageBodyFields( Mesh )  
     END IF
   END IF
   
@@ -321,6 +337,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   FileIndexOffset = GetInteger( Params,'Fileindex offset',GotIt)
   FileIndex = nTime + FileIndexOffset
 
+  i = GetInteger( Params, 'Output File cycle',GotIt)
+  IF(GotIt) FileIndex = MODULO(FileIndex-1,i)+1
+  
   BinaryOutput = GetLogical( Params,'Binary Output',GotIt)
   IF( GotIt ) THEN
     AsciiOutput = .NOT. BinaryOutput
@@ -434,17 +453,22 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL ParallelActive( NumberOfDofNodes > 0 )
 
   IF( nTime == 1 ) THEN
-    ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
-    CALL Info(Caller, 'Total number of geometry nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
-
-    ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
-    CALL Info(Caller, 'Total number of dof nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
-
     ParallelElements = ParallelReduction( NumberOfElements ) 
-    CALL Info(Caller, 'Total number of elements to save: '&
-        //TRIM(I2S(ParallelElements)),Level=6)
+
+    IF( ParallelElements == 0 ) THEN
+      CALL Info(Caller, 'Nothing to save for this selection: ',Level=8)
+    ELSE
+      CALL Info(Caller, 'Total number of elements to save: '&
+          //TRIM(I2S(ParallelElements)),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
+      CALL Info(Caller, 'Total number of geometry nodes to save: '&
+          //TRIM(I2S(ParallelNodes)),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
+      CALL Info(Caller, 'Total number of dof nodes to save: '&
+          //TRIM(I2S(ParallelNodes)),Level=8)
+    END IF
   END IF
 
   !------------------------------------------------------------------------------
@@ -480,12 +504,14 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
         EigenVectorMode = 1
       ELSE IF( Str == 'abs' ) THEN
         EigenVectorMode = 2
+      ELSE IF( Str == 'complex' ) THEN
+        EigenVectorMode = 3
       ELSE
         CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
+      CALL Info(Caller,'Using eigen vector mode: '//TRIM(I2S(EigenVectorMode)),Level=7)
     END IF
   END IF
-
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
   IF( GotActiveModes2 ) THEN
@@ -649,8 +675,9 @@ CONTAINS
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
     CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
-    LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
+    LOGICAL :: ScalarsExist, VectorsExist, Found, &
+        ComponentVector, ComponentVectorB, ComplementExists, &
+        Use2, IsHarmonic, FlipActive, DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
@@ -806,13 +833,12 @@ CONTAINS
           !---------------------------------------------------------------------
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
 
-
           ComponentVector = .FALSE.
           IF(ASSOCIATED(Solution)) THEN
             dofs = Solution % DOFs
             NULLIFY(Solution2)
             NULLIFY(Solution3)
-          ELSE
+          ELSE 
             !---------------------------------------------------------------------
             ! Some vectors are defined by a set of components (either 2 or 3 is possible!)
             !---------------------------------------------------------------------            
@@ -825,8 +851,7 @@ CONTAINS
               IF(ASSOCIATED(Solution3)) dofs = 3
               ComponentVector = .TRUE.              
             ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-              CALL Warn(Caller, Txt)
+              CALL Warn(Caller,'Nonexistent variable: '//TRIM(FieldName)) 
               CYCLE
             END IF
           END IF
@@ -851,23 +876,26 @@ CONTAINS
               Solution3 => TmpSolDg3
             END IF            
           ELSE IF ( VarType == Variable_on_nodes_on_elements ) THEN
-            IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
+            IF( .NOT. ( DG .OR. DN ) ) CYCLE
+            IF( .NOT. SaveElemental ) CYCLE
           ELSE IF( VarType == Variable_on_elements ) THEN
             CYCLE
           ELSE IF( VarType == Variable_on_gauss_points ) THEN
-            IF ( DG ) THEN
-              CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
-              Solution => TmpSolDg 
-              IF(ASSOCIATED(Solution2)) THEN
-                CALL Ip2DgSwapper( Mesh, Solution2, TmpSolDg2, Variable_on_nodes_on_elements )
-                Solution2 => TmpSolDg2 
-              END IF
-              IF(ASSOCIATED(Solution3)) THEN
-                CALL Ip2DgSwapper( Mesh, Solution3, TmpSolDg3, Variable_on_nodes_on_elements )
-                Solution3 => TmpSolDg3 
-              END IF
-            ELSE
-              CYCLE
+            IF ( .NOT. ( DG .OR. DN ) ) CYCLE                       
+
+            CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
+            IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg, .FALSE. )
+
+            Solution => TmpSolDg 
+            IF(ASSOCIATED(Solution2)) THEN
+              CALL Ip2DgSwapper( Mesh, Solution2, TmpSolDg2, Variable_on_nodes_on_elements )
+              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg2, .FALSE. )
+              Solution2 => TmpSolDg2 
+            END IF
+            IF(ASSOCIATED(Solution3)) THEN
+              CALL Ip2DgSwapper( Mesh, Solution3, TmpSolDg3, Variable_on_nodes_on_elements )
+              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg3, .FALSE. )
+              Solution3 => TmpSolDg3 
             END IF
           END IF
 
@@ -1000,7 +1028,8 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Finally save the field values 
           !---------------------------------------------------------------------
-          DO iField = 1, NoFields + NoFields2          
+          DoIm = .FALSE.
+300       DO iField = 1, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info(Caller,'Setting field type to discontinuous',Level=12)
@@ -1125,13 +1154,21 @@ CONTAINS
                       END IF
                     END IF
                     
-                    IF( EigenVectorMode == 0 ) THEN
+                    SELECT CASE( EigenVectorMode )
+                    CASE( 0 ) 
                       val = REAL( zval )
-                    ELSE IF( EigenVectorMode == 1 ) THEN
+                    CASE(1) 
                       val = AIMAG( zval ) 
-                    ELSE
+                    CASE(2) 
                       val = ABS( zval ) 
-                    END IF                    
+                    CASE(3)
+                      IF( DoIm ) THEN
+                        val = AIMAG( zval )
+                      ELSE
+                        val = REAL( zval )
+                      END IF
+                    END SELECT
+
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
@@ -1171,6 +1208,18 @@ CONTAINS
               CALL AscBinStrWrite( OutStr ) 
             END IF
           END DO
+
+          IF( NoModes > 0 ) THEN !.AND. iField <= NoFields ) THEN
+            ! We have chosen to save both real and imaginary components.
+            ! We have done real, now redo with im. This is later patch, hence the dirty GOTO. 
+            IF(EigenVectorMode == 3 .AND. .NOT. DoIm ) THEN
+              DoIm = .TRUE. 
+              CALL Info(Caller,'Doing the imaginary component of: '//TRIM(FieldName),Level=25)
+              FieldName = TRIM(FieldName)//' Im'
+              GOTO 300 
+            END IF
+          END IF
+          
         END DO
       END DO
     END IF ! IF( SaveNodal )
@@ -1195,22 +1244,11 @@ CONTAINS
         DO Vari = 1, 999
 
           IF( Rank == 0 ) THEN
-            WRITE(Txt,'(A,I0)') 'Scalar Field Elemental ',Vari
+            WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
           ELSE
-            WRITE(Txt,'(A,I0)') 'Vector Field Elemental ',Vari
+            WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
           END IF
           FieldName = GetString( Params, TRIM(Txt), Found )
-          L = Found
-
-          IF(.NOT. Found) THEN
-            IF( Rank == 0 ) THEN
-              WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-            ELSE
-              WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-            END IF
-            FieldName = GetString( Params, TRIM(Txt), Found )
-          END IF
-
           IF(.NOT. Found) EXIT
 
           !---------------------------------------------------------------------
@@ -1230,10 +1268,7 @@ CONTAINS
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE 
-              IF( L ) THEN
-                WRITE(Txt, '(A,A)') 'Nonexistent elemental variable: ',TRIM(FieldName)
-                CALL Warn(Caller, Txt)
-              END IF
+              CALL Warn(Caller,'Nonexistent variable: '//TRIM(FieldName))
               CYCLE
             END IF
           END IF
@@ -1261,14 +1296,15 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
+            dofs = 1 
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) THEN
+              Values2 => Solution2 % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) THEN
+              Values3 => Solution3 % Values
               dofs = 3
             END IF
           END IF
@@ -1283,7 +1319,7 @@ CONTAINS
           ! Finally save the field values 
           !---------------------------------------------------------------------
           IF( WriteXML ) THEN
-            CALL Info(Caller,'Writing variable: '//TRIM(FieldName) )
+            CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
             WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
             CALL AscBinStrWrite( OutStr )
 
@@ -1498,8 +1534,8 @@ CONTAINS
           CurrentElement => Model % Elements(i)
 
           IF( i <= Mesh % NumberOfBulkElements ) THEN
-            j = CurrentElement % BodyId 
-            j = GeometryBodyMap( j )
+            j = CurrentElement % BodyId
+            IF (j>=1 .AND. j<= SIZE(GeometryBodyMap)) j = GeometryBodyMap( j )     
           ELSE
             j = GetBCId( CurrentElement )
             IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) THEN
@@ -1938,10 +1974,9 @@ CONTAINS
     INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs,iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FullName
-    LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, &
-               AllActive, ThisActive, L
+    LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
-    TYPE(Variable_t), POINTER :: Solution
+    TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
     INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
@@ -1953,7 +1988,7 @@ CONTAINS
 
     NoActive = ParallelReduction( Active ) 
     IF( NoActive == 0 ) THEN
-      CALL Warn('WritePvtuFile','No active partitions for saving')
+      CALL Info('WritePvtuFile','No active partitions for saving',Level=12)
     END IF
     AllActive = ( NoActive == Partitions )
     
@@ -2037,8 +2072,7 @@ CONTAINS
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable 2: ',TRIM(FieldName)
-              CALL Warn('WritePvtuFile', Txt)
+              CALL Warn('WritePvtuFile','Nonexistent variable: '//TRIM(FieldName)) 
               CYCLE
             END IF
           END IF
@@ -2057,6 +2091,10 @@ CONTAINS
             END IF
           END IF
 
+          NoModes = 0
+          NoFields = 1
+          
+          ! Maybe we have some eigenmodes? 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
             IF( EigenAnalysis ) THEN
@@ -2075,17 +2113,14 @@ CONTAINS
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF
-          ELSE
-            NoModes = 0 
-            NoFields = 1
           END IF
 
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 2
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 3
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) dofs = 2
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) dofs = 3
           END IF
 
           IF( dofs > 1 ) THEN
@@ -2137,36 +2172,37 @@ CONTAINS
       IF( ScalarsExist .OR. VectorsExist ) THEN
         DO Rank = 0,2
           DO Vari = 1, 999
-
-            IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field Elemental ',Vari
-            IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field Elemental ',Vari
+            IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+            IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
             FieldName = GetString( Params, TRIM(Txt), Found )
-            L = Found 
-
-            IF(.NOT. Found) THEN          
-              IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-              IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-              FieldName = GetString( Params, TRIM(Txt), Found )
-            END IF
             IF(.NOT. Found ) EXIT
 
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
             ComponentVector = .FALSE.
 
-            IF(.NOT. ASSOCIATED(Solution)) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) THEN 
-                ComponentVector = .TRUE.
-              ELSE 
-                IF( L ) THEN
-                  WRITE(Txt, '(A,A)') 'Nonexistent elemental variable 2: ',TRIM(FieldName)
-                  CALL Warn('WritePvtuFile', Txt)
-                END IF
+            IF(ASSOCIATED(Solution)) THEN
+              dofs = Solution % DOFs
+            ELSE
+              IF( Rank == 0 ) THEN
+                CALL Warn('WritePvtuFile','Nonexistent scalar variable: '//TRIM(FieldName))
                 CYCLE
+              ELSE
+                Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
+                IF( ASSOCIATED(Solution)) THEN 
+                  ComponentVector = .TRUE.
+                  dofs = 1
+                  Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution2)) dofs = 2
+                  Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution3)) dofs = 3                  
+                ELSE 
+                  CALL Warn('WritePvtuFile','Nonexistent vector variable: '//TRIM(FieldName))
+                  CYCLE
+                END IF
               END IF
             END IF
 
-            VarType = Solution % Type
+            VarType = Solution % TYPE
 
             IF( DG .OR. DN ) THEN
               Found = ( VarType == Variable_on_elements )
@@ -2177,6 +2213,9 @@ CONTAINS
             END IF
             IF (.NOT. Found ) CYCLE
 
+            NoModes = 0 
+            NoFields = 1
+            
             IF( ASSOCIATED(Solution % EigenVectors)) THEN
               NoModes = SIZE( Solution % EigenValues )
               IF( EigenAnalysis ) THEN
@@ -2195,17 +2234,6 @@ CONTAINS
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
                 NoFields = NoModes
               END IF
-            ELSE
-              NoModes = 0 
-              NoFields = 1
-            END IF
-
-            dofs = Solution % DOFs
-            IF( ComponentVector ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) dofs = 2
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) dofs = 3
             END IF
 
             IF( dofs > 1 ) THEN
@@ -2214,9 +2242,7 @@ CONTAINS
               sdofs = 1
             END IF
 
-
             DO iField = 1, NoFields
-
               IF( NoModes == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          

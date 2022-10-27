@@ -158,20 +158,11 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 
 ! Initially density was not used in the Helmholtz equation. However, if there 
 ! are several different densities it must be used and hence it was added later.
-! For backward compatibility also the version where density is not provided should work.
+! Now, a Fatal is returned if not given.
 !---------------------------------------------------------------------------------------
   UseDensity = .TRUE.
-  DO i=1,Model % NumberOfMaterials
-    IF( .NOT. ListCheckPresent( Model % Materials(i) % Values,'Density') ) THEN
-      UseDensity = .FALSE.
-      IF( Model % NumberOfMaterials > 1) THEN
-        CALL Warn('HelmholtzSolver','There are multiple materials and density is not used, might result to errors!')
-      END IF
-      EXIT
-    END IF
-  END DO
 
-  ! This flag could be needed in FSI iterations, for example
+  ! This flag could be needed in FSI iterations, for example. This is for historical reasons. 
   CALL ListAddLogical( SolverParams,'Use Density', UseDensity )
   
   n = GetElementNOFNodes()
@@ -269,23 +260,9 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 
   ! Check whether the equation lives on a convection field
   !-------------------------------------------------------
-  UseConvection = .FALSE.
   ConvVelo = 0.0_dp
+  UseConvection = ListCheckPrefixAnyMaterial( Model,'Convection Velocity')
 
-  DO i = 1, Model % NumberOfMaterials
-    Material => Model % Materials(i) % Values
-
-    UseConvection = ListCheckPresent( Material,'Convection Velocity 1')
-
-    Found = ListCheckPresent( Material,'Convection Velocity 2')
-    UseConvection = UseConvection .OR. Found
-
-    IF( dim == 3 ) THEN
-      Found = ListCheckPresent( Material,'Convection Velocity 3')
-      UseConvection = UseConvection .OR. Found
-    END IF
-    IF( UseConvection ) EXIT
-  END DO
 
 !------------------------------------------------------------------------------
 ! Iterate over any nonlinearity of material or source
@@ -334,9 +311,10 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         Material => GetMaterial()
 
         Damping(1:n)    = GetReal( Material, 'Sound Damping', Found )
-        SoundSpeed(1:n) = GetReal( Material, 'Sound Speed', Found )
-
-        IF( UseDensity) Density(1:n) = GetReal( Material, 'Density', Found )
+        SoundSpeed(1:n) = ListGetReal( Material, 'Sound Speed',&
+            n, Element % NodeIndexes, UnfoundFatal = .TRUE. )
+        Density(1:n) = ListGetReal( Material, 'Density', &
+            n, Element % NodeIndexes, UnfoundFatal = .TRUE.)
 
         IF( UseConvection ) THEN
           ConvVelo(1,1:n) = GetReal( Material, 'Convection Velocity 1', Found )
@@ -382,9 +360,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
           Impedance(1,1:n) = GetReal( BC, 'Wave Impedance 1', Found )
           Impedance(2,1:n) = GetReal( BC, 'Wave Impedance 2', Found )
                  
-          IF( UseDensity ) THEN
-            Density(1:n) = GetParentMatProp( 'Density', Element )
-          END IF
+          Density(1:n) = GetParentMatProp( 'Density', Element )
 
           PlaneWave = GetLogical( BC,'Plane Wave BC',Found )
           IF( PlaneWave ) THEN 
@@ -400,7 +376,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
             END IF
           END IF
           
-
           CALL LocalMatrixBoundary(  STIFF, FORCE, AngularFrequency, &
               Impedance, Load, Element, n, nd, ConvVelo )
 
@@ -461,32 +436,9 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
            WallVelocity = ImUnit * AngularFrequency * WallVelocity
          END IF
          
-         ! Find the Helmholtz parent to determine the reference density.
-         ! If density is used everywhere, then it is actually eliminated in
-         ! this BC due to the scaling and hence unity is used instead.
-         !----------------------------------------------------------------
-         IF( UseDensity ) THEN
-           Density = 1.0_dp
-         ELSE
-           Parent => Element % BoundaryInfo % Left
-           stat = ASSOCIATED( Parent )
-           IF (stat) stat = ALL(PresPerm(Parent % NodeIndexes(1:n)) > 0)
-           IF ( .NOT. stat) THEN
-             Parent => Element % BoundaryInfo % Right
-             stat = ASSOCIATED( Parent )
-             IF (stat) stat = ALL(PresPerm(Parent % NodeIndexes(1:n)) > 0)
-             IF ( .NOT. stat )  CALL Fatal( 'HelmholtzSolve', &
-                 'No parent element can be found for given boundary element' )
-           END IF
-           
-           k = ListGetInteger( Model % Bodies(Parent % Bodyid) % Values, &
-               'Material' )
-           Material => Model % Materials(k) % Values
-           Density(1:n) = ListGetReal( Material, 'Density', &
-               n, Element % NodeIndexes(1:n) )
-         END IF
-
-         CALL LocalInterfaceMatrix(  STIFF, FORCE, AngularFrequency, Density, &
+         ! As the density is used everywhere, then it is actually eliminated here.
+         !------------------------------------------------------------------------
+         CALL LocalInterfaceMatrix(  STIFF, FORCE, AngularFrequency, &
              Element, n, WallVelocity )
          
          CALL DefaultUpdateEquations( STIFF, FORCE )       
@@ -610,9 +562,7 @@ CONTAINS
        L1 = SUM( Load(1,1:n) * Basis(1:n) )
        L2 = SUM( Load(2,1:n) * Basis(1:n) )
 
-       IF( UseDensity ) THEN
-         Rho = SUM( Density(1:n) * Basis(1:n) ) 
-       END IF
+       Rho = SUM( Density(1:n) * Basis(1:n) ) 
 
        DO i = 1,dim
          DiffCoef(i,i) = 1.0_dp
@@ -657,13 +607,13 @@ CONTAINS
                END DO
              END DO
 
-             IF( UseDensity ) A = A / Rho
+             A = A / Rho
              STIFF(p,q) = STIFF(p,q) + s * A
 
           END DO
           
           B = Basis(p) * CMPLX( L1,L2,KIND=dp )
-          IF( UseDensity ) B = B / Rho
+          B = B / Rho
           FORCE(p) = FORCE(p) + s * B
        END DO
     END DO
@@ -741,11 +691,8 @@ CONTAINS
          Admittance = CMPLX(0.0d0,1.0d0,KIND=dp) * AngularFrequency / CMPLX(Impedance1, Impedance2,KIND=dp)
        END IF
 
-       IF( UseDensity ) THEN
-         Rho = SUM( Density(1:n) * Basis(1:n) ) 
-       END IF
-
-
+       Rho = SUM( Density(1:n) * Basis(1:n) ) 
+       
        IF( UseConvection ) THEN
 !        Scaled convection velocity
 !        --------------------------
@@ -768,11 +715,11 @@ CONTAINS
                A = A - NormVelo * Admittance * Basis(q)*Basis(p)
                A = A + SUM( TangVelo(1:dim) * dBasisdx(q,1:dim) ) * Basis(p)
              END IF
-             IF( UseDensity ) A = A / Rho
+             A = A / Rho
              STIFF(p,q) = STIFF(p,q) + s * A
           END DO
           B = Basis(p) * CMPLX(L1,L2,KIND=dp)
-          IF( UseDensity ) B = B / Rho
+          B = B / Rho
           FORCE(p) = FORCE(p) + s * B
        END DO
 !------------------------------------------------------------------------------
@@ -783,11 +730,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalInterfaceMatrix(  STIFF, FORCE, AngularFrequency, Density, &
+  SUBROUTINE LocalInterfaceMatrix(  STIFF, FORCE, AngularFrequency, &
               Element, n, WallVelo )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
-    REAL(KIND=dp) :: AngularFrequency, Density(:)
+    REAL(KIND=dp) :: AngularFrequency
     COMPLEX(KIND=dp) :: WallVelo(:,:)
     INTEGER :: n
     TYPE(Element_t), POINTER :: Element
@@ -795,7 +742,7 @@ CONTAINS
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Impedance1,Impedance2,L1,L2
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),X,Y,Z
     REAL(KIND=dp) :: Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
-    REAL(KIND=dp) :: Normal(3), rho
+    REAL(KIND=dp) :: Normal(3)
     COMPLEX(KIND=dp) :: A, Admittance, NormVelo
     LOGICAL :: Stat
     INTEGER :: i,p,q,t,dim,CoordSys
@@ -843,11 +790,10 @@ CONTAINS
          NormVelo = NormVelo + Normal(i) * SUM( WallVelo(i,1:n) * Basis(1:n) )
        END DO
 
-       rho = SUM( Density(1:n) * Basis(1:n) )
 !------------------------------------------------------------------------------
        DO p=1,n
          FORCE(p) = FORCE(p) - s * Basis(p) * &
-             ImUnit * rho * AngularFrequency * NormVelo
+             ImUnit * AngularFrequency * NormVelo
        END DO
 !------------------------------------------------------------------------------
     END DO

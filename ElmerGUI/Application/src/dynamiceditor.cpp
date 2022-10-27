@@ -215,7 +215,8 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
           if ( widget_enabled == "False" ) h.widget->setEnabled(false);
 
-	  if(widget_type != "TextEdit") h.widget->setFixedHeight(18);
+      // The next line was commented out for display scaling. ST
+	  //if(widget_type != "TextEdit") h.widget->setFixedHeight(18);  
 
 	  if(widget_type == "TextEdit") {
             QLabel *textEditLabel = new QLabel;

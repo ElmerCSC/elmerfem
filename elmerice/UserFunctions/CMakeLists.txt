@@ -5,7 +5,7 @@ SET(ElmerIceUSF_SRC Buoyancy.F90 USF_GetFrictionHeating.F90 USF_Sliding.F90
                     CaffeFlow.F90 USF_LateralFriction.F90 USF_WaterTransfer.F90
                     USF_Contact.F90 USF_ShapeFactor.F90 USF_Zs.F90 USF_Damage.F90
                     USF_Haf.F90 USF_CouplingGlaDS_SSA.F90 USF_CoV.F90 USF_IceProperties.F90
-		    USF_SourceCalcCalving.F90)
+		    USF_SourceCalcCalving.F90 USF_proj.F90)
 
 ADD_LIBRARY(ElmerIceUSF SHARED ${ElmerIceUSF_SRC})
 
@@ -30,6 +30,6 @@ IF(NOT(WIN32))
     SET_TARGET_PROPERTIES(ElmerIceUSF PROPERTIES 
                           INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
 ENDIF()
-TARGET_LINK_LIBRARIES(ElmerIceUSF elmersolver)
+TARGET_LINK_LIBRARIES(ElmerIceUSF elmersolver ElmerIceUtils)
 INSTALL(TARGETS ElmerIceUSF LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")

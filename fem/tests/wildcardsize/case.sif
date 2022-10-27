@@ -1,4 +1,4 @@
-! The sizes of vectors may be given implicitely using suntax "(*)"
+! The sizes of vectors may be given implicitly using suntax "(*)"
 ! for the size. Then the values must be on the same line.
 !
 ! P.R. 1.5.2021

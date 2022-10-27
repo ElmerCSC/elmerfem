@@ -1,0 +1,82 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+
+  Mesh Levels = 2
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Plate Solver
+  Procedure = "Smitc" "SmitcSolver"
+  Linear System Solver = Iterative
+
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStabl
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Convergence Measure = "solution"
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1.0e-5
+!  Nonlinear System Relaxation Factor = $2.0/3.0
+
+  Apply Limiter = True
+  Save Limiter = Logical True
+!  Apply Limiter Conservative Add After Iterations = Integer 3
+!  Apply Limiter Conservative Remove After Iterations = Integer 3
+!  Limiter Load Tolerance = 1.0e-6
+!  Limiter Value Tolerance = 1.0e-6
+End
+
+Material 1
+   Density = 1.0
+   Thickness = 0.01
+   Youngs Modulus = 1.0e3
+   Poisson Ratio = 0.3
+End
+
+Body Force 1
+  Pressure = Variable "Coordinate 1"
+    Real MATC "-sin(pi*tx)"
+
+
+  Deflection 1 Lower Limit = Variable "Coordinate 2"
+    Real MATC "-1.0*tx"
+!  Deflection 1 Lower Limit = Real -1.0
+End
+
+
+
+Equation 1
+  Name = "Equation"
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Deflection 1 = 0  ! z-deflection
+  Deflection 2 = 0  ! x-rotation
+  Deflection 3 = 0  ! y-rotation
+End
+
+
+Solver 1 :: Reference Norm = 1.15141232
+

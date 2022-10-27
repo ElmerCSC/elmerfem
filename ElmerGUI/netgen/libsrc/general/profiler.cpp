@@ -6,6 +6,7 @@
 
 
 #include <myadt.hpp>
+#define PROF_ACTIVE 0 
 
 namespace netgen
 {
@@ -41,16 +42,17 @@ namespace netgen
     // which leads to an "order of destruction"-problem,
     // thus we use the C-variant:
 
+#if PROF_ACTIVE
     char filename[100];
 #ifdef PARALLEL
     sprintf (filename, "netgen.prof.%d", id);
 #else
     sprintf (filename, "netgen.prof");
 #endif
-
     FILE *prof = fopen(filename,"w");
     Print (prof);
     fclose(prof);
+#endif
   }
 
 
@@ -78,10 +80,10 @@ namespace netgen
 
   void NgProfiler :: Print (FILE * prof)
   {
+#if PROF_ACTIVE
     for (int i = 0; i < SIZE; i++)
       if (counts[i] != 0 || usedcounter[i] != 0)
 	{
-	  //fprintf(prof,"job %3i calls %8i, time %6.2f sec",i,counts[i],double(tottimes[i]) / CLOCKS_PER_SEC);
 	  fprintf(prof,"calls %8i, time %6.2f sec",counts[i],double(tottimes[i]) / CLOCKS_PER_SEC);
 	  if(usedcounter[i])
 	    fprintf(prof," %s",names[i].c_str());
@@ -89,6 +91,7 @@ namespace netgen
 	    fprintf(prof," %i",i);
 	  fprintf(prof,"\n");
 	}
+#endif
   }
 
   int NgProfiler :: CreateTimer (const string & name)

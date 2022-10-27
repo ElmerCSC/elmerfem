@@ -174,7 +174,18 @@ CONTAINS
           Parent => Element % BoundaryInfo % Right        
         END IF
         IF ( ASSOCIATED(Parent) ) THEN
-          IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+          IF (.NOT. ASSOCIATED(Parent % DGIndexes) ) THEN
+            ! This could happen if we have parents of parents i.e. the original element
+            ! is a line element, has parents that are face elements, having parents being volume elements. 
+            IF( ASSOCIATED( Parent % BoundaryInfo ) ) THEN
+              IF( ASSOCIATED( Parent % BoundaryInfo % Left ) ) THEN
+                Parent => Parent % BoundaryInfo % Left
+              ELSE IF( ASSOCIATED( Parent % BoundaryInfo % Right ) ) THEN
+                Parent => Parent % BoundaryInfo % Right
+              END IF
+            END IF
+          END IF
+          IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
             n = Element % TYPE % NumberOfNodes 
             hits = 0
             DO j=1,n
@@ -195,10 +206,8 @@ CONTAINS
       ENDIF
 
       IF(.NOT. ASSOCIATED( UseIndexes ) ) THEN
-        PRINT *,'Problematic BC elem:',Element % BodyId, Element % ElementIndex, Element % NodeIndexes, &
-            ASSOCIATED( Element % DgIndexes ), ASSOCIATED( Element % BoundaryInfo ), DGelem, &
-            Element % TYPE % ElementCode
-        CALL Fatal('Elmer2VtkIndexes','Could not set indexes for boundary element!')        
+        CALL Warn('Elmer2VtkIndexes','Could not set DG indexes for boundary element!')        
+        UseIndexes => Element % NodeIndexes
       END IF
     ELSE
       UseIndexes => Element % NodeIndexes
@@ -503,6 +512,7 @@ CONTAINS
       IF( GotMaskCond ) THEN
         n = Element % TYPE % NumberOfNodes
         Indexes => Element % NodeIndexes
+        GotIt = .FALSE.
         
         IF( .NOT. IsBoundaryElement ) THEN
           l = Element % BodyId
@@ -520,7 +530,6 @@ CONTAINS
             END IF
           END IF
         ELSE
-          GotIt = .FALSE.
           IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
             DO l=1, Model % NumberOfBCs
               IF ( Model % BCs(l) % Tag /= Element % BoundaryInfo % Constraint ) CYCLE
@@ -546,20 +555,25 @@ CONTAINS
         m = Element % TYPE % ElementCode / 100
         IF( m >= 5 .AND. m <= 7 ) m = m-1
         NodePerm( Element % NodeIndexes(1:m) ) = 1
-      ELSE          
+      ELSE
+        IF( MAXVAL( Element % NodeIndexes ) > SIZE( NodePerm ) ) THEN
+          PRINT *,'too big:',SIZE(NodePerm), Element % NodeIndexes
+        END IF
         NodePerm( Element % NodeIndexes ) = 1
       END IF
 
     END DO
 
-    CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-        ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=7)
-    
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
-    
-    CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-        ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
-
+    IF( NumberOfElements == 0 ) THEN
+      CALL Info(Caller,'No active elements forthis mask',Level=12)
+    ELSE
+      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
+          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)      
+      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
+          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
+    END IF
+      
   END SUBROUTINE GenerateSaveMask
     
   

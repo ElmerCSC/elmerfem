@@ -95,7 +95,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
 
     CsAveVar % Values(k) = cs_avg
 
-    ! The difference in the extrem outer and inner locations of the 1d sphere    
+    ! The difference in the extreme outer and inner locations of the 1d sphere    
     IF( ASSOCIATED( CsDiffVar ) ) THEN
       p1 = Cs1dVar % Values(jright)
       p2 = Cs1dVar % Values(jleft)

@@ -235,13 +235,13 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
       !forcing of the adjoint system comes from the Velocityb variable computed
       !with the cost function
       c = dim + 1
-      Do t=1,Solver%Mesh%NumberOfNodes
-         Do i=1,c
+      DO t=1,Solver%Mesh%NumberOfNodes
+         DO i=1,c
            p=(Perm(t)-1)*c+i
            q=(VbPerm(t)-1)*c+i
            ForceVector(p)=Vb(q)
-        End Do
-      End Do
+        END DO
+      END DO
 
       CALL FinishAssembly( Solver, ForceVector )
        
@@ -249,7 +249,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
 
       Unorm = DefaultSolve()
 
-      Return
+      RETURN
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSolver
 !------------------------------------------------------------------------------

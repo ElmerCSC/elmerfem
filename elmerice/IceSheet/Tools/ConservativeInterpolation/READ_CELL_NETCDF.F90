@@ -82,7 +82,7 @@
       TVarName = ListGetString(SolverParams,'Target Variable Name',Found)
       IF (.NOT.Found) TVarName=VarName
 
-! check if this is a paralell run
+! check if this is a parallel run
       Parallel=(ParEnv % PEs > 1)
 
 ! get variable

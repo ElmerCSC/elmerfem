@@ -1016,7 +1016,7 @@ CONTAINS
      END IF
      
      IF ( PRESENT( Echo ) ) THEN
-        IF ( Echo ) WRITE( 6, '(a)' ) readstr(1:inlen)
+        IF ( Echo .AND. inlen > 0 ) WRITE( 6, '(a)' ) readstr(1:inlen)
      END IF
 
      i = 1
@@ -2055,7 +2055,7 @@ INCLUDE "mpif.h"
       Matrix % Symmetric = .FALSE.
       Matrix % SolveCount   = 0
       Matrix % NumberOfRows = 0
-
+      Matrix % Ndeg = -1
       Matrix % ProjectorBC = 0
       Matrix % ProjectorType = PROJECTOR_TYPE_DEFAULT
       
@@ -2500,6 +2500,49 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
 
+  ! This takes union of two integer vectors
+  ! and returns the number of common values. 
+  !---------------------------------------------
+  FUNCTION CountSameIntegers(v1,v2,vsame) RESULT ( n )
+    INTEGER, POINTER :: v1(:), v2(:)
+    INTEGER, POINTER, OPTIONAL :: vsame(:)
+    INTEGER :: n
+
+    INTEGER :: i1,i2
+
+    n = 0
+    IF(.NOT. ASSOCIATED(v1)) RETURN
+    IF(.NOT. ASSOCIATED(v2)) RETURN
+    
+    DO i1=1,SIZE(v1)
+      DO i2=1,SIZE(v2)
+        IF( v1(i1) == v2(i2) ) n = n+1
+      END DO
+    END DO
+
+    IF(n==0) RETURN
+    
+    IF( PRESENT(vsame) ) THEN
+      IF(.NOT. ASSOCIATED(vsame) ) THEN
+        ALLOCATE(vsame(n) )
+      END IF
+      vsame = 0
+      n = 0
+      
+      DO i1=1,SIZE(v1)
+        DO i2=1,SIZE(v2)
+          IF( v1(i1) == v2(i2) ) THEN
+            n = n+1
+            vsame(n) = v1(i1)
+          END IF
+        END DO
+      END DO
+    END IF    
+          
+  END FUNCTION CountSameIntegers
+
+
+  
   !---------------------------------------------------------<
   !> Returns values from a normal distribution to be used in 
   !> thermal velocity distribution, for example.
@@ -2827,7 +2870,7 @@ CONTAINS
     END DO
     
   END FUNCTION AscBinCompareNorm
-  
+   
   
 END MODULE AscBinOutputUtils
 

@@ -215,7 +215,7 @@
          IF(.NOT. Found ) CYCLE
 
          CALL Info(Caller,'Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
-         
+
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
      END  IF
@@ -527,7 +527,7 @@
        CALL RadiatorFactors3d( N, Surfaces, Type, Coords, Normals, 0, Surfaces, Type, Coords, Normals, &
            NofRadiators, Radiators, Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
        
-       WRITE (Message,'(A,F8.2,F8.2)') 'Rdiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
+       WRITE (Message,'(A,F8.2,F8.2)') 'Radiator factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( Caller,Message, Level=3 )
 
        IF(SYMMETRY_NOW) THEN
@@ -557,10 +557,10 @@
            
            k = 0
            DO i=1,NofRadiators
-           DO j=1,n/2
-             k = k + 1
-             Factors(k) = Factors((i-1)*n+j) + Factors((i-1)*n+j+n/2)
-           END DO
+             DO j=1,n/2
+               k = k + 1
+               Factors(k) = Factors((i-1)*n+j) + Factors((i-1)*n+j+n/2)
+             END DO
            END DO
            n = n/2
          END DO

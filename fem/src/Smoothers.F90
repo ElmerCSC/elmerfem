@@ -56,7 +56,6 @@ CONTAINS
     FUNCTION MGSmooth( Solver, A, Mesh, x, b, r, Level, DOFs, &
         PreSmooth, LowestSmooth, CF) RESULT(RNorm)
 !------------------------------------------------------------------------------
-      USE ParallelUtils
       TYPE(Solver_t), POINTER :: Solver
       TYPE(Matrix_t), POINTER :: A
       TYPE(Mesh_t) :: Mesh

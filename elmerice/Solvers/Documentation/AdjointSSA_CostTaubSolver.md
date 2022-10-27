@@ -35,12 +35,12 @@ As this cost function depends on the solution of the SSA, it has to be run befor
 The sequence in the .sif will usually be as follow:
 
 1. Compute the velocity using the [SSA solver](#ssa_direct_solver)
-2. Compute a cost function that measure the diffrence between the model velocities and some observation
+2. Compute a cost function that measures the difference between the model velocities and some observation
 3. **Compute the regularisation term for $\tau_b$**
 4. Compute the solution of the [adjoint linear system](#adjoint_linearsolver)
 5. Compute the gradient of your cost functions with respect to your input parameters ([SSA Gradient Solver](#ssa_gradient_solver))
 
-### Limitations and possible improvments
+### Limitations and possible improvements
 
 - Evaluation of $\tau_b$ do not check if the element is floating; see above.
 
@@ -101,7 +101,7 @@ e.g.
 
  End
 ```
-Or using ElmerIce build-in user functions:
+Or using ElmerIce built-in user functions:
 
 ```
  Material *id*
@@ -121,7 +121,7 @@ Or using ElmerIce build-in user functions:
 You can use keywords related to passive elements if you want to skip the evaluation of the 
 cost function for some elements, for example in floating elements.
 
-By default the name of the solver varaible is *[Equation_name]*_var.
+By default the name of the solver variable is *[Equation_name]*_var.
 
 ```
   BodyForce *id*

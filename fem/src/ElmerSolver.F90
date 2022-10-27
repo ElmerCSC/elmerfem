@@ -264,6 +264,12 @@
 #ifdef HAVE_PARDISO
          CALL Info( 'MAIN', ' PARDISO library linked in.')
 #endif
+#ifdef HAVE_MMG
+         CALL Info( 'MAIN', ' MMG library linked in.')
+#endif
+#ifdef HAVE_PARMMG
+         CALL Info( 'MAIN', ' ParMMG library linked in.')
+#endif         
 #ifdef HAVE_MKL
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
@@ -363,9 +369,9 @@
          INQUIRE(Unit=InFileUnit, Opened=GotIt)
          IF ( gotIt ) CLOSE(inFileUnit)
 
-         ! Here we read the whole model including command file and detault mesh file
+         ! Here we read the whole model including command file and default mesh file
          !---------------------------------------------------------------------------------
-         OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
+         OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)
          IF( iostat /= 0 ) THEN
            CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
                TRIM(Modelname) // '], can not execute.' )
@@ -461,6 +467,13 @@
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
 
+
+!------------------------------------------------------------------------------
+!      Add coordinates such that if there is a solver that is run on creation
+!      the coordinates are already usable then.
+!------------------------------------------------------------------------------
+       IF ( FirstLoad ) CALL AddMeshCoordinates()
+
 !------------------------------------------------------------------------------
 !      Figure out what (flow,heat,stress,...) should be computed, and get
 !      memory for the dofs
@@ -473,11 +486,9 @@
        CALL InitializeIntervals()
 
 !------------------------------------------------------------------------------
-!      Add coordinates and simulation time to list of variables so that
-!      coordinate dependent parameter computing routines can ask for
-!      them...
+!      Add time and other global variables so that we can have dependence on these.
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
+       IF ( FirstLoad ) CALL AddTimeEtc()
 
 !------------------------------------------------------------------------------
 !      Initialize the random seeds so that all simulation depending on that
@@ -1209,8 +1220,12 @@
 
        j = FindSolverByProcName(CurrentModel,'ResultOutputSolver')
        IF(j>0) THEN
-         CALL Warn('AddVtuOutputSolverHack','ResultOutputSolver instance already exists, doing nothing!')
-         RETURN
+         pSolver => CurrentModel % Solvers(j)
+         IF( ListGetLogical( pSolver % Values,'Vtu Format',Found) .OR. &
+             ListGetString(pSolver % Values,'Output Format',Found) == 'vtu' ) THEN
+           CALL Warn('AddVtuOutputSolverHack','ResultOutputSolver instance with VTU format already exists, doing nothing!')
+           RETURN
+         END IF
        END IF
               
        ! Remove the post file from the simulation list as it will be dealt by the solver section
@@ -1291,7 +1306,7 @@
     SUBROUTINE AddSolvers()
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,nlen
-      LOGICAL :: InitSolver, Found
+      LOGICAL :: InitSolver, Found, DoTiming
 !------------------------------------------------------------------------------
 
       CALL Info('AddSolvers','Setting up '//TRIM(I2S(CurrentModel % NumberOfSolvers))//&
@@ -1299,50 +1314,100 @@
 
       ! This is a hack that sets Equation flags True for the "Active Solvers".
       ! The Equation flag is the legacy way of setting a Solver active and is still
-      ! used internally.
+      ! used internally. Also set WhenExec flag since we might want to call some
+      ! solvers immediately.
       !----------------------------------------------------------------------------
       DO i=1,CurrentModel % NumberOfSolvers
-
-        eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
-     
+        Solver => CurrentModel % Solvers(i)
+        
+        eq = ListGetString( Solver % Values,'Equation', Found )     
         IF ( Found ) THEN
           nlen = LEN_TRIM(eq)
           DO j=1,CurrentModel % NumberOFEquations
-             ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
-                                'Active Solvers', Found )
-             IF ( Found ) THEN
-                DO k=1,SIZE(ActiveSolvers)
-                   IF ( ActiveSolvers(k) == i ) THEN
-                      CALL ListAddLogical( CurrentModel % Equations(j) % Values, eq(1:nlen), .TRUE. )
-                      EXIT
-                   END IF
-                END DO
-             END IF
+            ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(j) % Values, &
+                'Active Solvers', Found )
+            IF ( Found ) THEN
+              DO k=1,SIZE(ActiveSolvers)
+                IF ( ActiveSolvers(k) == i ) THEN
+                  CALL ListAddLogical( CurrentModel % Equations(j) % Values, eq(1:nlen), .TRUE. )
+                  EXIT
+                END IF
+              END DO
+            END IF
           END DO
+        END IF
+
+        CALL AddExecWhenFlag( Solver ) 
+     END DO
+
+
+     ! Add the dynamically linked solver to be called later
+     ! First do the initialization for solvers that other solvers except
+     ! before initialization having the "when created" slot.  
+     !---------------------------------------------------------------------
+     DO i=1,CurrentModel % NumberOfSolvers
+       Solver => CurrentModel % Solvers(i)
+       IF ( Solver % SolverExecWhen /= SOLVER_EXEC_WHENCREATED ) CYCLE
+
+       eq = ListGetString( Solver % Values,'Equation', Found )
+       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+
+       InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
+       IF ( Found .AND. InitSolver ) THEN
+         CALL FreeMatrix( Solver % Matrix )
+         CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
+       END IF
+
+       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+         IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
+           Solver % Mesh => CurrentModel % Meshes
+         END IF
+
+         DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
+         IF( DoTiming ) CALL ResetTimer('SolverInitialization')
+         
+         CurrentModel % Solver => Solver
+         CALL AddEquationBasics( Solver, eq, Transient )
+         CALL AddEquationSolution( Solver, Transient )
+
+         IF( DoTiming ) CALL CheckTimer('SolverInitialization',Level=7,Delete=.TRUE.)
+         
+         CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
+         CALL SetCurrentMesh( CurrentModel, Solver % Mesh )
+         CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
        END IF
      END DO
 
-     ! Add the dynamically linked solver to be called later
+     
+     ! And now initialize the other solvers
      !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
-        eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
-        CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       Solver => CurrentModel % Solvers(i)
+       IF ( Solver % SolverExecWhen == SOLVER_EXEC_WHENCREATED ) CYCLE
 
-        Solver => CurrentModel % Solvers(i)
-        InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
-        IF ( Found .AND. InitSolver ) THEN
-          CALL FreeMatrix( Solver % Matrix )
-          CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
-        END IF
+       eq = ListGetString( Solver % Values,'Equation', Found )
+       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       
+       InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
+       IF ( Found .AND. InitSolver ) THEN
+         CALL FreeMatrix( Solver % Matrix )
+         CALL ListAddLogical( Solver % Values, 'Initialize', .FALSE. )
+       END IF
 
-        IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
-          IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
-            Solver % Mesh => CurrentModel % Meshes
-          END IF
-          CurrentModel % Solver => Solver
-          CALL AddEquationBasics( Solver, eq, Transient )
-          CALL AddEquationSolution( Solver, Transient )
-        END IF
+       IF ( Solver % PROCEDURE == 0 .OR. InitSolver ) THEN
+         IF ( .NOT. ASSOCIATED( Solver % Mesh ) ) THEN
+           Solver % Mesh => CurrentModel % Meshes
+         END IF
+         CurrentModel % Solver => Solver
+
+         DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
+         IF( DoTiming ) CALL ResetTimer('SolverInitialization')
+         
+         CALL AddEquationBasics( Solver, eq, Transient )
+         CALL AddEquationSolution( Solver, Transient )
+
+         IF( DoTiming ) CALL CheckTimer('SolverInitialization',Level=7,Delete=.TRUE.)
+       END IF
      END DO
 
      CALL Info('AddSolvers','Setting up solvers done',Level=12)
@@ -1353,27 +1418,44 @@
 
 
 !------------------------------------------------------------------------------
+!> Adds coordinate as variables to the current mesh structure. 
+!------------------------------------------------------------------------------
+  SUBROUTINE AddMeshCoordinates()
+!------------------------------------------------------------------------------
+     CALL Info('AddMeshCoordinates','Setting mesh coordinates and time',Level=10)
+
+     Mesh => CurrentModel % Meshes 
+     DO WHILE( ASSOCIATED( Mesh ) )
+       CALL VariableAdd( Mesh % Variables, Mesh, &
+           Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
+       
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+           Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
+       
+       CALL VariableAdd(Mesh % Variables,Mesh, &
+           Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
+       Mesh => Mesh % Next        
+     END DO
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddMeshCoordinates
+!------------------------------------------------------------------------------
+
+
+
+  !------------------------------------------------------------------------------
 !> Adds coordinate and time variables to the current mesh structure. 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddMeshCoordinatesAndTime()
+  SUBROUTINE AddTimeEtc()
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: DtVar
      
-     CALL Info('AddMeshCoordinatesAndTime','Setting mesh coordinates and time',Level=10)
+     CALL Info('AddTimeEtc','Setting time and other global variables',Level=10)
 
      NULLIFY( Solver )
 
      Mesh => CurrentModel % Meshes 
      DO WHILE( ASSOCIATED( Mesh ) )
-       CALL VariableAdd( Mesh % Variables, Mesh, &
-             Name='Coordinate 1',DOFs=1,Values=Mesh % Nodes % x )
-
-       CALL VariableAdd(Mesh % Variables,Mesh, &
-             Name='Coordinate 2',DOFs=1,Values=Mesh % Nodes % y )
-
-       CALL VariableAdd(Mesh % Variables,Mesh, &
-             Name='Coordinate 3',DOFs=1,Values=Mesh % Nodes % z )
-
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Time',DOFs=1, Values=sTime )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep', DOFs=1, Values=sStep )
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Timestep size', DOFs=1, Values=sSize )
@@ -1435,7 +1517,7 @@
            INTEGER, POINTER :: PartPerm(:)
            INTEGER :: i,n
            
-           CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
+           CALL Info('AddTimeEtc','Adding partitioning also as a field')
            
            n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -1455,7 +1537,7 @@
         
      END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE AddMeshCoordinatesAndTime
+   END SUBROUTINE AddTimeEtc
 !------------------------------------------------------------------------------
 
 
@@ -2464,6 +2546,17 @@
          sSliceRatio = ( iSlice + 0.5_dp ) / nSlices - 0.5_dp
          sSliceWeight = 1.0_dp / nSlices 
        END IF
+
+       BLOCK
+         REAL :: z_min, z_max
+         z_min = ListGetConstReal(CurrentModel % Simulation,'Extruded Min Coordinate',GotIt)
+         z_max = ListGetConstReal(CurrentModel % Simulation,'Extruded Max Coordinate',GotIt)
+         IF( GotIt .AND. nSlices > 1) THEN
+           CALL Info(Caller,'Moving parallel slices in z-direction!',Level=6)
+           i = CurrentModel % Mesh % NumberOfNodes 
+           CurrentModel % Mesh % Nodes % z(1:i) = z_min + (z_max-z_min) * sSliceRatio(1)  
+         END IF
+       END BLOCK
      END IF
 
      IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN
@@ -3225,81 +3318,79 @@
 !------------------------------------------------------------------------------
   SUBROUTINE SaveCurrent( CurrentStep )
 !------------------------------------------------------------------------------
-    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen
+    INTEGER :: i, j,k,l,n,m,q,CurrentStep,nlen
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: EigAnal, GotIt
-    CHARACTER(LEN=MAX_NAME_LEN) :: Simul
-    LOGICAL :: BinaryOutput, SaveAll
+    LOGICAL :: EigAnal, GotIt, BinaryOutput, SaveAll, OutputActive
+    TYPE(ValueList_t), POINTER :: vList
+    TYPE(Solver_t), POINTER :: pSolver
     
-    Simul = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
+    CALL Info('SaveCurrent','Saving information on current step',Level=20)
     
-    OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
+    ! There are currently global definitions that apply also for solver specific meshes
+    vList => CurrentModel % Simulation       
+    BinaryOutput = ListGetLogical( vList,'Binary Output',GotIt )      
+    SaveAll = .NOT. ListGetLogical( vList,'Omit unchanged variables in output',GotIt )
+    IF ( .NOT.GotIt ) SaveAll = .TRUE.
     
 
-    IF ( GotIt ) THEN
-      i = INDEX( OutputFile,'/')
-      IF( i > 0 ) THEN
-        CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
-            //TRIM(OutputFile))
+    Mesh => CurrentModel % Meshes
+    DO WHILE( ASSOCIATED( Mesh ) ) 
+      
+      ! We want to be able to give the "output file" a different name for solver-specific
+      ! meshes. Otherwise we might write data on the same file. 
+      vList => CurrentModel % Simulation
+      OutputActive = Mesh % OutputActive 
+      m = Mesh % SolverId
+      IF( m > 0 ) THEN
+        pSolver => CurrentModel % Solvers(m)
+        IF( ListCheckPresent( pSolver % Values,'Output File') ) THEN
+          vList => pSolver % Values
+          OutputActive = ListGetLogical( vList,'Mesh Output',GotIt)
+          IF(.NOT. GotIt) OutputActive = Mesh % OutputActive
+        END IF
+      END IF
+
+      IF(.NOT. OutputActive ) THEN
+        Mesh => Mesh % Next
+        CYCLE
       END IF
       
-      !IF ( ParEnv % PEs > 1 ) THEN
-      !  DO i=1,MAX_NAME_LEN
-      !    IF ( OutputFile(i:i) == ' ' ) EXIT
-      !  END DO
-      !  OutputFile(i:i) = '.'
-      !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
-      !END IF
-      
-      BinaryOutput = ListGetLogical( CurrentModel % Simulation,'Binary Output',GotIt )
-      IF ( .NOT.GotIt ) BinaryOutput = .FALSE.
-      
-      SaveAll = .NOT.ListGetLogical( CurrentModel % Simulation,&
-          'Omit unchanged variables in output',GotIt )
-      IF ( .NOT.GotIt ) SaveAll = .TRUE.
-      
-      Mesh => CurrentModel % Meshes
-      DO WHILE( ASSOCIATED( Mesh ) ) 
-        IF ( Mesh % OutputActive ) THEN
-          nlen = LEN_TRIM(Mesh % Name )
-          IF ( nlen > 0 ) THEN
-            OutputName = Mesh % Name(1:nlen) // '/' // TRIM(OutputFile)
-          ELSE
-            OutputName = OutputFile
-          END IF
-          
-          EigAnal = .FALSE.
-          DO i=1,CurrentModel % NumberOfSolvers
-            IF ( ASSOCIATED( CurrentModel % Solvers(i) % Mesh, Mesh ) ) THEN
-              EigAnal = ListGetLogical( CurrentModel % Solvers(i) % Values, &
-                  'Eigen Analysis', GotIt )
-              EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % Solvers(i) % Values, &
-                  'Harmonic Analysis', GotIt )
-              
-              IF ( EigAnal ) THEN
-                Var => CurrentModel % Solvers(i) % Variable
-                IF ( ASSOCIATED(Var % EigenValues) ) THEN
-                  IF ( TotalTimesteps == 1 ) THEN
-                    DO j=1,CurrentModel % Solvers(i) % NOFEigenValues
-                      IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+      OutputFile = ListGetString( vList,'Output File',GotIt)                   
+      IF(GotIt) THEN
+        i = INDEX( OutputFile,'/')
+        IF( i > 0 ) THEN
+          CALL Warn('SaveCurrent','> Output File < for restart should not include directory: '&
+              //TRIM(OutputFile))
+        END IF
 
-                        n = SIZE(Var % Values)/Var % DOFs
-                        DO k=1,n
-                          DO l=1,Var % DOFs/2
-                            q = Var % DOFs*(k-1)
-                            Var % Values(q+l) = REAL(Var % EigenVectors(j,q/2+l))
-                            Var % Values(q+l+Var % DOFs/2) = AIMAG(Var % EigenVectors(j,q/2+l))
-                          END DO
-                        END DO
-                      ELSE
-                        Var % Values = REAL( Var % EigenVectors(j,:) )
-                      END IF
-                      SavedSteps = SaveResult( OutputName, Mesh, &
-                          j, sTime(1), BinaryOutput, SaveAll )
-                    END DO
-                  ELSE
-                    j = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
-                    IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+        !IF ( ParEnv % PEs > 1 ) THEN
+        !  DO i=1,MAX_NAME_LEN
+        !    IF ( OutputFile(i:i) == ' ' ) EXIT
+        !  END DO
+        !  OutputFile(i:i) = '.'
+        !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+        !END IF
+
+        ! Always write the output with respect to mesh file
+        nlen = LEN_TRIM(Mesh % Name )
+        IF ( nlen > 0 ) THEN
+          OutputName = Mesh % Name(1:nlen) // '/' // TRIM(OutputFile)
+        END IF
+        
+        EigAnal = .FALSE.
+        DO i=1,CurrentModel % NumberOfSolvers
+          pSolver => CurrentModel % Solvers(i)
+          IF ( ASSOCIATED( pSolver % Mesh, Mesh ) ) THEN
+            EigAnal = ListGetLogical( pSolver % Values,'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values,'Harmonic Analysis', GotIt )
+
+            IF ( EigAnal ) THEN
+              Var => pSolver % Variable
+              IF ( ASSOCIATED(Var % EigenValues) ) THEN
+                IF ( TotalTimesteps == 1 ) THEN
+                  DO j=1,pSolver % NOFEigenValues
+                    IF ( pSolver % Matrix % COMPLEX ) THEN
+
                       n = SIZE(Var % Values)/Var % DOFs
                       DO k=1,n
                         DO l=1,Var % DOFs/2
@@ -3309,34 +3400,44 @@
                         END DO
                       END DO
                     ELSE
-                      Var % Values = REAL(Var % EigenVectors(j,:))
+                      Var % Values = REAL( Var % EigenVectors(j,:) )
                     END IF
                     SavedSteps = SaveResult( OutputName, Mesh, &
-                        CurrentStep, sTime(1), BinaryOutput, SaveAll )
+                        j, sTime(1), BinaryOutput, SaveAll, vList = vList )
+                  END DO
+                ELSE
+                  j = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
+                  IF ( pSolver % Matrix % COMPLEX ) THEN
+                    n = SIZE(Var % Values)/Var % DOFs
+                    DO k=1,n
+                      DO l=1,Var % DOFs/2
+                        q = Var % DOFs*(k-1)
+                        Var % Values(q+l) = REAL(Var % EigenVectors(j,q/2+l))
+                        Var % Values(q+l+Var % DOFs/2) = AIMAG(Var % EigenVectors(j,q/2+l))
+                      END DO
+                    END DO
+                  ELSE
+                    Var % Values = REAL(Var % EigenVectors(j,:))
                   END IF
-                  Var % Values = 0.0d0
+                  SavedSteps = SaveResult( OutputName, Mesh, &
+                      CurrentStep, sTime(1), BinaryOutput, SaveAll, vList = vList )
                 END IF
+                Var % Values = 0.0d0
               END IF
             END IF
-          END DO
-          
-          IF ( .NOT. EigAnal ) THEN
-            SavedSteps = SaveResult( OutputName,Mesh, NINT(sStep(1)), &
-                sTime(1), BinaryOutput, SaveAll )
           END IF
+        END DO
+          
+        IF ( .NOT. EigAnal ) THEN
+          SavedSteps = SaveResult( OutputName,Mesh, NINT(sStep(1)), &
+              sTime(1), BinaryOutput, SaveAll, vList = vList )
         END IF
-        Mesh => Mesh % Next
-      END DO
-    ELSE
-      Mesh => CurrentModel % Meshes
-      DO WHILE( ASSOCIATED( Mesh ) ) 
-        IF ( Mesh % OutputActive ) &
-            Mesh % SavesDone=Mesh % SavesDone+1
-        Mesh => Mesh % Next
-      END DO
-    END IF
-! We want to separate saving of ElmerPost file and Result file.
-!    CALL SaveToPost(CurrentStep)
+      ELSE
+        Mesh % SavesDone = Mesh % SavesDone+1
+      END IF
+      Mesh => Mesh % Next
+    END DO
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveCurrent
 !------------------------------------------------------------------------------
@@ -3351,6 +3452,7 @@
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
     CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+    TYPE(Solver_t), POINTER :: pSolver
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
@@ -3426,34 +3528,24 @@
         EigAnal = .FALSE.
         timesteps = TotalTimeSteps
         DO i=1,CurrentModel % NumberOfSolvers
-          IF (ASSOCIATED(CurrentModel % Solvers(i) % Mesh, Mesh)) THEN
-            EigAnal = ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Eigen Analysis', GotIt )
-            
-            EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Harmonic Analysis', GotIt )
-            
-            IF ( EigAnal ) timesteps = MAX( timesteps, &
-                CurrentModel % Solvers(i) % NOFEigenValues )
+          pSolver => CurrentModel % Solvers(i)
+          IF (ASSOCIATED(pSolver % Mesh, Mesh)) THEN
+            EigAnal = ListGetLogical( pSolver % Values, 'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values, 'Harmonic Analysis', GotIt )            
+            IF ( EigAnal ) timesteps = MAX( timesteps, pSolver % NOFEigenValues )
           END IF
         END DO
 
         DO i=1,CurrentModel % NumberOfSolvers
-          IF (ASSOCIATED(CurrentModel % Solvers(i) % Mesh, Mesh)) THEN
-            EigAnal = ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Eigen Analysis', GotIt )
-            
-            EigAnal = EigAnal .OR. ListGetLogical( CurrentModel % &
-                Solvers(i) % Values, 'Harmonic Analysis', GotIt )
+          pSolver => CurrentModel % Solvers(i)
+          IF (ASSOCIATED(pSolver % Mesh, Mesh)) THEN
+            EigAnal = ListGetLogical( pSolver % Values, 'Eigen Analysis', GotIt ) .OR. &
+                ListGetLogical( pSolver % Values, 'Harmonic Analysis', GotIt )
             
             IF ( EigAnal ) THEN
-              SaveWhich = ListGetString( CurrentModel % Solvers(i) % Values, &
-                  'Eigen and Harmonic Solution Output', Found )
-              
-              SavedEigenValues = CurrentModel % Solvers(i) % NOFEigenValues
-              IF( TotalTimesteps > 1 ) THEN
-!                SavedEiegnValues = MIN( CurrentStep, SIZE( Var % EigenVectors,1 ) )
-              END IF
+              SaveWhich = ListGetString( pSolver % Values, &
+                  'Eigen and Harmonic Solution Output', Found )              
+              SavedEigenValues = pSolver % NOFEigenValues
 
               DO j=1, SavedEigenValues
                 Var => Mesh % Variables
@@ -3463,7 +3555,7 @@
                     CYCLE
                   END IF
                   
-                  IF ( CurrentModel % Solvers(i) % Matrix % COMPLEX ) THEN
+                  IF ( pSolver % Matrix % COMPLEX ) THEN
                     IF(Var % DOFs==1) THEN
                       Var => Var % Next
                       CYCLE
@@ -3505,7 +3597,7 @@
                     END IF
                   END IF
                   CALL WritePostFile( PostName,OutputName, CurrentModel, &
-                      CurrentModel % Solvers(i) % NOFEigenValues, .TRUE. )
+                      pSolver % NOFEigenValues, .TRUE. )
                 END IF
               END DO
               EXIT
@@ -3518,7 +3610,7 @@
         IF ( .NOT. EigAnal .OR. CurrentStep == 0 ) THEN
           CALL WritePostFile( PostName, OutputName, CurrentModel, timesteps, .TRUE. )
         END IF
-
+        
         Var => Mesh % Variables
         DO WHILE(ASSOCIATED(Var))
           IF ( ASSOCIATED(Var % EigenValues) ) THEN

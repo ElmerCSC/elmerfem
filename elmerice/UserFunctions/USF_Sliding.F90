@@ -102,7 +102,9 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-     write(*,*)FlowSolverName, SSA
+     WRITE(Message,*)&
+          'Flow Solver Name:', TRIM(FlowSolverName),' SSA:',SSA
+     CALL INFO('Sliding_Weertman',Message,Level=3)
   END IF
   
   !Read the coefficients C and m in the sif file
@@ -846,7 +848,7 @@ END FUNCTION Sliding_Budd
 !> USF_Sliding.f90, function FreeSlipShelves
 !> 
 !> Sets the basal drag to zero according to a grounded mask.  Intended for use 
-!> when aplying inverse methods in the presence of floating ice shelves.
+!> when applying inverse methods in the presence of floating ice shelves.
 !> 
 !> For the .sif (bottom boundary):
 !>  Slip Coefficient 2  = Variable beta

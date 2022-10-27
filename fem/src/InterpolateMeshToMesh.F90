@@ -598,7 +598,8 @@ END SUBROUTINE InterpolateMeshToMesh
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
        TYPE(Nodes_t), SAVE :: Nodes
-
+       INTEGER, ALLOCATABLE :: OneDGIndex(:)
+              
        !$OMP THREADPRIVATE(eps1,Nodes)
 
 !------------------------------------------------------------------------------
@@ -874,10 +875,11 @@ END SUBROUTINE InterpolateMeshToMesh
                Var => Var % Next
                CYCLE
              END IF
-
+            
+             
              IF ( Var % DOFs == 1 .AND. &
                  Var % Name(1:10) /= 'coordinate') THEN
-
+               
 !------------------------------------------------------------------------------
 !
 !               Interpolate variable at Point in Element:
@@ -903,27 +905,39 @@ END SUBROUTINE InterpolateMeshToMesh
                   ELSE
                     Indexes => Element % NodeIndexes
                   END IF
-                  
-                                    
+                                                                       
                   IF ( ALL(OldSol % Perm(Indexes) > 0) ) THEN
-                    IF ( NewSol % Perm(i) /= 0 ) THEN
+                    IF( NewSol % TYPE == Variable_on_nodes_on_elements ) THEN
+                      IF(.NOT. ALLOCATED(OneDGIndex) ) THEN                        
+                        CALL CreateOneDGIndex()
+                      END IF
+                      IF( OneDGIndex(i) > 0 ) THEN
+                        k = NewSol % Perm( OneDGIndex(i) )
+                      ELSE
+                        k = 0
+                      END IF
+                    ELSE
+                      k = NewSol % Perm(i)
+                    END IF
+                      
+                    IF ( k /= 0 ) THEN
                       ElementValues(1:n) = & 
                           OldSol % Values(OldSol % Perm(Indexes))
-
+                      
                       val = InterpolateInElement( Element, ElementValues, &
                           LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
-
-                      NewSol % Values(NewSol % Perm(i)) = val
+                      
+                      NewSol % Values(k) = val
 
                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
                         DO j=1,SIZE(OldSol % PrevValues,2)
                           ElementValues(1:n) = &
                               OldSol % PrevValues(OldSol % Perm(Indexes),j)
-
+                          
                           val = InterpolateInElement( Element, ElementValues, &
                               LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
 
-                          NewSol % PrevValues(NewSol % Perm(i),j) = val
+                          NewSol % PrevValues(k,j) = val
                         END DO
                       END IF
                     END IF
@@ -1169,6 +1183,72 @@ END SUBROUTINE InterpolateMeshToMesh
 
 CONTAINS
 
+
+  ! Create a representative dg index to be used for interpolation.
+  ! This is cheating since it does not work in general. It does work
+  ! for the reduced basis DG. Even there it works only at intersections
+  ! if there is an additional mask that is used to pick the correct element.
+  ! For generic cases we would need a table to all DG indexes. 
+  !------------------------------------------------------------------------
+  SUBROUTINE CreateOneDGIndex()
+    INTEGER :: i,j,k,t,n
+    TYPE(Element_t), POINTER :: Element,Parent
+    INTEGER, TARGET :: TmpIndexes(20)
+    INTEGER, POINTER :: pIndexes(:)
+    
+
+    CALL Info('InterpolateMesh2Mesh','Creating representative DG reindexing table!',Level=12)
+    
+    ALLOCATE(OneDGIndex(NewMesh % NumberOfNodes))
+    OneDGIndex = 0
+
+    DO t=1,NewMesh % NumberOfBulkElements + NewMesh % NumberOfBoundaryElements
+      Element => NewMesh % Elements(t)
+
+      ! This might take away all bulk elements so we need to be able to deal with
+      ! boundary elements as well. 
+      IF( PRESENT( NewMaskPerm ) ) THEN
+        IF( ANY( NewMaskPerm(Element % NodeIndexes) == 0 ) ) CYCLE
+      END IF
+      
+      n = Element % Type % NumberOfNodes
+      IF( ASSOCIATED( Element % DGIndexes ) ) THEN
+        pIndexes => Element % DGIndexes
+      ELSE IF( ASSOCIATED( Element % BoundaryInfo) ) THEN
+        pIndexes => TmpIndexes
+        pIndexes(1:n) = 0
+        DO k=1,2
+          IF(k==1) THEN
+            Parent => Element % BoundaryInfo % Left
+          ELSE
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF(.NOT. ASSOCIATED(Parent)) CYCLE
+          DO i=1,n
+            IF(pIndexes(i) > 0 ) CYCLE
+            DO j=1,Parent % TYPE % NumberOfNodes
+              IF(Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                pIndexes(i) = Parent % DGIndexes(j)
+                EXIT
+              END IF
+            END DO
+          END DO
+        END DO
+      ELSE
+        CYCLE
+      END IF
+      
+      DO i=1,n
+        j = Element % NodeIndexes(i)
+        IF( OneDGIndex(j) > 0) CYCLE
+        OneDGIndex(j) = pIndexes(i)
+      END DO      
+    END DO
+
+    
+  END SUBROUTINE CreateOneDGIndex
+
+  
 
 !------------------------------------------------------------------------------
      SUBROUTINE ApplyProjector

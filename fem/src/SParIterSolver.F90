@@ -690,23 +690,45 @@ st = realtime()
   !
   !----------------------------------------------------------------------
   sz = SIZE(A % Values)
-  CALL List_toListMatrix(A)
+
+  ! Check whether we need to create List matrix and add new column entries. 
+  GotNewCol = .FALSE.
   DO i=1,Parenv % PEs
     CurrIF => SplittedMatrix % IfMatrix(i)
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
- if ( rowind<=0 ) cycle
+      IF ( rowind<=0 ) CYCLE
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
- if ( colind<=0 ) cycle
-        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
-      END DO
+        IF ( colind<=0 ) CYCLE
+        IF( .NOT. CRS_CheckMatrixElement(A,RowInd,ColInd) ) THEN
+          GotNewCol = .TRUE.
+          GOTO 1
+        END IF        
+      END DO      
     END DO
   END DO
-  CALL List_toCRSMatrix(A)
-!if ( parenv % mype==0 ) print*, 'ADD INTERFACE TO INSIDE: ', realtime()-st; st=realtime()
 
+1 IF(GotNewCol) THEN
+    CALL List_toListMatrix(A)
+    DO i=1,Parenv % PEs
+      CurrIF => SplittedMatrix % IfMatrix(i)
+      DO j = 1, CurrIf % NumberOfRows
+        IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
+        RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+        IF ( rowind<=0 ) CYCLE
+        DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
+          ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
+          IF ( colind<=0 ) CYCLE
+          l = l+1
+          CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
+        END DO
+      END DO
+    END DO
+    CALL List_toCRSMatrix(A)
+  END IF
+    
   !----------------------------------------------------------------------
   !
   ! If need be, rebuild the inside part of GlueTable (place in the parallel

@@ -191,7 +191,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, PosEl, NegEl
+  LOGICAL :: AllocationsDone = .FALSE., Found, PosEl, NegEl, NoRotM=.False.
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Norm, Wnorms(Model%numberofbodies)
@@ -261,7 +261,8 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
         SELECT CASE (CoilType)
         CASE ('stranded')
           CoilBody = .True.
-          CALL GetElementRotM(Element, RotM, n)
+          NoRotM = GetLogical(CompParams, 'Without RotM', Found)
+          IF (.NOT. NoRotM) CALL GetElementRotM(Element, RotM, n)
         CASE ('massive')
           CoilBody = .True.
         CASE ('foil winding')
@@ -277,7 +278,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 
       !Get element local matrix and rhs vector:
       !----------------------------------------
-      CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd+nb )
+      CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd+nb, NoRotM)
       CALL CondensateP( nd, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
@@ -336,7 +337,8 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
         SELECT CASE (CoilType)
         CASE ('stranded')
           CoilBody = .True.
-          CALL GetElementRotM(Element, RotM, n)
+          NoRotM = GetLogical(CompParams, 'Without RotM', Found)
+          IF (.NOT. NoRotM) CALL GetElementRotM(Element, RotM, n)
         CASE ('massive')
           CoilBody = .True.
         CASE ('foil winding')
@@ -349,13 +351,13 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 
       Tcoef = 0.0d0
       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
-      CALL SaveElementWSolution(Element, n, Wnorms(Element%BodyId), RotM, Tcoef)
+      CALL SaveElementWSolution(Element, n, Wnorms(Element%BodyId), RotM, Tcoef, NoRotM)
 
   END DO
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd )
+  SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd, NoRotM )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:), Tcoef(:,:,:)
     INTEGER :: n, nd
@@ -364,7 +366,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP, C(3,3), &
                      RotMLoc(3,3), RotM(3,3,n)
     CHARACTER(LEN=MAX_NAME_LEN):: CoilType
-    LOGICAL :: Stat, CoilBody
+    LOGICAL :: Stat, CoilBody, NoRotM
     INTEGER :: i,j,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -393,7 +395,7 @@ CONTAINS
       DO i=1,3
         DO j=1,3
           C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-          IF (CoilBody .AND. CoilType /= 'massive') THEN
+          IF (CoilBody .AND. CoilType /= 'massive' .AND. .NOT. NoRotM ) THEN
             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
           END IF
         END DO
@@ -401,7 +403,7 @@ CONTAINS
       
       ! Transform the conductivity tensor (in case of a foil winding):
       ! --------------------------------------------------------------
-      IF (CoilBody .AND. CoilType /= 'massive') THEN
+      IF (CoilBody .AND. CoilType /= 'massive' .AND. .NOT. NoRotM) THEN
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
       END IF
 
@@ -505,7 +507,7 @@ CONTAINS
 !!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveElementWSolution(Element, n, Wnorm, RotM, Tcoef)
+  SUBROUTINE SaveElementWSolution(Element, n, Wnorm, RotM, Tcoef, NoRotM)
 !------------------------------------------------------------------------------
   IMPLICIT NONE
   INTEGER :: n, j, k, t
@@ -515,7 +517,7 @@ CONTAINS
   TYPE(Variable_t), POINTER, SAVE :: wvecvar
   TYPE(Variable_t), POINTER, SAVE :: jvecvar
   LOGICAL, SAVE :: First=.TRUE.
-  LOGICAL :: stat, ComputeJvec
+  LOGICAL :: stat, ComputeJvec, NoRotM
   REAL(KIND=dp) :: Basis(n), DetJ
   REAL(KIND=dp) :: dBasisdx(n,3)
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname, jvarname
@@ -596,7 +598,7 @@ CONTAINS
           DO i=1,3
             DO j=1,3
               C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-              IF (CoilBody .AND. CoilType /= 'massive') THEN
+              IF (CoilBody .AND. CoilType /= 'massive' .AND. .NOT. NoRotM ) THEN
                 RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
               END IF
             END DO
@@ -604,7 +606,7 @@ CONTAINS
           
           ! Transform the conductivity tensor (in case of a foil winding):
           ! --------------------------------------------------------------
-          IF (CoilBody .AND. CoilType /= 'massive') THEN
+          IF (CoilBody .AND. CoilType /= 'massive' .AND. .NOT. NoRotM ) THEN
             C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
           END IF
           jvec = MATMUL(C, wvec)
@@ -644,8 +646,9 @@ CONTAINS
     Active = GetNOFActive()
     DO t=1,Active
       Element => GetActiveElement(t)
-      n  = GetElementNOFNodes()
-  
+      n  = GetElementNOFNodes()      
+      nd = GetElementNOFDOFs()
+      
       CoilBody = .FALSE.
       CompParams => GetComponentParams( Element )
       CoilType = ''
@@ -656,8 +659,8 @@ CONTAINS
 
       IF (CoilBody) THEN
         CALL AddElementWNormAndVolume(Element, n, nd, &
-                              WnormCoeffs(Element % BodyId), &
-                             Volumes(Element % BodyId))
+            WnormCoeffs(Element % BodyId), &
+            Volumes(Element % BodyId))
       END IF 
     END DO
    
@@ -699,12 +702,13 @@ CONTAINS
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
+
     DO j=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-       IP % W(j), detJ, Basis, dBasisdx )
-
+          IP % W(j), detJ, Basis, dBasisdx )
+      
       ! Compute the Element Volume
       ! -----------------------------
       s = IP % s(j) * detJ

@@ -312,9 +312,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       SELECT CASE( Element % ElementCode / 100 )
+        CASE(2) 
+           Element % NumberOfEdges = 1
         CASE(3) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 3
         CASE(4) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 4
         CASE(5) 
            Element % NumberOfFaces = 4
@@ -1897,6 +1901,8 @@ CONTAINS
    END FUNCTION SecondDerivatives3D
 !------------------------------------------------------------------------------
 
+! This is a test version where all nodes are obtained at once. 
+#define ALLNODES 1
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
 !>  p-element, the values of the lowest-order basis functions corresponding 
@@ -1910,43 +1916,76 @@ CONTAINS
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
-
+     LOGICAL :: pElem
+     
      dim = Element % TYPE % DIMENSION
-
-     IF ( isActivePElement(Element, USolver) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalBasisFunctions1D( Basis, element, u )
+     elemcode = element % Type % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL LineNodalPBasisAll(u, Basis )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL TriangleNodalPBasisAll(u, v, Basis)
+         ELSE
+           CALL TriangleNodalLBasisAll(u, v, Basis)
+         END IF
+       CASE( 4 ) 
+         CALL QuadNodalPBasisAll(u, v, Basis )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL TetraNodalPBasisAll(u, v, w, Basis)
+         ELSE
+           CALL TetraNodalLBasisAll(u, v, w, Basis)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL WedgeNodalPBasisAll(u, v, w, Basis) 
+         ELSE
+           CALL WedgeNodalLBasisAll(u, v, w, Basis) 
+         END IF
+       CASE( 8 ) 
+         CALL BrickNodalPBasisAll(u,v,w,Basis)
+       END SELECT
+       RETURN
+     END IF
+#endif    
+     
+     IF ( pElem ) THEN
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             Basis(q) = TriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             Basis(q) = QuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalBasisFunctions1D( Basis, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             Basis(q) = TetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             Basis(q) = WedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             Basis(q) = PyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             Basis(q) = BrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           Basis(q) = TriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4) 
+         DO q=1,n
+           Basis(q) = QuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           Basis(q) = TetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE(6) 
+         DO q=1,n
+           Basis(q) = PyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE(7)
+         DO q=1,n
+           Basis(q) = WedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE(8) 
+         DO q=1,n
+           Basis(q) = BrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE( dim )
@@ -1955,7 +1994,7 @@ CONTAINS
        CASE(2)
          CALL NodalBasisFunctions2D( Basis, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode/100==6 ) THEN
+         IF ( elemcode/100==6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
@@ -1985,43 +2024,76 @@ CONTAINS
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
      TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
+     LOGICAL :: pElem
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
-
+     elemcode = element % TYPE % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL dLineNodalPBasisAll(u, dLBasisdx )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL dTriangleNodalPBasisAll(u, v, dLBasisdx)
+         ELSE
+           CALL dTriangleNodalLBasisAll(u, v, dLBasisdx)
+         END IF
+       CASE( 4 ) 
+         CALL dQuadNodalPBasisAll(u, v, dLBasisdx )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL dTetraNodalPBasisAll(u, v, w, dLBasisdx)
+         ELSE
+           CALL dTetraNodalLBasisAll(u, v, w, dLBasisdx)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL dWedgeNodalPBasisAll(u, v, w, dLBasisdx) 
+         ELSE
+           CALL dWedgeNodalLBasisAll(u, v, w, dLBasisdx) 
+         END IF
+       CASE( 8 ) 
+         CALL dBrickNodalPBasisAll(u,v,w,dLBasisdx)
+       END SELECT
+       RETURN
+     END IF
+#endif         
+     
      IF ( IsActivePElement(Element, USolver ) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4)
+         DO q=1,n
+           dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 6 )
+         DO q=1,n
+           dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 7 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 8 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE(dim)
@@ -2030,7 +2102,7 @@ CONTAINS
        CASE(2)
          CALL NodalFirstDerivatives2D( dLBasisdx, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode / 100 == 6 ) THEN
+         IF ( elemcode / 100 == 6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
@@ -2513,7 +2585,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: PSolver => NULL()
+     TYPE(Solver_t), POINTER :: PSolver => NULL(), PrevSolver => NULL()
      REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
@@ -2528,23 +2600,25 @@ CONTAINS
      INTEGER :: EdgeBasisDegree
      LOGICAL :: PerformPiolaTransform, Found
      
-     SAVE PSolver, EdgeBasisDegree, PerformPiolaTransform
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
+
+     IF( PRESENT( USolver ) ) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+     
      IF(PRESENT(EdgeBasis)) THEN       
-       IF( PRESENT( USolver ) ) THEN
-         IF( .NOT. ASSOCIATED( USolver, PSolver ) ) THEN
-           IF( ListGetLogical(USolver % Values,'Quadratic Approximation', Found ) ) THEN
-             EdgeBasisDegree = 2
-             PerformPiolaTransform = .TRUE.
-           ELSE
-             EdgeBasisDegree = 1
-             PerformPiolaTransform = ListGetLogical(USolver % Values,'Use Piola Transform', Found )
-           END IF
-           PSolver => USolver 
+       IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
+         PrevSolver => pSolver          
+         IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+           EdgeBasisDegree = 2
+           PerformPiolaTransform = .TRUE.
+         ELSE
+           EdgeBasisDegree = 1
+           PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
          END IF
-       ELSE
-         EdgeBasisDegree = 1
-         PerformPiolaTransform = .TRUE.        
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
@@ -2571,22 +2645,16 @@ CONTAINS
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element,USolver) ) THEN
-
-      pSolver => CurrentModel % Solver
-      IF (PRESENT(USolver)) THEN
-        IF (ASSOCIATED(USolver)) pSolver => USolver
-      END IF
-
+     IF ( isActivePElement(element,pSolver) ) THEN
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
       ! ---------------------------------------------------
@@ -3803,10 +3871,6 @@ CONTAINS
              EdgeMaxDegree = 0
              IF( CurrentModel % Solver % Mesh % MaxEdgeDofs == 0 ) THEN
                CONTINUE             
-             ELSE IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
-                   CurrentModel % Solver % Mesh % MaxEdgeDOFs) THEN
-               EdgeMaxDegree = Element % BDOFs+1
-               EdgeDegree(1:Element % Type % NumberOfFaces) = EdgeMaxDegree
              ELSE
                DO i=1,6
                  EdgeDegree(i) = CurrentModel % Solver % &
@@ -6186,7 +6250,11 @@ END SUBROUTINE PickActiveFace
            IF (.NOT. ASSOCIATED(Parent)) THEN
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF (.NOT. ASSOCIATED(Parent)) RETURN
+
+           IF (.NOT. ASSOCIATED(Parent)) THEN
+             CALL Warn('EdgeElementInfo', 'cannot create curl-conforming basis functions, zeros returned')
+             RETURN
+           END IF
            !
            ! Identify the edge representing the element among the edges of 
            ! the parent element:
@@ -10396,7 +10464,7 @@ END SUBROUTINE PickActiveFace
    END SUBROUTINE GetEdgeBasis
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
 !>    system, and square root of determinant of covariant metric tensor
@@ -10415,12 +10483,10 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s
+     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-     INTEGER :: GeomId
-     
-     INTEGER :: cdim,dim,i,j,k,n
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n,imin,jmin
 !------------------------------------------------------------------------------
      success = .TRUE.
 
@@ -10432,6 +10498,8 @@ END SUBROUTINE PickActiveFace
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
 
+     eps = (EPSILON(eps))**dim
+     
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
 !------------------------------------------------------------------------------
@@ -10444,13 +10512,13 @@ END SUBROUTINE PickActiveFace
 !    Compute the covariant metric tensor of the element coordinate system
 !------------------------------------------------------------------------------
      DO i=1,dim
-        DO j=1,dim
-           s = 0.0d0
-           DO k=1,cdim
-             s = s + dx(k,i)*dx(k,j)
-           END DO
-           G(i,j) = s
-        END DO
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
      END DO
 !------------------------------------------------------------------------------
 !    Convert the metric to contravariant base, and compute the SQRT(DetG)
@@ -10459,43 +10527,43 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !      Line elements
 !------------------------------------------------------------------------------
-       CASE (1)
-         DetG  = G(1,1)
+     CASE (1)
+       DetG  = G(1,1)
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) = 1.0d0 / DetG
-         DetG  = SQRT( DetG )
+       Metric(1,1) = 1.0d0 / DetG
+       DetG  = SQRT( DetG )
 
 !------------------------------------------------------------------------------
 !      Surface elements
 !------------------------------------------------------------------------------
-       CASE (2)
-         DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+     CASE (2)
+       DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) =  G(2,2) / DetG
-         Metric(1,2) = -G(1,2) / DetG
-         Metric(2,1) = -G(2,1) / DetG
-         Metric(2,2) =  G(1,1) / DetG
-         DetG = SQRT(DetG)
+       Metric(1,1) =  G(2,2) / DetG
+       Metric(1,2) = -G(1,2) / DetG
+       Metric(2,1) = -G(2,1) / DetG
+       Metric(2,2) =  G(1,1) / DetG
+       DetG = SQRT(DetG)
 
 !------------------------------------------------------------------------------
 !      Volume elements
 !------------------------------------------------------------------------------
-       CASE (3)
-         DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
-                G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
-                G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+     CASE (3)
+       DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         CALL InvertMatrix3x3( G,GI,detG )
-         Metric = GI
-         DetG = SQRT(DetG)
+       CALL InvertMatrix3x3( G,GI,detG )
+       Metric = GI
+       DetG = SQRT(DetG)
      END SELECT
-
+     
 !--------------------------------------------------------------------------------------
 !    Construct a transformation X = LtoGMap such that (grad B)(f(p)) = X(p) Grad b(p),
 !    with Grad the gradient with respect to the reference element coordinates p and 
@@ -10513,39 +10581,175 @@ END SUBROUTINE PickActiveFace
        END DO
      END DO
 
-! Return here also implies success = .TRUE.
+     ! Return here also implies success = .TRUE.
      RETURN
-  
 
-100  Success = .FALSE.
+100  CONTINUE
+
+     ! Try recursively with quadratic precision.
+     ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
+     Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
+     IF( Success ) RETURN
+     
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
      
      IF( ASSOCIATED( Elm % BoundaryInfo ) ) THEN
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
      ELSE
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
      END IF
      CALL Info( 'ElementMetric', Message, Level=3 )
 
      DO i=1,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
+       WRITE( Message,'(A,I0,A,3ES14.6)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
      END DO
-     DO i=2,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' dCoord:',&
-           x(i)-x(1),y(i)-y(1),z(i)-z(1)       
-       CALL Info( 'ElementMetric', Message, Level=3 )
+
+     ! Find the two nodes closest to each other:
+     smin = HUGE(smin)
+     DO i=1,n
+       DO j=i+1,n
+         s = (x(i)-x(j))**2 + (y(i)-y(j))**2 + (z(i)-z(j))**2
+         IF( s < smin ) THEN
+           imin = i
+           jmin = j
+           smin = s           
+         END IF
+       END DO
      END DO
+     smin = SQRT(smin)
+
+     WRITE( Message,'(A,I0,A,I0,A,I0,A,I0,A,ES14.6)') 'Closest distance: ',imin,'-',jmin,&
+         ' (',Elm % NodeIndexes(imin),'-',Elm % NodeIndexes(jmin),') |dCoord|:',smin
+     CALL Info( 'ElementMetric', Message, Level=3 )
+
      IF ( cdim < dim ) THEN
        WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
        CALL Info( 'ElementMetric', Message, Level=3 )
      END IF
-     
+
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous that is called when the DetJ appear
+! to be close to zero or negative. 
+!------------------------------------------------------------------------------
+   FUNCTION ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) RESULT(Success)
+!------------------------------------------------------------------------------
+     INTEGER :: nDOFs                !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm         !< Element structure
+     TYPE(Nodes_t)    :: Nodes       !< Element nodal coordinates
+     REAL(KIND=dp) :: Metric(:,:)    !< Contravariant metric tensor
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
+     REAL(KIND=dp) :: DetG           !< SQRT of determinant of metric tensor
+     REAL(KIND=dp) :: LtoGMap(3,3)   !< Transformation to obtain the referential description of the spatial gradient
+     LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n
+
+! Local Quadratic precision variables     
+     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     REAL(KIND=qp) :: dx(3,3),G(3,3),GI(3,3),s,DetGqp
+!------------------------------------------------------------------------------
+     success = .FALSE.
+
+     x => Nodes % x
+     y => Nodes % y
+     z => Nodes % z
+
+     cdim = CoordinateSystemDimension()
+     n = MIN( SIZE(x), nDOFs )
+     dim  = elm % TYPE % DIMENSION
+     DetG = 0.0_dp
+
+!------------------------------------------------------------------------------
+!    Partial derivatives of global coordinates with respect to local coordinates
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+     END DO
+!------------------------------------------------------------------------------
+!    Compute the covariant metric tensor of the element coordinate system
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+!    Convert the metric to contravariant base, and compute the SQRT(DetG)
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+!------------------------------------------------------------------------------
+!      Line elements
+!------------------------------------------------------------------------------
+     CASE (1)
+       DetGqp  = G(1,1)
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) = 1.0d0 / DetGqp
+
+!------------------------------------------------------------------------------
+!      Surface elements
+!------------------------------------------------------------------------------
+     CASE (2)
+       DetGqp = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) =  G(2,2) / DetGqp
+       Metric(1,2) = -G(1,2) / DetGqp
+       Metric(2,1) = -G(2,1) / DetGqp
+       Metric(2,2) =  G(1,1) / DetGqp
+
+!------------------------------------------------------------------------------
+!      Volume elements
+!------------------------------------------------------------------------------
+     CASE (3)
+       DetGqp = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       CALL InvertMatrix3x3QP( G,GI,detGqp )
+       Metric = GI
+     END SELECT
+
+     DetG = SQRT(DetGqp)     
+     Success = .TRUE.
+     
+!--------------------------------------------------------------------------------------
+     DO i=1,cdim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,dim
+           s = s + dx(i,k) * Metric(k,j)
+         END DO
+         LtoGMap(i,j) = s
+       END DO
+     END DO
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ElementMetricQP
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
    FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
 !------------------------------------------------------------------------------
@@ -11016,7 +11220,7 @@ END SUBROUTINE PickActiveFace
 !>   used to compute the value. This is just a wrapper routine and will call the
 !>   real function according to element dimension.   
 !------------------------------------------------------------------------------
-   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(VALUE)
+   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(val)
 !------------------------------------------------------------------------------
 !
 !  DESCRIPTION:
@@ -11049,7 +11253,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: VALUE
+     REAL(KIND=dp) :: val
      INTEGER :: n
 
      IF ( PRESENT( Basis ) ) THEN
@@ -11057,20 +11261,20 @@ END SUBROUTINE PickActiveFace
 !      Basis function values given, just sum the result ...
 !------------------------------------------------------------------------------
        n = elm % TYPE % NumberOfNodes
-       VALUE = SUM( f(1:n)*Basis(1:n) )
+       val = SUM( f(1:n)*Basis(1:n) )
      ELSE
 !------------------------------------------------------------------------------
 !      ... otherwise compute from the definition.
 !------------------------------------------------------------------------------
        SELECT CASE (elm % TYPE % DIMENSION)
          CASE (0)
-           VALUE = f(1)
+           val = f(1)
          CASE (1)
-           VALUE = InterpolateInElement1D( elm,f,u )
+           val = InterpolateInElement1D( elm,f,u )
          CASE (2)
-           VALUE = InterpolateInElement2D( elm,f,u,v )
+           val = InterpolateInElement2D( elm,f,u,v )
          CASE (3)
-           VALUE = InterpolateInElement3D( elm,f,u,v,w )
+           val = InterpolateInElement3D( elm,f,u,v,w )
        END SELECT
      END IF
   
@@ -11851,8 +12055,8 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>   Normal will point from more dense material to less dense
-!>   or outwards, if no elements on the other side.
+!> Normal will point into body with lower body ID.
+!> or outwards, if no elements on the other side.
 !------------------------------------------------------------------------------
   SUBROUTINE CheckNormalDirection( Boundary,Normal,x,y,z,turn )
 !------------------------------------------------------------------------------
@@ -12047,7 +12251,7 @@ END SUBROUTINE PickActiveFace
 !> do not have the luxury of knowing the local coordinates and hence the center
 !> point is used as default.
 !------------------------------------------------------------------------------
-  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
+  RECURSIVE FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
@@ -12062,7 +12266,11 @@ END SUBROUTINE PickActiveFace
     REAL(KIND=dp) :: u,v,Auu,Auv,Avu,Avv,detA,x,y,z
     REAL(KIND=dp) :: dxdu,dxdv,dydu,dydv,dzdu,dzdv
     REAL(KIND=dp), DIMENSION(:), POINTER :: nx,ny,nz
-
+    REAL(KIND=dp) :: Tangent1(3), Tangent2(3)
+    TYPE(Nodes_t) :: ParentNodes
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: n
+    
 !------------------------------------------------------------------------------
 
     nx => BoundaryNodes % x
@@ -12075,26 +12283,71 @@ END SUBROUTINE PickActiveFace
       Normal(1) = 1.0_dp
       Normal(2:3) = 0.0_dp
 
-    CASE ( 1 ) 
-      IF( PRESENT( u0 ) ) THEN
-        u = u0
-      ELSE
-        u = 0.0_dp
-      END IF
+    CASE ( 1 )
+      IF( CurrentModel % Mesh % MeshDim == 3 ) THEN
+        ! We have 1D element but 3D mesh
+        ! Define the normal in the plane defined by the 2D parent element.
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
 
-      dxdu = FirstDerivative1D( Boundary,nx,u )
-      dydu = FirstDerivative1D( Boundary,ny,u )
- 
-      detA = dxdu*dxdu + dydu*dydu
-      IF ( detA <= 0._dp ) THEN
-        Normal = 0._dp
-        RETURN
+        ! 1st tangent vector is defined by the edge direction
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+        dzdu = FirstDerivative1D( Boundary,nz,u )
+        
+        detA = dxdu*dxdu + dydu*dydu + dzdu*dzdu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Tangent1(1) = dxdu * detA
+        Tangent1(2) = dydu * detA
+        Tangent1(3) = dzdu * detA
+
+        ! The 2nd tangent element is the normal vector of the parent element
+        IF( PRESENT( Parent ) ) THEN
+          pParent => Parent
+        ELSE
+          pParent => Boundary % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(pParent) ) THEN
+            pParent => Boundary % BoundaryInfo % Right
+          END IF          
+        END IF
+
+        n = pParent % TYPE % NumberOfNodes
+        ALLOCATE( ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n) )        
+        ParentNodes % x(1:n) = CurrentModel % Nodes % x(pParent % NodeIndexes)
+        ParentNodes % y(1:n) = CurrentModel % Nodes % y(pParent % NodeIndexes)
+        ParentNodes % z(1:n) = CurrentModel % Nodes % z(pParent % NodeIndexes)
+        Tangent2 = NormalVector( pParent, ParentNodes) 
+        DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z)
+        
+        Normal = CrossProduct( Tangent1, Tangent2 )         
+      ELSE        
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
+
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+
+        detA = dxdu*dxdu + dydu*dydu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Normal(1) = -dydu * detA
+        Normal(2) =  dxdu * detA
+        Normal(3) =  0.0d0
       END IF
-      detA = 1.0_dp / SQRT(detA)
-      Normal(1) = -dydu * detA
-      Normal(2) =  dxdu * detA
-      Normal(3) =  0.0d0
-    
+        
     CASE ( 2 ) 
       IF( PRESENT( u0 ) ) THEN
         u = u0
@@ -12169,6 +12422,204 @@ END SUBROUTINE PickActiveFace
   END FUNCTION NormalVector
 !------------------------------------------------------------------------------
 
+#if 0
+!------------------------------------------------------------------------------
+!> More economical normal vector computation assuming linear geometry description.
+!------------------------------------------------------------------------------
+  RECURSIVE FUNCTION NormalVectorLinear( Boundary,BoundaryNodes,Parent) RESULT(Normal)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Nodes_t) :: BoundaryNodes
+    TYPE(Element_t), POINTER, OPTIONAL :: Parent
+    REAL(KIND=dp) :: Normal(3)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    REAL(KIND=dp) :: vec0(3), vec1(3), vec2(3), vec3(3) 
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: i,i1,i2,i3,i4,n,m,ElemDim,MeshDim
+    
+!------------------------------------------------------------------------------
+
+    x => CurrentModel % Nodes % x
+    y => CurrentModel % Nodes % y
+    z => CurrentModel % Nodes % z
+
+    IF( PRESENT( Parent ) ) THEN
+      pParent => Parent
+    ELSE IF( ASSOCIATED( Boundary % BoundaryInfo ) ) THEN
+      pParent => Boundary % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(pParent) ) THEN
+        pParent => Boundary % BoundaryInfo % Right
+      END IF
+    END IF
+
+    ElemDim = Boundary % Type % Dimension 
+    MeshDim = CurrentModel % Mesh % MeshDim 
+    
+    IF(ElemDim <= MeshDim-1 .OR. .NOT. (ASSOCIATED(pParent)) ) THEN
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 ) 
+        Normal(1) = 1.0_dp
+        Normal(2:3) = 0.0_dp
+
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i2) - x(i1)
+        vec1(2) = y(i2) - y(i1)
+        vec1(3) = 0.0_dp
+
+        Normal(1) = -vec1(2)
+        Normal(2) = vec1(1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+        
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+
+      END SELECT
+      
+    ELSE 
+
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 )                
+        i1 = pParent % NodeIndexes(1)
+        i2 = pParent % NodeIndexes(2)
+        
+        Normal(1) = x(i2) - x(i1)
+        Normal(2) = y(i2) - y(i1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+        IF( i1 == Boundary % NodeIndexes(1) ) THEN
+          Normal = -Normal
+        END IF
+                       
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i1)
+        vec1(2) = y(i1)
+        vec1(3) = z(i1)
+
+        vec2(1) = x(i2)
+        vec2(2) = y(i2)
+        vec2(3) = z(i2)
+               
+        vec0 = vec1-vec2
+        vec0 = vec0 / SQRT(SUM(vec0**2))
+        
+        n = pParent % TYPE % ElementCode / 100 
+
+        vec2 = 0.0_dp
+        DO i=1,n
+          i3 = pParent % NodeIndexes(i)
+          IF(i3 == i1 .OR. i3 == i2 ) CYCLE
+
+          ! Vector stretching from edge center to the other nodes
+          ! of the parent element. 
+          vec2(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+        END DO
+        ! Subtract the average 
+        vec3 = vec3 - (n-2)*(vec1+vec2)/2 
+        
+        ! Remove projection in the direction of the line
+        Normal = vec3 - SUM(vec0*vec3)*vec0
+        Normal = -Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+        
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+          
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+        m = pParent % TYPE % ElementCode / 100 
+        vec1 = 0.0_dp
+        vec2 = 0.0_dp
+        DO i=1,m
+          i1 = pParent % NodeIndexes(i)
+          IF( ANY( Boundary % NodeIndexes == i1 ) ) THEN
+            vec1(1) = vec1(1) + x(i1)
+            vec1(2) = vec1(2) + y(i1)
+            vec1(3) = vec1(3) + z(i1)            
+          ELSE
+            vec2(1) = vec2(1) + x(i1)
+            vec2(2) = vec2(2) + y(i1)
+            vec2(3) = vec2(3) + z(i1)
+          END IF
+        END DO
+
+        vec1 = vec1 / n
+        vec2 = vec2 / (m-n)
+
+        IF( SUM( (vec1-vec2)*Normal ) < 0.0_dp ) THEN
+          Normal = -Normal
+        END IF
+        
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+        
+      END SELECT
+    END IF
+      
+!------------------------------------------------------------------------------
+  END FUNCTION NormalVectorLinear
+!------------------------------------------------------------------------------
+#endif
+
+
+  
 !------------------------------------------------------------------------------
 !> Returns a point that is most importantly supposed to be on the surface
 !> For noncurved elements this may simply be the mean while otherwise
@@ -12611,7 +13062,6 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE GlobalToLocal
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3( G,GI,detG )
 !------------------------------------------------------------------------------
@@ -12635,7 +13085,34 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE InvertMatrix3x3
 !------------------------------------------------------------------------------
 
+  
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous routine!
+!------------------------------------------------------------------------------
+  SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
+!------------------------------------------------------------------------------
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    REAL(KIND=qp) :: G(3,3),GI(3,3)
+    REAL(KIND=qp) :: detG, s
+!------------------------------------------------------------------------------
+    s = 1.0 / DetG
+    
+    GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
+    GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
+    GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
+    
+    GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
+    GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
+    GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
 
+    GI(1,3) =  s * (G(1,2)*G(2,3) - G(2,2)*G(1,3));
+    GI(2,3) = -s * (G(1,1)*G(2,3) - G(2,1)*G(1,3));
+    GI(3,3) =  s * (G(1,1)*G(2,2) - G(2,1)*G(1,2));
+!------------------------------------------------------------------------------
+  END SUBROUTINE InvertMatrix3x3QP
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !>     Given element and its face map (for some triangular face of element ), 
 !>     this routine returns global direction of triangle face so that 

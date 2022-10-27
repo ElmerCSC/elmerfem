@@ -176,8 +176,8 @@ proc fs_GetFileList {directory pattern} {
 }
 
 #
-# get the selection from listbox and update view and/or give singal
-# for completition. called by signal.
+# get the selection from listbox and update view and/or give signal
+# for completion. called by signal.
 #
 # 11 Sep 95 
 #

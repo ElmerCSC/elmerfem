@@ -77,7 +77,7 @@ def main(argv):
    shp.close()
 
    if not bc_only :
-      ## elemnts as polygons
+      ## elements as polygons
       bcfile=os.path.join(outputdir, 'elements')
       shp=shapefile.Writer(bcfile, shapefile.POLYGON)
       shp.field('enum', 'N')
@@ -95,7 +95,7 @@ def main(argv):
             # As its elements so no hole
             # should we check the rotation order?
             #  seems not
-            # this would be the solution wiyh shapely
+            # this would be the solution with shapely
             #polygon = shapely.geometry.Polygon(evertices)
             #if not polygon.exterior.is_ccw:
             #  evertices=evertices[::-1]

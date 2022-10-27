@@ -794,7 +794,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
                    'Youngs Modulus', n, NodeIndexes, GotIt )
-           ELSE
+            ELSE
               CALL InputTensor( ElasticModulus, Isotropic, &
                    'Youngs Modulus', Material, n, NodeIndexes )
               !------------------------------------------------------------------------------
@@ -866,8 +866,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            IF ( dim > 2 ) THEN
               InertialLoad(3,1:n) = GetReal(  BodyForce, 'Inertial Bodyforce 3', GotIt )
            END IF
-        END IF
-        
+
+           IF( STDOFS > dim ) THEN
+             LoadVector(STDOFs,1:n) = GetReal( BodyForce, 'Stress Volume Source', GotIt )                        
+           END IF
+         END IF
+                
         !------------------------------------------------------------------------------
         !        Get values of field variables:
         !------------------------------------------------------------------------------
@@ -1185,6 +1189,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
@@ -2522,7 +2532,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(ntot)
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric
 
-    REAL(KIND=dp) :: Force(3), InertialForce(3), NodalLame1(n),NodalLame2(n),Density, &
+    REAL(KIND=dp) :: Force(4), InertialForce(3), NodalLame1(n),NodalLame2(n),Density, &
          Damping,Lame1,Lame2,NodalPressure(ntot),Pressure,NodalPressurePar(n),PressurePar
     REAL(KIND=dp) :: Grad(3,3),InvC(3,3),Identity(3,3),DetDefG
     REAL(KIND=dp) :: DefG(3,3), InvDefG(3,3),Strain(3,3), Stress2(3,3), Stress1(3,3)
@@ -2627,9 +2637,12 @@ CONTAINS
        !     Force at integration point
        !------------------------------------------------------------------------   
        Force = 0.0D0
+       ! We could have an entry for loss of volume
+       DO i=1,dofs         
+         Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n) )
+       END DO
        DO i=1,cdim
-          Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n) )
-          InertialForce(i) = SUM( InertialLoad(i,1:n)*Basis(1:n) )
+         InertialForce(i) = SUM( InertialLoad(i,1:n)*Basis(1:n) )
        END DO
        !-----------------------------------------------------------------------
        !     Material properties at the integration point
@@ -2921,6 +2934,10 @@ CONTAINS
 
              END DO
            END DO
+
+           ! Source/drain for volume
+           ForceVector(DOFs*p) = ForceVector(DOFs*p) &
+               + Basis(p)*Force(dofs)*s  ! DetDefG - to multiply with this or not?                       
          END DO
        END IF
      END DO

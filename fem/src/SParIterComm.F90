@@ -50,9 +50,29 @@ MODULE SParIterComm
   USE LoadMod
   USE SParIterGlobals
 
+#ifdef HAVE_XIOS
+  USE XIOS
+#endif
+
   IMPLICIT NONE
 
+#ifdef HAVE_PARMMG
+#include "parmmg/libparmmgf.h"
+  INTEGER :: PMMGPARAM_hausd = PMMG_DPARAM_hausd
+  INTEGER :: PMMGPARAM_hmin = PMMG_DPARAM_hmin
+  INTEGER :: PMMGPARAM_hmax = PMMG_DPARAM_hmax
+  INTEGER :: PMMGPARAM_iso = PMMG_IPARAM_iso
+  INTEGER :: PMMGPARAM_hgrad = PMMG_DPARAM_hgrad
+  INTEGER :: PMMGPARAM_angle = PMMG_IPARAM_angle
+  INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
+  INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
+  INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
+  INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
+  INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
+  INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
+#else
   INCLUDE "mpif.h"
+#endif
 
   TYPE Buff_t
     REAL(KIND=dp), ALLOCATABLE :: rbuf(:)
@@ -149,7 +169,7 @@ CONTAINS
 #else
 
 ! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
-! caused problems. However, likelyhood of this having to be used under
+! caused problems. However, likelihood of this having to be used under
 ! Windows is close to zero. 
 #ifndef WIN32
     CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
@@ -164,6 +184,16 @@ CONTAINS
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
 
+! Use XIOS library for IO
+! Must have xios and iodef.xml present
+#ifdef HAVE_XIOS
+    INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
+    IF (USE_XIOS) THEN
+     CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
+    ENDIF
+#endif
+
+IF (.NOT.USE_XIOS) THEN
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
     ! software having MPI colour set to zero. 
 #ifndef ELMER_COLOUR
@@ -171,7 +201,10 @@ CONTAINS
 #endif
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+ENDIF
+
     ParEnv % ActiveComm = ELMER_COMM_WORLD
+
 
 !ELMER_COMM_WORLD=MPI_COMM_WORLD
 
@@ -5111,6 +5144,14 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+
+#ifdef HAVE_XIOS
+  IF (USE_XIOS) THEN
+    CALL xios_context_finalize()
+    CALL xios_finalize()
+  ENDIF
+#endif
+
   IF (.NOT. ParEnv % ExternalInit) THEN
     CALL MPI_FINALIZE( ierr )
 

@@ -212,7 +212,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
     ALLOCATE(Crt(Model % Circuit_tot_n))
@@ -224,7 +224,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     END IF      
   END IF
   
-  ! If we have angle given explicitely, do not compute it 
+  ! If we have angle given explicitly, do not compute it 
   IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
     IF( TransientSimulation ) CALL SetDynamicAngle()
   END IF
@@ -246,7 +246,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END IF
       
       IF( n < Model % Circuit_tot_n ) THEN
-        CALL Fatal(Caller,'Lagrange multiplier is too small for ciruits!')
+        CALL Fatal(Caller,'Lagrange multiplier is too small for circuits!')
       END IF
       
       ! We want to associate the variable of this solver to the LagrangeVar so that the library routines take
@@ -760,6 +760,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3)
+    REAL(KIND=dp) :: LondonLambda(nn)
+    REAL(KIND=dp) :: LondonLambda_ip
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, grads_coeff, localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
@@ -767,6 +769,8 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: LondonEquations
+    TYPE(ValueList_t), POINTER :: Material
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
@@ -805,6 +809,9 @@ CONTAINS
       ncdofs=nd-nn
     END IF
 
+    Material => GetMaterial( Element )
+    LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
+
     vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
@@ -832,8 +839,8 @@ CONTAINS
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
       END SELECT
 
-
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
+
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
@@ -846,12 +853,35 @@ CONTAINS
 
       CALL AddToMatrixElement(CM, vvarId, vvarId, val)
 
+      IF ( LondonEquations ) THEN
+        LondonLambda_ip = SUM( Basis(1:nn) * LondonLambda(1:nn) )
+
+        IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*grads_coeff**2*circ_eq_coeff
+        val = val * Comp % VoltageFactor
+        ! Phi (beta grad phi_0, grad phi')
+        ! Here Phi takes the place of Vi
+        ! -----------------------------------
+        CALL AddToMatrixElement(CM, vvarId, vvarId, val)
+      END IF
+
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
+
+        IF ( LondonEquations ) THEN
+          ! Phi * ( beta * grad phi, a')
+          ! where phi is the node flux scalar potential
+          ! -------------------------------------------
+          IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff*circ_eq_coeff
+          CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), val)
+
+          IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff
+          val = val * Comp % VoltageFactor
+          CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, val)
+        END IF
+
         ! computing the mass term (sigma d/dt a, grad si):
         ! ---------------------------------------------------------
- 
         IF ( TransientSimulation ) THEN 
           IF(dim==2) val = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
           IF(dim==3) val = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
@@ -1108,7 +1138,7 @@ CONTAINS
     
     SAVE ang0, velo0, imom, tStepPrev
     
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     AngVar => DefaultVariableGet( 'Rotor Angle' )
     IF(.NOT. ASSOCIATED( AngVar ) ) RETURN
     
@@ -1234,10 +1264,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     First = .FALSE.
 
-    Parallel = (ParEnv % PEs > 1 )
-    IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Model % Simulation,'Enforce Parallel',Found ) 
-    END IF        
+    Parallel = Solver % Parallel 
     IF(Parallel) THEN
       CALL Info(Caller,'Assuming parallel electric circuits',Level=12)
     ELSE
@@ -1267,6 +1294,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         EXIT
       END IF
     END DO
+    
     IF(.NOT. ASSOCIATED(ASolver) ) THEN
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
@@ -1307,7 +1335,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
   END IF
@@ -1648,6 +1676,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     LOGICAL :: CoilUseWvec=.FALSE., CoilUseWvec0=.FALSE.,Found,Found2
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname, CoilType
 
+    LOGICAL :: PiolaVersion = .FALSE.
+
     TYPE(VariableHandle_t), SAVE :: Wvec_h
 
     SAVE CSymmetry, dim, First
@@ -1683,10 +1713,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END IF
       IF(.NOT. Found) CoilWVecVarname = 'W Vector E'
       CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+
     END IF
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
+    PiolaVersion = GetLogical( ASolver % Values, 'Use Piola Transform', Found )
+
     PS => Asolver % Variable % Perm
 
     CM => CurrentModel % CircuitMatrix
@@ -1716,16 +1749,24 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ! Numerical integration:
     ! ----------------------
-    IP = GaussPoints(Element)
+    IF(PiolaVersion) THEN
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., EdgeBasisDegree=1, PReferenceElement=PiolaVersion)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
+ 
       circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
         w = [0._dp, 0._dp, 1._dp]
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
@@ -1733,7 +1774,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
-        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree=1, ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                    IP % W(t), detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        END IF
         IF (CoilUseWvec) THEN
           w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
         ELSE
@@ -1803,6 +1852,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Omega, grads_coeff, circ_eq_coeff
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3)
+    REAL(KIND=dp) :: LondonLambda(nn)
+    REAL(KIND=dp) :: LondonLambda_ip, val
     COMPLEX(KIND=dp) :: localC, cmplx_val
     REAL(KIND=dp) :: localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
@@ -1812,6 +1863,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: LondonEquations
+    TYPE(ValueList_t), POINTER :: Material
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
@@ -1842,6 +1895,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CALL GetWPotential(WBase)
       ncdofs=nd-nn
     END IF
+
+    Material => GetMaterial( Element )
+    LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
 
     vvarId = Comp % vvar % ValueId + nm
 
@@ -1885,9 +1941,33 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
               REAL(cmplx_val), AIMAG(cmplx_val))
 
+      IF ( LondonEquations ) THEN
+        LondonLambda_ip = SUM( Basis(1:nn) * LondonLambda(1:nn) )
+
+        IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*grads_coeff**2*circ_eq_coeff
+        val = val * Comp % VoltageFactor
+        ! Phi (beta grad phi_0, grad phi')
+        ! Here Phi takes the place of Vi
+        ! -----------------------------------
+        CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, val, 0._dp)
+      END IF
+
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
+ 
+        IF ( LondonEquations ) THEN
+          ! Phi * ( beta * grad phi, a')
+          ! where phi is the node flux scalar potential
+          ! -------------------------------------------
+          IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff*circ_eq_coeff
+          CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), val, 0._dp)
+
+          IF(dim==2) val = IP % s(t)*detJ/LondonLambda_ip*basis(j)*grads_coeff
+          val = val * Comp % VoltageFactor
+          CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, val, 0._dp)
+        END IF
+
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
         IF(dim==2) cmplx_val = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
