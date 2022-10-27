@@ -667,7 +667,7 @@ MODULE Types
 
      LOGICAL :: Copy = .FALSE.
 
-     INTEGER :: BodyId=0, Splitted=0
+     INTEGER :: BodyId=0, Splitted=0, Status=0
      REAL(KIND=dp) :: StabilizationMK,hK
 
      TYPE(BoundaryInfo_t),  POINTER :: BoundaryInfo => NULL()
