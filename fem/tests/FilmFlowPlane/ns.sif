@@ -1,0 +1,157 @@
+!----------------------------------------------------------------------------
+! This is the reference solution for the primary test: film.sif
+!
+! P.R. 27.10.22
+!-----------------------------------------------------------------------------
+include params.sif
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory "results"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = ns.vtu
+  Set Dirichlet BCs by BC Numbering = True
+  Initialize Dirichlet Conditions = False
+
+  Coordinate Scaling(3) = 1.0 $h0$ 1.0
+
+  Extruded Mesh Levels = 3
+  Extruded Min Coordinate = 0.0
+  Extruded Max Coordinate = 0.2
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+! Here initially a rectangular mesh is stretched to accomodate the
+! chosen height, if not uniform. 
+Body Force 1
+  Mesh Translate 2 = Variable "Coordinate 1"
+    Real
+      0.0 0.0
+      5.0 $dh$
+    End 
+End
+
+Solver 1
+  Exec Solver = Before all
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+
+  Variable = MeshRelax
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 2
+  Equation = Navier-Stokes
+
+  Procedure = "FlowSolve" "FlowSolver"
+  Stabilization Method = Stabilized
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 1
+
+! activates also the newtonian linearization of viscosity
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+!  Calculate Loads = True
+End
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Operator 1 = range
+  Variable 1 = pressure
+  Operator 2 = boundary int mean
+  Variable 2 = Velocity 1 
+
+  Expression 1 = Real $h0
+  Expression 2 = Real $dh
+
+  Filename = "ns.dat"
+  File Append = Logical $appnd$
+
+  Show Norm Index = 1
+End
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+Material 1
+  Density = $rho
+  Viscosity = $nu
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Right"
+  Velocity 2 = 0.0
+
+  Save Scalars = True
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Left"
+! For channel flow v_max=1.5*v_ave
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "1.5*4*tx*(h0-tx)/(h0*h0)*v0"
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 1
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Fixed Boundary = True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  Name = "Top"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Moving Boundary = True
+End
+
+Boundary Condition 5
+  Name = "Front"
+  Velocity 3 = 0.0
+End
+
+Boundary Condition 6
+  Name = "Back"
+  Velocity 3 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 6.01014753E-01
+Solver 3 :: Reference Norm = 3.61784633E+02

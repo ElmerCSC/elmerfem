@@ -41,7 +41,7 @@ End
 Solver 1
   Equation = Navier-Stokes-1D
 
-! For 1D models the only velocity component is called "Speed"
+! For 1D models the only velocity component is called "FilmSpeed"
   Model Dimension = Integer 1
   Procedure = "FilmFlowSolver" "FilmFlowSolver"
 
@@ -77,9 +77,9 @@ Solver 3
   Procedure = "SaveData" "SaveScalars"
 
   Operator 1 = range
-  Variable 1 = pressure
+  Variable 1 = FilmPressure
   Operator 2 = boundary max
-  Variable 2 = Speed
+  Variable 2 = FilmSpeed
 
   Expression 1 = Real $h0
   Expression 2 = Real $dh
@@ -105,7 +105,7 @@ End
 Boundary Condition 1
   Target Boundaries(1) = 1
   Name = "Left"
-  Speed = Real $v0
+  FilmSpeed = Real $v0
 End
 
 Boundary Condition 2

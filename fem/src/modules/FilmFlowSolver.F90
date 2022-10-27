@@ -96,10 +96,10 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
    
   IF ( mdim == 2 ) THEN
     CALL ListAddNewString(Params, 'Variable', &
-        'Flow[Velocity:2 Pressure:1]')
+        'Flow[FilmVelocity:2 FilmPressure:1]')
   ELSE IF( mdim == 1 ) THEN
     CALL ListAddNewString(Params, 'Variable', &
-        'Flow[Speed:1 Pressure:1]')
+        'Flow[FilmSpeed:1 FilmPressure:1]')
   ELSE
     CALL Fatal(Caller,'This module does not make sense in dim: '//TRIM(I2S(mdim)))    
   END IF
@@ -189,9 +189,9 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL Info(Caller,'"Gradp Discretization" is set True',Level=10)
     END IF     
     IF( GotAC ) THEN
-      pVar => VariableGet( Mesh % Variables,'Pressure')
+      pVar => VariableGet( Mesh % Variables,'FilmPressure')
       IF ( .NOT. ASSOCIATED(pVar) ) THEN
-        CALL Fatal( Caller, 'Could not find required field "Pressure"!')
+        CALL Fatal( Caller, 'Could not find required field "FilmPressure"!')
       END IF
       ALLOCATE(PseudoPressure(SIZE(pVar % Values)))
       PseudoPressure = 0.0_dp
@@ -228,7 +228,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
 
-      IF(t==1) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
+      !IF(t==1) PRINT *,'Element:',Element % TYPE % ElementCode, n, nd, nb
       
       ! Volume forces:
       !---------------
@@ -352,15 +352,11 @@ CONTAINS
        rho = SUM( Basis(1:n) * Nodalrho(1:n) )
        gap = SUM( Basis(1:n) * NodalGap(1:n) ) 
 
-
        !rho = rho * gap
        
        DO i=1,dim
          gapGrad(i) = SUM( NodalGap(1:nd) * dBasisdx(1:nd,i) )
        END DO
-       
-       IF(t==1 .AND. MODULO(Element % ElementIndex,10) == 0 ) PRINT *,'Gap:',Gap,gapGrad,Csymmetry
- 
        
        normalVelo = SUM( Basis(1:n) * NodalNormalVelo(1:n) )
        
