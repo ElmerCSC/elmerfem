@@ -1097,8 +1097,6 @@ CONTAINS
       END IF
     END IF
 
-print*,ndofs,bdofs,edofs,fdofs
-
     IF( PRESENT( ProjectorDofs ) ) THEN
       DoProjectors = ProjectorDofs 
     ELSE
