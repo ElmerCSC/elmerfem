@@ -4859,14 +4859,14 @@ END BLOCK
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
      INTEGER :: FDofMap(6,4)
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
-     INTEGER :: EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
+     INTEGER :: NDOFs, EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
      INTEGER :: ActiveFaceId
 
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
-     LOGICAL :: ReleaseAny
+     LOGICAL :: ReleaseAny, NodalBCsWithBraces
      
      CHARACTER(LEN=MAX_NAME_LEN) :: name
 
@@ -4903,11 +4903,23 @@ END BLOCK
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
        A % ConstrainedDOF = .FALSE.
+     ELSE
+       IF (SIZE(A % ConstrainedDOF) < A % NumberOfRows) THEN
+         DEALLOCATE(A % ConstrainedDOF)
+         ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+         A % ConstrainedDOF = .FALSE.
+       END IF
      END IF
        
      IF(.NOT.ALLOCATED(A % Dvalues)) THEN
        ALLOCATE(A % Dvalues(A % NumberOfRows))
        A % Dvalues = 0._dp
+     ELSE
+       IF (SIZE(A % Dvalues) < A % NumberOfRows) THEN
+         DEALLOCATE(A % Dvalues)
+         ALLOCATE(A % Dvalues(A % NumberOfRows))
+         A % Dvalues = 0._dp
+       END IF
      END IF
 
        
@@ -4934,6 +4946,22 @@ END BLOCK
        ReleaseDir = .FALSE.
      END IF
 
+     NDOFs = MAXVAL(Solver % Def_Dofs(:,:,1))
+     IF (NDOFs > 0) THEN
+       DO DOF=1,x % DOFs
+         name = x % name
+         IF (x % DOFs > 1) name = ComponentName(name,DOF)
+         NodalBCsWithBraces = ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {n}')
+         IF (NodalBCsWithBraces) THEN
+           CALL Info('DefaultDirichletBCs', '{n} construct is now used to set BCs', Level=7)
+           CALL Info('DefaultDirichletBCs', TRIM(I2S(NDOFs))//'-component {n} definition is handled', Level=7)
+           EXIT
+         END IF
+       END DO
+     ELSE
+       NodalBCsWithBraces = .FALSE.
+     END IF
+
      IF ( x % DOFs > 1 ) THEN
        CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
      END IF
@@ -4946,22 +4974,23 @@ END BLOCK
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
      ! ----------------------------------------------------------------------
-     DO DOF=1,x % DOFs
-        name = x % name
-        IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
+     IF (.NOT. NodalBCsWithBraces) THEN
+       DO DOF=1,x % DOFs
+         name = x % name
+         IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
 
-        IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
-        
-        SaveElement => GetCurrentElement() 
-        DO i=1,Solver % Mesh % NumberOfBoundaryElements
+         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
+
+         SaveElement => GetCurrentElement() 
+         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-           
+
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
            IF ( .NOT. ASSOCIATED( Parent ) ) &
-             Parent => Element % BoundaryInfo % Right
+               Parent => Element % BoundaryInfo % Right
 
            IF ( .NOT. ASSOCIATED(Parent) )   CYCLE
 
@@ -4975,57 +5004,122 @@ END BLOCK
 
 
            IF ( isActivePElement(Parent)) THEN
-              n = GetElementNOFNodes()
-              ! Get indexes of boundary dofs:
-              CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
-              
-              DO k=n+1,numEdgeDofs
-                 nb = x % Perm( gInd(k) )
-                 IF ( nb <= 0 ) CYCLE
-                 nb = Offset + x % DOFs * (nb-1) + DOF
-                 IF ( ConstantValue  ) THEN
-                   A % ConstrainedDOF(nb) = .TRUE.
-                   A % Dvalues(nb) = 0._dp
-                 ELSE
-                   CALL ZeroRow( A, nb )
-                   A % RHS(nb) = 0._dp
-                 END IF
-              END DO
+             n = GetElementNOFNodes()
+             ! Get indexes of boundary dofs:
+             CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
+
+             DO k=n+1,numEdgeDofs
+               nb = x % Perm( gInd(k) )
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs * (nb-1) + DOF
+               IF ( ConstantValue  ) THEN
+                 A % ConstrainedDOF(nb) = .TRUE.
+                 A % Dvalues(nb) = 0._dp
+               ELSE
+                 CALL ZeroRow( A, nb )
+                 A % RHS(nb) = 0._dp
+               END IF
+             END DO
            ELSE
-              ! To do: Check whether BCs for edge/face elements must be set via L2 projection.
+             ! To do: Check whether BCs for edge/face elements must be set via L2 projection.
              CYCLE 
            END IF
          END DO
-         
+
          SaveElement => SetCurrentElement(SaveElement)
-     END DO
- 
+       END DO
+     END IF
 
-     ! -------------------------------------------------------------------------------------
-     ! Set BCs for fields which are approximated using H1-conforming basis functions 
-     ! (either Lagrange basis or hierarchic p-basis): 
-     ! -------------------------------------------------------------------------------------    
-     DO DOF=1,x % DOFs
-        name = x % name
-        IF (x % DOFs>1) name=ComponentName(name,DOF)
+     IF (NodalBCsWithBraces) THEN
+       CALL Info('DefaultDirichletBCs','Setting nodal dofs with {n} construct', Level=15) 
+       !
+       ! NOTE:  This is still simplistic implementation and lacks many options which work
+       !        in the case of standard BCs for nodal (Lagrange) interpolation approximations.
+       ! TO DO: Consider how the functionality of the subroutines SetNodalLoads and SetDirichletBoundaries
+       !        could be enabled in the case of {n} construct.
+       !
+       DO DOF=1,x % DOFs
+         DO m=1,NDOFs
+           name = x % name
+           IF ( x % DOFs > 1 ) THEN
+             name = TRIM(ComponentName(name,DOF))//' {n}'
+           ELSE
+             name = TRIM(name)//' {n}'
+           END IF
 
-        CALL SetNodalLoads( CurrentModel,A, b, &
+           ! When the component names are created for example from E[E Re:1 E Im:1], we now have name = "E Re {n}" or "E Im {n}".
+           ! Finally, we append this by the field index, so that we may seek values for "E Re {n} m" and "E Im {n} m", where 
+           ! m = 1,...,NDOFs when an element definition "n:NDOFs e:..." is given. 
+           
+           IF (NDOFs > 1) THEN 
+             name = TRIM(name)//' '//TRIM(I2S(m))
+           END IF
+
+!           print *, '====== m is ', m
+!           print *, '====== DOF is ', DOF
+!           print *, 'operating name ', name
+
+           SaveElement => GetCurrentElement()
+           DO i=1,Solver % Mesh % NumberOfBoundaryElements
+             Element => GetBoundaryElement(i)
+
+             BC => GetBC()
+             IF ( .NOT.ASSOCIATED(BC) ) CYCLE
+             IF ( .NOT. ListCheckPresent(BC, TRIM(Name)) ) CYCLE
+
+             Cond = SUM(GetReal(BC,GetVarName(Solver % Variable)//' Condition',Found))/n
+             IF (Cond>0) CYCLE
+
+             nd = GetElementDOFs(gInd, Element)
+             n = Element % TYPE % NumberOfNodes
+
+             Work(1:n) = GetReal(BC, Name, Found, Element)
+
+!             print *, 'permutation size for single-field', nd
+!             print *, 'element % ndofs, nofnodes ', element % ndofs, Element % TYPE % NumberOfNodes
+!             print *, 'global indexes for single field', gind(1:element % ndofs)
+!             print *, 'the field values ', Work(1:n)
+
+             DO j=1,n
+               k = (j-1) * NDOFs + m
+               l = x % Perm(gInd(k))
+
+               l = x % DOFs * (l-1) + DOF
+
+               A % ConstrainedDOF(l) = .TRUE.
+               A % Dvalues(l) = Work(j)
+             END DO
+           END DO
+           SaveElement => SetCurrentElement(SaveElement)
+         END DO
+       END DO
+
+     ELSE
+       ! -------------------------------------------------------------------------------------
+       ! Set BCs for fields which are approximated using H1-conforming basis functions 
+       ! (either Lagrange basis or hierarchic p-basis): 
+       ! -------------------------------------------------------------------------------------    
+       DO DOF=1,x % DOFs
+         name = x % name
+         IF (x % DOFs>1) name=ComponentName(name,DOF)
+
+         CALL SetNodalLoads( CurrentModel,A, b, &
              Name,DOF,x % DOFs,x % Perm ) ! , Offset ) not yet ?
 
-        CALL SetDirichletBoundaries( CurrentModel, A, b, &
+         CALL SetDirichletBoundaries( CurrentModel, A, b, &
              Name, DOF, x % DOFs, x % Perm, Offset, OffDiagonalMatrix )
 
-        ! ----------------------------------------------------------------------------
-        ! Set Dirichlet BCs for edge and face dofs which come from approximating with
-        ! p-elements:
-        ! ----------------------------------------------------------------------------
-        IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
+         ! ----------------------------------------------------------------------------
+         ! Set Dirichlet BCs for edge and face dofs which come from approximating with
+         ! p-elements:
+         ! ----------------------------------------------------------------------------
+         IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
 
-        CALL Info('DefUtils::DefaultDirichletBCs', &
-            'p-element condition setup: '//TRIM(name), Level=15)
+         CALL Info('DefUtils::DefaultDirichletBCs', &
+             'p-element condition setup: '//TRIM(name), Level=15)
 
-        SaveElement => GetCurrentElement()
-        DO i=1,Solver % Mesh % NumberOfBoundaryElements
+         SaveElement => GetCurrentElement()
+         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
@@ -5037,7 +5131,7 @@ END BLOCK
            ! -------------------
            Parent => Element % BoundaryInfo % Left
            IF ( .NOT. ASSOCIATED( Parent ) ) THEN
-              Parent => Element % BoundaryInfo % Right
+             Parent => Element % BoundaryInfo % Right
            END IF
            IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
 
@@ -5050,138 +5144,138 @@ END BLOCK
 
            IF ( ConstantValue ) CYCLE
 
-           
+
            SELECT CASE(Parent % TYPE % DIMENSION)
 
            CASE(2)
-              ! If no edges do not try to set boundary conditions
-              ! @todo This should changed to EXIT
-              IF ( .NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
+             ! If no edges do not try to set boundary conditions
+             ! @todo This should changed to EXIT
+             IF ( .NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
 
-              ! If boundary edge has no dofs move on to next edge
-              IF (Element % BDOFs <= 0) CYCLE
+             ! If boundary edge has no dofs move on to next edge
+             IF (Element % BDOFs <= 0) CYCLE
 
-              ! Number of nodes for this element
-              n = Element % TYPE % NumberOfNodes
+             ! Number of nodes for this element
+             n = Element % TYPE % NumberOfNodes
 
-              ! Get indexes for boundary and values for dofs associated to them
-              CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
-              CALL LocalBcBDOFs( BC, Element, numEdgeDofs, Name, STIFF, Work )
+             ! Get indexes for boundary and values for dofs associated to them
+             CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
+             CALL LocalBcBDOFs( BC, Element, numEdgeDofs, Name, STIFF, Work )
 
-              IF ( Solver % Matrix % Symmetric ) THEN
+             IF ( Solver % Matrix % Symmetric ) THEN
 
-                DO l=1,n
-                    nb = x % Perm( gInd(l) )
-                    IF ( nb <= 0 ) CYCLE
-                    nb = Offset + x % DOFs * (nb-1) + DOF
+               DO l=1,n
+                 nb = x % Perm( gInd(l) )
+                 IF ( nb <= 0 ) CYCLE
+                 nb = Offset + x % DOFs * (nb-1) + DOF
 
-                    s = A % Dvalues(nb)
-                    DO k=n+1,numEdgeDOFs
-                       Work(k) = Work(k) - s*STIFF(k,l)
-                    END DO
-                 END DO
-
+                 s = A % Dvalues(nb)
                  DO k=n+1,numEdgeDOFs
-                    DO l=n+1,numEdgeDOFs
-                       STIFF(k-n,l-n) = STIFF(k,l)
-                    END DO
-                    Work(k-n) = Work(k)
+                   Work(k) = Work(k) - s*STIFF(k,l)
                  END DO
-                 l = numEdgeDOFs-n
-                 IF ( l==1 ) THEN
-                   Work(1) = Work(1)/STIFF(1,1)
-                 ELSE
-                   CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
-                 END IF
+               END DO
 
-                 DO k=n+1,numEdgeDOFs
-                   nb = x % Perm( gInd(k) )
-                   IF ( nb <= 0 ) CYCLE
-                   nb = Offset + x % DOFs * (nb-1) + DOF
-
-                   A % ConstrainedDOF(nb) = .TRUE.
-                   A % Dvalues(nb) = Work(k-n)
+               DO k=n+1,numEdgeDOFs
+                 DO l=n+1,numEdgeDOFs
+                   STIFF(k-n,l-n) = STIFF(k,l)
                  END DO
-              ELSE
+                 Work(k-n) = Work(k)
+               END DO
+               l = numEdgeDOFs-n
+               IF ( l==1 ) THEN
+                 Work(1) = Work(1)/STIFF(1,1)
+               ELSE
+                 CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
+               END IF
 
-                ! Contribute this boundary to global system
-                 ! (i.e solve global boundary problem)
-                 DO k=n+1,numEdgeDofs
-                    nb = x % Perm( gInd(k) )
-                    IF ( nb <= 0 ) CYCLE
-                    nb = Offset + x % DOFs * (nb-1) + DOF
-                    A % RHS(nb) = A % RHS(nb) + Work(k) 
-                    DO l=1,numEdgeDofs
-                       mb = x % Perm( gInd(l) )
-                       IF ( mb <= 0 ) CYCLE
-                       mb = Offset + x % DOFs * (mb-1) + DOF
-                       DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
-                          IF ( A % Cols(kk) == mb ) THEN
-                            A % Values(kk) = A % Values(kk) + STIFF(k,l)
-                            EXIT
-                          END IF
-                       END DO
-                    END DO
-                 END DO
-              END IF
+               DO k=n+1,numEdgeDOFs
+                 nb = x % Perm( gInd(k) )
+                 IF ( nb <= 0 ) CYCLE
+                 nb = Offset + x % DOFs * (nb-1) + DOF
 
-            CASE(3)
-              ! If no faces present do not try to set boundary conditions
-              ! @todo This should be changed to EXIT
-              IF ( .NOT. ASSOCIATED(Solver % Mesh % Faces) ) CYCLE
+                 A % ConstrainedDOF(nb) = .TRUE.
+                 A % Dvalues(nb) = Work(k-n)
+               END DO
+             ELSE
 
-              ! Parameters of element
-              n = Element % TYPE % NumberOfNodes
-
-              ! Get global boundary indexes and solve dofs associated to them
-              CALL getBoundaryIndexes( Solver % Mesh, Element,  &
-                   Parent, gInd, numEdgeDofs )
-
-              ! If boundary face has no dofs skip to next boundary element
-              IF (numEdgeDOFs == n) CYCLE
-
-              ! Get local solution
-              CALL LocalBcBDofs( BC, Element, numEdgeDofs, Name, STIFF, Work )
-
-              n_start = 1
-              IF ( Solver % Matrix % Symmetric ) THEN
-                 DO l=1,n
-                    nb = x % Perm( gInd(l) )
-                    IF ( nb <= 0 ) CYCLE
-                    nb = Offset + x % DOFs * (nb-1) + DOF
-
-                    s = A % Dvalues(nb)
-                    DO k=n+1,numEdgeDOFs
-                       Work(k) = Work(k) - s*STIFF(k,l)
-                    END DO
-                 END DO
-                 n_start=n+1
-              END IF
-
-              ! Contribute this entry to global boundary problem
-              DO k=n+1,numEdgeDOFs
+               ! Contribute this boundary to global system
+               ! (i.e solve global boundary problem)
+               DO k=n+1,numEdgeDofs
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
                  A % RHS(nb) = A % RHS(nb) + Work(k) 
-                 DO l=n_start,numEdgeDOFs
-                    mb = x % Perm( gInd(l) )
-                    IF ( mb <= 0 ) CYCLE
-                    mb = Offset + x % DOFs * (mb-1) + DOF
-                    DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
-                      IF ( A % Cols(kk) == mb ) THEN
-                        A % Values(kk) = A % Values(kk) + STIFF(k,l)
-                        EXIT
-                      END IF
-                    END DO
+                 DO l=1,numEdgeDofs
+                   mb = x % Perm( gInd(l) )
+                   IF ( mb <= 0 ) CYCLE
+                   mb = Offset + x % DOFs * (mb-1) + DOF
+                   DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
+                     IF ( A % Cols(kk) == mb ) THEN
+                       A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                       EXIT
+                     END IF
+                   END DO
                  END DO
-              END DO
+               END DO
+             END IF
+
+           CASE(3)
+             ! If no faces present do not try to set boundary conditions
+             ! @todo This should be changed to EXIT
+             IF ( .NOT. ASSOCIATED(Solver % Mesh % Faces) ) CYCLE
+
+             ! Parameters of element
+             n = Element % TYPE % NumberOfNodes
+
+             ! Get global boundary indexes and solve dofs associated to them
+             CALL getBoundaryIndexes( Solver % Mesh, Element,  &
+                 Parent, gInd, numEdgeDofs )
+
+             ! If boundary face has no dofs skip to next boundary element
+             IF (numEdgeDOFs == n) CYCLE
+
+             ! Get local solution
+             CALL LocalBcBDofs( BC, Element, numEdgeDofs, Name, STIFF, Work )
+
+             n_start = 1
+             IF ( Solver % Matrix % Symmetric ) THEN
+               DO l=1,n
+                 nb = x % Perm( gInd(l) )
+                 IF ( nb <= 0 ) CYCLE
+                 nb = Offset + x % DOFs * (nb-1) + DOF
+
+                 s = A % Dvalues(nb)
+                 DO k=n+1,numEdgeDOFs
+                   Work(k) = Work(k) - s*STIFF(k,l)
+                 END DO
+               END DO
+               n_start=n+1
+             END IF
+
+             ! Contribute this entry to global boundary problem
+             DO k=n+1,numEdgeDOFs
+               nb = x % Perm( gInd(k) )
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs * (nb-1) + DOF
+               A % RHS(nb) = A % RHS(nb) + Work(k) 
+               DO l=n_start,numEdgeDOFs
+                 mb = x % Perm( gInd(l) )
+                 IF ( mb <= 0 ) CYCLE
+                 mb = Offset + x % DOFs * (mb-1) + DOF
+                 DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
+                   IF ( A % Cols(kk) == mb ) THEN
+                     A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                     EXIT
+                   END IF
+                 END DO
+               END DO
+             END DO
            END SELECT
          END DO
-         
-         SaveElement => SetCurrentElement(SaveElement)
-     END DO
 
+         SaveElement => SetCurrentElement(SaveElement)
+       END DO
+     END IF
 
 
      ! BLOCK

@@ -4434,7 +4434,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-!> Set dirichlet boundary condition for given dof. The conditions are
+!> Set Dirichlet boundary condition for given dof. The conditions are
 !> set based on the given name and applied directly to the matrix structure
 !> so that a row is zeroed except for the diagonal which is set to one. 
 !> Then the r.h.s. value determines the value of the field variable 
@@ -4757,7 +4757,7 @@ CONTAINS
               n = mGetElementDOFs( Indexes )
             END IF
             ValueList => Model % BCs(BC) % Values
-            CALL SetElementValues(n,t)
+            CALL SetElementValues(n)
           END DO
         END DO
       ELSE
@@ -4789,7 +4789,7 @@ CONTAINS
               n = mGetElementDOFs( Indexes )
             END IF
             ValueList => Model % BCs(BC) % Values
-            CALL SetElementValues(n,t)
+            CALL SetElementValues(n)
           END DO
         END DO
       END IF
@@ -4907,7 +4907,7 @@ CONTAINS
             IF(PassPerm(NodeIndexes(1))==0) CALL SetPointValues(1)
           END DO
         ELSE
-          CALL SetElementValues( n,t )
+          CALL SetElementValues(n)
         END IF
         
       END DO
@@ -5704,9 +5704,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Set values related to a specific boundary or bulk element.
 !------------------------------------------------------------------------------
-    SUBROUTINE SetElementValues(n,elno)
+    SUBROUTINE SetElementValues(n)
 !------------------------------------------------------------------------------
-      INTEGER :: n,elno
+      INTEGER :: n
       INTEGER :: i,j,k,l,m,dim,kmax,lmax
       LOGICAL :: CheckNT,found
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
@@ -5794,12 +5794,10 @@ CONTAINS
                   A % ConstrainedDOF(lmax) = .FALSE.
                 END IF
               ELSE
-                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
               END IF
             ELSE
               DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
-                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
