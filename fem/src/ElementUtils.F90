@@ -739,7 +739,7 @@ CONTAINS
     END IF
 
     
-    ! If this is not a GD solver then create permutation considering 
+    ! If this is not a DG solver then create permutation considering 
     ! nodal, edge, face and bubble dofs. 
     !-------------------------------------------------------------------
     IF ( .NOT. FoundDG ) THEN
@@ -804,6 +804,17 @@ CONTAINS
                      NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                END DO
              END DO
+
+             IF ( GB ) THEN
+               Face1 => Mesh % Faces(Element % FaceIndexes(1))
+               IF(Element % Type % ElementCode==Face1 % Type % ElementCode) THEN
+                 DO i=1, Element % BDOFs
+                   n = n + 1
+                   Indexes(n) = FDOFs*(Element % FaceIndexes(1)-1) + i + &
+                       NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                 END DO
+               END IF
+             END IF
            END IF
          END IF
 
@@ -1086,6 +1097,8 @@ CONTAINS
       END IF
     END IF
 
+print*,ndofs,bdofs,edofs,fdofs
+
     IF( PRESENT( ProjectorDofs ) ) THEN
       DoProjectors = ProjectorDofs 
     ELSE
@@ -1294,6 +1307,17 @@ CONTAINS
                              NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                      END DO
                   END DO
+               END IF
+
+               IF ( GB ) THEN
+                 Face1 => Mesh % Faces(Element % FaceIndexes(1))
+                 IF(Element % Type % ElementCode==Face1 % Type % ElementCode) THEN
+                   DO i=1, Element % BDOFs
+                     n = n + 1
+                     Indexes(n) = FDOFs*(Element % FaceIndexes(1)-1) + i + &
+                         NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                   END DO
+                 END IF
                END IF
             END IF
             
