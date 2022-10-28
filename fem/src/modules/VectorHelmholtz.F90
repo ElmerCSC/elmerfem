@@ -35,9 +35,9 @@
 ! *****************************************************************************/
     
 !------------------------------------------------------------------------------
-!> Solve time-harmonic Maxwell equations using the curl-curl equation at relatively
-!> high frequency using curl-conforming edge elements. Also low frequency model
-!> available.
+!> Solve the time-harmonic Maxwell equations using the curl-curl equation at a 
+!> relatively high frequency using curl-conforming edge elements. Also a low-
+!> frequency model is available.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE VectorHelmholtzUtils
@@ -122,10 +122,9 @@ END SUBROUTINE VectorHelmholtzSolver_Init0
 
 
 !------------------------------------------------------------------------------
-!> Solve the electric field E from the rot-rot equation 
-!> rot (1/mu) rot E - i \omega \sigma E - \omega^2 epsilon E = i omega J
-!
-!> using edge elements (vector-valued basis of 1st or 2nd degree) 
+!> Solve the electric field E from the curl-curl equation 
+!> curl (1/mu) curl E - i \omega \sigma E - \omega^2 epsilon E = i omega J
+!> using edge elements (vector-valued basis of first or second degree) 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
@@ -429,7 +428,7 @@ CONTAINS
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     LOGICAL :: Stat, WithGauge
-    INTEGER :: t, i, j, m, np, p, q
+    INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
@@ -461,7 +460,8 @@ CONTAINS
     FORCE(1:nd) = 0.0_dp
 
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
-    WithGauge = np == n
+    ndofs = np/n
+    WithGauge = ndofs > 0 !np == n
     IF (WithGauge) THEN
       Gauge(1:nd,1:nd)  = 0.0_dp
     END IF
@@ -544,18 +544,44 @@ CONTAINS
       
       ! Additional terms related to a gauge condition
       IF (WithGauge) THEN
-        DO i = 1,np
-          DO q = 1,nd-np
-            j = q+np
-            Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-            Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-          END DO
-          IF (LorentzCondition) THEN
-            DO j = 1,np
-              Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+        IF (ndofs == 2) THEN
+          DO p = 1,n
+            ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
+            ! the A-V representation
+            i = (p-1)*ndofs + 1
+            DO q = 1,nd-np
+              j = q+np
+              Gauge(i,j) = Gauge(i,j) - Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+              Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
             END DO
-          END IF
-        END DO
+
+            DO q = 1,n
+              j = (q-1)*ndofs + 1
+              Gauge(i,j) = Gauge(i,j) - Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+            END DO
+
+            ! The second DOF is related to the gauge condition div A =  0:
+            i = (p-1)*ndofs + 2
+            DO q = 1,nd-np
+              j = q+np
+              Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+              Gauge(j,i) = Gauge(j,i) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
+            END DO
+          END DO
+        ELSE
+          DO i = 1,np
+            DO q = 1,nd-np
+              j = q+np
+              Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+              Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+            END DO
+            IF (LorentzCondition) THEN
+              DO j = 1,np
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+              END DO
+            END IF
+          END DO
+        END IF
       END IF
     END DO
 
@@ -596,9 +622,9 @@ CONTAINS
     COMPLEX(KIND=dp) :: B, L(3), muinv
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ
-    LOGICAL :: Stat, Found, UpdateStiff
+    LOGICAL :: Stat, Found, UpdateStiff, WithGauge
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, m, np, p, q
+    INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
@@ -635,6 +661,8 @@ CONTAINS
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    ndofs = np/n
+    WithGauge = ndofs > 1 ! True only when the gauged A-V is used
 
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -659,7 +687,7 @@ CONTAINS
 
       IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       UpdateStiff = .TRUE.
-           
+
       IF( ASSOCIATED( Parent ) ) THEN        
         muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
         IF( Found ) THEN
@@ -680,6 +708,18 @@ CONTAINS
               SUM(WBasis(i,:)*WBasis(j,:)) * detJ * IP%s(t)
         END DO
       END DO
+
+      IF (WithGauge) THEN
+        ! The following term arises if the decomposition E = A + grad V is applied:
+        DO i = 1,nd-np
+          p = i+np
+          DO j=1,n
+            q = (j-1)*ndofs + 1
+            STIFF(p,q) = STIFF(p,q) - muinv * B * &
+                SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+          END DO
+        END DO
+      END IF
 
     END DO
 
@@ -966,7 +1006,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
-   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,edofs,ndofs,dofcount,vDOFs
+   INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
    INTEGER :: soln
 
    TYPE(Solver_t), POINTER :: pSolver
@@ -988,7 +1028,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   ! LOGICAL :: WithGauge
+   LOGICAL :: WithGauge
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
@@ -1056,34 +1096,34 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    EW => VariableGet( Mesh % Variables, 'Joule Heating')
    EL_EW => VariableGet( Mesh % Variables, 'Joule Heating E')
  
-   ndofs = 0 
-   IF ( ASSOCIATED(MFD) ) ndofs=ndofs+3
-   IF ( ASSOCIATED(MFS) ) ndofs=ndofs+3
-   IF ( ASSOCIATED(EF)  ) ndofs=ndofs+3
-   IF ( ASSOCIATED(PV) ) ndofs=ndofs+3
-   IF ( ASSOCIATED(DIVPV) ) ndofs=ndofs+1
-   IF ( ASSOCIATED(EW) ) ndofs=ndofs+1
-   ndofs = ndofs*2  ! complex problem
-   NodalFields = ( ndofs > 0 )
+   nfields = 0 
+   IF ( ASSOCIATED(MFD) ) nfields=nfields+3
+   IF ( ASSOCIATED(MFS) ) nfields=nfields+3
+   IF ( ASSOCIATED(EF)  ) nfields=nfields+3
+   IF ( ASSOCIATED(PV) ) nfields=nfields+3
+   IF ( ASSOCIATED(DIVPV) ) nfields=nfields+1
+   IF ( ASSOCIATED(EW) ) nfields=nfields+1
+   nfields = nfields*2  ! complex problem
+   NodalFields = ( nfields > 0 )
 
    IF(NodalFields) THEN
-     ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),ndofs)); Gforce=0._dp
+     ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),nfields)); Gforce=0._dp
    END IF
 
-   edofs = 0 
-   IF ( ASSOCIATED(EL_MFD) ) edofs=edofs+3
-   IF ( ASSOCIATED(EL_MFS) ) edofs=edofs+3
-   IF ( ASSOCIATED(EL_EF)  ) edofs=edofs+3
-   IF ( ASSOCIATED(EL_PV) )  edofs=edofs+3
-   IF ( ASSOCIATED(EL_DIVPV) ) edofs=edofs+1
-   IF ( ASSOCIATED(EL_EW) ) edofs=edofs+1
-   edofs = edofs*2 ! complex problem
-   ElementalFields = ( edofs > 0 ) 
+   efields = 0 
+   IF ( ASSOCIATED(EL_MFD) ) efields=efields+3
+   IF ( ASSOCIATED(EL_MFS) ) efields=efields+3
+   IF ( ASSOCIATED(EL_EF)  ) efields=efields+3
+   IF ( ASSOCIATED(EL_PV) )  efields=efields+3
+   IF ( ASSOCIATED(EL_DIVPV) ) efields=efields+1
+   IF ( ASSOCIATED(EL_EW) ) efields=efields+1
+   efields = efields*2 ! complex problem
+   ElementalFields = ( efields > 0 ) 
 
-   dofs = MAX( edofs, ndofs ) 
+   fields = MAX( efields, nfields ) 
    n = Mesh % MaxElementDOFs
    
-   ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
+   ALLOCATE( MASS(n,n), FORCE(n,fields), Pivot(n) )
    ALLOCATE( WBasis(n,3), SOL(2,n), RotWBasis(n,3), Basis(n), dBasisdx(n,3) )
    
    SOL = 0._dp
@@ -1136,7 +1176,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-!     WithGauge = np == n
+     ndofs = np/n
+     WithGauge = ndofs > 1
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
      CALL GetElementNodes( Nodes )
@@ -1184,9 +1225,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        END IF
                      
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-!       IF (WithGauge) EF_ip = EF_ip + &
-!           CMPLX(MATMUL(SOL(1,1:np),dBasisdx(1:np,:)), MATMUL(SOL(2,1:np),dBasisdx(1:np,:)))
-
+       IF (WithGauge) THEN
+         DO k=1,3
+           EF_ip(k) = EF_ip(k) + &
+               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
+         END DO
+       END IF
        ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
 
        EdotJ = SUM(EF_ip*CONJG(J_ip))
@@ -1242,7 +1286,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      IF(NodalFields) THEN
        CALL DefaultUpdateEquations( MASS,FORCE(:,1))
        Fsave => Solver % Matrix % RHS
-       DO l=1,dofs
+       DO l=1,fields
          Solver % Matrix % RHS => GForce(:,l)
          CALL DefaultUpdateForce(FORCE(:,l))
        END DO
@@ -1250,14 +1294,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      END IF
 
      IF(ElementalFields) THEN
-       dofcount = 0
+       nfields = 0
        CALL LUdecomp(MASS,n,pivot)
-       CALL LocalSol(EL_MFD,  6, n, MASS, FORCE, pivot, dofcount) ! 2*3 components
-       CALL LocalSol(EL_MFS,  6, n, MASS, FORCE, pivot, dofcount)
-       CALL LocalSol(EL_EF,   6, n, MASS, FORCE, pivot, dofcount)
-       CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, dofcount)
-       CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, dofcount)
-       CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EL_MFD,  6, n, MASS, FORCE, pivot, nfields) ! 2*3 components
+       CALL LocalSol(EL_MFS,  6, n, MASS, FORCE, pivot, nfields)
+       CALL LocalSol(EL_EF,   6, n, MASS, FORCE, pivot, nfields)
+       CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, nfields)
+       CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, nfields)
+       CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, nfields)
      END IF
      
    END DO
@@ -1280,13 +1324,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF(NodalFields .OR. DoAve) THEN
      Fsave => NULL()
      IF(ASSOCIATED(Solver % Matrix)) Fsave => Solver % Matrix % RHS
-     dofcount = 0
-     CALL GlobalSol(MFD,  6, Gforce, dofcount, EL_MFD)
-     CALL GlobalSol(MFS,  6, Gforce, dofcount, EL_MFS)
-     CALL GlobalSol(EF ,  6, Gforce, dofcount, EL_EF)
-     CALL GlobalSol(PV,   6, Gforce, dofcount, EL_PV)
-     CALL GlobalSol(DIVPV,2, Gforce, dofcount, EL_DIVPV)
-     CALL GlobalSol(EW,   2, Gforce, dofcount, EL_EW)
+     nfields = 0
+     CALL GlobalSol(MFD,  6, Gforce, nfields, EL_MFD)
+     CALL GlobalSol(MFS,  6, Gforce, nfields, EL_MFS)
+     CALL GlobalSol(EF ,  6, Gforce, nfields, EL_EF)
+     CALL GlobalSol(PV,   6, Gforce, nfields, EL_PV)
+     CALL GlobalSol(DIVPV,2, Gforce, nfields, EL_DIVPV)
+     CALL GlobalSol(EW,   2, Gforce, nfields, EL_EW)
      IF(ASSOCIATED(FSave)) Solver % Matrix % RHS => Fsave
    END IF
 
@@ -1345,7 +1389,7 @@ CONTAINS
      Solver % Variable % Values=0
      Norm = DefaultSolve()
      var % Values(i::m) = Solver % Variable % Values
-  END DO
+   END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalSol
 !------------------------------------------------------------------------------
