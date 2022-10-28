@@ -1684,6 +1684,21 @@ CONTAINS
         maxFaceDOFs = MAX( maxFaceDOFs, Mesh % Faces(i) % BDOFs )
      END DO
      !$OMP END DO NOWAIT
+
+     IF ( GB ) THEN
+       DO i=1,Mesh % NumberOfBoundaryElements
+          j = i + Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(j)
+          IF(Element % Type % ElementCode >= 300) THEN
+            minFaceDOFs = MIN( minFaceDOFs, Element % BDOFs )
+            maxFaceDOFs = MAX( maxFaceDOFs, Element % BDOFs )
+          ELSE
+            minEdgeDOFs = MIN( minEdgeDOFs, Element % BDOFs )
+            maxEdgeDOFs = MAX( maxEdgeDOFs, Element % BDOFs )
+          END IF
+       END DO
+     END IF
+
      !$OMP DO
      DO i=1,Mesh % NumberOfBulkElements
         BDOFs = MAX( BDOFs, Mesh % Elements(i) % BDOFs )

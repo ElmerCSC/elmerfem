@@ -353,17 +353,21 @@ CONTAINS
 
          Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
          IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
-           DO i=1,Element % TYPE % NumberOfEdges
-             j = Element % EdgeIndexes(i)
-             EdgeDOFs(j)=MAX(EdgeDOFs(j),getEdgeDOFs(Element,Def_Dofs(6)))
-           END DO
+           IF(Element % Type % ElementCode >= 300) THEN
+             DO i=1,Element % TYPE % NumberOfEdges
+               j = Element % EdgeIndexes(i)
+               EdgeDOFs(j)=MAX(EdgeDOFs(j),getEdgeDOFs(Element,Def_Dofs(6)))
+             END DO
+           END IF
          END IF
 
          IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
-           DO i=1,Element % TYPE % NumberOfFaces
-             j = Element % FaceIndexes(i)
-             FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i))
-           END DO
+           IF(Element % Type % ElementCode >= 500) THEN
+             DO i=1,Element % TYPE % NumberOfFaces
+               j = Element % FaceIndexes(i)
+               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i))
+             END DO
+           END IF
          END IF
          t=t+1
        END DO
@@ -401,6 +405,8 @@ CONTAINS
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfEdges
              Edge => Mesh % Edges( Element % EdgeIndexes(i) )
+             IF(Element % Type % ElementCode==Edge % Type % ElementCode.AND..NOT.GB) CYCLE
+
              ndofs = 0
              IF ( Def_Dofs(2) >= 0) THEN
                ndofs = Def_Dofs(2)
@@ -423,8 +429,11 @@ CONTAINS
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfFaces
              Face => Mesh % Faces( Element % FaceIndexes(i) )
-             l = MAX(0,Def_Dofs(3))
+             IF(Element % Type % ElementCode==Face % Type % ElementCode.AND..NOT.GB) CYCLE
+
+              l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
+
              IF(l==0) THEN
                !
                ! NOTE: This depends on what dofs have been introduced
@@ -440,6 +449,7 @@ CONTAINS
                  l = MAX(l,Solver % Def_Dofs(j+6,e,5))
                END IF
              END IF
+
              ndofs = 0
              IF (l > 0) THEN
                ndofs = l
@@ -1315,8 +1325,10 @@ use spariterglobals
         IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
-         IF ( GlobalBubbles ) DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
-              CurrentModel % Mesh % NumberOfBulkElements * PVar % DOFs
+         IF ( GlobalBubbles ) THEN
+            DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
+                CurrentModel % Mesh % NumberOfBulkElements * PVar % DOFs
+         END IF
 
          ALLOCATE( Var )
          ALLOCATE( Var % Values(DOFs) )

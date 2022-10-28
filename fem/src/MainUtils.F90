@@ -1572,10 +1572,22 @@ CONTAINS
           IF (.NOT.Found) GlobalBubbles = .TRUE.
 
           Ndeg = Ndeg + MaxDOFsPerNode * Solver % Mesh % NumberOfNodes 
+          IF ( GlobalBubbles ) THEN
+            Ndeg = Ndeg + MaxBDOFs * Solver % Mesh % NumberOfBulkElements
+
+            DO i=1,Solver % Mesh % NumberOfBoundaryElements
+              j = i + Solver % Mesh % NumberOfBulkElements
+              IF ( Solver % Mesh % Elements(j) % Type % ElementCode >= 300) THEN
+                MaxFDOFs = MAX( maxFDOFs, Solver % Mesh % Elements(j) % BDOFs )
+              ELSE
+                MaxEDOFs = MAX( maxEDOFs, Solver % Mesh % Elements(j) % BDOFs )
+              END IF
+            END DO
+          END IF
+
           IF ( MaxEDOFs > 0 ) Ndeg = Ndeg + MaxEDOFs * Solver % Mesh % NumberOFEdges
           IF ( MaxFDOFs > 0 ) Ndeg = Ndeg + MaxFDOFs * Solver % Mesh % NumberOFFaces
-          IF ( GlobalBubbles ) &
-              Ndeg = Ndeg + MaxBDOFs * Solver % Mesh % NumberOfBulkElements
+
           DG = ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found )
           IF( DG ) THEN
             Ndeg = MAX( NDeg, MaxDGDOFs * (Solver % Mesh % NumberOfBulkElements+ &

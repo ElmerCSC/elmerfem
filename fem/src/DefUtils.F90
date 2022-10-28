@@ -1809,6 +1809,17 @@ BLOCK
              n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
           END DO
         END IF
+
+        IF ( Solver % GlobalBubbles ) THEN
+BLOCK
+          TYPE(Element_t), POINTER :: Face
+          Face => Solver % Mesh % Faces(Element % FaceIndexes(1))
+          IF ( Face % Type % ElementCode == Element % Type % ElementCode ) THEN
+            n = n + Element % BDOFs
+          END IF
+END BLOCK
+        END IF
+
         FacesDone = .TRUE.
      END IF
 
