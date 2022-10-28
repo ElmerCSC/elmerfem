@@ -135,7 +135,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   TYPE(Element_t),POINTER :: Element
   INTEGER :: i,j,k,n, nb, nd, t, istat, dim, mdim, BDOFs=1,Active,iter,maxiter
   REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, mingap
-  TYPE(ValueList_t), POINTER :: Params, BodyForce, Material
+  TYPE(ValueList_t), POINTER :: Params, BodyForce, Material, BC
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), &
       FORCE(:), rho(:), gap(:), mu(:), ac(:), NormalVelo(:), Pres(:), Velocity(:,:), MASS(:,:),&
@@ -205,8 +205,6 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     WRITE(Message,'(A,T25,E15.4)') 'PseudoPressure mean: ',&
         SUM(PseudoPressure)/SIZE(PseudoPressure)
     CALL Info(Caller,Message,Level=5)
-    
-
   END IF
    
   maxiter = ListGetInteger( Params, &
@@ -265,7 +263,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalMatrix(  MASS, STIFF, FORCE, LOAD, rho, gap, mu, &
+      CALL LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, rho, gap, mu, &
           ac, NormalVelo, Velocity, Pres, Element, n, nd, nd+nb, &
           dim, mdim )
       IF ( nb>0 ) THEN
@@ -281,6 +279,34 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
     CALL DefaultFinishBulkAssembly()
+
+    
+    DO t=1, Solver % Mesh % NumberOfBoundaryElements
+      Element => GetBoundaryElement(t)
+      IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+      
+      n = GetElementNOFNodes()      
+      BC => GetBC()
+      IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+
+      rho(1:n) = GetParentMatProp( 'Density', Element, Found )
+      mu(1:n)  = GetParentMatProp( 'Viscosity', Element, Found )
+      gap(1:n) = GetParentMatProp( 'Gap Height', Element, Found )
+
+      WHERE(gap(1:n) < mingap )
+        gap(1:n) = mingap
+      END WHERE
+
+      DO i=1,mdim
+        Load(i,1:n) = GetReal( BC, 'Pressure '//TRIM(I2S(i)), Found ) 
+      END DO
+      Load(mdim+1,1:n) = GetReal( BC, 'Mass Flux', Found )
+      
+      CALL LocalBoundaryMatrix(  MASS, STIFF, FORCE, Load, rho, gap, mu, &
+          Element, n, dim, mdim )
+
+      CALL DefaultUpdateEquations( STIFF, FORCE )
+    END DO
     
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -301,7 +327,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  MASS, STIFF, FORCE, LOAD, Nodalrho, NodalGap, &
+  SUBROUTINE LocalBulkMatrix(  MASS, STIFF, FORCE, LOAD, Nodalrho, NodalGap, &
       Nodalmu, NodalAC, NodalNormalVelo, NodalVelo, NodalPres, Element, n, nd, &
       ntot, dim, mdim )
 !------------------------------------------------------------------------------
@@ -333,7 +359,7 @@ CONTAINS
        
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints( Element,ntot )
+    IP = GaussPoints( Element )
     DO t=1,IP % n
        ! Basis function values & derivatives at the integration point:
        !--------------------------------------------------------------
@@ -396,12 +422,12 @@ CONTAINS
            A => STIFF(i:i+mdim,j:j+mdim)
            M => MASS(i:i+mdim,j:j+mdim)
 
-           DO i=1,dim
+           DO i=1,mdim
              IF( Transient ) THEN
                M(i,i) = M(i,i) + s * rho * Basis(q) * Basis(p)
              END IF
 
-             DO j = 1,dim
+             DO j = 1,mdim
                IF( LateralStrain ) THEN 
                  A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
                  A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
@@ -466,10 +492,76 @@ CONTAINS
       STIFF(i,i) = 1.0d0
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrix
+  END SUBROUTINE LocalBulkMatrix
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalBoundaryMatrix(  MASS, STIFF, FORCE, NodalLoad, Nodalrho, NodalGap, &
+      Nodalmu, Element, n, dim, mdim )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), TARGET :: MASS(:,:), STIFF(:,:), FORCE(:), NodalLoad(:,:)
+    REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), NodalGap(:)
+    INTEGER :: dim, mdim, n, nd, ntot
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Load(dim+1)
+    REAL(KIND=dp), POINTER :: A(:,:),F(:),M(:,:)
+    LOGICAL :: Stat
+    INTEGER :: t, i, j, k, l, p, q, geomc
+    TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, normalvelo, pres, gap, ac, s, c
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+!------------------------------------------------------------------------------
+
+    CALL GetElementNodes( Nodes )
+    STIFF = 0.0d0
+    MASS  = 0.0d0
+    FORCE = 0.0d0
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+       ! Basis function values & derivatives at the integration point:
+       !--------------------------------------------------------------
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+         IP % W(t),  detJ, Basis, dBasisdx )
+
+       s = IP % s(t) * detJ
+              
+       ! Material parameters at the integration point:
+       !----------------------------------------------      
+       mu  = SUM( Basis(1:n) * Nodalmu(1:n) )
+       rho = SUM( Basis(1:n) * Nodalrho(1:n) )
+       gap = SUM( Basis(1:n) * NodalGap(1:n) ) 
+
+       DO i=1,mdim+1
+         Load(i) = SUM( Basis(1:n) * NodalLoad(i,1:n) ) 
+       END DO
+         
+       ! To my understanding we want to include the gap height to weight
+       IF( Csymmetry ) THEN
+         geomc = 2
+       ELSE
+         geomc = 1
+       END IF
+       
+       ! Finally, the elemental matrix & vector:
+       !----------------------------------------       
+       DO p=1,n
+         i = (mdim+1) * (p-1) + 1
+         F => FORCE(i:i+mdim)
+         F = F + s * Basis(p) * Load
+       END DO
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalBoundaryMatrix
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
     SUBROUTINE LCondensate( N, nb, dim, K, F )
 !------------------------------------------------------------------------------
