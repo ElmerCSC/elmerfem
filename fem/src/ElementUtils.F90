@@ -792,6 +792,17 @@ CONTAINS
                                 + NDOFs * Mesh % NumberOfNodes
                 END DO
              END DO
+
+             IF ( GB ) THEN
+               Edge1 => Mesh % Edges(Element % EdgeIndexes(1))
+               IF(Element % Type % ElementCode==Edge1 % Type % ElementCode) THEN
+                 DO i=1, Element % BDOFs
+                   n = n + 1
+                   Indexes(n) = EDOFs*(Element % EdgeIndexes(1)-1) + i + &
+                       NDOFs * Mesh % NumberOfNodes
+                 END DO
+               END IF
+             END IF
            END IF
          END IF
 
@@ -1293,6 +1304,16 @@ CONTAINS
                              + NDOFs * Mesh % NumberOfNodes
                      END DO
                   END DO
+                  IF ( GB ) THEN
+                    Edge1 => Mesh % Edges(Element % EdgeIndexes(1))
+                    IF(Element % Type % ElementCode==Edge1 % Type % ElementCode) THEN
+                      DO i=1, Element % BDOFs
+                        n = n + 1
+                        Indexes(n) = EDOFs*(Element % EdgeIndexes(1)-1) + i + &
+                            NDOFs * Mesh % NumberOfNodes
+                      END DO
+                    END IF
+                  END IF
                END IF
             END IF
             
