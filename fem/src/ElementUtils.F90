@@ -1217,7 +1217,7 @@ CONTAINS
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
       !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, DOFsPerNode, &
-      !$OMP         CurrentColour) &
+      !$OMP         CurrentColour, Edge1, Face1) &
       !$OMP DEFAULT(NONE)
 
       IndexSize = 0
@@ -1709,7 +1709,7 @@ CONTAINS
      BDOFs = 0
      NDOFs = 0
 
-     !$OMP PARALLEL SHARED(Mesh) &
+     !$OMP PARALLEL SHARED(Mesh, GB) PRIVATE(j, Element) &
      !$OMP          REDUCTION(min:minEdgeDOFs) REDUCTION(max:maxEdgeDOFs) &
      !$OMP          REDUCTION(min:minFaceDOFs) REDUCTION(max:maxFaceDOFs) &
      !$OMP          REDUCTION(max:BDOFs) &
