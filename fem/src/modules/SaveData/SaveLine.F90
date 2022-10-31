@@ -426,7 +426,7 @@ CONTAINS
 !> are returned. 
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoords(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind,linepos)
+      Inside,Weights,maxind,linepos,LocalCoords)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
@@ -434,7 +434,8 @@ CONTAINS
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
     REAL(KIND=dp) :: linepos
-
+    REAL(KIND=dp) :: LocalCoords(3)
+    
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
     REAL(KIND=dp) :: Basis(2*n),dBasisdx(2*n,3)
@@ -445,7 +446,8 @@ CONTAINS
 
     Inside = .FALSE.
     corners = MIN(n,4)
-
+    LocalCoords = 0.0_dp
+    
     Eps2 = SQRT(TINY(Eps2))    
 
     ! In 2D the intersection is between two lines
@@ -547,6 +549,10 @@ CONTAINS
       IF(Weights(MaxInd) < Weights(i)) MaxInd = i
     END DO
 
+    LocalCoords(1) = u
+    LocalCoords(2) = v
+    LocalCoords(3) = w
+    
   END SUBROUTINE GlobalToLocalCoords
   
 
@@ -555,7 +561,7 @@ CONTAINS
 !> As the previous but performs mapping to plane
 !---------------------------------------------------------------------------
   SUBROUTINE GlobalToLocalCoordsReduced(Element,Plane,n,Line,Eps, &
-      Inside,Weights,maxind,linepos)
+      Inside,Weights,maxind,linepos,LocalCoords)
 
     TYPE(Nodes_t) :: Plane, Line
     TYPE(Element_t), POINTER   :: Element
@@ -563,6 +569,7 @@ CONTAINS
     REAL (KIND=dp) :: Eps,Weights(:)
     LOGICAL :: Inside
     REAL(KIND=dp) :: linepos
+    REAL(KIND=dp) :: LocalCoords(3)
 
     REAL (KIND=dp) :: A(3,3),A0(3,3),B(3),C(3),Eps2,detA,absA,ds
     INTEGER :: split, i, corners, visited=0
@@ -573,7 +580,8 @@ CONTAINS
     visited = visited + 1
 
     corners = MIN(n,4)
-
+    LocalCoords = 0.0_dp
+    
     Eps2 = SQRT(TINY(Eps2))    
 
     IF( DIM /= 3 ) CALL Fatal(Caller,'GlobalToLocalReduced only for 3 dimensions!')
@@ -639,6 +647,10 @@ CONTAINS
       IF(Weights(MaxInd) < Weights(i)) MaxInd = i
     END DO
 
+    LocalCoords(1) = u
+    LocalCoords(2) = v
+    LocalCoords(3) = w
+    
   END SUBROUTINE GlobalToLocalCoordsReduced
   
 
@@ -928,7 +940,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
-    INTEGER, TARGET :: NodeIndex(1), Indexes(54)
+    INTEGER, TARGET :: NodeIndex(1), Indexes(54), DGIndexes(27)
     REAL(KIND=dp) :: up,vp,wp
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
@@ -939,6 +951,7 @@ CONTAINS
     
     SAVE :: Nodes
 
+    DGIndexes = 0
     Indexes = 0
     n0 = 0
     
@@ -992,7 +1005,7 @@ CONTAINS
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
     END IF
-
+    
     No = 0
     Values = 0.0d0
 
@@ -1069,6 +1082,34 @@ CONTAINS
 
           IF( DgVar ) THEN
             PtoIndexes => Element % DgIndexes
+
+            IF(.NOT. ASSOCIATED(pToIndexes) ) THEN
+              BLOCK
+                INTEGER :: lr
+                TYPE(Element_t), POINTER :: Parent
+                
+                DO lr=1,2
+                  IF(lr==1) THEN
+                    Parent => Element % BoundaryInfo % Left
+                  ELSE
+                    Parent => Element % BoundaryInfo % Right
+                  END IF
+                  IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+                  IF(.NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+                  IF( ALL( Var % Perm( Parent % DGIndexes ) /= 0) ) THEN                  
+                    DO i=1,n
+                      DO j=1,Parent % TYPE % NumberOfNodes
+                        IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                          DGIndexes(i) = Parent % DGIndexes(j)
+                        END IF
+                      END DO
+                    END DO
+                    PToIndexes => DGIndexes
+                    EXIT
+                  END IF
+                END DO
+              END BLOCK
+            END IF            
           ELSE IF( pElem ) THEN
             pToIndexes => Indexes
           ELSE
@@ -1991,12 +2032,14 @@ CONTAINS
 
             IF( IntersectCoordinate /= 0 ) THEN
               CALL GlobalToLocalCoordsReduced(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i,linepos)
+                  DetEpsilon,Inside,Basis,i,linepos,LocalCoord)
             ELSE
               CALL GlobalToLocalCoords(CurrentElement,ElementNodes,n,LineNodes, &
-                  DetEpsilon,Inside,Basis,i,linepos)
+                  DetEpsilon,Inside,Basis,i,linepos,LocalCoord)
             END IF
 
+
+            
             IF(.NOT. Inside) CYCLE
 
             ! When the line goes through a node it might be saved several times 
@@ -2010,7 +2053,7 @@ CONTAINS
             
             linepos = linepos + 2*(Line-1)
             CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, &
-                NodeIndexes(i), 0, linepos = linepos )
+                NodeIndexes(i), 0, LocalCoord = LocalCoord, linepos = linepos )
           END DO
         END IF
       END DO

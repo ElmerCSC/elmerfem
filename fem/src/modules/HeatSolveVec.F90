@@ -579,7 +579,10 @@ CONTAINS
     REAL(KIND=dp) :: xmean
     
     IF( ActiveCoord < 1 ) THEN
-      ActiveCoord = ListGetInteger( Params,'Active Coordinate',UnfoundFatal=.TRUE.)
+      ActiveCoord = ListGetInteger( Params,'Active Coordinate',Found )
+      IF(.NOT. Found ) THEN
+        CALL Fatal('CalculatePlateTangent','Keyword "Draw Velocity" requires "Active Coordinate" to be given!')
+      END IF
     END IF
       
     IF(ActiveCoord==1) THEN
