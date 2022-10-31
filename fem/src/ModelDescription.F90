@@ -2489,6 +2489,26 @@ CONTAINS
 
     Def_Dofs = -1; Def_Dofs(:,1)=1
 
+    ! Some *_Init0 solvers increase the count Model % NumberOfSolvers on the fly.
+    ! Therefore we need to execute these solvers first, so that the allocation
+    ! size of the array MeshSolvers can be known.
+    i = 1
+    DO WHILE(i<=Model % NumberOfSolvers)
+
+      Solver => Model % Solvers(i)
+      Model % Solver => Solver
+      
+      Name = ListGetString( Solver % Values, 'Procedure', Found )
+      IF ( Found ) THEN
+        InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
+        IF ( InitProc /= 0 ) THEN
+          CALL ExecSolver( InitProc, Model, Solver, &
+                  Solver % dt, Transient )
+        END IF
+      END IF
+      i = i + 1
+    END DO
+
     ALLOCATE(MeshSolvers(MAX_MESHES, Model % NumberOfSolvers))
     MeshSolvers = .FALSE.
 
@@ -2498,18 +2518,6 @@ CONTAINS
 
       Solver => Model % Solvers(i)
       Model % Solver => Solver
-
-      Name = ListGetString( Solver % Values, 'Procedure', Found )
-      IF ( Found ) THEN
-        InitProc = GetProcAddr( TRIM(Name)//'_Init0', abort=.FALSE. )
-        IF ( InitProc /= 0 ) THEN
-          CALL ExecSolver( InitProc, Model, Solver, &
-                  Solver % dt, Transient )
-
-          Solver => Model % Solvers(i)
-          Model % Solver => Solver
-        END IF
-      END IF
 
       Name = ListGetString(Solver % Values, 'Mesh',GotMesh)
       IF(GotMesh) THEN
