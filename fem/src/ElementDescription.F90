@@ -3301,6 +3301,16 @@ CONTAINS
 
      ! Element (contravariant) metric and square root of determinant
      !--------------------------------------------------------------
+     IF(Element % Status==0) THEN
+       stat = CheckMetric(q, Element, Nodes, dLBasisdx)
+       IF (stat) THEN
+         Element % Status = 1 ! good!!
+       ELSE
+         Element % Status = 2 ! bad !!
+       END IF
+     END IF
+
+     stat = .TRUE.
      IF ( .NOT. ElementMetric( q, Element, Nodes, &
            ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
         stat = .FALSE.
@@ -10466,6 +10476,104 @@ END SUBROUTINE PickActiveFace
 
    
 !------------------------------------------------------------------------------
+!>    Check element by comparing determinants of the metric tensort computed
+!>    in double and quad precision.
+!------------------------------------------------------------------------------
+   FUNCTION CheckMetric(nDOFs,Elm,Nodes,dLBasisdx) RESULT(Success)
+!------------------------------------------------------------------------------
+     INTEGER :: nDOFs                !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm         !< Element structure
+     TYPE(Nodes_t)    :: Nodes       !< Element nodal coordinates
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
+     LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n,imin,jmin
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
+
+     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+
+     REAL(KIND=qp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
+     REAL(KIND=dp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
+!------------------------------------------------------------------------------
+     success = .TRUE.
+
+     x => Nodes % x
+     y => Nodes % y
+     z => Nodes % z
+
+     cdim = CoordinateSystemDimension()
+     n = MIN( SIZE(x), nDOFs )
+     dim  = elm % TYPE % DIMENSION
+
+     eps = 1.0d-10
+!------------------------------------------------------------------------------
+!    Partial derivatives of global coordinates with respect to local coordinates
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       dp_dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       dp_dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       dp_dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+
+       qp_dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       qp_dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       qp_dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+     END DO
+!------------------------------------------------------------------------------
+!    Compute the covariant metric tensor of the element coordinate system
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       DO j=1,dim
+         dp_s = 0.0_dp
+         qp_s = 0.0_dp
+         DO k=1,cdim
+           dp_s = dp_s + dp_dx(k,i)*dp_dx(k,j)
+           qp_s = qp_s + qp_dx(k,i)*qp_dx(k,j)
+         END DO
+         dp_G(i,j) = dp_s
+         qp_G(i,j) = qp_s
+       END DO
+     END DO
+
+!------------------------------------------------------------------------------
+!    Convert the metric to contravariant base, and compute the SQRT(DetG)
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+!------------------------------------------------------------------------------
+!      Line elements
+!------------------------------------------------------------------------------
+     CASE (1)
+       dp_DetG  = dp_G(1,1)
+       qp_DetG  = qp_G(1,1)
+
+!------------------------------------------------------------------------------
+!      Surface elements
+!------------------------------------------------------------------------------
+     CASE (2)
+       dp_DetG = ( dp_G(1,1)*dp_G(2,2) - dp_G(1,2)*dp_G(2,1) )
+       qp_DetG = ( qp_G(1,1)*qp_G(2,2) - qp_G(1,2)*qp_G(2,1) )
+
+!------------------------------------------------------------------------------
+!      Volume elements
+!------------------------------------------------------------------------------
+     CASE (3)
+       dp_DetG = dp_G(1,1) * ( dp_G(2,2)*dp_G(3,3) - dp_G(2,3)*dp_G(3,2) ) + &
+           dp_G(1,2) * ( dp_G(2,3)*dp_G(3,1) - dp_G(2,1)*dp_G(3,3) ) + &
+           dp_G(1,3) * ( dp_G(2,1)*dp_G(3,2) - dp_G(2,2)*dp_G(3,1) )
+
+       qp_DetG = qp_G(1,1) * ( qp_G(2,2)*qp_G(3,3) - qp_G(2,3)*qp_G(3,2) ) + &
+           qp_G(1,2) * ( qp_G(2,3)*qp_G(3,1) - qp_G(2,1)*qp_G(3,3) ) + &
+           qp_G(1,3) * ( qp_G(2,1)*qp_G(3,2) - qp_G(2,2)*qp_G(3,1) )
+     END SELECT
+     
+     Success = ABS(dp_detG-qp_detG) <= eps*ABS(qp_DetG)
+!------------------------------------------------------------------------------
+   END FUNCTION CheckMetric
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
 !>    system, and square root of determinant of covariant metric tensor
 !>    (=sqrt(det(J^TJ)))
@@ -10490,6 +10598,13 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
      success = .TRUE.
 
+     IF(Elm % Status == 2) THEN
+       Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
+       IF( Success ) RETURN
+
+       GOTO 100
+     END IF
+
      x => Nodes % x
      y => Nodes % y
      z => Nodes % z
@@ -10513,7 +10628,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
      DO i=1,dim
        DO j=1,dim
-         s = 0.0d0
+         s = 0.0_dp
          DO k=1,cdim
            s = s + dx(k,i)*dx(k,j)
          END DO
@@ -10588,8 +10703,10 @@ END SUBROUTINE PickActiveFace
 
      ! Try recursively with quadratic precision.
      ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
-     Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
-     IF( Success ) RETURN
+     IF( Elm % Status /= 2) THEN
+       Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
+       IF( Success ) RETURN
+     END IF
      
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
