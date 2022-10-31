@@ -10508,7 +10508,7 @@ END SUBROUTINE PickActiveFace
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
 
-     eps = 1.0d-10
+     eps = 1.0d-6
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
 !------------------------------------------------------------------------------
