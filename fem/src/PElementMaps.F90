@@ -795,6 +795,12 @@ CONTAINS
 
     faceDOFs = 0
     SELECT CASE(Element % TYPE % ElementCode / 100)
+    ! Quad
+    CASE (3)
+       IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
+    ! Tetrahedron
+    CASE (4)
+       IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
     ! Tetrahedron
     CASE (5)
        IF (p >= 3) faceDOFs = (p-1)*(p-2)/2

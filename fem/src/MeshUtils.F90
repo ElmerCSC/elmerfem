@@ -2719,6 +2719,7 @@ CONTAINS
      Mesh % MaxElementDOFs  = ParallelReduction( Mesh % MaxElementDOFs,2  ) 
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
+
    
    
  CONTAINS
@@ -3044,7 +3045,7 @@ CONTAINS
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       el_id = ELement % TYPE % ElementCode / 100
+       el_id = Element % TYPE % ElementCode / 100
        Element % NDOFs  = n * MAX(0,inDOFs(el_id,1))
        
        !
@@ -21155,7 +21156,7 @@ CONTAINS
           END IF
           
           !(and boundary bubble dofs)
-          EdgeElement % BDOFs = Edge % BDOFs
+          EdgeElement % BDOFs = MAX(EdgeElement % BDOFs, Edge % BDOFs)
 
 
           ! If this boundary has edges copy edge indexes

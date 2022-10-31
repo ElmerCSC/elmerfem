@@ -685,13 +685,23 @@ CONTAINS
 
 BLOCK
   LOGICAL  :: EdgesDone, FacesDone
+  TYPE(Element_t), POINTER :: Face,Edge
 
        EdgesDone = .FALSE.
        FacesDone = .FALSE.
 
        IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
          DO j=1,Element % TYPE % NumberOFEdges
-           EDOFs = Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
+           Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
+           IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
+             IF ( Solver % GlobalBubbles ) THEN
+               EDOFs = Element % BDOFs 
+             ELSE
+               CYCLE
+             END IF
+           ELSE
+             EDOFs = Solver % Mesh % Edges( Element % EdgeIndexes(j) ) % BDOFs
+           END IF
            DO i=1,EDOFs
              NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
@@ -703,7 +713,16 @@ BLOCK
 
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
          DO j=1,Element % TYPE % NumberOFFaces
-           FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
+           Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
+           IF( Face % Type % ElementCode == Element % Type % ElementCode) THEN
+             IF ( Solver % GlobalBubbles ) THEN
+               FDOFs = Element % BDOFs 
+             ELSE
+               CYCLE
+             END IF
+           ELSE
+             FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
+           END IF
            DO i=1,FDOFs
              NB = NB + 1
              Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
@@ -749,6 +768,7 @@ BLOCK
 
        CASE(3,4)
          IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
+
            IF ( isActivePElement(Element) ) THEN
              Ind=Element % PDefs % LocalNumber
            ELSE

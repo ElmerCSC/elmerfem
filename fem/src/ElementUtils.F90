@@ -739,7 +739,7 @@ CONTAINS
     END IF
 
     
-    ! If this is not a GD solver then create permutation considering 
+    ! If this is not a DG solver then create permutation considering 
     ! nodal, edge, face and bubble dofs. 
     !-------------------------------------------------------------------
     IF ( .NOT. FoundDG ) THEN
@@ -792,6 +792,17 @@ CONTAINS
                                 + NDOFs * Mesh % NumberOfNodes
                 END DO
              END DO
+
+             IF ( GB ) THEN
+               Edge1 => Mesh % Edges(Element % EdgeIndexes(1))
+               IF(Element % Type % ElementCode==Edge1 % Type % ElementCode) THEN
+                 DO i=1, Element % BDOFs
+                   n = n + 1
+                   Indexes(n) = EDOFs*(Element % EdgeIndexes(1)-1) + i + &
+                       NDOFs * Mesh % NumberOfNodes
+                 END DO
+               END IF
+             END IF
            END IF
          END IF
 
@@ -804,6 +815,17 @@ CONTAINS
                      NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                END DO
              END DO
+
+             IF ( GB ) THEN
+               Face1 => Mesh % Faces(Element % FaceIndexes(1))
+               IF(Element % Type % ElementCode==Face1 % Type % ElementCode) THEN
+                 DO i=1, Element % BDOFs
+                   n = n + 1
+                   Indexes(n) = FDOFs*(Element % FaceIndexes(1)-1) + i + &
+                       NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                 END DO
+               END IF
+             END IF
            END IF
          END IF
 
@@ -1195,7 +1217,7 @@ CONTAINS
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
       !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, DOFsPerNode, &
-      !$OMP         CurrentColour) &
+      !$OMP         CurrentColour, Edge1, Face1) &
       !$OMP DEFAULT(NONE)
 
       IndexSize = 0
@@ -1282,6 +1304,16 @@ CONTAINS
                              + NDOFs * Mesh % NumberOfNodes
                      END DO
                   END DO
+                  IF ( GB ) THEN
+                    Edge1 => Mesh % Edges(Element % EdgeIndexes(1))
+                    IF(Element % Type % ElementCode==Edge1 % Type % ElementCode) THEN
+                      DO i=1, Element % BDOFs
+                        n = n + 1
+                        Indexes(n) = EDOFs*(Element % EdgeIndexes(1)-1) + i + &
+                            NDOFs * Mesh % NumberOfNodes
+                      END DO
+                    END IF
+                  END IF
                END IF
             END IF
             
@@ -1294,6 +1326,17 @@ CONTAINS
                              NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                      END DO
                   END DO
+               END IF
+
+               IF ( GB ) THEN
+                 Face1 => Mesh % Faces(Element % FaceIndexes(1))
+                 IF(Element % Type % ElementCode==Face1 % Type % ElementCode) THEN
+                   DO i=1, Element % BDOFs
+                     n = n + 1
+                     Indexes(n) = FDOFs*(Element % FaceIndexes(1)-1) + i + &
+                         NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                   END DO
+                 END IF
                END IF
             END IF
             
@@ -1666,7 +1709,7 @@ CONTAINS
      BDOFs = 0
      NDOFs = 0
 
-     !$OMP PARALLEL SHARED(Mesh) &
+     !$OMP PARALLEL SHARED(Mesh, GB) PRIVATE(j, Element) &
      !$OMP          REDUCTION(min:minEdgeDOFs) REDUCTION(max:maxEdgeDOFs) &
      !$OMP          REDUCTION(min:minFaceDOFs) REDUCTION(max:maxFaceDOFs) &
      !$OMP          REDUCTION(max:BDOFs) &
@@ -1684,6 +1727,21 @@ CONTAINS
         maxFaceDOFs = MAX( maxFaceDOFs, Mesh % Faces(i) % BDOFs )
      END DO
      !$OMP END DO NOWAIT
+
+     IF ( GB ) THEN
+       DO i=1,Mesh % NumberOfBoundaryElements
+          j = i + Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(j)
+          IF(Element % Type % ElementCode >= 300) THEN
+            minFaceDOFs = MIN( minFaceDOFs, Element % BDOFs )
+            maxFaceDOFs = MAX( maxFaceDOFs, Element % BDOFs )
+          ELSE
+            minEdgeDOFs = MIN( minEdgeDOFs, Element % BDOFs )
+            maxEdgeDOFs = MAX( maxEdgeDOFs, Element % BDOFs )
+          END IF
+       END DO
+     END IF
+
      !$OMP DO
      DO i=1,Mesh % NumberOfBulkElements
         BDOFs = MAX( BDOFs, Mesh % Elements(i) % BDOFs )
