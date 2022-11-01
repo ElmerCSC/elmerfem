@@ -1023,7 +1023,10 @@ CONTAINS
         Var3 => NULL()
       END IF      
       
-      EdgeBasis = .FALSE.
+      EdgeBasis = ( Var % TYPE == variable_on_edges )
+      DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
+      IpVar = ( Var % TYPE == variable_on_gauss_points )
+      ElemVar = ( Var % TYPE == Variable_on_elements )       
       PiolaVersion = .FALSE.
       pElem = .FALSE.
       np = 0
@@ -1040,12 +1043,6 @@ CONTAINS
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
 
         ! Should we map (u,v,w) for piola reference element? 
-
-        EdgeBasis = ( Var % Type == variable_on_edges )
-        DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
-        IpVar = ( Var % TYPE == variable_on_gauss_points )
-        ElemVar = ( Var % TYPE == Variable_on_elements ) 
-        
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
         ELSE
@@ -1213,42 +1210,43 @@ CONTAINS
             END IF
           END IF
         ELSE IF ( IpVar ) THEN
-          i1 = Var % Perm(Element % ElementIndex)
-          i2 = Var % Perm(Element % ElementIndex+1)
-          l = i2-i1
-
-          IF( l<1 ) THEN
-            PRINT *,'too small?',l,i1,i2
+          l = 0 
+          IF( SIZE( Var % Perm ) > Element % ElementIndex ) THEN 
+            i1 = Var % Perm(Element % ElementIndex)
+            i2 = Var % Perm(Element % ElementIndex+1)
+            l = i2-i1
           END IF
-
-          IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
-            IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
-            ALLOCATE( fip(l) )
-          END IF
-
-          IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
-            IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
-            ALLOCATE( fdg(n) )
-          END IF
-                              
-          DO ii=1,MAX(Var % Dofs,comps)
-            IF( Var % Dofs > 1 ) THEN
-              CONTINUE
-            ELSE
-              IF( ii == 1 ) THEN
-                pVar => Var
-              ELSE IF( ii == 2 ) THEN
-                pVar => Var2
-              ELSE IF( ii == 3 ) THEN
-                pVar => Var3
-              END IF
-              fip(1:l) = pVar % Values(i1+1:i2)
+            
+          IF(l>0) THEN
+            IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
+              IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
+              ALLOCATE( fip(l) )
             END IF
-
-            CALL Ip2DgFieldInElement( Mesh, Element, l, fip, n, fdg )              
-            Values(No+ii) = SUM( PtoBasis(1:n) * fdg(1:n) )
-          END DO
-
+            
+            IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
+              IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
+              ALLOCATE( fdg(n) )
+            END IF
+            
+            DO ii=1,MAX(Var % Dofs,comps)
+              IF( Var % Dofs > 1 ) THEN
+                CONTINUE
+              ELSE
+                IF( ii == 1 ) THEN
+                  pVar => Var
+                ELSE IF( ii == 2 ) THEN
+                  pVar => Var2
+                ELSE IF( ii == 3 ) THEN
+                  pVar => Var3
+                END IF
+                fip(1:l) = pVar % Values(i1+1:i2)
+              END IF
+              
+              CALL Ip2DgFieldInElement( Mesh, Element, l, fip, n, fdg )              
+              Values(No+ii) = SUM( PtoBasis(1:n) * fdg(1:n) )
+            END DO
+          END IF
+            
         ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO k=1,nd
             l = PtoIndexes(k)

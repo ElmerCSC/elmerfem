@@ -1697,6 +1697,12 @@ CONTAINS
       AllocationsDone = .TRUE.
     END IF
 
+    IF(nip == 0) THEN
+      CALL Warn(Caller,'No IP variables given')
+      fdg(1:ndg) = 0.0_dp
+      RETURN
+    END IF
+    
     n = Element % TYPE % NumberOfNodes 
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
