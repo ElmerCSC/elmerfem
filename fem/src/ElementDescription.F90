@@ -10476,7 +10476,7 @@ END SUBROUTINE PickActiveFace
 
    
 !------------------------------------------------------------------------------
-!>    Check element by comparing determinants of the metric tensort computed
+!>    Check element by comparing determinants of the metric tensor computed
 !>    in double and quad precision.
 !------------------------------------------------------------------------------
    FUNCTION CheckMetric(nDOFs,Elm,Nodes,dLBasisdx) RESULT(Success)
@@ -10598,13 +10598,6 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
      success = .TRUE.
 
-     IF(Elm % Status == 2) THEN
-       Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
-       IF( Success ) RETURN
-
-       GOTO 100
-     END IF
-
      x => Nodes % x
      y => Nodes % y
      z => Nodes % z
@@ -10612,9 +10605,13 @@ END SUBROUTINE PickActiveFace
      cdim = CoordinateSystemDimension()
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
+     
+     IF(Elm % Status == 2) THEN
+       IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
+       GOTO 100
+     END IF
 
      eps = (EPSILON(eps))**dim
-     
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
 !------------------------------------------------------------------------------
