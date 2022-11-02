@@ -24760,6 +24760,7 @@ CONTAINS
         END DO
 
         IF( k == 1 ) THEN
+          ! This is just low priority info on the averaging
           IF( InfoActive(20) ) THEN
             j = COUNT(BodyCount > 0) 
             IF( j > 0 ) THEN
@@ -24769,6 +24770,9 @@ CONTAINS
             END IF
             WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
             CALL Info('CalculateBodyAverage',Message) 
+            WRITE(Message,'(A,2I0)') 'In body '//TRIM(I2S(i))//' hit count range is: ',&
+                MINVAL(BodyCount,BodyCount>0), MAXVAL(BodyCount)
+            CALL Info('CalculateBodyAverage',Message) 
           END IF
         END IF
           
@@ -24777,14 +24781,15 @@ CONTAINS
           CALL SendInterface(); CALL RecvInterface()
         END IF
 
-        ! Do not average weighted quantities. They should only be summed, I guess... 
-        
+        ! Do not average weighted quantities (like nodal forces) - they should only be summed.
+        ! But do average all other quantities. 
         IF( .NOT. BodySum ) THEN
           DO j=1,n
             IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
           END DO
         END IF
 
+        ! Now copy the average values to the DG field
         DO j=1,Mesh % NumberOfBulkElements 
           Element => Mesh % Elements(j)
           IF( Element % BodyId /= i ) CYCLE
