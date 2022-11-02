@@ -5167,6 +5167,7 @@ CONTAINS
          CALL Fatal('SingleSolver','Cannot toggle between meshes: NodesMapped not associated!')
        END IF
        Mesh % Nodes => Mesh % NodesOrig
+       CALL Info('SingleSolver','Using stored original coordinate in solver')
      END IF
      
      SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
@@ -5317,7 +5318,7 @@ END BLOCK
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL Info("SingleSolver", "Attempting to call solver", level=8)
+     CALL Info("SingleSolver", "Attempting to call solver: "//TRIM(I2S(Solver % SolverId)), level=8)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
@@ -5349,8 +5350,11 @@ END BLOCK
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
 
-     IF( UseOrigMesh ) Mesh % Nodes => Mesh % NodesMapped
-     
+     IF( UseOrigMesh ) THEN
+       CALL Info('SingleSolver','Reverting back to current coordinates',Level=12)
+       Mesh % Nodes => Mesh % NodesMapped
+     END IF
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
