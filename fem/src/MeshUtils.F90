@@ -2965,6 +2965,8 @@ CONTAINS
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
          CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
+         IF( indofs(el_id,4) /= Element % TYPE % NumberOfNodes ) &
+             PRINT *,'Element:',Element % TYPE % ElementCode, indofs(el_id,4)
          DO j=1,inDOFs(el_id,4)
            DGIndex = DGIndex + 1
            Element % DGIndexes(j) = DGIndex
@@ -21791,7 +21793,8 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE DetectExtrudedStructure( Mesh, Solver, ExtVar, &
       TopNodePointer, BotNodePointer, UpNodePointer, DownNodePointer, &
-      MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer )
+      MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer, &
+      MaskVar )
     
     USE CoordinateSystems
     IMPLICIT NONE
@@ -21804,6 +21807,7 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: NodeLayer(:)
     INTEGER, OPTIONAL :: NumberOfLayers
     LOGICAL, OPTIONAL :: MidLayerExists
+    TYPE(Variable_t), POINTER, OPTIONAL :: MaskVar
 !-----------------------------------------------------------------------------
     REAL(KIND=dp) :: Direction(3)
     TYPE(ValueList_t), POINTER :: Params
@@ -21858,19 +21862,21 @@ CONTAINS
     nnodes = Mesh % NumberOfNodes
     nsize = nnodes
 
-    VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
-    MaskExists = .FALSE.
-    IF(GotIt) THEN
-      Var => VariableGet( Mesh % Variables,  VarName )
-      IF(ASSOCIATED(Var)) THEN
-        MaskExists = ASSOCIATED(Var % Perm)
-        IF( MaskExists ) THEN
-          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
-          MaskPerm = Var % Perm 
-          nsize = MAXVAL( MaskPerm ) 
-          CALL Info(Caller,'Using variable as mask: '//TRIM(VarName),Level=8)
-        END IF
-      END IF      
+    Var => NULL()
+    IF( PRESENT(MaskVar) ) THEN
+      Var => MaskVar
+    ELSE          
+      VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
+      IF(GotIt) THEN
+        Var => VariableGet( Mesh % Variables,  VarName )
+      END IF
+    END IF
+    MaskExists = ASSOCIATED(Var)
+    IF( MaskExists ) THEN
+      ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
+      MaskPerm = Var % Perm 
+      nsize = MAXVAL( MaskPerm ) 
+      CALL Info(Caller,'Using variable as mask: '//TRIM(Var % Name),Level=8)
     ELSE
       VarName = ListGetString(Params,'Mapping Mask Name',MaskExists )
       IF( MaskExists ) THEN
@@ -21879,7 +21885,7 @@ CONTAINS
         CALL MakePermUsingMask( CurrentModel, Solver, Mesh, VarName, &
             .FALSE., MaskPerm, nsize )
         !PRINT *,'nsize:',nsize,SIZE(MaskPerm),MAXVAL(MaskPerm(1:nnodes))
-      END IF         
+      END IF
     END IF
 
     IF( MaskExists ) THEN
