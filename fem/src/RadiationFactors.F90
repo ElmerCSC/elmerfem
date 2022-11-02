@@ -775,6 +775,40 @@
        CLOSE(VFUnit)
      END IF
 
+
+     ! This is just to enable quicker testing. It applies only when emissivity is one everywhere...
+     IF( ListGetLogical( Params,'Use ViewFactors As Gebhardt Factors',Found ) ) THEN
+       DO i=1,RadiationSurfaces
+         j = ElementNumbers(i)
+         Element => Model % Mesh % Elements(j)
+
+         GebhardtFactors => Element % BoundaryInfo % GebhardtFactors       
+         IF ( .NOT. ASSOCIATED( GebhardtFactors ) ) THEN
+           ALLOCATE( GebhardtFactors )
+           Element % BoundaryInfo % GebhardtFactors => GebhardtFactors
+         END IF
+
+         n = ViewFactors(i) % NumberOfFactors
+         GebhardtFactors % NumberOfFactors = n
+         GebhardtFactors % NumberOfImplicitFactors = n
+         ALLOCATE( GebhardtFactors % Elements(n), GebhardtFactors % Factors(n), STAT=istat)
+         IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 20.')
+
+         s = SUM( Viewfactors(i) % Factors )
+         GebhardtFactors % Factors = ViewFactors(i) % Factors / s 
+         GebhardtFactors % Elements = Viewfactors(i) % Elements
+       END DO
+
+       CALL Warn('RadiationFactors','Used ViewFactors for RadiationFactors (assumes eps=1)')
+       
+       IF(SaveFactors) THEN
+         CALL SaveGebhardtFactors()       
+       END IF
+
+       RETURN       
+     END IF
+
+     
      ! Check whether the element already sees itself, it will when 
      ! gebhardt factors are computed. Also compute matrix size.
      DO i=1,RadiationSurfaces
@@ -792,7 +826,6 @@
        IF ( k == 0 ) RowSpace(i) = RowSpace(i) + 1
      END DO
      MatrixElements = SUM(RowSpace(1:RadiationSurfaces))
-
 
 
      ALLOCATE( RHS(RadiationSurfaces), SOL(RadiationSurfaces),&
@@ -1162,53 +1195,8 @@
        CALL Info('RadiationFactors',Message,Level=5)
      END IF
 
-
-     ! Save factors is mainly for debugging purposes
      IF(SaveFactors) THEN
-       GebhardtFactorsFile = GetString(Model % Simulation, 'Gebhardt Factors',GotIt )
-       
-       IF ( .NOT.GotIt ) THEN
-         GebhardtFactorsFile = 'GebhardtFactors.dat'
-       END IF
-       
-       IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
-             '/' // TRIM(GebhardtFactorsFile)
-       ELSE
-         OutputName = TRIM(GebhardtFactorsFile) 
-       END IF
-
-       IF(RadiationBody > 1) THEN
-         OutputName2 = OutputName
-         WRITE(OutputName,'(A,I1)') TRIM(OutputName2), RadiationBody
-       END IF
-
-       OPEN( VFUnit,File=TRIM(OutputName) )
-       
-       WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',TRIM(OutputName)
-       CALL Info('RadiationFactors',Message,Level=5)
-       
-       WRITE( VFUnit,* ) RadiationSurfaces
-       
-       DO t=1,RadiationSurfaces
-         WRITE(VFUnit,*) t,ElementNumbers(t)
-       END DO
-       
-       DO t=1,RadiationSurfaces
-         Element => Model % Elements(ElementNumbers(t))
-         GebhardtFactors => Element % BoundaryInfo % GebhardtFactors
-         
-         n = GebhardtFactors % NumberOfFactors 
-         Vals => GebhardtFactors % Factors
-         Cols => GebhardtFactors % Elements
-         
-         WRITE( VFUnit,* ) n
-         DO i=1,n
-           WRITE(VFUnit,*) t,InvElementNumbers(Cols(i)-j0),Vals(i)
-         END DO
-       END DO
-       
-       CLOSE(VFUnit)
+       CALL SaveGebhardtFactors()       
      END IF
 
      DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm,RowSums, &
@@ -1303,6 +1291,60 @@
      
    CONTAINS
 
+
+     ! Save factors is mainly for debugging purposes
+     !-------------------------------------------------------------------
+     SUBROUTINE SaveGebhardtFactors()
+
+       GebhardtFactorsFile = GetString(Model % Simulation, 'Gebhardt Factors',GotIt )
+
+       IF ( .NOT.GotIt ) THEN
+         GebhardtFactorsFile = 'GebhardtFactors.dat'
+       END IF
+
+       IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
+         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
+             '/' // TRIM(GebhardtFactorsFile)
+       ELSE
+         OutputName = TRIM(GebhardtFactorsFile) 
+       END IF
+
+       IF(RadiationBody > 1) THEN
+         OutputName2 = OutputName
+         WRITE(OutputName,'(A,I1)') TRIM(OutputName2), RadiationBody
+       END IF
+
+       OPEN( VFUnit,File=TRIM(OutputName) )
+
+       WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',TRIM(OutputName)
+       CALL Info('RadiationFactors',Message,Level=5)
+
+       WRITE( VFUnit,* ) RadiationSurfaces
+
+       DO t=1,RadiationSurfaces
+         WRITE(VFUnit,*) t,ElementNumbers(t)
+       END DO
+
+       DO t=1,RadiationSurfaces
+         Element => Model % Elements(ElementNumbers(t))
+         GebhardtFactors => Element % BoundaryInfo % GebhardtFactors
+
+         n = GebhardtFactors % NumberOfFactors 
+         Vals => GebhardtFactors % Factors
+         Cols => GebhardtFactors % Elements
+
+         WRITE( VFUnit,* ) n
+         DO i=1,n
+           WRITE(VFUnit,*) t,InvElementNumbers(Cols(i)-j0),Vals(i)
+         END DO
+       END DO
+
+       CLOSE(VFUnit)
+     
+     END SUBROUTINE SaveGebhardtFactors
+
+
+     
 #include "huti_fdefs.h"
      SUBROUTINE FIterSolver( N,x,b,SolverParam )
        USE huti_sfe
