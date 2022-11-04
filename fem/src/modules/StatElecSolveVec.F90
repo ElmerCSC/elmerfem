@@ -111,6 +111,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   ! These use one flag to call library features to compute automatically
   ! a capacitance matrix.
   IF( ListGetLogical(Params,'Calculate Capacitance Matrix',Found ) ) THEN
+    CALL Info('StatElecSolver_init','Using Constraint Modes functionality for Capacitance Matrix')
     CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
@@ -123,6 +124,8 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
           'CapacitanceMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    CALL Info('StatElecSolver_init','Suppressing bandwidth optimization in Capacitance Matrix computation!')
   END IF
 
   CALL ListAddInteger( Params,'Time Derivative Order', 0 )
