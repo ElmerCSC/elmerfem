@@ -1149,6 +1149,12 @@ END SUBROUTINE ZeroSplittedMatrix
     TmpXVec => SplittedMatrix % TmpXVec
     TmpRVec => SplittedMatrix % TmpRVec
 
+    IF(.NOT. ASSOCIATED(SourceMatrix % Rhs) ) THEN
+      CALL Warn('SParUpdateResult','Rhs is not associated!?')
+      ALLOCATE( SourceMatrix % Rhs(SourceMatrix % NumberOfRows) )
+      SourceMatrix % Rhs = 0.0_dp
+    END IF
+           
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN

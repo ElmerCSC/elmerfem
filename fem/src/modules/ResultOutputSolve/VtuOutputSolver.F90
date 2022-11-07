@@ -1977,7 +1977,7 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
-    INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2091,30 +2091,22 @@ CONTAINS
             END IF
           END IF
 
+          ! Maybe we have some eigenmodes or constraint modes? 
           NoModes = 0
-          NoFields = 1
-          
-          ! Maybe we have some eigenmodes? 
-          IF( ASSOCIATED(Solution % EigenVectors)) THEN
-            NoModes = SIZE( Solution % EigenValues )
-            IF( EigenAnalysis ) THEN
-              IF( GotActiveModes ) THEN
-                IndField = ActiveModes( FileIndex ) 
-              ELSE
-                IndField = FileIndex
-              END IF
-              IF( IndField > NoModes ) THEN
-                CALL Warn('WritePvtuFile','Too few eigenmodes!')
-                CYCLE
-              END IF
-              NoModes = 1
-              NoFields = 1
-            ELSE	  
+          NoModes2 = 0          
+          IF( .NOT. EigenAnalysis ) THEN
+            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+              NoModes = SIZE( Solution % EigenValues )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-              NoFields = NoModes
+            END IF
+
+            IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+              NoModes2 = Solution % NumberOfConstraintModes
+              IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
             END IF
           END IF
-
+          NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
+            
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
             Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
@@ -2128,10 +2120,9 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
-
-          DO iField = 1, NoFields
-
-            IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+          
+          DO iField = 1, NoFields 
+            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2139,10 +2130,14 @@ CONTAINS
               ELSE
                 IndField = iField
               END IF
-              WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
 
-              ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
-              ! now the .pvtu file for these vectors is not correct!
+              IF( NoModes > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+              ELSE IF( NoModes2 > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
+              ELSE
+                CALL Fatal('WritePvtuFile','Unknown case!')
+              END IF
             END IF
 
             IF( AsciiOutput ) THEN
@@ -2213,28 +2208,21 @@ CONTAINS
             END IF
             IF (.NOT. Found ) CYCLE
 
-            NoModes = 0 
-            NoFields = 1
-            
-            IF( ASSOCIATED(Solution % EigenVectors)) THEN
-              NoModes = SIZE( Solution % EigenValues )
-              IF( EigenAnalysis ) THEN
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( FileIndex ) 
-                ELSE
-                  IndField = FileIndex
-                END IF
-                IF( IndField > NoModes ) THEN
-                  CALL Warn('WritePvtuFile','Too few eigenmodes!')
-                  CYCLE
-                END IF
-                NoModes = 1
-                NoFields = 1
-              ELSE	  
+            ! Maybe we have some eigenmodes or constraint modes? 
+            NoModes = 0
+            NoModes2 = 0          
+            IF( .NOT. EigenAnalysis ) THEN
+              IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+                NoModes = SIZE( Solution % EigenValues )
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-                NoFields = NoModes
+              END IF
+
+              IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+                NoModes2 = Solution % NumberOfConstraintModes
+                IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
               END IF
             END IF
+            NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
 
             IF( dofs > 1 ) THEN
               sdofs = MAX(dofs,3)
@@ -2243,15 +2231,16 @@ CONTAINS
             END IF
 
             DO iField = 1, NoFields
-              IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( iField ) 
+                IF( NoModes > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+                ELSE IF( NoModes2 > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
                 ELSE
-                  IndField = iField
+                  CALL Fatal('WritePvtuFile','Unknown case!')
                 END IF
-                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' mode',IndField
               END IF
 
               IF( AsciiOutput ) THEN

@@ -6846,6 +6846,7 @@ CONTAINS
       n = Element % Type % NumberOfNodes
       nb = mGetElementDOFs( Indexes, Element, Solver )
 
+      ! If for some reason we do not want to set the P dofs to zero
       IF(.NOT. SetP) nb = n
         
       ! For vector valued problems treat each component as separate dof
@@ -6864,28 +6865,42 @@ CONTAINS
     CALL CommunicateLinearSystemTag(A,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
 
     ! Set the p dofs to negative since we don't ever want to set them to one!
+    ! Note that there are some dofs related to ground that are already negative.
+    ! Hence ground and p-pubbles are treated alike. 
     IF(SetP) THEN
       DO l=Mesh % NumberOfNodes+1, SIZE(Perm)
         j = Perm(l)
         IF(j==0) CYCLE
         DO k=1,NDOFs       
           l2 = NDOFS*(j-1)+k                 
-
-          !This is probably not necessary ever. But here as a reminder. 
-          !IF( ASSOCIATED( A % ParallelInfo ) ) THEN
-          !  IF( A % ParallelInfo % NeighbourList(l2) % Neighbours(1) /= ParEnv % MyPE ) Passive = .TRUE.
-          !END IF
-          
-          Var % ConstraintModesIndeces(l2) = -Var % ConstraintModesIndeces(l2)
+                    
+          ! Subtract a big enough number of the constraint modes so that they are always negative. 
+          IF( Var % ConstraintModesIndeces(l2) /= 0 ) Var % ConstraintModesIndeces(l2) = Var % ConstraintModesIndeces(l2) - &
+              2*Var % NumberOfConstraintModes
         END DO
       END DO
     END IF
     
-    IF( InfoActive(20) ) THEN
-      DO i=1,Var % NumberOfConstraintModes
-        k = COUNT( Var % ConstraintModesIndeces == i )
-        CALL Info('SetConstaintModesBoundaries',&
-            'Mode '//TRIM(I2S(i))//' has '//TRIM(I2S(k))//' dofs')        
+    ! This is just for information.
+    ! We show how Dirichlet conditions are split among nodal and p dofs, and ground. 
+    IF( InfoActive(12) ) THEN
+      DO i=0,Var % NumberOfConstraintModes
+        j = i
+        IF(i==0) j=-1
+
+        k = COUNT( Var % ConstraintModesIndeces == j )
+        IF(k>0) THEN
+          CALL Info('SetConstaintModesBoundaries',&
+              'Mode '//TRIM(I2S(i))//' has '//TRIM(I2S(k))//' dofs')
+          IF( SetP ) THEN
+            j = j - 2*Var % NumberOfConstraintModes
+            k = COUNT( Var % ConstraintModesIndeces == j )
+            IF(k>0) THEN
+              CALL Info('SetConstaintModesBoundaries',&
+                  'Mode '//TRIM(I2S(i))//' has additional '//TRIM(I2S(k))//' p-dofs')
+            END IF
+          END IF
+        END IF
       END DO
     END IF
 
@@ -14710,7 +14725,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         ! Revert pointer back 
         A % Values => PValues
 
-        !n = MIN(n, Solver % Mesh % NumberOfNodes 
+        !n = MIN(n, Solver % Mesh % NumberOfNodes)
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
           IF( k > 0 ) THEN
