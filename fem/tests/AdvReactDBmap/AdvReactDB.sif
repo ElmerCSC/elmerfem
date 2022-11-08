@@ -124,6 +124,7 @@ Solver 1
   Linear System Solver = Iterative
   Linear System Iterative Method = GCR 
   Linear System Max Iterations  = 500
+  Linear System GCR Restart = 500
   Linear System Preconditioning = ILU0
   Linear System Convergence Tolerance = 1.0e-6
   Linear System Residual Output = 10
