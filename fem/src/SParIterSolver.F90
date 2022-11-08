@@ -1150,7 +1150,7 @@ END SUBROUTINE ZeroSplittedMatrix
     TmpRVec => SplittedMatrix % TmpRVec
 
     IF(.NOT. ASSOCIATED(SourceMatrix % Rhs) ) THEN
-      CALL Warn('SParUpdateResult','Rhs is not associated!?')
+      CALL Info('SParUpdateResult','Rhs is not yet associated!?',Level=20)
       ALLOCATE( SourceMatrix % Rhs(SourceMatrix % NumberOfRows) )
       SourceMatrix % Rhs = 0.0_dp
     END IF

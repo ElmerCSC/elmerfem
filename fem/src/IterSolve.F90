@@ -352,8 +352,14 @@ CONTAINS
       HUTI_WRKDIM = 1
       HUTI_GCR_RESTART = ListGetInteger( Params, &
           'Linear System GCR Restart',  GotIt ) 
-      IF ( .NOT. GotIT ) HUTI_GCR_RESTART = ListGetInteger( Params, &
-          'Linear System Max Iterations', minv=1 )
+      IF ( .NOT. GotIt ) THEN
+        i = ListGetInteger( Params,'Linear System Max Iterations', minv=1 )
+        IF( i > 200 ) THEN
+          i = 200
+          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//TRIM(I2S(i)),Level=4)
+        END IF
+        HUTI_GCR_RESTART = i
+      END IF
       Internal = .TRUE.
       
     CASE (ITER_BICGSTABL)

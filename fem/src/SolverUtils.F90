@@ -8078,7 +8078,7 @@ CONTAINS
      IF( UseL ) THEN
        n = COUNT(LTag .AND. A % ParallelInfo % NodeInterface)
      ELSE
-       n = COUNT((ITag > 0) .AND. A % ParallelInfo % NodeInterface)
+       n = COUNT((ITag /= 0) .AND. A % ParallelInfo % NodeInterface)
      END IF
 
      ! Allocate for the data to sent (s_e) and receive (r_e)
@@ -8100,7 +8100,7 @@ CONTAINS
        IF( UseL ) THEN
          GotIt = LTag(i) .AND. A % ParallelInfo % NodeInterface(i)
        ELSE
-         GotIt = Itag(i) > 0 .AND. A % ParallelInfo % NodeInterface(i)
+         GotIt = Itag(i) /= 0 .AND. A % ParallelInfo % NodeInterface(i)
        END IF
        IF(.NOT. GotIt) CYCLE
        
