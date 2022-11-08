@@ -14603,7 +14603,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,m,Nmode,Mmode,ierr
-    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex, Parallel
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex, Parallel, IncludeP
     REAL(KIND=dp), POINTER CONTIG :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:), ImFluxesMatrix(:,:), &
         b0(:), A0(:), TempRhs(:)
@@ -14629,7 +14629,9 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     Parallel = Solver % Parallel
     
     IsComplex = ListGetLogical( Solver % Values,'Linear System Complex',Found)
-   
+
+    IncludeP = ListGetLogical( Solver % Values,'Include P Fluxes',Found ) 
+    
     ComputeFluxes = ListGetLogical( Solver % Values,'Constraint Modes Fluxes',Found) 
     IF( ComputeFluxes ) THEN
       CALL Info(Caller,'Allocating for lumped fluxes',Level=10)
@@ -14658,7 +14660,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     
     DO i=1,m
       CALL Info(Caller,'Solving for mode: '//TRIM(I2S(i)),Level=6)
-
+      
       IF( i == 2 ) THEN
         CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.TRUE.)
       END IF
@@ -14728,6 +14730,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         !n = MIN(n, Solver % Mesh % NumberOfNodes)
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
+
+          IF( IncludeP ) THEN
+            IF( k < -1 ) THEN
+              k = k + 2*Var % NumberOfConstraintModes
+            END IF
+          END IF
+            
           IF( k > 0 ) THEN
             flux = Fluxes(j)
             IF( IsComplex ) THEN
@@ -14815,27 +14824,45 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         END DO
       END DO
 
-      k = ParallelReduction(ParEnv % MyPe,1)
-                
+
       MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
-      IF( Found .AND. k == ParEnv % MyPe ) THEN
-        OPEN (10, FILE=MatrixFile)
-        IF( IsComplex ) OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+      IF( Found ) THEN
+        k = ParallelReduction(ParEnv % MyPe,1)     
+        IF( k == ParEnv % MyPe ) THEN
+          OPEN (10, FILE=MatrixFile)
+          IF( IsComplex ) OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+          DO i=1,m
+            DO j=1,m
+              WRITE (10,'(ES17.9)',advance='no') FluxesMatrix(i,j)
+              IF( IsComplex ) THEN
+                WRITE (11,'(ES17.9)',advance='no') ImFluxesMatrix(i,j) 
+              END IF
+            END DO
+            WRITE(10,'(A)') ' '
+            IF( IsComplex ) WRITE(11,'(A)') ' ' 
+          END DO
+          CLOSE(10)
+          IF( IsComplex ) CLOSE(11)
+          CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
+        END IF
+      END IF
+        
+      IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Results', Found ) ) THEN
+        CALL Info('SolveConstraintModesSystem','Adding Constraint Modes Fluxes with "res:" to list',Level=5)
         DO i=1,m
           DO j=1,m
-            WRITE (10,'(ES17.9)',advance='no') FluxesMatrix(i,j)
-            IF( IsComplex ) THEN
-              WRITE (11,'(ES17.9)',advance='no') ImFluxesMatrix(i,j) 
-            END IF
+            CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF '//TRIM(I2S(10*i+j)),FluxesMatrix(i,j))
           END DO
-          WRITE(10,'(A)') ' '
-          IF( IsComplex ) WRITE(11,'(A)') ' ' 
         END DO
-        CLOSE(10)
-        IF( IsComplex ) CLOSE(11)
-        CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
+        IF( IsComplex ) THEN
+          DO i=1,m
+            DO j=1,m
+              CALL ListAddConstReal( CurrentModel % Simulation,'res: CMF Im '//TRIM(I2S(10*i+j)),ImFluxesMatrix(i,j))
+            END DO
+          END DO
+        END IF
       END IF
-
+      
       DEALLOCATE( Fluxes )
     END IF
     
