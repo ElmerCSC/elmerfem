@@ -1241,8 +1241,8 @@ use spariterglobals
       TYPE(Projector_t), POINTER :: Projector
       TYPE(Variable_t), POINTER :: Var,PVar,Tmp,AidVar
       REAL(KIND=dp), POINTER :: Vals(:)
-      INTEGER :: i,k,n, DOFs
-      LOGICAL :: Found, GlobalBubbles, UseProjector
+      INTEGER :: i,k,n, DOFs, MAXNDOFs
+      LOGICAL :: Found, GlobalBubbles, UseProjector, HackMesh
       CHARACTER(LEN=LEN_TRIM(Name)) :: str
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       DOUBLE PRECISION :: t1
@@ -1321,9 +1321,23 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
-        GlobalBubbles = .FALSE.
-        IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
+         GlobalBubbles = .FALSE.
+         IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
+         IF (PVar % PrimaryMesh % MaxNDOFs /= CurrentModel % Mesh % MaxNDOFs) THEN
+           MaxNDOFs = CurrentModel % Mesh % MaxNDOFs
+           IF (PVar % PrimaryMesh % MaxNDOFs == 1) THEN
+             ! Try to tamper the mesh temporarily, so that the permutation will be created as if
+             ! one nodal field was present
+             HackMesh = .TRUE.
+             CurrentModel % Mesh % MaxNDOFs = 1
+           ELSE
+             CALL Fatal('VariableGet', 'non-matching permutation occurs due to an element definition n:'//TRIM(I2S(MaxNDOFs)))
+           END IF
+         ELSE
+           HackMesh = .FALSE.
+         END IF
+
          DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
          IF ( GlobalBubbles ) THEN
             DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
@@ -1341,7 +1355,7 @@ use spariterglobals
             n = InitialPermutation( Var % Perm, CurrentModel, PVar % Solver, &
                 CurrentModel % Mesh, ListGetString(PVar % Solver % Values,'Equation'), &
                  GlobalBubbles=GlobalBubbles )
-
+ 
             IF ( n==0 ) n=CurrentModel % Mesh % NumberOfNodes
 
             IF ( n == CurrentModel % Mesh % NumberOfNodes ) THEN
@@ -1350,6 +1364,8 @@ use spariterglobals
                END DO
             END IF
          END IF
+
+         IF (HackMesh) CurrentModel % Mesh % MaxNDOFs = MaxNDOFs
 
          CALL VariableAdd( Variables, PVar % PrimaryMesh, PVar % Solver, &
            PVar % Name, PVar % DOFs, Var % Values, Var % Perm, PVar % Output ) 
