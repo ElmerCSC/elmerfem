@@ -6775,7 +6775,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: Element
     TYPE(Variable_t), POINTER :: Var
-    INTEGER :: Indexes(50),nb
+    INTEGER :: Indexes(50),nb,poffset
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, ALLOCATABLE :: BCPerm(:)
 
@@ -6848,7 +6848,7 @@ CONTAINS
 
       ! If for some reason we do not want to set the P dofs to zero
       IF(.NOT. SetP) nb = n
-        
+      
       ! For vector valued problems treat each component as separate dof
       DO k=1,NDOFs       
         j = NDOFS*(BCPerm(bc_id)-1)+k
@@ -6863,20 +6863,22 @@ CONTAINS
     ! Some single node or edge could stretch to the surface even though it is not
     ! part of any boundary element in parallel. Hence we need to communicate the tag. 
     CALL CommunicateLinearSystemTag(A,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
-
+    
     ! Set the p dofs to negative since we don't ever want to set them to one!
     ! Note that there are some dofs related to ground that are already negative.
     ! Hence ground and p-pubbles are treated alike. 
     IF(SetP) THEN
+      poffset = 2*(Var % NumberOfConstraintModes + 1)
       DO l=Mesh % NumberOfNodes+1, SIZE(Perm)
         j = Perm(l)
         IF(j==0) CYCLE
         DO k=1,NDOFs       
           l2 = NDOFS*(j-1)+k                 
-                    
+          
           ! Subtract a big enough number of the constraint modes so that they are always negative. 
-          IF( Var % ConstraintModesIndeces(l2) /= 0 ) Var % ConstraintModesIndeces(l2) = Var % ConstraintModesIndeces(l2) - &
-              2*Var % NumberOfConstraintModes
+          IF( Var % ConstraintModesIndeces(l2) /= 0 ) THEN
+            Var % ConstraintModesIndeces(l2) = Var % ConstraintModesIndeces(l2) - poffset 
+          END IF
         END DO
       END DO
     END IF
@@ -6893,7 +6895,7 @@ CONTAINS
           CALL Info('SetConstaintModesBoundaries',&
               'Mode '//TRIM(I2S(i))//' has '//TRIM(I2S(k))//' dofs')
           IF( SetP ) THEN
-            j = j - 2*Var % NumberOfConstraintModes
+            j = j - poffset
             k = COUNT( Var % ConstraintModesIndeces == j )
             IF(k>0) THEN
               CALL Info('SetConstaintModesBoundaries',&
@@ -14602,8 +14604,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     REAL(KIND=dp) CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
-    INTEGER :: i,j,k,n,m,Nmode,Mmode,ierr
-    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex, Parallel, IncludeP
+    INTEGER :: i,j,k,n,m,Nmode,Mmode,ierr,poffset
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, IsComplex, Parallel, ConsiderP
     REAL(KIND=dp), POINTER CONTIG :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:), ImFluxesMatrix(:,:), &
         b0(:), A0(:), TempRhs(:)
@@ -14630,8 +14632,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     
     IsComplex = ListGetLogical( Solver % Values,'Linear System Complex',Found)
 
-    IncludeP = ListGetLogical( Solver % Values,'Include P Fluxes',Found ) 
-    
+    ! This is to my understanding not needed. To estimate the fluxes we
+    ! basically integrate over basis functions that estimate unity.
+    ! For p-elements this means using the linear nodal basis only, not any
+    ! of the fake fluxes associated to p-degrees of freedom. Anyways,
+    ! we leave this option here for testing etc. 
+    ConsiderP = ListGetLogical( Solver % Values,'Consider P Fluxes',Found ) 
+
     ComputeFluxes = ListGetLogical( Solver % Values,'Constraint Modes Fluxes',Found) 
     IF( ComputeFluxes ) THEN
       CALL Info(Caller,'Allocating for lumped fluxes',Level=10)
@@ -14727,14 +14734,14 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         ! Revert pointer back 
         A % Values => PValues
 
-        !n = MIN(n, Solver % Mesh % NumberOfNodes)
+        poffset = 2*(Var % NumberOfConstraintModes + 1)
+        
         DO j=1,n
           k = Var % ConstraintModesIndeces(j)
 
-          IF( IncludeP ) THEN
-            IF( k < -1 ) THEN
-              k = k + 2*Var % NumberOfConstraintModes
-            END IF
+          IF( ConsiderP ) THEN
+            ! P dofs are associated with negative index as they are not included in ConstraintModesAnalysis.
+            IF( k < -1 ) k = k + poffset
           END IF
             
           IF( k > 0 ) THEN

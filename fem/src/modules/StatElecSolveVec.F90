@@ -56,7 +56,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, CalculateElemental, CalculateNodal
+  LOGICAL :: Found, CalculateElemental, CalculateNodal, PostActive
   INTEGER :: dim
    
   Params => GetSolverParams()
@@ -64,6 +64,8 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 
   CALL ListAddNewString( Params,'Variable','Potential')
 
+  PostActive = .FALSE.
+  
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
 
@@ -78,6 +80,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Energy Density' )
+    PostActive = .TRUE.
   END IF
 
   IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
@@ -87,6 +90,7 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Elecric Flux[Elecric Flux:'//TRIM(I2S(dim))//']' )       
+    PostActive = .TRUE.
   END IF
 
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
@@ -96,16 +100,19 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )
+    PostActive = .TRUE.
   END IF
 
   ! Nodal fields that may directly be associated as nodal loads
   IF (ListGetLogical(Params,'Calculate Nodal Energy',Found))  THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
         'Nodal Energy Density' )
+    PostActive = .TRUE.
   END IF
   IF( ListGetLogical(Params,'Calculate Nodal Flux',Found) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Nodal Electric Flux[Nodal Electric Flux:'//TRIM(I2S(dim))//']' )
+    PostActive = .TRUE.
   END IF
 
   ! These use one flag to call library features to compute automatically
@@ -134,7 +141,10 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
-
+  
+  ! If no fields need to be computed do not even call the _post solver!
+  CALL ListAddLogical(Params,'PostSolver Active',PostActive)
+  
 END SUBROUTINE StatElecSolver_Init
 
 

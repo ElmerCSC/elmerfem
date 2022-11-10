@@ -969,11 +969,11 @@ CONTAINS
                  ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
 
           CASE('none') 
-            CALL Info('GMGSolve','Applying no solver for coarsest level')
+            CALL Info('PMGSolve','Applying no solver for coarsest level')
 
           CASE DEFAULT
-             CALL Warn( 'GMGSolve', 'Unknown solver selection for MG lowest level' )
-             CALL Warn( 'GMGSolve', 'Using iterative solver' )
+             CALL Warn( 'PMGSolve', 'Unknown solver selection for MG lowest level' )
+             CALL Warn( 'PMGSolve', 'Using iterative solver' )
 
              IF ( Parallel ) THEN
                CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &

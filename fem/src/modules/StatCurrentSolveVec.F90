@@ -55,12 +55,13 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, CalculateElemental, CalculateNodal
-  INTEGER :: dim
+  LOGICAL :: Found, CalculateElemental, CalculateNodal, PostActive 
+  INTEGER :: dim  
    
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
-
+  PostActive = .FALSE.
+  
   CALL ListAddNewString( Params,'Variable','Potential')
   
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
@@ -77,6 +78,7 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Joule Heating' )
+    PostActive = .TRUE.
   END IF
   
   IF( ListGetLogical(Params,'Calculate Volume Current',Found) ) THEN
@@ -86,6 +88,7 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Volume Current[Volume Current:'//TRIM(I2S(dim))//']' )       
+    PostActive = .TRUE.
   END IF
   
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
@@ -95,16 +98,19 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )
+    PostActive = .TRUE.
   END IF
 
   ! Nodal fields that may directly be associated as nodal loads
   IF (ListGetLogical(Params,'Calculate Nodal Heating',Found))  THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
         'Nodal Joule Heating' )
+    PostActive = .TRUE.
   END IF
   IF( ListGetLogical(Params,'Calculate Nodal Current',Found) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Nodal Current[Nodal Current:'//TRIM(I2S(dim))//']' )
+    PostActive = .TRUE.
   END IF
 
   ! These use one flag to call library features to compute automatically
@@ -118,6 +124,9 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
         'ConductivityMatrix.dat',.FALSE.)
     CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Potential')
   END IF
+
+  ! If no fields need to be computed do not even call the _post solver!
+  CALL ListAddLogical(Params,'PostSolver Active',PostActive)
   
 END SUBROUTINE StatCurrentSolver_Init
 

@@ -105,8 +105,6 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars), TRIM(VarName))
   
-
-
   CALL ListAddNewString(SolverPars,'Flux Variable','mixedflux' )
   VarName = ListGetString(SolverPars,'Flux Variable')
 
@@ -116,9 +114,11 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars), TRIM(VarName))
 
-
   CALL ListAddNewString( SolverPars,'Element Integration Points',&
       '-tri 3 -quad 9 -tetra 4 -brick 64')
+
+  ! This solver always needs PostSolver since primary fields are not very intuitive
+  CALL ListAddLogical( SolverPars,'PostSolver Active',.TRUE.)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_Init0

@@ -5335,14 +5335,20 @@ END BLOCK
 
      ! Special slot for post-processing solvers
      ! This makes it convenient to separate the solution and postprocessing.
-     ! This solver must use the same structures as the primary solver. 
+     ! This solver must use the same structures as the primary solver.
+     ! If the postprocessing solver uses different element basis this is
+     ! not a good idea. 
      !-----------------------------------------------------------------------
      BLOCK 
        CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
-       ProcName = ListGetString( Solver % Values,'Procedure', Found )
-       SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
-       IF( SolverAddr /= 0 ) THEN
-         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+       LOGICAL :: PostActive
+       PostActive = ListGetLogical( Solver % Values,'PostSolver Active',Found )
+       IF( PostActive ) THEN
+         ProcName = ListGetString( Solver % Values,'Procedure', Found )
+         SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+         IF( SolverAddr /= 0 ) THEN
+           CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+         END IF
        END IF
      END BLOCK
 
