@@ -4128,6 +4128,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	      boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
 	      strcpy(boundaryname0[j],data->boundaryname[j]);
 	      free_Cvector(data->boundaryname[j],0,MAXNAMESIZE);
+	      data->boundaryname[j] = NULL;
 	    }
 	  }
 	}
@@ -7293,17 +7294,9 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	      if(data->bodyname[material]) {
 		strcpy(data->boundaryname[material],data->bodyname[material]);
 		free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
+		data->bodyname[material] = NULL;
 	      }
-	      else
-		sprintf(data->boundaryname[material],"body%d",material);
 	    }
-	    if(!strncmp(data->boundaryname[material],"body",4)) {
-	      strncpy(data->boundaryname[material],"bnry",4);
-	    }
-	  } else {
-	    if( data->boundarynamesexist ) {
-	      // printf("boundary name: %d %s\n",material,data->boundaryname[material]);
-	    }	       
 	  }
 
 	  /* Only try to find two parents if the boundary element is one degree smaller than maximum dimension */

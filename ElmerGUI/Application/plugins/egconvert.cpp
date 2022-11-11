@@ -6005,7 +6005,7 @@ omstart:
 	  if(!data->bodyname[nogroup]) data->bodyname[nogroup] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[nogroup],entityname);
 	  data->bodynamesexist = TRUE;
-	  data->boundarynamesexist = TRUE;
+	  if(0) data->boundarynamesexist = TRUE;
 
 	  if(info) printf("Reading %d:th group with index %d with %d entities: %s\n",
 			  group,nogroup,noentities,entityname);
