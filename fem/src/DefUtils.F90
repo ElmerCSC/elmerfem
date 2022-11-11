@@ -1782,114 +1782,108 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
-BLOCK
- LOGICAL :: EdgesDone, FacesDone
- INTEGER :: Ind, i,j,k, EDOFs, FDOFs
- TYPE(Element_t), POINTER :: Parent, Edge, Face
-
-     EdgesDone = .FALSE.; FacesDone = .FALSE.
-     IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-        IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
+     BLOCK
+       LOGICAL :: EdgesDone, FacesDone
+       INTEGER :: Ind, i,j,k, EDOFs, FDOFs
+       TYPE(Element_t), POINTER :: Parent, Edge, Face
+  
+       EdgesDone = .FALSE.; FacesDone = .FALSE.
+       IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+         IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
            n =  n + Element % Type % NumberOfEdges * Solver % Mesh % MaxEdgeDOFs
-        ELSE
-!DIR$ IVDEP
-          DO j=1,Element % Type % NumberOFEdges
+         ELSE
+           !DIR$ IVDEP
+           DO j=1,Element % Type % NumberOFEdges
              n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
-          END DO
-       END IF
-       IF ( Solver % GlobalBubbles ) THEN
-BLOCK
-         TYPE(Element_t), POINTER :: Edge
-         Edge => Solver % Mesh % Edges(Element % EdgeIndexes(1))
-         IF ( Edge % Type % ElementCode == Element % Type % ElementCode ) THEN
-           n = n + Element % BDOFs
+           END DO
          END IF
-END BLOCK
-        END IF
-       EdgesDone = .TRUE.
-     END IF
-
-     IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-        IF ( Solver % Mesh % MaxFaceDOFs == Solver % Mesh % MinFaceDOFs ) THEN
-           n =  n + Element % Type % NumberOfFaces * Solver % Mesh % MaxFaceDOFs
-        ELSE
-!DIR$ IVDEP
-          DO j=1,Element % Type % NumberOFFaces
-             n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-          END DO
-        END IF
-
-        IF ( Solver % GlobalBubbles ) THEN
-BLOCK
-          TYPE(Element_t), POINTER :: Face
-          Face => Solver % Mesh % Faces(Element % FaceIndexes(1))
-          IF ( Face % Type % ElementCode == Element % Type % ElementCode ) THEN
-            n = n + Element % BDOFs
-          END IF
-END BLOCK
-        END IF
-
-        FacesDone = .TRUE.
-     END IF
-
-     IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-
-       Parent => Element % BoundaryInfo % Left
-       IF (.NOT.ASSOCIATED(Parent) ) &
-           Parent => Element % BoundaryInfo % Right
-       IF (.NOT.ASSOCIATED(Parent) ) RETURN
-
-       SELECT CASE(ElemFamily)
-       CASE(2)
-         IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
-           IF ( isActivePElement(Element) ) THEN
-             Ind=Element % PDefs % LocalNumber
-           ELSE
-             DO Ind=1,Parent % TYPE % NumberOfEdges
-               Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(ind))
-               k = 0
-               DO i=1,Edge % TYPE % NumberOfNodes
-                 DO j=1,Element % TYPE % NumberOfNodes
-                   IF ( Edge % NodeIndexes(i)==Element % NodeIndexes(j) ) k=k+1
-                 END DO
-               END DO
-               IF ( k==Element % TYPE % NumberOfNodes) EXIT
-             END DO
+         IF ( Solver % GlobalBubbles ) THEN
+           Edge => Solver % Mesh % Edges(Element % EdgeIndexes(1))
+           IF ( Edge % TYPE % ElementCode == Element % TYPE % ElementCode ) THEN
+             n = n + Element % BDOFs
            END IF
+         END IF
+         EdgesDone = .TRUE.
+       END IF
 
-           EDOFs = Element % BDOFs
-           DO i=1,EDOFs
-             n = n + 1
+       IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+         IF ( Solver % Mesh % MaxFaceDOFs == Solver % Mesh % MinFaceDOFs ) THEN
+           n =  n + Element % Type % NumberOfFaces * Solver % Mesh % MaxFaceDOFs
+         ELSE
+           !DIR$ IVDEP
+           DO j=1,Element % Type % NumberOFFaces
+             n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
            END DO
          END IF
 
-       CASE(3,4)
-         IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
-           IF ( isActivePElement(Element) ) THEN
-             Ind=Element % PDefs % LocalNumber
-           ELSE
-             DO Ind=1,Parent % TYPE % NumberOfFaces
-               Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
-               k = 0
-               DO i=1,Face % TYPE % NumberOfNodes
-                 DO j=1,Element % TYPE % NumberOfNodes
-                   IF ( Face % NodeIndexes(i)==Element % NodeIndexes(j)) k=k+1
-                 END DO
-               END DO
-               IF ( k==Face % TYPE % NumberOfNodes) EXIT
-             END DO
+         IF ( Solver % GlobalBubbles ) THEN
+           Face => Solver % Mesh % Faces(Element % FaceIndexes(1))
+           IF ( Face % TYPE % ElementCode == Element % TYPE % ElementCode ) THEN
+             n = n + Element % BDOFs
            END IF
+         END IF
 
-           IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
-             FDOFs = Element % BDOFs
-             DO i=1,FDOFs
+         FacesDone = .TRUE.
+       END IF
+
+       IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+
+         Parent => Element % BoundaryInfo % Left
+         IF (.NOT.ASSOCIATED(Parent) ) &
+             Parent => Element % BoundaryInfo % Right
+         IF (.NOT.ASSOCIATED(Parent) ) RETURN
+
+         SELECT CASE(ElemFamily)
+         CASE(2)
+           IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
+             IF ( isActivePElement(Element) ) THEN
+               Ind=Element % PDefs % LocalNumber
+             ELSE
+               DO Ind=1,Parent % TYPE % NumberOfEdges
+                 Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(ind))
+                 k = 0
+                 DO i=1,Edge % TYPE % NumberOfNodes
+                   DO j=1,Element % TYPE % NumberOfNodes
+                     IF ( Edge % NodeIndexes(i)==Element % NodeIndexes(j) ) k=k+1
+                   END DO
+                 END DO
+                 IF ( k==Element % TYPE % NumberOfNodes) EXIT
+               END DO
+             END IF
+
+             EDOFs = Element % BDOFs
+             DO i=1,EDOFs
                n = n + 1
              END DO
            END IF
-         END IF
-       END SELECT
-     END IF
-END BLOCK
+
+         CASE(3,4)
+           IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
+             IF ( isActivePElement(Element) ) THEN
+               Ind=Element % PDefs % LocalNumber
+             ELSE
+               DO Ind=1,Parent % TYPE % NumberOfFaces
+                 Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
+                 k = 0
+                 DO i=1,Face % TYPE % NumberOfNodes
+                   DO j=1,Element % TYPE % NumberOfNodes
+                     IF ( Face % NodeIndexes(i)==Element % NodeIndexes(j)) k=k+1
+                   END DO
+                 END DO
+                 IF ( k==Face % TYPE % NumberOfNodes) EXIT
+               END DO
+             END IF
+
+             IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
+               FDOFs = Element % BDOFs
+               DO i=1,FDOFs
+                 n = n + 1
+               END DO
+             END IF
+           END IF
+         END SELECT
+       END IF
+     END BLOCK
 
      IF ( .NOT.ASSOCIATED(Element % BoundaryInfo).AND.Solver % GlobalBubbles ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
