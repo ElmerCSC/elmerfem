@@ -177,11 +177,15 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Solving static electric field for insulators')
 
-  CALL DefaultStart()
-
   Mesh => GetMesh()
   Params => GetSolverParams()
   
+  IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
+    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
+  END IF
+      
+  CALL DefaultStart()
+
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
   dim = CoordinateSystemDimension() 
 
@@ -553,6 +557,7 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
+    
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------

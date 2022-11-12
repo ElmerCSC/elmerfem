@@ -2694,9 +2694,9 @@ CONTAINS
      CALL SetMeshDimension( Mesh )
    END IF
    Model % DIMENSION = MAX( Model % DIMENSION, Mesh % MaxDim ) 
-
+     
    CALL CreateIntersectionBCs(Model,Mesh)
-   
+
    CALL NonNodalElements()
 
    IF( Parallel ) THEN
@@ -2705,6 +2705,8 @@ CONTAINS
      
    CALL EnlargeCoordinates( Mesh ) 
 
+   CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
+     
    CALL GeneratePeriodicProjectors( Model, Mesh )    
    
    IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
@@ -12489,7 +12491,35 @@ CONTAINS
     LOGICAL :: BCMode
     INTEGER :: Tag, t1, t2
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
+
     
+    ! If the initial mesh is in 2D there is really no need to figure out the 
+    ! direction of the rotational axis. It can only be aligned with the z-axis. 
+    cdim = PMesh % MeshDim
+    IF(PRESENT(dim)) cdim = MIN(cdim,dim)
+
+    IF( cdim == 2 ) THEN
+      AxisNormal = 0.0_dp
+      AxisNormal(3) = 1.0_dp
+    END IF
+   
+    IF(PRESENT(FitParams) ) THEN
+      IF( ListCheckPresent( PParams,'Rotational Projector Radius') ) THEN
+        FitParams(1) = ListGetConstReal( PParams,'Rotational Projector Center X')
+        FitParams(2) = ListGetConstReal( PParams,'Rotational Projector Center Y')
+        IF( cdim == 2 ) THEN
+          FitParams(3) = ListGetConstReal( PParams,'Rotational Projector Radius')          
+        ELSE
+          FitParams(3) = ListGetConstReal( PParams,'Rotational Projector Center Z')
+          FitParams(4) = ListGetConstReal( PParams,'Rotational Projector Normal X')
+          FitParams(5) = ListGetConstReal( PParams,'Rotational Projector Normal Y')
+          FitParams(6) = ListGetConstReal( PParams,'Rotational Projector Normal Z')          
+          FitParams(7) = ListGetConstReal( PParams,'Rotational Projector Radius')
+        END IF
+        RETURN
+      END IF
+    END IF
+              
     ! Set the range for the possible active elements. 
     ! Set the range for the possible active elements. 
     IF( PRESENT( BCind ) ) THEN
@@ -12508,16 +12538,6 @@ CONTAINS
     n = PMesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
     
-    ! If the initial mesh is in 2D there is really no need to figure out the 
-    ! direction of the rotational axis. It can only be aligned with the z-axis. 
-    cdim = CurrentModel % Mesh % MeshDim
-    IF(PRESENT(dim)) cdim = MIN(cdim,dim)
-       
-    IF( cdim == 2 ) THEN
-      AxisNormal = 0.0_dp
-      AxisNormal(3) = 1.0_dp
-    END IF
-
     ! Compute the inner product of <N*N> for the elements
     NiNj = 0.0_dp
     DO t=t1, t2
@@ -12706,6 +12726,16 @@ CONTAINS
 
     !PRINT *,'Center point in cartesian coordinates:',Coord
 
+    CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
+    CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+    IF( cdim == 3 ) THEN
+      CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
+      CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+    END IF
+    CALL ListAddConstReal( PParams,'Rotational Projector Radius',rad )
+
     IF( PRESENT( FitParams ) ) THEN
       IF( cdim == 2 ) THEN
         FitParams(1:2) = Coord(1:2)
@@ -12715,20 +12745,10 @@ CONTAINS
         FitParams(4:6) = AxisNormal(1:3)
         FitParams(7) = rad
       END IF
-    ELSE      
-      CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
-      CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
-      CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
-
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
     END IF
       
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
 
-
-    
   CONTAINS
     
     ! Compute the value of 3x3 determinant
@@ -12763,6 +12783,17 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x(:),y(:),z(:)    
     REAL(KIND=dp) :: xc,yc,zc,Rad
 
+    IF( PRESENT( FitParams ) ) THEN
+      IF( ListCheckPresent( Params,'Sphere Radius') ) THEN
+        CALL Info('SphereFit','Using predefined values for sphere parameters',Level=20)
+        FitParams(1) = ListGetConstReal( Params,'Sphere Center X')
+        FitParams(2) = ListGetConstReal( Params,'Sphere Center Y')
+        FitParams(3) = ListGetConstReal( Params,'Sphere Center Z')
+        FitParams(4) = ListGetConstReal( Params,'Sphere Radius')
+        RETURN
+      END IF
+    END IF
+      
     
     CALL Info('SphereFit','Trying to fit a sphere to element patch',Level=6)
 
@@ -12821,16 +12852,16 @@ CONTAINS
 
     ! Add the sphere parameters to the list so that they can be used later
     ! directly without having to fit the parameters again.  
+    CALL ListAddConstReal( Params,'Sphere Center X',xc )
+    CALL ListAddConstReal( Params,'Sphere Center Y',yc )
+    CALL ListAddConstReal( Params,'Sphere Center Z',zc )
+    CALL ListAddConstReal( Params,'Sphere Radius',Rad )
+    
     IF( PRESENT( FitParams ) ) THEN
       FitParams(1) = xc
       FitParams(2) = yc
       FitParams(3) = zc
       FitParams(4) = Rad
-    ELSE   
-      CALL ListAddConstReal( Params,'Sphere Center X',xc )
-      CALL ListAddConstReal( Params,'Sphere Center Y',yc )
-      CALL ListAddConstReal( Params,'Sphere Center Z',zc )
-      CALL ListAddConstReal( Params,'Sphere Radius',Rad )
     END IF
       
   CONTAINS
@@ -12883,7 +12914,215 @@ CONTAINS
     END SUBROUTINE SphereFitfun
 
   END SUBROUTINE SphereFit
+
+
+  
+  SUBROUTINE FollowCurvedBoundary(Model, Mesh, SetP )
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh 
+    LOGICAL, OPTIONAL :: SetP
+
+    LOGICAL :: Found
+    REAL(KIND=dp) :: FitParams(7)
+    INTEGER :: Mode, bc_ind, dim
+    TYPE(ValueList_t), POINTER :: BC
+
+    IF(.NOT. ListCheckPrefixAnyBC( Model,'Follow') ) RETURN
+
+    dim = Mesh % MeshDim
     
+    DO bc_ind = 1, Model % NumberOfBCs
+      BC => Model % BCs(bc_ind) % Values
+      IF( ListGetLogical(BC,'Follow Circle Boundary', Found ) ) THEN
+        CALL CylinderFit(Mesh, BC, bc_ind, 2, FitParams ) 
+        Mode = 1        
+      ELSE IF( ListGetLogical(BC,'Follow Cylinder Boundary', Found ) ) THEN
+        CALL CylinderFit(Mesh, BC, bc_ind, dim, FitParams) 
+        Mode = 2        
+      ELSE IF( ListGetLogical(BC,'Follow Sphere Boundary', Found ) ) THEN
+        CALL SphereFit(Mesh, BC, bc_ind, FitParams ) 
+        Mode = 3        
+      ELSE
+        Mode = 0
+      END IF
+      
+      IF(Mode > 0 ) THEN
+        CALL Info('FollowCurvedBoundary','Setting BC '//TRIM(I2S(bc_ind))//' to follow curved boundary',Level=7)
+        CALL SetCurvedBoundary()
+      END IF
+    END DO
+
+    
+  CONTAINS
+
+!------------------------------------------------------------------------------
+    SUBROUTINE SetCurvedBoundary()
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: R, rat
+      REAL(KIND=dp) :: Nrm(3), Tngt1(3), Tngt2(3), Orig(3), Coord(3), NtCoord(3)
+      INTEGER :: i,j,k,l,t,n
+      LOGICAL, ALLOCATABLE :: DoneNode(:)
+      TYPE(Element_t), POINTER :: Element
+      LOGICAL :: Debug = .TRUE.     
+      
+      ALLOCATE( DoneNode(Mesh % NumberOfNodes))
+      DoneNode = .FALSE.
+
+      IF( Mode == 1 ) THEN
+        Orig(1:2) = FitParams(1:2)
+        Orig(3) = 0.0_dp
+        R = FitParams(3)
+      ELSE IF( Mode == 2 ) THEN
+        Orig(1:3) = FitParams(1:3)
+        Nrm(1:3) = FitParams(4:6)        
+        R = FitParams(7)
+        CALL TangentDirections(Nrm, Tngt1, Tngt2 ) 
+      ELSE IF( Mode == 3 ) THEN
+        Orig(1:3) = FitParams(1:3)
+        R = FitParams(4)
+      END IF
+                  
+      DO t=Mesh % NumberOfBulkElements+1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(t)
+        IF ( Element % BoundaryInfo % Constraint &
+            /= Model % BCs(bc_ind) % Tag ) CYCLE
+
+        n = Element % TYPE % NumberOfNodes
+
+        DO i=1,n
+          j = Element % NodeIndexes(i)
+          IF( DoneNode(j) ) CYCLE
+          DoneNode(j) = .TRUE.
+
+          Coord(1) = Mesh % Nodes % x(j) - Orig(1)           
+          Coord(2) = Mesh % Nodes % y(j) - Orig(2)
+          Coord(3) = Mesh % Nodes % z(j) - Orig(3)
+
+          SELECT CASE( Mode )
+          CASE( 1 ) 
+            rat = R / SQRT(SUM(Coord(1:2)**2))
+            Coord(1:2) = rat*Coord(1:2)
+          CASE( 2 ) 
+            rat = R / SQRT(SUM(Coord(1:3)**2))
+            Coord(1:3) = rat*Coord(1:3)
+          CASE( 3 ) 
+            NtCoord(1) = SUM(Nrm*Coord)
+            NtCoord(2) = SUM(Tngt1*Coord)
+            NtCoord(3) = SUM(Tngt2*Coord)
+            rat = R / SQRT(SUM(NtCoord(2:3)**2))
+            NtCoord(2:3) = rat*NtCoord(2:3)
+            Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+          END SELECT
+          
+          Mesh % Nodes % x(j) = Coord(1) + Orig(1)
+          Mesh % Nodes % y(j) = Coord(2) + Orig(2)
+          Mesh % Nodes % z(j) = Coord(3) + Orig(3)
+        END DO
+
+        
+        IF( SetP ) THEN
+          BLOCK 
+            REAL(KIND=dp) :: Weight
+            REAL(KIND=dp) :: Basis(20),DetJ
+            REAL(KIND=dp) :: MASS(20,20), FORCE(3,20), x(20), Coord0(3)
+            LOGICAL :: Stat
+            INTEGER :: nd,i,t,p,q
+            INTEGER, TARGET :: Indexes(20)
+            INTEGER :: pivot(20)
+            INTEGER, POINTER :: pIndexes(:)
+            TYPE(GaussIntegrationPoints_t) :: IP
+            TYPE(Nodes_t), SAVE :: Nodes
+
+
+            pIndexes => Indexes 
+
+            Nd = mGetElementDOFs( pIndexes, Element, CurrentModel % Solver )          
+
+            ! Only if we have really p-elements is there a need to consider the curved shape
+            IF(Nd == n ) CYCLE
+
+            CALL CopyElementNodesFromMesh( Nodes, Mesh, n, pIndexes)
+
+            MASS = 0._dp
+            FORCE = 0._dp
+
+            IP = GaussPoints( Element )    
+            
+            DO t=1,IP % n
+              stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis )
+              Weight = IP % s(t) * DetJ
+
+              ! Current nodal value at integration point does not consider p-dofs
+              Coord(1) = SUM( Nodes % x(1:n) * Basis(1:n) )
+              Coord(2) = SUM( Nodes % y(1:n) * Basis(1:n) )
+              Coord(3) = SUM( Nodes % z(1:n) * Basis(1:n) )
+              Coord0 = Coord
+
+              Coord = Coord - Orig
+              SELECT CASE( Mode )
+              CASE( 1 ) 
+                rat = R / SQRT(SUM(Coord(1:2)**2))
+                Coord(1:2) = rat * Coord(1:2)
+              CASE( 2 ) 
+                rat = R / SQRT(SUM(Coord(1:3)**2))
+                Coord(1:3) = rat * Coord(1:3)
+              CASE( 3 ) 
+                NtCoord(1) = SUM(Nrm*Coord)
+                NtCoord(2) = SUM(Tngt1*Coord)
+                NtCoord(3) = SUM(Tngt2*Coord)
+                rat = R / SQRT(SUM(NtCoord(2:3)**2))
+                NtCoord(2:3) = rat * NtCoord(2:3)
+                Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+              END SELECT
+              Coord = Coord + Orig
+
+              ! Solve for desired coordinate displacement rather than absolute coordinate value
+              Coord = Coord - Coord0
+              
+              ! Create equation involving mass matrix that solves for the coordinates at the p-dofs
+              DO q=1,nd
+                MASS(1:nd,q) = MASS(1:nd,q) + Weight * Basis(1:nd) * Basis(q) 
+              END DO
+
+              DO i=1,dim
+                FORCE(i,1:nd) = FORCE(i,1:nd) + Weight * Basis(1:nd) * Coord(i) 
+              END DO
+            END DO
+
+            ! Set Dirichlet conditions for the nodal coordinate displacements
+            DO i=1,n
+              MASS(i,1:nd) = 0.0_dp
+              MASS(i,i) = 1.0_dp
+              FORCE(:,i) = 0.0_dp
+            END DO
+            
+            CALL LUdecomp(MASS,nd,pivot)
+            
+            DO i=1,dim          
+              x(1:nd) = FORCE(i,1:nd)
+              CALL LUSolve(nd,MASS,x,pivot)
+              
+              SELECT CASE(i)
+              CASE(1)
+                Mesh % Nodes % x(Indexes(n+1:nd)) = x(n+1:nd) 
+              CASE(2)
+                Mesh % Nodes % y(Indexes(n+1:nd)) = x(n+1:nd) 
+              CASE(3)
+                Mesh % Nodes % z(Indexes(n+1:nd)) = x(n+1:nd) 
+              END SELECT
+            END DO
+            
+          END BLOCK
+        END IF
+      END DO
+        
+    END SUBROUTINE SetCurvedBoundary
+!------------------------------------------------------------------------------
+  END SUBROUTINE FollowCurvedBoundary
+
+  
   
   !------------------------------------------------------------------------------------------------
   !> Finds nodes for which CandNodes are True such that their mutual distance is somehow
@@ -20302,6 +20541,11 @@ END SUBROUTINE FindNeighbourNodes
       CALL FindMeshEdges( NewMesh )
     END IF
 
+    ! Our boundary may be a circle, cylider or sphere surface.
+    ! Honor those shapes when splitting the mesh!
+    CALL FollowCurvedBoundary( CurrentModel, NewMesh, .FALSE. ) 
+
+    
 !call writemeshtodisk( NewMesh, "." )
 !stop
 CONTAINS
