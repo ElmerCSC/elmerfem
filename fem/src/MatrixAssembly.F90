@@ -796,7 +796,7 @@ BLOCK
          END IF
        END SELECT
      END IF
-end block
+   END BLOCK
 
      IF ( .NOT. ASSOCIATED(Element % BoundaryInfo) .AND. Solver % GlobalBubbles ) THEN
        IF ( ASSOCIATED(Element % BubbleIndexes) ) THEN
@@ -813,7 +813,104 @@ end block
 !------------------------------------------------------------------------------
 
 
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+   SUBROUTINE mGetBoundaryIndexesFromParent( Mesh, Element, Indexes, indSize )
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+
+     ! Parameters
+     TYPE(Mesh_t) :: Mesh
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: indSize, Indexes(:)
+     
+     ! Variables
+     TYPE(Element_t), POINTER :: Edge, Face
+     INTEGER :: i,j,n
+     TYPE(Element_t), POINTER :: Parent
+     
+     ! Clear indexes
+     Indexes = 0
+     indSize = 0
+
+     IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) RETURN
+     Parent => Element % BoundaryInfo % Left
+     IF ( .NOT. ASSOCIATED( Parent ) ) &
+         Parent => Element % BoundaryInfo % Right     
+     IF ( .NOT. ASSOCIATED(Parent) ) RETURN
+             
+     n = Element % TYPE % NumberOfNodes
+
+     ! Nodal indexes
+     Indexes(1:n) = Element % NodeIndexes(1:n)
+
+     ! Assign rest of indexes if necessary
+     SELECT CASE(Parent % TYPE % DIMENSION)
+     CASE (1)
+       indSize = n 
+     CASE (2)
+        ! Add index for each bubble dof in edge
+        DO i=1,Element % BDOFs
+           n = n+1
+           
+           IF (SIZE(Indexes) < n) THEN
+              CALL Warn('mGetBoundaryIndexes','Not enough space reserved for indexes')
+              RETURN
+           END IF
+
+           Indexes(n) = Mesh % NumberOfNodes + &
+                (Parent % EdgeIndexes(Element % PDefs % localNumber)-1) * Mesh % MaxEdgeDOFs + i
+        END DO
+     
+        indSize = n 
+     CASE (3)
+        ! Get boundary face
+        Face => Mesh % Faces( Parent % FaceIndexes(Element % PDefs % localNumber) )
+        
+        ! Add indexes of faces edges 
+        DO i=1, Face % TYPE % NumberOfEdges
+           Edge => Mesh % Edges( Face % EdgeIndexes(i) )
+           
+           ! If edge has no dofs jump to next edge
+           IF (Edge % BDOFs <= 0) CYCLE
+
+           DO j=1,Edge % BDOFs
+              n = n + 1
+              
+              IF (SIZE(Indexes) < n) THEN
+                 CALL Warn('mGetBoundaryIndexes','Not enough space reserved for indexes')
+                 RETURN
+              END IF
+              
+              Indexes(n) = Mesh % NumberOfNodes +&
+                  ( Face % EdgeIndexes(i)-1)*Mesh % MaxEdgeDOFs + j
+           END DO
+        END DO
+               
+        ! Add indexes of faces bubbles
+        DO i=1,Face % BDOFs
+           n = n + 1
+
+           IF (SIZE(Indexes) < n) THEN
+              CALL Warn('mGetBoundaryIndexes','Not enough space reserved for indexes')
+              RETURN
+           END IF
+
+           Indexes(n) = Mesh % NumberOfNodes + &
+                Mesh % NumberOfEdges * Mesh % MaxEdgeDOFs + &
+                (Parent % FaceIndexes( Element % PDefs % localNumber )-1) * Mesh % MaxFaceDOFs + i
+        END DO        
+
+        indSize = n
+     CASE DEFAULT
+        CALL Fatal('mGetBoundaryIndexes','Unsupported dimension')
+     END SELECT
+!------------------------------------------------------------------------------
+   END SUBROUTINE mGetBoundaryIndexesFromParent
+!------------------------------------------------------------------------------
+
+
+   
+!------------------------------------------------------------------------------
 !> Eliminates bubble degrees of freedom from a local linear system.
 !> This version is suitable for flow models with velocity and pressure as 
 !> unknowns.

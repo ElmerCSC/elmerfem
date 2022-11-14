@@ -6769,7 +6769,7 @@ CONTAINS
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
     INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
-    LOGICAL :: Found, SetP, Passive
+    LOGICAL :: Found, SetP, Passive, TestFix
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver
@@ -6788,6 +6788,8 @@ CONTAINS
 
     SetP = ListGetLogical( Solver % Values,'Fix Constraint Modes p',Found )  
     IF(.NOT. Found) SetP = .TRUE.
+
+    TestFix = ListGetLogical( Solver % Values,'Test Fix',Found ) 
     
     ! This needs to be allocated only once, hence return if already set
     IF( Var % NumberOfConstraintModes > 0 ) RETURN
@@ -6844,16 +6846,38 @@ CONTAINS
       IF( BCPerm(bc_id) == 0 ) CYCLE
 
       n = Element % Type % NumberOfNodes
-      nb = mGetElementDOFs( Indexes, Element, Solver )
 
+      ! This is used in standard setting of Dirichlet BCs
+      CALL mGetBoundaryIndexesFromParent( Mesh, Element, Indexes, nb ) 
+
+      IF( TestFix ) THEN
+        BLOCK
+          INTEGER :: Indexes2(50),nb2,nok
+          nb2 = nb
+          Indexes2(1:nb) = Indexes(1:nb)
+
+          ! This might not work in parallel as expected
+          nb = mGetElementDOFs( Indexes, Element, Solver )
+          IF( nb /= nb2 .OR. ANY(Indexes(1:nb) /= Indexes2(1:nb) ) ) THEN
+            DO j=1,nb
+              IF(Indexes(j) /= Indexes2(j) ) EXIT
+            END DO
+            PRINT *,'verA:',ParEnv % MyPe,t,nb2,j,Indexes2(j:nb2)
+            PRINT *,'verB:',ParEnv % MyPe,t,nb,j,Indexes(j:nb)
+          END IF
+        END BLOCK
+      END IF
+        
+      
       ! If for some reason we do not want to set the P dofs to zero
       IF(.NOT. SetP) nb = n
-      
+
       ! For vector valued problems treat each component as separate dof
       DO k=1,NDOFs       
         j = NDOFS*(BCPerm(bc_id)-1)+k
         DO l=1,nb
           ! The index to constrain
+          IF( Perm(Indexes(l)) == 0 ) CYCLE
           l2 = NDOFS*(Perm(Indexes(l))-1)+k         
           Var % ConstraintModesIndeces(l2) = j
         END DO
