@@ -7296,6 +7296,11 @@ void ElementsToBoundaryConditions(struct FemType *data,
 		free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
 		data->bodyname[material] = NULL;
 	      }
+	      else
+		sprintf(data->boundaryname[material],"body%d",material);
+	    }
+	    if(!strncmp(data->boundaryname[material],"body",4)) {
+	      strncpy(data->boundaryname[material],"bnry",4);
 	    }
 	  }
 
