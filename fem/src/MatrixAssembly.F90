@@ -842,13 +842,18 @@ BLOCK
 
      ! Nodal indexes
      Indexes(1:n) = Element % NodeIndexes(1:n)
-
+     indSize = n
+     
+     
      ! Assign rest of indexes if necessary
      SELECT CASE(Parent % TYPE % DIMENSION)
      CASE (1)
-       indSize = n 
+       CONTINUE
+
      CASE (2)
-        ! Add index for each bubble dof in edge
+       IF(.NOT. ASSOCIATED(Mesh % Edges) ) RETURN
+         
+       ! Add index for each bubble dof in edge
         DO i=1,Element % BDOFs
            n = n+1
            
@@ -862,7 +867,9 @@ BLOCK
         END DO
      
         indSize = n 
-     CASE (3)
+      CASE (3)
+        IF(.NOT. ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(Mesh % Edges) ) ) RETURN
+        
         ! Get boundary face
         Face => Mesh % Faces( Parent % FaceIndexes(Element % PDefs % localNumber) )
         
