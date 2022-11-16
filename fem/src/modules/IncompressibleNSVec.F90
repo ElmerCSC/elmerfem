@@ -1044,7 +1044,12 @@ END BLOCK
 
     ! There is no elemental routine for this.
     ! So whereas this breaks the beuty it does not cost too much.
-    BC => GetBC()     
+    BC => GetBC()
+    FSSAFlag = GetString(BC, 'FSSA Flag', Found)
+    IF (.NOT.Found) THEN
+      WRITE (FSSAFlag,*) "none"
+    END IF
+    
     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient') 
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
@@ -1081,7 +1086,8 @@ END BLOCK
       ! FSSA Coefficient
       !--------------------
       FSSAcoeff = ListGetElementReal( FSSAcoeff_h,  Basis, Element, HaveFSSA, GaussPoint = t )
-      FSSAFlag = GetString(BC, 'FSSA Flag', Found)
+
+      
       ! Nothing to do, exit the routine
       !---------------------------------
       IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
@@ -1245,7 +1251,7 @@ END BLOCK
       ! version 1
       IF ( HaveFSSA ) THEN
         SELECT CASE(FSSAFlag)
-        ! approximation with normal pointing into z-direction
+          ! approximation with normal pointing into z-direction
         CASE ('normal')          
           DO p=1,nd
             DO q=1,nd
@@ -1267,18 +1273,22 @@ END BLOCK
               END DO
             END DO
           END DO        
-        CASE DEFAULT ! full entry matrix FSSA
+        CASE ('full') ! full entry matrix FSSA
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
                 STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
                      STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
                      s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+                !PRINT *, "K(",p,q,i,")=", s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
               END DO
             END DO
-          END DO      
-      END SELECT
-    END IF
+          END DO
+        CASE DEFAULT
+          
+        END SELECT
+        
+      END IF
   END DO
       
      
