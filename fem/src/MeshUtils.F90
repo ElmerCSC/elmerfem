@@ -12505,6 +12505,7 @@ CONTAINS
    
     IF(PRESENT(FitParams) ) THEN
       IF( ListCheckPresent( PParams,'Rotational Projector Radius') ) THEN
+        CALL Info('CylinderFit','Fetching cylinder paramaters from list',Level=25)
         FitParams(1) = ListGetConstReal( PParams,'Rotational Projector Center X')
         FitParams(2) = ListGetConstReal( PParams,'Rotational Projector Center Y')
         IF( cdim == 2 ) THEN
@@ -12597,13 +12598,13 @@ CONTAINS
 
     ! Normalize the axis normal length to one    
     AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
-    IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0d-5 ) THEN
-      CALL Warn('CylinderFit','The cylinder axis is not aligned with z-axis!')
+    IF( 1.0_dp - MAXVAL( ABS( AxisNormal ) ) > 1.0d-5 ) THEN
+      CALL Warn('CylinderFit','The cylinder axis is not aligned with any axis!')
     END IF
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
 
-    IF(.FALSE.) THEN
+    IF( InfoActive(30) ) THEN
       PRINT *,'Axis Normal:',AxisNormal
       PRINT *,'Axis Tangent 1:',Tangent1
       PRINT *,'Axis Tangent 2:',Tangent2
@@ -12724,8 +12725,10 @@ CONTAINS
 
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    !PRINT *,'Center point in cartesian coordinates:',Coord
-
+    IF( InfoActive(30) ) THEN
+      PRINT *,'Cylinder center and radius:',Coord, rad
+    END IF
+      
     CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
     CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
     IF( cdim == 3 ) THEN
@@ -12947,7 +12950,8 @@ CONTAINS
       END IF
       
       IF(Mode > 0 ) THEN
-        CALL Info('FollowCurvedBoundary','Setting BC '//TRIM(I2S(bc_ind))//' to follow curved boundary',Level=7)
+        CALL Info('FollowCurvedBoundary','Setting BC '//TRIM(I2S(bc_ind))//&
+            ' to follow curved boundary in mode '//TRIM(I2S(Mode)),Level=7)
         CALL SetCurvedBoundary()
       END IF
     END DO
@@ -12968,20 +12972,21 @@ CONTAINS
       ALLOCATE( DoneNode(Mesh % NumberOfNodes))
       DoneNode = .FALSE.
 
-      IF( Mode == 1 ) THEN
+      IF( Mode == 1 ) THEN  ! circle
         Orig(1:2) = FitParams(1:2)
         Orig(3) = 0.0_dp
         R = FitParams(3)
-      ELSE IF( Mode == 2 ) THEN
+      ELSE IF( Mode == 2 ) THEN  ! cylinder 
         Orig(1:3) = FitParams(1:3)
         Nrm(1:3) = FitParams(4:6)        
         R = FitParams(7)
         CALL TangentDirections(Nrm, Tngt1, Tngt2 ) 
-      ELSE IF( Mode == 3 ) THEN
+      ELSE IF( Mode == 3 ) THEN ! sphere
         Orig(1:3) = FitParams(1:3)
+        Nrm = 0.0_dp
         R = FitParams(4)
       END IF
-                  
+      
       DO t=Mesh % NumberOfBulkElements+1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(t)
@@ -13000,19 +13005,19 @@ CONTAINS
           Coord(3) = Mesh % Nodes % z(j) - Orig(3)
 
           SELECT CASE( Mode )
-          CASE( 1 ) 
+          CASE( 1 ) ! circle 
             rat = R / SQRT(SUM(Coord(1:2)**2))
             Coord(1:2) = rat*Coord(1:2)
-          CASE( 2 ) 
-            rat = R / SQRT(SUM(Coord(1:3)**2))
-            Coord(1:3) = rat*Coord(1:3)
-          CASE( 3 ) 
+          CASE( 2 ) ! cylinder
             NtCoord(1) = SUM(Nrm*Coord)
             NtCoord(2) = SUM(Tngt1*Coord)
             NtCoord(3) = SUM(Tngt2*Coord)
             rat = R / SQRT(SUM(NtCoord(2:3)**2))
             NtCoord(2:3) = rat*NtCoord(2:3)
             Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+          CASE( 3 ) ! sphere 
+            rat = R / SQRT(SUM(Coord(1:3)**2))
+            Coord(1:3) = rat*Coord(1:3)
           END SELECT
           
           Mesh % Nodes % x(j) = Coord(1) + Orig(1)
@@ -13187,11 +13192,13 @@ CONTAINS
       END DO
     END DO
 
-    PRINT *,'Extremum Inds:',Inds
-    DO i=1,NoExt
-      PRINT *,'Node:',Inds(i),SetCoord(i,:)
-    END DO
-    
+    IF( InfoActive(20) ) THEN
+      PRINT *,'Extremum Inds:',Inds
+      DO i=1,NoExt
+        PRINT *,'Node:',Inds(i),SetCoord(i,:)
+      END DO
+    END IF
+      
   END SUBROUTINE FindExtremumNodes
     
 
