@@ -103,7 +103,7 @@ CONTAINS
       Var => Var % Next
     END DO
 
-
+    NoAve = 0
     Var => Mesh % Variables    
     DO WHILE( ASSOCIATED( Var ) ) 
       
