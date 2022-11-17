@@ -6301,7 +6301,7 @@ CONTAINS
         
         DO indM=1,BMesh2 % NumberOfBulkElements
 
-         ! Rough search, note that this cannot be too tight since then
+          ! Rough search, note that this cannot be too tight since then
           ! we loose also the contacts.
           IF( ABS( Center(1) - Center2 % x(indM) ) > MaxDistance ) CYCLE
           IF( ABS( Center(2) - Center2 % y(indM) ) > MaxDistance ) CYCLE
@@ -6853,8 +6853,9 @@ CONTAINS
           END IF
           
         END DO
-
-        PRINT *,'Element size range:',MinElemH(iMesh),MaxElemH(iMesh)
+        IF( InfoActive(20) ) THEN
+          PRINT *,'Element size range:',MinElemH(iMesh),MaxElemH(iMesh)
+        END IF
       END DO
 
       ! Maximum theoretical distance of centerpoints  
@@ -11569,8 +11570,7 @@ CONTAINS
       END IF
 
     END SUBROUTINE AddProjectorWeakGeneric
-
-
+      
     
     ! Return shortest distance squared of a point to a line segment.
     ! This is limited to the spacial case when the point lies in origin. 
@@ -11589,7 +11589,6 @@ CONTAINS
         yc = y1 + q * (y2-y1)
         r2 = xc**2 + yc**2
       END IF
-             
     END FUNCTION SegmentOriginDistance2
 
     
@@ -12504,18 +12503,18 @@ CONTAINS
     END IF
    
     IF(PRESENT(FitParams) ) THEN
-      IF( ListCheckPresent( PParams,'Rotational Projector Radius') ) THEN
+      IF( ListCheckPresent( PParams,'Cylinder Radius') ) THEN
         CALL Info('CylinderFit','Fetching cylinder paramaters from list',Level=25)
-        FitParams(1) = ListGetConstReal( PParams,'Rotational Projector Center X')
-        FitParams(2) = ListGetConstReal( PParams,'Rotational Projector Center Y')
+        FitParams(1) = ListGetConstReal( PParams,'Cylinder Center X')
+        FitParams(2) = ListGetConstReal( PParams,'Cylinder Center Y')
         IF( cdim == 2 ) THEN
-          FitParams(3) = ListGetConstReal( PParams,'Rotational Projector Radius')          
+          FitParams(3) = ListGetConstReal( PParams,'Cylinder Radius')          
         ELSE
-          FitParams(3) = ListGetConstReal( PParams,'Rotational Projector Center Z')
-          FitParams(4) = ListGetConstReal( PParams,'Rotational Projector Normal X')
-          FitParams(5) = ListGetConstReal( PParams,'Rotational Projector Normal Y')
-          FitParams(6) = ListGetConstReal( PParams,'Rotational Projector Normal Z')          
-          FitParams(7) = ListGetConstReal( PParams,'Rotational Projector Radius')
+          FitParams(3) = ListGetConstReal( PParams,'Cylinder Center Z')
+          FitParams(4) = ListGetConstReal( PParams,'Cylinder Normal X')
+          FitParams(5) = ListGetConstReal( PParams,'Cylinder Normal Y')
+          FitParams(6) = ListGetConstReal( PParams,'Cylinder Normal Z')          
+          FitParams(7) = ListGetConstReal( PParams,'Cylinder Radius')
         END IF
         RETURN
       END IF
@@ -12729,15 +12728,15 @@ CONTAINS
       PRINT *,'Cylinder center and radius:',Coord, rad
     END IF
       
-    CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
-    CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+    CALL ListAddConstReal( PParams,'Cylinder Center X',Coord(1))
+    CALL ListAddConstReal( PParams,'Cylinder Center Y',Coord(2))
     IF( cdim == 3 ) THEN
-      CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
-      CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
+      CALL ListAddConstReal( PParams,'Cylinder Center Z',Coord(3))
+      CALL ListAddConstReal( PParams,'Cylinder Normal X',AxisNormal(1))
+      CALL ListAddConstReal( PParams,'Cylinder Normal Y',AxisNormal(2))
+      CALL ListAddConstReal( PParams,'Cylinder Normal Z',AxisNormal(3))
     END IF
-    CALL ListAddConstReal( PParams,'Rotational Projector Radius',rad )
+    CALL ListAddConstReal( PParams,'Cylinder Radius',rad )
 
     IF( PRESENT( FitParams ) ) THEN
       IF( cdim == 2 ) THEN
@@ -13244,21 +13243,21 @@ CONTAINS
     ! Cylindrical projector is fitted always and rotational only when requested.
     IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) .OR. &
        Cylindrical ) THEN
-      IF( .NOT. ListCheckPresent( BParams,'Rotational Projector Center X') ) THEN
+      IF( .NOT. ListCheckPresent( BParams,'Cylinder Center X') ) THEN
         CALL CylinderFit( BMesh1, BParams ) 
       END IF
     END IF
     
-    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',GotCenter ) 
-    x0(2) = ListGetCReal( BParams,'Rotational Projector Center Y',Found ) 
+    x0(1) = ListGetCReal( BParams,'Cylinder Center X',GotCenter ) 
+    x0(2) = ListGetCReal( BParams,'Cylinder Center Y',Found ) 
     GotCenter = GotCenter .OR. Found
-    x0(3) = ListGetCReal( BParams,'Rotational Projector Center Z',Found ) 
+    x0(3) = ListGetCReal( BParams,'Cylinder Center Z',Found ) 
     GotCenter = GotCenter .OR. Found
 
-    Normal(1) = ListGetCReal( BParams,'Rotational Projector Normal X',GotNormal ) 
-    Normal(2) = ListGetCReal( BParams,'Rotational Projector Normal Y',Found ) 
+    Normal(1) = ListGetCReal( BParams,'Cylinder Normal X',GotNormal ) 
+    Normal(2) = ListGetCReal( BParams,'Cylinder Normal Y',Found ) 
     GotNormal = GotNormal .OR. Found
-    Normal(3) = ListGetCReal( BParams,'Rotational Projector Normal Z',Found ) 
+    Normal(3) = ListGetCReal( BParams,'Cylinder Normal Z',Found ) 
     GotNormal = GotNormal .OR. Found
 
     IF( GotNormal ) THEN
