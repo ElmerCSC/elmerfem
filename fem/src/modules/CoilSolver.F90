@@ -1759,7 +1759,7 @@ CONTAINS
          AbsCondAtIp,DotProd
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd),NodalPot(nd),&
          NodalFix(nd),NodalDist(nd),Elcond(nd)
-    LOGICAL :: Stat, GotElCond
+    LOGICAL :: Stat, GotElCond, Erroneous
     INTEGER :: i,t,p,q
     INTEGER :: pivot(nd)
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1860,7 +1860,8 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE)
 
     IF( ASSOCIATED( FluxVarE ) ) THEN
-      CALL LUdecomp(STIFF,nd,pivot)
+      CALL LUdecomp(STIFF,nd,pivot,Erroneous)
+      IF (Erroneous) CALL Fatal('LocalFluxMatrix', 'LU-decomposition fails')
       CALL LUSolve(nd,STIFF,FORCE,pivot)
       FluxVarE % Values(FluxVarE % Perm(Element % DGIndexes(1:nd))) = FORCE(1:nd)
     END IF
@@ -1931,7 +1932,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd)
     INTEGER :: pivot(nd)
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found,Erroneous
     INTEGER :: i,j,k,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -1965,7 +1966,8 @@ CONTAINS
     END DO
 
 
-    CALL LUdecomp(STIFF,n,pivot)
+    CALL LUdecomp(STIFF,n,pivot,Erroneous)
+    IF (Erroneous) CALL Fatal('LocalCorrCurrent', 'LU-decomposition fails')    
     ! Fixing for each coordinate direction
     DO k=1,3
       x = FORCE(1:n,k)

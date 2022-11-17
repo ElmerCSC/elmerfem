@@ -713,7 +713,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer
-   LOGICAL :: ConstantBulkMatrix, ConstantBulkInUse
+   LOGICAL :: ConstantBulkMatrix, ConstantBulkInUse, Erroneous
    INTEGER :: soln
    TYPE(ValueList_t), POINTER :: SolverParams 
 
@@ -821,7 +821,8 @@ END SUBROUTINE EMWaveCalcFields_Init
 
      IF (ElementalFields) THEN
        dofcount = 0
-       CALL LUdecomp(MASS,n,pivot)
+       CALL LUdecomp(MASS,n,pivot,Erroneous)
+       IF (Erroneous) CALL Fatal('EMWaveCalcFields', 'LU-decomposition fails')
        CALL LocalSol(EF_e,   3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(dEF_e,  3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(ddEF_e, 3, n, MASS, FORCE, pivot, dofcount)

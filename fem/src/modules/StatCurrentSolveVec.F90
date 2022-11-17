@@ -968,10 +968,11 @@ CONTAINS
     INTEGER :: pivot(n),ind(n),i,j,m,dofs,dofcount,FieldType,Vari
     REAL(KIND=dp) :: x(n)
     TYPE(Variable_t), POINTER :: pVar
-    LOGICAL :: LocalSolved
+    LOGICAL :: LocalSolved, Erroneous
 !------------------------------------------------------------------------------
     
-    CALL LUdecomp(A,n,pivot)
+    CALL LUdecomp(A,n,pivot,Erroneous)
+    IF (Erroneous) CALL Fatal('LocalPostSolve', 'LU-decomposition fails')
 
     ! Weight is the 1st column
     dofcount = 1
@@ -1001,7 +1002,7 @@ CONTAINS
           IF( PostVars(Vari) % NodalField ) THEN
             CONTINUE
           ELSE IF(.NOT. LocalSolved ) THEN
-            CALL LUSolve(n,MASS,x,pivot)
+            CALL LUSolve(n,A,x,pivot)
             LocalSolved = .TRUE.
           END IF
 

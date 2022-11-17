@@ -865,7 +865,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     INTEGER, ALLOCATABLE :: Indeces(:), Pivot(:)
-    LOGICAL :: DG
+    LOGICAL :: DG, Erroneous
     
     SAVE Nodes
     
@@ -1114,8 +1114,9 @@ CONTAINS
       ! After this the STIFF and FORCE are corrupted 
       IF( ElementalField ) THEN
         EPerm => CompVarsE(1) % Var % Perm
+        CALL LUdecomp(STIFF,n,pivot,Erroneous)
+        IF (Erroneous) CALL Fatal('FourierLoss', 'LU-decomposition fails')
         DO icomp = 1, Nsum
-          CALL LUdecomp(STIFF,n,pivot)
           CALL LUSolve(n,STIFF,FORCE(icomp,:),pivot)
           CompVarsE(icomp) % Var % Values(EPerm(Element % DGIndexes(1:n))) = FORCE(icomp,1:n)
         END DO

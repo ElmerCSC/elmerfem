@@ -13031,7 +13031,7 @@ CONTAINS
             REAL(KIND=dp) :: Weight
             REAL(KIND=dp) :: Basis(20),DetJ
             REAL(KIND=dp) :: MASS(20,20), FORCE(3,20), x(20), Coord0(3)
-            LOGICAL :: Stat
+            LOGICAL :: Stat, Erroneous
             INTEGER :: nd,i,t,p,q
             INTEGER, TARGET :: Indexes(20)
             INTEGER :: pivot(20)
@@ -13103,7 +13103,8 @@ CONTAINS
               FORCE(:,i) = 0.0_dp
             END DO
             
-            CALL LUdecomp(MASS,nd,pivot)
+            CALL LUdecomp(MASS,nd,pivot,Erroneous)
+            IF (Erroneous) CALL Fatal('SetCurvedBoundary', 'LU-decomposition fails')
             
             DO i=1,dim          
               x(1:nd) = FORCE(i,1:nd)

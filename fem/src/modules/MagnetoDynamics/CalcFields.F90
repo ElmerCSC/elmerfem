@@ -642,7 +642,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: SaveNorm
    INTEGER :: NormIndex, fdim
    LOGICAL, SAVE :: ConstantMassMatrixInUse = .FALSE.
-   LOGICAL :: Parallel
+   LOGICAL :: Parallel, Erroneous
    LOGICAL :: CoilUseWvec, WvecInitHandle=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
    TYPE(VariableHandle_t), SAVE :: Wvec_h
@@ -1913,7 +1913,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      IF(ElementalFields) THEN
        dofs = 0
-       CALL LUdecomp(MASS,n,pivot)
+       CALL LUdecomp(MASS,n,pivot,Erroneous)
+       IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
        CALL LocalSol(EL_MFD,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MFS,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_VP,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
