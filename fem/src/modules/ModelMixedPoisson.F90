@@ -243,9 +243,9 @@ CONTAINS
     LOGICAL :: Stat, Found
     INTEGER :: t, i, j, p, q, np, mu_rank
     REAL(KIND=dp), POINTER :: mu_tensor(:,:)
-    REAL(KIND=dp) :: a, f, v(dim), tmp(dim), mu
+    REAL(KIND=dp) :: a, f, v(3), tmp(dim), mu
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
-    REAL(KIND=dp) :: Basis(n), DetJ, s
+    REAL(KIND=dp) :: Basis(nd), DetJ, s
     TYPE(ValueHandle_t), SAVE :: SourceField_h, ConvVelo_h, MatPar_h, MatTensor_h
     
 !------------------------------------------------------------------------------
