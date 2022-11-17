@@ -692,6 +692,7 @@ MODULE Types
       INTEGER :: GaussPoints     ! Number of gauss points to use when using p elements
       LOGICAL :: pyramidQuadEdge ! Is element an edge of pyramid quad face?
       INTEGER :: localNumber     ! Local number of an edge or face for element on boundary
+      TYPE(Element_t), POINTER :: localParent => Null()     ! Local number of an edge or face for element on boundary
    END TYPE PElementDefs_t
 
 !-------------------------------------------------------------------------------

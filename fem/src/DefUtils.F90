@@ -1828,9 +1828,13 @@ CONTAINS
 
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
 
-         Parent => Element % BoundaryInfo % Left
-         IF (.NOT.ASSOCIATED(Parent) ) &
-             Parent => Element % BoundaryInfo % Right
+         IF (isActivePElement(Element) ) THEN
+           Parent => Element % PDefs % LocalParent
+         ELSE
+           Parent => Element % BoundaryInfo % Left
+           IF (.NOT.ASSOCIATED(Parent) ) &
+               Parent => Element % BoundaryInfo % Right
+         END IF
          IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
          SELECT CASE(ElemFamily)
@@ -5020,8 +5024,7 @@ CONTAINS
            IF ( isActivePElement(Parent)) THEN
              n = GetElementNOFNodes()
              ! Get indexes of boundary dofs:
-             CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
-
+             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
              DO k=n+1,numEdgeDofs
                nb = x % Perm( gInd(k) )
                IF ( nb <= 0 ) CYCLE
@@ -5173,7 +5176,7 @@ CONTAINS
              n = Element % TYPE % NumberOfNodes
 
              ! Get indexes for boundary and values for dofs associated to them
-             CALL getBoundaryIndexes( Solver % Mesh, Element, Parent, gInd, numEdgeDofs )
+             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
              CALL LocalBcBDOFs( BC, Element, numEdgeDofs, Name, STIFF, Work )
 
              IF ( Solver % Matrix % Symmetric ) THEN
@@ -5242,8 +5245,7 @@ CONTAINS
              n = Element % TYPE % NumberOfNodes
 
              ! Get global boundary indexes and solve dofs associated to them
-             CALL getBoundaryIndexes( Solver % Mesh, Element,  &
-                 Parent, gInd, numEdgeDofs )
+             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
 
              ! If boundary face has no dofs skip to next boundary element
              IF (numEdgeDOFs == n) CYCLE
@@ -5290,7 +5292,6 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
        END DO
      END IF
-
 
      ! BLOCK
      !------------------------------------
@@ -5709,7 +5710,6 @@ CONTAINS
        END WHERE
      END IF
                 
-     
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
@@ -6687,112 +6687,6 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE MapGaussPoints
-!------------------------------------------------------------------------------
-
-!> Calculate global indexes of boundary dofs for given p-element lying on 
-!> a boundary.
-!------------------------------------------------------------------------------
-   SUBROUTINE getBoundaryIndexes( Mesh, Element, Parent, Indexes, indSize )
-!------------------------------------------------------------------------------
-!
-!    Type(Mesh_t) :: Mesh
-!      INPUT: Finite element mesh containing edges and faces of elements
-!
-!    Type(Element_t) :: Element
-!      INPUT: Boundary element to get indexes for
-!
-!    Type(Element_t) :: Parent
-!      INPUT: Parent of boundary element to get indexes for
-!
-!    INTEGER :: Indexes(:)
-!      OUTPUT: Calculated indexes of boundary element in global system
-! 
-!    INTEGER :: indSize
-!      OUTPUT: Size of created index vector, i.e. how many indexes were created
-!        starting from index 1
-!------------------------------------------------------------------------------
-     IMPLICIT NONE
-
-     ! Parameters
-     TYPE(Mesh_t) :: Mesh
-     TYPE(Element_t) :: Parent
-     TYPE(Element_t), POINTER :: Element
-     INTEGER :: indSize, Indexes(:)
-     
-     ! Variables
-     TYPE(Element_t), POINTER :: Edge, Face
-     INTEGER :: i,j,n
-
-     ! Clear indexes
-     Indexes = 0
-     n = Element % TYPE % NumberOfNodes
-
-     ! Nodal indexes
-     Indexes(1:n) = Element % NodeIndexes(1:n)
-
-     ! Assign rest of indexes if necessary
-     SELECT CASE(Parent % TYPE % DIMENSION)
-     CASE (1)
-       indSize = n 
-     CASE (2)
-        ! Add index for each bubble dof in edge
-        DO i=1,Element % BDOFs
-           n = n+1
-           
-           IF (SIZE(Indexes) < n) THEN
-              CALL Warn('DefUtils::getBoundaryIndexes','Not enough space reserved for indexes')
-              RETURN
-           END IF
-
-           Indexes(n) = Mesh % NumberOfNodes + &
-                (Parent % EdgeIndexes(Element % PDefs % localNumber)-1) * Mesh % MaxEdgeDOFs + i
-        END DO
-     
-        indSize = n 
-     CASE (3)
-        ! Get boundary face
-        Face => Mesh % Faces( Parent % FaceIndexes(Element % PDefs % localNumber) )
-        
-        ! Add indexes of faces edges 
-        DO i=1, Face % TYPE % NumberOfEdges
-           Edge => Mesh % Edges( Face % EdgeIndexes(i) )
-           
-           ! If edge has no dofs jump to next edge
-           IF (Edge % BDOFs <= 0) CYCLE
-
-           DO j=1,Edge % BDOFs
-              n = n + 1
-              
-              IF (SIZE(Indexes) < n) THEN
-                 CALL Warn('DefUtils::getBoundaryIndexes','Not enough space reserved for indexes')
-                 RETURN
-              END IF
-              
-              Indexes(n) = Mesh % NumberOfNodes +&
-                  ( Face % EdgeIndexes(i)-1)*Mesh % MaxEdgeDOFs + j
-           END DO
-        END DO
-               
-        ! Add indexes of faces bubbles
-        DO i=1,Face % BDOFs
-           n = n + 1
-
-           IF (SIZE(Indexes) < n) THEN
-              CALL Warn('DefUtils::getBoundaryIndexes','Not enough space reserved for indexes')
-              RETURN
-           END IF
-
-           Indexes(n) = Mesh % NumberOfNodes + &
-                Mesh % NumberOfEdges * Mesh % MaxEdgeDOFs + &
-                (Parent % FaceIndexes( Element % PDefs % localNumber )-1) * Mesh % MaxFaceDOFs + i
-        END DO        
-
-        indSize = n
-     CASE DEFAULT
-        CALL Fatal('DefUtils::getBoundaryIndexes','Unsupported dimension')
-     END SELECT
-!------------------------------------------------------------------------------
-   END SUBROUTINE getBoundaryIndexes
 !------------------------------------------------------------------------------
 
 

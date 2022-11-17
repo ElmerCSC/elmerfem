@@ -691,12 +691,14 @@ BLOCK
        FacesDone = .FALSE.
 
        IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
+         EdgesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( Solver % GlobalBubbles ) THEN
+             IF ( Solver % GlobalBubbles.AND. Element % BodyId>0 ) THEN
                EDOFs = Element % BDOFs 
              ELSE
+               EdgesDone = .FALSE.
                CYCLE
              END IF
            ELSE
@@ -708,21 +710,24 @@ BLOCK
                  i + NDOFs * Solver % Mesh % NumberOfNodes
            END DO
          END DO
-         EdgesDone = .TRUE.
        END IF
 
-       IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+       IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
+         FacesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOFFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
+
            IF( Face % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( Solver % GlobalBubbles ) THEN
+             IF ( Solver % GlobalBubbles .AND. Element % BodyId>0 ) THEN
                FDOFs = Element % BDOFs 
              ELSE
+               FacesDone = .FALSE.
                CYCLE
              END IF
            ELSE
              FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
            END IF
+
            DO i=1,FDOFs
              NB = NB + 1
              Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
@@ -730,14 +735,17 @@ BLOCK
                  EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
          END DO
-         FacesDone = .TRUE.
        END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
 
-       Parent => Element % BoundaryInfo % Left
-       IF (.NOT.ASSOCIATED(Parent) ) &
-           Parent => Element % BoundaryInfo % Right
+       IF(isActivePelement(Element)) THEN
+         Parent => Element % pDefs % LocalParent
+       ELSE
+         Parent => Element % BoundaryINfo % Left
+         IF(.NOT.ASSOCIATED(Parent)) &
+           Parent => Element % BoundaryINfo % Right
+       END IF
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
        SELECT CASE(ElemFamily)
@@ -785,29 +793,44 @@ BLOCK
            END IF
 
            IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
-             FDOFs = Element % BDOFs
-             DO i=1,FDOFs
-               NB = NB + 1
 
-               Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                   NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+             IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element) ) THEN
+               Face => Solver % Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
+             ELSE
+               Face => Element
+             END IF
+
+             DO j=1,Face % TYPE % NumberOFEdges
+               DO i=1, Solver % Mesh % Edges( face % EdgeIndexes(j) ) % BDOFs
+                 NB = NB + 1
+                 Indexes(NB) = EdgeDOFs*(face % EdgeIndexes(j)-1) + &
+                     i + NDOFs * Solver % Mesh % NumberOfNodes
+               END DO
              END DO
+
+              FDOFs = Element % BDOFs
+              DO i=1,FDOFs
+                NB = NB + 1
+ 
+                Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
+                    NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+              END DO
            END IF
          END IF
        END SELECT
      END IF
    END BLOCK
 
-     IF ( .NOT. ASSOCIATED(Element % BoundaryInfo) .AND. Solver % GlobalBubbles ) THEN
-       IF ( ASSOCIATED(Element % BubbleIndexes) ) THEN
-         DO i=1,Element % BDOFs
-           NB = NB + 1
-           Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
-               NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
-               Element % BubbleIndexes(i)
-         END DO
-       END IF
+   IF ( .NOT. ASSOCIATED(Element % BoundaryInfo) .AND. Solver % GlobalBubbles ) THEN
+     IF ( ASSOCIATED(Element % BubbleIndexes) ) THEN
+        DO i=1,Element % BDOFs
+          NB = NB + 1
+          Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
+              NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
+              Element % BubbleIndexes(i)
+        END DO
      END IF
+   END IF
 !------------------------------------------------------------------------------
    END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
@@ -832,10 +855,7 @@ BLOCK
      Indexes = 0
      indSize = 0
 
-     IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) RETURN
-     Parent => Element % BoundaryInfo % Left
-     IF ( .NOT. ASSOCIATED( Parent ) ) &
-         Parent => Element % BoundaryInfo % Right     
+     Parent => Element % pDefs % localParent
      IF ( .NOT. ASSOCIATED(Parent) ) RETURN
              
      n = Element % TYPE % NumberOfNodes

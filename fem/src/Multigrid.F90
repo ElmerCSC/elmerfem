@@ -1359,9 +1359,7 @@ CONTAINS
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF (.NOT. isActivePElement(Element) ) RETURN
 
-       Parent => Element % BoundaryInfo % Left
-       IF (.NOT.ASSOCIATED(Parent) ) &
-         Parent => Element % BoundaryInfo % Right
+       Parent => Element % PDefs % LocalParent
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
        IF ( ASSOCIATED( Parent % EdgeIndexes ) ) THEN

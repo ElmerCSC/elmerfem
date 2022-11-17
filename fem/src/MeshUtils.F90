@@ -21380,8 +21380,10 @@ CONTAINS
 
        ! If all nodes are on boundary, edge was found
        IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          IF(EvalPE) &
+          IF(EvalPE) THEN
               EdgeElement % PDefs % localNumber = edgeNumber
+              EdgeElement % PDefs % LocalParent => Element
+          END IF
 
           ! Change ordering of global nodes to match that of element
           bMap = getElementBoundaryMap( Element, edgeNumber )
