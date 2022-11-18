@@ -973,7 +973,7 @@ END BLOCK
     TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
     TYPE(ValueList_t), POINTER :: BC    
     
-    SAVE Basis
+    SAVE Basis, HaveNormal
     
 !------------------------------------------------------------------------------
     
