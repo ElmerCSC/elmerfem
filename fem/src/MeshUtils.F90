@@ -21431,7 +21431,8 @@ CONTAINS
     END DO
 
     ! If we are here local number not found
-    CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge')
+    IF(.NOT.ASSOCIATED(EdgeElement % PDefs % LocalParent)) &
+      CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge')
     ! EdgeElement % localNumber = 1
   CONTAINS
 
