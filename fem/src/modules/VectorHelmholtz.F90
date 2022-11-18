@@ -650,9 +650,9 @@ CONTAINS
     
     Parent => GetBulkElementAtBoundary(Element)
     
-    STIFF(1:nd,1:nd) = 0.0_dp
-    MASS(1:nd,1:nd)  = 0.0_dp
-    FORCE(1:nd) = 0.0_dp
+    STIFF = 0.0_dp
+    MASS = 0.0_dp
+    FORCE = 0.0_dp
 
     TemPot(1:n) = GetReal( BC, 'TEM Potential', Found ) + &
         im * GetReal(BC, 'TEM Potential im', Found)
