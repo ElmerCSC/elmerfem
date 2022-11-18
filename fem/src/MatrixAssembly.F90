@@ -704,6 +704,7 @@ BLOCK
            ELSE
              EDOFs = Solver % Mesh % Edges( Element % EdgeIndexes(j) ) % BDOFs
            END IF
+
            DO i=1,EDOFs
              NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
@@ -800,13 +801,15 @@ BLOCK
                Face => Element
              END IF
 
-             DO j=1,Face % TYPE % NumberOFEdges
-               DO i=1, Solver % Mesh % Edges( face % EdgeIndexes(j) ) % BDOFs
-                 NB = NB + 1
-                 Indexes(NB) = EdgeDOFs*(face % EdgeIndexes(j)-1) + &
-                     i + NDOFs * Solver % Mesh % NumberOfNodes
+             IF(.NOT.EdgesDone) THEN
+               DO j=1,Face % TYPE % NumberOFEdges
+                 DO i=1, Solver % Mesh % Edges( face % EdgeIndexes(j) ) % BDOFs
+                   NB = NB + 1
+                   Indexes(NB) = EdgeDOFs*(face % EdgeIndexes(j)-1) + &
+                       i + NDOFs * Solver % Mesh % NumberOfNodes
+                 END DO
                END DO
-             END DO
+              END IF
 
               FDOFs = Element % BDOFs
               DO i=1,FDOFs
