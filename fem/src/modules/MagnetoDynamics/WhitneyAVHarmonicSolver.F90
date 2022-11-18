@@ -1901,7 +1901,7 @@ END BLOCK
        IF ( PiolaVersion ) THEN
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+               dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
