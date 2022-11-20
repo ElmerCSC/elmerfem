@@ -3170,6 +3170,16 @@ CONTAINS
      IF( ASSOCIATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs )
      IF( ASSOCIATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
 
+     IF( Mesh % MaxFaceDofs > 0 ) THEN
+       CALL Info('NonNodalElements','Face dofs max: '//TRIM(I2S(Mesh % MaxFaceDofs)),Level=12)
+     END IF
+     IF( Mesh % MaxEdgeDofs > 0 ) THEN
+       CALL Info('NonNodalElements','Edge dofs max: '//TRIM(I2S(Mesh % MaxEdgeDofs)),Level=12)
+     END IF
+     IF( Mesh % MaxElementDofs > 0 ) THEN
+       CALL Info('NonNodalElements','Element dofs max: '//TRIM(I2S(Mesh % MaxElementDofs)),Level=12)
+     END IF
+
    END SUBROUTINE NonNodalElements
 
 
@@ -12478,16 +12488,16 @@ CONTAINS
     INTEGER, OPTIONAL :: dim
     REAL(KIND=dp), OPTIONAL :: FitParams(:)
     
-    INTEGER :: i,j,k,n,t,AxisI,iter,cdim
+    INTEGER :: i,j,k,n,t,AxisI,iter,cdim,ierr
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp) :: NiNj(3,3),A(3,3),F(3),M11,M12,M13,M14
+    REAL(KIND=dp) :: NiNj(9),A(3,3),F(3),M11,M12,M13,M14
     REAL(KIND=dp) :: d1,d2,MinDist,MaxDist,Dist,X0,Y0,Rad
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
-        CircleCoord(3,3)
+        CircleCoord(9)
     INTEGER :: CircleInd(3) 
-    LOGICAL :: BCMode
+    LOGICAL :: BCMode, DoIt
     INTEGER :: Tag, t1, t2
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
@@ -12553,7 +12563,7 @@ CONTAINS
       END IF
               
       ! For 2D we only tag the boundary nodes
-      IF( cdim < 3 ) CYCLE
+      IF( cdim <  3 ) CYCLE
 
       Nodes % x(1:n) = PMesh % Nodes % x(NodeIndexes(1:n))
       Nodes % y(1:n) = PMesh % Nodes % y(NodeIndexes(1:n))
@@ -12563,21 +12573,28 @@ CONTAINS
       
       DO i=1,3
         DO j=1,3
-          NiNj(i,j) = NiNj(i,j) + Normal(i) * Normal(j)
+          NiNj(3*(i-1)+j) = NiNj(3*(i-1)+j) + Normal(i) * Normal(j)
         END DO
       END DO
     END DO
 
     IF( cdim == 2 ) GOTO 100 
-    
+
+    ! Only in BC mode we do currently parallel reduction.
+    ! This could be altered too. 
+    IF( BCMode ) THEN
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE,NiNj,9, &
+          MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+    END IF
+      
     ! Normalize by the number of boundary elements
-    NiNj = NiNj / PMesh % NumberOfBulkElements
+    !NiNj = NiNj / PMesh % NumberOfBulkElements
 
     ! The potential direction for the cylinder axis is the direction with 
     ! least hits for the normal.
     AxisI = 1 
     DO i=2,3
-      IF( NiNj(i,i) < NiNj(AxisI,AxisI) ) AxisI = i 
+      IF( NiNj(3*(i-1)+i) < NiNj(3*(AxisI-1)+AxisI) ) AxisI = i 
     END DO
 
     CALL Info('CylinderFit','Axis coordinate set to be: '//TRIM(I2S(AxisI)))
@@ -12589,7 +12606,11 @@ CONTAINS
     ! Basically we could solve from equation Ax=0 the tangent but only up to a constant.
     ! Thus we enforce the axis direction to one by manipulation the matrix equation 
     ! thereby can get a unique solution. 
-    A = NiNj
+    DO i=1,3
+      DO j=1,3
+        A(i,j) = NiNj(3*(i-1)+j)
+      END DO
+    END DO
     A(AxisI,1:3) = 0.0_dp
     A(AxisI,AxisI) = 1.0_dp
     CALL InvertMatrix( A, 3 )
@@ -12603,7 +12624,7 @@ CONTAINS
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
 
-    IF( InfoActive(30) ) THEN
+    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
       PRINT *,'Axis Normal:',AxisNormal
       PRINT *,'Axis Tangent 1:',Tangent1
       PRINT *,'Axis Tangent 2:',Tangent2
@@ -12613,7 +12634,8 @@ CONTAINS
 
     ! First, find the single extremum point in the first tangent direction
     ! Save the local coordinates in the N-T system of the cylinder
-    MinDist = HUGE(MinDist) 
+    MinDist = HUGE(MinDist)
+    MaxDist = -HUGE(MaxDist)
     DO i=1, PMesh % NumberOfNodes
       Coord(1) = PMesh % Nodes % x(i)
       Coord(2) = PMesh % Nodes % y(i)
@@ -12628,88 +12650,126 @@ CONTAINS
         MinDist = d1
         CircleInd(1) = i
       END IF
+      IF( d1 > MaxDist ) THEN
+        MaxDist = d1
+        CircleInd(2) = i
+      END IF
     END DO
 
-    i = CircleInd(1)
-    Coord(1) = PMesh % Nodes % x(i)
-    Coord(2) = PMesh % Nodes % y(i)
-    Coord(3) = PMesh % Nodes % z(i)
-      
-    CircleCoord(1,1) = SUM( Tangent1 * Coord ) 
-    CircleCoord(1,2) = SUM( Tangent2 * Coord ) 
-    CircleCoord(1,3) = SUM( AxisNormal * Coord )
-   
+    CircleCoord = -HUGE(CircleCoord)
+    DO j=1,2    
+      i = CircleInd(j)
 
+      IF( BCMode ) THEN
+        IF(j==1) THEN
+          Dist = ParallelReduction( MinDist, 1 )
+          IF(ABS(MinDist-Dist) > 1.0e-10) CYCLE
+        ELSE IF(j==2) THEN
+          Dist = ParallelReduction( MaxDist, 2)
+          IF(ABS(MaxDist-Dist) > 1.0e-10) CYCLE
+        END IF
+      END IF
+        
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+      
+      CircleCoord(3*(j-1)+1) = SUM( Tangent1 * Coord ) 
+      CircleCoord(3*(j-1)+2) = SUM( Tangent2 * Coord ) 
+      CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
+    END DO
+
+    IF( BCMode ) THEN
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,6, &
+          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+    END IF
+      
     !PRINT *,'MinDist1:',MinDist,CircleInd(1),CircleCoord(1,:)
 
-    ! Find two more points such that their minimum distance to the previous point(s)
+    ! Find one more point such that their minimum distance to the previous point(s)
     ! is maximized. This takes some time but the further the nodes are apart the more 
     ! accurate it will be to fit the circle to the points. Also if there is just 
     ! a symmetric section of the cylinder it is important to find the points rigorously.
-    DO j=2,3
-      ! The maximum minimum distance of any node from the previously defined nodes
-      MaxDist = 0.0_dp
-      DO i=1, PMesh % NumberOfNodes
-        Coord(1) = PMesh % Nodes % x(i)
-        Coord(2) = PMesh % Nodes % y(i)
-        Coord(3) = PMesh % Nodes % z(i)
-        
-        IF( BCMode ) THEN
-          IF( .NOT. ActiveNode(i) ) CYCLE
-        END IF
-        
-        ! Minimum distance from the previously defined nodes
-        MinDist = HUGE(MinDist)
-        DO k=1,j-1
-          d1 = SUM( Tangent1 * Coord )
-          d2 = SUM( Tangent2 * Coord )
-          Dist = ( d1 - CircleCoord(k,1) )**2 + ( d2 - CircleCoord(k,2) )**2
-          MinDist = MIN( Dist, MinDist )
-        END DO
-        
-        ! If the minimum distance is greater than in any other node, choose this
-        IF( MaxDist < MinDist ) THEN
-          MaxDist = MinDist 
-          CircleInd(j) = i
-        END IF
+    j = 3
+    ! The maximum minimum distance of any node from the previously defined nodes
+    MaxDist = 0.0_dp
+    DO i=1, PMesh % NumberOfNodes
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+      
+      IF( BCMode ) THEN
+        IF( .NOT. ActiveNode(i) ) CYCLE
+      END IF
+      
+      ! Minimum distance from the previously defined nodes
+      MinDist = HUGE(MinDist)
+      DO k=1,j-1
+        d1 = SUM( Tangent1 * Coord )
+        d2 = SUM( Tangent2 * Coord )
+        Dist = ( d1 - CircleCoord(3*(k-1)+1) )**2 + ( d2 - CircleCoord(3*(k-1)+2) )**2
+        MinDist = MIN( Dist, MinDist )
       END DO
+      
+      ! If the minimum distance to either previous selelected nodes
+      ! is greater than in any other node, choose this
+      IF( MaxDist < MinDist ) THEN
+        MaxDist = MinDist 
+        CircleInd(j) = i
+      END IF
+    END DO
+    
+    ! Ok, we have found the point now set the circle coordinates 
+    DoIt = .TRUE.
+    IF( BCMode ) THEN
+      Dist = ParallelReduction( MaxDist, 2 )
+      DoIt = ( ABS(MaxDist-Dist) < 1.0e-10 )
+    END IF
 
-      ! Ok, we have found the point now set the circle coordinates 
+    IF( DoIt ) THEN
       i = CircleInd(j)
       Coord(1) = PMesh % Nodes % x(i)
       Coord(2) = PMesh % Nodes % y(i)
       Coord(3) = PMesh % Nodes % z(i)
       
-      CircleCoord(j,1) = SUM( Tangent1 * Coord ) 
-      CircleCoord(j,2) = SUM( Tangent2 * Coord ) 
-      CircleCoord(j,3) = SUM( AxisNormal * Coord )
-    END DO
+      CircleCoord(3*(j-1)+1) = SUM( Tangent1 * Coord ) 
+      CircleCoord(3*(j-1)+2) = SUM( Tangent2 * Coord ) 
+      CircleCoord(3*(j-1)+3) = SUM( AxisNormal * Coord )
+    END IF
+
+    IF( BCMode ) THEN
+      CALL MPI_ALLREDUCE(MPI_IN_PLACE,CircleCoord,9, &
+          MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+    END IF
       
-
-    !PRINT *,'Circle Indexes:',CircleInd
-
+    IF( InfoActive(30) .AND. ParEnv % MyPe == 0 ) THEN
+      DO i=1,3
+        PRINT *,'Circle Coord:',i,CircleCoord(3*i-2:3*i) 
+      END DO
+    END IF
+      
     ! Given three nodes it is possible to analytically compute the center point and
     ! radius of the cylinder from a 4x4 determinant equation. The matrices values
     ! m1i are the determinants of the comatrices. 
 
-    A(1:3,1) = CircleCoord(1:3,1)  ! x
-    A(1:3,2) = CircleCoord(1:3,2)  ! y
+    A(1:3,1) = CircleCoord(1::3)  ! x
+    A(1:3,2) = CircleCoord(2::3)  ! y
     A(1:3,3) = 1.0_dp
     m11 = Det3x3( a )
 
-    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2  ! x^2+y^2
-    A(1:3,2) = CircleCoord(1:3,2)  ! y
+    A(1:3,1) = CircleCoord(1::3)**2 + CircleCoord(2::3)**2  ! x^2+y^2
+    A(1:3,2) = CircleCoord(2::3)  ! y
     A(1:3,3) = 1.0_dp
     m12 = Det3x3( a )
  
-    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2  ! x^2+y^2
-    A(1:3,2) = CircleCoord(1:3,1)  ! x
+    A(1:3,1) = CircleCoord(1::3)**2 + CircleCoord(2::3)**2  ! x^2+y^2
+    A(1:3,2) = CircleCoord(1::3)  ! x
     A(1:3,3) = 1.0_dp
     m13 = Det3x3( a )
  
-    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2 ! x^2+y^2
-    A(1:3,2) = CircleCoord(1:3,1)  ! x
-    A(1:3,3) = CircleCoord(1:3,2)  ! y
+    A(1:3,1) = CircleCoord(1::3)**2 + CircleCoord(2::3)**2 ! x^2+y^2
+    A(1:3,2) = CircleCoord(1::3)  ! x
+    A(1:3,3) = CircleCoord(2::3)  ! y
     m14 = Det3x3( a )
 
     !PRINT *,'determinants:',m11,m12,m13,m14
@@ -12887,12 +12947,23 @@ CONTAINS
       Sxxx = SUM(x*x*x); Syyy = SUM(y*y*y);
       Szzz = SUM(z*z*z); Sxyy = SUM(x*y*y);
       Sxzz = SUM(x*z*z); Sxxy = SUM(x*x*y);
-      Sxxz = SUM(x*x*z); Syyz =SUM(y*y*z);
+      Sxxz = SUM(x*x*z); Syyz = SUM(y*y*z);
       Syzz = SUM(y*z*z);
 
-      ! We should do parallel reduction here if the surface is split among
+      ! We must do parallel reduction here if the surface is split among
       ! several MPI processes. 
-      
+      IF( BCMode .AND. ParEnv % PEs > 1 ) THEN
+        Sx = ParallelReduction(Sx); Sy = ParallelReduction(Sy); Sz = ParallelReduction(Sz);
+        Sxx = ParallelReduction(Sxx); Syy = ParallelReduction(Syy);
+        Szz = ParallelReduction(Szz); Sxy = ParallelReduction(Sxy);
+        Sxz = ParallelReduction(Sxz); Syz = ParallelReduction(Syz);
+        Sxxx = ParallelReduction(Sxxx); Syyy = ParallelReduction(Syyy);
+        Szzz = ParallelReduction(Szzz); Sxyy = ParallelReduction(Sxyy);
+        Sxzz = ParallelReduction(Sxzz); Sxxy = ParallelReduction(Sxxy);
+        Sxxz = ParallelReduction(Sxxz); Syyz = ParallelReduction(Syyz);
+        Syzz = ParallelReduction(Syzz);       
+      END IF
+           
       A1 = Sxx +Syy +Szz;
       a = 2*Sx*Sx-2*N*Sxx;
       b = 2*Sx*Sy-2*N*Sxy;
@@ -20818,7 +20889,11 @@ CONTAINS
 !      CALL AllocateVector( IntArray, k )
 !
 !      Old mesh nodes were copied as is...
-!      
+!
+       IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % Neighbourlist ) ) THEN
+         CALL Fatal('UpdateParallelMesh','Original mesh has no NeighbourList!')
+       END IF
+       
        DO i=1,Mesh % NumberOfNodes
           CALL AllocateVector( NewMesh % ParallelInfo % NeighbourList(i) % Neighbours, &
                 SIZE( Mesh % ParallelInfo % Neighbourlist(i) % Neighbours) )
