@@ -12501,17 +12501,42 @@ CONTAINS
     INTEGER :: Tag, t1, t2
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
-    
-    ! If the initial mesh is in 2D there is really no need to figure out the 
-    ! direction of the rotational axis. It can only be aligned with the z-axis. 
-    cdim = PMesh % MeshDim
-    IF(PRESENT(dim)) cdim = MIN(cdim,dim)
 
-    IF( cdim == 2 ) THEN
-      AxisNormal = 0.0_dp
-      AxisNormal(3) = 1.0_dp
+    BCMode = PRESENT( BCind )
+
+    ! Set the range for the possible active elements. 
+    ! Set the range for the possible active elements. 
+    IF( BCMode ) THEN
+      t1 = PMesh % NumberOfBulkElements + 1
+      t2 = PMesh % NumberOfBulkElements + PMesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+      ALLOCATE( ActiveNode( PMesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
+    ELSE
+      t1 = 1
+      t2 = PMesh % NumberOfBulkElements      
     END IF
-   
+    
+    ! If this is a line mesh there is really no need to figure out the 
+    ! direction of the rotational axis. It can only be aligned with the z-axis.
+    DO t=t1, t2
+      Element => PMesh % Elements(t)
+      IF( BCMode ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+      END IF
+      IF( Element % TYPE % ElementCode < 300 ) THEN
+        cdim = 2
+      ELSE
+        cdim = 3
+      END IF
+      EXIT
+    END DO
+    
+    IF( BcMode ) THEN
+      cdim = ParallelReduction( cdim, 2 )
+    END IF
+    
     IF(PRESENT(FitParams) ) THEN
       IF( ListCheckPresent( PParams,'Cylinder Radius') ) THEN
         CALL Info('CylinderFit','Fetching cylinder paramaters from list',Level=25)
@@ -12529,25 +12554,15 @@ CONTAINS
         RETURN
       END IF
     END IF
-              
-    ! Set the range for the possible active elements. 
-    ! Set the range for the possible active elements. 
-    IF( PRESENT( BCind ) ) THEN
-      BCMode = .TRUE.
-      t1 = PMesh % NumberOfBulkElements + 1
-      t2 = PMesh % NumberOfBulkElements + PMesh % NumberOfBoundaryElements
-      Tag = CurrentModel % BCs(BCind) % Tag
-      ALLOCATE( ActiveNode( PMesh % NumberOfNodes ) )
-      ActiveNode = .FALSE.
-    ELSE
-      BCMode = .FALSE.
-      t1 = 1
-      t2 = PMesh % NumberOfBulkElements      
-    END IF
-
+                  
     n = PMesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-    
+
+    IF( cdim == 2 ) THEN
+      AxisNormal = 0.0_dp
+      AxisNormal(3) = 1.0_dp
+    END IF
+       
     ! Compute the inner product of <N*N> for the elements
     NiNj = 0.0_dp
     DO t=t1, t2
@@ -12570,14 +12585,13 @@ CONTAINS
       Nodes % z(1:n) = PMesh % Nodes % z(NodeIndexes(1:n))           
       
       Normal = NormalVector( Element, Nodes, Check = .FALSE. ) 
-      
       DO i=1,3
         DO j=1,3
           NiNj(3*(i-1)+j) = NiNj(3*(i-1)+j) + Normal(i) * Normal(j)
         END DO
       END DO
     END DO
-
+      
     IF( cdim == 2 ) GOTO 100 
 
     ! Only in BC mode we do currently parallel reduction.
@@ -12587,9 +12601,6 @@ CONTAINS
           MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
       
-    ! Normalize by the number of boundary elements
-    !NiNj = NiNj / PMesh % NumberOfBulkElements
-
     ! The potential direction for the cylinder axis is the direction with 
     ! least hits for the normal.
     AxisI = 1 
