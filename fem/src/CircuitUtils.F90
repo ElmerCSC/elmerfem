@@ -378,7 +378,7 @@ CONTAINS
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
-        READ(name(slen-1:j-1),*) CompId
+        READ(name(13:j-1),*) CompId
         IF (.NOT. ANY(ComponentIDs == CompID)) nofc = nofc + 1
         ComponentIDs(i) = CompId
       END IF
