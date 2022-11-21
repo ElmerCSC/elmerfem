@@ -358,7 +358,7 @@ CONTAINS
   FUNCTION CountNofCircComponents(CId, nofvar) RESULT (nofc)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: nofc, nofvar, slen, CId, i, j, CompId
+    INTEGER :: nofc, nofvar, slen, CId, i, j, CompId, ibracket
     INTEGER :: ComponentIDs(nofvar)
     CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
     TYPE(Circuit_t), POINTER :: Circuit
@@ -375,10 +375,16 @@ CONTAINS
       CALL Matc( cmd, name, slen )
 
       IF(isComponentName(name,slen)) THEN
-        DO j=13,slen
+        DO ibracket=1,slen
+          IF(name(ibracket:ibracket)=='(') EXIT 
+        END DO
+
+        DO j=ibracket+1,slen
           IF(name(j:j)==')') EXIT 
         END DO
-        READ(name(13:j-1),*) CompId
+
+        READ(name(ibracket+1:j-1),*) CompId
+
         IF (.NOT. ANY(ComponentIDs == CompID)) nofc = nofc + 1
         ComponentIDs(i) = CompId
       END IF
