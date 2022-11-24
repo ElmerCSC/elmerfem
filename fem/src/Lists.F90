@@ -327,7 +327,10 @@ CONTAINS
        END IF
      END IF
 
-
+     ! In the case of p-elements two neighbouring elements may have different
+     ! degrees of approximation, find out the highest order associated with 
+     ! a particular edge or face: 
+     !
      IF ( ANY(Solver % Def_Dofs(:,:,6)>=0) ) THEN
        IF ( Mesh % NumberOFEdges>0 ) THEN
           ALLOCATE(EdgeDOFs(Mesh % NumberOfEdges))
@@ -410,10 +413,8 @@ CONTAINS
              ndofs = 0
              IF ( Def_Dofs(2) >= 0) THEN
                ndofs = Def_Dofs(2)
-             ELSE IF (Def_Dofs(6)>=0) THEN
+             ELSE IF (Def_Dofs(6)>=1) THEN
                ndofs = EdgeDOFs(Element % EdgeIndexes(i))
-!              IF (Def_Dofs(6)==0) ndofs = MAX(Edge % BDOFs,ndofs)
-               ndofs = MAX(Edge % BDOFs,ndofs)
              END IF
 
              DO e=1,ndofs
@@ -431,7 +432,7 @@ CONTAINS
              Face => Mesh % Faces( Element % FaceIndexes(i) )
              IF(Element % Type % ElementCode==Face % Type % ElementCode.AND..NOT.GB) CYCLE
 
-              l = MAX(0,Def_Dofs(3))
+             l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
 
              IF(l==0) THEN
@@ -453,10 +454,8 @@ CONTAINS
              ndofs = 0
              IF (l > 0) THEN
                ndofs = l
-             ELSE IF (Def_Dofs(6)>=0) THEN
+             ELSE IF (Def_Dofs(6)>=1) THEN
                ndofs = FaceDOFs(Element % FaceIndexes(i))
-!              IF ( Def_Dofs(6)==0 ) ndofs = MAX(Face % BDOFs,ndofs)
-               ndofs = MAX(Face % BDOFs,ndofs)
              END IF
 
              DO e=1,ndofs
@@ -472,11 +471,12 @@ CONTAINS
 
        IF ( GB .AND. ASSOCIATED(Element % BubbleIndexes) ) THEN
          ndofs = 0
-         IF ( Def_Dofs(5) >= 0) THEN
-            ndofs = Def_Dofs(5)
-         ELSE IF (Def_Dofs(6)>=0) THEN
-            ndofs = GetBubbleDOFs(Element, Def_Dofs(6))
-            IF ( Def_Dofs(6)==0 ) ndofs = MAX(Element % BDOFs,ndofs)
+         IF ( Def_Dofs(5) > 0) THEN
+           ndofs = Def_Dofs(5)
+         ELSE IF (Def_Dofs(6)>=1) THEN
+           ndofs = GetBubbleDOFs(Element, Def_Dofs(6))
+         ELSE
+           ndofs = Element % BDOFs
          END IF
 
          DO i=1,ndofs

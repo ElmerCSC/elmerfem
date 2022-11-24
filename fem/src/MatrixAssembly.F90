@@ -55,7 +55,7 @@ MODULE MatrixAssembly
    USE ListMatrix
    USE CRSMatrix
    USE BandMatrix
-   USE PElementMaps, ONLY : isActivePElement
+   USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
 
    
    IMPLICIT NONE
@@ -560,19 +560,21 @@ CONTAINS
    
    !> Return number of degrees of freedom and their indexes.
    !------------------------------------------------------------------------------
-   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(NB)
+   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(nd)
    !------------------------------------------------------------------------------
+     INTEGER :: Indexes(:)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
-     INTEGER :: Indexes(:)
-     LOGICAL, OPTIONAL  ::  NotDG
+     LOGICAL, OPTIONAL :: NotDG
+     INTEGER :: nd
 
      TYPE(Solver_t),  POINTER :: Solver
-     TYPE(Element_t), POINTER :: Element, Parent, Edge, Face
+     TYPE(Element_t), POINTER :: Element, Parent
 
-     LOGICAL :: Found, GB, DGdisable, NeedEdges
-     INTEGER :: nb,i,j,k,id, NDOFs, EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs
-     INTEGER :: Ind, ElemFamily, DOFsPerNode
+     LOGICAL :: Found, GB, DGDisable, NeedEdges
+     INTEGER :: i,j,k,id, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
+     INTEGER :: Ind, ElemFamily, ParentFamily
+     INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
 
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -580,7 +582,7 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
-     NB = 0
+     nd = 0
 
      IF (.NOT. ASSOCIATED(Solver)) THEN
        CALL Warn('mGetElementDOFS', 'Cannot return DOFs data without knowing solver')
@@ -599,26 +601,26 @@ CONTAINS
 
      IF ( .NOT. DGDisable .AND. Solver % DG ) THEN
        DO i=1,Element % DGDOFs
-         NB = NB + 1
-         Indexes(NB) = Element % DGIndexes(i)
+         nd = nd + 1
+         Indexes(nd) = Element % DGIndexes(i)
        END DO
 
        IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
            DO i=1,Element % BoundaryInfo % Left % DGDOFs
-             NB = NB + 1
-             Indexes(NB) = Element % BoundaryInfo % Left % DGIndexes(i)
+             nd = nd + 1
+             Indexes(nd) = Element % BoundaryInfo % Left % DGIndexes(i)
            END DO
          END IF
          IF ( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
            DO i=1,Element % BoundaryInfo % Right % DGDOFs
-             NB = NB + 1
-             Indexes(NB) = Element % BoundaryInfo % Right % DGIndexes(i)
+             nd = nd + 1
+             Indexes(nd) = Element % BoundaryInfo % Right % DGIndexes(i)
            END DO
          END IF
        END IF
 
-       IF ( NB > 0 ) RETURN
+       IF ( nd > 0 ) RETURN
      END IF
 
      id = Element % BodyId
@@ -635,21 +637,23 @@ CONTAINS
        IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
          CALL Warn('mGetElementDOFS', &
              'Solver mesh unknown, the node indices are returned')
-         NDOFs = 1
+         MaxNDOFs = 1
        ELSE
          CALL Warn('mGetElementDOFS', &
              'Solver mesh unknown, no indices returned')
+         RETURN
        END IF
      ELSE
-       NDOFs = Solver % Mesh % MaxNDOFs
+       MaxNDOFs = Solver % Mesh % MaxNDOFs
      END IF
+     NodalIndexOffset = MaxNDOFs * Solver % Mesh % NumberOfNodes     
 
-     IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
-       DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+     NDOFs = Solver % Def_Dofs(ElemFamily,id,1)
+     IF (NDOFs > 0) THEN
        DO i=1,Element % TYPE % NumberOfNodes
-         DO j=1,DOFsPerNode
-           NB = NB + 1
-           Indexes(NB) = NDOFs * (Element % NodeIndexes(i)-1) + j
+         DO j=1,NDOFs
+           nd = nd + 1
+           Indexes(nd) = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
          END DO
        END DO
      END IF
@@ -678,81 +682,113 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
-     FaceDOFs   = Solver % Mesh % MaxFaceDOFs
-     EdgeDOFs   = Solver % Mesh % MaxEdgeDOFs
-     BubbleDOFs = Solver % Mesh % MaxBDOFs
-
+     MaxFDOFs = Solver % Mesh % MaxFaceDOFs
+     MaxEDOFs = Solver % Mesh % MaxEdgeDOFs
+     EdgeIndexOffset = MaxEDOFs * Solver % Mesh % NumberOfEdges
+     FaceIndexOffset = MaxFDOFs * Solver % Mesh % NumberOfFaces
 
 BLOCK
   LOGICAL  :: EdgesDone, FacesDone
   TYPE(Element_t), POINTER :: Face,Edge
+  INTEGER :: face_type, face_id
 
        EdgesDone = .FALSE.
        FacesDone = .FALSE.
 
        IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
          EdgesDone = .TRUE.
-         DO j=1,Element % TYPE % NumberOFEdges
+         DO j=1,Element % TYPE % NumberOfEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( Solver % GlobalBubbles.AND. Element % BodyId>0 ) THEN
+             IF ( Solver % GlobalBubbles .AND. Element % BodyId>0 ) THEN
+! TO DO:  check the size via def_dofs
                EDOFs = Element % BDOFs 
              ELSE
                EdgesDone = .FALSE.
                CYCLE
              END IF
            ELSE
-             EDOFs = Solver % Mesh % Edges( Element % EdgeIndexes(j) ) % BDOFs
+             EDOFs = 0 
+             IF (Solver % Def_Dofs(ElemFamily,id,2) > 0) THEN
+               EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
+               EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+             END IF
            END IF
 
            DO i=1,EDOFs
-             NB = NB + 1
-             Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
-                 i + NDOFs * Solver % Mesh % NumberOfNodes
+             nd = nd + 1
+             Indexes(nd) = MaxEDOFs*(Element % EdgeIndexes(j)-1) + &
+                 i + NodalIndexOffset
            END DO
          END DO
        END IF
 
        IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
          FacesDone = .TRUE.
-         DO j=1,Element % TYPE % NumberOFFaces
+         DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
-           IF( Face % Type % ElementCode == Element % Type % ElementCode) THEN
+           IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
              IF ( Solver % GlobalBubbles .AND. Element % BodyId>0 ) THEN
+! TO DO: Check the right count via def_dofs
                FDOFs = Element % BDOFs 
              ELSE
                FacesDone = .FALSE.
                CYCLE
              END IF
            ELSE
-             FDOFs = Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-           END IF
+             k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
+             IF (k == 0) THEN
+               !
+               ! NOTE: This depends on what face dofs have been introduced
+               ! by using the construct "-quad_face b: ..." and
+               ! "-tri_face b: ..."
+               !
+               face_type = Face % TYPE % ElementCode/100
+               IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+                 face_id  = Face % BoundaryInfo % Left % BodyId
+                 k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF              
+             END IF
 
+             FDOFs = 0
+             IF (k > 0) THEN
+               FDOFs = k
+             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
+               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+             END IF
+           END IF
            DO i=1,FDOFs
-             NB = NB + 1
-             Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
-                 NDOFs * Solver % Mesh % NumberOfNodes + &
-                 EdgeDOFs*Solver % Mesh % NumberOfEdges
+             nd = nd + 1
+             Indexes(nd) = MaxFDOFs*(Element % FaceIndexes(j)-1) + i + &
+                 NodalIndexOffset + EdgeIndexOffset
            END DO
          END DO
        END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
 
-       IF(isActivePelement(Element)) THEN
+       IF (isActivePelement(Element, Solver)) THEN
          Parent => Element % pDefs % LocalParent
        ELSE
-         Parent => Element % BoundaryINfo % Left
-         IF(.NOT.ASSOCIATED(Parent)) &
-           Parent => Element % BoundaryINfo % Right
+         Parent => Element % BoundaryInfo % Left
+         IF (.NOT.ASSOCIATED(Parent) ) &
+             Parent => Element % BoundaryInfo % Right
        END IF
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
+       ParentFamily = Parent % TYPE % ElementCode / 100
 
        SELECT CASE(ElemFamily)
        CASE(2)
          IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
-           IF ( isActivePElement(Element) ) THEN
+           IF ( isActivePElement(Element, Solver) ) THEN
              Ind=Element % PDefs % LocalNumber
            ELSE
              DO Ind=1,Parent % TYPE % NumberOfEdges
@@ -767,19 +803,26 @@ BLOCK
              END DO
            END IF
 
-           EDOFs = Element % BDOFs
+           EDOFs = 0
+           IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
+             EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+             EDOFs = getEdgeDOFs(Parent, Solver % Def_Dofs(ParentFamily,id,6))
+           END IF
+
            DO i=1,EDOFs
-             NB = NB + 1
-             Indexes(NB) = EdgeDOFs*(Parent % EdgeIndexes(Ind)-1) + &
-                 i + NDOFs * Solver % Mesh % NumberOfNodes
+             nd = nd + 1
+             Indexes(nd) = MaxEDOFs*(Parent % EdgeIndexes(Ind)-1) + &
+                 i + NodalIndexOffset
            END DO
          END IF
 
        CASE(3,4)
          IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
 
-           IF ( isActivePElement(Element) ) THEN
+           IF ( isActivePElement(Element, Solver) ) THEN
              Ind=Element % PDefs % LocalNumber
+
            ELSE
              DO Ind=1,Parent % TYPE % NumberOfFaces
                Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
@@ -793,50 +836,103 @@ BLOCK
              END DO
            END IF
 
-           IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
+           IF (Ind >= 0 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
 
-             IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element) ) THEN
+             IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element, Solver) ) THEN
                Face => Solver % Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
              ELSE
                Face => Element
              END IF
 
-             IF(.NOT.EdgesDone) THEN
+             IF (.NOT.EdgesDone .AND. ASSOCIATED(Face % EdgeIndexes)) THEN
                DO j=1,Face % TYPE % NumberOFEdges
-                 DO i=1, Solver % Mesh % Edges( face % EdgeIndexes(j) ) % BDOFs
-                   NB = NB + 1
-                   Indexes(NB) = EdgeDOFs*(face % EdgeIndexes(j)-1) + &
-                       i + NDOFs * Solver % Mesh % NumberOfNodes
+                 Edge => Solver % Mesh % Edges(Face % EdgeIndexes(j))
+
+                 EDOFs = 0
+                 IF (Solver % Def_Dofs(ElemFamily,id,2) > 0) THEN
+                   EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+                 ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
+                   EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+                 END IF
+
+                 DO i=1,EDOFs
+                   nd = nd + 1
+                   Indexes(nd) = MaxEDOFs*(Face % EdgeIndexes(j)-1) + &
+                       i + NodalIndexOffset                   
                  END DO
                END DO
-              END IF
+             END IF
+             
+             FDOFs = 0
+             IF (Solver % Def_Dofs(ParentFamily,id,6) > 1) THEN
+               FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind)
+             ELSE
+               k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
+               IF (k == 0) THEN
+                 !
+                 ! NOTE: This depends on what dofs have been introduced
+                 ! by using the construct "-quad_face b: ..." and
+                 ! "-tri_face b: ..."
+                 !
+                 face_type = Face % TYPE % ElementCode/100
+                 IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+                   face_id  = Face % BoundaryInfo % Left % BodyId
+                   k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+                 END IF
+                 IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                   face_id = Face % BoundaryInfo % Right % BodyId
+                   k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+                 END IF
+               END IF
 
-              FDOFs = Element % BDOFs
-              DO i=1,FDOFs
-                NB = NB + 1
- 
-                Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                    NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
-              END DO
+               IF (k > 0) THEN
+                 FDOFs = k
+               END IF
+             END IF
+
+             DO i=1,FDOFs
+               nd = nd + 1
+               Indexes(nd) = MaxFDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
+                   NodalIndexOffset + EdgeIndexOffset
+             END DO
            END IF
          END IF
        END SELECT
+     ELSE
+       IF (ASSOCIATED(Element % BubbleIndexes) .AND. Solver % GlobalBubbles) THEN
+         BDOFs = 0
+         IF (Solver % Def_Dofs(ElemFamily,id,5) > 0) THEN
+           BDOFs = Solver % Def_Dofs(ElemFamily,id,5)
+         ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+           BDOFs = GetBubbleDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+         ELSE
+           BDOFs = Element % BDOFs
+         END IF
+         DO i=1,BDOFs
+           nd = nd + 1
+           Indexes(nd) = NodalIndexOffset + EdgeIndexOffset + FaceIndexOffset + &
+               Element % BubbleIndexes(i)
+         END DO
+       END IF
      END IF
    END BLOCK
 
-   IF ( .NOT. ASSOCIATED(Element % BoundaryInfo) .AND. Solver % GlobalBubbles ) THEN
-     IF ( ASSOCIATED(Element % BubbleIndexes) ) THEN
-        DO i=1,Element % BDOFs
-          NB = NB + 1
-          Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
-              NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
-              Element % BubbleIndexes(i)
-        END DO
-     END IF
-   END IF
+!   k = GetElementNOFDOFsL(Element, Solver)
+!   IF (k /= nd) THEN
+!     print *, 'k,nd', k,nd
+!     CALL fatal('mGetElementDOFs', 'DOFS COMPUTATION IS INCONSISTENT')
+!   END IF
+
 !------------------------------------------------------------------------------
-   END FUNCTION mGetElementDOFs
+  END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
+
+!  FUNCTION GetElementNOFDOFsL( UElement,USolver ) RESULT(n)
+
+
+!   END FUNCTION GetElementNOFDOFsL
+
 
 
 !------------------------------------------------------------------------------

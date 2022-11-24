@@ -2561,7 +2561,7 @@ CONTAINS
       ! Note that the element sets associated with the indices 9 and 10 are only used to check
       ! the number of facewise bubbles in 3D, so in this case only the entries Def_Dofs(9,:,5)
       ! and Def_Dofs(10,:,5) affect the execution. In addition, currently the case 
-      ! Solver % Def_Dofs(:,:,1) > 1 leads to an error.
+      ! Solver % Def_Dofs(:,:,1) > 1 has additional limitations.
       !
       ! This function also uses a local variable Def_Dofs(:,:) which is similar to
       ! Solver % Def_Dofs(:,:,:) but it uses reduced indexing by omitting bodywise dependencies. 
@@ -2956,6 +2956,7 @@ CONTAINS
         END IF
 
         Def_Dofs = -1
+        Def_Dofs(:,1) = 1
         DO k=1,Model % NumberOfSolvers
           IF(MeshSolvers(MeshI,k)) THEN
             DO i=1,6
