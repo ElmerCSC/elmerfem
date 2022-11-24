@@ -2590,15 +2590,16 @@ CONTAINS
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
           tmp(4), direction(4)
+     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble
      REAL(KIND=dp) :: LinBasis(8), dLinBasisdx(8,3), ElmMetric(3,3)
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
              dLBasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
 
      TYPE(Element_t) :: Bubble
-     TYPE(Element_t), POINTER :: Edge, Face
+     TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
-     LOGICAL :: PerformPiolaTransform, Found
+     LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles
      
      SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
@@ -2663,6 +2664,16 @@ CONTAINS
         degrees = .TRUE.
         BasisDegree = 0
         BasisDegree(1:n) = 1
+      END IF
+
+      BodyId = Element % BodyId
+      IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+        Parent => Element % PDefs % LocalParent
+        BodyId = Parent % BodyId
+      END IF
+      IF (BodyId==0) THEN
+        CALL Warn('ElementInfo', 'Element has no body index, assuming the index 1')
+        BodyId = 1
       END IF
 
 !------------------------------------------------------------------------------
@@ -2781,7 +2792,8 @@ CONTAINS
               IF (Element % NodeIndexes(locali) > Element % NodeIndexes(localj)) invert = .TRUE. 
 
               ! For each DOF in edge calculate value of p basis function
-              DO k=1,Edge % BDOFs
+              EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6))
+              DO k=1,EDOFs
                  IF ( q >= SIZE(Basis) ) CYCLE
                  q = q + 1
 
@@ -2803,13 +2815,23 @@ CONTAINS
            END DO         
         END IF
 
-        ! Bubbles of p quadrilateral
-        IF ( Element % BDOFs > 0 ) THEN
-          ! Get element P
-           p = Element % PDefs % P
+        ! Bubbles of p quadrilateral, the number of which may have been defined explicitly or
+        ! be determined by the specified degree of approximation. However, we never omit bubbles
+        ! which are part of the FE space of the specified degree
+  
+        ! Get the specified element P:
+        p = pSolver % Def_Dofs(4,BodyId,6)   
+        ! p = Element % PDefs % P        
+        DesignedBubbles = pSolver % Def_Dofs(4,BodyId,5) > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), pSolver % Def_Dofs(4,BodyId,5)) 
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+        IF (BDOFs > 0) THEN
+
+           IF (DesignedBubbles) THEN
+             nb = pSolver % Def_Dofs(4,BodyId,5)
+             Deg_Bubble = CEILING( (5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
+             p = MAX(p, Deg_Bubble)
+           END IF
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
