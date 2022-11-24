@@ -8,20 +8,23 @@
 ! C = 2*pi*L*eps_0 / (ln(b/a))
 ! for convenience we define here eps_0 such that the capacitance becomes one.
 ! As the finite element tries to minimize energy we should approach the capacitance from above.
-! With "Mesh Levels = 5" we have an error of about 0.02%. 
+! With "p:4" we already recover the capacitance with five digits. The last digits are probably just
+! noice coming from the linear system tolerances. 
 !
-!   Capacitance     Mesh Levels
-!   1.035931845755  1
-!   1.010115363644  2
-!   1.002718651403  3
-!   1.000699968770  4
-!   1.000177451933  5
+!   Capacitance     p-order
+!   1.035931845756  1
+!   1.001652964010  2
+!   1.000101892037  3
+!   9.999987759563  4
+!   9.999997667113  5
+!   1.000000069471  6
+!   1.000000003824  7
 !
 ! P.R. 24.11.22
 
 
-$pn=1
-$mn=3
+$pn=4
+$mn=1
 
 Header
   CHECK KEYWORDS Warn
@@ -56,7 +59,7 @@ $b=1.0
 End 
 
 Body 1
-  Name = "Body1"
+  Name = "Inner"
   Equation = 1
   Material = 1
 End
@@ -177,8 +180,8 @@ Boundary Condition 4
 End
 
 
-Solver 1::Reference Norm = 6.37278280E-01
-Solver 2::Reference Norm = 1.00271865E+00
+Solver 1::Reference Norm = 1.08164995E-01
+Solver 2::Reference Norm = 9.99998776E-01
 
 
 !End Of File

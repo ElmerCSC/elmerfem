@@ -13126,8 +13126,8 @@ CONTAINS
             REAL(KIND=dp) :: Basis(50),DetJ
             REAL(KIND=dp) :: MASS(50,50), FORCE(3,50), x(50), Coord0(3)
             LOGICAL :: Stat, Erroneous
-            INTEGER :: nd,i,t,p,q,nd2
-            INTEGER, TARGET :: Indexes(50), Indexes2(50)
+            INTEGER :: nd,i,t,p,q
+            INTEGER, TARGET :: Indexes(50)
             INTEGER :: pivot(50)
             INTEGER, POINTER :: pIndexes(:)
             TYPE(GaussIntegrationPoints_t) :: IP
@@ -13135,18 +13135,7 @@ CONTAINS
 
             pIndexes => Indexes 
             Nd = mGetElementDOFs( pIndexes, Element, CurrentModel % Solver )          
-
-#if 0
-            pIndexes => Indexes2
-            CALL mGetBoundaryIndexesFromParent( CurrentModel % Solver % Mesh, Element, pIndexes, nd2 )   
-
-            IF(nd /= nd2 .OR. ANY(Indexes(1:nd) /= Indexes2(1:nd) ) ) THEN
-              PRINT *,'Nd:',nd,nd2
-              PRINT *,'Ind1:',Indexes(1:nd)
-              PRINT *,'Ind2:',Indexes2(1:nd2)              
-            END IF
-#endif            
-            
+                        
             ! Only if we have really p-elements is there a need to consider the curved shape
             IF(Nd == n ) CYCLE
 
@@ -13155,7 +13144,7 @@ CONTAINS
             MASS = 0._dp
             FORCE = 0._dp
 
-            IP = GaussPoints( Element )    
+            IP = GaussPoints( Element )
             
             DO t=1,IP % n
               stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -13173,22 +13162,24 @@ CONTAINS
               CASE( 1 ) 
                 rat = R / SQRT(SUM(Coord(1:2)**2))
                 Coord(1:2) = rat * Coord(1:2)
-              CASE( 2 ) 
-                rat = R / SQRT(SUM(Coord(1:3)**2))
-                Coord(1:3) = rat * Coord(1:3)
-              CASE( 3 ) 
+              CASE( 2 )
+                ! Local coordinates in nt-system
                 NtCoord(1) = SUM(Nrm*Coord)
                 NtCoord(2) = SUM(Tngt1*Coord)
                 NtCoord(3) = SUM(Tngt2*Coord)
+                ! Ratio between current and desired radius
                 rat = R / SQRT(SUM(NtCoord(2:3)**2))
                 NtCoord(2:3) = rat * NtCoord(2:3)
                 Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+              CASE( 3 ) 
+                rat = R / SQRT(SUM(Coord(1:3)**2))
+                Coord(1:3) = rat * Coord(1:3)
               END SELECT
               Coord = Coord + Orig
 
               ! Solve for desired coordinate displacement rather than absolute coordinate value
               Coord = Coord - Coord0
-              
+                
               ! Create equation involving mass matrix that solves for the coordinates at the p-dofs
               DO q=1,nd
                 MASS(1:nd,q) = MASS(1:nd,q) + Weight * Basis(1:nd) * Basis(q) 

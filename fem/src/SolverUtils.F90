@@ -6830,23 +6830,6 @@ CONTAINS
 
       ! This is used in standard setting of Dirichlet BCs
       nb = mGetElementDOFs( Indexes, Element, Solver )
-
-      IF( TestFix ) THEN
-        BLOCK
-          INTEGER :: Indexes2(50),nb2,nok
-
-          ! This might not work in parallel as expected
-          CALL mGetBoundaryIndexesFromParent( Mesh, Element, Indexes2, nb2 ) 
-          IF( nb /= nb2 .OR. ANY(Indexes(1:nb) /= Indexes2(1:nb) ) ) THEN
-            DO j=1,nb
-              IF(Indexes(j) /= Indexes2(j) ) EXIT
-            END DO
-            PRINT *,'verA:',ParEnv % MyPe,t,nb2,j,Indexes2(j:nb2)
-            PRINT *,'verB:',ParEnv % MyPe,t,nb,j,Indexes(j:nb)
-          END IF
-        END BLOCK
-      END IF
-        
       
       ! If for some reason we do not want to set the P dofs to zero
       IF(.NOT. SetP) nb = n
