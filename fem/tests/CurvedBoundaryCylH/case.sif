@@ -4,15 +4,28 @@
 ! 1) When "Mesh Levels" > 1 we need to set the added boundary nodes to the curved boundary
 ! 2) When "Element = p:$pn" where $pn>2 we must solve for a small linear problem to set the p-coordinates
 !
-! P.R. 16.11.22
+! This case has also an analytic solution. Capacitance between two cocentric cylinders with radiuses a and b, b>a, is
+! C = 2*pi*L*eps_0 / (ln(b/a))
+! for convenience we define here eps_0 such that the capacitance becomes one.
+! As the finite element tries to minimize energy we should approach the capacitance from above.
+! With "Mesh Levels = 5" we have an error of about 0.02%. 
+!
+!   Capacitance     Mesh Levels
+!   1.035931845755  1
+!   1.010115363644  2
+!   1.002718651403  3
+!   1.000699968770  4
+!   1.000177451933  5
+!
+! P.R. 24.11.22
 
 
 $pn=1
-$mn=4
+$mn=3
 
 Header
   CHECK KEYWORDS Warn
-  Mesh DB "." "cylinder_in_cube"
+  Mesh DB "." "cylinder_in_cylinder"
   Include Path ""
   Results Directory ""
 End
@@ -34,7 +47,12 @@ Simulation
 End
 
 Constants
-  Permittivity Of Vacuum = 1.0
+$L=0.5
+$a=0.5
+$b=1.0
+! Note: this is funny choice because I wanted to see the comparison directly.
+! The eqution is linear so it does not matter by what we multiply it with.
+  Permittivity Of Vacuum = $ln(b/a)/(2*pi*L)
 End 
 
 Body 1
@@ -131,6 +149,11 @@ Boundary Condition 1
   Name = "Ext"
   Target Boundaries(4) = 8 9 10 11  
   Potential = 0
+
+! This is known to be a circle boundary by construction.
+! Also "circle" and "sphere" are possible but so far untested.  
+  Follow Cylinder Boundary = Logical True
+  Cylinder Normal(3) = Real 0 0 1 
 End
 
 Boundary Condition 2
@@ -139,9 +162,8 @@ Boundary Condition 2
 
   Capacitance Body = 1
 
-! This is known to be a circle boundary by construction.
-! Also "cylinder" and "sphere" are possible but so far untested.  
   Follow Cylinder Boundary = Logical True
+  Cylinder Normal(3) = Real 0 0 1 
 End 
 
 Boundary Condition 3
@@ -155,8 +177,8 @@ Boundary Condition 4
 End
 
 
-Solver 1::Reference Norm = 6.35859464E-01
-Solver 2::Reference Norm = 4.08881607E+00
+Solver 1::Reference Norm = 6.37278280E-01
+Solver 2::Reference Norm = 1.00271865E+00
 
 
 !End Of File

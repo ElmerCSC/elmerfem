@@ -49,7 +49,7 @@ MODULE MeshUtils
     USE Interpolation
     USE ParallelUtils
     USE Types
-    USE MatrixAssembly, ONLY : mGetElementDofs
+    USE MatrixAssembly, ONLY : mGetElementDofs, mGetBoundaryIndexesFromParent
     IMPLICIT NONE
 
 CONTAINS
@@ -12497,10 +12497,11 @@ CONTAINS
     REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
         CircleCoord(9)
     INTEGER :: CircleInd(3) 
-    LOGICAL :: BCMode, DoIt
+    LOGICAL :: BCMode, DoIt, GotNormal, GotCenter, GotRadius
     INTEGER :: Tag, t1, t2
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
-
+    REAL(KIND=dp), POINTER :: rArray(:,:)
+    
 
     BCMode = PRESENT( BCind )
 
@@ -12536,32 +12537,40 @@ CONTAINS
     IF( BcMode ) THEN
       cdim = ParallelReduction( cdim, 2 )
     END IF
+
+    AxisNormal = 0.0_dp
+    IF( cdim == 2 ) THEN
+      GotNormal = .TRUE.
+      AxisNormal(3) = 1.0_dp
+    ELSE      
+      rArray => ListGetConstRealArray( PParams,'Cylinder Normal',GotNormal)
+      IF( GotNormal) AxisNormal(1:3) = rArray(1:3,1)
+    END IF
+
+    Coord = 0.0_dp
+    rArray => ListGetConstRealArray( PParams,'Cylinder Center',GotCenter)
+    IF( GotCenter) Coord(1:cdim) = rArray(1:cdim,1)
     
-    IF(PRESENT(FitParams) ) THEN
-      IF( ListCheckPresent( PParams,'Cylinder Radius') ) THEN
-        CALL Info('CylinderFit','Fetching cylinder paramaters from list',Level=25)
-        FitParams(1) = ListGetConstReal( PParams,'Cylinder Center X')
-        FitParams(2) = ListGetConstReal( PParams,'Cylinder Center Y')
+    Rad = ListGetConstReal( PParams,'Cylinder Radius',GotRadius)
+ 
+    ! Do we have the fitting done already? 
+    IF( GotNormal .AND. GotCenter .AND. GotRadius ) THEN
+      IF( PRESENT(FitParams) ) THEN
+        CALL Info('CylinderFit','Using cylinder paramaters from list',Level=25)
+        FitParams(1:cdim) = Coord(1:cdim)
         IF( cdim == 2 ) THEN
-          FitParams(3) = ListGetConstReal( PParams,'Cylinder Radius')          
+          FitParams(3) = Rad
         ELSE
-          FitParams(3) = ListGetConstReal( PParams,'Cylinder Center Z')
-          FitParams(4) = ListGetConstReal( PParams,'Cylinder Normal X')
-          FitParams(5) = ListGetConstReal( PParams,'Cylinder Normal Y')
-          FitParams(6) = ListGetConstReal( PParams,'Cylinder Normal Z')          
-          FitParams(7) = ListGetConstReal( PParams,'Cylinder Radius')
+          FitParams(4:6) = AxisNormal
+          FitParams(7) = Rad
         END IF
-        RETURN
       END IF
+      RETURN
     END IF
                   
     n = PMesh % MaxElementNodes
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-    IF( cdim == 2 ) THEN
-      AxisNormal = 0.0_dp
-      AxisNormal(3) = 1.0_dp
-    END IF
        
     ! Compute the inner product of <N*N> for the elements
     NiNj = 0.0_dp
@@ -12577,8 +12586,8 @@ CONTAINS
         ActiveNode(Element % NodeIndexes(1:n)) = .TRUE.
       END IF
               
-      ! For 2D we only tag the boundary nodes
-      IF( cdim <  3 ) CYCLE
+      ! If we know the Normal we only tag the boundary nodes
+      IF(GotNormal) CYCLE
 
       Nodes % x(1:n) = PMesh % Nodes % x(NodeIndexes(1:n))
       Nodes % y(1:n) = PMesh % Nodes % y(NodeIndexes(1:n))
@@ -12592,7 +12601,7 @@ CONTAINS
       END DO
     END DO
       
-    IF( cdim == 2 ) GOTO 100 
+    IF(GotNormal) GOTO 100 
 
     ! Only in BC mode we do currently parallel reduction.
     ! This could be altered too. 
@@ -12798,15 +12807,15 @@ CONTAINS
     IF( InfoActive(30) ) THEN
       PRINT *,'Cylinder center and radius:',Coord, rad
     END IF
-      
-    CALL ListAddConstReal( PParams,'Cylinder Center X',Coord(1))
-    CALL ListAddConstReal( PParams,'Cylinder Center Y',Coord(2))
-    IF( cdim == 3 ) THEN
-      CALL ListAddConstReal( PParams,'Cylinder Center Z',Coord(3))
-      CALL ListAddConstReal( PParams,'Cylinder Normal X',AxisNormal(1))
-      CALL ListAddConstReal( PParams,'Cylinder Normal Y',AxisNormal(2))
-      CALL ListAddConstReal( PParams,'Cylinder Normal Z',AxisNormal(3))
+
+    ALLOCATE( rArray(3,1) )
+    rArray(1:3,1) = Coord 
+    CALL ListAddConstRealArray( PParams,'Cylinder Center', 3, 1, rArray ) 
+    IF(.NOT. GotNormal ) THEN
+      rArray(1:3,1) = AxisNormal 
+      CALL ListAddConstRealArray( PParams,'Cylinder Normal', 3, 1, rArray ) 
     END IF
+    DEALLOCATE( rArray ) 
     CALL ListAddConstReal( PParams,'Cylinder Radius',rad )
 
     IF( PRESENT( FitParams ) ) THEN
@@ -13057,15 +13066,18 @@ CONTAINS
         Orig(1:2) = FitParams(1:2)
         Orig(3) = 0.0_dp
         R = FitParams(3)
+        IF( InfoActive(25) ) PRINT *,'Circle Params:',FitParams(1:3)                        
       ELSE IF( Mode == 2 ) THEN  ! cylinder 
         Orig(1:3) = FitParams(1:3)
         Nrm(1:3) = FitParams(4:6)        
         R = FitParams(7)
+        IF( InfoActive(25) ) PRINT *,'Cylinder Params:',FitParams(1:7)        
         CALL TangentDirections(Nrm, Tngt1, Tngt2 ) 
       ELSE IF( Mode == 3 ) THEN ! sphere
         Orig(1:3) = FitParams(1:3)
         Nrm = 0.0_dp
         R = FitParams(4)
+        IF( InfoActive(25) ) PRINT *,'Sphere Params:',FitParams(1:4)                                
       END IF
       
       DO t=Mesh % NumberOfBulkElements+1, &
@@ -13076,55 +13088,65 @@ CONTAINS
 
         n = Element % TYPE % NumberOfNodes
 
-        DO i=1,n
-          j = Element % NodeIndexes(i)
-          IF( DoneNode(j) ) CYCLE
-          DoneNode(j) = .TRUE.
+        IF(.NOT. SetP ) THEN
+          DO i=1,n
+            j = Element % NodeIndexes(i)
+            IF( DoneNode(j) ) CYCLE
+            DoneNode(j) = .TRUE.
 
-          Coord(1) = Mesh % Nodes % x(j) - Orig(1)           
-          Coord(2) = Mesh % Nodes % y(j) - Orig(2)
-          Coord(3) = Mesh % Nodes % z(j) - Orig(3)
+            Coord(1) = Mesh % Nodes % x(j) - Orig(1)           
+            Coord(2) = Mesh % Nodes % y(j) - Orig(2)
+            Coord(3) = Mesh % Nodes % z(j) - Orig(3)
 
-          SELECT CASE( Mode )
-          CASE( 1 ) ! circle 
-            rat = R / SQRT(SUM(Coord(1:2)**2))
-            Coord(1:2) = rat*Coord(1:2)
-          CASE( 2 ) ! cylinder
-            NtCoord(1) = SUM(Nrm*Coord)
-            NtCoord(2) = SUM(Tngt1*Coord)
-            NtCoord(3) = SUM(Tngt2*Coord)
-            rat = R / SQRT(SUM(NtCoord(2:3)**2))
-            NtCoord(2:3) = rat*NtCoord(2:3)
-            Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
-          CASE( 3 ) ! sphere 
-            rat = R / SQRT(SUM(Coord(1:3)**2))
-            Coord(1:3) = rat*Coord(1:3)
-          END SELECT
+            SELECT CASE( Mode )
+            CASE( 1 ) ! circle 
+              rat = R / SQRT(SUM(Coord(1:2)**2))
+              Coord(1:2) = rat*Coord(1:2)
+            CASE( 2 ) ! cylinder
+              NtCoord(1) = SUM(Nrm*Coord)
+              NtCoord(2) = SUM(Tngt1*Coord)
+              NtCoord(3) = SUM(Tngt2*Coord)
+              rat = R / SQRT(SUM(NtCoord(2:3)**2))
+              NtCoord(2:3) = rat*NtCoord(2:3)
+              Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+            CASE( 3 ) ! sphere 
+              rat = R / SQRT(SUM(Coord(1:3)**2))
+              Coord(1:3) = rat*Coord(1:3)
+            END SELECT
+
+            Mesh % Nodes % x(j) = Coord(1) + Orig(1)
+            Mesh % Nodes % y(j) = Coord(2) + Orig(2)
+            Mesh % Nodes % z(j) = Coord(3) + Orig(3)
+          END DO
+        END IF
           
-          Mesh % Nodes % x(j) = Coord(1) + Orig(1)
-          Mesh % Nodes % y(j) = Coord(2) + Orig(2)
-          Mesh % Nodes % z(j) = Coord(3) + Orig(3)
-        END DO
-
-        
         IF( SetP ) THEN
           BLOCK 
             REAL(KIND=dp) :: Weight
-            REAL(KIND=dp) :: Basis(20),DetJ
-            REAL(KIND=dp) :: MASS(20,20), FORCE(3,20), x(20), Coord0(3)
+            REAL(KIND=dp) :: Basis(50),DetJ
+            REAL(KIND=dp) :: MASS(50,50), FORCE(3,50), x(50), Coord0(3)
             LOGICAL :: Stat, Erroneous
-            INTEGER :: nd,i,t,p,q
-            INTEGER, TARGET :: Indexes(20)
-            INTEGER :: pivot(20)
+            INTEGER :: nd,i,t,p,q,nd2
+            INTEGER, TARGET :: Indexes(50), Indexes2(50)
+            INTEGER :: pivot(50)
             INTEGER, POINTER :: pIndexes(:)
             TYPE(GaussIntegrationPoints_t) :: IP
             TYPE(Nodes_t), SAVE :: Nodes
 
-
             pIndexes => Indexes 
-
             Nd = mGetElementDOFs( pIndexes, Element, CurrentModel % Solver )          
 
+#if 0
+            pIndexes => Indexes2
+            CALL mGetBoundaryIndexesFromParent( CurrentModel % Solver % Mesh, Element, pIndexes, nd2 )   
+
+            IF(nd /= nd2 .OR. ANY(Indexes(1:nd) /= Indexes2(1:nd) ) ) THEN
+              PRINT *,'Nd:',nd,nd2
+              PRINT *,'Ind1:',Indexes(1:nd)
+              PRINT *,'Ind2:',Indexes2(1:nd2)              
+            END IF
+#endif            
+            
             ! Only if we have really p-elements is there a need to consider the curved shape
             IF(Nd == n ) CYCLE
 

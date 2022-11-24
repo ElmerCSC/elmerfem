@@ -5332,7 +5332,6 @@ CONTAINS
       INTEGER :: Comps(3)
       LOGICAL :: AnyHingeBC, HingeBC
       REAL(KIND=dp) :: Normal(3),Tan1(3),Tan2(3),xt(2),cfit(7)
-      REAL(KIND=dp), POINTER :: cfitmat(:,:)
       
       
       DirName = TRIM(Name)//' Curve'
@@ -5374,27 +5373,9 @@ CONTAINS
           
           IF(HingeBC ) THEN            
             IF( dim == 2 ) THEN
-              cfitmat => ListGetConstRealArray( ValueList,'Circle Parameters',GotIt )
-              IF(GotIt) THEN
-                cfit(1:3) = cfitmat(1:3,1)
-              ELSE
-                CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
-                ALLOCATE(cfitmat(3,1))
-                cfitmat(1:3,1) = cfit(1:3)
-                CALL ListAddConstRealArray( ValueList,'Circle Parameters', 3, 1, cfitmat )
-                DEALLOCATE(cfitmat)
-              END IF
+              CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
             ELSE IF( dim == 3 ) THEN
-              cfitmat => ListGetConstRealArray( ValueList,'Cylinder Parameters',GotIt )
-              IF(GotIt) THEN              
-                cfit(1:7) = cfitmat(1:7,1)
-              ELSE
-                CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
-                ALLOCATE(cfitmat(7,1))
-                cfitmat(1:7,1) = cfit(1:7)
-                CALL ListAddConstRealArray( ValueList,'Cylinder Parameters', 7, 1, cfitmat )
-                DEALLOCATE(cfitmat)
-              END IF
+              CALL CylinderFit(Mesh, ValueList, bc, dim, cfit )
               Normal = cfit(4:6)
               CALL TangentDirections(Normal,Tan1,Tan2)
             END IF
