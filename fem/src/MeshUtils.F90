@@ -21473,8 +21473,10 @@ CONTAINS
 
        ! If all nodes are on boundary, edge was found
        IF (n == EdgeElement % TYPE % NumberOfNodes) THEN
-          IF(EvalPE) &
+          IF(EvalPE) THEN
               EdgeElement % PDefs % localNumber = edgeNumber
+              EdgeElement % PDefs % LocalParent => Element
+          END IF
 
           ! Change ordering of global nodes to match that of element
           bMap = getElementBoundaryMap( Element, edgeNumber )
@@ -21522,7 +21524,8 @@ CONTAINS
     END DO
 
     ! If we are here local number not found
-    CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge')
+    IF(.NOT.ASSOCIATED(EdgeElement % PDefs % LocalParent)) &
+      CALL Warn('MeshUtils::AssignLocalNumber','Unable to find local edge')
     ! EdgeElement % localNumber = 1
   CONTAINS
 

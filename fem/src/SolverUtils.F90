@@ -6848,16 +6848,14 @@ CONTAINS
       n = Element % Type % NumberOfNodes
 
       ! This is used in standard setting of Dirichlet BCs
-      CALL mGetBoundaryIndexesFromParent( Mesh, Element, Indexes, nb ) 
+      nb = mGetElementDOFs( Indexes, Element, Solver )
 
       IF( TestFix ) THEN
         BLOCK
           INTEGER :: Indexes2(50),nb2,nok
-          nb2 = nb
-          Indexes2(1:nb) = Indexes(1:nb)
 
           ! This might not work in parallel as expected
-          nb = mGetElementDOFs( Indexes, Element, Solver )
+          CALL mGetBoundaryIndexesFromParent( Mesh, Element, Indexes2, nb2 ) 
           IF( nb /= nb2 .OR. ANY(Indexes(1:nb) /= Indexes2(1:nb) ) ) THEN
             DO j=1,nb
               IF(Indexes(j) /= Indexes2(j) ) EXIT
