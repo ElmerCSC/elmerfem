@@ -155,7 +155,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
 
-  RefResults => ListGetConstRealArray( Params,'Reference Sums',CalcNrm )
+  RefResults => ListGetConstRealArray( Params,'Reference Values',CalcNrm )
   CALL AscBinInitNorm(CalcNrm) 
   
   ! Loop over the meshes and save them using the selected format(s).

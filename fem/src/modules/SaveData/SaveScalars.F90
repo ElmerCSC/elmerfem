@@ -62,7 +62,8 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
   IF ( ListCheckPresent( Solver % Values,'Show Norm Index') .OR. &
-      ListCheckPresent( Solver % Values,'Show Norm Name') ) THEN
+      ListCheckPresent( Solver % Values,'Show Norm Name') .OR. &
+      ListCheckPresent( Solver % Values,'Reference Values') ) THEN
     Name = ListGetString( Solver % Values, 'Equation',GotIt)
     IF(.NOT. GotIt) Name = "SaveScalars"
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
@@ -1542,39 +1543,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! For consistency checks one may print out a value imitating ComputeChange
   !------------------------------------------------------------------------------
-  NormInd = 0
-  Name = ListGetString( Params,'Show Norm Name',GotIt)
-  IF(GotIt) THEN
-    DO No=1,NoValues
-      IF( TRIM(Name) == TRIM(ValueNames(No)) ) THEN
-        NormInd = No
-        CALL Info(Caller,'Associating scalar '//TRIM(I2S(No))//' to norm!',Level=8)
-        EXIT
-      END IF
-    END DO
-    IF(NormInd == 0 ) THEN
-      CALL Warn(Caller,'Could not find scalar for norm: '//TRIM(Name))
-    END IF
-  ELSE
-    NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
-  END IF
-  
-  IF( NormInd > 0 .AND. NormInd <= NoValues ) THEN
-    Norm = Values( NormInd )
-    Solver % Variable % Values = Values( NormInd )
-    Solver % Variable % Norm = ABS( Values ( NormInd ) ) 
+  CALL SetPseudoNorm()
 
-    Name = ListGetString( Params, 'Equation',GotIt)
-    IF(.NOT. GotIt) Name = Caller
-
-    ! Here the name is ComputeChange in order to get the change also to ElmerGUI
-    ! albeit in a very dirt style. One could also edit ElmerGUI....
-    WRITE( Message, '(a,g15.8,g15.8,a)') &
-        'SS (ITER=1) (NRM,RELC): (',Norm, Change,&
-        ' ) :: '//TRIM( Name )
-    CALL Info( 'ComputeChange', Message, Level=3 )
-  END IF
-  
   !------------------------------------------------------------------------------
   ! One may also export desired data as a cost function for FindOptimum solver
   !------------------------------------------------------------------------------
@@ -3495,6 +3465,82 @@ CONTAINS
     Z0 = Line % z(1) + C(1) * (Line % z(2) - Line % z(1))
     
   END SUBROUTINE LineIntersectionCoords
+
+
+  SUBROUTINE SetPseudoNorm()
+    LOGICAL :: GotNorm
+    REAL(KIND=dp) :: c
+    REAL(KIND=dp), POINTER :: RefVals(:,:)
+
+    GotNorm = .FALSE.
+    
+    NormInd = 0
+    Name = ListGetString( Params,'Show Norm Name',GotIt)
+    IF(GotIt) THEN
+      DO No=1,NoValues
+        IF( TRIM(Name) == TRIM(ValueNames(No)) ) THEN
+          NormInd = No
+          CALL Info(Caller,'Associating scalar '//TRIM(I2S(No))//' to norm!',Level=8)
+          EXIT
+        END IF
+      END DO
+      IF(NormInd == 0 ) THEN
+        CALL Warn(Caller,'Could not find scalar for norm: '//TRIM(Name))
+      END IF
+    ELSE
+      NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
+    END IF
+
+    IF( NormInd > 0 .AND. NormInd <= NoValues ) THEN
+      Norm = Values( NormInd )
+      GotNorm = .TRUE.
+
+      Name = ListGetString( Params, 'Equation',GotIt)
+      IF(.NOT. GotIt) Name = Caller
+
+    ELSE IF( ListCheckPresent( Params,'Reference Values') ) THEN
+      RefVals => ListGetConstRealArray( Params,'Reference Values') 
+      n = SIZE( RefVals, 1 )
+      IF( n > NoValues ) THEN
+        CALL Fatal('SaveScalars','Size of "Reference Values" bigger than computed values!')
+      END IF      
+      Norm = 0.0_dp
+      DO i=1,n
+        IF( ABS(RefVals(i,1)) > EPSILON(c) ) THEN
+          c = Values(i) / RefVals(i,1)
+          c = MAX( c, 1.0_dp /c ) 
+        ELSE
+          c = 1.0_dp + ABS(Values(i))
+        END IF
+        Norm = Norm + c
+      END DO
+      Norm = Norm / n
+      GotNorm = .TRUE.
+      
+      ! By construction the reference norm is 1.
+      CALL ListAddNewConstReal( Params,'Reference Norm',1.0_dp)
+
+      IF( InfoActive(20 ) ) THEN
+        PRINT *,'Reference  for SaveScalars:'
+        PRINT *,'ThisResults:',Values(1:n)
+        PRINT *,'RefResults:',RefVals(1:n,1)
+      END IF
+    END IF
+
+    IF( GotNorm ) THEN
+      Solver % Variable % Values = Norm 
+      Solver % Variable % Norm = ABS( Norm ) 
+      
+      ! Here the name is ComputeChange in order to get the change also to ElmerGUI
+      ! albeit in a very dirty style. One could also edit ElmerGUI....
+      WRITE( Message, '(a,g15.8,g15.8,a)') &
+          'SS (ITER=1) (NRM,RELC): (',Norm, Change,&
+          ' ) :: '//TRIM( Name )
+      CALL Info( 'ComputeChange', Message, Level=3 )
+    END IF
+    
+  END SUBROUTINE SetPseudoNorm
+    
   
 !------------------------------------------------------------------------------
 END SUBROUTINE SaveScalars

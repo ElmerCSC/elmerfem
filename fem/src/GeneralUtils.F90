@@ -2878,9 +2878,15 @@ CONTAINS
     ! We have a special relative pseunonorm that should be one!
     RelativeNorm = 0.0
     DO i=1,6
-      c = ThisResults(i)/RefResults(i)
-      RelativeNorm = RelativeNorm + MAX( c, 1.0_dp /c ) / 6
+      IF( ABS(RefResults(i) ) > EPSILON(c) ) THEN
+        c = ThisResults(i)/RefResults(i)
+        c = MAX( c, 1.0_dp /c ) 
+      ELSE
+        c = 1.0_dp + ABS(ThisResults(i))
+      END IF
+      RelativeNorm = RelativeNorm + c
     END DO
+    RelativeNorm = RelativeNorm / 6
     
   END FUNCTION AscBinCompareNorm
    

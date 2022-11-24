@@ -17,7 +17,7 @@ Simulation
 
 !  Output File = "TempDist.dat"
   Post File = "TempDist.vtu"
-  vtu: Reference Sums(6) = Real 34 5 2387 1044 525600 27.899999999999999
+  vtu: Reference Values(6) = Real 34 5 2387 1044 525600 27.899999999999999
   vtu: Reference Norm = Real 1.0
 End
 
