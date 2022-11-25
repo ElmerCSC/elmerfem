@@ -34,6 +34,12 @@ Body 2
   Material = 2
 End
 
+Body 3
+  Name = "Wire surface"
+  Equation = 1
+  Material = 1
+End
+
 Material 1
   Name = "Cu"
   Permittivity = 0
@@ -159,6 +165,7 @@ Boundary Condition 2
   Target Boundaries(1) = 2
   Layer Electric Conductivity = Real 58e6
   Layer Relative Permeability = Real 1
+  Body Id = 3
 End
 
 Boundary Condition 3
