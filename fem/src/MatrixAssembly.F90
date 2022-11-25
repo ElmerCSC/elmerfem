@@ -569,11 +569,11 @@ CONTAINS
      INTEGER :: nd
 
      TYPE(Solver_t),  POINTER :: Solver
-     TYPE(Element_t), POINTER :: Element, Parent
+     TYPE(Element_t), POINTER :: Element, Parent, Face
 
      LOGICAL :: Found, GB, DGDisable, NeedEdges
-     INTEGER :: i,j,k,id, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
-     INTEGER :: Ind, ElemFamily, ParentFamily
+     INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
+     INTEGER :: Ind, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset
 
      IF ( PRESENT( USolver ) ) THEN
@@ -677,6 +677,26 @@ CONTAINS
        !
        IF (ElemFamily == 3 .OR. ElemFamily == 4) THEN
          IF (Solver % Def_Dofs(6+ElemFamily, id, 5)>=0) NeedEdges = .TRUE.
+       ELSE
+         !
+         ! Check finally if 3-D faces are associated with face bubbles
+         !
+         DO j=1,Element % TYPE % NumberOfFaces
+           Face => Solver % Mesh % Faces(Element % FaceIndexes(j))
+           face_type = Face % TYPE % ElementCode/100
+           IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+             face_id  = Face % BoundaryInfo % Left % BodyId
+             k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+           END IF
+           IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+             face_id = Face % BoundaryInfo % Right % BodyId
+             k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+           END IF
+           IF (k > 0) THEN
+             NeedEdges = .TRUE.
+             EXIT
+           END IF
+         END DO        
        END IF
      END IF
 
@@ -689,8 +709,7 @@ CONTAINS
 
 BLOCK
   LOGICAL  :: EdgesDone, FacesDone
-  TYPE(Element_t), POINTER :: Face,Edge
-  INTEGER :: face_type, face_id
+  TYPE(Element_t), POINTER :: Edge
 
        EdgesDone = .FALSE.
        FacesDone = .FALSE.
@@ -700,21 +719,18 @@ BLOCK
          DO j=1,Element % TYPE % NumberOfEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( Solver % GlobalBubbles .AND. Element % BodyId>0 ) THEN
-! TO DO:  check the size via def_dofs
-               EDOFs = Element % BDOFs 
-             ELSE
+             IF ( .NOT. (Solver % GlobalBubbles .AND. Element % BodyId>0) ) THEN
                EdgesDone = .FALSE.
                CYCLE
              END IF
-           ELSE
-             EDOFs = 0 
-             IF (Solver % Def_Dofs(ElemFamily,id,2) > 0) THEN
-               EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
-             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+           END IF
+
+           EDOFs = 0
+           IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
+             EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
-               EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
-             END IF
+             EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
            END IF
 
            DO i=1,EDOFs
@@ -731,40 +747,38 @@ BLOCK
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( Solver % GlobalBubbles .AND. Element % BodyId>0 ) THEN
-! TO DO: Check the right count via def_dofs
-               FDOFs = Element % BDOFs 
-             ELSE
+             IF ( .NOT. (Solver % GlobalBubbles .AND. Element % BodyId>0) ) THEN
                FacesDone = .FALSE.
                CYCLE
              END IF
-           ELSE
-             k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
-             IF (k == 0) THEN
-               !
-               ! NOTE: This depends on what face dofs have been introduced
-               ! by using the construct "-quad_face b: ..." and
-               ! "-tri_face b: ..."
-               !
-               face_type = Face % TYPE % ElementCode/100
-               IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
-                 face_id  = Face % BoundaryInfo % Left % BodyId
-                 k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
-               END IF
-               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-                 face_id = Face % BoundaryInfo % Right % BodyId
-                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
-               END IF              
-             END IF
+           END IF
 
-             FDOFs = 0
-             IF (k > 0) THEN
-               FDOFs = k
-             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
-! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
-               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+           k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
+           IF (k == 0) THEN
+             !
+             ! NOTE: This depends on what face dofs have been introduced
+             ! by using the construct "-quad_face b: ..." and
+             ! "-tri_face b: ..."
+             !
+             face_type = Face % TYPE % ElementCode/100
+             IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+               face_id  = Face % BoundaryInfo % Left % BodyId
+               k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+               face_id = Face % BoundaryInfo % Right % BodyId
+               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
            END IF
+
+           FDOFs = 0
+           IF (k > 0) THEN
+             FDOFs = k
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
+             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+           END IF
+
            DO i=1,FDOFs
              nd = nd + 1
              Indexes(nd) = MaxFDOFs*(Element % FaceIndexes(j)-1) + i + &
@@ -822,7 +836,6 @@ BLOCK
 
            IF ( isActivePElement(Element, Solver) ) THEN
              Ind=Element % PDefs % LocalNumber
-
            ELSE
              DO Ind=1,Parent % TYPE % NumberOfFaces
                Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
@@ -836,7 +849,7 @@ BLOCK
              END DO
            END IF
 
-           IF (Ind >= 0 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
+           IF (Ind >= 1 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
 
              IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element, Solver) ) THEN
                Face => Solver % Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
@@ -849,9 +862,9 @@ BLOCK
                  Edge => Solver % Mesh % Edges(Face % EdgeIndexes(j))
 
                  EDOFs = 0
-                 IF (Solver % Def_Dofs(ElemFamily,id,2) > 0) THEN
+                 IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
                    EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
-                 ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
+                 ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
                    EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
                  END IF
@@ -902,10 +915,11 @@ BLOCK
      ELSE
        IF (ASSOCIATED(Element % BubbleIndexes) .AND. Solver % GlobalBubbles) THEN
          BDOFs = 0
-         IF (Solver % Def_Dofs(ElemFamily,id,5) > 0) THEN
-           BDOFs = Solver % Def_Dofs(ElemFamily,id,5)
-         ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) >= 1) THEN
-           BDOFs = GetBubbleDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+         nb = Solver % Def_Dofs(ElemFamily,id,5)
+         p = Solver % Def_Dofs(ElemFamily,id,6)
+         IF (nb >= 0 .OR. p >= 1) THEN
+           IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
+           BDOFs = MAX(nb, BDOFs)
          ELSE
            BDOFs = Element % BDOFs
          END IF
@@ -918,21 +932,9 @@ BLOCK
      END IF
    END BLOCK
 
-!   k = GetElementNOFDOFsL(Element, Solver)
-!   IF (k /= nd) THEN
-!     print *, 'k,nd', k,nd
-!     CALL fatal('mGetElementDOFs', 'DOFS COMPUTATION IS INCONSISTENT')
-!   END IF
-
 !------------------------------------------------------------------------------
   END FUNCTION mGetElementDOFs
 !------------------------------------------------------------------------------
-
-!  FUNCTION GetElementNOFDOFsL( UElement,USolver ) RESULT(n)
-
-
-!   END FUNCTION GetElementNOFDOFsL
-
 
 
 !------------------------------------------------------------------------------
