@@ -3310,6 +3310,191 @@ CONTAINS
  END SUBROUTINE PrepareMesh
 
 
+
+  !-------------------------------------------------------------------------------
+  !> Communicate logical tag related to mesh or linear system.
+  !> This could related to setting Neumann BCs to zero, for example.
+  !-------------------------------------------------------------------------------
+  SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,CommVal)
+  !-------------------------------------------------------------------------------
+     TYPE (ParallelInfo_t), POINTER :: ParallelInfo
+     LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
+     INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
+     LOGICAL, OPTIONAL :: CommVal            !< If integer tag is used, should we consider also the value
+
+     LOGICAL, POINTER :: IsNeighbour(:)
+     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:), s_i(:,:), r_i(:)
+     INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
+     INTEGER :: NewZeros, nsize
+     LOGICAL :: UseL, GotIt, CommI
+     
+     IF( ParEnv % PEs<=1 ) RETURN
+   
+     UseL = PRESENT(LTag)
+     IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
+       CALL Fatal('CommunicateParallelSystemTag','Give either logical or integer tag!')
+     END IF
+     CommI = .FALSE.
+     IF(.NOT. UseL) THEN
+       IF(PRESENT(CommVal)) CommI = CommVal
+     END IF
+     
+     nsize = SIZE( ParallelInfo % NodeInterface)
+     IF( PRESENT(Ltag) ) THEN
+       nsize = MIN(nsize, SIZE(Ltag) )
+     ELSE
+       nsize = MIN(nsize, SIZE(Itag) )
+     END IF
+     
+     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+     
+     ! Mark the neighbouring entities
+     IF(ASSOCIATED( ParEnv % IsNeighbour ) ) THEN
+       IsNeighbour => ParEnv % IsNeighbour
+     ELSE
+       ! We may want to call this even though neighbours have not been set
+       ALLOCATE( IsNeighbour(ParEnv % PEs) )
+       IsNeighbour = .FALSE.
+       DO i=1,nsize 
+         DO j=1,SIZE(ParallelInfo % Neighbourlist(i) % Neighbours)
+           k = ParallelInfo % Neighbourlist(i) % Neighbours(j)
+           IF ( k == ParEnv % MyPE ) CYCLE
+           IsNeighbour(k+1) = .TRUE.
+         END DO
+       END DO
+     END IF
+     
+     nn = 0
+     ineigh = 0
+     DO i=0, ParEnv % PEs-1
+       k = i+1
+       IF(.NOT.ParEnv % Active(k) ) CYCLE
+       IF(i == ParEnv % myPE) CYCLE
+       IF(.NOT. IsNeighbour(k) ) CYCLE
+       nn = nn + 1
+       fneigh(nn) = k
+       ineigh(k) = nn
+     END DO
+
+     IF(.NOT. ASSOCIATED( ParEnv % IsNeighbour ) ) THEN
+       DEALLOCATE(IsNeighbour)
+     END IF
+     
+     ! Count the maximum number of enties to sent 
+     IF( UseL ) THEN
+       n = COUNT(LTag(1:nsize) .AND. ParallelInfo % NodeInterface(1:nsize))
+     ELSE
+       n = COUNT((ITag(1:nsize) /= 0) .AND. ParallelInfo % NodeInterface(1:nsize))
+     END IF
+
+     ! Allocate for the data to sent (s_e) and receive (r_e)
+     ALLOCATE( s_e(n, nn ), r_e(n) )
+     s_e = 0
+     IF( CommI ) THEN
+       ALLOCATE( s_i(n, nn), r_i(n) )
+       s_i = 0
+     END IF
+
+     IF( CommI ) THEN
+       CALL CheckBuffer( nn*6*n )
+     ELSE
+       CALL CheckBuffer( nn*3*n )
+     END IF
+       
+     ii = 0
+     DO i=1, nsize
+       IF( UseL ) THEN
+         GotIt = LTag(i) .AND. ParallelInfo % NodeInterface(i)
+       ELSE
+         GotIt = Itag(i) /= 0 .AND. ParallelInfo % NodeInterface(i)
+       END IF
+       IF(.NOT. GotIt) CYCLE
+       
+       DO j=1,SIZE(ParallelInfo % Neighbourlist(i) % Neighbours)
+         k = ParallelInfo % Neighbourlist(i) % Neighbours(j)
+         IF ( k == ParEnv % MyPE ) CYCLE
+         k = k + 1
+         k = ineigh(k)
+         IF ( k> 0) THEN
+           ii(k) = ii(k) + 1
+           s_e(ii(k),k) = ParallelInfo % GlobalDOFs(i)
+           IF( CommI ) THEN
+             s_i(ii(k),k) = Itag(i)
+           END IF
+         END IF
+       END DO
+     END DO
+
+     DO i=1, nn
+       j = fneigh(i) 
+       ! Sent size data
+       CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
+       IF( ii(i) > 0 ) THEN
+         ! Sent the global index 
+         CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+         IF( CommI ) THEN
+           ! Sent the value of the integer tag, if requested
+           CALL MPI_BSEND( s_i(1:ii(i),i),ii(i),MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,ierr )
+         END IF
+       END IF
+     END DO
+
+     NewZeros = 0
+     
+     DO i=1, nn
+       j = fneigh(i)
+       ! Receive size of data coming from partition "j"
+       CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
+       IF ( n>0 ) THEN
+         IF( n>SIZE(r_e)) THEN
+           DEALLOCATE(r_e)
+           ALLOCATE(r_e(n))
+           IF(CommI) THEN
+             DEALLOCATE(r_i)
+             ALLOCATE(r_i(n))
+           END IF
+         END IF
+
+         ! Receive the global index
+         CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+         IF( CommI ) THEN
+           ! Receive the value of the integer tag, if requested
+           CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
+         END IF
+         DO j=1,n
+           ! Check that the entry exists in the matrix
+           k = SearchNode( ParallelInfo, r_e(j), Order=ParallelInfo % Gorder )
+           IF ( k>0 ) THEN
+             IF( UseL ) THEN
+               IF(.NOT. LTag(k)) THEN
+                 LTag(k) = .TRUE.
+                 NewZeros = NewZeros + 1
+               END IF
+             ELSE
+               IF(ITag(k) == 0) THEN
+                 IF( CommI ) THEN
+                   ITag(k) = r_i(j)
+                 ELSE
+                   ITag(k) = 1
+                 END IF
+                 NewZeros = NewZeros + 1
+               END IF
+             END IF
+           END IF
+         END DO
+       END IF
+     END DO
+     DEALLOCATE(s_e, r_e )
+     IF(CommI) DEALLOCATE(s_i, r_i)
+
+     !PRINT *,'New Zeros:',ParEnv % MyPe, NewZeros
+     
+  !-------------------------------------------------------------------------------
+   END SUBROUTINE CommunicateParallelSystemTag
+  !-------------------------------------------------------------------------------
+
+ 
+
  ! This subroutine fixes the global indexing of the mesh when the same mesh has been loaded to the
  ! for multiple partitions.
  !-------------------------------------------------------------------------------------------------
@@ -12804,7 +12989,7 @@ CONTAINS
 
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    IF( InfoActive(30) ) THEN
+    IF( InfoActive(30) .AND. ParEnv % MyPe == 0) THEN
       PRINT *,'Cylinder center and radius:',Coord, rad
     END IF
 
@@ -13055,72 +13240,87 @@ CONTAINS
       REAL(KIND=dp) :: R, rat
       REAL(KIND=dp) :: Nrm(3), Tngt1(3), Tngt2(3), Orig(3), Coord(3), NtCoord(3)
       INTEGER :: i,j,k,l,t,n
-      LOGICAL, ALLOCATABLE :: DoneNode(:)
+      LOGICAL, POINTER :: DoneNode(:)
       TYPE(Element_t), POINTER :: Element
-      LOGICAL :: Debug = .TRUE.     
+      LOGICAL :: Parallel 
+      TYPE(ParallelInfo_t), POINTER :: ParallelInfo
       
-      ALLOCATE( DoneNode(Mesh % NumberOfNodes))
-      DoneNode = .FALSE.
-
       IF( Mode == 1 ) THEN  ! circle
         Orig(1:2) = FitParams(1:2)
         Orig(3) = 0.0_dp
         R = FitParams(3)
-        IF( InfoActive(25) ) PRINT *,'Circle Params:',FitParams(1:3)                        
+        IF( InfoActive(25) .AND. ParEnv % MyPe == 0) PRINT *,'Circle Params:',FitParams(1:3)                        
       ELSE IF( Mode == 2 ) THEN  ! cylinder 
         Orig(1:3) = FitParams(1:3)
         Nrm(1:3) = FitParams(4:6)        
         R = FitParams(7)
-        IF( InfoActive(25) ) PRINT *,'Cylinder Params:',FitParams(1:7)        
+        IF( InfoActive(25) .AND. ParEnv % MyPe == 0) PRINT *,'Cylinder Params:',FitParams(1:7)        
         CALL TangentDirections(Nrm, Tngt1, Tngt2 ) 
       ELSE IF( Mode == 3 ) THEN ! sphere
         Orig(1:3) = FitParams(1:3)
         Nrm = 0.0_dp
         R = FitParams(4)
-        IF( InfoActive(25) ) PRINT *,'Sphere Params:',FitParams(1:4)                                
+        IF( InfoActive(25) .AND. ParEnv % MyPe == 0) PRINT *,'Sphere Params:',FitParams(1:4)                                
       END IF
       
-      DO t=Mesh % NumberOfBulkElements+1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements(t)
-        IF ( Element % BoundaryInfo % Constraint &
-            /= Model % BCs(bc_ind) % Tag ) CYCLE
+      Parallel = ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh
+      
+      IF(.NOT. SetP) THEN
+        ALLOCATE( DoneNode(Mesh % NumberOfNodes))
+        DoneNode = .FALSE.
+        
+        DO t=Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          IF ( Element % BoundaryInfo % Constraint &
+              /= Model % BCs(bc_ind) % Tag ) CYCLE          
+          n = Element % TYPE % NumberOfNodes          
+          DoneNode(Element % NodeIndexes(1:n)) = .TRUE.
+        END DO
 
-        n = Element % TYPE % NumberOfNodes
-
-        IF(.NOT. SetP ) THEN
-          DO i=1,n
-            j = Element % NodeIndexes(i)
-            IF( DoneNode(j) ) CYCLE
-            DoneNode(j) = .TRUE.
-
-            Coord(1) = Mesh % Nodes % x(j) - Orig(1)           
-            Coord(2) = Mesh % Nodes % y(j) - Orig(2)
-            Coord(3) = Mesh % Nodes % z(j) - Orig(3)
-
-            SELECT CASE( Mode )
-            CASE( 1 ) ! circle 
-              rat = R / SQRT(SUM(Coord(1:2)**2))
-              Coord(1:2) = rat*Coord(1:2)
-            CASE( 2 ) ! cylinder
-              NtCoord(1) = SUM(Nrm*Coord)
-              NtCoord(2) = SUM(Tngt1*Coord)
-              NtCoord(3) = SUM(Tngt2*Coord)
-              rat = R / SQRT(SUM(NtCoord(2:3)**2))
-              NtCoord(2:3) = rat*NtCoord(2:3)
-              Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
-            CASE( 3 ) ! sphere 
-              rat = R / SQRT(SUM(Coord(1:3)**2))
-              Coord(1:3) = rat*Coord(1:3)
-            END SELECT
-
-            Mesh % Nodes % x(j) = Coord(1) + Orig(1)
-            Mesh % Nodes % y(j) = Coord(2) + Orig(2)
-            Mesh % Nodes % z(j) = Coord(3) + Orig(3)
-          END DO
+        IF( Parallel ) THEN
+          ParallelInfo => Mesh % ParallelInfo 
+          CALL CommunicateParallelSystemTag(ParallelInfo,Ltag = DoneNode)
         END IF
           
-        IF( SetP ) THEN
+        DO j=1, Mesh % NumberOfNodes
+          IF( .NOT. DoneNode(j) ) CYCLE
+
+          Coord(1) = Mesh % Nodes % x(j) - Orig(1)           
+          Coord(2) = Mesh % Nodes % y(j) - Orig(2)
+          Coord(3) = Mesh % Nodes % z(j) - Orig(3)
+          
+          SELECT CASE( Mode )
+          CASE( 1 ) ! circle 
+            rat = R / SQRT(SUM(Coord(1:2)**2))
+            Coord(1:2) = rat*Coord(1:2)
+          CASE( 2 ) ! cylinder
+            NtCoord(1) = SUM(Nrm*Coord)
+            NtCoord(2) = SUM(Tngt1*Coord)
+            NtCoord(3) = SUM(Tngt2*Coord)
+            rat = R / SQRT(SUM(NtCoord(2:3)**2))
+            NtCoord(2:3) = rat*NtCoord(2:3)
+            Coord = NtCoord(1)*Nrm + NtCoord(2)*Tngt1 + NtCoord(3)*Tngt2
+          CASE( 3 ) ! sphere 
+            rat = R / SQRT(SUM(Coord(1:3)**2))
+            Coord(1:3) = rat*Coord(1:3)
+          END SELECT
+          
+          Mesh % Nodes % x(j) = Coord(1) + Orig(1)
+          Mesh % Nodes % y(j) = Coord(2) + Orig(2)
+          Mesh % Nodes % z(j) = Coord(3) + Orig(3)
+        END DO
+        DEALLOCATE(DoneNode)
+      END IF
+        
+      IF( SetP ) THEN
+        DO t=Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          IF ( Element % BoundaryInfo % Constraint &
+              /= Model % BCs(bc_ind) % Tag ) CYCLE          
+          n = Element % TYPE % NumberOfNodes
+          
           BLOCK 
             REAL(KIND=dp) :: Weight
             REAL(KIND=dp) :: Basis(50),DetJ
@@ -13215,8 +13415,8 @@ CONTAINS
             END DO
             
           END BLOCK
-        END IF
-      END DO
+        END DO
+      END IF
         
     END SUBROUTINE SetCurvedBoundary
 !------------------------------------------------------------------------------

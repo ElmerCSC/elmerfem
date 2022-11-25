@@ -56,7 +56,7 @@ $b=1.0
 End 
 
 Body 1
-  Name = "Body1"
+  Name = "Inner"
   Equation = 1
   Material = 1
 End
@@ -137,6 +137,7 @@ Solver 2
   Filename = f.dat
 
   Show Norm Index = 1
+  Parallel Reduce = True
 End
 
 Material 1

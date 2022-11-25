@@ -140,6 +140,7 @@ Solver 2
   Filename = f.dat
 
   Show Norm Index = 1
+  Parallel Reduce = True
 End
 
 Material 1

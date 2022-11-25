@@ -6750,7 +6750,7 @@ CONTAINS
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
     INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
-    LOGICAL :: Found, SetP, Passive, TestFix
+    LOGICAL :: Found, SetP, Passive, Parallel
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver
@@ -6769,8 +6769,6 @@ CONTAINS
 
     SetP = ListGetLogical( Solver % Values,'Fix Constraint Modes p',Found )  
     IF(.NOT. Found) SetP = .TRUE.
-
-    TestFix = ListGetLogical( Solver % Values,'Test Fix',Found ) 
     
     ! This needs to be allocated only once, hence return if already set
     IF( Var % NumberOfConstraintModes > 0 ) RETURN
@@ -6778,6 +6776,8 @@ CONTAINS
     CALL Info('SetConstraintModesBoundaries','Setting constraint modes boundaries for variable: '&
         //TRIM(Name),Level=7)
 
+    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
+    
     ! Allocate the indeces for the constraint modes
     ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
     Var % ConstraintModesIndeces = 0
@@ -6848,8 +6848,11 @@ CONTAINS
 
     ! Some single node or edge could stretch to the surface even though it is not
     ! part of any boundary element in parallel. Hence we need to communicate the tag. 
-    CALL CommunicateLinearSystemTag(A,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
-    
+    IF( Parallel ) THEN
+      CALL Info('SetConstraintModesBoundaries','Communicating tags for constraint modes',Level=20)
+      CALL CommunicateParallelSystemTag(A % ParallelInfo,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
+    END IF
+      
     ! Set the p dofs to negative since we don't ever want to set them to one!
     ! Note that there are some dofs related to ground that are already negative.
     ! Hence ground and p-pubbles are treated alike. 
@@ -8019,163 +8022,6 @@ CONTAINS
   END SUBROUTINE CommunicateDirichletBCs
   !-------------------------------------------------------------------------------
 
-
-  !-------------------------------------------------------------------------------
-  !> Communicate logical tag related to linear system.
-  !> This could related to setting Neumann BCs to zero, for example.
-  !-------------------------------------------------------------------------------
-  SUBROUTINE CommunicateLinearSystemTag(A,Ltag,Itag,CommVal)
-  !-------------------------------------------------------------------------------
-     TYPE(Matrix_t) :: A                     !< Matrix that the communication relates to
-     LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
-     INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
-     LOGICAL, OPTIONAL :: CommVal            !< If integer tag is used, should we consider also the value
-     
-     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:), s_i(:,:), r_i(:)
-     INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
-     INTEGER :: NewZeros
-     LOGICAL :: UseL, GotIt, CommI
-     
-     IF( ParEnv % PEs<=1 ) RETURN
-
-     UseL = PRESENT(LTag)
-     IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
-       CALL Fatal('CommunicateLinearSystemTag','Give either logical or integer tag!')
-     END IF
-     CommI = .FALSE.
-     IF(.NOT. UseL) THEN
-       IF(PRESENT(CommVal)) CommI = CommVal
-     END IF
-
-     ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
-     
-     ! Mark the neighbouring entities
-     nn = 0
-     ineigh = 0
-     DO i=0, ParEnv % PEs-1
-       k = i+1
-       IF(.NOT.ParEnv % Active(k) ) CYCLE
-       IF(i==ParEnv % myPE) CYCLE
-       IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
-       nn = nn + 1
-       fneigh(nn) = k
-       ineigh(k) = nn
-     END DO
-
-     ! Count the maximum number of enties to sent 
-     IF( UseL ) THEN
-       n = COUNT(LTag .AND. A % ParallelInfo % NodeInterface)
-     ELSE
-       n = COUNT((ITag /= 0) .AND. A % ParallelInfo % NodeInterface)
-     END IF
-
-     ! Allocate for the data to sent (s_e) and receive (r_e)
-     ALLOCATE( s_e(n, nn ), r_e(n) )
-     s_e = 0
-     IF( CommI ) THEN
-       ALLOCATE( s_i(n, nn), r_i(n) )
-       s_i = 0
-     END IF
-
-     IF( CommI ) THEN
-       CALL CheckBuffer( nn*6*n )
-     ELSE
-       CALL CheckBuffer( nn*3*n )
-     END IF
-       
-     ii = 0
-     DO i=1, A % NumberOfRows
-       IF( UseL ) THEN
-         GotIt = LTag(i) .AND. A % ParallelInfo % NodeInterface(i)
-       ELSE
-         GotIt = Itag(i) /= 0 .AND. A % ParallelInfo % NodeInterface(i)
-       END IF
-       IF(.NOT. GotIt) CYCLE
-       
-       DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
-         k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
-         IF ( k == ParEnv % MyPE ) CYCLE
-         k = k + 1
-         k = ineigh(k)
-         IF ( k> 0) THEN
-           ii(k) = ii(k) + 1
-           s_e(ii(k),k) = A % ParallelInfo % GlobalDOFs(i)
-           IF( CommI ) THEN
-             s_i(ii(k),k) = Itag(i)
-           END IF
-         END IF
-       END DO
-     END DO
-
-     DO i=1, nn
-       j = fneigh(i) 
-       ! Sent size data
-       CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
-       IF( ii(i) > 0 ) THEN
-         ! Sent the global index 
-         CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
-         IF( CommI ) THEN
-           ! Sent the value of the integer tag, if requested
-           CALL MPI_BSEND( s_i(1:ii(i),i),ii(i),MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,ierr )
-         END IF
-       END IF
-     END DO
-
-     NewZeros = 0
-     
-     DO i=1, nn
-       j = fneigh(i)
-       ! Receive size of data coming from partition "j"
-       CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
-       IF ( n>0 ) THEN
-         IF( n>SIZE(r_e)) THEN
-           DEALLOCATE(r_e)
-           ALLOCATE(r_e(n))
-           IF(CommI) THEN
-             DEALLOCATE(r_i)
-             ALLOCATE(r_i(n))
-           END IF
-         END IF
-
-         ! Receive the global index
-         CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
-         IF( CommI ) THEN
-           ! Receive the value of the integer tag, if requested
-           CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
-         END IF
-         DO j=1,n
-           ! Check that the entry exists in the matrix
-           k = SearchNode( A % ParallelInfo, r_e(j), Order=A % ParallelInfo % Gorder )
-           IF ( k>0 ) THEN
-             IF( UseL ) THEN
-               IF(.NOT. LTag(k)) THEN
-                 LTag(k) = .TRUE.
-                 NewZeros = NewZeros + 1
-               END IF
-             ELSE
-               IF(ITag(k) == 0) THEN
-                 IF( CommI ) THEN
-                   ITag(k) = r_i(j)
-                 ELSE
-                   ITag(k) = 1
-                 END IF
-                 NewZeros = NewZeros + 1
-               END IF
-             END IF
-           END IF
-         END DO
-       END IF
-     END DO
-     DEALLOCATE(s_e, r_e )
-     IF(CommI) DEALLOCATE(s_i, r_i)
-     
-     !PRINT *,'New Zeros:',ParEnv % MyPe, NewZeros
-     
-  !-------------------------------------------------------------------------------
-   END SUBROUTINE CommunicateLinearSystemTag
-  !-------------------------------------------------------------------------------
-
-
   
 !-------------------------------------------------------------------------------
   SUBROUTINE EnforceDirichletConditions( Solver, A, b, OffDiagonal ) 
@@ -8190,7 +8036,7 @@ CONTAINS
     LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
     REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
-    INTEGER :: i,j,k,n
+    INTEGER :: i,j,k,n,n2,n3
     CHARACTER(*), PARAMETER :: Caller = 'EnforceDirichletConditions'
     LOGICAL :: Parallel
     
@@ -8198,23 +8044,29 @@ CONTAINS
     Params => Solver % Values
 
     IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
-      CALL Info(Caller,&
-          'ConstrainedDOF not associated, returning...',Level=8)
+      CALL Info(Caller,'ConstrainedDOF not associated, returning...',Level=8)
       RETURN
     END IF
 
     Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
-    
-    n = COUNT( A % ConstrainedDOF )
 
-    IF( Parallel ) THEN
-      n = ParallelReduction( n )
-    END IF
+    n = COUNT( A % ConstrainedDOF )
+    IF( Parallel ) n = ParallelReduction( n )
       
     IF( n == 0 ) THEN
       CALL Info(Caller,'No Dirichlet conditions to enforce, exiting!',Level=10)
       RETURN
     END IF    
+        
+    ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
+    IF ( Parallel ) THEN
+      DirichletComm = ListGetLogical( CurrentModel % Simulation, 'Dirichlet Comm', Found)
+      IF(.NOT. Found) DirichletComm = .TRUE.
+      IF( DirichletComm) THEN
+        CALL Info('EnforceDirichletConditions','Communicating Dirichlet conditions',Level=20)
+        CALL CommunicateDirichletBCs(A)
+      END IF
+    END IF
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -8237,14 +8089,23 @@ CONTAINS
       CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
       DiagScaling => A % DiagScaling
     END IF
-    
-    ! Communicate the Dirichlet conditions for parallel cases since there may be orphans      
-    IF ( Parallel ) THEN
-      DirichletComm = ListGetLogical( CurrentModel % Simulation, 'Dirichlet Comm', Found)
-      IF(.NOT. Found) DirichletComm = .TRUE.
-      IF( DirichletComm) CALL CommunicateDirichletBCs(A)
+
+    n2 = 0
+    IF( Parallel ) THEN
+      n = 0
+      DO i=1,A % NumberOfRows
+        IF( A % ConstrainedDOF(i) ) THEN
+          IF( A % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
+            n = n + 1
+          ELSE
+            n2 = n2 + 1
+          END IF
+        END IF
+      END DO
+      n = ParallelReduction( n )
+      n2 = ParallelReduction( n2 ) 
     END IF
-    
+        
     ! Eliminate all entries in matrix that may be eliminated in one sweep
     ! If this is an offdiagonal entry this cannot be done.  
     IF ( A % Symmetric .AND. .NOT. NoDiag ) THEN
@@ -8296,6 +8157,7 @@ CONTAINS
     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
         
     CALL Info(Caller,'Dirichlet conditions enforced for dofs: '//TRIM(I2S(n)), Level=6)
+    IF(n2>0) CALL Info(Caller,'Dirichlet conditions shared count: '//TRIM(I2S(n2)), Level=12)
     
   END SUBROUTINE EnforceDirichletConditions
 !-------------------------------------------------------------------------------
@@ -13724,7 +13586,7 @@ END FUNCTION SearchNodeL
        END SUBROUTINE BlockSolveExt
     END INTERFACE
 !------------------------------------------------------------------------------
-
+    
     Params => Solver % Values
      
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
@@ -14652,7 +14514,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     END IF
     
     DO i=1,m
-      CALL Info(Caller,'Solving for mode: '//TRIM(I2S(i)),Level=6)
+      CALL Info(Caller,'Solving for constrained mode: '//TRIM(I2S(i)),Level=6)
       
       IF( i == 2 ) THEN
         CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.TRUE.)

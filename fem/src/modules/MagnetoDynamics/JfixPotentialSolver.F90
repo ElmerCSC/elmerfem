@@ -537,7 +537,7 @@ CONTAINS
     IF( JfixNeu .OR. JfixStatCurr .OR. JfixHybrid ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('JfixPotentialSolver','Communicating zero source terms',Level=10)      
-        CALL CommunicateLinearSystemTag(A,JfixRhsZero)
+        CALL CommunicateParallelSystemTag(A % ParallelInfo,JfixRhsZero)
       END IF
                 
       DO j=1,Mesh % NumberOfNodes
