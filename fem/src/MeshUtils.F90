@@ -13220,6 +13220,11 @@ CONTAINS
       ELSE IF( ListGetLogical(BC,'Follow Sphere Boundary', Found ) ) THEN
         CALL SphereFit(Mesh, BC, bc_ind, FitParams ) 
         Mode = 3        
+      ELSE IF( ListGetLogical(BC,'Follow Function Boundary', Found ) ) THEN
+        IF(.NOT. ListCheckPresent(BC,'Surface Function') ) THEN
+          CALL Fatal('FollowCurvedBoundary','We need "Surface Function" to follow!')
+        END IF
+        Mode = 4        
       ELSE
         Mode = 0
       END IF
@@ -13234,10 +13239,11 @@ CONTAINS
     
   CONTAINS
 
+          
 !------------------------------------------------------------------------------
     SUBROUTINE SetCurvedBoundary()
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: R, rat
+      REAL(KIND=dp) :: R, rat, f, gradf(3)
       REAL(KIND=dp) :: Nrm(3), Tngt1(3), Tngt2(3), Orig(3), Coord(3), NtCoord(3)
       INTEGER :: i,j,k,l,t,n
       LOGICAL, POINTER :: DoneNode(:)
@@ -13261,9 +13267,11 @@ CONTAINS
         Nrm = 0.0_dp
         R = FitParams(4)
         IF( InfoActive(25) .AND. ParEnv % MyPe == 0) PRINT *,'Sphere Params:',FitParams(1:4)                                
+      ELSE IF( Mode == 4 ) THEN
+        Orig = 0.0_dp        
       END IF
       
-      Parallel = ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh
+      Parallel = ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh )
       
       IF(.NOT. SetP) THEN
         ALLOCATE( DoneNode(Mesh % NumberOfNodes))
@@ -13282,7 +13290,7 @@ CONTAINS
           ParallelInfo => Mesh % ParallelInfo 
           CALL CommunicateParallelSystemTag(ParallelInfo,Ltag = DoneNode)
         END IF
-          
+
         DO j=1, Mesh % NumberOfNodes
           IF( .NOT. DoneNode(j) ) CYCLE
 
@@ -13304,6 +13312,12 @@ CONTAINS
           CASE( 3 ) ! sphere 
             rat = R / SQRT(SUM(Coord(1:3)**2))
             Coord(1:3) = rat*Coord(1:3)
+          CASE( 4 ) ! analytical function
+            ! For now we fix Newton's iteration to three...
+            DO i=1,3
+              f = ListGetFunVec( BC,'Surface Function', Coord(1:dim), dim, DfDx=gradf(1:dim) )
+              Coord(1:dim) = Coord(1:dim) - f*gradf(1:dim)/(SUM(gradf(1:dim)**2))
+            END DO
           END SELECT
           
           Mesh % Nodes % x(j) = Coord(1) + Orig(1)
@@ -13374,9 +13388,14 @@ CONTAINS
               CASE( 3 ) 
                 rat = R / SQRT(SUM(Coord(1:3)**2))
                 Coord(1:3) = rat * Coord(1:3)
+              CASE( 4 ) 
+                DO i=1,3
+                  f = ListGetFunVec( BC,'Surface Function', Coord(1:dim), dim, DfDx=gradf(1:dim) )
+                  Coord(1:dim) = Coord(1:dim) - f*gradf(1:dim)/(SUM(gradf(1:dim)**2))            
+                END DO
               END SELECT
-              Coord = Coord + Orig
 
+              Coord = Coord + Orig
               ! Solve for desired coordinate displacement rather than absolute coordinate value
               Coord = Coord - Coord0
                 

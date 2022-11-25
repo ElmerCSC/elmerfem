@@ -31,7 +31,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -165,6 +165,11 @@ Boundary Condition 2
 
   Follow Cylinder Boundary = Logical True
   Cylinder Normal(3) = Real 0 0 1 
+
+! This is a slower and less accurate (?) alternative
+!  Follow Function Boundary = Logical True
+!  Surface Function = Variable "dummy"
+!    Real MATC "tx(0)^2+tx(1)^2-0.5^2"
 End 
 
 Boundary Condition 3
