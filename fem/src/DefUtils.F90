@@ -1787,22 +1787,24 @@ CONTAINS
          !
          ! Check finally if 3-D faces are associated with face bubbles
          !
-         DO j=1,Element % TYPE % NumberOfFaces
-           Face => Solver % Mesh % Faces(Element % FaceIndexes(j))
-           face_type = Face % TYPE % ElementCode/100
-           IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
-             face_id  = Face % BoundaryInfo % Left % BodyId
-             k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
-           END IF
-           IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-             face_id = Face % BoundaryInfo % Right % BodyId
-             k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
-           END IF
-           IF (k > 0) THEN
-             NeedEdges = .TRUE.
-             EXIT
-           END IF
-         END DO
+         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+           DO j=1,Element % TYPE % NumberOfFaces
+             Face => Solver % Mesh % Faces(Element % FaceIndexes(j))
+             face_type = Face % TYPE % ElementCode/100
+             IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+               face_id  = Face % BoundaryInfo % Left % BodyId
+               k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+               face_id = Face % BoundaryInfo % Right % BodyId
+               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (k > 0) THEN
+               NeedEdges = .TRUE.
+               EXIT
+             END IF
+           END DO
+         END IF
        END IF
      END IF
 
