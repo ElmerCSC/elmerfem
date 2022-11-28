@@ -1464,7 +1464,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! When the number of bubbles is obtained with the Update=.TRUE. flag,
       ! we need to call GetElementNOFBDOFs before calling GetElementNOFDOFs.
       !
-      nb = GetElementNOFBDOFs(Element, Update=.TRUE.)
+      nb = GetElementNOFBDOFs(Element)
       nd = GetElementNOFDOFs(Element)
       
       ! Get element local matrix and rhs vector:

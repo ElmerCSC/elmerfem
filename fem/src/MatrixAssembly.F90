@@ -923,6 +923,9 @@ BLOCK
            IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
            BDOFs = MAX(nb, BDOFs)
          ELSE
+           ! The following is not an ideal way to obtain the bubble count
+           ! in order to support solverwise definitions, but we are not expected 
+           ! to end up in this branch anyway:
            BDOFs = Element % BDOFs
          END IF
          DO i=1,BDOFs
