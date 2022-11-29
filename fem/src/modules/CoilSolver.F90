@@ -274,6 +274,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
   TestCut = .FALSE.
   OneCut = .FALSE.
+  NarrowInterface = .FALSE.
   IF( CoilParts == 2 ) THEN
     OneCut = GetLogical( Params,'Single Coil Cut',Found )
     TestCut = GetLogical( Params,'Test Coil Cut',Found )
