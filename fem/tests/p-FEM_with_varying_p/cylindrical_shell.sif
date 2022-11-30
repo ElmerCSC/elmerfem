@@ -34,7 +34,14 @@
 ! same 2 X 2 mesh, with p being fixed as p=8 in the boundary layer and p varying
 ! elsewhere) is found to be as follows (the shell thickness d=0.1): 
 ! 
-! p=4  Relative energy error =    2.8912002775000799E-002
+! p=1  Relative energy error =   0.85396972358657408
+! p=2  Relative energy error =   0.23800207437997356
+! p=3  Relative energy error =   0.14558431573734487
+! p=4  Relative energy error =   2.8912002775000799E-002
+! p=5  Relative energy error =   7.0313590547632018E-003
+! p=6  Relative energy error =   2.3734217622063724E-003
+! p=7  Relative energy error =   5.8687216090359958E-004
+! p=8  Relative energy error =   1.3339512982768768E-004
 !
 !
 ! The original author of this test: Mika Malinen 
