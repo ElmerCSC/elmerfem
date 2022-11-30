@@ -399,7 +399,7 @@ CONTAINS
      INTEGER :: i,k2,k2i,j, k,prevind
 
      IF (k1>SIZE(List)) THEN
-       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
+       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
      END IF
      
      ! Add each element in Ind to the row list
