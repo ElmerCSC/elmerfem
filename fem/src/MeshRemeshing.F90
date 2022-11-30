@@ -451,7 +451,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
          'CALL TO MMG3D_SET_DPARAMETER <hgrad> Failed')
   END IF
 
-  Pval = ListGetConstReal( SolverParams, 'mmg hgradreq', Found, minv=2.0, maxv=4.0)
+  Pval = ListGetConstReal( SolverParams, 'mmg hgradreq', Found, minv=2.0_dp, maxv=4.0_dp)
   IF (Found) THEN
     CALL PMMG_SET_DPARAMETER(pmmgMesh,PMMGPARAM_hgradreq,Pval,ierr)
     IF ( ierr == 0 ) CALL Fatal(FuncName, &
