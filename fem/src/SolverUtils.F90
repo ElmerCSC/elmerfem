@@ -12103,15 +12103,18 @@ END FUNCTION SearchNodeL
     END IF
 
     DO i = 1, n
-      j = Var % Perm( i ) 
-      IF( j == 0 ) CYCLE
+      j = i
+      IF( ASSOCIATED( Var % Perm ) ) THEN
+        j = Var % Perm( i ) 
+        IF( j == 0 ) CYCLE
+      END IF
       IF( MeshPiece(i) > 0 ) THEN
         Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
       ELSE
         Var % Values( j ) = 0.0_dp
       END IF
     END DO
-    CALL Info('CalculateMeshPieces','Saving mesh piece field to: mesh piece',Level=5)
+    CALL Info('CalculateMeshPieces','Creating variable showing the non-connected domains: mesh piece',Level=5)
   
   END SUBROUTINE CalculateMeshPieces
 
