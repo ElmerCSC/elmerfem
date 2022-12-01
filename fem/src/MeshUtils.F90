@@ -5080,6 +5080,7 @@ CONTAINS
         n = Element % TYPE % NumberOfNodes             
         PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
         PMesh % Elements(ind) = Element
+        PMesh % Elements(ind) % DGIndexes => Null()
 
         IF( TagNormalFlip ) THEN
           PMesh % PeriodicFlip(ind) = Turn
