@@ -835,7 +835,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseVariableList( VariableList )
 !------------------------------------------------------------------------------
-use spariterglobals
+    USE spariterglobals
     TYPE(Variable_t), POINTER :: VariableList
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Ptr(:)
@@ -919,23 +919,7 @@ use spariterglobals
        END IF
        
        IF ( GotValues ) THEN
-        IF ( ASSOCIATED( Var % Values ) ) &
-           DEALLOCATE( Var % Values )
-
-         IF ( ASSOCIATED( Var % PrevValues ) ) &
-           DEALLOCATE( Var % PrevValues )
-
-         IF ( ASSOCIATED( Var % EigenValues ) ) &
-           DEALLOCATE( Var % EigenValues )
-
-         IF ( ASSOCIATED( Var % EigenVectors ) ) &
-           DEALLOCATE( Var % EigenVectors )
-
-         IF ( ASSOCIATED( Var % SteadyValues ) ) &
-           DEALLOCATE( Var % SteadyValues )
-
-         IF ( ASSOCIATED( Var % NonlinValues ) ) &
-           DEALLOCATE( Var % NonlinValues )
+         CALL DeallocateVariableEntries()
        END IF
        NULLIFY( Var % EigenVectors, Var % EigenValues )
        NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
@@ -950,26 +934,14 @@ use spariterglobals
          Var => Var % Next
          CYCLE
        END IF
-
+       
+       IF ( ASSOCIATED( Var % Perm ) ) &
+           DEALLOCATE( Var % Perm )
+             
        IF ( Var % DOFs > 1 ) THEN
-         IF ( ASSOCIATED( Var % Values ) ) &
-            DEALLOCATE( Var % Values )
-
-         IF ( ASSOCIATED( Var % Perm ) ) &
-            DEALLOCATE( Var % Perm )
-
-         IF ( ASSOCIATED( Var % PrevValues ) ) &
-            DEALLOCATE( Var % PrevValues )
-
-         IF ( ASSOCIATED( Var % EigenValues ) ) &
-            DEALLOCATE( Var % EigenValues )
-
-         IF ( ASSOCIATED( Var % EigenVectors ) ) &
-            DEALLOCATE( Var % EigenVectors )
-
-         IF ( ASSOCIATED( Var % NonlinValues ) ) &
-            DEALLOCATE( Var % NonlinValues )
+         CALL DeallocateVariableEntries()
        END IF
+
        NULLIFY( Var % EigenVectors, Var % EigenValues )
        NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
        NULLIFY( Var % SteadyValues, Var % NonlinValues )
@@ -985,7 +957,53 @@ use spariterglobals
        Var1 => Var % Next
        DEALLOCATE( Var )
        Var => Var1
-    END DO
+     END DO
+
+   CONTAINS
+     
+     SUBROUTINE DeallocateVariableEntries()
+
+       IF ( ASSOCIATED( Var % Values ) ) &
+           DEALLOCATE( Var % Values )
+       
+       IF ( ASSOCIATED( Var % PrevValues ) ) &
+           DEALLOCATE( Var % PrevValues )
+       
+       IF ( ASSOCIATED( Var % EigenValues ) ) &
+           DEALLOCATE( Var % EigenValues )
+       
+       IF ( ASSOCIATED( Var % EigenVectors ) ) &
+           DEALLOCATE( Var % EigenVectors )
+       
+       IF ( ASSOCIATED( Var % SteadyValues ) ) &
+           DEALLOCATE( Var % SteadyValues )
+
+       IF ( ASSOCIATED( Var % NonlinValues ) ) &
+           DEALLOCATE( Var % NonlinValues )
+       
+       IF( ASSOCIATED( Var % ConstraintModesIndeces ) ) &
+           DEALLOCATE( Var % ConstraintModesIndeces )
+       
+       IF( ASSOCIATED( Var % ConstraintModes ) ) &
+           DEALLOCATE( Var % ConstraintModes )
+
+       IF( ASSOCIATED( Var % UpperLimitActive ) ) &
+           DEALLOCATE( Var % UpperLimitActive )
+
+       IF( ASSOCIATED( Var % LowerLimitActive ) ) &
+           DEALLOCATE( Var % LowerLimitActive )
+
+       IF( ASSOCIATED( Var % IpTable ) ) &
+           DEALLOCATE( Var % IpTable )
+
+       IF( ASSOCIATED( Var % CValues ) ) &
+           DEALLOCATE( Var % CValues ) 
+
+       IF( ASSOCIATED( Var % PValues ) ) &
+           DEALLOCATE( Var % PValues ) 
+       
+     END SUBROUTINE DeallocateVariableEntries       
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseVariableList
 !------------------------------------------------------------------------------
