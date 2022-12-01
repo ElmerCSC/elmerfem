@@ -731,7 +731,7 @@ CONTAINS
        
        ! Make boundary elements to inherit the bulk indexes
        ! We neglect this as for now since it seems this causes problems in deallocation later on...
-#if 0
+#if 1
        DO t=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
@@ -773,7 +773,7 @@ CONTAINS
      DGPerm = 0
 
      ! If we consider boundary element above do that also here
-     DO t=1,Mesh % NumberOfBulkElements !+ Mesh % NumberOFBoundaryElements
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
        IF( Element % PartIndex == ParEnv % myPE ) THEN
