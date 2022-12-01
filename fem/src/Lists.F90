@@ -123,8 +123,8 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, EDOFs, FDOFs, BDOFs, ndofs, el_id
-     INTEGER :: Indexes(128)
+     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, MaxEDOFs, MaxFDOFs, BDOFs, ndofs, el_id
+     INTEGER :: NodalIndexOffset, EdgeIndexOffset, FaceIndexOffset, Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
      LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
@@ -133,10 +133,12 @@ CONTAINS
 !------------------------------------------------------------------------------
      Perm = 0
      k = 0
-     EDOFs = Mesh % MaxEdgeDOFs
-     FDOFs = Mesh % MaxFaceDOFs
-     BDOFs = Mesh % MaxBDOFs
+     MaxEDOFs = Mesh % MaxEdgeDOFs
+     MaxFDOFs = Mesh % MaxFaceDOFs
      MaxNDOFs = Mesh % MaxNDOFs
+     NodalIndexOffset = MaxNDOFs * Mesh % NumberOfNodes
+     EdgeIndexOffset = MaxEDOFs * Mesh % NumberOfEdges
+     FaceIndexOffset = MaxFDOFs * Mesh % NumberOfFaces
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles
@@ -327,8 +329,11 @@ CONTAINS
        END IF
      END IF
 
-
-     IF ( ANY(Solver % Def_Dofs(:,:,6)>=0) ) THEN
+     ! In the case of p-elements two neighbouring elements may have different
+     ! degrees of approximation, find out the highest order associated with 
+     ! a particular edge or face: 
+     !
+     IF ( ANY(Solver % Def_Dofs(:,:,6)>=1) ) THEN
        IF ( Mesh % NumberOFEdges>0 ) THEN
           ALLOCATE(EdgeDOFs(Mesh % NumberOfEdges))
           EdgeDOFs=0;
@@ -410,14 +415,12 @@ CONTAINS
              ndofs = 0
              IF ( Def_Dofs(2) >= 0) THEN
                ndofs = Def_Dofs(2)
-             ELSE IF (Def_Dofs(6)>=0) THEN
+             ELSE IF (Def_Dofs(6)>1) THEN
                ndofs = EdgeDOFs(Element % EdgeIndexes(i))
-!              IF (Def_Dofs(6)==0) ndofs = MAX(Edge % BDOFs,ndofs)
-               ndofs = MAX(Edge % BDOFs,ndofs)
              END IF
 
              DO e=1,ndofs
-                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
+                j = NodalIndexOffset + MaxEDOFs*(Element % EdgeIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
                    Perm(j) =  k
@@ -431,7 +434,7 @@ CONTAINS
              Face => Mesh % Faces( Element % FaceIndexes(i) )
              IF(Element % Type % ElementCode==Face % Type % ElementCode.AND..NOT.GB) CYCLE
 
-              l = MAX(0,Def_Dofs(3))
+             l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
 
              IF(l==0) THEN
@@ -453,15 +456,13 @@ CONTAINS
              ndofs = 0
              IF (l > 0) THEN
                ndofs = l
-             ELSE IF (Def_Dofs(6)>=0) THEN
+             ELSE IF (Def_Dofs(6)>1) THEN
                ndofs = FaceDOFs(Element % FaceIndexes(i))
-!              IF ( Def_Dofs(6)==0 ) ndofs = MAX(Face % BDOFs,ndofs)
-               ndofs = MAX(Face % BDOFs,ndofs)
              END IF
 
              DO e=1,ndofs
-                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
-                          FDOFs*(Element % FaceIndexes(i)-1) + e
+                j = NodalIndexOffset + EdgeIndexOffset + &
+                     MaxFDOFs*(Element % FaceIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
                    Perm(j) =  k
@@ -472,16 +473,21 @@ CONTAINS
 
        IF ( GB .AND. ASSOCIATED(Element % BubbleIndexes) ) THEN
          ndofs = 0
-         IF ( Def_Dofs(5) >= 0) THEN
-            ndofs = Def_Dofs(5)
-         ELSE IF (Def_Dofs(6)>=0) THEN
-            ndofs = GetBubbleDOFs(Element, Def_Dofs(6))
-            IF ( Def_Dofs(6)==0 ) ndofs = MAX(Element % BDOFs,ndofs)
+         BDOFs = Def_Dofs(5)
+         j = Def_Dofs(6)
+         IF (BDOFs >= 0 .OR. j >= 1) THEN
+           IF (j > 1) ndofs = GetBubbleDOFs(Element, j)
+           ndofs = MAX(BDOFs, ndofs) 
+         ELSE
+           ! The following is not an ideal way to obtain the bubble count
+           ! in order to support solverwise definitions, but we are not expected 
+           ! to end up in this branch anyway:
+           ndofs = Element % BDOFs
          END IF
 
          DO i=1,ndofs
-            j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
-                 FDOFs*Mesh % NumberOfFaces + Element % BubbleIndexes(i)
+            j = NodalIndexOffset + EdgeIndexOffset + &
+                 FaceIndexOffset + Element % BubbleIndexes(i)
             IF ( Perm(j) == 0 ) THEN
                k = k + 1
                Perm(j) =  k

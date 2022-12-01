@@ -2590,15 +2590,16 @@ CONTAINS
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
           tmp(4), direction(4)
+     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble
      REAL(KIND=dp) :: LinBasis(8), dLinBasisdx(8,3), ElmMetric(3,3)
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
              dLBasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
 
      TYPE(Element_t) :: Bubble
-     TYPE(Element_t), POINTER :: Edge, Face
+     TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
-     LOGICAL :: PerformPiolaTransform, Found
+     LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles
      
      SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
@@ -2655,14 +2656,25 @@ CONTAINS
      ! P ELEMENT CODE:
      ! ---------------
      IF ( isActivePElement(element,pSolver) ) THEN
-      ! Check for need of P basis degrees and set degree of
-      ! linear basis if vector asked:
+      !
+      ! Check whether the polynomial degree of each basis functions is asked
+      ! and, if so, initialize by the degree of linear basis:
       ! ---------------------------------------------------
       degrees = .FALSE.
       IF ( PRESENT(BasisDegree)) THEN 
         degrees = .TRUE.
         BasisDegree = 0
         BasisDegree(1:n) = 1
+      END IF
+
+      BodyId = Element % BodyId
+      IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+        Parent => Element % PDefs % LocalParent
+        BodyId = Parent % BodyId
+      END IF
+      IF (BodyId==0) THEN
+        CALL Warn('ElementInfo', 'Element has no body index, assuming the index 1')
+        BodyId = 1
       END IF
 
 !------------------------------------------------------------------------------
@@ -2672,16 +2684,20 @@ CONTAINS
      ! P element code for line element:
      ! --------------------------------
      CASE(202)
+        ! Get element p
+        p = pSolver % Def_Dofs(2,BodyId,6)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), pSolver % Def_Dofs(2,BodyId,5))
+
         ! Bubbles of line element
-        IF (Element % BDOFs > 0) THEN
+        IF (BDOFs > 0) THEN
            ! For boundary element integration check direction
            invert = .FALSE.
            IF ( Element % PDefs % isEdge .AND. &
                 Element % NodeIndexes(1)>Element % NodeIndexes(2) ) invert = .TRUE.
 
-           ! For each bubble in line element get value of basis function
-           DO i=1, Element % BDOFs
-              IF (q >= SIZE(Basis)) CYCLE
+           ! For each bubble get the value of basis function
+           DO i=1, BDOFs
+              IF (q >= SIZE(Basis)) EXIT
               q = q + 1
               
               Basis(q) = LineBubblePBasis(i+1,u,invert)
@@ -2693,12 +2709,14 @@ CONTAINS
         END IF
 
 !------------------------------------------------------------------------------
-! P element code for edges and bubbles of triangle
+     ! P element code for triangles:
      CASE(303)
+        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(3,BodyId,6))
         ! Edges of triangle
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           
            ! For each edge calculate the value of edge basis function
-           DO i=1,3
+           edges_triangle: DO i=1,3
               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Get local number of edge start and endpoint nodes
@@ -2710,9 +2728,13 @@ CONTAINS
               invert = .FALSE.
               IF ( Element % NodeIndexes(locali)>Element % NodeIndexes(localj) ) invert=.TRUE.
 
-              ! For each dof in edge get value of p basis function 
-              DO k=1,Edge % BDOFs
-                 IF (q >= SIZE(Basis)) CYCLE
+              ! For each edge DOF get the value of p-basis function
+              ! NOTE: Edges may not have correct information about the count of DOFs
+              !        per edge, so the following would not work:
+              !       EDOFs = GetEdgeDOFs(Edge, pSolver % Def_Dofs(2,BodyId,6))
+              !
+              DO k=1,EDOFs
+                 IF (q >= SIZE(Basis)) EXIT edges_triangle
                  q = q + 1
                  
                  ! Value of basis functions for edge=i and i=k+1 by parity
@@ -2723,16 +2745,23 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO edges_triangle
         END IF
 
         ! Bubbles of p triangle      
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get element p
-           p = Element % PDefs % P
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+        ! Get element p
+        p = pSolver % Def_Dofs(3,BodyId,6)
+        nb = pSolver % Def_Dofs(3,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+        IF (BDOFs > 0) THEN
+
+           IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+             p = MAX(p, Deg_Bubble)
+           END IF
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2741,9 +2770,9 @@ CONTAINS
               direction(1:3) = getTriangleFaceDirection(Element, [ 1,2,3 ])
            END IF
 
-           DO i = 0,p-3
+           bubbles_triangle: DO i = 0,p-3
               DO j = 0,p-i-3
-                 IF ( q >= SIZE(Basis) ) CYCLE
+                 IF ( q >= SIZE(Basis) ) EXIT bubbles_triangle
                  q = q + 1
 
                  ! Get bubble basis functions and their derivatives
@@ -2760,15 +2789,16 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 3+i+j
               END DO
-           END DO
+           END DO bubbles_triangle
         END IF
 !------------------------------------------------------------------------------
-! P element code for quadrilateral edges and bubbles 
+     ! P element code for quads:
      CASE(404)
         ! Edges of p quadrilateral
+        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6))
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge begin node calculate values of edge functions 
-           DO i=1,4
+           ! For each edge calculate the values of edge basis functions 
+           edges_quad: DO i=1,4
               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Choose correct parity by global edge dofs
@@ -2780,9 +2810,9 @@ CONTAINS
               invert = .FALSE.
               IF (Element % NodeIndexes(locali) > Element % NodeIndexes(localj)) invert = .TRUE. 
 
-              ! For each DOF in edge calculate value of p basis function
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each DOF in edge calculate the value of p-basis function
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_quad
                  q = q + 1
 
                  ! For pyramid square face edges use different basis
@@ -2800,16 +2830,25 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO              
-           END DO         
+           END DO edges_quad
         END IF
 
-        ! Bubbles of p quadrilateral
-        IF ( Element % BDOFs > 0 ) THEN
-          ! Get element P
-           p = Element % PDefs % P
+        ! Bubbles of p quadrilateral, the number of which may have been defined explicitly or
+        ! be determined by the specified degree of approximation. However, we never omit bubbles
+        ! which are part of the FE space of the specified degree
+  
+        ! Get the specified element P:
+        p = pSolver % Def_Dofs(4,BodyId,6)
+        nb = pSolver % Def_Dofs(4,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+        IF (BDOFs > 0) THEN
+
+           IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING( (5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
+             p = MAX(p, Deg_Bubble)
+           END IF
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
@@ -2817,11 +2856,11 @@ CONTAINS
               direction = getSquareFaceDirection(Element, [ 1,2,3,4 ])
            END IF
           
-           ! For each bubble calculate value of p basis function
-           ! and their derivatives for index pairs i,j>=2, i+j=4,...,p
-           DO i=2,(p-2)
+           ! For each bubble calculate the value of p basis function
+           ! and its derivatives for index pairs i,j>=2, i+j=4,...,p
+           bubbles_quad: DO i=2,(p-2)
               DO j=2,(p-i)
-                 IF ( q >= SIZE(Basis) ) CYCLE
+                 IF ( q >= SIZE(Basis) ) EXIT bubbles_quad
                  q = q + 1
                  
                  ! Get values of bubble functions
@@ -2838,24 +2877,23 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = i+j
               END DO
-           END DO
+           END DO bubbles_quad
         END IF
 !------------------------------------------------------------------------------
-! P element code for tetrahedron edges, faces and bubbles
-     CASE(504) 
+     ! P element code for tetrahedra:
+     CASE(504)
+        p = pSolver % Def_Dofs(5,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
         ! Edges of p tetrahedron
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN   
-           ! For each edge calculate value of edge functions
-           DO i=1,6
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN   
+           ! For each edge i calculate the values of edge functions
+           edges_tetrahedron: DO i=1,6
               Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
-
-              ! Do not solve edge DOFS if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
-
-              ! For each DOF in edge calculate value of edge functions 
-              ! and their derivatives for edge=i, i=k+1
-              DO k=1, Edge % BDOFs
-                 IF (q >= SIZE(Basis)) CYCLE
+              
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1, EDOFs
+                 IF (q >= SIZE(Basis)) EXIT edges_tetrahedron
                  q = q + 1
 
                  Basis(q) = TetraEdgePBasis(i,k+1,u,v,w, Element % PDefs % TetraType)
@@ -2864,27 +2902,27 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_tetrahedron
         END IF
 
         ! Faces of p tetrahedron
         IF ( ASSOCIATED( Element % FaceIndexes )) THEN
-           ! For each face calculate value of face functions
-           DO F=1,4
+           ! For each face calculate values of face functions
+           faces_tetrahedron: DO F=1,4
               Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
 
-              ! Do not solve face DOFs if there is not any
-              IF (Face % BDOFs <= 0) CYCLE
-
               ! Get face p 
-              p = Face % PDefs % P
+              !p = MAX(pSolver % Def_Dofs(5,BodyId,6), Face % PDefs % P)
 
-              ! For each DOF in face calculate value of face functions and 
-              ! their derivatives for face=F and index pairs 
+              ! Do not solve face DOFs if there is not any
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
+
+              ! For each DOF in face calculate values of face function and 
+              ! its derivatives for index pairs 
               ! i,j=0,..,p-3, i+j=0,..,p-3
               DO i=0,p-3
                  DO j=0,p-i-3
-                    IF (q >= SIZE(Basis)) CYCLE
+                    IF (q >= SIZE(Basis)) EXIT faces_tetrahedron
                     q = q + 1 
                     
                     Basis(q) = TetraFacePBasis(F,i,j,u,v,w, Element % PDefs % TetraType)
@@ -2894,24 +2932,28 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = 3+i+j
                  END DO
               END DO
-           END DO
+           END DO faces_tetrahedron
         END IF
 
         ! Bubbles of p tetrahedron
-        IF ( Element % BDOFs > 0 ) THEN
-           p = Element % PDefs % P
+        nb = pSolver % Def_Dofs(5,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
 
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+           IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
+             p = MAX(p, Deg_Bubble)
+           END IF
 
-           ! For each DOF in bubbles calculate value of bubble functions
-           ! and their derivatives for index pairs
+           ! For each bubble DOF calculate the value of bubble function
+           ! and its derivatives for index pairs
            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           DO i=0,p-4
+           bubbles_tetrahedron: DO i=0,p-4
               DO j=0,p-i-4
                  DO k=0,p-i-j-4
-                    IF (q >= SIZE(Basis)) CYCLE
+                    IF (q >= SIZE(Basis)) EXIT bubbles_tetrahedron
                     q = q + 1
 
                     Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
@@ -2921,21 +2963,20 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = 4+i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_tetrahedron
            
         END IF
 !------------------------------------------------------------------------------
-! P element code for pyramid edges, faces and bubbles
+     ! P element code for pyramids:
      CASE(605)
         ! Edges of P Pyramid
-        IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in wedge, calculate values of edge functions
-           DO i=1,8
+        p = pSolver % Def_Dofs(6,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
+        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge calculate values of edge functions
+           edges_pyramid: DO i=1,8
               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
-              
               ! Get local indexes of current edge
               tmp(1:2) = getPyramidEdgeMap(i)
               locali = tmp(1)
@@ -2947,10 +2988,10 @@ CONTAINS
               ! Invert edge if local first node has greater global index than second one
               IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
 
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_pyramid
                  q = q + 1
 
                  ! Get values of edge basis functions and their derivatives
@@ -2960,20 +3001,20 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_pyramid
         END IF
         
         ! Faces of P Pyramid
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in pyramid, calculate values of face functions
-           DO F=1,5
+           ! For each face in pyramid, calculate the values of face functions
+           faces_pyramid: DO F=1,5
               Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
-
-              ! Do not solve face dofs, if there is not any
-              IF ( Face % BDOFs <= 0) CYCLE
               
               ! Get face p
-              p = Face % PDefs % P 
+              !p = MAX(pSolver % Def_Dofs(6,BodyId,6), Face % PDefs % P) 
+
+              ! Do not solve face dofs, if there is not any
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
               
               ! Handle triangle and square faces separately
               SELECT CASE(F)
@@ -2983,11 +3024,11 @@ CONTAINS
                  tmp(1:4) = getPyramidFaceMap(F)
                  direction(1:4) = getSquareFaceDirection( Element, tmp(1:4) )
                  
-                 ! For each face calculate values of functions from index
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
                  DO i=2,p-2
                     DO j=2,p-i
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
                        q = q + 1
                        
                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
@@ -3004,11 +3045,11 @@ CONTAINS
                  tmp(1:4) = getPyramidFaceMap(F) 
                  direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3) )
                  
-                 ! For each face calculate values of functions from index
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
                  DO i=0,p-3
                     DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
                        q = q + 1
 
                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
@@ -3019,23 +3060,27 @@ CONTAINS
                     END DO
                  END DO
               END SELECT    
-           END DO
+           END DO faces_pyramid
         END IF
 
         ! Bubbles of P Pyramid
-        IF (Element % BDOFs > 0) THEN 
-           ! Get element p
-           p = Element % PDefs % p
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
+        nb = pSolver % Def_Dofs(6,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
 
-           ! Calculate value of bubble functions from indexes
+          IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
+             p = MAX(p, Deg_Bubble)
+           END IF          
+ 
+           ! Calculate the values of bubble functions for indexes
            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           DO i=0,p-4
+           bubbles_pyramid: DO i=0,p-4
               DO j=0,p-i-4
                  DO k=0,p-i-j-4
-                    IF ( q >= SIZE(Basis)) CYCLE
+                    IF ( q >= SIZE(Basis)) EXIT bubbles_pyramid
                     q = q + 1
 
                     Basis(q) = PyramidBubblePBasis(i,j,k,u,v,w)
@@ -3045,20 +3090,19 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = 4+i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_pyramid
         END IF
         
 !------------------------------------------------------------------------------
-! P element code for wedge edges, faces and bubbles
+     ! P element code wedges:
      CASE(706)
+        p = pSolver % Def_Dofs(7,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
         ! Edges of P Wedge
-        IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in wedge, calculate values of edge functions
-           DO i=1,9
+        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge i calculate the values of edge functions
+           edges_prism: DO i=1,9
               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
               
               ! Get local indexes of current edge
               tmp(1:2) = getWedgeEdgeMap(i)
@@ -3070,10 +3114,10 @@ CONTAINS
               ! Invert edge if local first node has greater global index than second one
               IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
        
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_prism
                  q = q + 1
 
                  ! Use basis compatible with pyramid if necessary
@@ -3089,19 +3133,19 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_prism
         END IF
 
-        ! Faces of P Wedge 
+        ! The faces of p-wedge 
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in wedge, calculate values of face functions
-           DO F=1,5
+           ! For each face in wedge, calculate the values of face functions
+           faces_prism: DO F=1,5
               Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
-              ! Do not solve face dofs, if there is not any
-              IF ( Face % BDOFs <= 0) CYCLE
+              !p = MAX(pSolver % Def_Dofs(7,BodyId,6), Face % PDefs % P) 
 
-              p = Face % PDefs % P 
+              ! Do not solve face dofs, if there is not any
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
               
               ! Handle triangle and square faces separately
               SELECT CASE(F)
@@ -3111,11 +3155,11 @@ CONTAINS
                  tmp(1:4) = getWedgeFaceMap(F) 
                  direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3) )
                  
-                 ! For each face calculate values of functions from index
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
                  DO i=0,p-3
                     DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_prism
                        q = q + 1
 
                        Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
@@ -3144,7 +3188,7 @@ CONTAINS
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
                  DO i=2,p-2
                     DO j=2,p-i
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_prism
                        q = q + 1
 
                        IF (.NOT. invert) THEN
@@ -3161,23 +3205,27 @@ CONTAINS
                  END DO
               END SELECT
                            
-           END DO
+           END DO faces_prism
         END IF
 
         ! Bubbles of P Wedge
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get p from element
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
+        nb = pSolver % Def_Dofs(7,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
+
+           IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+                 (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
+             p = MAX(p, Deg_Bubble)
+           END IF
            
-           ! For each bubble calculate value of basis function and its derivative
+           ! For each bubble calculate the value of basis function and its derivative
            ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
-           DO i=0,p-5
+           bubbles_prism: DO i=0,p-5
               DO j=0,p-5-i
                  DO k=2,p-3-i-j
-                    IF ( q >= SIZE(Basis) ) CYCLE
+                    IF ( q >= SIZE(Basis) ) EXIT bubbles_prism
                     q = q + 1
 
                     Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
@@ -3187,20 +3235,19 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = 3+i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_prism
         END IF
 
 !------------------------------------------------------------------------------
-! P element code for brick edges, faces and bubbles
+     ! P element code for bricks:
      CASE(808) 
+        p = pSolver % Def_Dofs(8,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
         ! Edges of P brick
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in brick, calculate values of edge functions 
-           DO i=1,12
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge i calculate the values of edge functions 
+           edges_brick: DO i=1,12
               Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
               
               ! Get local indexes of current edge
               tmp(1:2) = getBrickEdgeMap(i)
@@ -3213,10 +3260,10 @@ CONTAINS
               ! Invert edge if local first node has greater global index than second one
               IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
               
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the values of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_brick
                  q = q + 1
 
                  ! For edges connected to pyramid square face, use different basis
@@ -3234,30 +3281,30 @@ CONTAINS
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO edges_brick
         END IF
 
         ! Faces of P brick
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            ! For each face in brick, calculate values of face functions
-           DO F=1,6
+           faces_brick: DO F=1,6
               Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
+
+              ! Get p for face
+              !p = MAX(pSolver % Def_Dofs(8,BodyId,6), Face % PDefs % P)
                           
               ! Do not calculate face values if no dofs
-              IF (Face % BDOFs <= 0) CYCLE
-              
-              ! Get p for face
-              p = Face % PDefs % P
+              !IF (GetFaceDOFs(Element, p, F)<= 0) CYCLE
               
               ! Generate direction vector for this face
               tmp(1:4) = getBrickFaceMap(F)
               direction(1:4) = getSquareFaceDirection(Element, tmp)
               
-              ! For each face calculate values of functions from index
+              ! For each face calculate the values of functions for index
               ! pairs i,j=2,..,p-2 i+j=4,..,p
               DO i=2,p-2
                  DO j=2,p-i
-                    IF ( q >= SIZE(Basis) ) CYCLE
+                    IF ( q >= SIZE(Basis) ) EXIT faces_brick
                     q = q + 1
                     Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
                     dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
@@ -3266,24 +3313,27 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = i+j
                  END DO
               END DO
-           END DO
+           END DO faces_brick
         END IF
 
         ! Bubbles of p brick
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get p from bubble DOFs 
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
+        nb = pSolver % Def_Dofs(8,BodyId,5)
+        DesignedBubbles = nb > 0
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
 
+          IF (DesignedBubbles) THEN
+             Deg_Bubble = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
+                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
+             p = MAX(p, Deg_Bubble)
+           END IF
            
-           ! For each bubble calculate value of basis function and its derivative
+           ! For each bubble calculate the value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
-           DO i=2,p-4
+           bubbles_brick: DO i=2,p-4
               DO j=2,p-i-2
                  DO k=2,p-i-j
-                    IF ( q >= SIZE(Basis) ) CYCLE
+                    IF ( q >= SIZE(Basis) ) EXIT bubbles_brick
                     q = q + 1
                     Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
@@ -3292,7 +3342,7 @@ CONTAINS
                     IF (degrees) BasisDegree(q) = i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_brick
         END IF
 
      END SELECT
@@ -3353,7 +3403,7 @@ CONTAINS
 !    and product of two diagonally opposed nodal basisfunctions of the
 !    corresponding (bi-,tri-)linear element for 1d-elements, quads and hexas.
 !------------------------------------------------------------------------------
-     IF ( PRESENT( Bubbles ) ) THEN
+     IF ( PRESENT( Bubbles ) .AND. .NOT. isActivePElement(Element,pSolver)) THEN
        Bubble % BDOFs = 0
        NULLIFY( Bubble % PDefs )
        NULLIFY( Bubble % EdgeIndexes )
