@@ -17354,7 +17354,6 @@ CONTAINS
      
 !------------------------------------------------------------------------------
 
-#if 1
     Edges => NULL()
     NofEdges = 0
 1   DO i=1,SIZE(Mesh % Elements)
@@ -17516,174 +17515,7 @@ CONTAINS
        Edges => Mesh % Edges
        GOTO 1
      END IF
-     
-#else
-     maxedges = 0
-     DO i=1,SIZE( Mesh % Elements )
-       Element => Mesh % Elements(i)
-       maxedges = MAX( maxedges, Element % TYPE % NumberOfEdges )
-     END DO
-              
-     n = maxedges * Mesh % NumberOfBulkElements
-     CALL Info('FindMeshEdges2D','Allocating edge table of size: '//TRIM(I2S(n)),Level=12)
-     CALL AllocateVector( Mesh % Edges, n ) 
-     Edges => Mesh % Edges
-     
-!   Loop over elements:
-!   -------------------
-    NofEdges = 0
-    DO i=1,SIZE(Mesh % Elements)
-
-       Element => Mesh % Elements(i)
-
-       IF(Masked) THEN
-         j = i
-         IF(i>Mesh % NumberOfBulkElements) THEN
-           j = -1
-           IF(ASSOCIATED(Element % BoundaryInfo % Left)) &
-              j=Element % Boundaryinfo % Left % ElementIndex
-
-           LG=.FALSE.
-           IF(j>0) LG=BulkMask(j)
-
-           IF(.NOT. LG) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Right)) &
-               j=Element % Boundaryinfo % Right % ElementIndex
-           END IF
-
-           IF(j==-1) CYCLE
-         END IF
-
-         IF(.NOT. BulkMask(j)) CYCLE
-       END IF
-
-
-       SELECT CASE( Element % TYPE % ElementCode / 100 )
-         CASE(1) 
-            CYCLE
-         CASE(2)
-            n = 1
-         CASE(3)
-            n = 3
-         CASE(4)
-            n = 4
-       END SELECT
-
-!      Loop over every edge of every element:
-!      --------------------------------------
-       DO k=1,n
-!         We use MIN(Node1,Node2) as the hash table key:
-!         ----------------------------------------------
-          Node1 = Element % NodeIndexes(k)
-          IF(n==1) THEN
-             Node2 = Element % NodeIndexes(2)
-          ELSE IF ( k<n ) THEN
-             Node2 = Element % NodeIndexes(k+1)
-          ELSE
-             Node2 = Element % NodeIndexes(1)
-          END IF
-
-          IF ( Node2 < Node1 ) THEN
-             Swap  = Node1
-             Node1 = Node2
-             Node2 = Swap
-          END IF
-
-!         Look the edge from the hash table:
-!         ----------------------------------
-          HashPtr => HashTable(Node1) % Head
-          Found = .FALSE.         
-          DO WHILE( ASSOCIATED( HashPtr ) )
-             IF ( HashPtr % Node == Node2 ) THEN
-                Found = .TRUE.
-                Edge = HashPtr % Edge
-                EXIT
-             END IF
-             HashPtr => HashPtr % Next
-          END DO
-
-!         Existing edge, update structures:
-!         ----------------------------------
-          IF ( Found ) THEN
-             Element % EdgeIndexes(k) = Edge
-             IF (i<=Mesh % NumberofBulkElements) THEN
-               IF(ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                 Edges(Edge) % BoundaryInfo % Right => Element
-               ELSE
-                 Edges(Edge) % BoundaryInfo % Left => Element
-               END IF
-             END IF
-          ELSE
-
-!            Edge not yet there, create:
-!            ---------------------------
-             NofEdges = NofEdges + 1
-             Edge = NofEdges
-
-             Degree = Element % TYPE % BasisFunctionDegree
-             
-             IF( Edge > SIZE( Edges ) ) THEN
-               CALL Fatal('FindMeshEdges2D','Number of edges larger than expected!')
-             END IF
-
-             Edges(Edge) % ElementIndex = Edge
-             CALL AllocateVector( Edges(Edge) % NodeIndexes, Degree+1)
-             ALLOCATE( Edges(Edge) % BoundaryInfo, STAT=allocstat )
-             IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo allocation')
-             END IF
-
-             Edges(Edge) % TYPE => GetElementType( 201+Degree, .FALSE. )
-
-             Edges(Edge) % NodeIndexes(1) = Element % NodeIndexes(k)
-             IF ( k < n ) THEN
-                Edges(Edge) % NodeIndexes(2) = Element % NodeIndexes(k+1)
-             ELSE
-                Edges(Edge) % NodeIndexes(2) = Element % NodeIndexes(1)
-             END IF
-
-             DO j=2,Degree
-                Edges(Edge) % NodeIndexes(j+1) = Element % NodeIndexes(k+n+j-2)
-             END DO
-             
-             ! Create P element definitions if needed
-             IF ( ASSOCIATED( Element % PDefs ) ) THEN
-               CALL AllocatePDefinitions(Edges(Edge))
-               Edges(Edge) % PDefs % P = 0
-             ELSE
-               NULLIFY( Edges(Edge) % PDefs )
-             END IF
-
-             Edges(Edge) % NDofs = 0
-             IF (Element % NDOFs /= 0 ) Edges(Edge) % NDOFs = &
-                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                 Edges(Edge) % TYPE % NumberOfNodes
-             Edges(Edge) % BDOFs  = 0
-             Edges(Edge) % DGDOFs = 0
-             NULLIFY( Edges(Edge) % EdgeIndexes )
-             NULLIFY( Edges(Edge) % FaceIndexes )
-
-             Element % EdgeIndexes(k) = Edge
-             Edges(Edge) % BoundaryInfo % Left  => Null()
-             Edges(Edge) % BoundaryInfo % Right => Null()
-             IF(i<=Mesh % NumberOfBulkElements) Edges(Edge) % BoundaryInfo % Left => Element
-              
-!            Update the hash table:
-!            ----------------------
-             ALLOCATE( HashPtr, STAT=allocstat )
-             IF( allocstat /= 0 ) THEN
-               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr allocation')
-             END IF
-
-             HashPtr % Edge = Edge
-             HashPtr % Node = Node2
-             HashPtr % Next => HashTable(Node1) % Head
-             HashTable(Node1) % Head => HashPtr
-          END IF
-       END DO
-    END DO
-#endif
-    
+         
     Mesh % NumberOfEdges = NofEdges
     CALL Info('FindMeshEdges2D','Number of edges found: '//TRIM(I2S(NofEdges)),Level=10)
 
@@ -17699,7 +17531,7 @@ CONTAINS
     END DO
     DEALLOCATE( HashTable )
 
-    CALL Info('FindMeshEdges2D','All done',Level=12)
+    CALL Info('FindMeshEdges2D','All done',Level=20)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE FindMeshEdges2D
@@ -17815,7 +17647,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-#if 1
 !   Loop over elements:
 !   -------------------
     NofFaces = 0
@@ -18108,314 +17939,7 @@ CONTAINS
       Faces => Mesh % Faces
       GOTO 1
     END IF
-    
-#else
-   
-    IF(Masked) THEN
-      n = 6 * COUNT(BulkMask)
-    ELSE
-      n = 6 * Mesh % NumberOfBulkElements
-    END IF
-
-    CALL Info('FindMeshFaces3D','Allocating face table of size: '&
-        //TRIM(I2S(n)),Level=25)
-    CALL AllocateVector( Mesh % Faces, n, 'FindMeshFaces3D' )
-    Faces => Mesh % Faces
-
-    
-!   Loop over elements:
-!   -------------------
-    NofFaces = 0
-    DO i=1,SIZE(Mesh % Elements)
- 
-       Element => Mesh % Elements(i)
-       IF(.NOT.ASSOCIATED(Element % Type)) CYCLE
-       IF(Element % Type % ElementCode<300 ) Cycle
-
-       IF(Masked) THEN
-         j = i
-         IF(i>Mesh % NumberOfBulkElements) THEN
-           j = -1
-           IF(ASSOCIATED(Element % BoundaryInfo % Left)) &
-              j=Element % Boundaryinfo % Left % ElementIndex
-
-           LG=.FALSE.
-           IF(j>0) LG=BulkMask(j)
-
-           IF(.NOT. LG) THEN
-             IF(ASSOCIATED(Element % BoundaryInfo % Right)) &
-               j=Element % Boundaryinfo % Right % ElementIndex
-           END IF
-
-           IF(j==-1) CYCLE
-         END IF
-         IF(.NOT. BulkMask(j)) CYCLE
-       END IF
-
-
-       ! For P elements mappings are different
-       IF ( ASSOCIATED(Element % PDefs) ) THEN
-          CALL GetElementFaceMap(Element, FaceMap)
-          n = Element % TYPE % NumberOfFaces
-       ELSE
-          SELECT CASE( Element % TYPE % ElementCode / 100 )
-          CASE(3)
-             n = 1
-             FaceMap => TriFaceMap
-          CASE(4)
-             n = 1
-             FaceMap => QuadFaceMap
-          CASE(5)
-             n = 4
-             FaceMap => TetraFaceMap
-          CASE(6)
-             n = 5
-             FaceMap => PyramidFaceMap
-          CASE(7)
-             n = 5 
-             FaceMap => WedgeFaceMap
-          CASE(8)
-             n = 6
-             FaceMap => BrickFaceMap
-          CASE DEFAULT
-             CYCLE
-             ! WRITE(Message,*) 'Element type',Element % Type % ElementCode,'not implemented.' 
-             ! CALL Fatal('FindMeshFaces',Message)
-          END SELECT
-       END IF
- 
-!      Loop over every face of every element:
-!      --------------------------------------
-       DO k=1,n
-          
-          
-!         We use MIN(Node1,Node2,Node3) as the hash table key:
-!         ---------------------------------------------------
-          SELECT CASE( Element % TYPE % ElementCode / 100 )
-             CASE(3)
-!
-!               Ttriangle:
-!               =======
-                nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-                CALL sort( 3, nf )
-             CASE(4)
-!
-!               Quad:
-!               =======
-                nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-                CALL sort( 4, nf )
-
-             CASE(5)
-!
-!               Tetras:
-!               =======
-                nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-                CALL sort( 3, nf )
-
-             CASE(6)
-!
-!               Pyramids:
-!               =========
-                IF ( k == 1 ) THEN
-                   nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-                   CALL sort( 4, nf )
-                ELSE
-                   nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-                   CALL sort( 3, nf )
-                END IF
-
-             CASE(7)
-!
-!               Wedges:
-!               =======
-                IF ( k <= 2 ) THEN
-                   nf(1:3) = Element % NodeIndexes(FaceMap(k,1:3))
-                   CALL sort( 3, nf )
-                ELSE
-                   nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-                   CALL sort( 4, nf )
-                END IF
-                
-             CASE(8)
-!
-!               Bricks:
-!               =======
-                nf(1:4) = Element % NodeIndexes(FaceMap(k,1:4))
-                CALL sort( 4, nf )
-
-             CASE DEFAULT
-                WRITE(Message,*) 'Element type',Element % TYPE % ElementCode,'not implemented.' 
-                CALL Fatal('FindMeshFaces',Message)
-          END SELECT
-
-          Node1 = nf(1)
-          Node2 = nf(2)
-          Node3 = nf(3)
-          
-!         Look the face from the hash table:
-!         ----------------------------------
-          HashPtr => HashTable(Node1) % Head
-          Found = .FALSE.
-          DO WHILE( ASSOCIATED( HashPtr ) )
-             IF ( HashPtr % Node1 == Node2 .AND. HashPtr % Node2 == Node3) THEN
-                Found = .TRUE.
-                Face = HashPtr % Face
-                EXIT
-             END IF
-             HashPtr => HashPtr % Next
-          END DO
-
-!         Existing face, update structures:
-!         ----------------------------------
-          IF ( Found ) THEN
-             Element % FaceIndexes(k) = Face
-             IF(i<=Mesh % NumberOfBulkElements) THEN
-               IF( ASSOCIATED(Faces(Face) % BoundaryInfo % Left) ) THEN
-                 Faces(Face) % BoundaryInfo % Right => Element
-               ELSE
-                 Faces(Face) % BoundaryInfo % Left => Element
-               END IF
-             END IF
-          ELSE
-
-!            Face not yet there, create:
-!            ---------------------------
-             NofFaces = NofFaces + 1
-             Face = NofFaces
-             Faces(Face) % ElementIndex = Face
-
-             Degree = Element % TYPE % BasisFunctionDegree
-
-
-             SELECT CASE( Element % TYPE % ElementCode / 100 )
-             CASE(3)
-               !
-               !               linear tri
-               !               -----------
-               SELECT CASE( Degree ) 
-               CASE(1)
-                 n1 = 3
-               CASE DEFAULT
-               END SELECT
-
-               Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
-
-             CASE(4)
-               !
-               !               linear quad
-               !               -----------
-               SELECT CASE( Degree ) 
-               CASE(1)
-                 n1 = 4
-               CASE DEFAULT
-               END SELECT
-
-               Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
-
-             CASE(5)
-               !
-               !               for tetras:
-               !               -----------
-               SELECT CASE( Degree ) 
-               CASE(1)
-                 n1 = 3
-               CASE(2)
-                 n1 = 6
-               CASE(3)
-                 n1 = 10
-               END SELECT
-
-               Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
-
-             CASE(6)
-
-               !               Pyramids ( 605 and 613 supported )
-               !               -------------------------------
-               IF ( k == 1 ) THEN
-                 n1 = Degree * 4
-                 Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
-               ELSE
-                 n1 = Degree * 3
-                 Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
-               END IF
-
-             CASE(7)
-
-               !               for wedges, 706 and 715 supported:
-               !               -------------------------------
-               IF ( k <= 2 ) THEN
-                 n1 = Degree * 3
-                 Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
-               ELSE
-                 n1 = Degree * 4
-                 Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
-               END IF
-
-
-             CASE(8)
-               !
-               !               for bricks:
-               !               -----------
-               SELECT CASE( Element % TYPE % NumberOfNodes ) 
-               CASE(8)
-                 n1 = 4
-               CASE(20)
-                 n1 = 8
-               CASE(27)
-                 n1 = 9
-               END SELECT
-
-               Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE.)
-
-             CASE DEFAULT
-               WRITE(Message,*) 'Element type',Element % TYPE % ElementCode,'not implemented.' 
-               CALL Fatal('FindMeshFaces',Message)
-
-             END SELECT
-
-             ! Allocate p structures for p elements
-             IF ( ASSOCIATED( Element % PDefs ) ) THEN
-                CALL AllocatePDefinitions(Faces(Face))
-                Faces(Face) % PDefs % P = 0
-             ELSE
-               NULLIFY( Faces(Face) % PDefs )
-             END IF
-             
-             Faces(Face) % NDOFs  = 0
-             IF (Element % NDOFs /= 0) Faces(Face) % NDOFs = &
-                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                      Faces(Face) % Type % NumberOfNodes
-             Faces(Face) % BDOFs  = 0
-             Faces(Face) % DGDOFs = 0
-             Faces(Face) % EdgeIndexes => NULL()
-             Faces(Face) % FaceIndexes => NULL()
-
-             CALL AllocateVector( Faces(Face) % NodeIndexes,n1 )
-             DO n2=1,n1
-                Faces(Face) % NodeIndexes(n2) = &
-                         Element % NodeIndexes(FaceMap(k,n2)) 
-             END DO
-
-             Element % FaceIndexes(k) = Face
-
-             ALLOCATE( Faces(Face) % BoundaryInfo )
-             Faces(Face) % BoundaryInfo % Left  => Null()
-             Faces(Face) % BoundaryInfo % Right => Null()
-             IF(i<=Mesh % NumberOfBulkElements) Faces(Face) % BoundaryInfo % Left => Element
-              
-!            Update the hash table:
-!            ----------------------
-             ALLOCATE( HashPtr )
-             HashPtr % Face = Face
-             HashPtr % Node1 = Node2
-             HashPtr % Node2 = Node3
-             HashPtr % Next => HashTable(Node1) % Head
-             HashTable(Node1) % Head => HashPtr
-          END IF
-       END DO
-    END DO
-#endif
-    
+        
     Mesh % NumberOfFaces = NofFaces
     CALL Info('FindMeshFaces3D','Number of faces found: '//TRIM(I2S(NofFaces)),Level=10)
 
@@ -18431,7 +17955,7 @@ CONTAINS
     END DO
     DEALLOCATE( HashTable )
 
-    CALL Info('FindMeshFaces3D','All done',Level=12)
+    CALL Info('FindMeshFaces3D','All done',Level=20)
 !------------------------------------------------------------------------------
   END SUBROUTINE FindMeshFaces3D
 !------------------------------------------------------------------------------
@@ -18578,7 +18102,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-#if 1
     !   Loop over elements:
     !   -------------------
     NofEdges = 0
@@ -18762,224 +18285,7 @@ CONTAINS
       CALL Info('FindMeshEdges3D','Edge table allocated',Level=25)
       GOTO 1
     END IF
-          
-#else       
-    maxedges = 0
-    DO i=1,Mesh % NumberOfBulkElements 
-      Element => Mesh % Elements(i)
-      maxedges = MAX( maxedges, Element % Type % NumberOfEdges ) 
-    END DO            
-    n = maxedges*Mesh % NumberOfBulkElements  
 
-    CALL Info('FindMeshEdges3D','Allocating edge table of size: '//TRIM(I2S(n)),Level=12)
-    CALL AllocateVector( Mesh % Edges, n ) 
-    Edges => Mesh % Edges
-
-    CALL Info('FindMeshEdges3D','Edge table allocated',Level=25)
-    
-!   Loop over elements:
-!   -------------------
-    NofEdges = 0
-    DO i=1,n_e
-       Element => Mesh % Elements(i)
-
-       ! For P elements mappings are different
-       IF ( ASSOCIATED(Element % PDefs) ) THEN
-          CALL GetElementEdgeMap( Element, EdgeMap )
-          CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
-          n = Element % TYPE % NumberOfEdges
-       ELSE 
-          SELECT CASE( Element % TYPE % ElementCode / 100 )
-          CASE(1)
-             CYCLE
-          CASE(2)
-             n = 1
-             EdgeMap => LineEdgeMap
-             FaceEdgeMap => Null()
-          CASE(3)
-             n = 3
-             EdgeMap => TriEdgeMap
-             FaceEdgeMap => Null()
-          CASE(4)
-             n = 4
-             EdgeMap => QuadEdgeMap
-             FaceEdgeMap => Null()
-          CASE(5)
-             n = 6
-             EdgeMap => TetraEdgeMap
-             FaceEdgeMap => TetraFaceEdgeMap
-          CASE(6)
-             n = 8
-             EdgeMap => PyramidEdgeMap
-             FaceEdgeMap => PyramidFaceEdgeMap
-          CASE(7)
-             n = 9
-             EdgeMap => WedgeEdgeMap
-             FaceEdgeMap => WedgeFaceEdgeMap
-          CASE(8)
-             n = 12
-             EdgeMap => BrickEdgeMap
-             FaceEdgeMap => BrickFaceEdgeMap
-          CASE DEFAULT
-             CYCLE
-             WRITE(Message,*) 'Element type',Element % TYPE % ElementCode,'not implemented.' 
-             CALL Fatal('FindMeshEdges',Message)
-          END SELECT
-       END IF
-
-!      Loop over every edge of every element:
-!      --------------------------------------
-       DO k=1,n
-
-!         Use MIN(Node1,Node2) as key to hash table:
-!         ------------------------------------------
-          n1 = Element % NodeIndexes(EdgeMap(k,1))
-          n2 = Element % NodeIndexes(EdgeMap(k,2))
-          IF ( n1 < n2 ) THEN
-             Node1 = n1
-             Node2 = n2
-          ELSE
-             Node1 = n2
-             Node2 = n1
-          END IF
-!
-!         Look the edge from the hash table:
-!         ----------------------------------
-          HashPtr => HashTable(Node1) % Head
-          Found = .FALSE.
-          DO WHILE( ASSOCIATED( HashPtr ) )
-             IF ( HashPtr % Node1 == Node2 ) THEN
-                Found = .TRUE.
-                Edge = HashPtr % Edge
-                EXIT
-             END IF
-             HashPtr => HashPtr % Next
-          END DO
-!
-!         Existing edge, update structures:
-!         ---------------------------------
-          IF ( Found ) THEN
-             Element % EdgeIndexes(k) = Edge
-
-             ! Mark edge as an edge of pydamid square face 
-             IF (isPPyramid(Element) .AND. k < 5) THEN
-                Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
-             END IF
-
-             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
-               DO ii=1,Element % TYPE % NumberOfFaces
-                 Face => Mesh % Faces(Element % FaceIndexes(ii))
-                 IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
-                   ALLOCATE(Face % EdgeIndexes(Face % TYPE % NumberOfEdges))
-                   Face % EdgeIndexes = 0
-                 END IF
-                 DO jj=1,Face % TYPE % NumberOfEdges
-                    IF (FaceEdgeMap(ii,jj) == k) THEN
-                       Face % EdgeIndexes(jj) = Edge
-                       IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                         Edges(Edge) % BoundaryInfo % Left => Face
-                       ELSE
-                         Edges(Edge) % BoundaryInfo % Right => Face
-                       END IF
-                       EXIT
-                    END IF
-                 END DO
-               END DO
-             ELSE
-               IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                 Edges(Edge) % BoundaryInfo % Left  => Element
-               ELSE
-                 Edges(Edge) % BoundaryInfo % Right => Element
-               END IF
-             END IF
-          ELSE
-
-!            Edge not yet there, create:
-!            ---------------------------
-             NofEdges = NofEdges + 1
-             Edge = NofEdges
-             IF( Edge > SIZE( Edges ) ) THEN
-               CALL Fatal('FindMeshEdges3D','Number of edges larger than expected!')
-             END IF
-
-             Edges(Edge) % ElementIndex = Edge
-             Degree = Element % TYPE % BasisFunctionDegree
-
-!            Edge is always a line segment with deg+1 nodes:
-!            -----------------------------------------------
-             Edges(Edge) % TYPE => GetElementType( 201 + degree, .FALSE.)
-
-             Edges(Edge) % NDOFs  = 0
-             IF (Element % NDOFs /= 0) Edges(Edge) % NDOFs = &
-                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                     Edges(Edge) % TYPE % NumberOfNodes
-             Edges(Edge) % BDOFs  = 0
-             Edges(Edge) % DGDOFs = 0
-             Edges(Edge) % EdgeIndexes => NULL()
-             Edges(Edge) % FaceIndexes => NULL()
-
-             CALL AllocateVector( Edges(Edge) % NodeIndexes, degree + 1 )
-             DO n2=1,degree+1
-               Edges(Edge) % NodeIndexes(n2) = &
-                    Element % NodeIndexes(EdgeMap(k,n2))
-             END DO
-
-             Element % EdgeIndexes(k) = Edge
-             ALLOCATE( Edges(Edge) % BoundaryInfo )
-             Edges(Edge) % BoundaryInfo % Left  => NULL()
-             Edges(Edge) % BoundaryInfo % Right => NULL()
-
-             ! Allocate P element definitions 
-             IF ( ASSOCIATED( Element % PDefs ) ) THEN
-                CALL AllocatePDefinitions(Edges(Edge))
-             
-                Edges(Edge) % PDefs % P = 0
-                Edges(Edge) % PDefs % pyramidQuadEdge = .FALSE.
-                ! Here mark edge as edge of pyramid if needed (or set as not)
-                IF (isPPyramid(Element) .AND. k < 5) THEN
-                   Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
-                END IF
-             ELSE
-                NULLIFY( Edges(Edge) % PDefs )
-             END IF
-
-             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
-               DO ii=1,Element % TYPE % NumberOfFaces
-                 Face => Mesh % Faces(Element % FaceIndexes(ii))
-                 IF (.NOT.ASSOCIATED(Face % EdgeIndexes)) THEN
-                    ALLOCATE(Face % EdgeIndexes(Face % TYPE % NumberOfEdges))
-                    Face % EdgeIndexes = 0
-                 END IF
-                 DO jj=1,Face % TYPE % NumberOfEdges
-                    IF (FaceEdgeMap(ii,jj) == k) THEN
-                       Face % EdgeIndexes(jj) = Edge
-                       IF (.NOT.ASSOCIATED( Edges(Edge) % BoundaryInfo % Left)) THEN
-                         Edges(Edge) % BoundaryInfo % Left => Face
-                       ELSE
-                         Edges(Edge) % BoundaryInfo % Right => Face
-                       END IF
-                    END IF
-                 END DO
-               END DO
-             ELSE
-                 IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                   Edges(Edge) % BoundaryInfo % Left  => Element
-                 ELSE
-                   Edges(Edge) % BoundaryInfo % Right => Element
-                 END IF
-               END IF
-
-!            Update the hash table:
-!            ----------------------
-             ALLOCATE( HashPtr )
-             HashPtr % Edge = Edge
-             HashPtr % Node1 = Node2
-             HashPtr % Next => HashTable(Node1) % Head
-             HashTable(Node1) % Head => HashPtr
-          END IF
-       END DO
-    END DO
-#endif    
     Mesh % NumberOfEdges = NofEdges
     CALL Info('FindMeshEdges3D','Number of edges found: '//TRIM(I2S(NofEdges)),Level=10)
     
@@ -23577,7 +22883,7 @@ CONTAINS
       Var % Values => Mesh % Nodes % z
     END IF
 
-    CALL Info('CoordinateTransformation','All done',Level=8)
+    CALL Info('CoordinateTransformation','All done',Level=12)
 
   END SUBROUTINE CoordinateTransformation
 !---------------------------------------------------------------
@@ -24212,7 +23518,7 @@ CONTAINS
     WRITE(Message,'(A,I0)') 'Number of nodes created: ',NoNodes
     CALL Info('CreateLineMesh',Message)
  
-    CALL Info('CreateLineMesh','All done')
+    CALL Info('CreateLineMesh','All done',Level=20)
 
   END FUNCTION CreateLineMesh
 
@@ -27416,7 +26722,7 @@ CONTAINS
       CALL ReleaseMeshFaceTables( Mesh )
     END IF
       
-    CALL Info('CreateIntersectionBCs','All done!',Level=10)
+    CALL Info('CreateIntersectionBCs','All done!',Level=12)
 
 
   CONTAINS

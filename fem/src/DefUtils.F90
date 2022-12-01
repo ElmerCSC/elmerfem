@@ -4911,13 +4911,6 @@ CONTAINS
        x => Solver % Variable
      END IF
 
-     ! Create soft limiters to be later applied by the Dirichlet conditions
-     ! This is done only once for each solver, hence the complex logic. 
-     !---------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
-       CALL DetermineSoftLimiter( Solver )	
-     END IF
-
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
        A % ConstrainedDOF = .FALSE.
@@ -4939,9 +4932,14 @@ CONTAINS
          A % Dvalues = 0._dp
        END IF
      END IF
-
-       
      
+     ! Create soft limiters to be later applied by the Dirichlet conditions
+     ! This is done only once for each solver, hence the complex logic. 
+     !---------------------------------------------------------------------
+     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
+       CALL DetermineSoftLimiter( Solver )	
+     END IF
+      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
 

@@ -1294,12 +1294,12 @@ CONTAINS
                    'Body Force', Found)
                IF(.NOT. Found ) CYCLE
                Entity => Model % BodyForces(bf) % Values
-             END IF
-             
+             END IF          
+
              ElemLimit(1:n) = ListGetReal( Entity, &
                  LimitName, n, NodeIndexes, Found)             
              IF(.NOT. Found) CYCLE
-
+             
              ElemInit(1:n) = ListGetReal( Entity, &
                  InitName, n, NodeIndexes, GotInit)
              ElemActive(1:n) = ListGetReal( Entity, &
@@ -1381,13 +1381,12 @@ CONTAINS
                    'Body Force', Found)
                IF(.NOT. Found ) CYCLE
                Entity => Model % BodyForces(bf) % Values
-             END IF
+             END IF          
 
              ElemLimit(1:n) = ListGetReal( Entity, &
-                 LimitName, n, NodeIndexes, Found)
+                 LimitName, n, NodeIndexes, Found)             
              IF(.NOT. Found) CYCLE
-
-
+             
              IF( DownStreamRemove ) THEN
                ! This includes only interface dofs donwstream from
                ! non-contact zone.
@@ -1587,9 +1586,16 @@ CONTAINS
            WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
            CALL Info(Caller,Message,Level=6)
          END IF
-       END IF
-     END DO
 
+         ! Set the Dirichlet conditions already here!
+         WHERE( LimitActive )
+           Solver % Matrix % ConstrainedDOF = .TRUE.
+           Solver % Matrix % DValues = Var % Values
+         END WHERE
+       END IF
+         
+     END DO
+                
      ! Optionally save the limiters as a field variable so that 
      ! lower limit is given value -1.0 and upper limit value +1.0.
      IF( ListGetLogical( Params,'Save Limiter',Found ) ) THEN
@@ -4952,10 +4958,12 @@ CONTAINS
       END IF
     END DO
 
-    
-!------------------------------------------------------------------------------
-!   Go through soft upper and lower limits
-!------------------------------------------------------------------------------
+#if 0
+    ! Obsolibe code!
+    ! Go through soft upper and lower limits
+    ! This is no longer needed since the ConstrainedDOF and DValues include
+    ! all necessary information!
+    !-----------------------------------------------------------------
     Params => Model % Solver % Values
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt) 
 
@@ -4985,8 +4993,7 @@ CONTAINS
           CondName = TRIM(name)//' Upper Limit' 
         END IF
         
-        ! check and set some flags for nodes belonging to n-t boundaries
-        ! getting set by other bcs:
+        ! Set the soft limiter values.
         ! --------------------------------------------------------------
         DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           Element => Mesh % Elements(t)
@@ -5010,7 +5017,7 @@ CONTAINS
         END DO
       END DO
     END IF
-    
+#endif    
     
     ! Check the boundaries and body forces for possible single nodes BCs that are used to fixed 
     ! the domain for undetermined equations. The loop is slower than optimal in the case that there is 
@@ -12096,15 +12103,18 @@ END FUNCTION SearchNodeL
     END IF
 
     DO i = 1, n
-      j = Var % Perm( i ) 
-      IF( j == 0 ) CYCLE
+      j = i
+      IF( ASSOCIATED( Var % Perm ) ) THEN
+        j = Var % Perm( i ) 
+        IF( j == 0 ) CYCLE
+      END IF
       IF( MeshPiece(i) > 0 ) THEN
         Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
       ELSE
         Var % Values( j ) = 0.0_dp
       END IF
     END DO
-    CALL Info('CalculateMeshPieces','Saving mesh piece field to: mesh piece',Level=5)
+    CALL Info('CalculateMeshPieces','Creating variable showing the non-connected domains: mesh piece',Level=5)
   
   END SUBROUTINE CalculateMeshPieces
 
