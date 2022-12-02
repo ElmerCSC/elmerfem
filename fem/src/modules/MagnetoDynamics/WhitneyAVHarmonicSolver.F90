@@ -1986,6 +1986,10 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
     COMPLEX(KIND=dp) :: imu, invZs
+
+    LOGICAL :: CoilBody, Found
+    TYPE(ValueList_t), POINTER :: CompParams
+    CHARACTER(LEN=MAX_NAME_LEN):: CoilType
     
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -1993,6 +1997,26 @@ END BLOCK
 
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
+
+
+!    CoilBody = .FALSE.
+!    CompParams => GetComponentParams( Element )
+!    CoilType = ''
+!    IF (ASSOCIATED(CompParams)) THEN
+!      CoilType = GetString(CompParams, 'Coil Type', Found)
+!      IF (Found) THEN
+!        SELECT CASE (CoilType)
+!        CASE ('stranded')
+!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
+!        CASE ('massive')
+!           CoilBody = .TRUE.
+!        CASE ('foil winding')
+!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
+!        CASE DEFAULT
+!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
+!        END SELECT
+!      END IF
+!    END IF
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
