@@ -197,13 +197,7 @@ Material 1
 
   Sea level = Real 0.0
 
-  Min Zs = Variable "Bottom Zb"
-    Real MATC "tx + 10.0"
-  Max Zs = Real 1.0e6
 
-  !! Bed condition                                                              
-  Min Zb = Equals Bedrock
-  Max Zb = Real 1.0e6
 
 !!Necessary for SSAVelocity                                                    
   SSA Mean Viscosity = Real $eta
@@ -456,7 +450,7 @@ Solver 16
 
   Steady State Convergence Tolerance = 1.0e-03
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
 End
@@ -487,7 +481,7 @@ Solver 17
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
 End
@@ -630,6 +624,10 @@ Boundary Condition 1
 
   Bottom Surface = Variable Zb, H, SSAmask
   Real MATC "if(tx(2)<-0.5){-1.0*rhoi/rhow*tx(1)} else {tx(0)}"
+
+ !! Bed condition                                                              
+  Zb Lower Limit = Equals Bedrock
+  Zb Upper Limit = Real 1.0e6
 End
 
 !! BC Lateral Ice-Shelf (air or sea contact)
@@ -655,7 +653,10 @@ Boundary Condition 3
   ComputeNormal = Logical False
   SSAFlow 3 = Real 0.0 !p=0 at the surface
   Top Surface = Variable Zs, bottom SSAmask, bottom H !Note; bottom SSAmask initialized as 0
-  Real MATC "if(tx(1)<-0.5){(rhow-rhoi)/rhow*tx(2)} else {tx(0)}"
+    Real MATC "if(tx(1)<-0.5){(rhow-rhoi)/rhow*tx(2)} else {tx(0)}"
+  Zs Lower Limit = Variable "Bottom Zb"
+    Real MATC "tx + 10.0"
+  Zs Upper Limit = Real 1.0e6
 End
 
 !! Symmetry axis

@@ -102,10 +102,7 @@ Material 1
   Viscosity Model = String "power law"
   Viscosity Exponent = Real 0.333333333333333
   Critical Shear Rate = Real 1.0e-10
-  !! Bed condition
-  Min Zs Bottom = Equals bedrock
- 
-  Max Zs Bottom = Real 1.0e6
+
 End
 
 !---------------------------------------------------
@@ -176,7 +173,7 @@ Solver 4
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 End
 
 Solver 5
@@ -254,6 +251,11 @@ Boundary Condition 1
   Mesh Update 2 = Real 0.0
   Mesh Update 3 = Variable Zs Bottom
     Real Procedure "ElmerIceUSF" "ZsBottomMzsIni"
+
+    !! Bed condition
+  Zs Bottom Lower Limit = Equals bedrock
+ 
+  Zs Bottom Upper Limit = Real 1.0e6
 End
 
 !! BC  Free surface Top

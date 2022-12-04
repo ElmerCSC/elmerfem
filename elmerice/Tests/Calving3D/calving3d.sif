@@ -394,7 +394,7 @@ Solver 14
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Bubbles
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   ALE Formulation = Logical True
   Maximum Displacement = Real 20.0
@@ -437,7 +437,7 @@ Solver 15
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Bubbles
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   ALE Formulation = Logical True
 

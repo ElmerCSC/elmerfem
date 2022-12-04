@@ -133,12 +133,10 @@ Material 1
   Sea level = Real 0.0
 
   !! Surface condition
-  Min Zs Top = REal -1.0e6
-  Max Zs Top = Real 1.0e6
+
 
   !! Bed condition
-  Min Zs Bottom = Real -1.0e6
-  Max Zs Bottom = Real 1.0e6
+
 
   !! for computeDevStress
   Cauchy = Logical True
@@ -199,7 +197,7 @@ Solver 2
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
 ! How much the free surface is relaxed
 !  Relaxation Factor = Real 1.0
@@ -235,7 +233,7 @@ Solver 3
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
 ! How much the free surface is relaxed
 !  Relaxation Factor = Real 1.0
@@ -321,6 +319,9 @@ Boundary Condition 1
 
   Compute Sea Pressure = Logical True
   Compute Sea Spring = Logical True
+
+  Zs Bottom Lower Limit = Real -1.0e6
+  Zs Bottom Upper Limit = Real 1.0e6
 End
 
 !! BC Lateral Ice-Shelf (air or sea contact)
@@ -341,6 +342,8 @@ Boundary Condition 3
   Mesh Update 1 = Real 0.0e0
   Mesh Update 2 = Variable Zs Top, ZsTopIni
     Real MATC "tx(0)-tx(1)"
+  Zs Lower Limit = Real -1.0e6
+  Zs Upper Limit = Real 1.0e6
 End
 
 !! Symmetry axis

@@ -222,16 +222,10 @@ Material 1
 
   Sea Level = Real $sl0
 
-  Min Zs Top = Variable "Zs Bottom"
-    Real MATC "tx + 10.0"
-  Max Zs Top = Real 1.0e6
-
   !! Bed condition
   ! Min Zs Bottom = Equals "bedrock"
   Min Zs Bottom = Variable Coordinate 1
     Real Procedure "./"$bed_func" ""initbedrock"
-
-  Max Zs Bottom = Real 1.0e6
 End
 
 !---------------------------------------------------
@@ -445,7 +439,7 @@ Solver 11
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
 End
@@ -477,10 +471,15 @@ Solver 12
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
+  !! Bed condition
+  ! Min Zs Bottom = Equals "bedrock"
+  Zs Bottom Lower Limit = Variable Coordinate 1
+    Real Procedure "./"$bed_func" ""initbedrock"
 
+  Zs Bottom Upper Limit = Real 1.0e6
 End
 
 Solver 13
@@ -750,6 +749,10 @@ Boundary Condition 3
 
   Front Displacement 2 = Variable Inity, Coordinate 2
     Real MATC "tx(1) - tx(0)"
+
+  Zs Top Lower Limit = Variable "Zs Bottom"
+    Real MATC "tx + 10.0"
+  Zs Top Upper Limit = Real 1.0e6
 End
 
 !! Symmetry axis

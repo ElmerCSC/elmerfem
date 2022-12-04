@@ -137,15 +137,7 @@ Material 1
   Viscosity Exponent = Real $1.0/n 
   Critical Shear Rate = Real 1.0e-15
 
-  Sea level = Real 0.0
-
-  Min Zs = Variable "Bottom Zb"    
-    Real MATC "tx + 10.0"                          
-  Max Zs = Real 1.0e6
-
-  !! Bed condition
-  Min Zb = Equals Bedrock 
-  Max Zb = Real 1.0e6
+  Sea level = Real 0.0  
 End
 
 !---------------------------------------------------
@@ -263,7 +255,7 @@ Solver 7
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
 End 
@@ -293,7 +285,7 @@ Solver 8
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   Relaxation Factor = Real 1.0
 End
@@ -370,6 +362,11 @@ Boundary Condition 1
   Zb = Equals Bedrock 
   Zb Condition = Variable GroundedMask
     Real MATC "tx + 0.5"
+
+!! Bed condition
+  Zb Lower Limit = Equals Bedrock 
+  Zb Upper Limit = Real 1.0e6
+
 !
 ! Bedrock conditions
 !
@@ -424,6 +421,9 @@ Boundary Condition 3
   Target Boundaries = 3 
   Body Id = 2
   ComputeNormal = Logical False
+  Zs Lower Limit = Variable "Bottom Zb"    
+    Real MATC "tx + 10.0"                          
+  Zs Upper Limit = Real 1.0e6
 End
 
 !! Symmetry axis
