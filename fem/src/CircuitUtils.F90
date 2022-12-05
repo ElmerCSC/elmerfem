@@ -1774,20 +1774,7 @@ CONTAINS
 !print *, "Active elements", ParEnv % Mype, ":", GetNOFActive()
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
-          IF (ElAssocToComp(Element, Comp)) THEN
-            nn = GetElementNOFNodes(Element)
-            nd = GetElementNOFDOFs(Element,ASolver)
-            SELECT CASE (Comp % CoilType)
-            CASE('stranded')           
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
-            CASE('massive')
-              IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
-           CASE('foil winding')
-              IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows)
-            END SELECT
-          END IF
+          CALL CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
 !        print *, ParEnv % Mype, "CompInd:", CompInd, "Comp % nofcnts", Comp % nofcnts
@@ -1859,20 +1846,7 @@ CONTAINS
 !print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
-          IF (ElAssocToComp(Element, Comp)) THEN
-            nn = GetElementNOFNodes(Element)
-            nd = GetElementNOFDOFs(Element,ASolver)
-            SELECT CASE (Comp % CoilType)
-            CASE('stranded')
-              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
-            CASE('massive')
-              IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
-           CASE('foil winding')
-              IF (.NOT. HasSupport(Element,nn)) CYCLE   
-              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols=Cols)
-            END SELECT
-          END IF
+          CALL CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
 !        print *, ParEnv % Mype, "CompInd:", CompInd, "Coil Type:", Comp % CoilType, &
@@ -1884,6 +1858,71 @@ CONTAINS
    END SUBROUTINE CreateComponentEquations
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+   SUBROUTINE CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
+    INTEGER :: nn, nd, RowId
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER, POINTER :: Rows(:), Cnts(:)
+    LOGICAL*1 :: Done(:)
+    LOGICAL :: dofsdone
+
+    IF (ElAssocToComp(Element, Comp)) THEN
+      Asolver => CurrentModel % Asolver
+      nn = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element,ASolver)
+      SELECT CASE (Comp % CoilType)
+      CASE('stranded')           
+        CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
+      CASE('massive')
+        IF (HasSupport(Element,nn)) THEN
+          CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
+        END IF
+     CASE('foil winding')
+        IF (HasSupport(Element,nn)) THEN
+          CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows)
+        END IF
+      END SELECT
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountComponentElements
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: nn, nd, VvarId, IvarId
+    INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
+    LOGICAL*1 :: Done(:)
+    LOGICAL :: dofsdone
+    
+    IF (ElAssocToComp(Element, Comp)) THEN
+      Asolver => CurrentModel % Asolver
+      nn = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element,ASolver)
+      SELECT CASE (Comp % CoilType)
+      CASE('stranded')
+        CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
+      CASE('massive')
+        IF (HasSupport(Element,nn)) THEN
+          CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
+        END IF
+     CASE('foil winding')
+        IF (HasSupport(Element,nn)) THEN
+          CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols=Cols)
+        END IF
+      END SELECT
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE CreateComponentElements
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Done,Rows,Cols,Jsind,Harmonic)
