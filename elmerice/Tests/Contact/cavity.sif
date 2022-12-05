@@ -289,7 +289,7 @@ Solver 8
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Stabilized
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
 ! How much the free surface is relaxed
   Relaxation Factor = Real 1.0

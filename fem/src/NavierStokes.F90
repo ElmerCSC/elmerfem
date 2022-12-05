@@ -1318,8 +1318,8 @@ MODULE NavierStokes
 !>  boundary conditions in cartesian coordinates.
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundary( BoundaryMatrix,BoundaryVector,LoadVector,   &
-    NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, Nodes )
-             
+    NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NodalStabCoeff, & 
+    NormalTangential, FSSA, Element, n, Nodes) 
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: BoundaryMatrix(:,:)
@@ -1355,20 +1355,21 @@ MODULE NavierStokes
    IMPLICIT NONE
 
    REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
-     NodalAlpha(:),NodalBeta(:), NodalSlipCoeff(:,:), NodalExtPressure(:)
+     NodalAlpha(:),NodalBeta(:), NodalSlipCoeff(:,:), NodalExtPressure(:), &
+     NodalStabCoeff(:)
 
    INTEGER :: n,pn
 
    TYPE(Element_t),POINTER  :: Element, Parent
    TYPE(Nodes_t)    :: Nodes, ParentNodes
 
-   LOGICAL :: NormalTangential
+   LOGICAL :: NormalTangential, FSSA
 
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
-   REAL(KIND=dp) :: detJ,FlowStress(3,3),SlipCoeff
+   REAL(KIND=dp) :: detJ,FlowStress(3,3),SlipCoeff,StabCoeff
 #if 0
    REAL(KIND=dp) :: PBasis(pn),PdBasisdx(pn,3)
 #endif
@@ -1378,7 +1379,7 @@ MODULE NavierStokes
    REAL(KIND=dp) :: TangentForce(3),Force(3),Normal(3),Tangent(3),Tangent2(3), &
                Vect(3), Alpha, mu,Grad(3,3),Velo(3)
 
-   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux
+   REAL(KIND=dp) :: xx, yy, ydot, ydotdot, MassFlux, dt
 
    INTEGER :: i,j,k,l,k1,k2,t,q,p,c,dim,N_Integ
 
@@ -1494,7 +1495,51 @@ MODULE NavierStokes
          END DO
        END DO
      END IF
+    
+     !stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
+     ! version 1
+     !IF ( FSSA ) THEN
+     !  StabCoeff = SUM( NodalStabCoeff(1:n) * Basis(1:n) )
+     !  DO p=1,n
+     !    DO q=1,n
+     !      DO i=1,dim
+     !          BoundaryMatrix( (p-1)*c+dim,(q-1)*c+i ) = & 
+     !          BoundaryMatrix( (p-1)*c+dim,(q-1)*c+i ) + &
+     !          s * StabCoeff * Basis(q) * Basis(p) * Normal(i)
+     !      END DO
+     !    END DO
+     !  END DO
+     !END IF
 
+     ! approximation with normal pointing into z-direction
+     IF ( FSSA ) THEN
+       StabCoeff = SUM( NodalStabCoeff(1:n) * Basis(1:n) )
+       DO p=1,n
+         DO q=1,n
+           DO i=dim,dim
+             BoundaryMatrix( (p-1)*c+dim,(q-1)*c+i ) = & 
+                  BoundaryMatrix( (p-1)*c+dim,(q-1)*c+i ) + &
+                  s * StabCoeff * Basis(q) * Basis(p) * Normal(i)
+           END DO
+         END DO
+       END DO
+     END IF
+     
+     !! version 2, transposed
+     !IF ( FSSA ) THEN
+     !  StabCoeff = SUM( NodalStabCoeff(1:n) * Basis(1:n) )
+     !  DO p=1,n
+     !    DO q=1,n
+     !      DO i=1,dim
+     !          BoundaryMatrix( (p-1)*c+i,(q-1)*c+dim ) = & 
+     !          BoundaryMatrix( (p-1)*c+i,(q-1)*c+dim ) + &
+     !          s * StabCoeff * Basis(q) * Basis(p) * Normal(i)
+     !      END DO
+     !    END DO
+     !  END DO
+     !END IF
+   
+     
      DO q=1,n
        DO i=1,dim
          k = (q-1)*c + i

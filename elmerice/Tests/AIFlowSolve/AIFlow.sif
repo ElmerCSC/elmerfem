@@ -157,7 +157,7 @@ Solver 3
    Steady State Convergence Tolerance = 1.0e-04
 
    Stabilization Method = Bubbles    
-   Apply Dirichlet = Logical True
+   Apply Limiter = Logical True
 End
 
 Solver 4
@@ -192,8 +192,7 @@ Material 1
 End 
 
 Material 2
-  Min Zs = Real 0.0 
-  Max Zs = Real 10000.0
+ Density = 917.0
 End
 
 Body Force 1
@@ -234,6 +233,8 @@ Boundary Condition 4
   Target Boundaries = 3
   Body ID = 2
   Depth = Real 0.0
+  Zs Lower Limit = Real 0.0 
+  Zs Upper Limit = Real 10000.0
 End
 
 

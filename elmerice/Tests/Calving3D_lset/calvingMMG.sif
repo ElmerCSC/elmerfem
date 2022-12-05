@@ -141,12 +141,8 @@ Material 1
   Youngs Modulus = Real 1.0
   Poisson Ratio = Real 0.3
 
-  Min Zs Top = Variable Coordinate 3, Elevation
-      Real MATC "tx(0) - tx(1) + 10.0"
-
   Min Zs Bottom = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
-
 End
 
 !!!!! SOLVERS
@@ -394,7 +390,7 @@ Solver 14
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Bubbles
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
 
   ALE Formulation = Logical True
   Maximum Displacement = Real 20.0
@@ -866,6 +862,9 @@ Boundary Condition 5
     Real MATC "tx + 0.5"
 
   Elevation = Real 0.0
+
+  Zs Bottom Lower Limit = Variable Coordinate 1, Coordinate 2
+    Real Procedure "./"$bed_func" ""initbedrock"
 End
 
 Boundary Condition 6
@@ -888,6 +887,9 @@ Boundary Condition 6
     Real MATC "tx(0) - tx(1)"
 
   Longitudinal Mesh Update 3 = Real 0.0
+
+  Zs Top Lower Limit = Variable Coordinate 3, Elevation
+      Real MATC "tx(0) - tx(1) + 10.0"
 End
 
 

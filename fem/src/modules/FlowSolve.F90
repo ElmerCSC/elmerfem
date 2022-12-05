@@ -113,7 +113,7 @@
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
                   Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
-                  RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE.
+                  RecheckNewton=.FALSE., ImplicitFrictionDirection=.FALSE., NormalVertical, FSSA
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -143,7 +143,7 @@
        LocalTemperature(:), GasConstant(:), HeatCapacity(:),             &
        LocalTempPrev(:),SlipCoeff(:,:), PseudoCompressibility(:),        &
        PseudoPressure(:), Drag(:,:), PotentialField(:),    &
-       PotentialCoefficient(:)
+       PotentialCoefficient(:),StabCoeff(:)
 
      SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
        Alpha,Beta,ExtPressure,Pressure,PrevPressure, PrevDensity,Density,       &
@@ -152,7 +152,7 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, StabCoeff
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------
@@ -301,6 +301,7 @@
                Permeability,                        &
                Mx,My,Mz,                            &
                SlipCoeff, Drag,                     &
+               StabCoeff,                           &
                TimeForce,FORCE, Viscosity,          &
                MASS,  STIFF,                        &
                HeatExpansionCoeff,                  &
@@ -324,6 +325,7 @@
                  Permeability(N),                        &
                  Mx(N),My(N),Mz(N),                      &
                  SlipCoeff(3,N), Drag(3,N),              &
+                 StabCoeff(N),                           &
                  TimeForce( 2*NSDOFs*N ),                &
                  FORCE( 2*NSDOFs*N ), Viscosity( N ), &
                  MASS(  2*NSDOFs*N,2*NSDOFs*N ),&
@@ -1074,6 +1076,7 @@
           ExtPressure = 0.0d0
           Beta        = 0.0d0
           SlipCoeff   = 0.0d0
+          StabCoeff = 0.0d0
           STIFF = 0.0d0
           FORCE = 0.0d0
 
@@ -1135,20 +1138,30 @@
             NormalTangential = GetLogical( BC, &
                    'Normal-Tangential '//GetVarName(Solver % Variable), GotIt )
           END IF
+
+!------------------------------------------------------------------------------
+!         FSSA stabilization
+!------------------------------------------------------------------------------
+          StabCoeff = 0.0d0
+          StabCoeff(1:n) = GetReal( BC, 'FSSA Coefficient', GotIt )
+          FSSA = GetLogical( BC, 'FSSA', GotIt )
+          
+!------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
           SELECT CASE( CurrentCoordinateSystem() )
             
           CASE( Cartesian )            
             CALL NavierStokesBoundary(  STIFF, FORCE, &
-                LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
-                Element, n, ElementNodes )
-            
-          CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )            
+             LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, & 
+             StabCoeff, NormalTangential, FSSA, Element, n, ElementNodes)
+
+         CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )
+
             CALL NavierStokesCylindricalBoundary( STIFF, &
-                FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
-                NormalTangential, Element, n, ElementNodes)
-            
-          CASE DEFAULT            
+             FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
+                 NormalTangential, Element, n, ElementNodes)
+
+         CASE DEFAULT
             CALL NavierStokesGeneralBoundary( STIFF, &
                 FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
                 Element, n, ElementNodes)

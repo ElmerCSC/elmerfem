@@ -27,7 +27,7 @@
 ! *  Utilizes multithreading and vectorization features initially introduced by Mikko Byckling.
 ! *  Replaces partly the legacy solver FlowSolve which is not optimized.
 ! *
-! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback
+! *  Authors: Mika Malinen, Juhani Kataja, Juha Ruokolainen, Peter Råback, Thomas Zwinger
 ! *  Email:   elmeradm@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -959,17 +959,18 @@ END BLOCK
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat
-    REAL(KIND=dp) :: ExtPressure, s, detJ, wut0, wexp, wcoeff, un, ut
+        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA
+    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAcoeff, wut0, wexp, wcoeff, un, ut
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
         Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
-        FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h
+        FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
+        FSSAcoeff_h
     TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
     TYPE(ValueList_t), POINTER :: BC    
     
@@ -999,7 +1000,8 @@ END BLOCK
           'Normal-Tangential Velocity' )
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
-
+      CALL ListInitElementKeyword( FSSAcoeff_h, 'Boundary Condition',&
+           'FSSA Coefficient')
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
       CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
@@ -1007,6 +1009,9 @@ END BLOCK
       
       InitHandles = .FALSE.
     END IF
+
+    BC => GetBC()
+
     
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
@@ -1039,7 +1044,12 @@ END BLOCK
 
     ! There is no elemental routine for this.
     ! So whereas this breaks the beuty it does not cost too much.
-    BC => GetBC()     
+    BC => GetBC()
+    FSSAFlag = GetString(BC, 'FSSA Flag', Found)
+    IF (.NOT.Found) THEN
+      WRITE (FSSAFlag,*) "none"
+    END IF
+    
     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient') 
     HaveFrictionU = ListCheckPresent( BC,'Friction Coefficient')
     HaveFriction = HaveFrictionU .OR. HaveFrictionW
@@ -1073,13 +1083,17 @@ END BLOCK
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
-            
+      ! FSSA Coefficient
+      !--------------------
+      FSSAcoeff = ListGetElementReal( FSSAcoeff_h,  Basis, Element, HaveFSSA, GaussPoint = t )
+
+      
       ! Nothing to do, exit the routine
       !---------------------------------
-      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction )) RETURN
+      IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential .OR. HaveFriction  ) THEN
+      IF( HavePres .OR. NormalTangential .OR. HaveFriction .OR. HaveFSSA ) THEN
         IF( HaveNormal ) THEN
           Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
         ELSE
@@ -1231,11 +1245,56 @@ END BLOCK
           END DO
         END IF
       END IF
-    END DO
       
-    CALL DefaultUpdateEquations( STIFF, FORCE )
+      !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
+      !---------------------------------------------------------------
+      ! version 1
+      IF ( HaveFSSA ) THEN
+        SELECT CASE(FSSAFlag)
+          ! approximation with normal pointing into z-direction
+        CASE ('normal')          
+          DO p=1,nd
+            DO q=1,nd
+              DO i=dim,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO
+        ! version 2, transposed
+        CASE ('transposed')
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
+                     STIFF( (p-1)*c+i,(q-1)*c+dim ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+              END DO
+            END DO
+          END DO        
+        CASE ('full') ! full entry matrix FSSA
+          DO p=1,nd
+            DO q=1,nd
+              DO i=1,dim
+                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
+                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+                !PRINT *, "K(",p,q,i,")=", s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
+              END DO
+            END DO
+          END DO
+        CASE DEFAULT
+          
+        END SELECT
         
-  END SUBROUTINE LocalBoundaryMatrix
+      END IF
+  END DO
+      
+     
+  CALL DefaultUpdateEquations( STIFF, FORCE )
+
+END SUBROUTINE LocalBoundaryMatrix
 
   
 END MODULE IncompressibleLocalForms

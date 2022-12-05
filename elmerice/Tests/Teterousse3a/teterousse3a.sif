@@ -139,10 +139,6 @@ Material 1
 
   Cauchy = Logical True 
 
-  ! Bed condition
-  Min Zs Bottom = Variable Coordinate 1
-    Real Procedure "./USF_TR" "Bedrock"
-  Max Zs Bottom = Real +1.0e10
 End
  
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -243,8 +239,7 @@ Solver 5
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Bubbles    
-  Apply Dirichlet = Logical False ! No limiter needed for the upper surface
-
+ 
 ! How much the free surface is relaxed
   Relaxation Factor = Real 1.00       
 
@@ -283,7 +278,7 @@ Solver 6
   Steady State Convergence Tolerance = 1.0e-03
 
   Stabilization Method = Bubbles    
-  Apply Dirichlet = Logical True  
+  Apply Limiter = Logical True  
 
 ! How much the free surface is relaxed
   Relaxation Factor = Real 1.00       
@@ -342,6 +337,11 @@ Boundary Condition 2
 
   !Save Line = Logical True
   Flux integrate = Logical True
+
+   ! Bed condition
+  Zs Bottom Lower Limit = Variable Coordinate 1
+    Real Procedure "./USF_TR" "Bedrock"
+  Zs Bottom Upper Limit = Real +1.0e10
 End
 
 ! Upper Surface

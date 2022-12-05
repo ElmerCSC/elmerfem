@@ -228,7 +228,7 @@ Solver 4
   Steady State Convergence Tolerance = 1.0e-03
   
   Stabilization Method = Bubbles
-  Apply Dirichlet = Logical False
+  Apply Limiter = Logical False
   ALE Formulation = Logical True
   
   Use Accumulation = Logical True
@@ -260,7 +260,7 @@ Solver 5
   Steady State Convergence Tolerance = 1.0e-03
   
   Stabilization Method = Bubbles
-  Apply Dirichlet = Logical True
+  Apply Limiter = Logical True
   ALE Formulation = Logical True
   
   Relaxation Factor = Real 1.0
