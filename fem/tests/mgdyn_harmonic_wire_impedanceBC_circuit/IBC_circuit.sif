@@ -154,8 +154,8 @@ Boundary Condition 2
   !
   Name = "WireSurface"
   Target Boundaries(1) = 2
-!  Layer Electric Conductivity = Real 58e6
-!  Layer Relative Permeability = Real 1
+  Layer Electric Conductivity = Real 58e6
+  Layer Relative Permeability = Real 1
   Body Id = 3
 End
 
