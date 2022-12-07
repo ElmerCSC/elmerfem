@@ -293,7 +293,11 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Compute mass balance terms
   !------------------------------------------------------------------------------
-  ComputeMassBalance=ListGetLogical(SolverParams,"Compute averaved mass balances", Found)
+  ! backward compatible correction of misspelled kw
+  IF (ListCheckPresent(SolverParams,"Compute averaved mass balances")) &
+          CALL Fatal(SolverName,"replace <Compute averaved mass balances> with <.. averaged ..>")
+
+  ComputeMassBalance=ListGetLogical(SolverParams,"Compute averaged mass balances", Found)
   IF (ComputeMassBalance) THEN
     acabf => VariableGet( Model % Mesh % Variables,"acabf")
     IF (acabf % TYPE /= Variable_on_elements) &
