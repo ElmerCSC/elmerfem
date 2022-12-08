@@ -60,7 +60,7 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh, OFMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, DirName, BaseDir, OFfile
   INTEGER :: i, NoDir, IOStatus, PassiveCoord
-  LOGICAL :: Found, Visited = .FALSE., GotData
+  LOGICAL :: Found, Visited = .FALSE., GotData, CylSymm 
   REAL(KIND=dp) :: MinF, MaxF, MeanF, Coeff, Norm
   REAL(KIND=dp), POINTER :: RhsVector(:), WeightVector(:), OfField(:)
   TYPE(Matrix_t), POINTER :: Amat
@@ -97,10 +97,16 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   ! dimensional reduction for the OpenFOAM mesh.
   !-------------------------------------------------------------------------
   PassiveCoord = ListGetInteger( Solver % Values,'Passive OpenFOAM Coordinate',Found )
-  IF( .NOT. Found .AND. Mesh % MeshDim < 3 ) THEN
-    CALL Warn('OpenFOAM2Elmer','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
-  END IF  
   
+  CylSymm = ( CurrentCoordinateSystem() == CylindricSymmetric &
+      .OR. CurrentCoordinateSystem() == AxisSymmetric )
+  
+  IF( Mesh % MeshDim < 3 ) THEN
+    IF( PassiveCoord == 0 .AND. .NOT. CylSymm ) THEN
+      CALL Warn('OpenFOAM2Elmer','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
+    END IF
+  END IF
+
   BaseDir = GetString( Params,'OpenFOAM Directory',Found)
   IF( Found ) THEN
     CALL Info('OpenFoam2ElmerFit','Using given > OpenFOAM Directory < : '//TRIM(BaseDir),Level=6)
@@ -509,12 +515,20 @@ CONTAINS
 
     ElementIndex = 0 
     DO t = 1, OFMesh % NumberOfNodes
-      GlobalCoords(1) = OFMesh % Nodes % x(t)
-      GlobalCoords(2) = OFMesh % Nodes % y(t)
-      GlobalCoords(3) = OFMesh % Nodes % z(t)
-      
+      IF( CylSymm ) THEN
+        ! Project all data to to cylindrically symmetric 2D plane
+        GlobalCoords(1) = SQRT( OFMesh % Nodes % x(t)**2 + OFMesh % Nodes % y(t)**2 )
+        GlobalCoords(2) = OFMesh % Nodes % z(t)
+        GlobalCoords(3) = 0.0_dp
+      ELSE             
+        GlobalCoords(1) = OFMesh % Nodes % x(t)
+        GlobalCoords(2) = OFMesh % Nodes % y(t)
+        GlobalCoords(3) = OFMesh % Nodes % z(t)
+      END IF
+        
       val = OFField(t)
 
+      ! Find the element and local coordinates of the global data point
       CALL LocateParticleInMeshOctree( ElementIndex, GlobalCoords, LocalCoords )
       
       IF( ElementIndex == 0 ) CYCLE
@@ -529,7 +543,8 @@ CONTAINS
       w = LocalCoords(3)
       
       stat = ElementInfo( Element, ElementNodes, U, V, W, DetJ, Basis )
-      
+
+      ! Share the data to nodes using the basis functions for weighting
       DO i = 1,n
         j = Var % Perm( NodeIndexes(i) )
         
