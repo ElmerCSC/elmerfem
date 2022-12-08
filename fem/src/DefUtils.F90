@@ -1718,14 +1718,18 @@ CONTAINS
 
 !> Return the number of element degrees of freedom 
   FUNCTION GetElementNOFDOFs( UElement,USolver ) RESULT(n)
+
+     USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
+
      INTEGER :: n
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), POINTER :: Element, Face
      TYPE(Solver_t),  POINTER :: Solver
 
-     INTEGER :: i,j, id, ElemFamily
+     INTEGER :: i, j, k, id, ElemFamily, ParentFamily, face_type, face_id 
+     INTEGER :: NDOFs
      LOGICAL :: Found, GB, NeedEdges
 
      IF ( PRESENT( USolver ) ) THEN
@@ -1761,6 +1765,8 @@ CONTAINS
      IF ( Id==0 ) id=1
 
      IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) n = Element % NDOFs
+     NDOFs = MAX(0, Solver % Def_Dofs(ElemFamily,id,1))
+     IF (NDOFs > 0) n = NDOFs * Element % TYPE % NumberOfNodes
 
      NeedEdges = .FALSE.
      DO i=2,SIZE(Solver % Def_Dofs,3)
@@ -1777,6 +1783,28 @@ CONTAINS
        !
        IF (ElemFamily == 3 .OR. ElemFamily == 4) THEN
          IF (Solver % Def_Dofs(6+ElemFamily, id, 5)>=0) NeedEdges = .TRUE.
+       ELSE
+         !
+         ! Check finally if 3-D faces are associated with face bubbles
+         !
+         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+           DO j=1,Element % TYPE % NumberOfFaces
+             Face => Solver % Mesh % Faces(Element % FaceIndexes(j))
+             face_type = Face % TYPE % ElementCode/100
+             IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+               face_id  = Face % BoundaryInfo % Left % BodyId
+               k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+               face_id = Face % BoundaryInfo % Right % BodyId
+               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (k > 0) THEN
+               NeedEdges = .TRUE.
+               EXIT
+             END IF
+           END DO
+         END IF
        END IF
      END IF
 
@@ -1784,45 +1812,68 @@ CONTAINS
 
      BLOCK
        LOGICAL :: EdgesDone, FacesDone
-       INTEGER :: Ind, i,j,k, EDOFs, FDOFs
-       TYPE(Element_t), POINTER :: Parent, Edge, Face
+       INTEGER :: Ind, i,j, p, nb, EDOFs, FDOFs, BDOFs
+       INTEGER :: face_id
+       TYPE(Element_t), POINTER :: Parent, Edge
   
        EdgesDone = .FALSE.; FacesDone = .FALSE.
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-         IF ( Solver % Mesh % MaxEdgeDOFs == Solver % Mesh % MinEdgeDOFs ) THEN
-           n =  n + Element % Type % NumberOfEdges * Solver % Mesh % MaxEdgeDOFs
-         ELSE
-           !DIR$ IVDEP
-           DO j=1,Element % Type % NumberOFEdges
-             n =  n + Solver % Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
-           END DO
-         END IF
-         IF ( Solver % GlobalBubbles ) THEN
-           Edge => Solver % Mesh % Edges(Element % EdgeIndexes(1))
-           IF ( Edge % TYPE % ElementCode == Element % TYPE % ElementCode ) THEN
-             n = n + Element % BDOFs
+         DO j=1,Element % Type % NumberOFEdges
+           Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
+           IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
+             IF (.NOT. Solver % GlobalBubbles) THEN
+               CYCLE
+             END IF
            END IF
-         END IF
+
+           EDOFs = 0 
+           IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
+             EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
+             EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+           END IF
+           n = n + EDOFs
+         END DO
          EdgesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-         IF ( Solver % Mesh % MaxFaceDOFs == Solver % Mesh % MinFaceDOFs ) THEN
-           n =  n + Element % Type % NumberOfFaces * Solver % Mesh % MaxFaceDOFs
-         ELSE
-           !DIR$ IVDEP
-           DO j=1,Element % Type % NumberOFFaces
-             n = n + Solver % Mesh % Faces( Element % FaceIndexes(j) ) % BDOFs
-           END DO
-         END IF
-
-         IF ( Solver % GlobalBubbles ) THEN
-           Face => Solver % Mesh % Faces(Element % FaceIndexes(1))
-           IF ( Face % TYPE % ElementCode == Element % TYPE % ElementCode ) THEN
-             n = n + Element % BDOFs
+         DO j=1,Element % TYPE % NumberOfFaces
+           Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
+           IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
+             IF ( .NOT. Solver % GlobalBubbles ) THEN
+               CYCLE
+             END IF
            END IF
-         END IF
 
+           k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
+           IF (k == 0) THEN
+             !
+             ! NOTE: This depends on what dofs have been introduced
+             ! by using the construct "-quad_face b: ..." and
+             ! "-tri_face b: ..."
+             !
+             face_type = Face % TYPE % ElementCode/100
+             IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+               face_id  = Face % BoundaryInfo % Left % BodyId
+               k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+               face_id = Face % BoundaryInfo % Right % BodyId
+               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             END IF
+
+             FDOFs = 0
+             IF (k > 0) THEN
+               FDOFs = k
+             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
+               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+             END IF
+           END IF
+           n = n + FDOFs
+         END DO
          FacesDone = .TRUE.
        END IF
 
@@ -1836,11 +1887,13 @@ CONTAINS
                Parent => Element % BoundaryInfo % Right
          END IF
          IF (.NOT.ASSOCIATED(Parent) ) RETURN
+         ParentFamily = Parent % TYPE % ElementCode / 100
 
          SELECT CASE(ElemFamily)
          CASE(2)
            IF ( .NOT. EdgesDone .AND. ASSOCIATED(Parent % EdgeIndexes) ) THEN
-             IF ( isActivePElement(Element) ) THEN
+             EDOFs =  0
+             IF ( isActivePElement(Element, Solver) ) THEN
                Ind=Element % PDefs % LocalNumber
              ELSE
                DO Ind=1,Parent % TYPE % NumberOfEdges
@@ -1855,15 +1908,19 @@ CONTAINS
                END DO
              END IF
 
-             EDOFs = Element % BDOFs
-             DO i=1,EDOFs
-               n = n + 1
-             END DO
+             IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
+               EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+               EDOFs = getEdgeDOFs(Parent, Solver % Def_Dofs(ParentFamily,id,6))
+             END IF
+
+             n = n + EDOFs
            END IF
 
          CASE(3,4)
            IF ( .NOT. FacesDone .AND. ASSOCIATED( Parent % FaceIndexes ) ) THEN
-             IF ( isActivePElement(Element) ) THEN
+
+             IF ( isActivePElement(Element, Solver) ) THEN
                Ind=Element % PDefs % LocalNumber
              ELSE
                DO Ind=1,Parent % TYPE % NumberOfFaces
@@ -1877,19 +1934,78 @@ CONTAINS
                  IF ( k==Face % TYPE % NumberOfNodes) EXIT
                END DO
              END IF
+               
+             IF (Ind >= 1 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
 
-             IF(Ind >= 0.AND. Ind <= Parent % Type % NumberOfFaces) THEN
-               FDOFs = Element % BDOFs
-               DO i=1,FDOFs
-                 n = n + 1
-               END DO
+               IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element, Solver) ) THEN
+                 Face => Solver % Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
+               ELSE
+                 Face => Element
+               END IF
+
+               IF (.NOT.EdgesDone .AND. ASSOCIATED(Face % EdgeIndexes)) THEN
+                 DO j=1,Face % TYPE % NumberOFEdges
+                   Edge => Solver % Mesh % Edges(Face % EdgeIndexes(j))
+
+                   EDOFs = 0
+                   IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
+                     EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
+                   ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
+                     EDOFs = getEdgeDOFs(Element, Solver % Def_Dofs(ElemFamily,id,6))
+                   END IF
+                   n = n + EDOFs
+                 END DO
+               END IF
+
+               FDOFs = 0
+               IF (Solver % Def_Dofs(ParentFamily,id,6) > 1) THEN
+                 FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind)
+               ELSE
+                 k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
+                 IF (k == 0) THEN
+                   !
+                   ! NOTE: This depends on what dofs have been introduced
+                   ! by using the construct "-quad_face b: ..." and
+                   ! "-tri_face b: ..."
+                   !
+                   face_type = Face % TYPE % ElementCode/100
+                   IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+                     face_id  = Face % BoundaryInfo % Left % BodyId
+                     k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
+                   END IF
+                   IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                     face_id = Face % BoundaryInfo % Right % BodyId
+                     k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+                   END IF
+                 END IF
+
+                 IF (k > 0) THEN
+                   FDOFs = k
+                 END IF
+               END IF
+               n = n + FDOFs
              END IF
            END IF
          END SELECT
+       ELSE
+         IF (Solver % GlobalBubbles .AND. ASSOCIATED(Element % BubbleIndexes)) THEN
+           BDOFs = 0
+           nb = Solver % Def_Dofs(ElemFamily,id,5)
+           p = Solver % Def_Dofs(ElemFamily,id,6)
+           IF (nb >= 0 .OR. p >=1) THEN
+             IF (p > 1) BDOFs = GetBubbleDOFs(Element, p)
+             BDOFs = MAX(nb, BDOFs)
+           ELSE
+             ! The following is not an ideal way to obtain the bubble count
+             ! in order to support solverwise definitions, but we are not expected 
+             ! to end up in this branch anyway:
+             BDOFs = Element % BDOFs
+           END IF
+           n = n + BDOFs
+         END IF
        END IF
      END BLOCK
-
-     IF ( .NOT.ASSOCIATED(Element % BoundaryInfo).AND.Solver % GlobalBubbles ) n=n+MAX(0,Element % BDOFs)
   END FUNCTION GetElementNOFDOFs
 
 
@@ -1911,10 +2027,10 @@ CONTAINS
 !> Returns the number of bubble degrees of freedom in the active element.
 !> If the sif file contains more than one solver section
 !> with each of them having their own specification of the "Element" 
-!> keyword, the returned value may not be the number of bubbles that
-!> should be assigned to the solver. With the optional argument 
-!> Update = .TRUE., the correct solver-wise bubble count can be returned and
-!> the bubble count assigned to the Element argument is updated.
+!> keyword, the BDOFs field of the Element structure may not be the number of 
+!> bubbles that should be assigned to the solver. With the optional argument 
+!> Update = .TRUE., the correct solver-wise bubble count is assigned to the 
+!> the Element structure.
 ! -----------------------------------------------------------------------------
   FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
 ! -----------------------------------------------------------------------------
@@ -1926,7 +2042,7 @@ CONTAINS
     TYPE(Element_t), POINTER  :: CurrElement
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Found, GB, UpdateRequested
-    INTEGER :: k
+    INTEGER :: k, p, ElemFamily
 
     IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
@@ -1944,25 +2060,37 @@ CONTAINS
     n = 0
     IF ( .NOT. GB ) THEN
       CurrElement => GetCurrentElement(Element)
-      IF (UpdateRequested) THEN
-        n = Solver % Def_Dofs(GetElementFamily(CurrElement), &
-            CurrElement % Bodyid, 5) 
-        IF ( n>=0 ) THEN
-          CurrElement % BDOFs = n
-        ELSE
-          n = CurrElement % BDOFs
-        END IF
-      ELSE
+      ElemFamily = GetElementFamily(CurrElement)
+
+      k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5) 
+      p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
+
+      IF (k >= 0 .OR. p >= 1) THEN
+        IF (p > 1) n = GetBubbleDOFs(Element, p)
+        n = MAX(k,n)
+      ELSE 
         n = CurrElement % BDOFs
+      END IF
+
+      IF (UpdateRequested .AND. n>=0) THEN
+        CurrElement % BDOFs = n
       END IF
     ELSE
       ! Rectify the bubble count assigned to the Element argument in case
       ! some other solver has tampered it:
       IF (UpdateRequested) THEN
         CurrElement => GetCurrentElement(Element)
-        k = Solver % Def_Dofs(GetElementFamily(CurrElement), &
-            CurrElement % Bodyid, 5)    
-        IF ( k>=0 ) CurrElement % BDOFs = k
+        ElemFamily = GetElementFamily(CurrElement)
+
+        k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5) 
+        p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
+
+        IF (k >= 0 .OR. p >= 1) THEN
+          IF (p > 1) n = GetBubbleDOFs(Element, p)
+          n = MAX(k,n)
+          IF ( n>=0 ) CurrElement % BDOFs = n
+        END IF
+        n = 0
       END IF
     END IF
   END FUNCTION GetElementNOFBDOFs
@@ -4911,13 +5039,6 @@ CONTAINS
        x => Solver % Variable
      END IF
 
-     ! Create soft limiters to be later applied by the Dirichlet conditions
-     ! This is done only once for each solver, hence the complex logic. 
-     !---------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
-       CALL DetermineSoftLimiter( Solver )	
-     END IF
-
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
        A % ConstrainedDOF = .FALSE.
@@ -4939,9 +5060,14 @@ CONTAINS
          A % Dvalues = 0._dp
        END IF
      END IF
-
-       
      
+     ! Create soft limiters to be later applied by the Dirichlet conditions
+     ! This is done only once for each solver, hence the complex logic. 
+     !---------------------------------------------------------------------
+     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
+       CALL DetermineSoftLimiter( Solver )	
+     END IF
+      
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
 

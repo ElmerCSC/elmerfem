@@ -50,7 +50,7 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
 !------------------------------------------------------------------------------
     LOGICAL :: Found, Calculate, CalculateCapMatrix
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
     INTEGER :: i,dim
 
     Params => GetSolverParams()
@@ -72,6 +72,11 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
           '-dofs '//TRIM(I2S(dim))//' electric flux' )
     END IF
 
+    str = ListGetString(Params,'Element',Found )
+    IF( Found ) THEN
+      IF(str(1:2) == 'p:') CALL Fatal('StatElecSolver_init','No support for p-elements in solver!')
+    END IF
+        
     ! If computation of capacitance matrix is requested then compute 
     ! set the flag for load computation also.
     !------------------------------------------------------------------

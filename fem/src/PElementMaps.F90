@@ -903,7 +903,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks if given element is a p-element active in a particular solver.   
 !------------------------------------------------------------------------------
   FUNCTION isActivePElement(Element,USolver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -911,9 +911,9 @@ CONTAINS
 
     TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
+    LOGICAL :: retVal
 
     INTEGER :: m
-    LOGICAL :: retVal
     TYPE(Solver_t), POINTER :: pSolver
         
     retVal = isPelement(Element)
@@ -924,7 +924,7 @@ CONTAINS
     IF( PRESENT( USolver ) ) THEN
       pSolver => USolver
     ELSE
-      pSOlver => CurrentModel % Solver
+      pSolver => CurrentModel % Solver
     END IF
     
     IF(ASSOCIATED(pSolver))THEN
@@ -940,7 +940,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks whether given solver has active p-element definitions (for some
+!> element type and for some body)
 !------------------------------------------------------------------------------
   FUNCTION isActivePSolver(Solver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -963,7 +964,7 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element.   
+!> Checks whether given element has p-element information associated  
 !------------------------------------------------------------------------------
     FUNCTION isPElement( Element ) RESULT(retVal)
 !------------------------------------------------------------------------------
