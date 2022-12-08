@@ -657,7 +657,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent
      INTEGER :: t, n, i, j, k, DGIndex
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found, ActiveElem, HaveSome
+     LOGICAL :: Found, ActiveElem, HaveSome, HaveBoundary
      TYPE(ValueList_t), POINTER :: BF
      
 
@@ -682,6 +682,7 @@ CONTAINS
      END DO
 
      ! If they are allocated somewhere check that they are good for this variable as well 
+     HaveBoundary = HaveSome
      IF( HaveSome ) THEN
        CALL Info('CreateDGPerm','There are at least some associated DG elements',Level=15)
        DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
@@ -698,6 +699,10 @@ CONTAINS
 
              IF( ActiveElem ) THEN
                IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+                 IF(t>Mesh % NumberOFBulkElements) THEN
+                   HaveBoundary=.FALSE.
+                   EXIT
+                 END IF
                  CALL Fatal('CreateDGPerm','Either all or none of DGIndexes should preexist!')               
                END IF
              END IF
@@ -728,16 +733,18 @@ CONTAINS
            Element % DGIndexes(i) = DGIndex
          END DO
        END DO
+     END IF
        
        ! Make boundary elements to inherit the bulk indexes
        ! We neglect this as for now since it seems this causes problems in deallocation later on...
-#if 1
+     IF ( .NOT. HaveBoundary ) THEN
        DO t=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
          n = Element % TYPE % NumberOfNodes
                
          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+
          DO k=1,2
            IF( k == 1 ) THEN
              Parent => Element % BoundaryInfo % Left
@@ -751,6 +758,7 @@ CONTAINS
              ALLOCATE( Element % DGIndexes(n) ) 
              Element % DgIndexes = 0
            END IF
+
            DO i = 1, n
              IF( Element % DGIndexes(i) > 0 ) CYCLE
              DO j = 1, Parent % TYPE % NumberOfNodes
@@ -764,7 +772,6 @@ CONTAINS
            EXIT
          END DO
        END DO
-#endif
      END IF
      
      CALL Info('CreateDGPerm','Size of DgPerm table: '//TRIM(I2S(DGIndex)),Level=12)
