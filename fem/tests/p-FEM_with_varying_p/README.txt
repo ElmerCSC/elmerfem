@@ -1,3 +1,7 @@
+NOTE: The capability to handle elementwise changing p-basis is undergoing
+      evolution and the ability to treat "hanging DOFs" on element interfaces
+      may not be perfect yet.
+
 Here the principal purpose is to test the ability to use p-basis functions
 of varying degree within a single model. The example case is a structural
 shell model. This case has been derived from the test 
