@@ -12031,6 +12031,7 @@ END FUNCTION SearchNodeL
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: Found
 
     IF( ParEnv % PEs > 1 ) THEN
       CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
@@ -12080,28 +12081,38 @@ END FUNCTION SearchNodeL
     END DO
     CALL Info('CalculateMeshPieces','Mesh coloring loops: '//TRIM(I2S(Loop)),Level=6)
 
-    ! If the maximum index is one then for sure there is only one body
-    IF( MaxIndex == 1 ) THEN
-      CALL Info('CalculateMeshPieces','Mesh consists of single body!',Level=5)
-      RETURN
-    END IF
-
     ! Compute the true number of different pieces
-    ALLOCATE( PiecePerm( MaxIndex ) ) 
-    PiecePerm = 0
-    NoPieces = 0
-    DO i = 1, n
-      j = MeshPiece(i) 
-      IF( j == 0 ) CYCLE
-      IF( PiecePerm(j) == 0 ) THEN
-        NoPieces = NoPieces + 1
-        PiecePerm(j) = NoPieces 
-      END IF
-    END DO
+    IF( MaxIndex == 1 ) THEN
+      NoPieces = 1
+    ELSE
+      ALLOCATE( PiecePerm( MaxIndex ) ) 
+      PiecePerm = 0
+      NoPieces = 0
+      DO i = 1, n
+        j = MeshPiece(i) 
+        IF( j == 0 ) CYCLE
+        IF( PiecePerm(j) == 0 ) THEN
+          NoPieces = NoPieces + 1
+          PiecePerm(j) = NoPieces 
+        END IF
+      END DO
+    END IF
     CALL Info('CalculateMeshPieces',&
         'Number of separate pieces in mesh is '//TRIM(I2S(NoPieces)),Level=5)
 
+    i = ListGetInteger( CurrentModel % Simulation,'Desired Mesh Pieces',Found )
+    IF( Found ) THEN
+      IF( i == NoPieces ) THEN
+        CALL Info('CalculateMeshPieces','Number of pieces agree with the requested '//TRIM(I2S(i)))
+        RETURN
+      ELSE
+        CALL Fatal('CalculateMeshPieces','Number of pieces differ from the requested '//TRIM(I2S(i)))
+      END IF
+    END IF
 
+    ! No point to create piece of just ones
+    IF( NoPieces == 1 ) RETURN
+    
     ! Save the mesh piece field to > mesh piece < 
     Var => VariableGet( Mesh % Variables,'Mesh Piece' )
     IF(.NOT. ASSOCIATED( Var ) ) THEN      

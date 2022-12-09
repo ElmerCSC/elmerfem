@@ -1477,8 +1477,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: p, nn
-    INTEGER :: CompInd, nm, nn_elem, nd_elem
-    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER :: CompInd, nm
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Component_t), POINTER :: Comp
@@ -1486,16 +1485,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     INTEGER :: VvarId, IvarId, q, j, astat
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_val
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
     REAL(KIND=dp) :: RotM(3,3,nn)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    LOGICAL :: Found, FoundIm, StrandedHomogenization
-
-    ASolver => CurrentModel % Asolver
-    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
+    LOGICAL :: Found
 
     Circuit => CurrentModel % Circuits(p)
     nm = Asolver % Matrix % NumberOfRows
@@ -1571,61 +1567,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       DO q=GetNOFActive(),1,-1
         Element => GetActiveElement(q)
-        IF (ElAssocToComp(Element, Comp)) THEN
-          CompParams => GetComponentParams( Element )
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings',&
-                                                        'Component parameters not found')
-
-          StrandedHomogenization = .FALSE.
-          CoilType = GetString(CompParams, 'Coil Type', Found)
-          IF (.NOT. Found) CoilType = ''
-          
-          nn_elem = GetElementNOFNodes(Element)
-          nd_elem = GetElementNOFDOFs(Element,ASolver)
-
-          IF (.NOT. ALLOCATED(Tcoef)) THEN
-            ALLOCATE(Tcoef(3,3,nn_elem), sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
-            IF (astat /= 0) THEN
-              CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
-            END IF
-          ELSE IF (SIZE(Tcoef,3) /= nn_elem) THEN
-            DEALLOCATE(Tcoef, sigma_33, sigmaim_33)
-            ALLOCATE(Tcoef(3,3,nn_elem),sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
-            IF (astat /= 0) THEN
-              CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
-            END IF
-          END IF
-          
-          SELECT CASE(CoilType)
-          CASE ('stranded')
-            StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-            IF ( StrandedHomogenization ) THEN 
-              sigma_33 = 0._dp
-              sigmaim_33 = 0._dp
-              sigma_33 = GetReal(CompParams, 'sigma 33', Found)
-              sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
-              IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
-                  'Homogenization Model Sigma 33 not found!')
-              Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
-              Tcoef(3,3,1:nn_elem) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
-            ELSE
-              Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
-            END IF
-            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
-          CASE ('massive')
-            IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
-         !   CALL GetConductivity(Element, Tcoef, nn_elem)
-            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
-            CALL Add_massive(Element,Tcoef,Comp,nn_elem,nd_elem)
-          CASE ('foil winding')
-            IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
-         !   CALL GetConductivity(Element, Tcoef, nn_elem)
-            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
-          CASE DEFAULT
-            CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
-          END SELECT
-        END IF
+        CALL AddComponentElementContributions(Element, Comp, Tcoef, &
+                                              sigma_33, sigmaim_33)
       END DO
     END DO
 
@@ -1642,6 +1585,87 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE AddComponentElementContributions(Element, Comp, Tcoef, & 
+                                               sigma_33, sigmaim_33)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    !------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Component_t), POINTER :: Comp
+    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+    REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
+    !------------------------------------
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(Valuelist_t), POINTER :: CompParams
+    LOGICAL :: StrandedHomogenization
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    INTEGER :: nn_elem, nd_elem
+    INTEGER :: astat
+    LOGICAL :: Found, FoundIm
+
+    IF (ElAssocToComp(Element, Comp)) THEN
+      ASolver => CurrentModel % Asolver
+      IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
+
+      CompParams => GetComponentParams( Element )
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentElementContributions',&
+                                                    'Component parameters not found')
+
+      StrandedHomogenization = .FALSE.
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF (.NOT. Found) CoilType = ''
+      
+      nn_elem = GetElementNOFNodes(Element)
+      nd_elem = GetElementNOFDOFs(Element,ASolver)
+
+      IF (.NOT. ALLOCATED(Tcoef)) THEN
+        ALLOCATE(Tcoef(3,3,nn_elem), sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
+        IF (astat /= 0) THEN
+          CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
+        END IF
+      ELSE IF (SIZE(Tcoef,3) /= nn_elem) THEN
+        DEALLOCATE(Tcoef, sigma_33, sigmaim_33)
+        ALLOCATE(Tcoef(3,3,nn_elem),sigma_33(nn_elem), sigmaim_33(nn_elem), STAT=astat)
+        IF (astat /= 0) THEN
+          CALL Fatal ('AddComponentEquationsAndCouplings','Memory allocation failed')
+        END IF
+      END IF
+      
+      SELECT CASE(CoilType)
+      CASE ('stranded')
+        StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+        IF ( StrandedHomogenization ) THEN 
+          sigma_33 = 0._dp
+          sigmaim_33 = 0._dp
+          sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+          sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
+              'Homogenization Model Sigma 33 not found!')
+          Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
+          Tcoef(3,3,1:nn_elem) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
+        ELSE
+          Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+        END IF
+        CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
+      CASE ('massive')
+        IF (HasSupport(Element,nn_elem)) THEN
+          Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+          CALL Add_massive(Element,Tcoef,Comp,nn_elem,nd_elem)
+        END IF
+      CASE ('foil winding')
+        IF (HasSupport(Element,nn_elem)) THEN
+          Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
+          CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
+        END IF
+      CASE DEFAULT
+        CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
+      END SELECT
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddComponentElementContributions
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

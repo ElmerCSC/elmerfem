@@ -2431,7 +2431,8 @@
         END IF
      END DO
 
-     IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) ) THEN
+     IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) .OR. &
+         ListCheckPresent( CurrentModel % Simulation,'Desired Mesh Pieces') ) THEN
        CALL CalculateMeshPieces( CurrentModel % Mesh ) 
      END IF
 
