@@ -262,12 +262,11 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NodeHolder(3)
 
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
-       FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)
+       FlowSolution(:), PrevFlowSol(:,:)
 
-  REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
-       STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), &
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), &
        MASS(:,:), Velo(:,:), Flux(:,:), &
-       OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:),&
+       StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:),&
        LocalMaxDisp(:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, FlowSolName,ConvectionFlag, StabilizeFlag

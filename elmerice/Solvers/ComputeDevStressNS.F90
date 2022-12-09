@@ -137,7 +137,9 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   SAVE LocalVelo, LocalP, dim
   
 !  NULLIFY(StressSol, FlowVariable)
-
+  CALL INFO( 'ComputeDevStress', '##################################',Level=1 )
+  CALL INFO( 'ComputeDevStress', '## ComputeDevStress',Level=1 )
+  CALL INFO( 'ComputeDevStress', '##################################',Level=1 )
 !------------------------------------------------------------------------------
 !  Read the name of the Flow Solver (NS)
 !------------------------------------------------------------------------------
@@ -212,7 +214,9 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
           LocalViscosity(N), STAT=istat )
 
      IF ( istat /= 0 ) THEN
-        CALL Fatal( 'ComputeDevStress', 'Memory allocation error.' )
+       CALL Fatal( 'ComputeDevStress', 'Memory allocation error.' )
+     ELSE
+       CALL INFO( 'ComputeDevStress', 'Memory allocation done.',Level=1 )
      END IF
 !------------------------------------------------------------------------------
 
@@ -229,6 +233,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 
      CALL Info( 'ComputeDevStress', ' ', Level=4 )
      CALL Info( 'ComputeDevStress', ' ', Level=4 )
+     
      CALL Info( 'ComputeDevStress', ' ', Level=4 )
      CALL Info( 'ComputeDevStress', ' ', Level=4 )
      CALL Info( 'ComputeDevStress', 'Starting assembly...',Level=4 )
