@@ -62,7 +62,7 @@ $ C.1.B(4,2) = 1
 ! Additions in SIF file
 ! -----------------------------------------------------------------------------
 Component 1
-  Body = Integer 3
+  Master Boundaries(1) = Integer 2
   Coil Type = String massive
 End
 

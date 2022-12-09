@@ -1999,24 +1999,29 @@ END BLOCK
     IF (SecondOrder) EdgeBasisDegree = 2
 
 
-!    CoilBody = .FALSE.
-!    CompParams => GetComponentParams( Element )
-!    CoilType = ''
-!    IF (ASSOCIATED(CompParams)) THEN
-!      CoilType = GetString(CompParams, 'Coil Type', Found)
-!      IF (Found) THEN
-!        SELECT CASE (CoilType)
-!        CASE ('stranded')
-!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
-!        CASE ('massive')
-!           CoilBody = .TRUE.
-!        CASE ('foil winding')
-!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
-!        CASE DEFAULT
-!           CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
-!        END SELECT
-!      END IF
-!    END IF
+    print *, "GetBody(Element)", GetBody(Element)
+    CoilBody = .FALSE.
+    IF (.not. GetBody(Element) .eq. 0) THEN
+      CompParams => GetComponentParams( Element )
+      CoilType = ''
+      print *, "GetBody(Element)", GetBody(Element)
+      IF (ASSOCIATED(CompParams)) THEN
+        CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) THEN
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+             CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
+          CASE ('massive')
+             CALL Fatal ('WhitneyAVHarmonicSolver', 'massive case not implemented with impedance BC')
+             CoilBody = .TRUE.
+          CASE ('foil winding')
+             CALL Fatal ('WhitneyAVHarmonicSolver', 'Stranded case not implemented with impedance BC')
+          CASE DEFAULT
+             CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+      END IF
+    END IF
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
