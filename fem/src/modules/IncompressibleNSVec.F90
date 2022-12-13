@@ -948,13 +948,14 @@ END BLOCK
 ! Assemble local finite element matrix for a single boundary element and glue
 ! it to the global matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, InitHandles)
+  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, dt, SpecificLoad, InitHandles)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
-    LOGICAL, INTENT(INOUT) :: InitHandles 
+    REAL(KIND=dp), INTENT(IN) :: dt
+    LOGICAL, INTENT(INOUT) :: SpecificLoad, InitHandles 
 !------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
@@ -962,15 +963,15 @@ END BLOCK
     CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA
-    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAcoeff, wut0, wexp, wcoeff, un, ut
+        HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA, FoundLoad
+    REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
-        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1)
+        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
-        FSSAcoeff_h
+        FSSAtheta_h, Dens_h, Load_h(3)
     TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
     TYPE(ValueList_t), POINTER :: BC    
     
@@ -1000,16 +1001,19 @@ END BLOCK
           'Normal-Tangential Velocity' )
       CALL ListInitElementKeyword( NormalTangential_h,'Boundary Condition',&
           'Normal-Tangential '//GetVarName(CurrentModel % Solver % Variable) )
-      CALL ListInitElementKeyword( FSSAcoeff_h, 'Boundary Condition',&
-           'FSSA Coefficient')
+      CALL ListInitElementKeyword( FSSAtheta_h, 'Boundary Condition',&
+           'FSSA Theta')
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
       CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
       CALL ListInitElementVariable( Velo_v )
-      
+      CALL ListInitElementKeyword( Dens_h,'Material','Density')  
+      CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')      
+      CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')      
+      CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3') 
       InitHandles = .FALSE.
     END IF
-
+    
     BC => GetBC()
 
     
@@ -1063,7 +1067,15 @@ END BLOCK
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element ) 
     END IF
-        
+    FSSAtheta = ListGetElementReal( FSSAtheta_h,  Basis, Element, HaveFSSA, GaussPoint = t )
+    IF (HaveFSSA) THEN
+      IF (FSSAtheta == 0.0) HaveFSSA=.FALSE.
+      rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
+      IF (.NOT.Found) THEN
+        CALL WARN('IncompressibleNSSolver (FSSA)','"Density" in Parent element not found!')          
+        HaveFSSA = .FALSE.
+      END IF
+    END IF
     DO t=1,ngp      
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
@@ -1083,10 +1095,26 @@ END BLOCK
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
-      ! FSSA Coefficient
+      ! FSSA Theta
       !--------------------
-      FSSAcoeff = ListGetElementReal( FSSAcoeff_h,  Basis, Element, HaveFSSA, GaussPoint = t )
+     
 
+      IF (HaveFSSA) THEN
+        ! Flow bodyforce if present
+        LoadVec = 0._dp
+        FoundLoad = .FALSE.
+        DO i=1,dim
+          LoadVec(i) = ListGetElementRealParent( Load_h(i), Basis, Element, Found )
+          FoundLoad = FoundLoad .OR. Found
+          IF( Found .AND. .NOT.SpecificLoad) THEN
+            LoadVec(i) = rho * LoadVec(i)
+          END IF
+        END DO
+        IF (.NOT.FoundLoad) THEN
+          CALL WARN('IncompressibleNSSolver (FSSA)','No component of "Flow Body Force" in Parent element not found!')
+          HaveFSSA = .FALSE.
+        END IF
+      END IF
       
       ! Nothing to do, exit the routine
       !---------------------------------
@@ -1257,8 +1285,8 @@ END BLOCK
             DO q=1,nd
               DO i=dim,dim
                 STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
-                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+                     STIFF( (p-1)*c+dim,(q-1)*c+i )  &
+                     - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
               END DO
             END DO
           END DO
@@ -1268,8 +1296,8 @@ END BLOCK
             DO q=1,nd
               DO i=1,dim
                 STIFF( (p-1)*c+i,(q-1)*c+dim ) = & 
-                     STIFF( (p-1)*c+i,(q-1)*c+dim ) + &
-                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
+                     STIFF( (p-1)*c+i,(q-1)*c+dim )  &
+                     - s * FSSAtheta * dt * LoadVec(dim) * Basis(q) * Basis(p) * Normal(i)
               END DO
             END DO
           END DO        
@@ -1277,13 +1305,15 @@ END BLOCK
           DO p=1,nd
             DO q=1,nd
               DO i=1,dim
-                STIFF( (p-1)*c+dim,(q-1)*c+i ) = & 
-                     STIFF( (p-1)*c+dim,(q-1)*c+i ) + &
-                     s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i)
-                !PRINT *, "K(",p,q,i,")=", s * FSSAcoeff * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
+                DO j=1,dim
+                  STIFF( (p-1)*c+j,(q-1)*c+i ) = & 
+                     STIFF( (p-1)*c+j,(q-1)*c+i )  &
+                     - s * FSSAtheta * dt * LoadVec(j) * Basis(q) * Basis(p) * Normal(i)
+                !PRINT *, "K(",p,q,i,")=", s * FSSAtheta * Basis(q) * Basis(p) * Normal(i), STIFF( (p-1)*c+dim,(q-1)*c+i )
+                END DO
               END DO
             END DO
-          END DO
+          END DO          
         CASE DEFAULT
           
         END SELECT
@@ -1567,7 +1597,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, InitBCHandles )
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles )
         InitBCHandles = .FALSE.
       END IF
     END DO
