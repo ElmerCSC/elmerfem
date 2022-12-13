@@ -143,7 +143,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
 
   RotorMode = ListGetLogical( SolverParams,'Rotor Mode',Found )
   IF( RotorMode ) THEN
-    RotorRad = ListGetCReal( SolverParams,'Rotor Radius',UnfoundFatal=.TRUE.)
+    RotorRad = ListGetCReal(CurrentModel % Simulation,'Rotor Radius',Found )
+    IF(.NOT. Found) THEN
+      CALL Fatal('RigidMeshMapper','In "Rotor Mode" you should give "Rotor Radius" in Simulation section!')
+    END IF
   END IF
 
   
@@ -316,7 +319,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       Coord(1) = SUM(Nodes % x(1:n)) / n
       Coord(2) = SUM(Nodes % y(1:n)) / n
       Coord(3) = SUM(Nodes % z(1:n)) / n
-      IF(Coord(1)**2+Coord(2)**2 < RotorRad**2) CYCLE      
+      IF(Coord(1)**2+Coord(2)**2 > RotorRad**2) CYCLE      
     ELSE
       bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
       IF(.NOT. Found) CYCLE
