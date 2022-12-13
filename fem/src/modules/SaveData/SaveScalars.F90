@@ -2173,7 +2173,7 @@ CONTAINS
         EnergyCoeff(Model % MaxElementNodes), ElemVals(Model % MaxElementNodes) 
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
-    REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
+    REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     LOGICAL :: Stat
     TYPE(ValueList_t), POINTER :: MaskList
 
