@@ -6448,6 +6448,7 @@ CONTAINS
     LOGICAL :: Transient
     REAL(KIND=dp) :: SScond
     INTEGER :: Order
+    TYPE(Matrix_t), POINTER :: A
 
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
@@ -6518,6 +6519,14 @@ CONTAINS
     IF( ListGetLogical( PSolver % Values,'Boundary Assembly Timing',Found ) ) THEN 
       CALL ResetTimer('BoundaryAssembly'//GetVarName(PSolver % Variable) ) 
     END IF
+
+    IF( InfoActive( 30 ) ) THEN
+      A => PSolver % Matrix
+      IF(ASSOCIATED(A)) THEN
+        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A_bulk')       
+        CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b_bulk')
+      END IF
+    END IF
     
   END SUBROUTINE DefaultFinishBulkAssembly
 
@@ -6535,7 +6544,8 @@ CONTAINS
     LOGICAL :: Bupd, Found
     INTEGER :: n
     CHARACTER(LEN=MAX_NAME_LEN) :: str
-
+    TYPE(Matrix_t), POINTER :: A
+    
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
     ELSE
@@ -6588,6 +6598,13 @@ CONTAINS
       CALL DetermineContact( PSolver )	
     END IF
 
+    IF( InfoActive( 30 ) ) THEN
+      A => PSolver % Matrix
+      IF(ASSOCIATED(A)) THEN
+        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')       
+        CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b0')
+      END IF
+    END IF
 
   END SUBROUTINE DefaultFinishBoundaryAssembly
 

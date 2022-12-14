@@ -191,7 +191,7 @@
      IsRadiation = IsRadiation .OR. ListCheckPresentAnyBC( Model,'Radiator BC')
 
      IF( IsRadiation ) THEN
-       CALL RadiationFactors( Solver, .FALSE.)
+       CALL RadiationFactors( Solver, .FALSE., .FALSE.)
      END IF
 
 !------------------------------------------------------------------------------

@@ -689,7 +689,7 @@ CONTAINS
           n = Element % Type % NumberOfNodes
           
           IF( DgSolver ) THEN
-            CALL DgRadiationIndexes(Element,n,ElemInds)
+            CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
           END IF
             
           DO j=1,Element % TYPE % NumberOfNodes
@@ -715,7 +715,7 @@ CONTAINS
                   GebhardtFactors % Elements(n) )
 
               IF( DgSolver ) THEN
-                CALL DgRadiationIndexes(Elm,Elm % Type % NumberOfNodes,ElemInds2)
+                CALL DgRadiationIndexes(Elm,Elm % TYPE % NumberOfNodes,ElemInds2,.TRUE.)
               END IF
               
               DO k=1,Elm % TYPE % NumberOfNodes
@@ -979,10 +979,9 @@ CONTAINS
 
     END SUBROUTINE PackSortAdd
         
-    
-    ! Pick thet correct indexes for radition when using discontinuous Galerkin.
-    ! In internal BCs we expect to find 'emissivity' given on either side.
-    !--------------------------------------------------------------------------
+
+
+#if 0    
     SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
 
       TYPE(Element_t), POINTER :: Element
@@ -1031,10 +1030,78 @@ CONTAINS
       END DO
       
     END SUBROUTINE DgRadiationIndexes
-
+#endif
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrix
 !------------------------------------------------------------------------------
+
+
+  ! Pick thet correct indexes for radition when using discontinuous Galerkin.
+  ! In internal BCs we expect to find 'emissivity' given on either side.
+  !--------------------------------------------------------------------------
+  SUBROUTINE DgRadiationIndexes(Element,n,ElemInds,DiffuseGray)
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n
+    INTEGER :: ElemInds(:)
+    LOGICAL :: DiffuseGray
+
+    TYPE(Element_t), POINTER :: Left, Right, Parent
+    INTEGER :: i,i1,n1,mat_id
+    LOGICAL :: Found
+
+    Left => Element % BoundaryInfo % Left
+    Right => Element % BoundaryInfo % Right
+
+    IF(ASSOCIATED(Left) .AND. ASSOCIATED(Right)) THEN
+
+      IF( DiffuseGray ) THEN
+        DO i=1,2
+          IF(i==1) THEN
+            Parent => Left
+          ELSE
+            Parent => Right
+          END IF
+
+          mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
+              'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF(.NOT. Found ) THEN
+            CALL Fatal('DGRadiationIndexes','Body '//TRIM(I2S(Parent % BodyId))//' has no Material associated!')
+          END IF
+          IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
+
+          IF( i==2) THEN
+            CALL Fatal('DGRadiationIndexes','DG boundary parents should have emissivity!')
+          END IF
+        END DO
+      ELSE
+        IF( Left % BodyId > Right % BodyId ) THEN
+          Parent => Left
+        ELSE
+          Parent => Right
+        END IF
+      END IF
+    ELSE IF(ASSOCIATED(Left)) THEN
+      Parent => Left
+    ELSE IF(ASSOCIATED(Right)) THEN
+      Parent => Right
+    ELSE
+      CALL Fatal('DGRadiationIndexes','DG boundary should have parents!')
+    END IF
+
+    n1 = Parent % TYPE % NumberOfNodes
+    DO i=1,n
+      DO i1 = 1, n1
+        IF( Parent % NodeIndexes( i1 ) == Element % NodeIndexes(i) ) THEN
+          ElemInds(i) = Parent % DGIndexes( i1 )
+          EXIT
+        END IF
+      END DO
+    END DO
+
+  END SUBROUTINE DgRadiationIndexes
+
   
 !------------------------------------------------------------------------------
 !> Create a list matrix array given the mesh, the active domains and the elementtype 
