@@ -214,6 +214,12 @@
 
      SolverParams => GetSolverParams()
 
+     IF( GetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
+         GetLogical( SolverParams,'Spectral Model',Found ) ) THEN
+       CALL Fatal('HeatSolve','For Radiosity and Spectral models use HeatSolveVec instead!')
+     END IF
+
+     
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
        ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
