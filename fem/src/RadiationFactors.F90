@@ -219,9 +219,9 @@
      
      FullMatrix = GetLogical( Params, 'Gebhardt Factors Solver Full',GotIt) 
      IF( FullMatrix ) THEN
-       CALL Info('RadiationFactors','Using full matrix for Gebhardt factors',Level=6)
+       CALL Info('RadiationFactors','Using full matrix for factor computation',Level=6)
      ELSE
-       CALL Info('RadiationFactors','Using sparse matrix for Gebhardt factors',Level=6)
+       CALL Info('RadiationFactors','Using sparse matrix for factor computation',Level=6)
      END IF
 
      IterSolveGebhardt =  GetLogical( Params, 'Gebhardt Factors Solver Iterative',GotIt) 
@@ -1700,7 +1700,17 @@
            CALL Info('SpectralRadiosity','Skipping interval '//TRIM(I2S(k)),Level=12)
            CYCLE
          END IF
-         
+
+         IF( qsum > 1.0e-6) THEN
+           WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//TRIM(I2S(k))//': ',qsum
+           CALL Info('SpectralRadiosity',Message,Level=10) 
+         END IF
+           
+         IF(qsum2 > 1.0e-6) THEN
+           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//TRIM(I2S(k))//': ',qsum2
+           CALL Info('SpectralRadiosity',Message,Level=10) 
+         END IF
+                    
          ! Initialize matrix equation
          Diag = 0.0_dp
          RHS = 0.0_dp         
@@ -1812,16 +1822,6 @@
            END IF
          END IF
 
-         IF( qsum > 1.0e-6) THEN
-           WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//TRIM(I2S(k))//': ',qsum
-           CALL Info('SpectralRadiosity',Message,Level=10) 
-         END IF
-           
-         IF(qsum2 > 1.0e-6) THEN
-           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//TRIM(I2S(k))//': ',qsum2
-           CALL Info('SpectralRadiosity',Message,Level=10) 
-         END IF
-           
          ! Cumulative radiosity
          DO i=1,RadiationSurfaces
            SOL(i) = SOL(i) + tmpSOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i) )
