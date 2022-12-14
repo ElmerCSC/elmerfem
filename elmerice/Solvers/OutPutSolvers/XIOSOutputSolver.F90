@@ -786,6 +786,7 @@
         CHARACTER(LEN=1024) :: Txt,GlobalFieldName
         INTEGER :: Vari
         LOGICAL ::ScalarsExist
+        LOGICAL :: FieldActive
 
         GlobalFieldName = GetString( Params,'Global Variable 1',ScalarsExist)
         Vari=1
@@ -796,7 +797,13 @@
           IF ((Var%TYPE .NE. Variable_global).AND.(SIZE(Var % Values).NE.Var % DOFs)) &
             CALL FATAL(Caller,"Variable was supposed to be global")
 
-          CALL xios_send_field(TRIM(Var%Name), Var % Values(1))
+          FieldActive=xios_field_is_active(TRIM(Var%Name),.TRUE.)
+          WRITE( Message,'(A,A,L2)') 'Xios request : ',TRIM(Var%Name),FieldActive
+          CALL Info(Caller,Message,Level=Olevel)
+
+          IF (FieldActive) THEN
+            CALL xios_send_field(TRIM(Var%Name), Var % Values(1))
+          ENDIF
 
           Vari=Vari+1
           WRITE(Txt,'(A,I0)') 'Global Variable ',Vari
