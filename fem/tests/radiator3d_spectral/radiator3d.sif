@@ -18,7 +18,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -88,6 +88,9 @@ Solver 1
   Spectral dT = 10.0
 
   Calculate Loads = True
+
+! Costs more but not much better...
+!  Accurate Spectral Newton = Logical True
 End
 
 
@@ -170,5 +173,5 @@ Body Force 1
 End
 
 
-Solver 1 :: Reference Norm = 3.10647619E+02
-Solver 2 :: Reference Norm = 1.00067100E+03
+Solver 1 :: Reference Norm = 3.10647641E+02
+Solver 2 :: Reference Norm = 1.00067131E+03

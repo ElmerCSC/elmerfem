@@ -1600,13 +1600,14 @@
      SUBROUTINE SpectralRadiosity()
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad
        INTEGER :: k,kmin,kmax
-       REAL(KIND=dp) :: q, qsum, qsum2, totsum
+       REAL(KIND=dp) :: q, qsum, totsum
        REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:)
 
-       LOGICAL :: RBC, IntervalActive 
+       LOGICAL :: RBC, ApproxNewton, AccurateNewton
        REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
        TYPE(ValueList_t), POINTER :: RadList
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), RadiatorTemps(:)
+       INTEGER, ALLOCATABLE :: RadiatorSet(:)
 
 
        ! Check for radiation sources:
@@ -1624,23 +1625,24 @@
          DO t=1,n
            RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
            RadiatorTemps(t) = ListGetCReal(RadList, 'Radiator Temperature '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
-         END DO
+         END DO        
        END IF
-       
-       
+
+       ApproxNewton = .FALSE.
+       AccurateNewton = .FALSE.      
+       IF( Newton ) THEN
+         AccurateNewton = ListGetLogical( TSolver % Values,'Accurate Spectral Newton',Found ) 
+         ApproxNewton = .NOT. AccurateNewton
+       END IF
+         
        IF(.NOT. ASSOCIATED(Temperature)) RETURN
 
        Tmin = MINVAL( Temp_elem )
        Tmax = MAXVAL( Temp_elem )
-
-       IF(RBC) THEN
-         Tmin = MIN(Tmin,MINVAL(RadiatorTemps))
-         Tmax = MAX(Tmax,MAXVAL(RadiatorTemps))
-       END IF       
        
-       WRITE(Message,'(A,ES12.3)') 'Minimum temperature: ',Tmin
+       WRITE(Message,'(A,ES12.3)') 'Minimum boundary temperature: ',Tmin
        CALL Info('SpectralRadiosity',Message,Level=10)
-       WRITE(Message,'(A,ES12.3)') 'Maximum temperature: ',Tmax
+       WRITE(Message,'(A,ES12.3)') 'Maximum boundary temperature: ',Tmax
        CALL Info('SpectralRadiosity',Message,Level=10)
        
        IF( Tmin < 0.0_dp ) THEN
@@ -1656,21 +1658,16 @@
 
        CALL Info('SpectralRadiosity','Going through discrete intervals: '&
            //TRIM(I2S(kmin))//'-'//TRIM(I2S(kmax)))
-                     
-       ALLOCATE( tmpSOL(RadiationSurfaces) )
-       tmpSOL = 0.0_dp
+
        SOL = 0.0_dp
-       IF(Newton) THEN
-         ALLOCATE(tmpSOL_d(RadiationSurfaces))
-         tmpSOL_d = 0.0_dp
-         SOL_d = 0.0_dp
-       END IF
+       IF(Newton) SOL_d = 0.0_dp
+       
+       ALLOCATE( tmpSOL(RadiationSurfaces) )
+       IF(Newton) ALLOCATE(tmpSOL_d(RadiationSurfaces))
 
        totsum = 0.0_dp
               
        DO k = kmin, kmax
-
-         IntervalActive = .FALSE.
 
          qsum = 0.0_dp         
          DO i=1,RadiationSurfaces           
@@ -1681,35 +1678,15 @@
            END IF
          END DO
 
-         qsum2 = 0.0_dp
-         IF( RBC ) THEN
-           DO i = 1, SIZE(RadiatorTemps)
-             q = ( RadiatorTemps(i) / dT - k )
-             IF( ABS(q) < 1 ) THEN
-               q = 1-ABS(q)             
-               qsum2 = qsum2 + q 
-             END IF
-           END DO
-         END IF
-
-         IntervalActive = (qsum > 1.0d-6 .OR. qsum2 > 1.0d-6)
-         
          ! There is nothing to compute here
          ! So no need to resolve equations for this interval.        
-         IF(.NOT. IntervalActive) THEN
+         IF(qsum < 1.0d-6 ) THEN
            CALL Info('SpectralRadiosity','Skipping interval '//TRIM(I2S(k)),Level=12)
            CYCLE
          END IF
 
-         IF( qsum > 1.0e-6) THEN
-           WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//TRIM(I2S(k))//': ',qsum
-           CALL Info('SpectralRadiosity',Message,Level=10) 
-         END IF
-           
-         IF(qsum2 > 1.0e-6) THEN
-           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//TRIM(I2S(k))//': ',qsum2
-           CALL Info('SpectralRadiosity',Message,Level=10) 
-         END IF
+         WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//TRIM(I2S(k))//': ',qsum
+         CALL Info('SpectralRadiosity',Message,Level=10) 
                     
          ! Initialize matrix equation
          Diag = 0.0_dp
@@ -1725,7 +1702,6 @@
          Trad = k*dT         
          CALL TabulateSpectralEmissivity(Emissivity,Trad)
 
-         Found = .FALSE.
          DO i=1,RadiationSurfaces
            
            Element => Model % Elements(ElementNumbers(i))
@@ -1753,23 +1729,10 @@
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
              RHS(i) = -q * Emissivity(i) * RelAreas(i) * Sigma * Temp_Elem(i)**4
-             IF(Newton) THEN
+             IF(AccurateNewton) THEN
                RHS_d(i) = -q * 4 * Emissivity(i) * RelAreas(i) * Sigma * Temp_Elem(i)**3
              END IF
            END IF
-
-           IF( RBC ) THEN
-             IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-               DO j=1,SIZE(RadiatorTemps)
-                 q = ( RadiatorTemps(j) / dT - k )
-                 IF( ABS(q) < 1 ) THEN
-                   q = 1-ABS(q)
-                   RHS(i) = RHS(i) - q*(1-Emissivity(i)) * RelAreas(i) * &
-                       Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
-                 END IF
-               END DO
-             END IF
-           END IF                   
            
            ! Matrix assembly 
            IF(FullMatrix) THEN
@@ -1799,29 +1762,37 @@
          END DO
            
          RHS = RHS * Diag
-         IF(Newton) RHS_d = RHS_d * Diag
-
-         n = 0
-         tmpSOL = 0.0_dp
-         IF( Newton ) tmpSOL_d = 0.0_dp
+         IF(AccurateNewton) RHS_d = RHS_d * Diag
          
+         tmpSOL = 0.0_dp
          IF(FullMatrix) THEN
            CALL FIterSolver( RadiationSurfaces, tmpSOL, RHS, Solver )
-           IF(Newton) &
-               CALL FIterSolver( RadiationSurfaces, tmpSOL_d, RHS_d, Solver )
          ELSE
            IF(IterSolveGebhardt) THEN
              Solver % Matrix => GFactorSP
              CALL IterSolver( GFactorSP, tmpSOL, RHS, Solver )
-             IF(Newton) &
-                 CALL IterSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
            ELSE           
              CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
-             IF(Newton) &
-                 CALL DirectSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
            END IF
          END IF
 
+         ! Newton linearization including only "self"
+         IF( ApproxNewton ) THEN
+           tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
+         ELSE IF( AccurateNewton ) THEN
+           tmpSOL_d = 0.0_dp
+           IF(FullMatrix) THEN
+             CALL FIterSolver( RadiationSurfaces, tmpSOL_d, RHS_d, Solver )
+           ELSE
+             IF(IterSolveGebhardt) THEN
+               Solver % Matrix => GFactorSP
+               CALL IterSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
+             ELSE           
+               CALL DirectSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
+             END IF
+           END IF
+         END IF
+         
          ! Cumulative radiosity
          DO i=1,RadiationSurfaces
            SOL(i) = SOL(i) + tmpSOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i) )
@@ -1833,7 +1804,126 @@
        WRITE(Message,'(A,G12.5)') 'Checksum for radiosity sources: ',totsum / RadiationSurfaces 
        CALL Info('SpectralRadiosity',Message,Level=5) 
 
-       
+       ! Now do the radiators
+       IF(RBC) THEN
+         Tmin = MINVAL(RadiatorTemps)
+         Tmax = MAXVAL(RadiatorTemps)
+
+         IF(ABS(Tmin-Tmax) < 1.0e-6 ) THEN           
+           WRITE(Message,'(A,ES12.3)') 'Only radiator temperature: ',Tmin
+           CALL Info('SpectralRadiosity',Message,Level=10)
+         ELSE           
+           WRITE(Message,'(A,ES12.3)') 'Minimum radiator temperature: ',Tmin
+           CALL Info('SpectralRadiosity',Message,Level=10)
+           WRITE(Message,'(A,ES12.3)') 'Maximum radiator temperature: ',Tmax
+           CALL Info('SpectralRadiosity',Message,Level=10)
+         END IF
+           
+         ALLOCATE( RadiatorSet(SIZE(RadiatorTemps)) )
+         RadiatorSet = 0
+         k = 0
+         DO i=1,SIZE(RadiatorTemps)
+           IF(RadiatorSet(i) > 0) CYCLE
+           k=k+1
+           RadiatorSet(i) = k
+           DO j=i+1,SIZE(RadiatorTemps)
+             IF(ABS(RadiatorTemps(i)-RadiatorTemps(j)) < 1.0e-6) RadiatorSet(j) = RadiatorSet(i)
+           END DO
+         END DO
+         kmax = k
+         CALL Info('SpectralRadiosity','Going through radiators in '//TRIM(I2S(kmax))//' sets')
+                           
+         DO k = 1, kmax
+           DO j=1,SIZE(RadiatorSet)
+             IF(RadiatorSet(j) == k) Trad = RadiatorTemps(j)
+           END DO
+           
+           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//TRIM(I2S(k))//' at: ',Trad
+           CALL Info('SpectralRadiosity',Message,Level=10) 
+           
+           ! Initialize matrix equation
+           Diag = 0.0_dp
+           RHS = 0.0_dp         
+           IF(FullMatrix) THEN
+             GFactorFull = 0.0_dp
+           ELSE
+             GFactorSP % Values = 0.0_dp
+           END IF
+           
+           CALL TabulateSpectralEmissivity(Emissivity,Trad)
+
+           DO i=1,RadiationSurfaces
+             
+             Element => Model % Elements(ElementNumbers(i))
+             Vals => ViewFactors(i) % Factors
+             Cols => ViewFactors(i) % Elements
+             
+             r = 1-Emissivity(i)
+             previ = GFactorSP % Rows(i)-1
+             DO j=1,ViewFactors(i) % NumberOfFactors
+               Colj = InvElementNumbers(Cols(j)-j0)
+               
+               s = r * Vals(j)
+               IF(FullMatrix) THEN
+                 GFactorFull(i,colj) = GFactorFull(i,colj) + s
+               ELSE
+                 CALL CRS_AddToMatrixElement(GFactorSP,i,colj, s, previ)
+               END IF
+               IF(i==colj) Diag(i) = Diag(i) + s
+             END DO
+             
+             IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+               DO j=1,SIZE(RadiatorSet)
+                 IF(RadiatorSet(j) == k) THEN
+                   RHS(i) = RHS(i) - (1-Emissivity(i)) * RelAreas(i) * &
+                       Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
+                 END IF
+               END DO
+             END IF
+           
+             ! Matrix assembly 
+             IF(FullMatrix) THEN
+               GFactorFull(i,i) = GFactorFull(i,i) - RelAreas(i)
+             ELSE
+               CALL CRS_AddToMatrixElement(GFactorSP, i, i, -RelAreas(i))
+             END IF
+             Diag(i) = Diag(i) + RelAreas(i) 
+           END DO
+
+           ! Scale matrix to unit diagonals
+           DO i=1,RadiationSurfaces
+             IF(FullMatrix) THEN
+               DO j=1,RadiationSurfaces
+                 GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
+               END DO
+             ELSE
+               DO j=GFactorSP % Rows(i),GFactorSP % Rows(i+1)-1
+                 GFactorSP % Values(j) = GFactorSP % Values(j)*Diag(i)*Diag(GFactorSP % Cols(j))
+               END DO
+             END IF
+           END DO
+           
+           RHS = RHS * Diag
+           tmpSOL = 0.0_dp
+           
+           IF(FullMatrix) THEN
+             CALL FIterSolver( RadiationSurfaces, tmpSOL, RHS, Solver )
+           ELSE
+             IF(IterSolveGebhardt) THEN
+               Solver % Matrix => GFactorSP
+               CALL IterSolver( GFactorSP, tmpSOL, RHS, Solver )
+             ELSE           
+               CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
+             END IF
+           END IF
+         
+           ! Cumulative radiosity
+           DO i=1,RadiationSurfaces
+             SOL(i) = SOL(i) + tmpSOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i) )
+           END DO
+         END DO
+       END IF
+
        DO i=1,RadiationSurfaces
          Element => Model % Elements(ElementNumbers(i))
          GebhardtFactors => Element % BoundaryInfo % GebhardtFactors       
