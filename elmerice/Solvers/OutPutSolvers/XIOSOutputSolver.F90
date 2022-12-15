@@ -435,7 +435,7 @@
           END IF
 
           Vari=Vari+1
-          WRITE(Txt,'(A,I0)') 'Scalar Variable ',Vari
+          WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
           FieldName = GetString( Params,TRIM(Txt),ScalarsExist)
         END DO
 
@@ -813,7 +813,7 @@
       END SUBROUTINE SendGlobalVariables
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!! Send srequested scalar variables...
+!!!!!!!! Send requested scalar variables...
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       SUBROUTINE SendVariables()
         IMPLICIT NONE
