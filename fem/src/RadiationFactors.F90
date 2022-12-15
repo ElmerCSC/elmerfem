@@ -1793,7 +1793,7 @@
              CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
            END IF
          END IF
-         RHS = tmpSOL * bscal
+         tmpSOL = tmpSOL * bscal
 
          ! Newton linearization including only "self"
          IF( ApproxNewton ) THEN
