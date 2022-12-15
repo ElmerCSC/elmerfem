@@ -15,8 +15,6 @@
         SolverParams => GetSolverParams()
 
         CALL ListAddNewLogical( SolverParams,'Optimize Bandwidth',.FALSE.)
-        ! current limitations only bulk 
-        CALL ListAddNewLogical( SolverParams,'Save Bulk Only',.TRUE.)
         ! need to skip halo
         CALL ListAddNewLogical( SolverParams,'Skip Halo Elements',.TRUE.)
 
@@ -63,6 +61,7 @@
 
       CHARACTER(*), PARAMETER :: Caller = 'XIOSOutputSolver'
 
+      TYPE(Element_t), POINTER :: Element
       INTEGER, SAVE :: nTime = 0
       INTEGER,SAVE :: ElemFirst, ElemLast
       INTEGER, ALLOCATABLE, TARGET,SAVE :: NodePerm(:),InvNodePerm(:), InvDgPerm(:), DgPerm(:)
@@ -75,10 +74,12 @@
       LOGICAL,SAVE :: NoPermutation
       INTEGER :: i,ii,M,t,n
       LOGICAL :: ierr
+      LOGICAL :: BoundarySolver
 
 
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(ValueList_t),POINTER :: Params
+      TYPE(ValueList_t), POINTER :: BC
       LOGICAL :: GotIt
       LOGICAL :: Parallel
       INTEGER :: GroupId
@@ -86,7 +87,7 @@
       REAL(KIND=dp) :: SimTime
 
       LOGICAL :: SaveLinear=.TRUE. ! save only corners
-      INTEGER :: MaxElementNodes  ! // MaxNumNodesPerFace
+      INTEGER,SAVE :: MaxElementNodes  ! // MaxNumNodesPerFace
       INTEGER,PARAMETER :: Connect_Fill=-1
       LOGICAL :: ok
 
@@ -109,13 +110,6 @@
 
       Params => GetSolverParams()
       Mesh => Model % Mesh
-      ! Comment: Can we get the Mas number of corners instead of nodes?
-      ! we should loop over saved elements....??
-      MaxElementNodes = Model % MaxElementNodes
-
-
-      IF (Mesh % MeshDim.NE.2) &
-        CALL FATAL(Caller,"Mesh dim should be 2 for now...")
 
       PEs = ParEnv % PEs
       Part = ParEnv % MyPE
@@ -132,6 +126,28 @@
       IF ( nTime == 1 ) THEN
         SkipEdges=ListGetLogical( Params,'Skip Edges',GotIt)
         IF (SkipEdges) SaveEdges=.FALSE.
+
+        BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+        IF (BoundarySolver) THEN
+           !------------------------------------------------------------------------------
+           ! set params to activate saving on the current boundary
+           !------------------------------------------------------------------------------
+           CALL ListAddNewLogical( Params,'Save Boundaries Only',.TRUE.)
+           CALL ListAddNewString( Params,'Mask Name','MaskXIOS')
+           BC => GetBC(Model%Mesh%Elements(Solver % ActiveElements(1)))
+           IF (.NOT.ASSOCIATED(BC)) &
+              CALL FATAL(Caller,"First element not associated to a BC")
+           CALL ListAddNewLogical( BC,'MaskXIOS',.TRUE.)
+
+           ! skip edges if working on a boundary....
+           SaveEdges=.FALSE.
+        ELSE
+           CALL ListAddNewLogical( Params,'Save Bulk Only',.TRUE.)
+           IF (Mesh % MeshDim.NE.2) &
+              CALL FATAL(Caller,"Saving bulk values works only for 2D meshes")
+        ENDIF
+
+
 
         IF (SaveEdges) THEN
           !! Get the edges
@@ -169,6 +185,21 @@
         CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,SaveLinear,ActiveElem,NumberOfGeomNodes,&
                NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
 
+        !------------------------------------------------------------------------------
+        ! Get Max ElementNodes from the active elements
+        !------------------------------------------------------------------------------
+        MaxElementNodes=0
+        DO ii = ElemFirst, ElemLast
+          IF( .NOT. ActiveElem(ii) ) CYCLE
+          Element => Model % Elements(ii)
+          IF (SaveLinear) THEN
+            n = GetElementCorners( Element )
+          ELSE
+            n = GetElementNOFNodes(Element)
+          END IF
+          IF (n.GT.MaxElementNodes) &
+            MaxElementNodes=n
+        END DO
         !------------------------------------------------------------------------------
         ! Parallel case we will exclude nodes not owned by partition...
         !------------------------------------------------------------------------------
@@ -211,10 +242,6 @@
         ! The partition is active for saving if there are any nodes
         ! to write. There can be no elements nor dofs without nodes.
         CALL ParallelActive( NumberOfDofNodes > 0 )
-
-        IF( ElemLast > Mesh % NumberOfBulkElements ) &
-          CALL FATAL(Caller, &
-                "Saving boundary elements not supported yet....")
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! XIOS context definition
@@ -512,6 +539,7 @@
 
         INTEGER :: i,ii,t,n,k
         INTEGER :: M
+        INTEGER :: imin
         INTEGER,DIMENSION(:),ALLOCATABLE :: Vertice
         INTEGER,DIMENSION(:),ALLOCATABLE :: GIndexes
         INTEGER,DIMENSION(:),ALLOCATABLE :: EdgeIndexes
@@ -560,6 +588,13 @@
           NodeLat(n) = lat
 
         END DO
+
+        imin=MINVAL(Vertice)
+        IF (Parallel) THEN
+                CALL MPI_ALLREDUCE(imin,nv,1,MPI_INTEGER,MPI_MIN,ELMER_COMM_WORLD,ierr)
+                imin=nv
+        ENDIF
+        IF (imin.GT.1) Vertice=Vertice-imin+1
 
         ! Edges
         IF (SaveEdges) THEN
@@ -665,8 +700,16 @@
 
          END DO
 
+         ! it seems that GIndex is not updated by the extrusion so it
+         ! keeps the initial table........... should be ok then...
+
          IF (Parallel) THEN
            CALL MPI_ALLREDUCE(NumberOfElements,TotalCount,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+           CALL MPI_ALLREDUCE(MAXVAL(GIndexes),nv,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
+           !! in principle we should have all the elements...
+           IF (TotalCount.NE.nv) THEN
+             CALL FATAL(Caller, "Pb with number of elements?? ")
+           ENDIF
 
            CALL xios_set_domain_attr("cells",ni_glo=TotalCount, &
                 ni=NumberOfElements,i_Index=GIndexes-1,&
