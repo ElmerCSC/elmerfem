@@ -1463,7 +1463,7 @@
      SUBROUTINE ConstantRadiosity()
  
        LOGICAL :: RBC
-       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:),rWrk(:,:)
        TYPE(ValueList_t), POINTER :: RadList
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:)
        REAL(KIND=dp) :: bscal
@@ -1480,9 +1480,21 @@
        IF(RBC) THEN
          n = SIZE(RadiatorCoords,1)
          ALLOCATE( RadiatorPowers(n))
-         DO t=1,n
-           RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)))
-         END DO
+
+         CALL GetConstRealArray( RadList, rWrk, 'Radiator Power', Found ) 
+         IF( Found ) THEN
+           IF(SIZE(rWrk,1)==1) THEN
+             RadiatorPowers(1:n) = rWrk(1,1)
+           ELSE IF(SIZE(rWrk,1)==n) THEN
+             RadiatorPowers(1:n) = rWrk(1:n,1)
+           ELSE
+             CALL Fatal('ConstantRadiosity','Mismatch between size of "Radiator Coordinates" and "Radiator Power"')
+           END IF
+         ELSE
+           DO t=1,n
+             RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
+           END DO
+         END IF
        END IF
 
 
@@ -1572,7 +1584,7 @@
        REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:)
 
        LOGICAL :: RBC, ApproxNewton, AccurateNewton
-       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
+       REAL(KIND=dp), POINTER :: RadiatorCoords(:,:), rWrk(:,:)
        TYPE(ValueList_t), POINTER :: RadList
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), RadiatorTemps(:)
        INTEGER, ALLOCATABLE :: RadiatorSet(:)
@@ -1590,12 +1602,38 @@
        IF(RBC) THEN
          n = SIZE(RadiatorCoords,1)
          ALLOCATE( RadiatorPowers(n),RadiatorTemps(n))
-         DO t=1,n
-           RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
-           RadiatorTemps(t) = ListGetCReal(RadList, 'Radiator Temperature '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
-         END DO        
-       END IF
+         
+         CALL GetConstRealArray( RadList, rWrk, 'Radiator Power', Found ) 
+         IF( Found ) THEN
+           IF(SIZE(rWrk,1)==1) THEN
+             RadiatorPowers(1:n) = rWrk(1,1)
+           ELSE IF(SIZE(rWrk,1)==n) THEN
+             RadiatorPowers(1:n) = rWrk(1:n,1)
+           ELSE
+             CALL Fatal('SpectralRadiosity','Mismatch between size of "Radiator Coordinates" and "Radiator Power"')
+           END IF
+         ELSE
+           DO t=1,n
+             RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
+           END DO
+         END IF
 
+         CALL GetConstRealArray( RadList, rWrk, 'Radiator Temperature', Found ) 
+         IF( Found ) THEN
+           IF(SIZE(rWrk,1)==1) THEN
+             RadiatorTemps(1:n) = rWrk(1,1)
+           ELSE IF(SIZE(rWrk,1)==n) THEN
+             RadiatorTemps(1:n) = rWrk(1:n,1)
+           ELSE
+             CALL Fatal('SpectralRadiosity','Mismatch between size of "Radiator Coordinates" and "Radiator Power"')
+           END IF
+         ELSE
+           DO t=1,n
+             RadiatorTemps(t) = ListGetCReal(RadList, 'Radiator Temperature '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
+           END DO
+         END IF
+       END IF
+         
        ApproxNewton = .FALSE.
        AccurateNewton = .FALSE.      
        IF( Newton ) THEN
