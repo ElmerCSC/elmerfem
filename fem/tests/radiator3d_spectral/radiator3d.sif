@@ -158,18 +158,24 @@ Body Force 1
            0.0 0.75 0.25 \
            0.0 -0.75 0.75 
 
+! The following keywords may be given by components or as vectors.
+! The componentwise this is better when the stuff depends on time etc.
+! For constants the array is fine. 
+
 ! sum of these is 1.0e3 and this should
 ! be equal to the computed heating power excaping through external BCs.
   Radiator Power 1 = Real 1.0e2
   Radiator Power 2 = Real 2.0e2
   Radiator Power 3 = Real 3.0e2
   Radiator Power 4 = Real 4.0e2
+!  Radiator Power(4) = Real 1.0e2 2.0e2 3.0e2 4.0e2
 
 ! Temperature only has an effect in spectral radiosity model 
-  Radiator Temperature 1 = Real 400.0
-  Radiator Temperature 2 = Real 410.0
-  Radiator Temperature 3 = Real 420.0
-  Radiator Temperature 4 = Real 430.0
+!  Radiator Temperature 1 = Real 400.0
+!  Radiator Temperature 2 = Real 410.0
+!  Radiator Temperature 3 = Real 420.0
+!  Radiator Temperature 4 = Real 430.0
+  Radiator Temperature(4) = Real 400.0 410.0 420.0 430.0
 End
 
 
