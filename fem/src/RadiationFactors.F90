@@ -1530,7 +1530,7 @@
 
        CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL, RHS, Diag, Solver)
        IF( Newton ) THEN
-         CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL_d, RHS_d, Diag, Solver)
+         CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
        END IF
 
        DO i=1,RadiationSurfaces
@@ -1722,7 +1722,7 @@
          IF( ApproxNewton ) THEN
            tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
          ELSE IF( AccurateNewton ) THEN
-           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver)
+           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
          END IF
          
          ! Cumulative radiosity
@@ -1856,27 +1856,34 @@
 
      ! Scale linear system & solve
      !-----------------------------
-     SUBROUTINE RadiationLinearSolver(n, A, x, b, Diag,  Solver)
+     SUBROUTINE RadiationLinearSolver(n, A, x, b, Diag,  Solver, Scaling)
 
        INTEGER :: n
        REAL(KIND=dp) :: x(:), b(:), Diag(:)
        TYPE(Matrix_t), POINTER :: A
+       LOGICAL, OPTIONAL :: Scaling
        TYPE(Solver_t), POINTER :: Solver
 
+       LOGICAL :: Scal
        REAL(KIND=dp) :: bscal
 
-       ! Scale matrix to unit diagonals
-       DO i=1,n
-         IF(FullMatrix) THEN
-           DO j=1,n
-             GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
-           END DO
-         ELSE
-           DO j=A % Rows(i),A % Rows(i+1)-1
-             A % Values(j) = A % Values(j)*Diag(i)*Diag(A % Cols(j))
-           END DO
-         END IF
-       END DO
+       scal = .TRUE.
+       IF(PRESENT(Scaling)) scal = Scaling
+
+       ! Scale matrix to unit diagonals (if not done already)
+       IF(scal) THEN
+         DO i=1,n
+           IF(FullMatrix) THEN
+             DO j=1,n
+               GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
+             END DO
+           ELSE
+             DO j=A % Rows(i),A % Rows(i+1)-1
+               A % Values(j) = A % Values(j)*Diag(i)*Diag(A % Cols(j))
+             END DO
+           END IF
+         END DO
+       END IF
            
        b = b * Diag
 
