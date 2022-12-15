@@ -1466,7 +1466,7 @@
        REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
        TYPE(ValueList_t), POINTER :: RadList
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:)
-
+       REAL(KIND=dp) :: bscal
 
        ! Check for radiation sources:
 
@@ -1541,28 +1541,42 @@
            END DO
          END IF
        END DO
-
        RHS = RHS * Diag
-       IF(Newton) RHS_d = RHS_d * Diag
 
+       ! Scale rgh to one
+       bscal = SUM(SQRT(RHS**2))
+       RHS = RHS / bscal
        SOL = 0.0_dp
-       IF(Newton) SOL_d = 0.0_dp
        
        IF(FullMatrix) THEN
          CALL FIterSolver( RadiationSurfaces, SOL, RHS, Solver )
-         IF(Newton) &
-             CALL FIterSolver( RadiationSurfaces, SOL_d, RHS_d, Solver )
        ELSE
          IF(IterSolveGebhardt) THEN
            Solver % Matrix => GFactorSP
            CALL IterSolver( GFactorSP, SOL, RHS, Solver )
-           IF(Newton) &
-               CALL IterSolver( GFactorSP, SOL_d, RHS_d, Solver )
          ELSE           
            CALL DirectSolver( GFactorSP, SOL, RHS, Solver )
-           IF(Newton) &
-               CALL DirectSolver( GFactorSP, SOL_d, RHS_d, Solver )
          END IF
+       END IF
+       SOL = SOL * bscal
+       
+       IF( Newton ) THEN
+         RHS_d = RHS_d * Diag
+         bscal = SUM(SQRT(RHS_d**2))
+         RHS_d = RHS_d / bscal
+         SOL_d = 0.0_dp
+
+         IF( FullMatrix ) THEN
+           CALL FIterSolver( RadiationSurfaces, SOL_d, RHS_d, Solver )
+         ELSE
+           IF(IterSolveGebhardt) THEN
+             Solver % Matrix => GFactorSP
+             CALL IterSolver( GFactorSP, SOL_d, RHS_d, Solver )
+           ELSE           
+             CALL DirectSolver( GFactorSP, SOL_d, RHS_d, Solver )
+           END IF
+         END IF
+         SOL_d = SOL_d * bscal
        END IF
 
        DO i=1,RadiationSurfaces
@@ -1600,7 +1614,7 @@
      SUBROUTINE SpectralRadiosity()
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad
        INTEGER :: k,kmin,kmax
-       REAL(KIND=dp) :: q, qsum, totsum
+       REAL(KIND=dp) :: q, qsum, totsum, bscal
        REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:)
 
        LOGICAL :: RBC, ApproxNewton, AccurateNewton
@@ -1763,8 +1777,12 @@
            
          RHS = RHS * Diag
          IF(AccurateNewton) RHS_d = RHS_d * Diag
-         
+
+         ! Scale rhs to one!
+         bscal = SQRT(SUM(RHS**2))
+         RHS = RHS / bscal
          tmpSOL = 0.0_dp
+         
          IF(FullMatrix) THEN
            CALL FIterSolver( RadiationSurfaces, tmpSOL, RHS, Solver )
          ELSE
@@ -1775,12 +1793,15 @@
              CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
            END IF
          END IF
+         RHS = tmpSOL * bscal
 
          ! Newton linearization including only "self"
          IF( ApproxNewton ) THEN
            tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
          ELSE IF( AccurateNewton ) THEN
            tmpSOL_d = 0.0_dp
+           bscal = SQRT(SUM(RHS_d**2))
+           RHS_d = RHS_d / bscal
            IF(FullMatrix) THEN
              CALL FIterSolver( RadiationSurfaces, tmpSOL_d, RHS_d, Solver )
            ELSE
@@ -1791,6 +1812,7 @@
                CALL DirectSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
              END IF
            END IF
+           tmpSOL_d = tmpSOL_d * bscal
          END IF
          
          ! Cumulative radiosity
