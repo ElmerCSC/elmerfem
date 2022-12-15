@@ -102,6 +102,10 @@ Solver 1
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
 
+! Define the mass matrix to have a block structure so that
+! the coupling block of the mass matrix can be assembled:
+  Block System Mass Lumping = Logical False
+
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
