@@ -114,7 +114,7 @@
        PrevSolution(:), HC(:), Hwrk(:,:,:),MeshVelocity(:), XX(:), YY(:),ForceHeater(:),&
        RealWork(:,:)
 
-     REAL(KIND=dp), ALLOCATABLE :: vals(:), RadiatorPowers(:)
+     REAL(KIND=dp), ALLOCATABLE :: vals(:)
      REAL(KIND=dp) :: Jx,Jy,Jz,JAbs, Power, MeltPoint, IntHeatSource
 
      INTEGER, ALLOCATABLE, SAVE :: Indexes(:), SaveIndexes(:)
@@ -188,8 +188,6 @@
 !    Newton lineariarization option is needed only when there is radiation.
 !------------------------------------------------------------------------------
      IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
-     IsRadiation = IsRadiation .OR. ListCheckPresentAnyBC( Model,'Radiator BC')
-
      IF( IsRadiation ) THEN
        CALL RadiationFactors( Solver, .FALSE., .FALSE.)
      END IF
@@ -219,7 +217,11 @@
        CALL Fatal('HeatSolve','For Radiosity and Spectral models use HeatSolveVec instead!')
      END IF
 
-     
+     IF( ListCheckPresent( SolverParams,'Radiator Coordinates' ) .OR. &
+         ListCheckPresentAnyBodyForce(Model,'Radiator Coordinates') ) THEN
+       CALL Fatal('HeatSolve','For radiative point sources use HeatSolveVec instead!')
+     END IF
+
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
        ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
@@ -1075,23 +1077,6 @@ END BLOCK
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-BLOCK
-      REAL(KIND=dp), POINTER :: RadiatorCoords(:,:)
-      TYPE(ValueList_t), POINTER :: RadList
-      
-      IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
-          RadList => SolverParams
-      
-      CALL GetConstRealArray( RadList, RadiatorCoords, 'Radiator Coordinates', Found)
-      IF(Found) THEN
-        n = SIZE(RadiatorCoords,1)
-        ALLOCATE( RadiatorPowers(n))
-        DO i=1,n
-          RadiatorPowers(i) = GetCReal( RadList, 'Radiator Power '//TRIM(I2S(i)), Found)
-        END DO
-      END IF
-END BLOCK
-
       DO t=1, Solver % Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(t)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -1128,8 +1113,6 @@ END BLOCK
         END IF
 
       END DO   ! Neumann & Newton BCs
-
-      IF( ALLOCATED(RadiatorPowers)) DEALLOCATE( RadiatorPowers )
 !------------------------------------------------------------------------------
 
 
@@ -1409,9 +1392,6 @@ CONTAINS
             AText(1:n) = Text
           END IF
         END IF
-
-!       IF (ALLOCATED(Element % BoundaryInfo % Radiators) ) &
-!         Atext(1:n) = Atext(1:n) + SUM(Element % BoundaryInfo % Radiators)
 !------------------------------------------------------------------------------
 !       Add our own contribution to surface temperature (and external
 !       if using linear type iteration or idealized radiation)
@@ -1495,16 +1475,6 @@ CONTAINS
         END IF
       END IF
 
-
-!------------------------------------------------------------------------------
-!     BC: -k@T/@n = radiative sources
-!------------------------------------------------------------------------------
-
-      IF( ListGetLogical( BC,'Radiator BC', Found ) ) THEN
-        IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-          LOAD(1:n)=LOAD(1:n)+SUM(RadiatorPowers*Element % BoundaryInfo % Radiators)
-        END IF
-      END IF
 
 !------------------------------------------------------------------------------
 !     Get element matrix and rhs due to boundary conditions ...
