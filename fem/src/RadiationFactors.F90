@@ -1528,60 +1528,14 @@
          END IF
        END DO
 
-       ! Scale matrix to unit diagonals
-       Diag = SQRT(1._dp/ABS(Diag))
-       DO i=1,RadiationSurfaces
-         IF(FullMatrix) THEN
-           DO j=1,RadiationSurfaces
-             GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
-           END DO
-         ELSE
-           DO j=GFactorSP % Rows(i),GFactorSP % Rows(i+1)-1
-             GFactorSP % Values(j) = GFactorSP % Values(j)*Diag(i)*Diag(GFactorSP % Cols(j))
-           END DO
-         END IF
-       END DO
-       RHS = RHS * Diag
-
-       ! Scale rgh to one
-       bscal = SUM(SQRT(RHS**2))
-       RHS = RHS / bscal
-       SOL = 0.0_dp
-       
-       IF(FullMatrix) THEN
-         CALL FIterSolver( RadiationSurfaces, SOL, RHS, Solver )
-       ELSE
-         IF(IterSolveGebhardt) THEN
-           Solver % Matrix => GFactorSP
-           CALL IterSolver( GFactorSP, SOL, RHS, Solver )
-         ELSE           
-           CALL DirectSolver( GFactorSP, SOL, RHS, Solver )
-         END IF
-       END IF
-       SOL = SOL * bscal
-       
+       CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL, RHS, Diag, Solver)
        IF( Newton ) THEN
-         RHS_d = RHS_d * Diag
-         bscal = SUM(SQRT(RHS_d**2))
-         RHS_d = RHS_d / bscal
-         SOL_d = 0.0_dp
-
-         IF( FullMatrix ) THEN
-           CALL FIterSolver( RadiationSurfaces, SOL_d, RHS_d, Solver )
-         ELSE
-           IF(IterSolveGebhardt) THEN
-             Solver % Matrix => GFactorSP
-             CALL IterSolver( GFactorSP, SOL_d, RHS_d, Solver )
-           ELSE           
-             CALL DirectSolver( GFactorSP, SOL_d, RHS_d, Solver )
-           END IF
-         END IF
-         SOL_d = SOL_d * bscal
+         CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL_d, RHS_d, Diag, Solver)
        END IF
 
        DO i=1,RadiationSurfaces
-         SOL(i)=SOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i))
-         IF(Newton) SOL_d(i)=SOL_d(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i))
+         SOL(i)=SOL(i)*Emissivity(i)/(1-Emissivity(i))
+         IF(Newton) SOL_d(i)=SOL_d(i)*Emissivity(i)/(1-Emissivity(i))
        END DO
 
        DO i=1,RadiationSurfaces
@@ -1762,63 +1716,19 @@
          totsum = totsum + qsum
          !PRINT *,'Trad:',k,Trad,qsum,totsum
          
-         ! Scale matrix to unit diagonals
-         DO i=1,RadiationSurfaces
-           IF(FullMatrix) THEN
-             DO j=1,RadiationSurfaces
-               GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
-             END DO
-           ELSE
-             DO j=GFactorSP % Rows(i),GFactorSP % Rows(i+1)-1
-               GFactorSP % Values(j) = GFactorSP % Values(j)*Diag(i)*Diag(GFactorSP % Cols(j))
-             END DO
-           END IF
-         END DO
-           
-         RHS = RHS * Diag
-         IF(AccurateNewton) RHS_d = RHS_d * Diag
-
-         ! Scale rhs to one!
-         bscal = SQRT(SUM(RHS**2))
-         RHS = RHS / bscal
-         tmpSOL = 0.0_dp
-         
-         IF(FullMatrix) THEN
-           CALL FIterSolver( RadiationSurfaces, tmpSOL, RHS, Solver )
-         ELSE
-           IF(IterSolveGebhardt) THEN
-             Solver % Matrix => GFactorSP
-             CALL IterSolver( GFactorSP, tmpSOL, RHS, Solver )
-           ELSE           
-             CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
-           END IF
-         END IF
-         tmpSOL = tmpSOL * bscal
+         CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL, RHS, Diag, Solver)
 
          ! Newton linearization including only "self"
          IF( ApproxNewton ) THEN
            tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
          ELSE IF( AccurateNewton ) THEN
-           tmpSOL_d = 0.0_dp
-           bscal = SQRT(SUM(RHS_d**2))
-           RHS_d = RHS_d / bscal
-           IF(FullMatrix) THEN
-             CALL FIterSolver( RadiationSurfaces, tmpSOL_d, RHS_d, Solver )
-           ELSE
-             IF(IterSolveGebhardt) THEN
-               Solver % Matrix => GFactorSP
-               CALL IterSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
-             ELSE           
-               CALL DirectSolver( GFactorSP, tmpSOL_d, RHS_d, Solver )
-             END IF
-           END IF
-           tmpSOL_d = tmpSOL_d * bscal
+           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver)
          END IF
          
          ! Cumulative radiosity
          DO i=1,RadiationSurfaces
-           SOL(i) = SOL(i) + tmpSOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i) )
-           IF(Newton) SOL_d(i) = SOL_d(i) + tmpSOL_d(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i))
+           SOL(i) = SOL(i) + tmpSOL(i)*Emissivity(i)/(1-Emissivity(i))
+           IF(Newton) SOL_d(i) = SOL_d(i) + tmpSOL_d(i)*Emissivity(i)/(1-Emissivity(i))
          END DO
        END DO
 
@@ -1912,36 +1822,11 @@
              Diag(i) = Diag(i) + RelAreas(i) 
            END DO
 
-           ! Scale matrix to unit diagonals
-           DO i=1,RadiationSurfaces
-             IF(FullMatrix) THEN
-               DO j=1,RadiationSurfaces
-                 GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
-               END DO
-             ELSE
-               DO j=GFactorSP % Rows(i),GFactorSP % Rows(i+1)-1
-                 GFactorSP % Values(j) = GFactorSP % Values(j)*Diag(i)*Diag(GFactorSP % Cols(j))
-               END DO
-             END IF
-           END DO
-           
-           RHS = RHS * Diag
-           tmpSOL = 0.0_dp
-           
-           IF(FullMatrix) THEN
-             CALL FIterSolver( RadiationSurfaces, tmpSOL, RHS, Solver )
-           ELSE
-             IF(IterSolveGebhardt) THEN
-               Solver % Matrix => GFactorSP
-               CALL IterSolver( GFactorSP, tmpSOL, RHS, Solver )
-             ELSE           
-               CALL DirectSolver( GFactorSP, tmpSOL, RHS, Solver )
-             END IF
-           END IF
+           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL, RHS, Diag,Solver)
          
            ! Cumulative radiosity
            DO i=1,RadiationSurfaces
-             SOL(i) = SOL(i) + tmpSOL(i)*Diag(i)*Emissivity(i)/(1-Emissivity(i) )
+             SOL(i) = SOL(i) + tmpSOL(i)*Emissivity(i)/(1-Emissivity(i))
            END DO
          END DO
        END IF
@@ -1968,6 +1853,52 @@
        
      END SUBROUTINE SpectralRadiosity
      
+
+     ! Scale linear system & solve
+     !-----------------------------
+     SUBROUTINE RadiationLinearSolver(n, A, x, b, Diag,  Solver)
+
+       INTEGER :: n
+       REAL(KIND=dp) :: x(:), b(:), Diag(:)
+       TYPE(Matrix_t), POINTER :: A
+       TYPE(Solver_t), POINTER :: Solver
+
+       REAL(KIND=dp) :: bscal
+
+       ! Scale matrix to unit diagonals
+       DO i=1,n
+         IF(FullMatrix) THEN
+           DO j=1,n
+             GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
+           END DO
+         ELSE
+           DO j=A % Rows(i),A % Rows(i+1)-1
+             A % Values(j) = A % Values(j)*Diag(i)*Diag(A % Cols(j))
+           END DO
+         END IF
+       END DO
+           
+       b = b * Diag
+
+       ! Scale rhs to one!
+       bscal = SQRT(SUM(b**2))
+       b = b / bscal
+
+       x = 0.0_dp
+         
+       IF(FullMatrix) THEN
+         CALL FIterSolver( n, x, b, Solver )
+       ELSE
+         IF(IterSolveGebhardt) THEN
+           Solver % Matrix => A
+           CALL IterSolver( A, x, b, Solver )
+         ELSE           
+           CALL DirectSolver( A, x, b, Solver )
+         END IF
+       END IF
+       x = x * bscal * Diag
+     END SUBROUTINE RadiationLinearSolver
+
      
 
      ! Save factors is mainly for debugging purposes
