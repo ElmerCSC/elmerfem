@@ -1546,8 +1546,8 @@
        END IF
 
        DO i=1,RadiationSurfaces
-         SOL(i)=SOL(i)*Emissivity(i)/(1-Emissivity(i))
-         IF(Newton) SOL_d(i)=SOL_d(i)*Emissivity(i)/(1-Emissivity(i))
+         SOL(i) = SOL(i)*Emissivity(i)/Reflectivity(i)
+         IF(Newton) SOL_d(i) = SOL_d(i)*Emissivity(i)/Reflectivity(i)
        END DO
 
        DO i=1,RadiationSurfaces
@@ -1823,7 +1823,6 @@
            CALL TabulateSpectralEmissivity(Emissivity,Trad)
 
            DO i=1,RadiationSurfaces
-             
              Element => Model % Elements(ElementNumbers(i))
              Vals => ViewFactors(i) % Factors
              Cols => ViewFactors(i) % Elements
@@ -1910,6 +1909,7 @@
 
        ! Scale matrix to unit diagonals (if not done already)
        IF(scal) THEN
+         Diag = SQRT(1._dp/ABS(Diag))
          DO i=1,n
            IF(FullMatrix) THEN
              DO j=1,n
