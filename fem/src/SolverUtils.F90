@@ -8658,7 +8658,7 @@ CONTAINS
         END DO
 
         IF( ConflictCount > 0 ) THEN
-          CALL Warn(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!')
+          CALL Info(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!',Level=8)
         END IF
         
         ! Here we go through the periodic projectors and average the normals
