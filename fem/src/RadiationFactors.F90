@@ -1901,8 +1901,8 @@
        LOGICAL, OPTIONAL :: Scaling
        TYPE(Solver_t), POINTER :: Solver
 
-       LOGICAL :: Scal
-       REAL(KIND=dp) :: bscal
+       LOGICAL :: Scal,Found
+       REAL(KIND=dp) :: bscal, eps
 
        scal = .TRUE.
        IF(PRESENT(Scaling)) scal = Scaling
@@ -1922,27 +1922,88 @@
            END IF
          END DO
        END IF
-           
        b = b * Diag
 
        ! Scale rhs to one!
        bscal = SQRT(SUM(b**2))
        b = b / bscal
 
-       x = 0.0_dp
+
+#if TESTCG
+       eps = ListGetConstReal(Solver % Values, 'Linear System Convergence Tolerance',Found)
+       IF(.NOT.Found) eps=1.0d-7
+#endif
          
+       x = 0.0_dp
        IF(FullMatrix) THEN
          CALL FIterSolver( n, x, b, Solver )
        ELSE
          IF(IterSolveGebhardt) THEN
            Solver % Matrix => A
+#if TESTCG
+           CALL RadiationCG( n, A, x, b, eps )
+#else
            CALL IterSolver( A, x, b, Solver )
+#endif
          ELSE           
            CALL DirectSolver( A, x, b, Solver )
          END IF
        END IF
+
        x = x * bscal * Diag
+
      END SUBROUTINE RadiationLinearSolver
+
+
+#if TESTCG
+     ! Tailored local CG algo for speed testing (somewhat faster than any of the 
+     ! library routines but not so much...)
+     !-------------------------------------------------------------------------
+     SUBROUTINE  RadiationCG( n, A, x, b, eps)
+       REAL(KIND=dp) :: x(:),b(:), eps
+       INTEGER :: n
+       TYPE(Matrix_t), POINTER :: A
+
+       REAL(KIND=dp):: alpha, beta, rho, oldrho
+       REAL(KIND=dp) :: r(n), p(n), q(n), z(n)
+       INTEGER :: iter, i
+       REAL(KIND=dp) :: residual, eps2
+
+       eps2 = eps*eps
+
+       CALL CRS_MatrixVectorMultiply(A,x,r) 
+       r = b - r
+       residual = SUM(r*r)
+       IF(residual<eps2) RETURN
+
+       DO iter=1,100
+         rho = SUM(r*r)
+         IF(rho==0.0_dp) STOP 'CG, rho=0'
+  
+         IF ( iter==1 ) THEN
+           p = r
+         ELSE
+           beta = rho / oldrho
+           p = r + beta * p
+         END IF
+
+         CALL CRS_MatrixVectorMultiply(A,p,q) 
+         alpha = rho/SUM(p*q)
+
+         x = x + alpha * p
+         r = r - alpha * q
+         residual = SUM(r*r)
+         IF ( residual < eps2) EXIT
+
+         oldrho = rho
+       END DO
+
+       CALL CRS_MatrixVectorMultiply(A,x,r) 
+       r = b - r
+       residual = SQRT(SUM(r*r))
+       WRITE (*, '(I8, E11.4)') iter, residual
+     END SUBROUTINE RadiationCG
+#endif
 
      
 
