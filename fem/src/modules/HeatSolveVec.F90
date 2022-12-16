@@ -150,7 +150,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: n, nb, nd, t, active, dim
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
-      DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity
+      DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, PostCalc = .FALSE.
+  TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: Temperature(:)
@@ -170,9 +171,15 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! have changed. The routine may also affect matrix topology.
   !---------------------------------------------------------------------------
   Mesh => GetMesh()
+  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
+  dim = CoordinateSystemDimension() 
+  Params => GetSolverParams()  
+  EqName = ListGetString( Params,'Equation', Found ) 
 
-  Radiosity = GetLogical( Solver % Values, 'Radiosity Model', Found ) .OR. &
-      GetLogical( Solver % Values,'Spectral Model',Found )
+  Radiosity = GetLogical( Params, 'Radiosity Model', Found )
+  Spectral = GetLogical( Params,'Spectral Model',Found )
+  IF( Spectral ) Radiosity = .TRUE. 
+  
   IF(.NOT.Radiosity) CALL RadiationFactors( Solver, .FALSE.,.FALSE.) 
 
   HaveFactors = ListCheckPresentAnyBC( Model,'Radiation')
@@ -185,11 +192,6 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   Temperature => Solver % Variable % Values
   TempPerm => Solver % Variable % Perm
    
-  AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
-  dim = CoordinateSystemDimension() 
-  Params => GetSolverParams()  
-  EqName = ListGetString( Params,'Equation', Found ) 
-
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
 
@@ -232,7 +234,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! Initialize the matrix equation to zero.
     !---------------------------------------
     CALL DefaultInitialize()
-
+    CALL CalculateSurfaceFluxes(Pre=.TRUE.)
+    
     ! For speed compute averaged emissivity and temperature over boundary elements
     ! for diffuse gray radiation.
     !-----------------------------------------------------------------------------
@@ -394,6 +397,7 @@ END BLOCK
   END DO
   
   CALL DefaultFinish()
+  CALL CalculateSurfaceFluxes(Pre=.FALSE.)
 
 CONTAINS 
   
@@ -865,7 +869,7 @@ CONTAINS
     REAL(KIND=dp) :: F,C,Weight, T0, &
         RadC, RadF, RadText, Text, Emis, AssFrac
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3)
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), ElemWeight(nd)
     LOGICAL :: Stat,Found,RobinBC,RadIdeal,RadDiffuse,TorBC
     INTEGER :: i,j,t,p,q,Indexes(n)
     INTEGER :: NoOwners, NoParents
@@ -904,7 +908,8 @@ CONTAINS
     CALL GetElementNodes( Nodes, UElement=Element )
     STIFF = 0._dp
     FORCE = 0._dp
-               
+    ElemWeight = 0._dp
+    
     RadIdeal = ListCompareElementString( RadFlag_h,'idealized',Element, Found )    
     RadDiffuse = ListCompareElementString( RadFlag_h,'diffuse gray',Element, Found )
 
@@ -936,7 +941,8 @@ CONTAINS
       IF ( AxiSymmetric ) THEN
         Weight = Weight * SUM( Nodes % x(1:n)*Basis(1:n) )
       END IF
-
+      ElemWeight(1:nd) = ElemWeight(1:nd) + Weight * Basis(1:nd) 
+      
       ! Evaluate terms at the integration point:
       !------------------------------------------
 
@@ -1012,6 +1018,20 @@ CONTAINS
 
     END DO
 
+    ! Calculate fluxes on-the-fly
+#if 0
+    IF( PostCalc ) THEN
+      BLOCK
+        INTEGER :: ElemPerm(27)
+        ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
+        IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + ElemWeight(1:n)
+          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + FORCE(1:n)
+        END IF
+      END BLOCK
+    END IF
+#endif
+    
     IF( ABS(AssFrac-1.0_dp) > TINY( AssFrac ) ) THEN
       FORCE(1:nd) = AssFrac * FORCE(1:nd)
       STIFF(1:nd,1:nd) = AssFrac * STIFF(1:nd,1:nd)
@@ -1202,11 +1222,11 @@ CONTAINS
       Emis1 = Emis1 / Refl1
 
       IF(Newton) THEN
-        RadiosityLoad = (Fact(1) - Fact(2)*SUM(NodalTemp(1:n))/n)   ! * Abso1/Refl1
-        RadiosityCoeff = -Fact(2) ! *Abso1/Refl1
+        RadiosityLoad = (Fact(1) - Fact(2)*SUM(NodalTemp(1:n))/n)  
+        RadiosityCoeff = -Fact(2) 
       ELSE
         RadiosityCoeff = 0
-        RadiosityLoad = Fact(1) ! *Abso1/Refl1
+        RadiosityLoad = Fact(1) 
       END IF
     ELSE
       RadiosityLoad = 0._dp
@@ -1357,6 +1377,7 @@ CONTAINS
     ! having computed the complete T_ext^4. So this is done in the end.
     !----------------------------------------------------------------------------
     IF( .NOT. Newton ) THEN      
+      Base = 0.0_dp
       Text = Text0 + Text**0.25_dp
       DO t=1,IP % n
         stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
@@ -1374,9 +1395,26 @@ CONTAINS
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * (RadCoeffAtIp * Text + RadiosityLoad)
         END DO
+        Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
     END IF
 
+    ! Calculate fluxes on-the-fly
+    IF( PostCalc ) THEN
+      BLOCK
+        INTEGER :: ElemPerm(27)
+        ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
+        IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + Base(1:n)
+          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + FORCE(1:n)
+          IF(Spectral) THEN
+            PostEmis % Values(ElemPerm(1:n)) = PostEmis % Values(ElemPerm(1:n)) + Emiss(bindex) * Base(1:n)
+            PostAbs % Values(ElemPerm(1:n)) = PostAbs % Values(ElemPerm(1:n)) + Fact(3) * Base(1:n)
+            PostTemp % Values(ElemPerm(1:n)) = PostTemp % Values(ElemPerm(1:n)) + Fact(4) * Base(1:n)
+          END IF
+        END IF
+      END BLOCK
+    END IF
     
     ! Glue standard local matrix equation to the global matrix
     ! The view factor part has already been glued.
@@ -1768,7 +1806,80 @@ CONTAINS
   END SUBROUTINE LocalJumpsDisContBC
 !------------------------------------------------------------------------------
 
-  
+  SUBROUTINE CalculateSurfaceFluxes(Pre) 
+    LOGICAL :: Pre    
+    LOGICAL :: Visited = .FALSE., CalcFluxes = .TRUE.
+    INTEGER, POINTER :: Perm(:)
+    INTEGER :: i,t,nsize = 0
+    TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp) :: c
+    
+    SAVE Perm, nsize, CalcFluxes, Visited
+
+    IF(.NOT. CalcFluxes ) RETURN
+    
+    IF(.NOT. Visited ) THEN    
+      Visited = .TRUE.
+      CalcFluxes = ListGetLogical( Params,'Calculate Radiation Fluxes',Found ) 
+      IF( CalcFluxes ) THEN
+        ALLOCATE(Perm(Solver % Mesh % NumberOfNodes))
+        Perm = 0
+        
+        CALL Info(Caller,'Creating permutation for boundary fluxes',Level=8)
+        DO t=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          BC => GetBC(Element)
+          IF(.NOT. ASSOCIATED( BC ) ) CYCLE
+       
+          IF( ListCheckPresent( BC,'Radiation') .OR. &
+              ListCheckPresent( BC,'Heat Flux') .OR. &
+              ListCheckPresent( BC,'Radiator') ) THEN
+            Perm(Element % NodeIndexes) = 1
+          END IF
+        END DO
+        
+        nsize = 0
+        DO i=1,Mesh % NumberOfNodes
+          IF(Perm(i) > 0) THEN
+            nsize = nsize+1
+            Perm(i) = nsize
+          END IF
+        END DO
+        CALL Info(Caller,'Number of active nodes for boundary fields: '//TRIM(I2S(nsize)),Level=10)
+        
+        CALL DefaultVariableAdd('Radiation Weight',Perm=Perm,Var=PostWeight,Output=.FALSE.)
+        CALL DefaultVariableAdd('Radiation Flux',Perm=Perm,Var=PostFlux,Secondary=.TRUE.)
+        IF( Radiosity ) THEN
+          CALL DefaultVariableAdd('Absorptivity',Perm=Perm,Var=PostAbs,Secondary=.TRUE.)
+          CALL DefaultVariableAdd('Emissivity',Perm=Perm,Var=PostEmis,Secondary=.TRUE.)
+          CALL DefaultVariableAdd('Radiation Temperature',Perm=Perm,Var=PostTemp,Secondary=.TRUE.)
+        END IF
+        IF(nsize == 0) CalcFluxes = .FALSE.
+      END IF
+      PostCalc = CalcFluxes 
+    ELSE IF(Pre) THEN
+      PostWeight % Values = 0.0_dp
+      PostFlux % Values = 0.0_dp
+      IF(Spectral) THEN
+        PostAbs % Values = 0.0_dp
+        PostEmis % Values = 0.0_dp
+        PostTemp % Values = 0.0_dp
+      END IF
+    ELSE
+      WHERE( PostWeight % Values > EPSILON(c) )
+        PostFlux % Values = PostFlux % Values / PostWeight % Values
+      END WHERE
+      IF( Spectral ) THEN
+        WHERE( PostWeight % Values > EPSILON(c) )
+          PostAbs % Values = PostAbs % Values / PostWeight % Values
+          PostEmis % Values = PostEmis % Values / PostWeight % Values
+          PostTemp % Values = PostTemp % Values / PostWeight % Values
+        END WHERE
+      END IF      
+    END IF
+         
+  END SUBROUTINE CalculateSurfaceFluxes
+
 !------------------------------------------------------------------------------
 END SUBROUTINE HeatSolver
 !------------------------------------------------------------------------------

@@ -1581,7 +1581,7 @@
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad
        INTEGER :: k,kmin,kmax
        REAL(KIND=dp) :: q, qsum, totsum, bscal
-       REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:)
+       REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:), EffAbs(:), EffTemp(:)
 
        LOGICAL :: RBC, ApproxNewton, AccurateNewton
        REAL(KIND=dp), POINTER :: RadiatorCoords(:,:), rWrk(:,:)
@@ -1671,6 +1671,10 @@
        ALLOCATE( tmpSOL(RadiationSurfaces) )
        IF(Newton) ALLOCATE(tmpSOL_d(RadiationSurfaces))
 
+       ALLOCATE(EffAbs(RadiationSurfaces),EffTemp(RadiationSurfaces))
+       EffAbs = 0.0_dp
+       EffTemp = 0.0_dp
+       
        totsum = 0.0_dp
               
        DO k = kmin, kmax
@@ -1763,11 +1767,15 @@
            CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
          END IF
          
-         ! Cumulative radiosity
-         DO i=1,RadiationSurfaces
-           SOL(i) = SOL(i) + tmpSOL(i)*Emissivity(i)/(1-Emissivity(i))
-           IF(Newton) SOL_d(i) = SOL_d(i) + tmpSOL_d(i)*Emissivity(i)/(1-Emissivity(i))
-         END DO
+         ! Cumulative radiosity         
+         tmpSOL = tmpSOL * Emissivity / (1-Emissivity) 
+         SOL = SOL + tmpSOL
+         EffAbs = EffAbs + Emissivity * tmpSOL 
+         EffTemp = EffTemp + Trad * tmpSOL
+         
+         IF( Newton ) THEN
+           SOL_d = SOL_d + tmpSOL_d * Emissivity / (1-Emissivity)
+         END IF
        END DO
 
        ! This should be exactly one!
@@ -1859,15 +1867,19 @@
              Diag(i) = Diag(i) + RelAreas(i) 
            END DO
 
-           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL, RHS, Diag,Solver)
-         
+           CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL, RHS, Diag,Solver)          
+           
            ! Cumulative radiosity
-           DO i=1,RadiationSurfaces
-             SOL(i) = SOL(i) + tmpSOL(i)*Emissivity(i)/(1-Emissivity(i))
-           END DO
+           tmpSOL = tmpSOL * Emissivity / (1-Emissivity) 
+           SOL = SOL + tmpSOL
+           EffAbs = EffAbs + Emissivity * tmpSOL 
+           EffTemp = EffTemp + Trad * tmpSOL
          END DO
        END IF
-
+       
+       EffAbs = EffAbs / SOL
+       EffTemp = EffTemp / SOL
+       
        DO i=1,RadiationSurfaces
          Element => Model % Elements(ElementNumbers(i))
          GebhardtFactors => Element % BoundaryInfo % GebhardtFactors       
@@ -1877,8 +1889,8 @@
            Element % BoundaryInfo % GebhardtFactors % Elements => NULL()
          END IF
          IF(.NOT.ASSOCIATED(Element % BoundaryInfo % GebhardtFactors % Elements)) THEN
-           ALLOCATE(Element % BoundaryInfo % GebhardtFactors % Elements(2))
-           ALLOCATE(Element % BoundaryInfo % GebhardtFactors % Factors(2))
+           ALLOCATE(Element % BoundaryInfo % GebhardtFactors % Elements(4))
+           ALLOCATE(Element % BoundaryInfo % GebhardtFactors % Factors(4))
          END IF
          Element % BoundaryInfo % GebhardtFactors % NumberOfFactors = 1
          Element % BoundaryInfo % GebhardtFactors % Elements(1) = ElementNumbers(i)
@@ -1886,6 +1898,9 @@
          Element % BoundaryInfo % GebhardtFactors % Factors(1) = SOL(i)
          IF(Newton) &
              Element % BoundaryInfo % GebhardtFactors % Factors(2) = SOL_d(i)
+         ! Store effective emissivity i.e. the realized absorption coefficient of the spectrum
+         Element % BoundaryInfo % GebhardtFactors % Factors(3) = EffAbs(i)
+         Element % BoundaryInfo % GebhardtFactors % Factors(4) = EffTemp(i)
        END DO
        
      END SUBROUTINE SpectralRadiosity
