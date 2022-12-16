@@ -2663,7 +2663,7 @@ CONTAINS
       CALL ListTagCnt(Model % Bodies(i) % Values, tagwei, cnt )
     END DO
     IF(tagwei) THEN
-      CALL Info('ListTagCount','Found number of normalized keywords: '//TRIM(I2S(cnt)),Level=6)
+      IF(cnt>0) CALL Info('ListTagCount','Found number of normalized keywords: '//TRIM(I2S(cnt)),Level=6)
       RETURN
     END IF
     
@@ -2685,7 +2685,7 @@ CONTAINS
       CALL ListTagCnt(Model % Solvers(i) % Values, tagwei, cnt )
     END DO
     
-    CALL Info('ListTagCount','Found number of parameters: '//TRIM(I2S(cnt)),Level=6)
+    IF(cnt>0) CALL Info('ListTagCount','Found number of parameters: '//TRIM(I2S(cnt)),Level=6)
 
   CONTAINS
     

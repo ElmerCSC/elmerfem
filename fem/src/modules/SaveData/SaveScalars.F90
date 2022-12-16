@@ -143,7 +143,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, SaveCVS, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
-      Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
+      Hit, SaveToFile, EchoValues, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
       Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper, SaveJson, &
       StartNewFile, SimulationVisited
@@ -816,31 +816,28 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               ' < active for operator: '// TRIM(Oper))
           CYCLE
         END IF
- 
+
+        ! Statistical operators do not really like being split among bundaries.
+        ! So if you want split the results use different mask names.
         BoundaryHits = 0
         BoundaryFluxes = 0.0_dp
         CALL BoundaryStatistics(Var, Oper, GotCoeff, &
             CoefficientName, BoundaryFluxes, BoundaryHits)
         
-        GotAny = .FALSE.
-        DO j=1,Model % NumberOfBCs
-          IF( ActiveBC(j) ) THEN
-            IF( TRIM(Oper) == 'boundary mean' ) THEN
-              IF( IsParallel .AND. ParallelReduce ) THEN
-                CALL Warn(Caller,'Operator > boundary mean < not implemented in parallel!')
-              ELSE IF( BoundaryHits(j) > 0 ) THEN
-                BoundaryFluxes(j) = BoundaryFluxes(j) / BoundaryHits(j)
-              END IF
-            END IF
-            WRITE (Name,'(A,A,A,A,I0)') TRIM(Oper),': ',TRIM(VariableName),' over bc ',j
-            CALL AddToSaveList( TRIM(Name), BoundaryFluxes(j),.FALSE.,ParOper)
+        IF( TRIM(Oper) == 'boundary mean' ) THEN
+          IF( IsParallel .AND. ParallelReduce ) THEN
+            CALL Warn(Caller,'Operator > boundary mean < not implemented in parallel!')
+          ELSE IF( BoundaryHits(1) > 0 ) THEN
+            BoundaryFluxes(1) = BoundaryFluxes(1) / BoundaryHits(1)
           END IF
-        END DO
+        END IF
+        WRITE (Name,'(A,A,A,A,I0)') TRIM(Oper),': ',TRIM(VariableName),' over bc '//TRIM(MaskName)
+        CALL AddToSaveList( TRIM(Name), BoundaryFluxes(1),.FALSE.,ParOper)
         
       CASE ('boundary int','boundary int mean','area','diffusive flux','convective flux')
         
         IF( .NOT. ANY( ActiveBC ) ) THEN
-          CALL Error(Caller,'No flag > '//TRIM(MaskName)// &
+          CALL Fatal(Caller,'No flag > '//TRIM(MaskName)// &
               '< active for operator: '// TRIM(Oper))
         ELSE
           BoundaryHits = 0
@@ -3009,11 +3006,11 @@ CONTAINS
 
             END SELECT
           ELSE
-            fluxes(bc) = fluxes(bc) + val
+            fluxes(1) = fluxes(1) + val
           END IF
 
           nodescomputed(j) = .TRUE.         
-          fluxescomputed(bc) = fluxescomputed(bc) + 1          
+          fluxescomputed(1) = fluxescomputed(1) + 1          
         END DO        
       END DO
     END DO

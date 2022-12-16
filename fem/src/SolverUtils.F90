@@ -8658,7 +8658,7 @@ CONTAINS
         END DO
 
         IF( ConflictCount > 0 ) THEN
-          CALL Warn(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!')
+          CALL Info(Caller,'There are '//TRIM(I2S(ConflictCount))//' conflicting normal directions!',Level=8)
         END IF
         
         ! Here we go through the periodic projectors and average the normals
@@ -22618,7 +22618,10 @@ CONTAINS
      v => VariableGet( Solver % Mesh % Variables, 'coupled iter' )     
      IF( NINT(v % Values(1)) > 1 ) RETURN
 
-     Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps')
+     Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps',Found)
+     IF(.NOT. Found ) THEN
+       CALL Fatal(Caller,'"Periodic Timesteps" needed to store the cyclic solution!')
+     END IF       
      Ntimes = ListGetInteger( Model % Simulation,'Number of Times',Found )  
      Nslices = ListGetInteger( Model % Simulation,'Number of Slices',Found )
 

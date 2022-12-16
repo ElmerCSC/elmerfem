@@ -1362,7 +1362,7 @@ CONTAINS
        INTEGER :: i,j, k,n, istat
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
-       LOGICAL :: FirstTime = .TRUE.,lstat, fexist
+       LOGICAL :: FirstTime = .TRUE.,lstat, fexist, ReTry
        CHARACTER(LEN=:), ALLOCATABLE :: str
        CHARACTER(LEN=MAX_STRING_LEN) :: str1
 !       EXTERNAL ENVIR
@@ -1506,6 +1506,7 @@ CONTAINS
           str =  'component: '
         END IF
 
+        ! If we have namespace then remove that
         i= INDEX(Name,':') + 1
         IF (Name(i:i)==' ') i=i+1
         str = TRIM(str) // Name(i:LEN_TRIM(Name))
@@ -1521,6 +1522,42 @@ CONTAINS
           IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) RETURN
        END IF
 
+       ! Ok, we didn't find the keyword. Test whether it ends to 1, 2 or 3 integers
+       ! preceeded with empty space. The replace the integers with "1" and try to find
+       ! the type again. This reduced the keywords needed to be listed in SOLVER.KEYWORDS.
+       j = LEN_TRIM(str)
+       IF(j>2) THEN
+         Retry = .FALSE.
+         IF(str(j-1:j-1) == ' ' .AND. VERIFY( str(j:j),' 123456789') == 0 ) THEN
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         ELSE IF(j>3 .AND. str(j-2:j-2) == ' ' .AND. VERIFY( str(j-1:j),' 0123456789') == 0 ) THEN
+           str(j:j) = ' '
+           j = j-1
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         ELSE IF(j>4 .AND. str(j-3:j-3) == ' ' .AND. VERIFY( str(j-2:j),' 0123456789') == 0 ) THEN
+           str(j-1:j) = '  '
+           j = j-2
+           str(j:j) = '1'
+           ReTry = .TRUE.
+         END IF
+         IF( ReTry ) THEN
+           Val => HashValue( Hash, str )
+           IF ( ASSOCIATED( Val ) ) THEN
+             IF ( PRESENT( ReturnType ) ) THEN
+               ReturnType = .TRUE.
+               TYPE = Val % TYPE
+             END IF
+             IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) THEN
+               CALL info('CheckKeyword','Found keyword type assuming suffix 1 for: '//TRIM(Name),Level=20)
+               RETURN
+             END IF
+           END IF
+         END IF
+       END IF
+       
+       
        IF ( PRESENT( ReturnType ) ) ReturnType = .FALSE.
 
        IF ( .NOT.ASSOCIATED(Val) .AND. (CheckAbort <= 2 .OR. FreeNames) ) THEN

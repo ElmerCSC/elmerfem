@@ -68,8 +68,8 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   INTEGER :: NonlinIter, MaxNonlinIter, NoNodes
   INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
-      TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
-  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff
+      TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, Coord(3), dCoord(3), Norm, dx(3)
+  REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform,AngleCoeff, RotorRad
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -77,13 +77,14 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
-      CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh
+      CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
+      RotorMode 
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
   LOGICAL, POINTER :: NodeDone(:)
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
-  TYPE(ValueList_t),POINTER :: BodyForce, PrevBodyForce
+  TYPE(ValueList_t),POINTER :: ValueList, PrevValueList
 
   
   SAVE Parray,Visited
@@ -140,6 +141,15 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     AngleCoeff = PI / 180.0_dp
   END IF
 
+  RotorMode = ListGetLogical( SolverParams,'Rotor Mode',Found )
+  IF( RotorMode ) THEN
+    RotorRad = ListGetCReal(CurrentModel % Simulation,'Rotor Radius',Found )
+    IF(.NOT. Found) THEN
+      CALL Fatal('RigidMeshMapper','In "Rotor Mode" you should give "Rotor Radius" in Simulation section!')
+    END IF
+  END IF
+
+  
   CalculateVelocity = GetLogical( SolverParams,'Calculate Mesh Velocity',Found)
   IF( CalculateVelocity ) THEN
     VeloVar => VariableGet( Mesh % Variables,'Mesh Velocity')
@@ -213,8 +223,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     
     Coeff = GetCReal( SolverParams,'Nonlinear Conductivity Coefficient',Found)
     Source = GetCReal( SolverParams,'Mesh Relax Source',Found)
-
-
     
     DO NonlinIter = 1, MaxNonlinIter
       CALL DefaultInitialize()
@@ -273,44 +281,55 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     AnyMeshTranslate = .FALSE.
   END IF
 
-
-  AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')
-   
-  AnyMeshRotate = ListCheckPrefixAnyBodyForce( Model,'Mesh Rotate')
-
-  AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Translate')
-  AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale') 
-  AnyMeshOrigin = ListCheckPrefixAnyBodyForce( Model,'Mesh Origin')
-
-  AnyRelax = ListCheckPresentAnyBodyForce( Model,'Mesh Relax')
-
-  
+  IF( RotorMode ) THEN
+    ValueList => SolverParams      
+    AnyMeshMatrix = ListCheckPresent( ValueList,'Mesh Matrix')   
+    AnyMeshRotate = ListCheckPrefix( ValueList,'Mesh Rotate')
+    AnyMeshTranslate = ListCheckPrefix( ValueList,'Mesh Translate')
+    AnyMeshScale = ListCheckPrefix( ValueList,'Mesh Scale') 
+    AnyMeshOrigin = ListCheckPrefix( ValueList,'Mesh Origin')
+    AnyRelax = ListCheckPresent( ValueList,'Mesh Relax')
+  ELSE
+    AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')   
+    AnyMeshRotate = ListCheckPrefixAnyBodyForce( Model,'Mesh Rotate')
+    AnyMeshTranslate = ListCheckPrefixAnyBodyForce( Model,'Mesh Translate')
+    AnyMeshScale = ListCheckPrefixAnyBodyForce( Model,'Mesh Scale') 
+    AnyMeshOrigin = ListCheckPrefixAnyBodyForce( Model,'Mesh Origin')
+    AnyRelax = ListCheckPresentAnyBodyForce( Model,'Mesh Relax')
+  END IF
+      
   GotRotate = .FALSE.
   GotTranslate = .FALSE.
   GotScale = .FALSE.
   GotMatrix = .FALSE.
 
-  PrevBodyForce => NULL()
+  PrevValueList => NULL()
   GotMap = .FALSE.
   ConstantMap = ListGetLogical( SolverParams,'Constant Mapping',Found ) 
+
   
   DO elem = 1,Solver % Mesh % NumberOfBulkElements      
 
     Element => Solver % Mesh % Elements(elem)
     Model % CurrentElement => Element
     n = GetElementNOFNodes()
-    
-    bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
-    IF(.NOT. Found) CYCLE
-    
-    BodyForce => Model % BodyForces(bf_id) % Values
 
-    IF( ConstantMap ) THEN
-      GotMap = ASSOCIATED( BodyForce, PrevBodyForce )
-      PrevBodyForce => BodyForce
+    IF( RotorMode ) THEN
+      CALL GetElementNodes( Nodes )
+      Coord(1) = SUM(Nodes % x(1:n)) / n
+      Coord(2) = SUM(Nodes % y(1:n)) / n
+      Coord(3) = SUM(Nodes % z(1:n)) / n
+      IF(Coord(1)**2+Coord(2)**2 > RotorRad**2) CYCLE      
+    ELSE
+      bf_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found )
+      IF(.NOT. Found) CYCLE
+      ValueList => Model % BodyForces(bf_id) % Values
+      IF( ConstantMap ) THEN
+        GotMap = ASSOCIATED( ValueList, PrevValueList )
+        PrevValueList => ValueList
+      END IF
     END IF
-
-    
+             
     DO Node=1,n
       NodeIndex(1) = Element % NodeIndexes(Node)
       NodeI = NodeIndex(1)
@@ -322,12 +341,13 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ! there is no use doing the same ListGet operation things again.
       !-------------------------------------------------------------------------
       IF( GotMap ) GOTO 100
+      IF( RotorMode ) GotMap = .TRUE.
       
       ! Generic transformation matrix
       !--------------------------------
       GotMatrix = .FALSE.
       IF( AnyMeshMatrix ) THEN
-        Parray => ListGetConstRealArray( BodyForce,'Mesh Matrix', GotMatrix )
+        Parray => ListGetConstRealArray( ValueList,'Mesh Matrix', GotMatrix )
         IF ( GotMatrix ) THEN
           DO i=1,SIZE(Parray,1)
             DO j=1,SIZE(Parray,2)
@@ -342,7 +362,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         !----------------------------        
         GotRotate = .FALSE.
         IF( AnyMeshRotate ) THEN
-          Parray => ListGetConstRealArray( BodyForce,'Mesh Rotate', GotRotate )                
+          Parray => ListGetConstRealArray( ValueList,'Mesh Rotate', GotRotate )                
           IF ( GotRotate ) THEN
             Angles = 0.0_dp
             DO i=1,SIZE(Parray,1)
@@ -350,11 +370,11 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             END DO
           ELSE 
             Angles = 0.0_dp
-            Angles(1:1) = ListGetReal( BodyForce,'Mesh Rotate 1', 1, NodeIndex, Found )
+            Angles(1:1) = ListGetReal( ValueList,'Mesh Rotate 1', 1, NodeIndex, Found )
             IF( Found ) GotRotate = .TRUE.
-            Angles(2:2) = ListGetReal( BodyForce,'Mesh Rotate 2', 1, NodeIndex, Found )
+            Angles(2:2) = ListGetReal( ValueList,'Mesh Rotate 2', 1, NodeIndex, Found )
             IF( Found ) GotRotate = .TRUE.
-            Angles(3:3) = ListGetReal( BodyForce,'Mesh Rotate 3', 1, NodeIndex, Found )
+            Angles(3:3) = ListGetReal( ValueList,'Mesh Rotate 3', 1, NodeIndex, Found )
             IF( Found ) GotRotate = .TRUE.
           END IF
           Angles = AngleCoeff * Angles
@@ -364,19 +384,19 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         !---------
         GotScale = .FALSE.
         IF( AnyMeshScale ) THEN
-          Parray => ListGetConstRealArray( BodyForce,'Mesh Scale', GotScale )
+          Parray => ListGetConstRealArray( ValueList,'Mesh Scale', GotScale )
           IF ( GotScale ) THEN
             Scaling = 0.0_dp
             DO i=1,SIZE(Parray,1)
               Scaling(i) = Parray(i,1)
             END DO
           ELSE 
-            Scaling(1:1) = ListGetReal( BodyForce,'Mesh Scale 1',1,NodeIndex,GotScale) 
+            Scaling(1:1) = ListGetReal( ValueList,'Mesh Scale 1',1,NodeIndex,GotScale) 
 	    IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
-            Scaling(2:2) = ListGetReal( BodyForce,'Mesh Scale 2',1,NodeIndex,Found) 
+            Scaling(2:2) = ListGetReal( ValueList,'Mesh Scale 2',1,NodeIndex,Found) 
 	    IF(.NOT. Found ) Scaling(2) = 1.0_dp
             GotScale = GotScale .OR. Found
-            Scaling(3:3) = ListGetReal( BodyForce,'Mesh Scale 3',1,NodeIndex,Found) 
+            Scaling(3:3) = ListGetReal( ValueList,'Mesh Scale 3',1,NodeIndex,Found) 
 	    IF(.NOT. Found ) Scaling(3) = 1.0_dp
             GotScale = GotScale .OR. Found
           END IF
@@ -386,17 +406,17 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         !---------------
         GotTranslate = .FALSE.
         IF( AnyMeshTranslate ) THEN
-          Parray => ListGetConstRealArray( BodyForce,'Mesh Translate', GotTranslate )
+          Parray => ListGetConstRealArray( ValueList,'Mesh Translate', GotTranslate )
           IF ( GotTranslate ) THEN
             dCoord = 0.0_dp
             DO i=1,SIZE(Parray,1)
               dCoord(i) = Parray(i,1)
             END DO
           ELSE 
-            dCoord(1:1) = ListGetReal( BodyForce,'Mesh Translate 1', 1, NodeIndex, GotTranslate) 
-            dCoord(2:2) = ListGetReal( BodyForce,'Mesh Translate 2', 1, NodeIndex, Found) 
+            dCoord(1:1) = ListGetReal( ValueList,'Mesh Translate 1', 1, NodeIndex, GotTranslate) 
+            dCoord(2:2) = ListGetReal( ValueList,'Mesh Translate 2', 1, NodeIndex, Found) 
             GotTranslate = GotTranslate .OR. Found
-            dCoord(3:3) = ListGetReal( BodyForce,'Mesh Translate 3', 1, NodeIndex, Found) 
+            dCoord(3:3) = ListGetReal( ValueList,'Mesh Translate 3', 1, NodeIndex, Found) 
             GotTranslate = GotTranslate .OR. Found
           END IF
         END IF
@@ -468,15 +488,15 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       !----------------------------------------------------
       Origin = 0.0_dp
       IF( GotMatrix .AND. AnyMeshOrigin ) THEN
-        Parray => ListGetConstRealArray( BodyForce,'Mesh Origin', Found )
+        Parray => ListGetConstRealArray( ValueList,'Mesh Origin', Found )
         IF ( Found ) THEN
           DO i=1,SIZE(Parray,1)
             Origin(i) = Parray(i,1)
           END DO
         ELSE
-          Origin(1:1) = ListGetReal( BodyForce,'Mesh Origin 1', 1, NodeIndex, Found) 
-          Origin(2:2) = ListGetReal( BodyForce,'Mesh Origin 2', 1, NodeIndex, Found) 
-          Origin(3:3) = ListGetReal( BodyForce,'Mesh Origin 3', 1, NodeIndex, Found) 
+          Origin(1:1) = ListGetReal( ValueList,'Mesh Origin 1', 1, NodeIndex, Found) 
+          Origin(2:2) = ListGetReal( ValueList,'Mesh Origin 2', 1, NodeIndex, Found) 
+          Origin(3:3) = ListGetReal( ValueList,'Mesh Origin 3', 1, NodeIndex, Found) 
         END IF
       END IF
 
@@ -506,7 +526,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         END IF
         dx = Relax(1) * dx 
       ELSE IF( AnyRelax ) THEN
-        Relax(1:1) = ListGetReal( BodyForce,'Mesh Relax',1,NodeIndex,Found)
+        Relax(1:1) = ListGetReal( ValueList,'Mesh Relax',1,NodeIndex,Found)
         IF( Found ) dx = Relax(1) * dx
       END IF
 

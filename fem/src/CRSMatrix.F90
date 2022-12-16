@@ -295,21 +295,24 @@ CONTAINS
 !>    Fill in the column number to a CRS format matrix (values are not 
 !>    affected in any way).
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_MakeMatrixIndex( A,i,j )
+  SUBROUTINE CRS_MakeMatrixIndex( A,i,j,prev )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A  !< Structure holding matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
+    INTEGER, OPTIONAL :: prev
 !------------------------------------------------------------------------------
 
-    INTEGER :: k,n
+    INTEGER :: k,l,n
     INTEGER, POINTER :: Cols(:),Rows(:)
 
     Rows   => A % Rows
     Cols   => A % Cols
 
     n = Rows(i)
-    DO k=Rows(i),Rows(i+1)-1
+    l = Rows(i)
+    IF(PRESENT(prev)) l=prev+1
+    DO k=l,Rows(i+1)-1
       IF ( Cols(k) == j ) THEN
         RETURN
       ELSE IF ( Cols(k) < 1 ) THEN
@@ -325,6 +328,7 @@ CONTAINS
     END IF
 
     Cols(n) = j
+    IF(PRESENT(prev)) prev=n
   END SUBROUTINE CRS_MakeMatrixIndex
 !------------------------------------------------------------------------------
 
@@ -333,11 +337,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a given value to an element of a  CRS format matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_AddToMatrixElement( A,i,j,val )
+  SUBROUTINE CRS_AddToMatrixElement( A,i,j,val,previ )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A     !< Structure holding the matrix
     INTEGER, INTENT(IN) :: i         !< row number of the matrix element
     INTEGER, INTENT(IN) :: j         !< column number of the matrix element
+    INTEGER, INTENT(INOUT), OPTIONAL :: previ     !< speed sequential access
     REAL(KIND=dp), INTENT(IN) :: val   !< value to be added to the matrix element
  !------------------------------------------------------------------------------
     INTEGER :: k
@@ -358,16 +363,26 @@ CONTAINS
     Values => A % Values
 
     IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
-      k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
-      IF ( k==0 .AND. val/=0 ) THEN
-        CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
-        CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
-        CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
-        CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
-        A % FORMAT = MATRIX_LIST
+      IF(PRESENT(Previ)) THEN
+        k = previ+1
+        DO WHILE(k<Rows(i+1)-1)
+          IF(Cols(k)==j) EXIT
+          k = k+1 
+        END DO
+        previ = k
+        IF(Cols(k)/=j) RETURN
+      ELSE
+        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
+        IF ( k==0 .AND. val/=0 ) THEN
+          CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+          CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
+          CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
+          CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
+          A % FORMAT = MATRIX_LIST
+        END IF
+        IF ( k==0 ) RETURN
+        k = k + Rows(i) - 1
       END IF
-      IF ( k==0 ) RETURN
-      k = k + Rows(i) - 1
     ELSE
       k = Diag(i)
     END IF

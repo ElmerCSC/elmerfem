@@ -1596,7 +1596,7 @@ CONTAINS
         END IF
 
         IF( ListGetLogical( SolverParams,'Radiation Solver',Found ) ) THEN
-          CALL RadiationFactors( Solver, .TRUE.)
+          CALL RadiationFactors( Solver, .TRUE., .FALSE.)
         END IF
         
         BandwidthOptimize = ListGetLogical( SolverParams, &
