@@ -966,12 +966,12 @@ END BLOCK
         HaveFriction, HaveNormal, FrictionNewton, FrictionNormal, Found, Stat, HaveFSSA, FoundLoad
     REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho
     REAL(KIND=dp) :: SlipCoeff(3), SurfaceTraction(3), Normal(3), Tangent(3), Tangent2(3), &
-        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim)
+        Vect(3), Velo(3), ut_eps, TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
-        FSSAtheta_h, Dens_h, Load_h(3)
+        FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
     TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
     TYPE(ValueList_t), POINTER :: BC    
     
@@ -1007,10 +1007,11 @@ END BLOCK
       IF(.NOT. Found) str = 'Normal Vector'
       CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
       CALL ListInitElementVariable( Velo_v )
-      CALL ListInitElementKeyword( Dens_h,'Material','Density')  
-      CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')      
-      CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')      
-      CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3') 
+      CALL ListInitElementKeyword( Dens_h,'Material','Density')
+      DO i=1,dim 
+        CALL ListInitElementKeyword( Load_h(i),'Body Force','Flow Bodyforce '//I2S(i))
+      END DO
+      CALL ListInitElementKeyword( FSSAaccum_h,'Boundary Condition','FSSA Accumulation')
       InitHandles = .FALSE.
     END IF
     
@@ -1245,7 +1246,8 @@ END BLOCK
 
            
       ! Assemble given forces to r.h.s.
-      IF( HaveForce .OR. HavePres ) THEN
+      IF( HaveForce .OR. HavePres .OR. HaveFSSA ) THEN
+        FSSAaccum = ListGetElementReal( FSSAaccum_h, Basis, Element, GaussPoint = t )        
         IF ( NormalTangential ) THEN
           DO i=1,dim
             SELECT CASE(i)
@@ -1261,6 +1263,7 @@ END BLOCK
               DO j=1,dim
                 l = (q-1)*c + j
                 FORCE(l) = FORCE(l) + s * Basis(q) * SurfaceTraction(i) * Vect(j)
+                IF (i==1) FORCE(l) = FORCE(l) + s * FSSAtheta * dt * FSSAaccum * Basis(q) * LoadVec(j) 
               END DO
             END DO
           END DO
@@ -1269,6 +1272,7 @@ END BLOCK
             DO q=1,nd
               k = (q-1)*c + i
               FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
+              FORCE(k) = FORCE(k) + s * FSSAtheta * dt *  FSSAaccum * Basis(q) * LoadVec(i)
             END DO
           END DO
         END IF
@@ -1276,10 +1280,10 @@ END BLOCK
       
       !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
       !---------------------------------------------------------------
-      ! version 1
+     
       IF ( HaveFSSA ) THEN
         SELECT CASE(FSSAFlag)
-          ! approximation with normal pointing into z-direction
+          ! version 1,  approximation with normal pointing into z-direction
         CASE ('normal')          
           DO p=1,nd
             DO q=1,nd
@@ -1290,7 +1294,7 @@ END BLOCK
               END DO
             END DO
           END DO
-        ! version 2, transposed
+          ! version 2, transposed
         CASE ('transposed')
           DO p=1,nd
             DO q=1,nd
@@ -1315,16 +1319,16 @@ END BLOCK
             END DO
           END DO          
         CASE DEFAULT
-          
+
         END SELECT
-        
+
       END IF
-  END DO
+    END DO
       
      
-  CALL DefaultUpdateEquations( STIFF, FORCE )
+    CALL DefaultUpdateEquations( STIFF, FORCE )
 
-END SUBROUTINE LocalBoundaryMatrix
+  END SUBROUTINE LocalBoundaryMatrix
 
   
 END MODULE IncompressibleLocalForms
