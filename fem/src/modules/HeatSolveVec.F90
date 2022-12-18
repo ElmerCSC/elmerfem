@@ -1219,7 +1219,8 @@ CONTAINS
       IF(Refl1 < EPSILON(Refl1) ) THEN
         CALL Fatal(Caller,'Radiosity Model does not work for zero reflectivity (emissivity one)!')
       END IF
-      Emis1 = Emis1 / Refl1
+
+      IF(.NOT.Spectral ) Emis1 = Emis1 / Refl1
 
       IF(Newton) THEN
         RadiosityLoad = (Fact(1) - Fact(2)*SUM(NodalTemp(1:n))/n)  
@@ -1252,7 +1253,7 @@ CONTAINS
 
         TempAtIp = SUM(NodalTemp(1:n))/n
         RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz
-        RadLoadAtIp = Emis1 * (3*TempAtIp**4+Text0**4) * StefBoltz
+        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz
 
         DO p=1,n
           DO q=1,n
