@@ -1754,7 +1754,7 @@
              END IF
 
              IF (AccurateNewton ) THEN
-               RHS_d(i) = 4*RHS(i)/Temp - q*RelAreas(i)*e_d*Black ! + the nonlinear term -A'*J
+               RHS_d(i) = 4*RHS(i)/Temp - q*RelAreas(i)*e_d*Black ! +  -A'*J (below)
              END IF
            END IF
 
@@ -1779,17 +1779,26 @@
            tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
          ELSE IF( AccurateNewton ) THEN
            CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
+
+           DO i=1,RadiationSurfaces
+             s = 0._dp
+             DO j=1,ViewFactors(i) % NumberOfFactors
+               colj = InvElementNumbers(Cols(j)-j0)
+               s = s + Vals(j)*tmpSOL(colj)
+             END DO
+             tmpSOL_d(i) = tmpSOL_d(i) + s*Emissivity_d(i)
+           END DO
          END IF
          
          ! Cumulative radiosity         
-         tmpSOL = tmpSOL * Emissivity / (1-Emissivity) 
+         tmpSOL = tmpSOL * Emissivity/(1-Emissivity) 
          SOL = SOL + tmpSOL
 
          EffAbs = EffAbs + Emissivity * tmpSOL 
          EffTemp = EffTemp + Trad * tmpSOL
          
          IF( Newton ) THEN
-           SOL_d = SOL_d + tmpSOL_d * Emissivity / (1-Emissivity)
+           SOL_d = SOL_d + tmpSOL_d*Emissivity/(1-Emissivity)
          END IF
        END DO
 
