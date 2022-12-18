@@ -1754,7 +1754,7 @@
              END IF
 
              IF (AccurateNewton ) THEN
-               RHS_d(i) = 4*RHS(i)/Temp - q*e_d * black**4 ! + the nonlinear term -A'*J
+               RHS_d(i) = 4*RHS(i)/Temp - q*RelAreas(i)*e_d*Black**4 ! + the nonlinear term -A'*J
              END IF
            END IF
 
