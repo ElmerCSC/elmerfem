@@ -1080,7 +1080,8 @@
            END DO
          END IF
 
-         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp) 
+         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp, &
+                  dFdx=Emissivity_d(i), eps=1.0d-1) 
        END DO
        
      END SUBROUTINE TabulateSpectralEmissivity
@@ -1730,7 +1731,7 @@
            DO j=1,ViewFactors(i) % NumberOfFactors
              Colj = InvElementNumbers(Cols(j)-j0)
              
-             s = r*Vals(j)
+             s = Vals(j)
              IF(FullMatrix) THEN
                GFactorFull(i,colj) = GFactorFull(i,colj) + s
              ELSE
@@ -1745,26 +1746,25 @@
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
-             RHS(i) = -q * e * RelAreas(i) * Black
+             RHS(i) = -q * e/r * RelAreas(i) * Black
+             IF (AccurateNewton) THEN
+               RHS_d(i) = 4*RHS(i)/Temp  ! - q*RelAreas(i)*e*e_d/r**2*Black ! +  -A'*J (below)
+             END IF
 
              s = -q*e**2/r*Black
              SOL(i) = SOL(i) + s
              IF(Newton) THEN
-               SOL_d(i) = SOL_d(i) + 4*s/Temp  - q*e*e_d*(2-e)/(1-e)**2*Black
-             END IF
-
-             IF (AccurateNewton ) THEN
-               RHS_d(i) = 4*RHS(i)/Temp - q*RelAreas(i)*e_d*Black ! +  -A'*J (below)
+               SOL_d(i) = SOL_d(i) + 4*s/Temp ! - q*e*e_d*(2-e)/r**2*Black
              END IF
            END IF
 
            ! Matrix assembly 
            IF(FullMatrix) THEN
-             GFactorFull(i,i) = GFactorFull(i,i) - RelAreas(i)
+             GFactorFull(i,i) = GFactorFull(i,i) - RelAreas(i)/r
            ELSE
-             CALL CRS_AddToMatrixElement(GFactorSP, i, i, -RelAreas(i))
+             CALL CRS_AddToMatrixElement(GFactorSP, i, i, -RelAreas(i)/r)
            END IF
-           Diag(i) = Diag(i) + RelAreas(i)
+           Diag(i) = Diag(i) + RelAreas(i)/r
          END DO
 
          ! This is a checksum since integration over all temperature intervals should go through all the
@@ -1779,16 +1779,8 @@
            tmpSOL_d = (4.0_dp/Trad) * tmpSOL             
          ELSE IF( AccurateNewton ) THEN
            CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
-
-           DO i=1,RadiationSurfaces
-             s = 0._dp
-             DO j=1,ViewFactors(i) % NumberOfFactors
-               colj = InvElementNumbers(Cols(j)-j0)
-               s = s + Vals(j)*tmpSOL(colj)
-             END DO
-             tmpSOL_d(i) = tmpSOL_d(i) + s*Emissivity_d(i)
-           END DO
          END IF
+!        IF ( Newton ) TmpSOL_d = tmpSOL_d - Emissivity_d/(1-Emissivity)**2*tmpSOL ! -A'J
          
          ! Cumulative radiosity         
          tmpSOL = tmpSOL * Emissivity/(1-Emissivity) 
