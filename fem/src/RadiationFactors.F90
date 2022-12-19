@@ -84,7 +84,7 @@
      REAL (KIND=dp), POINTER :: Vals(:), Wrk(:,:), Temperature(:)
 
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), SOL_d(:), RHS(:), RHS_d(:), Fac(:), RowSums(:), &
-             Reflectivity(:), Emissivity(:), Emissivity_d(:), Areas(:), RelAreas(:), Diag(:), Temp_Elem(:)
+             Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:), Temp_Elem(:)
 
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, Tol, &
@@ -632,14 +632,12 @@
      MatrixEntries = 0
      ImplicitEntries = 0
 
-     ALLOCATE(Emissivity(RadiationSurfaces), Emissivity_d(RadiationSurfaces), &
-                Reflectivity(RadiationSurfaces), STAT=istat)
+     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
   
      Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
      IF(.NOT. GotIt) Emissivity = 0.5_dp
      Reflectivity = 1-Emissivity
-     Emissivity_d = 0._dp
 
      IF(.NOT. ( ConstantEmissivity .OR. Spectral ) ) THEN
        DO i=1,RadiationSurfaces
@@ -1043,10 +1041,9 @@
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
      !------------------------------------------------------------------------------
-     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Emissivity_d,Trad)
-       REAL(KIND=dp) :: Emissivity(:), Emissivity_d(:)
+     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Trad)
        REAL(KIND=dp) :: Trad
-
+       REAL(KIND=dp) :: Emissivity(:)
        
        TYPE(ValueList_t), POINTER :: Vlist
        TYPE(Element_t), POINTER :: Element, Parent
@@ -1080,8 +1077,7 @@
            END DO
          END IF
 
-         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp, &
-                  dFdx=Emissivity_d(i), eps=1.0d-1) 
+         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
        END DO
        
      END SUBROUTINE TabulateSpectralEmissivity
@@ -1586,7 +1582,7 @@
        REAL(KIND=dp) :: q, qsum, totsum, bscal, r,e,e_d, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: tmpSOL(:), tmpSOL_d(:), EffAbs(:), EffTemp(:)
 
-       LOGICAL :: RBC, ApproxNewton, AccurateNewton
+       LOGICAL :: RBC, ApproxNewton, AccurateNewton, UsedEdT
        REAL(KIND=dp), POINTER :: RadiatorCoords(:,:), rWrk(:,:)
        TYPE(ValueList_t), POINTER :: RadList
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), RadiatorTemps(:)
@@ -1679,7 +1675,7 @@
        EffTemp = 0.0_dp
        
        totsum = 0.0_dp
-              
+
        DO k = kmin, kmax
 
          qsum = 0.0_dp         
@@ -1713,7 +1709,8 @@
          
          ! This is the temperature under study for which we will get the emissivities for. 
          Trad = k*dT         
-         CALL TabulateSpectralEmissivity(Emissivity,Emissivity_d,Trad)
+         CALL TabulateSpectralEmissivity(Emissivity,Trad)
+
 
          DO i=1,RadiationSurfaces
            
@@ -1723,7 +1720,6 @@
            
            r = 1-Emissivity(i)
            e = Emissivity(i)
-           e_d = Emissivity_d(i)
            Temp = Temp_Elem(i)
            Black = Sigma * Temp**4
 
@@ -1731,7 +1727,7 @@
            DO j=1,ViewFactors(i) % NumberOfFactors
              Colj = InvElementNumbers(Cols(j)-j0)
              
-             s = Vals(j)
+             s = r*Vals(j)
              IF(FullMatrix) THEN
                GFactorFull(i,colj) = GFactorFull(i,colj) + s
              ELSE
@@ -1746,25 +1742,21 @@
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
-             RHS(i) = -q * e/r * RelAreas(i) * Black
-             IF (AccurateNewton) THEN
-               RHS_d(i) = 4*RHS(i)/Temp  ! - q*RelAreas(i)*e*e_d/r**2*Black ! +  -A'*J (below)
-             END IF
+             RHS(i) = -q * e * RelAreas(i) * Black
+             IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp  
 
              s = -q*e**2/r*Black
              SOL(i) = SOL(i) + s
-             IF(Newton) THEN
-               SOL_d(i) = SOL_d(i) + 4*s/Temp ! - q*e*e_d*(2-e)/r**2*Black
-             END IF
+             IF(Newton) SOL_d(i) = SOL_d(i) + 4*s/Temp 
            END IF
 
            ! Matrix assembly 
            IF(FullMatrix) THEN
-             GFactorFull(i,i) = GFactorFull(i,i) - RelAreas(i)/r
+             GFactorFull(i,i) = GFactorFull(i,i) - RelAreas(i)
            ELSE
-             CALL CRS_AddToMatrixElement(GFactorSP, i, i, -RelAreas(i)/r)
+             CALL CRS_AddToMatrixElement(GFactorSP, i, i, -RelAreas(i))
            END IF
-           Diag(i) = Diag(i) + RelAreas(i)/r
+           Diag(i) = Diag(i) + RelAreas(i)
          END DO
 
          ! This is a checksum since integration over all temperature intervals should go through all the
@@ -1780,7 +1772,6 @@
          ELSE IF( AccurateNewton ) THEN
            CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
          END IF
-!        IF ( Newton ) TmpSOL_d = tmpSOL_d - Emissivity_d/(1-Emissivity)**2*tmpSOL ! -A'J
          
          ! Cumulative radiosity         
          tmpSOL = tmpSOL * Emissivity/(1-Emissivity) 
@@ -1790,7 +1781,7 @@
          EffTemp = EffTemp + Trad * tmpSOL
          
          IF( Newton ) THEN
-           SOL_d = SOL_d + tmpSOL_d*Emissivity/(1-Emissivity)
+           SOL_d = SOL_d + tmpSOL_d * Emissivity/(1-Emissivity)
          END IF
        END DO
 
@@ -1844,7 +1835,7 @@
              GFactorSP % Values = 0.0_dp
            END IF
            
-           CALL TabulateSpectralEmissivity(Emissivity,Emissivity_d,Trad)
+           CALL TabulateSpectralEmissivity(Emissivity,Trad)
 
            DO i=1,RadiationSurfaces
              Element => Model % Elements(ElementNumbers(i))
@@ -1888,8 +1879,8 @@
            ! Cumulative radiosity
            tmpSOL = tmpSOL * Emissivity / (1-Emissivity) 
            SOL = SOL + tmpSOL
-           EffAbs = EffAbs + Emissivity * tmpSOL 
            EffTemp = EffTemp + Trad * tmpSOL
+           EffAbs = EffAbs + Emissivity * tmpSOL 
          END DO
        END IF
        
