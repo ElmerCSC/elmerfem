@@ -2292,8 +2292,6 @@ CONTAINS
    !--------------------------------------------------------------------
    CALL CreateDiscontMesh(Model,Mesh)
 
-   !CALL CreateIntersectionBCs(Model,Mesh)
-  
    ! Deallocate some stuff no longer needed
    !------------------------------------------------------------------
    CALL LoadMeshStep( 6 )
@@ -2706,7 +2704,9 @@ CONTAINS
    CALL EnlargeCoordinates( Mesh ) 
 
    CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
-     
+
+   CALL TagBCsUsingLevelset(Model, Mesh)
+   
    CALL GeneratePeriodicProjectors( Model, Mesh )    
    
    IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
@@ -26994,6 +26994,132 @@ CONTAINS
     
   END SUBROUTINE CreateIntersectionBCs
 
+
+
+  !> Tag levelset by giving levelset function that the boundary must meet.
+  !> Also may require that the parent is either positive or negative in that levelset.
+  !-------------------------------------------------------------------
+  SUBROUTINE TagBCsUsingLevelset(Model, Mesh)
+
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Element_t), POINTER :: Element, Parent
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,j,k,n,m,t,t0,nc,np
+    INTEGER :: bc_ind, pSign, dim, BCsTagged
+    TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp) :: Coord(3), eps, val, rad
+    LOGICAL :: Found, Hit
+    CHARACTER(*), PARAMETER :: Caller = 'TagBCsUsingLevelset'
+     
+    
+    ! Nothing to do with any boundary   
+    IF(.NOT. ListCheckPresentAnyBC( Model,'Target Levelset') ) RETURN
+
+    CALL Info(Caller,'Tagging BCs using levelset condition')
+    
+    dim = Mesh % MeshDim
+    BCsTagged = 0
+    t0 = Mesh % NumberOfBulkElements
+
+    m = 0
+    n = 0
+    DO t=1, Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t0+t)      
+      IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) m=m+1
+      IF(Element % BoundaryInfo % Constraint == 0) n=n+1
+    END DO
+    CALL Info(Caller,'Number of unconstrained boundary elements: '//TRIM(I2S(n)))
+    
+    
+    DO bc_ind = 1, Model % NumberOfBCs
+      BC => Model % BCs(bc_ind) % Values
+
+      !PRINT *,'bc tag:',bc_ind, Model % BCs(bc_ind) % Tag
+      
+      ! Nothing to do with this boundarty
+      IF( .NOT. ListCheckPresent(BC,'Target Levelset') ) CYCLE
+      CALL Info(Caller,'Trying to tag elements to boundary: '//TRIM(I2S(bc_ind)))
+      BCsTagged = 0
+      
+      ! Should we check the sign of the parent too?
+      pSign = ListGetInteger(BC,'Target Levelset Parent Sign',Found )
+      IF(Found) THEN
+        IF(ABS(pSign) /= 1 ) THEN
+          CALL Fatal(Caller,'"Target Levelset Parent Sign" should be either 1 or -1')
+        END IF
+      END IF        
+
+      eps = ListGetCReal(BC,'Target Levelset Epsilon',Found )
+      IF(.NOT. Found) eps = 1.0e-6
+      
+      DO t=1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(t0+t)
+
+        IF(Element % BoundaryInfo % Constraint > 0) CYCLE
+        
+        ! Number of corners
+        nc = Element % TYPE % ElementCode / 100
+        Hit = .TRUE.
+
+        DO i=1,nc
+          j = Element % NodeIndexes(i)
+          Coord(1) = Mesh % Nodes % x(j)
+          Coord(2) = Mesh % Nodes % y(j)
+          Coord(3) = Mesh % Nodes % z(j)
+          
+          val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim) 
+          IF(ABS(val) > eps) THEN
+            Hit = .FALSE.            
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Hit) CYCLE
+              
+        IF(pSign /= 0) THEN
+          Parent => Element % BoundaryInfo % Left
+          IF(ASSOCIATED(Parent)) THEN
+            IF(ASSOCIATED(Element % BoundaryInfo % Right)) THEN
+              CALL Fatal(Caller,'Cannot check levelset parent if we have two parents!?')
+            END IF
+          ELSE
+            Parent => Element % BoundaryInfo % Right
+            IF(.NOT. ASSOCIATED(Parent)) THEN
+              CALL Fatal(Caller,'Need parent to check parent condition!')
+            END IF
+          END IF
+                      
+          ! Number of corners, in 3D we must treat tets, pyramids, and wedges.
+          np = Parent % TYPE % ElementCode / 100
+          IF(np >= 5 .AND. np <= 7) np = np-1
+
+          DO i=1,np
+            j = Parent % NodeIndexes(i)
+            IF(ANY(Element % NodeIndexes(1:nc) == j)) CYCLE
+
+            ! Use the 1st non-boundary corner node to test the condition
+            Coord(1) = Mesh % Nodes % x(j)
+            Coord(2) = Mesh % Nodes % y(j)
+            Coord(3) = Mesh % Nodes % z(j)
+            val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim) 
+            IF( val*pSign < 0.0_dp ) Hit = .FALSE.
+            ! One node is representative
+            EXIT
+          END DO
+          IF(.NOT. Hit) CYCLE
+        END IF
+        
+        Element % BoundaryInfo % Constraint = Model % BCs(bc_ind) % Tag !bc_ind
+        BCsTagged = BCsTagged + 1
+      END DO
+
+      CALL Info(Caller,'Number of boundary elements tagged to '&
+          //TRIM(I2S(bc_ind))//' is: '//TRIM(I2S(BCsTagged)),Level=7)
+    END DO
+    
+  END SUBROUTINE TagBCsUsingLevelset
+    
   
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
