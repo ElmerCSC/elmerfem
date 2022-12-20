@@ -666,7 +666,7 @@ CONTAINS
           Element => Mesh % Elements(i)
 
           IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
-          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % RadiationFactors) ) CYCLE
           
           n = Element % Type % NumberOfNodes
           maxnodes = MAX( n, maxnodes )
@@ -680,10 +680,10 @@ CONTAINS
           Element => Mesh % Elements(i)
 
           IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
-          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % RadiationFactors) ) CYCLE
 
           NumberOfFactors = Element % BoundaryInfo % &
-              GebhardtFactors % NumberOfImplicitFactors
+              RadiationFactors % NumberOfImplicitFactors
           IF(NumberOfFactors == 0 ) CYCLE
           
           n = Element % Type % NumberOfNodes
@@ -712,7 +712,7 @@ CONTAINS
             DO n=1,NumberOfFactors
 
               Elm => Mesh % Elements( Element % BoundaryInfo % &
-                  GebhardtFactors % Elements(n) )
+                  RadiationFactors % Elements(n) )
 
               IF( DgSolver ) THEN
                 CALL DgRadiationIndexes(Elm,Elm % TYPE % NumberOfNodes,ElemInds2,.TRUE.)
@@ -1463,17 +1463,17 @@ CONTAINS
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
           Element => Mesh % Elements(i)
-          IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
+          IF ( ASSOCIATED(Element % BoundaryInfo % RadiationFactors) ) THEN
              DO j=1,Element % TYPE % NumberOfNodes
                 k1 = Reorder(Element % NodeIndexes(j))
 
                 NumberOfFactors = Element % BoundaryInfo % &
-                  GebhardtFactors % NumberOfImplicitFactors
+                  RadiationFactors % NumberOfImplicitFactors
 
                 DO n=1,NumberOfFactors
 
                   Elm => Mesh % Elements( Element % BoundaryInfo % &
-                              GebhardtFactors % Elements(n) )
+                              RadiationFactors % Elements(n) )
 
                   DO k=1,Elm % TYPE % NumberOfNodes
                      k2 = Reorder( Elm % NodeIndexes(k) )

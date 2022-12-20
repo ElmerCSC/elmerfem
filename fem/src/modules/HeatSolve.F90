@@ -182,7 +182,7 @@
      CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
      
 !------------------------------------------------------------------------------
-!    The View and Gebhardt factors may change. If this is necessary, this is 
+!    The View and Gebhart factors may change. If this is necessary, this is 
 !    done within this subroutine. The routine is called in the
 !    start as it may affect the matrix topology.
 !    Newton lineariarization option is needed only when there is radiation.
@@ -1585,15 +1585,15 @@ CONTAINS
 !       radiated from.
 !------------------------------------------------------------------------------
 
-        ElementList => Element % BoundaryInfo % GebhardtFactors % Elements
+        ElementList => Element % BoundaryInfo % RadiationFactors % Elements
 
-        nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+        nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
 
         bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
         Area  = Areas(bindex)
         CALL GetBase( Base, Element, n, ElementNodes )
 
-        Fact => Element % BoundaryInfo % GebhardtFactors % Factors
+        Fact => Element % BoundaryInfo % RadiationFactors % Factors
 
         DO j=1,nf
 
@@ -1607,15 +1607,15 @@ CONTAINS
           Asum = Asum + Text
 
 !------------------------------------------------------------------------------
-!         Gebhardt factors are given elementwise at the center
+!         Gebhart factors are given elementwise at the center
 !         of the element, so take average of nodal temperatures
 !         (or integrate over surface j)
 !------------------------------------------------------------------------------
 
           k = RadiationElement % TYPE % NumberOfNodes
-          ImplicitFactors = Element % BoundaryInfo % GebhardtFactors % NumberOfImplicitFactors
+          ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors
           IF(ImplicitFactors == 0) &
-              ImplicitFactors = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+              ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
 
           IF(j <= ImplicitFactors) THEN
             

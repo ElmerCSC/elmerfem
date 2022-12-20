@@ -899,7 +899,7 @@ CONTAINS
     NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
 
     IF ( Solver % Variable % Name == 'temperature' ) THEN
-       Name = ListGetString( Model % Simulation, 'Gebhardt Factors', Found )
+       Name = ListGetString( Model % Simulation, 'Gebhart Factors', Found )
        IF ( Found ) THEN
           MeshCommand = 'View ' // TRIM(OutputPath) // &
                 '/' // TRIM(Mesh % Name) // ' ' // TRIM(Path)
@@ -909,7 +909,7 @@ CONTAINS
           Name = TRIM(OutputPath) // '/' // &
                        TRIM(Mesh % Name) // '/' // TRIM(Name)
 
-          CALL LoadGebhardtFactors( NewMesh, TRIM(Name) )
+          CALL LoadGebhartFactors( NewMesh, TRIM(Name) )
        END IF
     END IF
 
@@ -1467,7 +1467,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
                   RefElement % BoundaryInfo
 
              NULLIFY( NewMesh % Elements(NewElCnt) % &
-                Boundaryinfo % GebhardtFactors )
+                Boundaryinfo % RadiationFactors )
                
              CALL SetParents( NewMesh % Elements(NewElCnt), &
                   NewMesh, Children, Edge )
@@ -1491,7 +1491,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
                   RefElement % BoundaryInfo
 
              NULLIFY( NewMesh % Elements(NewElCnt) % &
-                Boundaryinfo % GebhardtFactors )
+                Boundaryinfo % RadiationFactors )
 
              CALL SetParents( NewMesh % Elements(NewElCnt), &
                   NewMesh, Children, Edge )
@@ -1514,7 +1514,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
                   RefElement % BoundaryInfo
 
              NULLIFY( NewMesh % Elements(NewElCnt) % &
-                Boundaryinfo % GebhardtFactors )
+                Boundaryinfo % RadiationFactors )
             
              CALL SetParents( NewMesh % Elements(NewElCnt), &
                   NewMesh, Children, Edge )
@@ -1541,7 +1541,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
                RefElement % BoundaryInfo
  
           NULLIFY( NewMesh % Elements(NewElCnt) % &
-             Boundaryinfo % GebhardtFactors )
+             Boundaryinfo % RadiationFactors )
 
           NULLIFY( NewMesh % Elements(NewElCnt) % BoundaryInfo % Left )
           NULLIFY( NewMesh % Elements(NewElCnt) % BoundaryInfo % Right )
@@ -1573,11 +1573,11 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
     END DO
 
 !
-!   Update Gebhardt factors, if present and the current solver
+!   Update Gebhart factors, if present and the current solver
 !   is a heat equation solver:
 !   ------------------------------------------------------------
     IF ( ListGetString( Solver % Values, 'Equation' ) == 'heat equation' ) &
-         CALL UpdateGebhardtFactors( RefMesh, NewMesh, Children )
+         CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
 
     WRITE( Message, * ) 'Bndry element tables generation time (cpu-secs): ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
@@ -1766,7 +1766,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE UpdateGebhardtFactors( RefMesh,NewMesh,Children ) 
+  SUBROUTINE UpdateGebhartFactors( RefMesh,NewMesh,Children ) 
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: RefMesh,NewMesh
     INTEGER :: Children(:,:)
@@ -1781,7 +1781,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
     DO i=RefMesh % NumberOfBulkElements+1,RefMesh % NumberOfBulkElements + &
          RefMesh % NumberOfBoundaryElements
 
-       Factors => RefMesh % Elements(i) % BoundaryInfo % GebhardtFactors
+       Factors => RefMesh % Elements(i) % BoundaryInfo % RadiationFactors
        IF ( .NOT. ASSOCIATED( Factors ) ) CYCLE
 
        NewFactors = 0
@@ -1795,19 +1795,19 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
        END DO
 
        IF (.NOT.ASSOCIATED(NewMesh % Elements(Children(i,1)) % &
-                BoundaryInfo % GebhardtFactors) ) &
-         ALLOCATE(NewMesh % Elements(Children(i,1)) % BoundaryInfo % GebhardtFactors)
+                BoundaryInfo % RadiationFactors) ) &
+         ALLOCATE(NewMesh % Elements(Children(i,1)) % BoundaryInfo % RadiationFactors)
 
        NewMesh % Elements(Children(i,1)) % BoundaryInfo % &
-            GebhardtFactors % NumberOfFactors = NewFactors
+            RadiationFactors % NumberOfFactors = NewFactors
 
        IF ( Children(i,2) > 0 ) THEN
           IF (.NOT.ASSOCIATED(NewMesh % Elements(Children(i,2)) % &
-                BoundaryInfo % GebhardtFactors) ) &
-            ALLOCATE(NewMesh % Elements(Children(i,2)) % BoundaryInfo % GebhardtFactors)
+                BoundaryInfo % RadiationFactors) ) &
+            ALLOCATE(NewMesh % Elements(Children(i,2)) % BoundaryInfo % RadiationFactors)
 
           NewMesh % Elements(Children(i,2)) % BoundaryInfo % &
-               GebhardtFactors % NumberOfFactors = NewFactors
+               RadiationFactors % NumberOfFactors = NewFactors
        END IF
     END DO
 
@@ -1817,7 +1817,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
     DO i=RefMesh % NumberOfBulkElements+1,RefMesh % NumberOfBulkElements + &
          RefMesh % NumberOfBoundaryElements
 
-       Factors => RefMesh % Elements(i) % BoundaryInfo % GebhardtFactors
+       Factors => RefMesh % Elements(i) % BoundaryInfo % RadiationFactors
        IF ( .NOT. ASSOCIATED( Factors ) ) CYCLE
 
        AreaParent = ElementArea( RefMesh, RefMesh % Elements(i), &
@@ -1828,7 +1828,7 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
        AreaChild  = ElementArea( NewMesh, NewMesh % Elements(n), &
             NewMesh % Elements(n) % TYPE % NumberOfNodes )
 
-       ChildFactors => NewMesh % Elements(n) % BoundaryInfo % GebhardtFactors
+       ChildFactors => NewMesh % Elements(n) % BoundaryInfo % RadiationFactors
 
        CALL UpdateChildFactors( AreaParent, Factors, &
             AreaChild, ChildFactors, Children )
@@ -1840,14 +1840,14 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
                NewMesh % Elements(n) % TYPE % NumberOfNodes )
 
           ChildFactors => NewMesh % Elements(n) % &
-               BoundaryInfo % GebhardtFactors
+               BoundaryInfo % RadiationFactors
 
           CALL UpdateChildFactors( AreaParent, Factors, &
                AreaChild, ChildFactors, Children )
        END IF
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE UpdateGebhardtFactors
+  END SUBROUTINE UpdateGebhartFactors
 !------------------------------------------------------------------------------
 
 

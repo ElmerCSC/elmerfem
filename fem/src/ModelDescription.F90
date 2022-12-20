@@ -2221,12 +2221,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Loads the Gebhardt factors needed in the radiation heat transfer.
+!> Loads the Gebhart factors needed in the radiation heat transfer.
 !> This may be done externally only when the emissivities are constant.
-!> Hence there is a internal computation of Gebhardt factors that is highly optimized.
+!> Hence there is a internal computation of Gebhart factors that is highly optimized.
 !> \deprecated
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadGebhardtFactors( Mesh,FileName )
+  SUBROUTINE LoadGebhartFactors( Mesh,FileName )
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(LEN=*) FileName
@@ -2247,7 +2247,7 @@ CONTAINS
     END IF
     OPEN( 1,file = TRIM(FName),err=10 )
 
-    CALL Info( 'LoadGebhardtFactors', 'Start', Level=5 )
+    CALL Info( 'LoadGebhartFactors', 'Start', Level=5 )
 
     READ(1,*) n
     ALLOCATE( mapping(n) )
@@ -2262,23 +2262,23 @@ CONTAINS
         k = mapping(k)
         l = mapping(l)
         IF ( .NOT.ASSOCIATED( &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors) ) THEN
-          ALLOCATE( mesh % elements(k) % boundaryinfo % gebhardtfactors )
+          mesh % elements(k) % boundaryinfo % RadiationFactors) ) THEN
+          ALLOCATE( mesh % elements(k) % boundaryinfo % RadiationFactors )
           ALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(m), &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(m) )
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors = m
-        ELSE IF ( mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors/=m ) THEN
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors(m), &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements(m) )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors = m
+        ELSE IF ( mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors/=m ) THEN
           DEALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors, &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors, &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements )
           ALLOCATE(  &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(m), &
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(m) )
-          mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors = m
+          mesh % elements(k) % boundaryinfo % RadiationFactors % factors(m), &
+          mesh % elements(k) % boundaryinfo % RadiationFactors % elements(m) )
+          mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors = m
         END IF
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % numberofimplicitfactors = &
-            mesh % elements(k) % boundaryinfo % gebhardtfactors % numberoffactors
+        mesh % elements(k) % boundaryinfo % RadiationFactors % numberofimplicitfactors = &
+            mesh % elements(k) % boundaryinfo % RadiationFactors % numberoffactors
       END DO
     END DO
 
@@ -2296,24 +2296,24 @@ CONTAINS
         READ(1,*) k,l,s
         k = mapping(k)
         l = mapping(l)
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % elements(j) = l
-        mesh % elements(k) % boundaryinfo % gebhardtfactors % factors(j)  = s
+        mesh % elements(k) % boundaryinfo % RadiationFactors % elements(j) = l
+        mesh % elements(k) % boundaryinfo % RadiationFactors % factors(j)  = s
       END DO
     END DO
 
     DEALLOCATE(mapping)
     CLOSE(1)
 
-    CALL Info( 'LoadGebhardtFactors', '...Done', Level=5 )
+    CALL Info( 'LoadGebhartFactors', '...Done', Level=5 )
 
     RETURN
 
 10  CONTINUE
 
-    WRITE( Message, * ) 'Can not open file for GebhardtFactors: ',TRIM(FileName)
-    CALL Fatal( 'LoadGebhardtFactors', Message )
+    WRITE( Message, * ) 'Can not open file for GebhartFactors: ',TRIM(FileName)
+    CALL Fatal( 'LoadGebhartFactors', Message )
 
-  END SUBROUTINE LoadGebhardtFactors
+  END SUBROUTINE LoadGebhartFactors
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

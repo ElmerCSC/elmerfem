@@ -504,7 +504,7 @@ CONTAINS
         n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         DO WHILE( t<= n )
           Element => Mesh % Elements(t)
-          IF ( ASSOCIATED( Element % BoundaryInfo % GebhardtFactors) ) THEN
+          IF ( ASSOCIATED( Element % BoundaryInfo % RadiationFactors) ) THEN
              DO i=1,Element % TYPE % NumberOfNodes
                j = Element % NodeIndexes(i)
                IF ( Perm(j) == 0 ) THEN

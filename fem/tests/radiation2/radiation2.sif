@@ -69,7 +69,7 @@ Solver 1
   NonLinear System Convergence Tolerance = 1.0e-6
   Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Relaxation Factor = 0.7
-  Minimum Gebhardt Factor = 1.0e-10
+  Minimum Gebhart Factor = 1.0e-10
 End
 
 Equation 1

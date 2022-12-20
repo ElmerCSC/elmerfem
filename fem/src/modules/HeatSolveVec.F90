@@ -167,7 +167,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Solving energy equation for temperature')
 
-  ! The View and Gebhardt factors may change if the shape and/or emissivities
+  ! The View and Gebhart factors may change if the shape and/or emissivities
   ! have changed. The routine may also affect matrix topology.
   !---------------------------------------------------------------------------
   Mesh => GetMesh()
@@ -1173,17 +1173,17 @@ CONTAINS
     CALL GetElementNodes( Nodes, UElement=Element) 
     n = Element % TYPE % NumberOfNodes
     
-    IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
-      CALL Fatal(Caller,'Gebhardt factors not calculated for boundary!')
+    IF( .NOT. ASSOCIATED( Element % BoundaryInfo % RadiationFactors ) ) THEN
+      CALL Fatal(Caller,'Radiation factors not calculated for boundary!')
     END IF
     
-    Fact => Element % BoundaryInfo % GebhardtFactors % Factors
-    ElementList => Element % BoundaryInfo % GebhardtFactors % Elements
+    Fact => Element % BoundaryInfo % RadiationFactors % Factors
+    ElementList => Element % BoundaryInfo % RadiationFactors % Elements
 
     bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
-    nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+    nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
       
-    nf_imp = Element % BoundaryInfo % GebhardtFactors % NumberOfImplicitFactors      
+    nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors      
     IF( nf_imp == 0 ) nf_imp = nf
 
     ForceVector => Solver % Matrix % rhs
@@ -1279,7 +1279,7 @@ CONTAINS
           k = RadElement % TYPE % NumberOfNodes
           Fj = Fact(j)
   
-          ! Gebhardt factors are given elementwise at the center
+          ! Gebhart factors are given elementwise at the center
           ! of the element, so take average of nodal temperatures
           !-------------------------------------------------------------
           bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements

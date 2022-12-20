@@ -1907,15 +1907,15 @@ CONTAINS
 
       IF ( i > NBulk ) THEN
         IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
+          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % RadiationFactors)) THEN
             IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                 GebhardtFactors % Elements ) ) THEN
+                 RadiationFactors % Elements ) ) THEN
               DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Elements )
+                   RadiationFactors % Elements )
               DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Factors )
+                   RadiationFactors % Factors )
             END IF
-            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % RadiationFactors )
           END IF
           DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
         END IF
