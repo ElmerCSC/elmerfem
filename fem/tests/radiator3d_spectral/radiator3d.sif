@@ -181,5 +181,5 @@ Body Force 1
 End
 
 
-Solver 1 :: Reference Norm = 3.10647641E+02
-Solver 2 :: Reference Norm = 1.00067131E+03
+Solver 1 :: Reference Norm = 3.10640900E+02
+Solver 2 :: Reference Norm = 1000
