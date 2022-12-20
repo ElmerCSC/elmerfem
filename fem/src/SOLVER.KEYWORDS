@@ -1923,4 +1923,6 @@ bodyforce:real:      'radiator coordinates'
 bodyforce:real:      'radiator temperature'
 bodyforce:real:      'radiator power'
 bc:string:           'boundary detect'
+Simulation:Logical:  'Calculate Mesh Pieces'
+Simulation:Integer:  'Desired Mesh Pieces'
 
