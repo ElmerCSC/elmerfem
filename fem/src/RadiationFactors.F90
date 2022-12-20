@@ -1535,13 +1535,15 @@
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
 
-         IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-           rpower = SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
-         ELSE
-           rpower = 0._dp
+         IF(RBC) THEN
+           IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+             rpower = SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
+           ELSE
+             rpower = 0._dp
+           END IF
          END IF
 
-         r = Reflectivity(i)
+         r = 1-Emissivity(i)
          e = Emissivity(i)
          a = RelAreas(i)
          Temp = Temp_Elem(i)
@@ -1567,14 +1569,17 @@
            CALL CRS_AddToMatrixElement(GFactorSP, i, i, -a)
          END IF
 
-         RHS(i) = -a*e**2/r*Black - a*e*rpower
-         IF(Newton) RHS_d(i) = -a*e**2/r*Black*4/Temp
+         RHS(i) = -a*e*Black - a*r*rpower
+         IF(Newton) RHS_d(i) = -a*e*Black*4/Temp
        END DO
 
        CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL, RHS, Diag, Solver)
        IF( Newton ) THEN
          CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, SOL_d, RHS_d, Diag, Solver, Scaling=.FALSE.)
        END IF
+
+       SOL = SOL * Emissivity/(1-Emissivity)
+       IF(Newton) SOL_d = SOL_d * Emissivity/(1-Emissivity)
 
        DO i=1,RadiationSurfaces
          Element => Model % Elements(ElementNumbers(i))
@@ -1584,16 +1589,21 @@
            Element % BoundaryInfo % RadiationFactors => RadiosityFactors
            Element % BoundaryInfo % RadiationFactors % Elements => Null()
          END IF
+
          IF(.NOT.ASSOCIATED(RadiosityFactors % Elements)) THEN
-           ALLOCATE( RadiosityFactors % Elements(2) )
+           ALLOCATE( RadiosityFactors % Elements(1) )
            ALLOCATE( RadiosityFactors % Factors(2) )
          END IF
+
          RadiosityFactors % NumberOfFactors = 1
          RadiosityFactors % Elements(1) = ElementNumbers(i)
-         RadiosityFactors % Elements(2) = ElementNumbers(i)
 
-         RadiosityFactors % Factors(1)=SOL(i)
-         IF(Newton) RadiosityFactors % Factors(2)=SOL_d(i)
+         RadiosityFactors % Factors(1) = SOL(i)
+         IF(Newton) THEN
+           RadiosityFactors % Factors(2) = SOL_d(i)
+         ELSE
+           RadiosityFactors % Factors(2) = 0.0_dp
+         END IF
        END DO
 
      END SUBROUTINE ConstantRadiosity
@@ -1768,7 +1778,7 @@
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
-             RHS(i) = -q * a * e**2/r * Black
+             RHS(i) = -q * a * e * Black
              IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp
 
              S = -q * e**2/r * Black
@@ -1800,8 +1810,9 @@
          END IF
          
          ! Cumulative radiosity         
+         tmpSOL = tmpSOL * Emissivity / (1-Emissivity)
          SOL = SOL + tmpSOL
-         IF( Newton ) SOL_d = SOL_d + tmpSOL_d
+         IF( Newton ) SOL_d = SOL_d + tmpSOL_d * Emissivity/(1-Emissivity)
        END DO
 
        ! This should be exactly one!
@@ -1884,7 +1895,7 @@
              IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
                DO j=1,SIZE(RadiatorSet)
                  IF(RadiatorSet(j) == k) THEN
-                   RHS(i) = RHS(i) - a * e * &
+                   RHS(i) = RHS(i) - a * r * &
                        Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
                  END IF
                END DO
@@ -1902,6 +1913,7 @@
            CALL RadiationLinearSolver(RadiationSurfaces, GFactorSP, tmpSOL, RHS, Diag,Solver)          
            
            ! Cumulative radiosity
+           tmpSOL = tmpSOL * Emissivity / (1-Emissivity)
            SOL = SOL + tmpSOL
            EffTemp = EffTemp + Trad * tmpSOL
            EffAbs = EffAbs + Emissivity * tmpSOL 
