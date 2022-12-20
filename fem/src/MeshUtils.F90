@@ -26996,8 +26996,10 @@ CONTAINS
 
 
 
-  !> Tag levelset by giving levelset function that the boundary must meet.
-  !> Also may require that the parent is either positive or negative in that levelset.
+  !> Sometimes the mesh includes boundaries but it is annoyingly time-consuming to tag
+  !> them by hand as their numbers are not known. Then an alternative is to use some simple
+  !> rules to detect the existing boundaries and tag them with to the boundary that fulfills
+  !> the detection rule.
   !-------------------------------------------------------------------
   SUBROUTINE TagBCsUsingLevelset(Model, Mesh)
 
@@ -27006,77 +27008,273 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element, Parent
     INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,j,k,n,m,t,t0,nc,np
-    INTEGER :: bc_ind, pSign, dim, BCsTagged
+    INTEGER :: i,j,k,n,m,t,t0
+    INTEGER :: bc_ind, pSign, rSign, dim, BCsTagged, RuleInd
     TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Coord(3), eps, val, rad
-    LOGICAL :: Found, Hit
+    REAL(KIND=dp) :: Coord(3), eps, val, rad, phi, phimin, phimax, RuleC
+    LOGICAL :: Found, Hit, Parallel
+    CHARACTER(MAX_NAME_LEN) :: RuleStr
     CHARACTER(*), PARAMETER :: Caller = 'TagBCsUsingLevelset'
      
     
     ! Nothing to do with any boundary   
-    IF(.NOT. ListCheckPresentAnyBC( Model,'Target Levelset') ) RETURN
+    IF(.NOT. ( ListCheckPresentAnyBC( Model,'Boundary Levelset') .OR. &
+        ListCheckPresentAnyBC(Model,'Boundary Detect') ) ) RETURN
 
-    CALL Info(Caller,'Tagging BCs using levelset condition')
+    CALL Info(Caller,'Tagging BCs using simple geometric detection rules')
     
     dim = Mesh % MeshDim
     BCsTagged = 0
     t0 = Mesh % NumberOfBulkElements
 
-    m = 0
     n = 0
     DO t=1, Mesh % NumberOfBoundaryElements
       Element => Mesh % Elements(t0+t)      
-      IF(.NOT. ASSOCIATED(Element % BoundaryInfo)) m=m+1
       IF(Element % BoundaryInfo % Constraint == 0) n=n+1
     END DO
     CALL Info(Caller,'Number of unconstrained boundary elements: '//TRIM(I2S(n)))
+
+    Parallel = .FALSE.
+    IF(.NOT. Mesh % SingleMesh ) Parallel = (ParEnv % PEs > 1)
+
+    m = n
+    IF(Parallel) m = ParallelReduction(m)
+    IF(m == 0) THEN
+      CALL Warn(Caller,'Boundary detection requested but all boundaries already set!')
+      RETURN
+    END IF
     
-    
+    n = Mesh % NumberOfNodes 
+        
     DO bc_ind = 1, Model % NumberOfBCs
       BC => Model % BCs(bc_ind) % Values
 
+      pSign = 0
+      RuleInd = 0
       !PRINT *,'bc tag:',bc_ind, Model % BCs(bc_ind) % Tag
       
-      ! Nothing to do with this boundarty
-      IF( .NOT. ListCheckPresent(BC,'Target Levelset') ) CYCLE
+      ! Do we have a simple rule? 
+      ! These rules have been designed such that particularly electrical machines
+      ! that have rather constant set of BCs can be treated easily. 
+      RuleStr = ListGetString(BC,'Boundary Detect',Found )
+      IF( Found ) THEN
+        SELECT CASE( RuleStr )
+        CASE('xmin')
+          RuleInd = 1
+          RuleC = MINVAL( Mesh % Nodes % x )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,1)
+        CASE('xmax')
+          RuleInd = 1
+          RuleC = MAXVAL( Mesh % Nodes % x )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,2)
+        CASE('ymin')
+          RuleInd = 2
+          RuleC = MINVAL( Mesh % Nodes % y )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,1)
+        CASE('ymax')
+          RuleInd = 2
+          RuleC = MAXVAL( Mesh % Nodes % y )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,2)
+        CASE('zmin')
+          RuleInd = 3
+          RuleC = MINVAL( Mesh % Nodes % z )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,1)
+        CASE('zmax')
+          RuleInd = 3
+          RuleC = MAXVAL( Mesh % Nodes % z )
+          IF(Parallel) RuleC = ParallelReduction(RuleC,2)
+        CASE('r inner')
+          RuleInd = 4 
+          RuleC = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          IF(.NOT. Found) CALL Fatal(Caller,'boundary detect "r inner" requires "Rotor Radius" be given!')
+          pSign = -1
+        CASE('r outer')
+          RuleInd = 4
+          RuleC = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          IF(.NOT. Found) CALL Fatal(Caller,'boundary detect "r outer" requires "Rotor Radius" be given!')
+          pSign = 1
+        CASE('phimax','phimax inner','phimax outer')
+          ! The "inner" and "outer" rules allow to separate rotor and stator
+          phimax = -2*PI
+          phimin = 2*PI
+          DO i=1,n
+            ! Skip the nodes at 
+            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
+            phimax = MAX(phimax,phi)
+            phimin = MIN(phimin,phi)
+          END DO
+          IF(Parallel) THEN
+            phimin = ParallelReduction(phimin,1)
+            phimax = ParallelReduction(phimax,2)
+          END IF
+          ! There is a discontinuity at PI. Warn about it so we can code some more. 
+          IF(phimax - phimin > PI ) CALL Fatal(Caller,'dPhi bigger than PI?')
+          RuleC = phimax
+          RuleInd = 5           
+        CASE('phimin','phimin inner','phimin outer')
+          phimax = -2*PI
+          phimin = 2*PI
+          DO i=1,n
+            IF( SQRT(Mesh % Nodes % x(i)**2 + Mesh % Nodes % y(i)**2) < eps) CYCLE
+            phi = ATAN2(Mesh % Nodes % y(i), Mesh % Nodes % x(i) )
+            phimax = MAX(phimax,phi)
+            phimin = MIN(phimin,phi)
+          END DO
+          IF(Parallel) THEN
+            phimin = ParallelReduction(phimin,1)
+            phimax = ParallelReduction(phimax,2)
+          END IF
+          IF(phimax - phimin > PI ) CALL Fatal(Caller,'dPhi bigger than PI?')
+          RuleC = phimin
+          RuleInd = 5          
+        CASE('rmin')
+          RuleInd = 6
+          RuleC = HUGE(RuleC)
+          DO i=1,n 
+            RuleC = MIN(RuleC, Mesh % Nodes % x(i)**2+Mesh % Nodes % y(i)**2)
+          END DO
+          RuleC = SQRT(RuleC)
+          IF(Parallel) RuleC = ParallelReduction(RuleC,1)
+        CASE('rmax')
+          RuleInd = 6
+          RuleC = 0.0_dp
+          DO i=1,n 
+            RuleC = MAX(RuleC, Mesh % Nodes % x(i)**2+Mesh % Nodes % y(i)**2)
+          END DO
+          RuleC = SQRT(RuleC)
+          IF(Parallel) RuleC = ParallelReduction(RuleC,2)
+        CASE DEFAULT
+          CALL Info(Caller,"Available rules: xmin, xmax, ymin, ymax, rmin, rmax, r inner, r outer'&
+              //', phimin (inner/outer), phimax (inner/outer)",Level=3)
+          CALL Fatal(Caller,'Uknown "Boundary Detect" method: '//TRIM(RuleStr))
+        END SELECT
+      ELSE          
+        IF( .NOT. ListCheckPresent(BC,'Boundary Levelset') ) CYCLE
+        ! Should we check the sign of the parent too?
+        
+        pSign = ListGetInteger(BC,'Boundary Levelset Parent Sign',Found )
+        IF(Found) THEN
+          IF(ABS(pSign) /= 1 ) THEN
+            CALL Fatal(Caller,'"Boundary Levelset Parent Sign" should be either 1 or -1')
+          END IF
+        END IF        
+      END IF
+
+      ! When we have rules "phimax" and "phimin" they may be augmented with inner and outer
+      rSign = 0
+      IF( RuleInd == 5 ) THEN
+        IF( RuleStr(8:12) == 'inner' ) THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = -1
+        ELSE IF(RuleStr(8:12) == 'outer') THEN
+          Rad = ListGetCReal( CurrentModel % Simulation,'Rotor Radius',Found)
+          rSign = 1
+        END IF
+      END IF
+
+      IF( RuleInd == 3 .AND. Mesh % MeshDim < 3 ) THEN
+        CALL Fatal(Caller,'Cannot use z-rules for 2D mesh!')
+      END IF
+      
       CALL Info(Caller,'Trying to tag elements to boundary: '//TRIM(I2S(bc_ind)))
       BCsTagged = 0
       
-      ! Should we check the sign of the parent too?
-      pSign = ListGetInteger(BC,'Target Levelset Parent Sign',Found )
-      IF(Found) THEN
-        IF(ABS(pSign) /= 1 ) THEN
-          CALL Fatal(Caller,'"Target Levelset Parent Sign" should be either 1 or -1')
-        END IF
-      END IF        
-
-      eps = ListGetCReal(BC,'Target Levelset Epsilon',Found )
+      eps = ListGetCReal(BC,'Boundary Levelset Epsilon',Found )
       IF(.NOT. Found) eps = 1.0e-6
+      
+      CALL TagElements()
+
+      IF(Parallel) BCsTagged = ParallelReduction(BCsTagged)
+      
+      CALL Info(Caller,'Number of boundary elements tagged to '&
+          //TRIM(I2S(bc_ind))//' is: '//TRIM(I2S(BCsTagged)),Level=7)
+    END DO
+    
+  CONTAINS
+
+    FUNCTION DiffPhi(Coord,Phi0) RESULT( val )
+      REAL(KIND=dp) :: Coord(:)
+      REAL(KIND=dp) :: Phi0, val
+      INTEGER :: i
+
+      IF(SQRT(SUM(Coord(1:2)**2)) < eps) THEN
+        val = 0.0_dp
+        RETURN
+      END IF
+      
+      val = ATAN(Coord(2),Coord(1)) - Phi0
+      IF( val > PI ) THEN
+        val = val - 2*PI
+      ELSE IF( val < -PI ) THEN
+        val = val + 2*PI
+      END IF                 
+    END FUNCTION DiffPhi
+
+    
+    SUBROUTINE TagElements()      
+      INTEGER :: nc, np
+      LOGICAL :: Hit
+      REAL(KIND=dp) :: val
+      
       
       DO t=1, Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(t0+t)
 
         IF(Element % BoundaryInfo % Constraint > 0) CYCLE
-        
+
         ! Number of corners
         nc = Element % TYPE % ElementCode / 100
         Hit = .TRUE.
-
+        
         DO i=1,nc
           j = Element % NodeIndexes(i)
           Coord(1) = Mesh % Nodes % x(j)
           Coord(2) = Mesh % Nodes % y(j)
           Coord(3) = Mesh % Nodes % z(j)
-          
-          val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim) 
+
+          SELECT CASE( RuleInd )
+
+          CASE(1,2,3)
+            val = Coord(RuleInd) - RuleC
+          CASE(4,6)
+            val = RuleC - SQRT(SUM(Coord(1:2)**2))                 
+          CASE(5)
+            val = DiffPhi(Coord,RuleC)
+          CASE DEFAULT
+            val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim)
+          END SELECT
+            
           IF(ABS(val) > eps) THEN
             Hit = .FALSE.            
             EXIT
           END IF
         END DO
         IF(.NOT. Hit) CYCLE
-              
+
+        ! We may additionally test inner/outer rule for the radius
+        IF(rSign /= 0) THEN
+          DO i=1,nc
+            j = Element % NodeIndexes(i)
+            Coord(1) = Mesh % Nodes % x(j)
+            Coord(2) = Mesh % Nodes % y(j)
+            Coord(3) = Mesh % Nodes % z(j)
+            
+            IF( SQRT(SUM(Coord(1:2)**2)) < eps ) CYCLE
+
+            ! This should be negative for rotor, positive for stator
+            val = SQRT(SUM(Coord(1:2)**2)) - Rad                
+            IF(ABS(val) < eps) CYCLE
+
+            IF( val*rSign < 0 ) THEN
+              Hit = .FALSE.            
+              EXIT
+            END IF
+          END DO
+          IF(.NOT. Hit) CYCLE
+        END IF
+          
+        
         IF(pSign /= 0) THEN
           Parent => Element % BoundaryInfo % Left
           IF(ASSOCIATED(Parent)) THEN
@@ -27089,7 +27287,7 @@ CONTAINS
               CALL Fatal(Caller,'Need parent to check parent condition!')
             END IF
           END IF
-                      
+
           ! Number of corners, in 3D we must treat tets, pyramids, and wedges.
           np = Parent % TYPE % ElementCode / 100
           IF(np >= 5 .AND. np <= 7) np = np-1
@@ -27102,7 +27300,15 @@ CONTAINS
             Coord(1) = Mesh % Nodes % x(j)
             Coord(2) = Mesh % Nodes % y(j)
             Coord(3) = Mesh % Nodes % z(j)
-            val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim) 
+
+            SELECT CASE( RuleInd )
+              
+            CASE(4)
+              val = RuleC**2 - SUM(Coord(1:2)**2)                 
+            CASE DEFAULT
+              val = ListGetFunVec(BC,'Target Levelset',Coord(1:dim),dim)
+            END SELECT
+            
             IF( val*pSign < 0.0_dp ) Hit = .FALSE.
             ! One node is representative
             EXIT
@@ -27110,13 +27316,11 @@ CONTAINS
           IF(.NOT. Hit) CYCLE
         END IF
         
-        Element % BoundaryInfo % Constraint = Model % BCs(bc_ind) % Tag !bc_ind
+        Element % BoundaryInfo % Constraint = Model % BCs(bc_ind) % Tag
         BCsTagged = BCsTagged + 1
       END DO
-
-      CALL Info(Caller,'Number of boundary elements tagged to '&
-          //TRIM(I2S(bc_ind))//' is: '//TRIM(I2S(BCsTagged)),Level=7)
-    END DO
+    
+    END SUBROUTINE TagElements
     
   END SUBROUTINE TagBCsUsingLevelset
     

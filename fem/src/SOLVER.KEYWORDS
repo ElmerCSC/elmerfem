@@ -1,7 +1,7 @@
 $ function i2str(i) { _i2str = sprintf("%g",i); }
 $ ndim=3
-$ nexp=20
-$ nout=10
+$ nexp=3
+$ nout=3
 $ for(i=1:10) for(j=1:10) "Solver:String: 'Tensor Field " i2str(i) " Component " i2str(j) "'"
 $ for(i=1:nexp) "Simulation:Real: 'Initial Parameter " i2str(i) "'"
 $ for(i=1:nexp) "Solver:Integer: 'Exported Variable " i2str(i) " DOFs'"
@@ -1922,3 +1922,5 @@ solver:logical:      'viewfactor binary output'
 bodyforce:real:      'radiator coordinates'
 bodyforce:real:      'radiator temperature'
 bodyforce:real:      'radiator power'
+bc:string:           'boundary detect'
+
