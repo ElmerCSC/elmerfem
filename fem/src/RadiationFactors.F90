@@ -1813,6 +1813,9 @@
          tmpSOL = tmpSOL * Emissivity / (1-Emissivity)
          SOL = SOL + tmpSOL
          IF( Newton ) SOL_d = SOL_d + tmpSOL_d * Emissivity/(1-Emissivity)
+         
+         EffTemp = EffTemp + Trad * tmpSOL
+         EffAbs = EffAbs + Emissivity * tmpSOL 
        END DO
 
        ! This should be exactly one!
@@ -1833,10 +1836,6 @@
            WRITE(Message,'(A,ES12.3)') 'Maximum radiator temperature: ',Tmax
            CALL Info('SpectralRadiosity',Message,Level=10)
          END IF
-
-         EffAbs = EffAbs + Emissivity * tmpSOL 
-         EffTemp = EffTemp + Trad * tmpSOL
-         
            
          ALLOCATE( RadiatorSet(SIZE(RadiatorTemps)) )
          RadiatorSet = 0
@@ -1915,11 +1914,13 @@
            ! Cumulative radiosity
            tmpSOL = tmpSOL * Emissivity / (1-Emissivity)
            SOL = SOL + tmpSOL
+
            EffTemp = EffTemp + Trad * tmpSOL
            EffAbs = EffAbs + Emissivity * tmpSOL 
          END DO
        END IF
        
+       ! Normalize with weight i.e. incoming heat flux
        EffAbs = EffAbs / SOL
        EffTemp = EffTemp / SOL
        
@@ -1943,6 +1944,7 @@
          IF(Newton) RadiosityFactors % Factors(2) = SOL_d(i)
 
          ! Store effective emissivity i.e. the realized absorption coefficient of the spectrum
+         ! Also store effective temperature weighted by the incoming heat flux. 
          RadiosityFactors % Factors(3) = EffAbs(i)
          RadiosityFactors % Factors(4) = EffTemp(i)
        END DO
