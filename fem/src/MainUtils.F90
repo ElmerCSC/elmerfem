@@ -1090,7 +1090,8 @@ CONTAINS
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
         VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
         DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
-        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt, GotSecName
+        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt, &
+        GotSecName, NoPerm
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1437,6 +1438,8 @@ CONTAINS
 
       VariableIp = ListGetLogical( SolverParams, 'Variable IP', Found )
       VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )                 
+
+      NoPerm = .FALSE.
       
       DOFs = ListGetInteger( SolverParams, 'Variable DOFs', Found, minv=1 )
       IF ( .NOT. Found ) THEN
@@ -1452,7 +1455,11 @@ CONTAINS
       END IF
       
       DO WHILE( var_name(1:1) == '-' )
-        IF ( SEQL(var_name, '-nooutput ') ) THEN
+        IF ( SEQL(var_name, '-noperm ') ) THEN
+          NoPerm = .TRUE.
+          var_name(1:LEN(var_name)-8) = var_name(9:)
+
+        ELSE IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         
@@ -1851,6 +1858,13 @@ CONTAINS
     
       IF ( .NOT. ASSOCIATED(NewVariable) ) THEN
         CALL Info('AddEquationBasics','Creating exported variable: '//TRIM(var_name),Level=12)
+
+        IF( NoPerm ) THEN
+          IF(.NOT. (VariableNodal .OR. VariableElem .OR. VariableDG ) ) THEN
+            CALL Fatal('AddEquationBasics','Invalid type for Noperm variable!')
+          END IF
+        END IF
+
         
         IF( VariableIp ) THEN
           VariableType = Variable_on_gauss_points
@@ -1873,9 +1887,11 @@ CONTAINS
           ! We need to call these earlier than otherwise
           IF( UseMask ) THEN            
             CALL CreateElementsPerm( Solver, Perm, nsize, Mask_Name, sec_name ) 
+          ELSE IF( NoPerm ) THEN
+            nsize = Solver % Mesh % NumberOfBulkElements
+            Perm => NULL()
           ELSE
-            CALL SetActiveElementsTable( CurrentModel, Solver, k, CreateInv = .TRUE.  ) 
-            
+            CALL SetActiveElementsTable( CurrentModel, Solver, k, CreateInv = .TRUE.  )             
             nSize = Solver % NumberOfActiveElements          
             Perm => Solver % InvActiveElements
           END IF
@@ -1888,6 +1904,12 @@ CONTAINS
           NULLIFY( Perm ) 
           IF( UseMask ) THEN
             CALL CreateDGPerm( Solver, Perm, nsize, mask_name, sec_name ) 
+          ELSE IF( NoPerm ) THEN
+            nsize = 0
+            DO j=1, Solver % Mesh % NumberOfBulkElements
+              nsize = nsize + Solver % Mesh % Elements(j) % TYPE % NumberOfNodes
+            END DO
+            Perm => NULL()
           ELSE
             CALL CreateDGPerm( Solver, Perm, nsize )
           END IF
@@ -1901,6 +1923,9 @@ CONTAINS
             CALL MakePermUsingMask( CurrentModel, Solver, Solver % Mesh, Mask_Name, &
                 .TRUE., Perm, nsize )
             nsize = DOFs * nsize
+          ELSE IF( NoPerm ) THEN
+            nsize = Solver % Mesh % NumberOfNodes
+            Perm => NULL()
           ELSE
             ! Just simple permutation
             CALL CreateNodalPerm( Solver, Perm, nSize )

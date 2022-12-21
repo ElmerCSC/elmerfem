@@ -983,11 +983,11 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
 
   IF( AdvectElemental .OR. AdvectDg .OR. AdvectIp ) THEN  
     IF( AdvectElemental ) THEN
-      CALL ListAddString( Params,'Exported Variable 1','-elem AdvectorData')
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-elem AdvectorData')
     ELSE IF( AdvectDg ) THEN
-      CALL ListAddString( Params,'Exported Variable 1','-dg AdvectorData')
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-dg AdvectorData')
     ELSE
-      CALL ListAddString( Params,'Exported Variable 1','-ip AdvectorData')     
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-ip AdvectorData')
     END IF      
     CALL ListAddString( Params,'Coordinate Initialization Method','advector')    
     CALL ListAddString( Params,'Velocity Initialization Method','advector')
