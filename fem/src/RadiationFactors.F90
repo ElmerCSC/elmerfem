@@ -75,10 +75,10 @@
      INTEGER :: i,j,k,l,t,n,istat,j0
      REAL (KIND=dp) :: Transmittivity
 
-     REAL (KIND=dp), POINTER :: Temperature(:)
-
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), SOL_d(:), RHS(:), RHS_d(:), Fac(:), &
         Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:), Temp_Elem(:)
+ 
+     REAL(KIND=dp), POINTER :: Temperature(:)
 
      REAL (KIND=dp) :: SteadyChange, Tol, Sigma
 
@@ -86,11 +86,9 @@
      INTEGER :: RadiationSurfaces, GeometryFixedAfter, MatrixElements, &
          TimesVisited=0, RadiationBody, MaxRadiationBody, FactorsFixedAfter
 
-     INTEGER, POINTER :: Cols(:),TempPerm(:),NewPerm(:),Ind(:)
-     INTEGER, TARGET :: DGInds(27)
+     INTEGER, POINTER :: TempPerm(:),NewPerm(:)
      INTEGER, ALLOCATABLE :: FacPerm(:)
-     INTEGER, ALLOCATABLE, TARGET :: RowSpace(:),Reorder(:),ElementNumbers(:), &
-         InvElementNumbers(:)
+     INTEGER, ALLOCATABLE, TARGET :: ElementNumbers(:), InvElementNumbers(:)
 
      CHARACTER(:), ALLOCATABLE :: RadiationFlag, SolverType
 
@@ -274,9 +272,10 @@
        IF ( RadiationFlag == 'diffuse gray' .OR. GetLogical(BC, 'Radiator BC', Found) ) THEN
          l = MAX(1, GetInteger( BC,'Radiation Boundary',GotIt) )
          MaxRadiationBody = MAX(l, MaxRadiationBody)
+
          n = GetElementNOFNodes(Element)
-         Ind =>  Element % NodeIndexes
-         ActiveNodes(Ind) = .TRUE.
+         ActiveNodes(Element % NodeIndexes) = .TRUE.
+
          RadiationSurfaces = RadiationSurfaces + 1
          IF(GeometryFixedAfter == TimesVisited) CALL FixGeometryAfter(n,Element,BC,i)
        END IF
@@ -291,24 +290,6 @@
            ' out of '//TRIM(I2S(Model % NumberOfBoundaryElements)),Level=5)
      END IF
 
-     DG = .FALSE.
-     IF(Radiosity) THEN
-       ALLOCATE(Temp_Elem(RadiationSurfaces))
-       Temp_Elem = 0._dp
-
-       Temperature => Null()
-       IF(ASSOCIATED(TSolver % Variable))  THEN
-         TempPerm => TSolver % Variable % Perm
-         Temperature => TSolver % Variable % Values
-       END IF
-
-       Sigma = ListGetConstReal( Model % Constants,&
-            'Stefan Boltzmann',UnfoundFatal=.TRUE. )
-
-       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
-            ListGetLogical(Params, 'DG Reduced Basis',Found ) 
-     END IF
-       
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
        IF( .NOT. CheckMeshHasChanged() ) THEN
@@ -356,7 +337,7 @@
      RadiationBody = 0
      ALLOCATE( ElementNumbers(Mesh % NumberOfBoundaryElements), &
          RelAreas(Mesh % NumberOfBoundaryElements), &
-         Areas(Mesh % NumberOfBoundaryElements), STAT=istat )
+          Areas(Mesh % NumberOfBoundaryElements), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 2.')
 
 20   RadiationBody = RadiationBody + 1
@@ -378,15 +359,6 @@
          IF(l == RadiationBody) THEN
            RadiationSurfaces = RadiationSurfaces + 1
            ElementNumbers(RadiationSurfaces) = t+j0
-           IF(Radiosity.AND.ASSOCIATED(Temperature)) THEN
-             IF( DG ) THEN
-               CALL DgRadiationIndexes(Element,n,DGInds,.TRUE.)
-               Ind => DGInds(1:n)
-             ELSE
-               Ind => Element % NodeIndexes(1:n)
-             END IF
-             Temp_Elem(RadiationSurfaces)=SUM(Temperature(TempPerm(Ind)))/n
-           END IF
            Areas(RadiationSurfaces) = ElementArea(Mesh,Element,n)
          END IF
        END IF
@@ -400,11 +372,8 @@
        IF(RadiationSurfaces == 0) GOTO 30
      END IF
 
-     ALLOCATE( RowSpace( RadiationSurfaces ), Reorder( RadiationSurfaces ), &
-         InvElementNumbers(Model % NumberOfBoundaryElements), STAT=istat )
+     ALLOCATE( InvElementNumbers(Model % NumberOfBoundaryElements), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 3.')
-     RowSpace = 0
-     ReOrder = 0
 
      ! Make the inverse of the list of element numbers of boundaries
      InvElementNumbers = 0
@@ -440,24 +409,6 @@
      END IF
 
      
-     ! Check whether the element already sees itself, it will when 
-     ! gebhardt factors are computed. Also compute matrix size.
-     DO i=1,RadiationSurfaces
-       Cols => ViewFactors(i) % Elements
-       n = ViewFactors(i) % NumberOfFactors
-       Rowspace(i) = n
-       k = 0
-       DO j=1,n
-         IF ( Cols(j) == ElementNumbers(i) ) THEN
-           k = 1
-           EXIT
-         END IF
-       END DO
-       IF ( k == 0 ) RowSpace(i) = RowSpace(i) + 1
-     END DO
-     MatrixElements = SUM(RowSpace(1:RadiationSurfaces))
-
-
      ALLOCATE( RHS(RadiationSurfaces), SOL(RadiationSurfaces), &
           Fac(RadiationSurfaces), FacPerm(RadiationSurfaces), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 8.')
@@ -469,31 +420,8 @@
 
      ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
-  
-     Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
-     IF(.NOT. GotIt) Emissivity = 0.5_dp
-     Reflectivity = 1-Emissivity
-     IF(.NOT. ( ConstantEmissivity .OR. Spectral .OR. Radiosity .AND. FirstTime ) ) THEN
-       DO i=1,RadiationSurfaces
-         Element => Mesh % Elements(ElementNumbers(i))
-         n = GetElementNOFNodes(Element)
-         BC => GetBC(Element)
-         Emissivity(i) = SUM(GetReal(BC, 'Emissivity', Found, Element))/n
 
-         IF( Found ) THEN
-           Transmittivity = SUM(GetReal(BC,'Transmissivity', Found, Element))/n
-           Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
-         ELSE
-            Emissivity(i) = SUM(GetParentMatProp( 'Emissivity', Element, Found))/n
-            IF(.NOT. Found) THEN
-              WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,k
-              CALL Fatal('RadiationFactors',Message)
-            END IF
-            Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
-            Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
-         END IF
-       END DO
-     END IF
+     CALL TabulateEmissivity()
 
      ALLOCATE(Diag(RadiationSurfaces), STAT=istat)
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 11.')
@@ -513,6 +441,22 @@
          RHS_d = 0.0_dp
        END IF
 
+       Temperature => Null()
+       IF(ASSOCIATED(TSolver % Variable))  THEN
+         TempPerm => TSolver % Variable % Perm
+         Temperature => TSolver % Variable % Values
+       END IF
+
+       IF(.NOT.ASSOCIATED(Temperature)) &
+         CALL Fatal('RadiationFactors', &
+              "Radiosity solution can't be completed without the temperature field.")
+       
+       ALLOCATE(Temp_Elem(RadiationSurfaces))
+       CALL TabulateSurfaceTemperatures()
+
+       Sigma = ListGetConstReal( Model % Constants,&
+         'Stefan Boltzmann',UnfoundFatal=.TRUE. )
+
        IF( Spectral ) THEN
          CALL SpectralRadiosity()
        ELSE
@@ -530,8 +474,13 @@
        CALL CalculateGebhartFactors()
      END IF
             
-     DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm, &
-         Emissivity, Reflectivity,Diag )
+     DEALLOCATE(Solver, InvElementNumbers,RHS,SOL,Fac,FacPerm, &
+              Emissivity, Reflectivity,Diag )
+
+     IF(Radiosity) THEN
+       DEALLOCATE(Temp_Elem)
+       IF(Newton) DEALLOCATE(RHS_d, SOL_d)
+     END IF
      
      IF(FullMatrix) THEN
        DEALLOCATE(Gfull)
@@ -549,7 +498,6 @@
        WRITE (Message,'(A,T35,ES15.4)') 'Gebhart factors determined (s)',CPUTime()-at0
      END IF
      CALL Info('RadiationFactors',Message)
-
 
 30   IF(RadiationBody < MaxRadiationBody) GOTO 20
      
@@ -662,8 +610,6 @@
            CALL Info('RadiationFactors','Geometry change requires recomputation of view factors')
          END IF
        END IF
-
-       
      END FUNCTION CheckMeshHasChanged
 
 
@@ -1031,7 +977,25 @@
        INTEGER :: n
 
        INTEGER, POINTER :: Cols(:)
-       INTEGER :: i,t,colj,previ,MatrixEntries
+       INTEGER :: i,j,k,nf,t,colj,previ,MatrixEntries,RowSpace(n),Reorder(n)
+
+       ! Check whether the element already sees itself, it will when 
+       ! gebhardt factors are computed. Also compute matrix size.
+       DO i=1,n
+         Cols => ViewFactors(i) % Elements
+         nf = ViewFactors(i) % NumberOfFactors
+         Rowspace(i) = nf
+         k = 0
+         DO j=1,nf
+           IF ( Cols(j) == ElementNumbers(i) ) THEN
+             k = 1
+             EXIT
+           END IF
+         END DO
+         IF (k == 0) RowSpace(i) = RowSpace(i) + 1
+       END DO
+       MatrixElements = SUM(RowSpace(1:n))
+
 
        IF(FullMatrix) THEN
          ALLOCATE(Gfull(n,n),STAT=istat)
@@ -1066,6 +1030,67 @@
        END IF
      END SUBROUTINE CreateRadiationMatrix
      
+
+     SUBROUTINE TabulateSurfaceTemperatures()
+
+       TYPE(Element_t), POINTER :: Element
+       LOGICAL :: DG, Found
+       INTEGER :: i,n
+       INTEGER, POINTER :: Ind(:)
+       INTEGER, TARGET :: DGInds(27)
+
+       DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
+            ListGetLogical(Params, 'DG Reduced Basis',Found ) 
+ 
+       DO i=1,RadiationSurfaces
+         Element => Mesh % Elements(ElementNumbers(i))
+         n = GetElementNOFNodes(Element)
+         IF( DG ) THEN
+           CALL DgRadiationIndexes(Element,n,DGInds,.TRUE.)
+           Ind => DGInds(1:n)
+         ELSE
+           Ind => Element % NodeIndexes(1:n)
+         END IF
+         Temp_Elem(i) = SUM(Temperature(TempPerm(Ind)))/n
+       END DO
+     END SUBROUTINE TabulateSurfaceTemperatures
+
+
+     SUBROUTINE TabulateEmissivity()
+       REAL(KIND=dp) :: Transmittivity
+       LOGICAL ::GotIt, Found
+       INTEGER :: i,n
+       TYPE(ValueList_t), POINTER :: BC
+       TYPE(Element_t), POINTER :: Element
+
+       Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
+       IF(.NOT. GotIt) Emissivity = 0.5_dp
+
+       Reflectivity = 1-Emissivity
+
+       IF(.NOT. (ConstantEmissivity .OR. Spectral .OR. Radiosity .AND. FirstTime ) ) THEN
+         DO i=1,RadiationSurfaces
+           Element => Mesh % Elements(ElementNumbers(i))
+           n = GetElementNOFNodes(Element)
+           BC => GetBC(Element)
+           Emissivity(i) = SUM(GetReal(BC, 'Emissivity', Found, Element))/n
+
+           IF( Found ) THEN
+             Transmittivity = SUM(GetReal(BC,'Transmissivity', Found, Element))/n
+             Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+           ELSE
+              Emissivity(i) = SUM(GetParentMatProp( 'Emissivity', Element, Found))/n
+              IF(.NOT. Found) THEN
+                WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,GetBCId(Element)
+                CALL Fatal('RadiationFactors',Message)
+              END IF
+              Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
+              Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+           END IF
+         END DO
+       END IF
+     END SUBROUTINE TabulateEmissivity
+
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
      !------------------------------------------------------------------------------
@@ -1759,7 +1784,6 @@
          CALL TabulateSpectralEmissivity(Emissivity,Trad)
 
          CALL RadiosityAssembly(RadiationSurfaces,Diag)
-
          DO i=1,RadiationSurfaces
            e = Emissivity(i)
            r = 1-e
@@ -1935,9 +1959,6 @@
          e = Emissivity(i)
          r = 1-e
          a = RelAreas(i)
-         Temp = Temp_Elem(i)
-         Black = Sigma * Temp**4
-
          previ = G % Rows(i)-1
          DO j=1,ViewFactors(i) % NumberOfFactors
            Colj = InvElementNumbers(Cols(j)-j0)
