@@ -1347,8 +1347,11 @@ RETURN
     IF( ASSOCIATED( Particles % Force ) ) ncomp = ncomp + dim
     Var => Particles % Variables
     DO WHILE( ASSOCIATED(Var) )
-      ncomp = ncomp + Var % Dofs 
-      IF( Var % Dofs /= 1 ) CALL Warn(Caller,'Implement for vectors!')
+      IF( Var % Dofs == 1 ) THEN
+        ncomp = ncomp + Var % Dofs 
+      ELSE
+        CALL Warn(Caller,'Implement for vectors only!')
+      END IF
       Var => Var % Next 
     END DO
 
