@@ -5500,10 +5500,11 @@ RETURN
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: RKstepInput
 
-    TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
+    TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar, &
+        PartTimeVar, MeshDtVar 
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
-        Source,detJ,RKCoeff,GradSource(3)
+        Source,PrevSource,detJ,RKCoeff,GradSource(3),MeshDt, dtRat
     INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
@@ -5515,13 +5516,14 @@ RETURN
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(LEN=MAX_NAME_LEN) :: str, VariableName
-    LOGICAL :: TimeInteg, DistInteg, UseGradSource
+    LOGICAL :: TimeInteg, DistInteg, UseGradSource, TimeDepFields
     TYPE(ValueHandle_t), SAVE :: TimeSource_h, DistSource_h
     CHARACTER(*), PARAMETER :: Caller = 'ParticlePathIntegral'
 
 
     SAVE TimeInteg, DistInteg, dim, Visited, Mesh, DtVar, Basis, Nodes, Params, &
-        TimeIntegVar, DistIntegVar, UseGradSource, dBasisdx
+        TimeIntegVar, DistIntegVar, UseGradSource, dBasisdx, TimeDepFields, &
+        PartTimeVar, MeshDtVar
 
     CALL Info(Caller,'Integrating variables over the path',Level=12)
 
@@ -5567,20 +5569,27 @@ RETURN
       Nodes % z = 0.0_dp
       dBasisdx = 0.0_dp
       
-      UseGradSource = GetLogical( Params,'Source Gradient Correction',Found)
+      UseGradSource = ListGetLogical( Params,'Source Gradient Correction',Found)
       ! If the correction is not given follow the logic of velocity estimation
       IF(UseGradSource .AND. Particles % RK2 ) THEN
-        CALL Warn(Caller,'Quadratic source correction incompatibe with Runge-Kutta')
-        UseGradSource = .FALSE.
+        CALL Fatal(Caller,'Quadratic source correction incompatibe with Runge-Kutta')
       END IF
 
+      TimeDepFields = ListGetLogical( Params,'Source Time Correction',Found ) 
+      IF(TimeDepFields ) THEN
+        IF( Particles % RK2 ) THEN
+          CALL Fatal(Caller,'Time correction is incompatibe with Runge-Kutta')
+        END IF
+        PartTimeVar => ParticleVariableGet( Particles, 'particle time' )
+        MeshDtVar => VariableGet( Mesh % Variables,'timestep size')
+      END IF
+        
       IF( .NOT. Particles % DtConstant ) THEN
         DtVar => ParticleVariableGet( Particles,'particle dt')
         IF(.NOT. ASSOCIATED( DtVar ) ) THEN
           CALL Fatal(Caller,'Variable timestep, > particle dt < should exist!')
         END IF
-      END IF
-      
+      END IF      
     END IF
       
     ! Nothing to integrate over
@@ -5602,7 +5611,11 @@ RETURN
     IF( Particles % DtConstant ) THEN
       dtime = RKCoeff * Particles % dTime
     END IF
-
+    IF( TimeDepFields ) THEN
+      MeshDt = MeshDtVar % Values(1)
+    END IF
+    
+    j = 0    
     DO No=1, NoParticles
       Status = Particles % Status(No)
       
@@ -5617,6 +5630,11 @@ RETURN
         dtime = RKCoeff * DtVar % Values(No)
       END IF
 
+      ! This is the ratio of time vs. the mesh timestep. Starts from 0 and goes to 1. 
+      IF( TimeDepFields ) THEN
+        dtrat = PartTimeVar % Values(No) / MeshDt
+      END IF
+      
       Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(No,:) 
       Velo  = 0._dp
@@ -5664,11 +5682,22 @@ RETURN
           IF ( UseGradSource ) THEN
             GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element)                    
             Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
-          END IF          
-          TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * Source
-        END IF
-      END IF
+          END IF
 
+          IF( TimeDepFields ) THEN
+            PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1  )
+            IF ( UseGradSource ) THEN
+              GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element,tstep=-1)                    
+              PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
+            END IF
+            TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * &
+                ( (1-dtrat)*Source + dtrat * PrevSource ) 
+          ELSE          
+            TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * Source
+          END IF
+        END IF        
+      END IF
+      
       ! Path integral over distance
       IF( DistInteg ) THEN
         IF( RK2 ) THEN
@@ -5688,7 +5717,17 @@ RETURN
             GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element)                    
             Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
           END IF          
-          DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * Source
+          IF( TimeDepFields ) THEN
+            PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1  )
+            IF ( UseGradSource ) THEN
+              GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element,tstep=-1)                    
+              PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
+            END IF
+            DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * &
+                ( (1-dtrat)*Source + dtrat * PrevSource ) 
+          ELSE          
+            DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * Source
+          END IF
         END IF
       END IF
 
