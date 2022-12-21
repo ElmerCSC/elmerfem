@@ -5503,23 +5503,24 @@ RETURN
     TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
-        SourceAtPath,detJ,RKCoeff
+        Source,detJ,RKCoeff,GradSource(3)
     INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
     LOGICAL :: Found, Stat, Visited = .FALSE.
     TYPE(Nodes_t) :: Nodes
-    REAL(KIND=dp), POINTER :: Basis(:), Source(:), dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
     INTEGER, POINTER :: Indexes(:)
     TYPE(ValueList_t), POINTER :: BodyForce
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(LEN=MAX_NAME_LEN) :: str, VariableName
     LOGICAL :: TimeInteg, DistInteg, UseGradSource
+    TYPE(ValueHandle_t), SAVE :: TimeSource_h, DistSource_h
     CHARACTER(*), PARAMETER :: Caller = 'ParticlePathIntegral'
 
 
-    SAVE TimeInteg, DistInteg, dim, Visited, Mesh, DtVar, Basis, Source, Nodes, Params, &
+    SAVE TimeInteg, DistInteg, dim, Visited, Mesh, DtVar, Basis, Nodes, Params, &
         TimeIntegVar, DistIntegVar, UseGradSource, dBasisdx
 
     CALL Info(Caller,'Integrating variables over the path',Level=12)
@@ -5536,13 +5537,13 @@ RETURN
 
       TimeIntegVar => ParticleVariableGet( Particles,'particle time integral')
       TimeInteg = ASSOCIATED( TimeIntegVar )
-      IF( TimeInteg ) THEN
+      IF( TimeInteg ) THEN        
         IF( .NOT. ListCheckPresentAnyBodyForce( CurrentModel,&
             'Particle Time Integral Source') ) THEN
           CALL Fatal(Caller,'Path integral requires body force: "Particle Time Integral Source"')
         END IF
       END IF
-        
+      
       DistIntegVar => ParticleVariableGet( Particles,'particle distance integral')
       DistInteg = ASSOCIATED( DistIntegVar )
       IF( DistInteg ) THEN
@@ -5559,15 +5560,13 @@ RETURN
       dim = Particles % dim
 
       n = Mesh % MaxElementNodes
-      ALLOCATE( Basis(n), Source(n), Nodes % x(n), Nodes % y(n), Nodes % z(n), &
-          dBasisdx(n,3) )
+      ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n), dBasisdx(n,3) )
       Basis = 0.0_dp
-      Source = 0.0_dp
       Nodes % x = 0.0_dp
       Nodes % y = 0.0_dp
       Nodes % z = 0.0_dp
       dBasisdx = 0.0_dp
-
+      
       UseGradSource = GetLogical( Params,'Source Gradient Correction',Found)
       ! If the correction is not given follow the logic of velocity estimation
       IF(UseGradSource .AND. Particles % RK2 ) THEN
@@ -5586,6 +5585,9 @@ RETURN
       
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
+
+    IF(TimeInteg) CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source')    
+    IF(DistInteg) CALL ListInitElementKeyword( DistSource_h,'Body Force','Particle Distance Integral Source')
 
     NoParticles = Particles % NumberOfParticles
     RK2 = Particles % RK2
@@ -5656,18 +5658,14 @@ RETURN
       PrevCoord(1:dim) = Particles % PrevCoordinate(No,:) 
 
       ! Path integral over time
-      IF( TimeInteg ) THEN
-        Source(1:n) = ListGetReal( BodyForce,'Particle Time Integral Source', &
-            n, Indexes, Found )
+      IF( TimeInteg ) THEN        
+        Source = ListGetElementReal( TimeSource_h, Basis, Element, Found )
         IF( Found ) THEN
-          SourceAtPath = SUM( Basis(1:n) * Source(1:n) )
-          IF( UseGradSource ) THEN
-            DO i=1,dim
-              SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
-                  ( PrevCoord(i) - Coord(i) )
-            END DO
-          END IF
-          TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * SourceAtPath
+          IF ( UseGradSource ) THEN
+            GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element)                    
+            Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
+          END IF          
+          TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * Source
         END IF
       END IF
 
@@ -5683,18 +5681,14 @@ RETURN
           ! ds, but this does.
           ds = SQRT(SUM((PrevCoord(1:dim) - Coord(1:dim))**2))
         END IF
-      
-        Source(1:n) = ListGetReal( BodyForce,'Particle Distance Integral Source', &
-            n, Indexes, Found ) 
+        
+        Source = ListGetElementReal( DistSource_h, Basis, Element, Found )
         IF( Found ) THEN
-          SourceAtPath = SUM( Basis(1:n) * Source(1:n) )
-          IF( UseGradSource ) THEN
-            DO i=1,dim
-              SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
-                  ( PrevCoord(i) - Coord(i) )
-            END DO
-          END IF
-          DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * SourceAtPath
+          IF ( UseGradSource ) THEN
+            GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element)                    
+            Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
+          END IF          
+          DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * Source
         END IF
       END IF
 
