@@ -4348,20 +4348,21 @@ CONTAINS
 !-------------------------------------------------------------------------------------
 !> Given a table of variables and a node index return the variable values on the node.
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount )
+  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount, tStep )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
      INTEGER :: ind
      INTEGER :: count
      INTEGER, OPTIONAL :: intvarcount
+     INTEGER, OPTIONAL :: tstep
      REAL(KIND=dp) :: T(:)
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
-     
+     REAL(KIND=dp), POINTER :: Values(:)
 
      Failed = .FALSE.
 
@@ -4369,7 +4370,10 @@ CONTAINS
      vari0 = 0
      IF(PRESENT(intvarcount)) vari0 = IntVarCount
      count = vari0
-    
+
+     dti = 0
+     IF(PRESENT(tstep)) dti = -tstep
+     
      DO Vari = vari0+1, VarCount
        
        Var => VarTable(Vari) % Variable
@@ -4445,9 +4449,17 @@ CONTAINS
          IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)         
          
          IF ( k1 > 0 .AND. k1 <= VarSize ) THEN
+           Values => Var % Values           
+           IF( dti > 0 ) THEN           
+             IF ( ASSOCIATED(Var % PrevValues) ) THEN
+               IF ( dti <= SIZE(Var % PrevValues,2)) &
+                   Values => Var % PrevValues(:,dti)
+             END IF
+           END IF
+
            DO l=1,Var % DOFs
              count = count + 1
-             T(count) = Var % Values(Var % Dofs*(k1-1)+l)
+             T(count) = Values(Var % Dofs*(k1-1)+l)
            END DO
          ELSE
            Failed = .TRUE.
@@ -4806,7 +4818,7 @@ CONTAINS
 !> Given a table of variables return the variable values on the gauss point.
 !> This only deals with the gauss point variables, all other are already treated. 
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis, intvarcount)
+  SUBROUTINE VarsToValuesOnIps( VarCount, VarTable, T, count, ind, Basis, intvarcount, tstep)
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
@@ -4814,19 +4826,24 @@ CONTAINS
      REAL(KIND=dp) :: T(:)
      INTEGER, OPTIONAL :: ind
      REAL(KIND=dp), OPTIONAL :: Basis(:)
-     INTEGER, OPTIONAL :: intvarcount 
+     INTEGER, OPTIONAL :: intvarcount
+     INTEGER, OPTIONAL :: tstep
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0
+     INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,dti
      TYPE(Variable_t), POINTER :: Var
      LOGICAL :: Failed
+     REAL(KIND=dp), POINTER :: Values(:)
      
      Failed = .FALSE.
      vari0 = 0
      IF( PRESENT(intvarcount)) THEN
        vari0 = intvarcount
      END IF
-     count = vari0  
+     count = vari0
+
+     dti = 0
+     IF( PRESENT(tstep) ) dti = -tstep
 
      DO Vari = vari0+1, VarCount 
        Var => VarTable(Vari) % Variable
@@ -4869,9 +4886,17 @@ CONTAINS
        END IF
          
        IF ( k1 > 0 ) THEN
+         Values => Var % Values
+         IF( dti > 0 ) THEN
+           IF ( ASSOCIATED(Var % PrevValues) ) THEN
+             IF ( dti <= SIZE(Var % PrevValues,2)) &
+                 Values => Var % PrevValues(:,dti)
+           END IF
+         END IF
+                    
          DO l=1,Var % DOFs
            count = count + 1
-           T(count) = Var % Values(Var % Dofs*(k1-1)+l)
+           T(count) = Values(Var % Dofs*(k1-1)+l)
          END DO
        ELSE
          count = count + Var % Dofs
@@ -6397,7 +6422,7 @@ CONTAINS
 !> gaussian integration points. 
 !------------------------------------------------------------------------------
    FUNCTION ListGetElementReal( Handle,Basis,Element,Found,Indexes,&
-       GaussPoint,Rdim,Rtensor,DummyVals) RESULT(Rvalue)
+       GaussPoint,Rdim,Rtensor,DummyVals,tstep) RESULT(Rvalue)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      REAL(KIND=dp), OPTIONAL :: Basis(:)
@@ -6408,6 +6433,7 @@ CONTAINS
      INTEGER, OPTIONAL :: Rdim
      REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
      REAL(KIND=dp), OPTIONAL :: DummyVals(:)
+     INTEGER, OPTIONAL :: tstep
      REAL(KIND=dp)  :: Rvalue
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
@@ -6649,7 +6675,7 @@ CONTAINS
              k = NodeIndexes(i)
              
              CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, &
-                 k, T, j, Handle % IntVarCount )
+                 k, T, j, Handle % IntVarCount, tstep )
              
              Handle % ParNo = j 
              Handle % ParValues(j0:j,i) = T(j0:j)
@@ -6680,7 +6706,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, &
-               GaussPoint, Basis, Handle % IntVarCount )           
+               GaussPoint, Basis, Handle % IntVarCount, tstep )           
          END IF         
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
@@ -6714,7 +6740,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones have been fecthed already
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-               Handle % IntVarCount)
+               Handle % IntVarCount, tstep )
          END IF
          
          IF ( ptr % LuaFun ) THEN
@@ -6780,7 +6806,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-              Handle % IntVarCount )           
+              Handle % IntVarCount, tstep )           
          END IF
          
          ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
@@ -6823,7 +6849,7 @@ CONTAINS
          ! This one only deals with the variables on IPs, nodal ones are fetched separately
          IF( Handle % SomeVarAtIp ) THEN
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
-               Handle % IntVarCount)           
+               Handle % IntVarCount, tstep )           
          END IF
                
 #ifdef HAVE_LUA
@@ -7304,7 +7330,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> This is a wrapper to get gradient of a real valued keyword with functional dependencies.  
 !------------------------------------------------------------------------------
-   FUNCTION ListGetElementRealGrad( Handle,dBasisdx,Element,Found,Indexes) RESULT(RGrad)
+   FUNCTION ListGetElementRealGrad( Handle,dBasisdx,Element,Found,Indexes,tstep) RESULT(RGrad)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      ! dBasisdx is required since it is used to evaluate the gradient
@@ -7312,6 +7338,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      TYPE(Element_t), POINTER, OPTIONAL :: Element
      INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: tstep
      REAL(KIND=dp)  :: RGrad(3)
      LOGICAL :: Lfound
      INTEGER :: i
@@ -7331,7 +7358,7 @@ CONTAINS
 
      ! Obtain gradient of a scalar field going through the partial derivatives of the components
      DO i=1,3     
-       RGrad(i) = ListGetElementReal(Handle,dBasisdx(:,i),Element,Lfound,Indexes)
+       RGrad(i) = ListGetElementReal(Handle,dBasisdx(:,i),Element,Lfound,Indexes,tstep=tstep)
        ! If we don't have it needless to contunue to 2nd and 3rd dimensions
        IF(.NOT. Lfound ) EXIT
      END DO
