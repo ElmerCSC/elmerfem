@@ -471,13 +471,34 @@
            </widget>
           </item>
           <item row="7" column="0">
+           <widget class="QCheckBox" name="calculateMeshPiecesCheck">
+            <property name="text">
+             <string>Calculate Mesh Pieces</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="2">
+           <widget class="QLabel" name="desiredMeshPiecesLabel">
+            <property name="text">
+             <string>Desired Mesh Pieces</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="3">
+           <widget class="QLineEdit" name="desiredMeshPiecesEdit">
+            <property name="text">
+             <string></string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0">
            <widget class="QLabel" name="simulationFreeTextLabel">
             <property name="text">
              <string>Free text</string>
             </property>
            </widget>
           </item>
-          <item row="7" column="1" colspan="3">
+          <item row="8" column="1" colspan="3">
            <widget class="QTextEdit" name="simulationFreeTextEdit">
             <property name="minimumSize">
              <size>
