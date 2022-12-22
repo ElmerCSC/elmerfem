@@ -9237,7 +9237,7 @@ END FUNCTION SearchNodeL
               'Timestep extrapolation', GotIt  )
 
      eFact = ListGetCReal(CurrentModel % Simulation, &
-               'Timestep extrapolation factor', GotIt,minv=0  )
+               'Timestep extrapolation factor', GotIt )
      IF(.NOT.GotIt) THEN
        IF(ExtrapolateInTime) eFact = 1._dp
      END IF
