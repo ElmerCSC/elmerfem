@@ -9142,6 +9142,7 @@ END FUNCTION SearchNodeL
      TYPE(Matrix_t), POINTER :: A
      TYPE(Variable_t), POINTER :: Var
      TYPE(Solver_t), POINTER :: pSolver
+     REAL(KIND=dp) :: eFact
      REAL(KIND=dp), ALLOCATABLE :: NewVals(:)
      
 !------------------------------------------------------------------------------
@@ -9235,6 +9236,12 @@ END FUNCTION SearchNodeL
      ExtrapolateInTime = ListGetLogical(CurrentModel % Simulation, &
               'Timestep extrapolation', GotIt  )
 
+     eFact = ListGetCReal(CurrentModel % Simulation, &
+               'Timestep extrapolation factor', GotIt,minv=0  )
+     IF(.NOT.GotIt) THEN
+       IF(ExtrapolateInTime) eFact = 1._dp
+     END IF
+
      IF ( Method /= 'bdf' .OR. Solver % TimeOrder > 1 ) THEN
 
        IF ( Solver % DoneTime == 1 .AND. Solver % Beta /= 0.0d0 ) THEN
@@ -9258,12 +9265,9 @@ END FUNCTION SearchNodeL
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
          END DO
 
-         IF (ExtrapolateInTime) THEN
-           Var % Values = 2*Var % Values - Var % PrevValues(:,1)
-           Var % PrevValues(:,1) = (Var % Values+Var % PrevValues(:,1))/2
-         ELSE
-           Var % PrevValues(:,1) = Var % Values
-         END IF
+         Var % Values = (1+eFact)*Var % Values-eFact*Var % PrevValues(:,1)
+         Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
+
          Solver % Matrix % Force(:,2) = Solver % Matrix % Force(:,1)
          
        CASE(2)
@@ -9277,12 +9281,8 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
 
-       IF (ExtrapolateInTime) THEN
-         Var % Values = 2*Var % Values-Var % PrevValues(:,1)
-         Var % PrevValues(:,1)=(Var % Values+Var % PrevValues(:,1))/2
-       ELSE
-         Var % PrevValues(:,1) = Var % Values
-       END IF
+       Var % Values = (1+eFact)*Var % Values - eFact*Var % PrevValues(:,1)
+       Var % PrevValues(:,1) = (Var % Values+eFact*Var % PrevValues(:,1))/(1+eFact)
      END IF
 
 
