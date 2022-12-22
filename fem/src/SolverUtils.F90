@@ -9136,12 +9136,13 @@ END FUNCTION SearchNodeL
      TYPE(Solver_t), TARGET :: Solver  !< Solver to be initialized.
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
-     LOGICAL :: GotIt
+     LOGICAL :: GotIt, ExtrapolateInTime
      INTEGER :: i, Order,ndofs
      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
      TYPE(Matrix_t), POINTER :: A
      TYPE(Variable_t), POINTER :: Var
      TYPE(Solver_t), POINTER :: pSolver
+     REAL(KIND=dp), ALLOCATABLE :: NewVals(:)
      
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
@@ -9157,7 +9158,6 @@ END FUNCTION SearchNodeL
      IF ( Method == 'none' ) RETURN
     
      IF ( .NOT.GotIt ) THEN
-
        Solver % Beta = ListGetConstReal( Solver % Values, 'Newmark Beta', GotIt )
        IF ( .NOT. GotIt ) THEN
          Solver % Beta = ListGetConstReal( CurrentModel % Simulation, 'Newmark Beta', GotIt )
@@ -9231,7 +9231,10 @@ END FUNCTION SearchNodeL
 
      ndofs = Solver % Matrix % NumberOfRows
      Var => Solver % Variable
-     
+
+     ExtrapolateInTime = ListGetLogical(CurrentModel % Simulation, &
+              'Timestep extrapolation', GotIt  )
+
      IF ( Method /= 'bdf' .OR. Solver % TimeOrder > 1 ) THEN
 
        IF ( Solver % DoneTime == 1 .AND. Solver % Beta /= 0.0d0 ) THEN
@@ -9254,7 +9257,13 @@ END FUNCTION SearchNodeL
          DO i=Order, 2, -1
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
          END DO
-         Var % PrevValues(:,1) = Var % Values
+
+         IF (ExtrapolateInTime) THEN
+           Var % Values = 2*Var % Values - Var % PrevValues(:,1)
+           Var % PrevValues(:,1) = (Var % Values+Var % PrevValues(:,1))/2
+         ELSE
+           Var % PrevValues(:,1) = Var % Values
+         END IF
          Solver % Matrix % Force(:,2) = Solver % Matrix % Force(:,1)
          
        CASE(2)
@@ -9267,7 +9276,13 @@ END FUNCTION SearchNodeL
        DO i=Order, 2, -1
          Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
-       Var % PrevValues(:,1) = Var % Values
+
+       IF (ExtrapolateInTime) THEN
+         Var % Values = 2*Var % Values-Var % PrevValues(:,1)
+         Var % PrevValues(:,1)=(Var % Values+Var % PrevValues(:,1))/2
+       ELSE
+         Var % PrevValues(:,1) = Var % Values
+       END IF
      END IF
 
 
@@ -9312,7 +9327,7 @@ END FUNCTION SearchNodeL
          Var => VariableGet( Solver % Mesh % Variables, Var_name )
          IF( .NOT. ASSOCIATED(Var)) CYCLE
          IF( .NOT. ASSOCIATED(Var % PrevValues) ) CYCLE
-         
+
          n = SIZE( Var % PrevValues,2 )
          DO i=n,2,-1
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
