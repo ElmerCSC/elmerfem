@@ -43,9 +43,7 @@
 
 
    MODULE RadiationFactorGlobals
-      USE CRSMatrix
-      USE IterSolve
- 
+      USE Types
       TYPE(Matrix_t), POINTER :: G
       REAL(KIND=dp), ALLOCATABLE :: Gfull(:,:)
    END MODULE RadiationFactorGlobals
@@ -220,7 +218,8 @@
      IF(.NOT.GotIt) &
        FullMatrix = GetLogical( Params, 'Gebhardt Factors Solver Full',GotIt) 
      IF( FullMatrix ) THEN
-       CALL Fatal('RadiationFactors','Using full matrix format for radiation not available anymore.')
+       CALL Fatal('RadiationFactors', &
+             'Using full matrix format for radiation problems not available anymore.')
      ELSE
        CALL Info('RadiationFactors','Using sparse matrix format for factor computations.',Level=6)
      END IF
@@ -450,7 +449,9 @@
      CALL Info('RadiationFactors',Message)
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
 
+
    CONTAINS
+
 
      SUBROUTINE FixGeometryAfter(n,Element, BC, BCind)
        INTEGER :: n, BCind
@@ -616,7 +617,6 @@
      
 
      SUBROUTINE CheckFactorsFilesExist()
-
        LOGICAL :: FilesExist, GotIt
        INTEGER :: RadiationBody
        CHARACTER(:), ALLOCATABLE :: ViewFactorsFile, RadiatorFactorsFile, &
@@ -1034,7 +1034,7 @@
        INTEGER :: i,k,ent_id
        
        DO i=1,RadiationSurfaces         
-         Element => Model % Elements(ElementNumbers(i))
+         Element => Mesh % Elements(ElementNumbers(i))
          
          DO ent_id=1,CurrentModel % NumberOfBCs
            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(ent_id) % Tag ) EXIT
@@ -1494,8 +1494,8 @@
      SUBROUTINE ConstantRadiosity()
  
        LOGICAL :: RBC
+       REAL(KIND=dp) :: r, e, a, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:)
-       REAL(KIND=dp) :: bscal, r, e, a, rpower, Temp, Black
 
 
        ! Assemble the equations, first coefficient matrix:
@@ -1504,33 +1504,38 @@
 
        ! ... and then the RHS:
        ! ---------------------
-       ! Check for radiation sources:
-       RBC = CheckForRadiators(RadiatorPowers)
 
        DO i=1,RadiationSurfaces
-         Element => Model % Elements(ElementNumbers(i))
          e = Emissivity(i)
          r = 1-e
          a = RelAreas(i) * (r/e)
          Temp = Temp_Elem(i)
          Black = Sigma*Temp**4
-
-         IF(RBC .AND. ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
-           rpower = SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
-         ELSE
-           rpower = 0._dp
-         END IF
-
-         RHS(i) = -a*e*Black - a*r*rpower
+         RHS(i) = -a*e*Black
          IF(Newton) RHS_d(i) = -a*e*Black*4/Temp
        END DO
+
+       ! Check for radiation sources:
+       RBC = CheckForRadiators(RadiatorPowers)
+       IF( RBC) THEN
+         DO i=1,RadiationSurfaces
+           Element => Mesh % Elements(ElementNumbers(i))
+           IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+             e = Emissivity(i)
+             r = 1-e
+             a = RelAreas(i) * (r/e)
+             RHS(i) = RHS(i) - a*r* & 
+                      SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
+           END IF
+         END DO
+       END IF
 
        ! Solve for the radiosity and its derivative with respect to temperature
        !-----------------------------------------------------------------------
        CALL RadiationLinearSolver(RadiationSurfaces,G,SOL,RHS,Diag,Solver)
        IF( Newton ) THEN
          CALL RadiationLinearSolver(RadiationSurfaces,G,SOL_d,RHS_d, &
-                          Diag, Solver, Scaling=.FALSE.)
+                        Diag, Solver, Scaling=.FALSE.)
        END IF
 
        ! Store the results for access by e.g. heat equation solvers:
@@ -1720,7 +1725,7 @@
            CALL TabulateSpectralEmissivity(Emissivity,Trad)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces
-             Element => Model % Elements(ElementNumbers(i))
+             Element => Mesh % Elements(ElementNumbers(i))
              IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
                e = Emissivity(i)
                r = 1-e
@@ -1850,7 +1855,7 @@
        TYPE(Solver_t), POINTER :: Solver
 
        LOGICAL :: Scal,Found
-       REAL(KIND=dp) :: bscal, eps
+       REAL(KIND=dp) :: bscal
 
        scal = .TRUE.
        IF(PRESENT(Scaling)) scal = Scaling
@@ -1969,7 +1974,6 @@
      END SUBROUTINE RadiationCG
 #endif
 
-     
 
      ! Save factors is mainly for debugging purposes
      !-------------------------------------------------------------------
@@ -2009,7 +2013,7 @@
        END DO
 
        DO t=1,RadiationSurfaces
-         Element => Model % Elements(ElementNumbers(t))
+         Element => Mesh % Elements(ElementNumbers(t))
          GebhartFactors => Element % BoundaryInfo % RadiationFactors
 
          n = GebhartFactors % NumberOfFactors 
@@ -2023,7 +2027,6 @@
        END DO
 
        CLOSE(VFUnit)
-     
      END SUBROUTINE SaveGebhartFactors
 
 
