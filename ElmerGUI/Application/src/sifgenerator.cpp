@@ -207,8 +207,8 @@ void SifGenerator::makeSimulationBlock()
 	     ui.postFileEdit->text().trimmed());
 
   if(ui.calculateMeshPiecesCheck->isChecked())
-       te->append("  Calculate Mesh Pieces = Logical True");
-  addSifLine("  Desired Mesh Pieces = Integer ", 
+       te->append("  Calculate Mesh Pieces = True");
+  addSifLine("  Desired Mesh Pieces = ", 
 	     ui.desiredMeshPiecesEdit->text().trimmed());
 
   qs = ui.simulationFreeTextEdit->toPlainText();
