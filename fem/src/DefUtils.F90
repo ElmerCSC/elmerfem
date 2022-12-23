@@ -3591,12 +3591,25 @@ CONTAINS
     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(in) :: USolver
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Converged
+    LOGICAL :: Found
+    INTEGER :: i,imin,imax
     
     Solver => CurrentModel % Solver
     IF ( PRESENT( USolver ) ) Solver => USolver
 
-    Converged = ( Solver % Variable % NonlinConverged > 0 )
+    IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',Found ) ) THEN
+      i = Solver % Variable % NonlinConverged
+      CALL Info('DefaultConverged','Convergence status: '//TRIM(I2S(i)),Level=12)      
+      imin = ParallelReduction(i,1)
+      imax = ParallelReduction(i,2)
+      IF(imin /= imax ) THEN
+        CALL Info('DefaultConverged','Parallel timestepping converging at different rates!',Level=6)
+        Solver % Variable % NonlinConverged = imin
+      END IF
+    END IF
 
+    Converged = ( Solver % Variable % NonlinConverged > 0 )
+          
   END FUNCTION DefaultConverged
 !------------------------------------------------------------------------------
          
