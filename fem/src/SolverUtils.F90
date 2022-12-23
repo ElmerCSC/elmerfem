@@ -4266,6 +4266,7 @@ CONTAINS
     !CALL Info('VectorValuesRange',Message)
     
     Parallel = ( ParEnv % PEs > 1)
+    IF( Parallel ) Parallel = .NOT. CurrentModel % Mesh % SingleMesh 
     IF( Parallel ) THEN
       IF( PRESENT( AlwaysSerial ) ) THEN
         IF( AlwaysSerial ) Parallel = .FALSE.
@@ -12401,10 +12402,13 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
-    Parallel = Solver % Parallel
+    Parallel = Solver % Parallel    
+    IF( Parallel ) THEN
+      CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in parallel',Level=10)
+    ELSE
+      CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in serial',Level=10)
+    END IF
       
-    CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
-
     IF( PRESENT( DiagScaling ) ) THEN
       CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
       Diag => DiagScaling 
@@ -12478,7 +12482,7 @@ END FUNCTION SearchNodeL
         s = 0.0_dp
         ! TODO: Add threading
         IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
-        s = ParallelReduction(s,2) 
+        IF(Parallel) s = ParallelReduction(s,2) 
 
         IF(s > TINY(s) ) THEN 
           DO i=1,n
@@ -12605,8 +12609,12 @@ END FUNCTION SearchNodeL
       DoRHS = .TRUE.
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
-        bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
-
+        IF( Parallel ) THEN
+          bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+        ELSE
+          bnorm = SQRT(SUM(b(1:n)**2))
+        END IF
+          
         IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
           CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
           DoRhs = .FALSE.
@@ -15908,7 +15916,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   
 !------------------------------------------------------------------------------
-  CALL Info( Caller, ' ', Level=6 )
+  CALL Info( Caller, ' ', Level=12 )
 
   SolverPointer => Solver  
 
@@ -15989,10 +15997,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          MultiplierName = 'LagrangeMultiplier'
        END IF       
        CALL Info( Caller, &
-           'Lagrange Multiplier Name set to: '//TRIM(MultiplierName), Level=6 )
+           'Lagrange Multiplier Name set to: '//TRIM(MultiplierName), Level=12 )
      ELSE
        CALL Info( Caller, &
-           'Lagrange Multiplier Name given to: '//TRIM(MultiplierName), Level=6 )       
+           'Lagrange Multiplier Name given to: '//TRIM(MultiplierName), Level=12 )       
      END IF
 
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
@@ -16061,7 +16069,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
 
-    CALL Info(Caller,'Adding ConstraintMatrix into CollectionMatrix',Level=8)
+    CALL Info(Caller,'Adding ConstraintMatrix into CollectionMatrix',Level=10)
     CALL Info(Caller,'Number of Rows in constraint matrix: '&
         //TRIM(I2S(RestMatrix % NumberOfRows)),Level=12)
     CALL Info(Caller,'Number of Nofs in constraint matrix: '&
@@ -16215,7 +16223,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
   IF(ASSOCIATED(AddMatrix)) THEN
 
-    CALL Info(Caller,'Adding AddMatrix into CollectionMatrix',Level=10)
+    CALL Info(Caller,'Adding AddMatrix into CollectionMatrix',Level=12)
 
     DO i=AddMatrix % NumberOfRows,1,-1
 
@@ -16250,7 +16258,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
 ! Put the StiffMatrix to upper part of CollectionMatrix
 !------------------------------------------------------------------------------
-  CALL Info(Caller,'Adding Stiffness Matrix into CollectionMatrix',Level=10)
+  CALL Info(Caller,'Adding Stiffness Matrix into CollectionMatrix',Level=12)
 
   DO i=StiffMatrix % NumberOfRows,1,-1
     DO j=StiffMatrix % Rows(i+1)-1,StiffMatrix % Rows(i),-1
@@ -16266,7 +16274,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 ! necessarily biorthogonal constraint equation test functions.
 !------------------------------------------------------------------------------
   IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
-    CALL Info(Caller,'Eliminating Constraints from CollectionMatrix',Level=10)
+    CALL Info(Caller,'Eliminating Constraints from CollectionMatrix',Level=12)
 
     n = StiffMatrix % NumberOfRows
     m = RestMatrix % NumberOfRows
@@ -16606,7 +16614,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         SIZE(CollectionVector),'CollectionVector')           
   END IF
   
-  CALL Info( Caller, 'CollectionMatrix done', Level=10 )
+  CALL Info( Caller, 'CollectionMatrix done', Level=12 )
 
 !------------------------------------------------------------------------------
 ! Assign values to CollectionVector
@@ -16634,7 +16642,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
             StiffMatrix % NumberOfRows,0)
     
-  CALL Info( Caller, 'CollectionVector done', Level=10 )
+  CALL Info( Caller, 'CollectionVector done', Level=12 )
 
 !------------------------------------------------------------------------------
 ! Solve the Collection-system 
@@ -16648,21 +16656,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(.NOT. Found ) THEN
     SkipConstraints = ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) 
     IF( SkipConstraints ) THEN
-      CALL Info(Caller,'Linear system residual mode must skip constraints',Level=8)
+      CALL Info(Caller,'Linear system residual mode must skip constraints',Level=10)
     ELSE
       SkipConstraints = ListGetLogical( Solver % values, 'NonLinear System Consistent Norm',Found ) 
       IF( SkipConstraints ) THEN
-        CALL Info(Caller,'Nonlinear system consistent norm must skip constraints',Level=8)
+        CALL Info(Caller,'Nonlinear system consistent norm must skip constraints',Level=10)
       END IF
     END IF
     str = ListGetString( Solver % values, 'NonLinear System Convergence Measure',Found )
     IF( str == 'solution' ) THEN
       SkipConstraints = .TRUE.
       CALL Info(Caller,&
-          'Nonlinear system convergence measure == "solution" must skip constraints',Level=8)
+          'Nonlinear system convergence measure == "solution" must skip constraints',Level=10)
     END IF
     IF( SkipConstraints ) THEN
-      CALL Info(Caller,'Enforcing convergence without constraints to True',Level=8)
+      CALL Info(Caller,'Enforcing convergence without constraints to True',Level=10)
       CALL ListAddLogical( Solver % Values, &
            'Nonlinear System Convergence Without Constraints',.TRUE.)
     END IF

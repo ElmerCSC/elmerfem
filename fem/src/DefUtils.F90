@@ -3222,7 +3222,7 @@ CONTAINS
      IF(.NOT. Found ) RETURN
 
      CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
-         TRIM(SlaveSolverStr),Level=5)
+         TRIM(SlaveSolverStr),Level=6)
      
      dt = GetTimeStepsize()
      Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
@@ -5124,9 +5124,8 @@ CONTAINS
      END IF
 
      CALL Info('DefUtils::DefaultDirichletBCs', &
-            'Setting Dirichlet boundary conditions', Level=6)
+            'Setting Dirichlet boundary conditions', Level=10)
      
-
 
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
@@ -5867,7 +5866,7 @@ CONTAINS
      CALL EnforceDirichletConditions( Solver, A, b )
      
  
-     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=10)
+     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=12)
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
@@ -6504,7 +6503,7 @@ CONTAINS
 
     IF( BUpd ) THEN
       str = GetString( Params,'Equation',Found)
-      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=6 )
+      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=8 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS ) 
       ELSE
