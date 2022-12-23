@@ -66,7 +66,6 @@
      TYPE(Model_t), POINTER :: Model
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element
-     TYPE(Matrix_t), POINTER :: Amatrix
      TYPE(Solver_t), POINTER, SAVE :: Solver => Null()
      TYPE(Factors_t), POINTER :: GebhartFactors, ViewFactors(:), RadiosityFactors
           
@@ -74,18 +73,18 @@
      REAL (KIND=dp) :: Transmittivity
 
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), SOL_d(:), RHS(:), RHS_d(:), Fac(:), &
-        Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:), Temp_Elem(:)
+        Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:), SurfaceTemperature(:)
  
      REAL(KIND=dp), POINTER :: Temperature(:)
 
      REAL (KIND=dp) :: SteadyChange, Tol, Sigma
 
      REAL (KIND=dp) :: at, at0, st
-     INTEGER :: RadiationSurfaces, GeometryFixedAfter, MatrixElements, &
+     INTEGER :: RadiationSurfaces, GeometryFixedAfter, &
          TimesVisited=0, RadiationBody, MaxRadiationBody, FactorsFixedAfter
 
-     INTEGER, POINTER :: TempPerm(:),NewPerm(:)
      INTEGER, ALLOCATABLE :: FacPerm(:)
+     INTEGER, POINTER :: TempPerm(:)
      INTEGER, ALLOCATABLE, TARGET :: ElementNumbers(:), InvElementNumbers(:)
 
      CHARACTER(:), ALLOCATABLE :: RadiationFlag, SolverType
@@ -913,34 +912,27 @@
      SUBROUTINE CreateRadiationMatrix(n)
        INTEGER :: n
 
+       INTEGER, ALLOCATABLE :: RowSpace(:),Reorder(:)
        INTEGER, POINTER :: Cols(:)
-       INTEGER :: i,j,k,nf,t,colj,previ,MatrixEntries,RowSpace(n),Reorder(n)
+       INTEGER :: i,j,k,nf,t,colj,previ,MatrixEntries
+
+       ALLOCATE(RowSpace(n), Reorder(n))
 
        ! Check whether the element already sees itself, it will when 
        ! gebhardt factors are computed. Also compute matrix size.
        DO i=1,n
+         RowSpace(i) = ViewFactors(i) % NumberOfFactors
          Cols => ViewFactors(i) % Elements
-         nf = ViewFactors(i) % NumberOfFactors
-         Rowspace(i) = nf
-         k = 0
-         DO j=1,nf
-!          IF (Cols(j) == ElementNumbers(i)) THEN
-           IF (Cols(j) == i) THEN
-             k = 1
-             EXIT
-           END IF
-         END DO
-         IF (k == 0) RowSpace(i) = RowSpace(i)+1
+         IF (ALL(Cols/=i)) RowSpace(i) = RowSpace(i)+1
        END DO
-       MatrixElements = SUM(RowSpace(1:n))
-
+       MatrixEntries = SUM(RowSpace(1:n))
 
        IF(.NOT.ASSOCIATED(G) .OR. UpdateViewFactors) THEN
          IF(ASSOCIATED(G)) CALL FreeMatrix(G)
 
          ! Assembly the matrix form
          Reorder = [(i, i=1,n)]
-         G => CRS_CreateMatrix(n,MatrixElements,RowSpace,1,Reorder,.TRUE. )
+         G => CRS_CreateMatrix(n,MatrixEntries,RowSpace,1,Reorder,.TRUE. )
 
          DO t=1,n
            Cols => ViewFactors(t) % Elements         
@@ -966,7 +958,7 @@
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: DG, Found
        INTEGER :: i,n
-       INTEGER, POINTER :: Ind(:)
+       INTEGER, POINTER :: Inds(:)
        INTEGER, TARGET :: DGInds(27)
 
        DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
@@ -977,11 +969,11 @@
          n = GetElementNOFNodes(Element)
          IF( DG ) THEN
            CALL DgRadiationIndexes(Element,n,DGInds,.TRUE.)
-           Ind => DGInds(1:n)
+           Inds => DGInds(1:n)
          ELSE
-           Ind => Element % NodeIndexes(1:n)
+           Inds => Element % NodeIndexes(1:n)
          END IF
-         Temp_Elem(i) = SUM(Temperature(TempPerm(Ind)))/n
+         SurfaceTemperature(i) = SUM(Temperature(TempPerm(Inds)))/n
        END DO
      END SUBROUTINE TabulateSurfaceTemperatures
 
@@ -1363,13 +1355,15 @@
      END SUBROUTINE CalculateGebhartFactors
 
      
-     ! When Gebhart factor may have changed also modify the matrix topology so that
-     ! when we assembly the matrices we are not hitting non-existing entries.
+     ! When Gebhart factors may have changed also modify the matrix topology so that
+     ! when we assemble the matrices we are not hitting non-existing entries.
      !--------------------------------------------------------------------------------
      SUBROUTINE UpdateMatrixTopologyWithFactors()
 
-       INTEGER :: MatrixFormat
-       LOGICAL :: OptimizeBW
+       TYPE(Matrix_t), POINTER :: AMatrix
+       LOGICAL :: OptimizeBW, GotIt
+       INTEGER :: n,MatrixFormat
+       INTEGER, POINTER :: NewPerm(:)
      
        CALL Info('RadiationFactors','Reorganizing the matrix structure',Level=5)
 
@@ -1391,8 +1385,8 @@
        END IF
 
        AMatrix => CreateMatrix( CurrentModel,TSolver,TSolver % Mesh, &
-           NewPerm, 1, MatrixFormat, OptimizeBW,  &
-           ListGetString( TSolver % Values, 'Equation', Found ) )       
+          NewPerm, 1, MatrixFormat, OptimizeBW,  &
+             ListGetString( TSolver % Values, 'Equation', Found ) )       
 
        ! Reorder the primary variable for bandwidth optimization:
        ! --------------------------------------------------------
@@ -1455,7 +1449,7 @@
          CALL Fatal('RadiationFactors', &
               "Radiosity solution can't be completed without the temperature field.")
        
-       ALLOCATE(Temp_Elem(RadiationSurfaces))
+       ALLOCATE(SurfaceTemperature(RadiationSurfaces))
        CALL TabulateSurfaceTemperatures()
 
        Sigma = ListGetConstReal( Model % Constants,&
@@ -1474,7 +1468,7 @@
        !  DEALLOCATE(RHS_d, SOL_d)
        !END IF
 
-       DEALLOCATE(Temp_Elem)
+       DEALLOCATE(SurfaceTemperature)
        IF(Newton) DEALLOCATE(RHS_d, SOL_d)
      END SUBROUTINE CalculateRadiosity
        
@@ -1509,7 +1503,7 @@
          e = Emissivity(i)
          r = 1-e
          a = RelAreas(i) * (r/e)
-         Temp = Temp_Elem(i)
+         Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
          RHS(i) = -a*e*Black
          IF(Newton) RHS_d(i) = -a*e*Black*4/Temp
@@ -1535,7 +1529,7 @@
        CALL RadiationLinearSolver(RadiationSurfaces,G,SOL,RHS,Diag,Solver)
        IF( Newton ) THEN
          CALL RadiationLinearSolver(RadiationSurfaces,G,SOL_d,RHS_d, &
-                        Diag, Solver, Scaling=.FALSE.)
+                      Diag, Solver, Scaling=.FALSE.)
        END IF
 
        ! Store the results for access by e.g. heat equation solvers:
@@ -1566,8 +1560,8 @@
          
        IF(.NOT. ASSOCIATED(Temperature)) RETURN
 
-       Tmin = MINVAL( Temp_elem )
-       Tmax = MAXVAL( Temp_elem )
+       Tmin = MINVAL(SurfaceTemperature)
+       Tmax = MAXVAL(SurfaceTemperature)
        
        WRITE(Message,'(A,ES12.3)') 'Minimum boundary temperature: ',Tmin
        CALL Info('SpectralRadiosity',Message,Level=10)
@@ -1604,7 +1598,7 @@
 
          qsum = 0.0_dp         
          DO i=1,RadiationSurfaces           
-           q = ( Temp_Elem(i) / dT - k )
+           q = ( SurfaceTemperature(i) / dT - k )
            IF( ABS(q) < 1 ) THEN
              q = 1-ABS(q)
              qsum = qsum + q
@@ -1636,10 +1630,10 @@
            e = Emissivity(i)
            r = 1-e
            a = RelAreas(i) * (r/e)
-           Temp = Temp_Elem(i)
+           Temp = SurfaceTemperature(i)
            Black = Sigma*Temp**4
            ! The portion of the emissivity to consider for this radiating element
-           q = ( Temp_Elem(i) / dT - k )
+           q = ( SurfaceTemperature(i) / dT - k )
            IF( ABS(q) < 1 ) THEN
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
@@ -1885,45 +1879,6 @@
        x = x * bscal * Diag
      END SUBROUTINE RadiationLinearSolver
 
-
-     SUBROUTINE UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
-       REAL(KIND=dp) :: SOL(:), SOL_d(:)
-       REAL(KIND=dp), OPTIONAL :: EffAbs(:), EffTemp(:)
-
-       TYPE(Element_t), POINTER :: Element
-       INTEGER :: n,i
-       TYPE(Factors_t), POINTER :: RadiationFactors
-
-       n=2
-       IF(PRESENT(EffAbs))  n=n+1
-       IF(PRESENT(EffTemp)) n=n+1
-
-       DO i=1,RadiationSurfaces
-         Element => Mesh % Elements(ElementNumbers(i))
-
-         RadiosityFactors => Element % BoundaryInfo % RadiationFactors       
-         IF ( .NOT. ASSOCIATED( RadiosityFactors ) ) THEN
-           ALLOCATE(RadiosityFactors)
-           Element % BoundaryInfo % RadiationFactors => RadiosityFactors
-           Element % BoundaryInfo % RadiationFactors % Elements => Null()
-         END IF
-
-         IF (.NOT.ASSOCIATED(RadiosityFactors % Elements)) THEN
-           ALLOCATE( RadiosityFactors % Elements(1) )
-           ALLOCATE( RadiosityFactors % Factors(n) )
-           RadiosityFactors % Factors = 0.0_dp
-           RadiosityFactors % NumberOfFactors = 1
-           RadiosityFactors % Elements(1) = ElementNumbers(i)
-         END IF
-
-         RadiosityFactors % Factors(1) = SOL(i)
-         IF(Newton) RadiosityFactors % Factors(2) = SOL_d(i)
-         IF(PRESENT(EffAbs))  RadiosityFactors % Factors(3) = EffAbs(i)
-         IF(PRESENT(EffTemp)) RadiosityFactors % Factors(4) = EffTemp(i)
-       END DO
-     END SUBROUTINE UpdateRadiosityFactors
-
-
 #if TESTCG
      ! Tailored local CG algo for speed testing (somewhat faster than any of the 
      ! library routines but not so much...)
@@ -1973,6 +1928,45 @@
        WRITE (*, '(I8, E11.4)') iter, residual
      END SUBROUTINE RadiationCG
 #endif
+
+
+     SUBROUTINE UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
+       REAL(KIND=dp) :: SOL(:), SOL_d(:)
+       REAL(KIND=dp), OPTIONAL :: EffAbs(:), EffTemp(:)
+
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: n,i
+       TYPE(Factors_t), POINTER :: RadiationFactors
+
+       n=2
+       IF(PRESENT(EffAbs))  n=n+1
+       IF(PRESENT(EffTemp)) n=n+1
+
+       DO i=1,RadiationSurfaces
+         Element => Mesh % Elements(ElementNumbers(i))
+
+         RadiosityFactors => Element % BoundaryInfo % RadiationFactors       
+         IF ( .NOT. ASSOCIATED( RadiosityFactors ) ) THEN
+           ALLOCATE(RadiosityFactors)
+           Element % BoundaryInfo % RadiationFactors => RadiosityFactors
+           Element % BoundaryInfo % RadiationFactors % Elements => Null()
+         END IF
+
+         IF (.NOT.ASSOCIATED(RadiosityFactors % Elements)) THEN
+           ALLOCATE( RadiosityFactors % Elements(1) )
+           ALLOCATE( RadiosityFactors % Factors(4) )
+           RadiosityFactors % Factors = 0.0_dp
+           RadiosityFactors % NumberOfFactors = 1
+           RadiosityFactors % Elements(1) = ElementNumbers(i)
+         END IF
+
+         RadiosityFactors % Factors(1) = SOL(i)
+         IF(Newton) RadiosityFactors % Factors(2) = SOL_d(i)
+         IF(PRESENT(EffAbs))  RadiosityFactors % Factors(3) = EffAbs(i)
+         IF(PRESENT(EffTemp)) RadiosityFactors % Factors(4) = EffTemp(i)
+       END DO
+     END SUBROUTINE UpdateRadiosityFactors
+
 
 
      ! Save factors is mainly for debugging purposes
