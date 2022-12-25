@@ -188,7 +188,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:),&
       CoilHelicity(:),CoilNormals(:,:)
   LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
-      FitCoil, SelectNodes, CalcCurr, NarrowInterface
+      FitCoil, SelectNodes, CalcCurr, NarrowInterface, UseUnityCond
   LOGICAL, ALLOCATABLE :: GotCurr(:), GotDens(:), NormalizeCoil(:)
   REAL(KIND=dp) :: CoilCenter(3), CoilNormal(3), CoilTangent1(3), CoilTangent2(3), &
       MinCurr(3),MaxCurr(3),TmpCurr(3)
@@ -224,6 +224,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   CondName = GetString( Params,'Electric Conductivity Name',Found )
   IF( .NOT. Found ) CondName = 'Electric Conductivity' 
 
+  UseUnityCond = GetLogical( Params,'Use Unity Conductivity',Found )
   
   UseDistance = GetLogical( Params,'Use Wall Distance',Found)
   IF( UseDistance ) THEN
@@ -1566,8 +1567,13 @@ CONTAINS
     FORCE = 0._dp
 
     Material => GetMaterial( Element ) 
-    ElCond(1:n) = GetReal( Material, CondName, GotElCond ) 
-   
+
+    IF( UseUnityCond ) THEN
+      GotElCond = .FALSE.
+    ELSE     
+      ElCond(1:n) = GetReal( Material, CondName, GotElCond ) 
+    END IF
+      
     IF( CoilParts == 1 ) THEN
       NodalPot(1:n) = PotVar % Values( Perm( Element % NodeIndexes ) )
     ELSE      
@@ -1771,9 +1777,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-    Material => GetMaterial( Element ) 
-    ElCond(1:n) = GetReal( Material, CondName, GotElCond ) 
-    
+    Material => GetMaterial( Element )
+
+    IF( UseUnityCond ) THEN
+      GotElCond = .FALSE.
+    ELSE
+      ElCond(1:n) = GetReal( Material, CondName, GotElCond ) 
+    END IF
+      
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
     FORCE = 0._dp
