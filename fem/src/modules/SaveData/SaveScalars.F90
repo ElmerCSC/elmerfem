@@ -158,7 +158,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CoordinateBasis(:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
   INTEGER, ALLOCATABLE :: BoundaryHits(:)
-  INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), CoordinateIndex(:), CoordinatesElemNo(:)
+  INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), SaveIndex(:)
   INTEGER, ALLOCATABLE, TARGET :: ClosestIndex(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
@@ -300,7 +300,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CommRank = ParEnv % MyPe 
     END IF
 
-    !PRINT *,'ParallelStuff:',ParEnv % MyPe, CommRank, CommSize, nSlices,nTimes
     IF( CommRank > 0 ) EchoValues = .FALSE.
     
     IF( ParallelReduce ) THEN
@@ -335,13 +334,14 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CALL Warn(Caller,'Only Exact Save Coordinates works in parallel, enforcing...')
       ExactCoordinates = .TRUE.
     END IF
-
+    
     IF(ExactCoordinates) THEN            
       ! Look for the value at the given coordinate point really.
       NoElements = SIZE(PointCoordinates,1)
       GotIt = .FALSE.
+      
       IF( .NOT. MovingMesh ) THEN
-        CoordinatesElemNo => ListGetIntegerArray( Params,'Save Coordinate Elements',GotIt )
+        SaveIndex => ListGetIntegerArray( Params,'Save Coordinate Elements',GotIt )
       END IF
       IF(.NOT. GotIt ) THEN
         CALL Info(Caller,'Searching for elements containing save coordinates',Level=8)
@@ -354,7 +354,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           ClosestIndex(j) = ClosestElementInMesh( Mesh, Coords )
         END DO
 
-        CoordinatesElemNo => ClosestIndex
+        SaveIndex => ClosestIndex
         IF( .NOT. MovingMesh ) THEN
           CALL ListAddIntegerArray( Params,'Save Coordinate Elements',&
               NoElements,ClosestIndex )
@@ -365,19 +365,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NoCoordinates = SIZE(PointCoordinates,1)
       GotIt = .FALSE.
       IF( .NOT. MovingMesh ) THEN
-        CoordinateIndex => ListGetIntegerArray( Params,'Save Coordinate Indexes',GotIt )
+        SaveIndex => ListGetIntegerArray( Params,'Save Coordinate Indexes',GotIt )
       END IF
       IF( .NOT. GotIt ) THEN
         CALL Info(Caller,'Searching for closest nodes to coordinates',Level=8)
         ALLOCATE(ClosestIndex(NoCoordinates), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for CoordinateIndex') 
+        IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for SaveIndex') 
         DO j=1,NoCoordinates 
           Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
           IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
           ClosestIndex(j) = ClosestNodeInMesh( Mesh, Coords )
         END DO
         
-        CoordinateIndex => ClosestIndex
+        SaveIndex => ClosestIndex
         IF( .NOT. MovingMesh ) THEN
           CALL ListAddIntegerArray( Params,'Save Coordinate Indexes',&
               NoCoordinates,ClosestIndex )
@@ -385,16 +385,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
   END IF
-
+  
   n = NoPoints + NoCoordinates
-  IF( n > 0 ) THEN  
+  IF( n > 0 ) THEN
     IF( ASSOCIATED( Mesh % Elements(1) % DGIndexes ) ) THEN
       ALLOCATE( DGIndex(n) )       
       DO i=1,n
         IF( i<= NoPoints ) THEN
           DGIndex(i) = NodeToDGIndex(Mesh,PointIndex(i))
         ELSE
-          DGIndex(i) = NodeToDGIndex(Mesh,ClosestIndex(i-NoPoints))
+          j = SaveIndex(i-NoPoints)
+          DGIndex(i) = NodeToDGIndex(Mesh,j)
         END IF
       END DO
     END IF
@@ -981,7 +982,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF(k <= NoPoints) THEN
       l = PointIndex(k)
     ELSE
-      l = CoordinateIndex(k-NoPoints)
+      l = SaveIndex(k-NoPoints)
     END IF
 
 
@@ -1066,7 +1067,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ParOper = 'max'
 
   DO k=1,NoElements        
-    l = CoordinatesElemNo(k)
+    l = SaveIndex(k)
 
     lpar = l
     IF( l > 0 ) THEN

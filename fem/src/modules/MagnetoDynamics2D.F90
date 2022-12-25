@@ -203,6 +203,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   CALL InitHysteresis(Model, Solver)
 
   DO iter = 1,NonlinIter
+    CALL Info(Caller,'Performing nonlinear iteration: '//TRIM(I2S(iter)),Level=12)
+
     IF(Iter > 1) NewtonRaphson=.TRUE.
     ! System assembly:
     ! ----------------
@@ -285,8 +287,11 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         END IF
       END IF
     END IF
+
     
+    CALL Info(Caller,'Convergence status: '//TRIM(I2S(Solver % Variable % NonlinConverged)),Level=12)
     IF( DefaultConverged() ) THEN
+      CALL Info(Caller,'System has converged to tolerances after '//TRIM(I2S(iter))//' iterations!',Level=12)
       IF( UseTorqueTol ) THEN
         IF( TorqueErr > TorqueTol ) THEN
           CALL Info(Caller,'Nonlinear system tolerance ok after '&
@@ -675,8 +680,8 @@ CONTAINS
          ! The correction factor also corrects for the number of periods.
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
-         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = ParallelReduction( i, 2 ) 
+         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )         
+         IF( Parallel ) i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)
@@ -1656,8 +1661,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     CALL SetMagneticFluxDensityBC()
     CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
-        
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+    IF( DefaultConverged() ) EXIT
   END DO
   
   IF(.NOT. CSymmetry ) THEN
@@ -2200,7 +2205,7 @@ CONTAINS
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
          i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = ParallelReduction( i, 2 ) 
+         IF( Parallel ) i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)
