@@ -7231,30 +7231,30 @@ void MainWindow::showaboutSlot() {
          "three dimensional modeling with Elmer "
          "finite element software. The program "
          "uses elmergrid, nglib, and optionally tetlib, "
-         "as finite element mesh generators:</P>"
+         "as finite element mesh generators:<BR>"
          "<A HREF='https://www.csc.fi/elmer/'>https://www.csc.fi/elmer/</A><BR>"
          "<A HREF='https://ngsolve.org/'>https://ngsolve.org/</A><BR>"
-         "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A>"
+         "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A></P>"
          "<P>ElmerGUI uses the Qt Cross-Platform "
-         "Application Framework by The Qt Company:</P>"
-         "<A HREF='https://www.qt.io/'>https://www.qt.io/</A>"
+         "Application Framework by The Qt Company:<BR>"
+         "<A HREF='https://www.qt.io/'>https://www.qt.io/</A></P>"
 #ifdef EG_VTK
          "<P>This version of ElmerGUI contains a built-in "
          "postprocessor based on the Visualization Toolkit "
-         "(VTK):</P>"
-         "<A HREF='https://vtk.org/'>https://vtk.org/</A>"
+         "(VTK):<BR>"
+         "<A HREF='https://vtk.org/'>https://vtk.org/</A></P>"
 #endif
 
 #ifdef EG_PARAVIEW
          "<P>This version of ElmerGUI has been linked "
-         "against ParaView visualization software.</P>"
-         "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A>"
+         "against ParaView visualization software.<BR>"
+         "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A></P>"
 #endif
 
 #ifdef EG_OCC
          "<P>This version of ElmerGUI has been compiled with "
-         "the OpenCascade solids modeling library:</P>"
-         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</A>"
+         "the OpenCascade solids modeling library:<BR>"
+         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</P>"
 #endif
 
 #ifdef EG_QWT
@@ -7268,14 +7268,14 @@ void MainWindow::showaboutSlot() {
          "national laboratory. In order to use the parallel "
          "solver, the MPICH2 runtime environment should be "
          "installed and configured on your system. For more "
-         "details, see:<P>"
-         "<A HREF='https://www.mpich.org/'>https://www.mpich.org/</A>"
+         "details, see:<BR>"
+         "<A HREF='https://www.mpich.org/'>https://www.mpich.org/</A></P>"
 #endif
   ));
   msgBox.setInformativeText(
       tr("<P>The GPL-licensed source code of ElmerGUI is available "
-         "from the git repository</P>"
-         "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A>"
+         "from the git repository<BR>"
+         "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki, "
          "Peter Raback and Sampo Sillanpaa 2008-2020</P>"));
   msgBox.exec();
