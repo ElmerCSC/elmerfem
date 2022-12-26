@@ -1860,8 +1860,8 @@ IF ( k <= 0 .OR. k > 3 ) PRINT*,k
 !------------------------------------------------------------------------------
     INTEGER k,n,TARGET,NEW
 !------------------------------------------------------------------------------
-    ALLOCATE( NewFactors % Factors(  NewFactors % NumberOfFactors ) )
-    CALL AllocateVector( NewFactors % Elements, NewFactors % NumberOfFactors )
+    ALLOCATE(NewFactors % Factors(NewFactors % NumberOfFactors))
+    ALLOCATE(NewFactors % Elements(NewFactors % NumberOfFactors))
 
     NEW = 0
     DO k=1,Factors % NumberOfFactors

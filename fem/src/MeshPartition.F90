@@ -1727,6 +1727,7 @@ CONTAINS
     !--------------------------------
     TYPE(Element_t), POINTER :: Element, Work_Elements(:)
     TYPE(Nodes_t), POINTER :: Nodes
+    TYPE(BoundaryInfo_t), POINTER :: bInfo
     TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
     REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
     REAL(KIND=dp), POINTER CONTIG :: work_x(:),work_y(:), work_z(:)
@@ -1906,18 +1907,16 @@ CONTAINS
       IF ( Mesh % Elements(i) % Copy ) CYCLE
 
       IF ( i > NBulk ) THEN
-        IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % RadiationFactors)) THEN
-            IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                 RadiationFactors % Elements ) ) THEN
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   RadiationFactors % Elements )
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   RadiationFactors % Factors )
+        bInfo => Mesh % Elements(i) % BoundaryInfo
+        IF ( ASSOCIATED(bInfo) ) THEN
+          IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
+            IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
+              DEALLOCATE(bInfo % RadiationFactors % Factors)
+              DEALLOCATE(bInfo % RadiationFactors % Elements)
             END IF
-            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % RadiationFactors )
+            DEALLOCATE(bInfo % RadiationFactors )
           END IF
-          DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+          DEALLOCATE(bInfo)
         END IF
       END IF
 

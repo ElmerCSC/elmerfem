@@ -20538,6 +20538,7 @@ CONTAINS
     TYPE(Projector_t), POINTER :: Projector
     TYPE(Projector_t), POINTER :: Projector1
     TYPE(Variable_t), POINTER  :: Var, Var1
+    TYPE(BoundaryInfo_t), POINTER :: bInfo
     INTEGER :: i,j,k
     LOGICAL :: GotIt
     REAL(KIND=dp), POINTER :: ptr(:)
@@ -20628,18 +20629,16 @@ CONTAINS
         IF ( Mesh % Elements(i) % Copy ) CYCLE
 
         IF ( i > Mesh % NumberOfBulkElements ) THEN
-          IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-            IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % RadiationFactors)) THEN
-              IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                  RadiationFactors % Elements ) ) THEN
-                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                    RadiationFactors % Elements )
-                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                    RadiationFactors % Factors )
+          bInfo => Mesh % Elements(i) % BoundaryInfo
+          IF ( ASSOCIATED(bInfo) ) THEN
+            IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
+              IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
+                DEALLOCATE(bInfo % RadiationFactors % Elements )
+                DEALLOCATE(bInfo % RadiationFactors % Factors )
               END IF
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % RadiationFactors )
+              DEALLOCATE(bInfo % RadiationFactors)
             END IF
-            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+            DEALLOCATE(bInfo)
           END IF
         END IF
 
@@ -20769,8 +20768,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( ASSOCIATED( Factors ) ) THEN
        DO i=1,SIZE( Factors)
-          IF (ASSOCIATED(Factors(i) % Factors))  DEALLOCATE(Factors(i) % Factors)
-          IF (ASSOCIATED(Factors(i) % Elements)) DEALLOCATE(Factors(i) % Elements)
+          IF (ALLOCATED(Factors(i) % Factors))  DEALLOCATE(Factors(i) % Factors)
+          IF (ALLOCATED(Factors(i) % Elements)) DEALLOCATE(Factors(i) % Elements)
        END DO
        DEALLOCATE(  Factors )
     END IF

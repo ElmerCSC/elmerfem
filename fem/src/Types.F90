@@ -639,8 +639,8 @@ MODULE Types
 
    TYPE Factors_t 
      INTEGER :: NumberOfFactors = 0, NumberOfImplicitFactors = 0
-     INTEGER, POINTER :: Elements(:) => NULL()
-     REAL(KIND=dp), POINTER :: Factors(:) => NULL()
+     INTEGER, ALLOCATABLE :: Elements(:)
+     REAL(KIND=dp), ALLOCATABLE :: Factors(:)
    END TYPE Factors_t
 
 !-------------------------------------------------------------------------------
@@ -762,13 +762,15 @@ MODULE Types
      CHARACTER(LEN=MAX_NAME_LEN) :: NormalTangentialName
      INTEGER :: NormalTangentialNOFNodes = 0
      INTEGER, POINTER :: BoundaryReorder(:) => NULL()
-     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:)  => NULL()
      REAL(KIND=dp), POINTER :: BoundaryTangent1(:,:) => NULL()
      REAL(KIND=dp), POINTER :: BoundaryTangent2(:,:) => NULL()
    END TYPE NormalTangential_t
 
+   TYPE FactorsStore_t
+     TYPE(Factors_t), POINTER :: VF(:) => NULL()
+   END TYPE FactorsStore_t 
 
-   
    TYPE Mesh_t
      CHARACTER(MAX_NAME_LEN) :: Name
      TYPE(Mesh_t), POINTER   :: Next,Parent,Child
@@ -780,6 +782,7 @@ MODULE Types
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
+     TYPE(FactorsStore_t), ALLOCATABLE :: VFStore(:)
 
      TYPE(ParallelInfo_t) :: ParallelInfo
      TYPE(Variable_t), POINTER :: Variables
