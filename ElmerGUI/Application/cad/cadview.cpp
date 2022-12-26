@@ -195,16 +195,16 @@ QSize CadView::minimumSizeHint() const { return QSize(64, 64); }
 QSize CadView::sizeHint() const { return QSize(720, 576); }
 
 void CadView::createActions() {
-  exitAct = new QAction(QIcon(""), tr("&Quit"), this);
+  exitAct = new QAction(QIcon::fromTheme("emblem-unreadable"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(closeSlot()));
 
-  cadPreferencesAct = new QAction(QIcon(""), tr("Preferences..."), this);
+  cadPreferencesAct = new QAction(QIcon::fromTheme("preferences-system"), tr("Preferences..."), this);
   cadPreferencesAct->setShortcut(tr("Ctrl+P"));
   connect(cadPreferencesAct, SIGNAL(triggered()), this,
           SLOT(cadPreferencesSlot()));
 
-  reloadAct = new QAction(QIcon(""), tr("Reload geometry"), this);
+  reloadAct = new QAction(QIcon::fromTheme("view-refresh"), tr("Reload geometry"), this);
   reloadAct->setShortcut(tr("Ctrl+R"));
   connect(reloadAct, SIGNAL(triggered()), this, SLOT(reloadSlot()));
 }

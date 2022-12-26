@@ -74,6 +74,10 @@ Vector::Vector(QWidget *parent)
   connect(ui.keepThresholdLimits, SIGNAL(stateChanged(int)), this, SLOT(keepThresholdLimitsSlot(int)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Vector::~Vector()

@@ -60,6 +60,8 @@ SolverParameterEditor::SolverParameterEditor(QWidget *parent)
   connect(ui.useBoomerAMG, SIGNAL(stateChanged(int)), this, SLOT(boomerAMGStateChanged(int)));
 
   hypreStateChanged(0);
+  
+  ui.applyButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 SolverParameterEditor::~SolverParameterEditor()

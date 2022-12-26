@@ -65,6 +65,8 @@ Parallel::Parallel(QWidget *parent)
   defaultsButtonClicked();
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Parallel::~Parallel()

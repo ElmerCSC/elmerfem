@@ -78,6 +78,10 @@ StreamLine::StreamLine(QWidget *parent)
   connect(ui.keepLimits, SIGNAL(stateChanged(int)), this, SLOT(keepLimitsSlot(int)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
   
 #if VTK_MAJOR_VERSION >= 8
   ui.propagLabel->setText(QString("Max propagation:"));

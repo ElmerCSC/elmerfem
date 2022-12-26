@@ -72,6 +72,9 @@ BodyPropertyEditor::BodyPropertyEditor(QWidget *parent)
 
   connect(ui.equationCombo, SIGNAL(currentIndexChanged(QString)), this, 
            SLOT(equationComboChanged(QString)));
+  
+  ui.applyButton->setIcon(QIcon::fromTheme("list-add"));
+  ui.discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 }
 
 BodyPropertyEditor::~BodyPropertyEditor()
