@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                *
@@ -7277,7 +7277,7 @@ void MainWindow::showaboutSlot() {
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki, "
-         "Peter Raback and Sampo Sillanpaa 2008-2020</P>"
+         "Peter Råback and Sampo Sillanpaa 2008-2020</P>"
          "<P>Compiled on " __DATE__ "</P>"));
   msgBox.exec();
 }
