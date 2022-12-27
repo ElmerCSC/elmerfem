@@ -7277,7 +7277,8 @@ void MainWindow::showaboutSlot() {
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki, "
-         "Peter Raback and Sampo Sillanpaa 2008-2020</P>"));
+         "Peter Raback and Sampo Sillanpaa 2008-2020</P>"
+         "<P>Compiled on " __DATE__ "</P>"));
   msgBox.exec();
 }
 
