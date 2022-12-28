@@ -3310,13 +3310,13 @@ CONTAINS
 !> Adds a linear dependency defined by a table of values, [x,y] to the list.
 !------------------------------------------------------------------------------
     SUBROUTINE ListAddDepReal(List,Name,DependName,N,TValues, &
-               FValues,Proc,CValue,CubicTable, Monotone)
+               FValues,Proc,CValue,CubicTable, Monotone, Harmonic)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name,DependName
      CHARACTER(LEN=*), OPTIONAL :: Cvalue
      INTEGER :: N
-     LOGICAL, OPTIONAL :: CubicTable, Monotone
+     LOGICAL, OPTIONAL :: CubicTable, Monotone, Harmonic
      REAL(KIND=dp) :: FValues(N)
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
@@ -3337,6 +3337,12 @@ CONTAINS
      ptr % TValues = TValues(1:n)
      ptr % FValues(1,1,:) = FValues(1:n)
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
+ 
+     IF(PRESENT(harmonic)) THEN
+       IF(Harmonic) THEN
+         CALL ConvertTableToHarmonic(n, ptr % TValues,ptr % Fvalues(1,1,:))
+       END IF
+     END IF
 
      IF ( n>3 .AND. PRESENT(CubicTable)) THEN
        IF ( CubicTable ) THEN

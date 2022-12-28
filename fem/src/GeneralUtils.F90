@@ -2600,10 +2600,55 @@ INCLUDE "mpif.h"
   END FUNCTION EvenRandom
    
 
+  !-----------------------------------------------------
+  ! Convert to effective BH-curve for harmonic analysis
+  !-----------------------------------------------------
+  SUBROUTINE ConvertTableToHarmonic(n,bVal,hVal)
+    INTEGER :: n
+    REAL(KIND=dp) :: bval(:), hval(:)
+
+    INTEGER :: i,j,n_int = 200
+    REAL(KIND=dp) :: alpha,b,h,nu_eff, hOrig(n)
+
+    hOrig = hVal(1:n)
+    DO i=1,n
+      nu_eff = 0._dp
+      DO j=1,n_int
+        alpha = PI/2._dp*j/(1._dp*N_int)
+        b = sin(alpha)*bVal(i)
+        h = linterpolate(n,b,bVal,hOrig)
+        IF(b>0.0_dp) nu_eff = nu_eff + h/b
+      END DO
+      hVal(i) = nu_eff * bVal(i) / N_int
+    END DO
+
+  CONTAINS
+
+    ! Evaluates y=f(x) for a piecewise linear function f defined by x_points and y_points
+      FUNCTION linterpolate(n, x, xp, yp) RESULT(y)
+      INTEGER :: n
+      REAL(KIND=dp)  :: x, y, xp(:), yp(:)
+
+    INTEGER :: i
+    REAL(KIND=dp) :: x0,x1,y0,y1,t
+
+      y = 0._dp
+      DO i=2,n
+        x0=xp(i-1); x1=xp(i) 
+        IF((x >= x0) .AND. (x <= x1)) THEN
+          y0=yp(i-1); y1=yp(i)
+          t=(x-x0)/(x1-x0);
+          y=(1-t)*y0 + t*y1;
+          EXIT
+        END IF
+      END DO
+    END FUNCTION linterpolate
+  END SUBROUTINE ConvertTableToHarmonic
+
+
   SUBROUTINE ForceLoad
     CALL MPI_SEND()
   END SUBROUTINE ForceLoad
-
 
 END MODULE GeneralUtils
 

@@ -1634,7 +1634,7 @@ CONTAINS
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
       CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
-          Cubic, AllInt, Monotone, Stat
+          Cubic, AllInt, Monotone, Stat, Harmonic
 
       INTEGER(KIND=AddrInt) :: Proc
 
@@ -1868,6 +1868,9 @@ CONTAINS
                    IF (ALLOCATED(ATt) ) DEALLOCATE(ATt,ATx)
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
+
+                 Harmonic = SEQL(str(str_beg:),'harmonic')
+                 IF(Harmonic) str_beg = str_beg+9
                  
                  ! Enable both "cubic monotone" and "monotone cubic"
                  Cubic = SEQL(str(str_beg:),'cubic')
@@ -1948,7 +1951,7 @@ CONTAINS
                               n1,n2,ATx(1:n1,1:n2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
-                         ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
+                         ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone, Harmonic=harmonic )
                    END IF
                  END IF
                  MaxBufLen = MAX(MaxBuflen, Abuflen)
