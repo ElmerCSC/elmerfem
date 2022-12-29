@@ -1657,7 +1657,7 @@ INTEGER::inside
       END IF
 
       hypremethod = hypre_sol * 10 + hypre_pre
-      CALL Info('SParIterSolver','Hypre method index: '//TRIM(I2S(hypremethod)),Level=8)
+      CALL Info('SParIterSolver','Hypre method index: '//I2S(hypremethod),Level=8)
       
       ! NB.: hypremethod = 0 ... BiCGStab + ILUn
       !                    1 ... BiCGStab + ParaSails

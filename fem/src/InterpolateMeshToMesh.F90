@@ -112,7 +112,7 @@
 
          IF( InfoActive(20) ) THEN
            n = COUNT(.NOT. FoundNodes )
-           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//TRIM(I2S(n)))
+           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
                     
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
@@ -141,7 +141,7 @@
       n = COUNT(.NOT.FoundNodes); dn = n
 
       IF( InfoActive(20) ) THEN
-        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//TRIM(I2S(n)))
+        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
       
       AL = .FALSE.
@@ -156,7 +156,7 @@
 
       ! No use to continue even in parallel, since the OldMeshes are all the same!
       IF( OldMesh % SingleMesh ) THEN
-        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//TRIM(I2S(NINT(dn))))
+        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//I2S(NINT(dn)))
         RETURN
       END IF
 
@@ -505,7 +505,7 @@
 
       n = COUNT(.NOT. FoundNodes )           
       CALL Info('InterpolateMeshToMesh',&
-	'Number of unfound nodes in all partitions: '//TRIM(I2S(n)),Level=6)
+	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
       
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
       DEALLOCATE( FoundNodes ) 

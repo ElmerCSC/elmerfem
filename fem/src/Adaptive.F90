@@ -454,7 +454,7 @@ CONTAINS
     
     NewMesh % AdaptiveDepth = RefMesh % AdaptiveDepth + 1
     IF( MeshNumbering ) THEN
-      NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // TRIM(I2S(NewMesh % AdaptiveDepth))
+      NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // I2S(NewMesh % AdaptiveDepth)
     END IF
       
     Nlen = LEN_TRIM(OutputPath)
@@ -857,7 +857,7 @@ CONTAINS
 
     i = RefMesh % AdaptiveDepth + 1
     nLen = LEN_TRIM(Path)
-    Path = Path(1:nlen) // TRIM(I2S(i))
+    Path = Path(1:nlen) // I2S(i)
 
     nLen = LEN_TRIM(OutputPath)
     IF ( nlen > 0 ) THEN

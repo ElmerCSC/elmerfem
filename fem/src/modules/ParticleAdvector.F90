@@ -334,7 +334,7 @@ CONTAINS
     DEALLOCATE( PTime, PCond )
               
     CALL Info('SetFixedParticles','Number of new fixed particles: '&
-        //TRIM(I2S(FixedCount)),Level=7)
+        //I2S(FixedCount),Level=7)
     
   END SUBROUTINE SetFixedParticles 
 
@@ -371,7 +371,7 @@ CONTAINS
 
     IF( FixedCount > 0 ) THEN
       CALL Info('SetRetiredParticles','Number of new retired particles: '&
-          //TRIM(I2S(FixedCount)),Level=7)    
+          //I2S(FixedCount),Level=7)    
     END IF
       
   END SUBROUTINE SetRetiredParticles

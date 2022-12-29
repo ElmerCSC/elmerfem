@@ -40,7 +40,7 @@ FUNCTION TimeProfile( Model, n, tx ) RESULT( f )
     m = SIZE( ptr % Fvalues(1,1,:) )
     
     DO i=1,m
-      f = ListGetCReal(BC,TRIM(Name)//' point '//TRIM(I2S(i)),UnfoundFatal=.TRUE.)
+      f = ListGetCReal(BC,TRIM(Name)//' point '//I2S(i),UnfoundFatal=.TRUE.)
       ptr % Fvalues(1,1,i) = f
     END DO
 

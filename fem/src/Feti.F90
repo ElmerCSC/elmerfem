@@ -1767,11 +1767,11 @@ END SUBROUTINE FetiProject
     OPEN(1,file='f' // i2s(Parenv % MyPE))
     OPEN(2,file='k' // i2s(Parenv % MyPE))
 
-    WRITE(1,'(a)') '% domain: '//trim(i2s(me))//' nrows:'//trim(i2s(A % NumberOFRows))
+    WRITE(1,'(a)') '% domain: '//i2s(me)//' nrows:'//i2s(A % NumberOFRows)
 
-    WRITE(2,'(a)') '% domain:' // trim(i2s(me))//' nnz:' // &
-       trim(i2s(A % Rows(A % NumberOfRows+1)-1)) // ' nrows:' // &
-          trim(i2s(A % NumberOFRows)) // ' gcols:'//trim(i2s(SUM(asize)))
+    WRITE(2,'(a)') '% domain:' // i2s(me)//' nnz:' // &
+       i2s(A % Rows(A % NumberOfRows+1)-1) // ' nrows:' // &
+          i2s(A % NumberOFRows) // ' gcols:'//i2s(SUM(asize))
 
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i),A % Rows(i+1)-1
@@ -1790,8 +1790,8 @@ END SUBROUTINE FetiProject
 !------------------------------------------------------------------------------
     INTEGER :: i
     OPEN(2,File='r'//i2s(Parenv % MyPE))
-    WRITE(2,'(a)') '% domain: '//trim(i2s(ParEnv % MyPE))//' nz:'// &
-              trim(i2s(SIZE(z,1)))//' nrows:'// trim(i2s(SIZE(z,2)))
+    WRITE(2,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nz:'// &
+              i2s(SIZE(z,1))//' nrows:'// i2s(SIZE(z,2))
     DO i=1,SIZE(z,2)
       WRITE(2,*) z(1:nz,i)
     END DO
@@ -1823,12 +1823,12 @@ END SUBROUTINE FetiProject
 
     me = ParEnv % MyPE
 
-    WRITE(4,'(a)') '% domain: '//trim(i2s(me))//' nnz: '// &
-         trim(i2s(bMat % Rows(Bmat % NumberOfRows+1)-1)) // &
-               ' nrows: ' // trim(i2s(Bmat % NumberOfRows))
+    WRITE(4,'(a)') '% domain: '//i2s(me)//' nnz: '// &
+         i2s(bMat % Rows(Bmat % NumberOfRows+1)-1) // &
+               ' nrows: ' // i2s(Bmat % NumberOfRows)
 
-    WRITE(5,'(a)') '% domain: '//trim(i2s(ParEnv % MyPE))//' nrows:'// &
-               trim(i2s(Bmat % NumberOfRows))
+    WRITE(5,'(a)') '% domain: '//i2s(ParEnv % MyPE)//' nrows:'// &
+               i2s(Bmat % NumberOfRows)
 
     ALLOCATE(snd(0:Parenv%PEs-1),asize(0:Parenv%PEs-1),bsize(0:parenv%pes-1))
 

@@ -163,8 +163,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
-    CALL INFO( SolverName,'Nonlinear iteration '//TRIM(I2S(iter))//&
-        ' out of '//TRIM(I2S(maxiter)), Level=4)
+    CALL INFO( SolverName,'Nonlinear iteration '//I2S(iter)//&
+        ' out of '//I2S(maxiter), Level=4)
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
@@ -390,9 +390,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
-      CALL Info(FunctionName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=7)
+          //I2S(IP % n),Level=7)
+      CALL Info(FunctionName,'Elemental n:'//I2S(n)//' nd:'&
+          //I2S(nd)//' nd:'//I2S(nb),Level=7)
     END IF
 
     DO t=1,IP % n
@@ -691,7 +691,7 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
+          //I2S(IP % n),Level=7)
     END IF
     
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)

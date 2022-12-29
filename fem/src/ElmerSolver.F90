@@ -172,7 +172,7 @@
                CALL GET_COMMAND_ARGUMENT(i, OptionString)
                READ( OptionString,*) rpar(j)
              END DO
-             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' real parameters from command line!')
+             CALL Info('MAIN','Read '//I2S(nr)//' real parameters from command line!')
              CALL SetRealParametersMATC(nr,rpar)
            END IF
 
@@ -187,7 +187,7 @@
                CALL GET_COMMAND_ARGUMENT(i, OptionString)
                READ( OptionString,*) ipar(j)
              END DO
-             CALL Info('MAIN','Read '//TRIM(I2S(ni))//' integer parameters from command line!')
+             CALL Info('MAIN','Read '//I2S(ni)//' integer parameters from command line!')
              CALL SetIntegerParametersMATC(ni,ipar)
            END IF
 
@@ -230,7 +230,7 @@
 
          IF ( ParEnv % PEs > 1 ) THEN
            CALL Info( 'MAIN', ' Running in parallel using ' // &
-               TRIM(i2s(ParEnv % PEs)) // ' tasks.')
+               i2s(ParEnv % PEs) // ' tasks.')
          ELSE
            CALL Info('MAIN', ' Running one task without MPI parallelization.',Level=10)
          END IF
@@ -238,7 +238,7 @@
          ! Print out number of threads in use
          IF ( nthreads > 1 ) THEN
            CALL Info('MAIN', ' Running in parallel with ' // &
-               TRIM(i2s(nthreads)) // ' threads per task.')
+               i2s(nthreads) // ' threads per task.')
          ELSE
            CALL Info('MAIN', ' Running with just one thread per task.',Level=10)
          END IF
@@ -669,7 +669,7 @@
        !WRITE(*,*) seeds            ! writes 314159265
        DEALLOCATE(seeds)           
        
-       CALL Info('ElmerSolver','Random seed initialized to: '//TRIM(I2S(i)),Level=10)
+       CALL Info('ElmerSolver','Random seed initialized to: '//I2S(i),Level=10)
      END SUBROUTINE InitializeRandomSeed
 
      
@@ -908,7 +908,7 @@
        IF ( .NOT.LastSaved ) TotalTimesteps = TotalTimesteps + 1
        IF( TotalTimesteps == 0 ) TotalTimesteps = 1
        
-       CALL Info('ElmerSolver','Number of timesteps to be saved: '//TRIM(I2S(TotalTimesteps)))
+       CALL Info('ElmerSolver','Number of timesteps to be saved: '//I2S(TotalTimesteps))
        
      END SUBROUTINE CountSavedTimesteps
      
@@ -946,10 +946,10 @@
          
          IF( Success ) THEN
            CALL Info('CompareToReferenceSolution',&
-               'PASSED all '//TRIM(I2S(TestCount))//' tests!',Level=3)
+               'PASSED all '//I2S(TestCount)//' tests!',Level=3)
          ELSE         
-           CALL Warn('CompareToReferenceSolution','FAILED '//TRIM(I2S(FailCount))//&
-               ' tests out of '//TRIM(I2S(TestCount))//'!')
+           CALL Warn('CompareToReferenceSolution','FAILED '//I2S(FailCount)//&
+               ' tests out of '//I2S(TestCount)//'!')
          END IF
          
          IF( FinalizeOnly ) THEN
@@ -986,7 +986,7 @@
          Var => Solver % Variable
          IF( .NOT. ASSOCIATED( Var ) ) THEN
            CALL Warn('CompareToReferenceSolution','Variable in Solver '&
-               //TRIM(I2S(i))//' not associated, cannot compare')
+               //I2S(i)//' not associated, cannot compare')
            CYCLE
          END IF
 
@@ -1050,7 +1050,7 @@
                IF( Dofs == 1 ) THEN
                  refval = ListGetRealAtNode( Solver % Values,'Reference Solution',i,Found ) 
                ELSE
-                 refval = ListGetRealAtNode( Solver % Values,'Reference Solution '//TRIM(I2S(k)),i,Found ) 
+                 refval = ListGetRealAtNode( Solver % Values,'Reference Solution '//I2S(k),i,Found ) 
                END IF
                IF( Found ) THEN
                  val = Var % Values( Dofs*(j-1)+k)
@@ -1104,7 +1104,7 @@
        OldSolvers => Model % Solvers
        
        CALL Info('AppendNewSolver','Increasing number of solvers to: '&
-           //TRIM(I2S(n)),Level=8)
+           //I2S(n),Level=8)
        DO i=1,n-1
          ! Def_Dofs is the only allocatable structure within Solver_t:
          IF( ALLOCATED( OldSolvers(i) % Def_Dofs ) ) THEN
@@ -1309,7 +1309,7 @@
       LOGICAL :: InitSolver, Found, DoTiming
 !------------------------------------------------------------------------------
 
-      CALL Info('AddSolvers','Setting up '//TRIM(I2S(CurrentModel % NumberOfSolvers))//&
+      CALL Info('AddSolvers','Setting up '//I2S(CurrentModel % NumberOfSolvers)//&
           ' solvers',Level=10)
 
       ! This is a hack that sets Equation flags True for the "Active Solvers".
@@ -1350,7 +1350,7 @@
        IF ( Solver % SolverExecWhen /= SOLVER_EXEC_WHENCREATED ) CYCLE
 
        eq = ListGetString( Solver % Values,'Equation', Found )
-       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       CALL Info('AddSolvers','Setting up solver '//I2S(i)//': '//TRIM(eq),Level=10)
 
        InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
        IF ( Found .AND. InitSolver ) THEN
@@ -1372,7 +1372,7 @@
 
          IF( DoTiming ) CALL CheckTimer('SolverInitialization',Level=7,Delete=.TRUE.)
          
-         CALL Info('AddSolvers','Executing solver '//TRIM(I2S(i))//' immediately when created!,Level=5')
+         CALL Info('AddSolvers','Executing solver '//I2S(i)//' immediately when created!,Level=5')
          CALL SetCurrentMesh( CurrentModel, Solver % Mesh )
          CALL SingleSolver( CurrentModel, Solver, 0.0_dp, .FALSE. )
        END IF
@@ -1386,7 +1386,7 @@
        IF ( Solver % SolverExecWhen == SOLVER_EXEC_WHENCREATED ) CYCLE
 
        eq = ListGetString( Solver % Values,'Equation', Found )
-       CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
+       CALL Info('AddSolvers','Setting up solver '//I2S(i)//': '//TRIM(eq),Level=10)
        
        InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
        IF ( Found .AND. InitSolver ) THEN
@@ -2141,7 +2141,7 @@
                      CALL UpdateIpPerm( Solver, Var % Perm )
                      nsize = MAXVAL( Var % Perm )
                      
-                     CALL Info('InitCond','Total number of new IP dofs: '//TRIM(I2S(nsize)))
+                     CALL Info('InitCond','Total number of new IP dofs: '//I2S(nsize))
                      
                      IF( SIZE( Var % Values ) /= Var % Dofs * nsize ) THEN
                        DEALLOCATE( Var % Values )
@@ -2271,7 +2271,7 @@
            IF(isParallel .AND. Mesh % SingleMesh ) THEN
              isParallel = ListGetLogical( RestartList,'Restart Parallel',Found )
            END IF                        
-           IF(isParallel) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+           IF(isParallel) OutputName = TRIM(OutputName) // '.' // i2s(ParEnv % MyPe)
 
            CALL SetCurrentMesh( CurrentModel, Mesh )
            
@@ -2301,7 +2301,7 @@
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
      IF ( GotIt ) THEN
        k = ListGetInteger( RestartList,'Restart File Number',GotIt)
-       IF( GotIt ) RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(k))//'nc'
+       IF( GotIt ) RestartFile = TRIM(RestartFile)//'_'//I2S(k)//'nc'
               
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
        Mesh => CurrentModel % Meshes
@@ -2331,7 +2331,7 @@
          IF(isParallel .AND. Mesh % SingleMesh ) THEN
            isParallel = ListGetLogical( RestartList,'Restart Parallel',Found )
          END IF                  
-         IF(isParallel ) OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+         IF(isParallel ) OutputName = TRIM(OutputName) // '.' // i2s(ParEnv % MyPe)
          
          l = l+1
 
@@ -2516,7 +2516,7 @@
      IF( nTimes > 1 ) THEN
        DO i=1,SIZE(Timesteps,1)
          IF( MODULO( Timesteps(i), nTimes ) /= 0 ) THEN
-           CALL Fatal(Caller,'"Timestep Intervals" should be divisible by nTimes: '//TRIM(I2S(nTimes)))
+           CALL Fatal(Caller,'"Timestep Intervals" should be divisible by nTimes: '//I2S(nTimes))
          END IF
          Timesteps(i) = Timesteps(i) / nTimes
        END DO
@@ -2595,11 +2595,11 @@
 
          IF ( GetNamespaceCheck() ) THEN
            IF( Scanning ) THEN
-             CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+             CALL ListPushNamespace('scan '//i2s(cum_Timestep)//':')
            ELSE IF ( Transient ) THEN
-             CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+             CALL ListPushNamespace('time '//i2s(cum_Timestep)//':')
            ELSE
-             CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+             CALL ListPushNamespace('steady '//i2s(cum_Timestep)//':')
            END IF
          END IF
 
@@ -2776,11 +2776,11 @@
              i = NINT( MeshR )
 
              IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
-               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//TRIM(I2S(i)),GotIt)
+               MeshStr = ListGetString( GetSimulation(),'Mesh Name '//I2S(i),GotIt)
                IF( GotIt ) THEN
                  CALL Info(Caller,'Swapping mesh to: '//TRIM(MeshStr),Level=5)
                ELSE
-                 CALL Fatal(Caller,'Could not find >Mesh Name '//TRIM(I2S(i))//'<')
+                 CALL Fatal(Caller,'Could not find >Mesh Name '//I2S(i)//'<')
                END IF
                CALL SwapMesh( CurrentModel, Mesh, MeshStr )
                PrevMeshI = i
@@ -2795,8 +2795,8 @@
            CALL Info( 'MAIN', '-------------------------------------', Level=3 )
 
            IF ( Transient .OR. Scanning ) THEN
-             WRITE( Message,'(A,ES12.3)') 'Time: '//TRIM(i2s(cum_Timestep))//'/'// &
-                   TRIM(i2s(stepcount))//':', sTime(1)
+             WRITE( Message,'(A,ES12.3)') 'Time: '//i2s(cum_Timestep)//'/'// &
+                   i2s(stepcount)//':', sTime(1)
              CALL Info( 'MAIN', Message, Level=3 )
 
              newtime= RealTime()
@@ -2854,7 +2854,7 @@
 
                 IF( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
                 IF( .NOT. ASSOCIATED( Solver % Variable  % Values ) ) CYCLE
-                CALL Info(Caller,'Allocating adaptive work space for: '//TRIM(I2S(i)),Level=12)
+                CALL Info(Caller,'Allocating adaptive work space for: '//I2S(i),Level=12)
                 j = SIZE( Solver % Variable % Values )
                 ALLOCATE( AdaptVars(i) % Var % Values( j ), STAT=AllocStat )
                 IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error AdaptVars Values')
@@ -3021,7 +3021,7 @@
                 Solver => CurrentModel % Solvers(i) 
                 IF( ASSOCIATED( Solver % Variable ) ) THEN
                   IF( Solver % Variable % NonlinConverged > 1 ) THEN
-                    CALL Info(Caller,'Solver '//TRIM(I2S(i))//' has diverged',Level=8)
+                    CALL Info(Caller,'Solver '//I2S(i)//' has diverged',Level=8)
                     HaveDivergence = .TRUE.
                     EXIT
                   END IF
@@ -3225,7 +3225,7 @@
      
      iSweep = iSweep + 1
 
-     CALL Info('ExecSimulationFunVec','Calling Elmer as a cost function: '//TRIM(I2S(iSweep)))
+     CALL Info('ExecSimulationFunVec','Calling Elmer as a cost function: '//I2S(iSweep))
      
      IF(iSweep==1) THEN
        CONTINUE
@@ -3243,7 +3243,7 @@
 
      ! Update the parameters also as coefficient as we don't know which one we are using
      CALL SetRealParametersKeywordCoeff(NoParam,Param,cnt)
-     CALL Info('ExecSimulationFunVec','Set '//TRIM(I2S(cnt))//&
+     CALL Info('ExecSimulationFunVec','Set '//I2S(cnt)//&
          ' coefficients with parameter tags!',Level=10)
 
      CALL InitializeIntervals()
@@ -3276,7 +3276,7 @@
      
      iSweep = iSweep + 1
 
-     CALL Info('ExecSimulationFunCost','Calling Elmer as a cost function: '//TRIM(I2S(iSweep)))
+     CALL Info('ExecSimulationFunCost','Calling Elmer as a cost function: '//I2S(iSweep))
      
      IF(iSweep==1) THEN
        CONTINUE
@@ -3294,7 +3294,7 @@
 
      ! Update the parameters also as coefficient as we don't know which one we are using
      CALL SetRealParametersKeywordCoeff(NoParam,Param,cnt)
-     CALL Info('ExecSimulationFunCost','Set '//TRIM(I2S(cnt))//&
+     CALL Info('ExecSimulationFunCost','Set '//I2S(cnt)//&
          ' coefficients with parameter tags!',Level=10)
 
      CALL InitializeIntervals()
@@ -3369,7 +3369,7 @@
         !    IF ( OutputFile(i:i) == ' ' ) EXIT
         !  END DO
         !  OutputFile(i:i) = '.'
-        !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+        !  WRITE( OutputFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
         !END IF
 
         ! Always write the output with respect to mesh file
@@ -3465,7 +3465,7 @@
           IF ( OutputFile(i:i) == ' ' ) EXIT
         END DO
         OutputFile(i:i) = '.'
-        WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+        WRITE( OutputFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
       END IF
     END IF
     
@@ -3477,7 +3477,7 @@
         IF ( PostFile(i:i) == ' ' ) EXIT
       END DO
       PostFile(i:i) = '.'
-      WRITE( PostFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+      WRITE( PostFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
     END IF
 
     ! Loop over all meshes

@@ -637,7 +637,7 @@ CONTAINS
      END DO
 
      ! Number the bulk indexes such that each node gets a new index
-     CALL Info('CheckAndCreateDGIndexes','Creating DG '//TRIM(I2S(DgIndex))//' indexes',Level=6)
+     CALL Info('CheckAndCreateDGIndexes','Creating DG '//I2S(DgIndex)//' indexes',Level=6)
     
    END SUBROUTINE CheckAndCreateDGIndexes
      
@@ -767,7 +767,7 @@ CONTAINS
 #endif
      END IF
      
-     CALL Info('CreateDGPerm','Size of DgPerm table: '//TRIM(I2S(DGIndex)),Level=12)
+     CALL Info('CreateDGPerm','Size of DgPerm table: '//I2S(DGIndex),Level=12)
      
      ALLOCATE( DGPerm( DGIndex ) ) 
      DGPerm = 0
@@ -803,7 +803,7 @@ CONTAINS
        END IF
      END DO
      
-     CALL Info('CreateDGPerm','Created permutation for DG nodes: '//TRIM(I2S(DgCount)),Level=8)  
+     CALL Info('CreateDGPerm','Created permutation for DG nodes: '//I2S(DgCount),Level=8)  
      
    END SUBROUTINE CreateDGPerm
 
@@ -854,7 +854,7 @@ CONTAINS
      END DO
      nSize = j
      
-     CALL Info('CreateNodalPerm','Number of active nodes in NodalPerm: '//TRIM(I2S(nSize)),Level=12)
+     CALL Info('CreateNodalPerm','Number of active nodes in NodalPerm: '//I2S(nSize),Level=12)
      
    END SUBROUTINE CreateNodalPerm
 
@@ -911,7 +911,7 @@ CONTAINS
        END IF
      END DO
 
-     CALL Info('CreateElementsPerm','Number of active elements in permutation: '//TRIM(I2S(m)),Level=8)
+     CALL Info('CreateElementsPerm','Number of active elements in permutation: '//I2S(m),Level=8)
 
      nsize = m 
 
@@ -990,7 +990,7 @@ CONTAINS
             
      nsize = m
      
-     CALL Info('CreateMaskedPerm','Created masked permutation for dofs: '//TRIM(I2S(nsize)),Level=8)  
+     CALL Info('CreateMaskedPerm','Created masked permutation for dofs: '//I2S(nsize),Level=8)  
      
    END SUBROUTINE CreateMaskedPerm
 
@@ -1516,7 +1516,7 @@ CONTAINS
 
         IF( ListGetLogical( SolverParams,'Ode Matrix',Found ) ) THEN
           CALL Info('AddEquationBasics','Creating dense matrix for ODE: '&
-              //TRIM(I2S(Dofs)),Level=8)
+              //I2S(Dofs),Level=8)
           ALLOCATE( Solver % Variable % Perm(1) )
           Solver % Variable % Perm(1) = 1
           Solver % Matrix => CreateOdeMatrix( CurrentModel, Solver, Dofs )
@@ -1611,7 +1611,7 @@ CONTAINS
         IF ( .NOT. Found ) BandwidthOptimize = .TRUE.
         CALL CheckLinearSolverOptions( Solver )
 
-        CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
+        CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//I2S(Ndeg),Level=12)
         ALLOCATE( Perm(Ndeg), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Perm')
         Perm = 0
@@ -1672,7 +1672,7 @@ CONTAINS
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
-          CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+          CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//I2S(Nrows),Level=12)
         END IF
         
         ! Check if mesh colouring is needed by the solver
@@ -2148,10 +2148,10 @@ CONTAINS
       ELSE 
         DO k = 1, SIZE( pVar % PrevValues, 2 )
           Component => pVar % PrevValues(:,k)
-          str = TRIM( pVar % Name ) !//' PrevValues'//TRIM(I2S(k))          
+          str = TRIM( pVar % Name ) !//' PrevValues'//I2S(k)          
           CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
               str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., &
-              VarType = pvar % TYPE, VarSuffix = 'PrevValues'//TRIM(I2S(k)))
+              VarType = pvar % TYPE, VarSuffix = 'PrevValues'//I2S(k))
         END DO
       END IF
     END IF
@@ -2438,7 +2438,7 @@ CONTAINS
             Solver % Variable % EigenVectors = 0.0d0
 
             IF( Solver % Variable % DOFs > 1 ) THEN
-              CALL Info('AddEquationSolution','Repointing '//TRIM(I2S(Solver % Variable % DOFs))//&
+              CALL Info('AddEquationSolution','Repointing '//I2S(Solver % Variable % DOFs)//&
                   ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
               
               DO k=1,Solver % Variable % DOFs
@@ -2447,7 +2447,7 @@ CONTAINS
                 
                 IF( ASSOCIATED( Var ) ) THEN
                   CALL Info('AddEquationSolution','Eigenvalue component '&
-                      //TRIM(I2S(k))//': '//TRIM(str))
+                      //I2S(k)//': '//TRIM(str))
                   Var % EigenValues => Solver % Variable % EigenValues
                   Var % EigenVectors =>  & 
                       Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
@@ -2697,7 +2697,7 @@ CONTAINS
        Dofs = ParentDofs
      END IF
 
-     CALL Info('CreateChildSolver','Creating solver of size '//TRIM(I2S(Dofs))//' for variable: &
+     CALL Info('CreateChildSolver','Creating solver of size '//I2S(Dofs)//' for variable: &
          '//TRIM(ChildVarName),Level=6)
 
      NULLIFY( Solver ) 
@@ -2979,7 +2979,7 @@ CONTAINS
 
           IF ( .NOT. RungeKutta ) CYCLE
 
-          CALL Info('SolveEquations','Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
+          CALL Info('SolveEquations','Solver '//I2S(i)//' is Runge-Kutta Solver',Level=12)
           IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
             ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
           END IF
@@ -2999,7 +2999,7 @@ CONTAINS
         END IF
 
 
-        CALL Info('SolveEquations','Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
+        CALL Info('SolveEquations','Using Runge-Kutta Order: '//I2S(RKOrder),Level=12)
 
         IF(RKorder==4) THEN
           dt = dt / 2
@@ -3154,7 +3154,7 @@ CONTAINS
          steadyIt = i
        END IF
         
-       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
+       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//i2s(i)//': ')
 
        DoneThis = .FALSE.
 
@@ -3327,7 +3327,7 @@ CONTAINS
       
       IF( TestConvergence .AND. CoupledMaxIter > 1 ) THEN
         IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(MIN(i,CoupledMaxIter))),Level=4)
+          CALL Info( 'SolveEquations','Coupled system iteration: '//I2S(MIN(i,CoupledMaxIter)),Level=4)
           CoupledAbort = ListGetLogical( Model % Simulation,  &
               'Coupled System Abort Not Converged', Found )
           CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
@@ -4309,7 +4309,7 @@ CONTAINS
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
             CALL ListPushNameSpace('block:')
-            CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
+            CALL ListPushNameSpace('block '//i2s(RowVar)//i2s(ColVar)//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
             ! Mainly sets the r.h.s. in transient case correctly
@@ -4636,7 +4636,7 @@ CONTAINS
           IF(.NOT. Stat) SolverName = Solver % Variable % Name
           
           WRITE( Message, '(a,g15.8,g15.8,a,I2)') &
-              'NS (ITER='//TRIM(i2s(niter))//') (NRM,RELC): (',Norm, Residual / bNorm,&
+              'NS (ITER='//i2s(niter)//') (NRM,RELC): (',Norm, Residual / bNorm,&
               ' ) :: '// TRIM(SolverName),i
           CALL Info( 'CheckStepSize', Message, Level=3 )       
         END DO
@@ -4733,12 +4733,12 @@ CONTAINS
       Var => Solver % Variable
     END IF
     IF( .NOT. ASSOCIATED( Var ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(RowVar)))
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//I2S(RowVar))
     END IF
     RowDofs = Var % Dofs
     RowPerm => Var % Perm
     IF( .NOT. ASSOCIATED( RowPerm ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(RowVar)))
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//I2S(RowVar))
     END IF
     
     ! Column variable
@@ -4749,12 +4749,12 @@ CONTAINS
       Var => VariableGet( Mesh % Variables, TRIM(ColName) )
     END IF          
     IF( .NOT. ASSOCIATED( Var ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find variable: '//TRIM(I2S(ColVar)))
+      CALL Fatal('BlockSystemAssembly','Could not find variable: '//I2S(ColVar))
     END IF
     ColDofs = Var % Dofs
     ColPerm => Var % Perm
     IF( .NOT. ASSOCIATED( ColPerm ) ) THEN
-      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//TRIM(I2S(ColVar)))
+      CALL Fatal('BlockSystemAssembly','Could not find permutation: '//I2S(ColVar))
     END IF
 
     ! These could be user provided for each block
@@ -5108,7 +5108,7 @@ CONTAINS
       END IF
     END IF
     
-    CALL Info('SetActiveElementsTable','Number of active elements found : '//TRIM(I2S(n)),Level=12)    
+    CALL Info('SetActiveElementsTable','Number of active elements found : '//I2S(n),Level=12)    
     
   END SUBROUTINE SetActiveElementsTable
 
@@ -5343,7 +5343,7 @@ END BLOCK
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL Info("SingleSolver", "Attempting to call solver: "//TRIM(I2S(Solver % SolverId)), level=8)
+     CALL Info("SingleSolver", "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN

@@ -206,8 +206,8 @@
        RETURN
      END IF
 
-     CALL Info('RadiationFactors','Total number of Radiation Surfaces '//TRIM(I2S(RadiationSurfaces))// &
-           ' out of '//TRIM(I2S(Model % NumberOfBoundaryElements)),Level=5)
+     CALL Info('RadiationFactors','Total number of Radiation Surfaces '//I2S(RadiationSurfaces)// &
+           ' out of '//I2S(Model % NumberOfBoundaryElements),Level=5)
 
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
@@ -526,8 +526,8 @@
        RelAreas(1:n) = Areas(1:n) / MAXVAL(Areas(1:n))
 
        IF(MaxRadiationBody > 1) THEN
-         CALL Info('RadiationFactors','Number of Radiation Surfaces '//TRIM(I2S(RadiationSurfaces))// &
-             ' for boundary '//TRIM(I2S(RadiationBody)),Level=5)
+         CALL Info('RadiationFactors','Number of Radiation Surfaces '//I2S(RadiationSurfaces)// &
+             ' for boundary '//I2S(RadiationBody),Level=5)
        END IF
 
        ! Make the inverse of the list of element numbers of boundaries
@@ -621,7 +621,7 @@
            ELSE
              OutputName = TRIM(ViewFactorsFile)
            END IF
-           IF(RadiationBody > 1) OutputName = OutputName//TRIM(I2S(RadiationBody))
+           IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
            INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
            IF(.NOT. Found) FilesExist = .FALSE.
          END DO
@@ -640,7 +640,7 @@
            ELSE
              OutputName = TRIM(RadiatorFactorsFile)
            END IF
-           IF(RadiationBody > 1) OutputName = OutputName//TRIM(I2S(RadiationBody))
+           IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
            INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
            IF(.NOT. Found) FilesExist = .FALSE.
          END DO
@@ -696,7 +696,7 @@
          READ( VFUnit ) n
          IF( n /= RadiationSurfaces ) THEN
            CALL Fatal('RadiationFactors','Mismatch in radiation factor file size: '&
-               //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
+               //I2S(n)//' vs. '//I2S(RadiationSurfaces))
          END IF
        ELSE
          CALL Info('RadiationFactors','Loading radiator factors from ascii file: '//TRIM(OutputName),Level=5)
@@ -788,7 +788,7 @@
          OutputName = TRIM(ViewFactorsFile)
        END IF
 
-       IF(RadiationBody > 1) OutputName = OutputName//TRIM(I2S(RadiationBody))
+       IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
 
        INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
        IF(.NOT. Found) THEN
@@ -808,7 +808,7 @@
          READ( VFUnit ) n
          IF( n /= RadiationSurfaces ) THEN
            CALL Fatal('RadiationFactors','Mismatch in viewfactor file size: '&
-               //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
+               //I2S(n)//' vs. '//I2S(RadiationSurfaces))
            Success = .FALSE.
            RETURN
          END IF
@@ -1605,7 +1605,7 @@
        kmax = CEILING( Tmax / dT )
 
        CALL Info('SpectralRadiosity','Going through discrete intervals: '&
-           //TRIM(I2S(kmin))//'-'//TRIM(I2S(kmax)))
+           //I2S(kmin)//'-'//I2S(kmax))
 
        SOL = 0.0_dp
        IF(Newton) SOL_d = 0.0_dp
@@ -1633,11 +1633,11 @@
          ! There is nothing to compute here
          ! So no need to resolve equations for this interval.        
          IF(qsum < 1.0d-6 ) THEN
-           CALL Info('SpectralRadiosity','Skipping interval '//TRIM(I2S(k)),Level=12)
+           CALL Info('SpectralRadiosity','Skipping interval '//I2S(k),Level=12)
            CYCLE
          END IF
 
-         WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//TRIM(I2S(k))//': ',qsum
+         WRITE(Message,'(A,G12.5)') 'Spectral radiosity sources '//I2S(k)//': ',qsum
          CALL Info('SpectralRadiosity',Message,Level=10) 
                     
          ! Initialize matrix equation
@@ -1726,14 +1726,14 @@
            END DO
          END DO
          kmax = k
-         CALL Info('SpectralRadiosity','Going through radiators in '//TRIM(I2S(kmax))//' sets')
+         CALL Info('SpectralRadiosity','Going through radiators in '//I2S(kmax)//' sets')
                            
          DO k = 1, kmax
            DO j=1,SIZE(RadiatorSet)
              IF(RadiatorSet(j) == k) Trad = RadiatorTemps(j)
            END DO
            
-           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//TRIM(I2S(k))//' at: ',Trad
+           WRITE(Message,'(A,G12.5)') 'Spectral radiosity radiators '//I2S(k)//' at: ',Trad
            CALL Info('SpectralRadiosity',Message,Level=10) 
            
            ! Initialize matrix equation
@@ -1809,7 +1809,7 @@
            END IF
          ELSE
            DO t=1,n
-             RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
+             RadiatorPowers(t) = ListGetCReal(RadList, 'Radiator Power '//I2S(t),UnfoundFatal=.TRUE.)
            END DO
          END IF
 
@@ -1826,7 +1826,7 @@
              END IF
            ELSE
              DO t=1,n
-               RadiatorTemps(t) = ListGetCReal(RadList, 'Radiator Temperature '//TRIM(I2S(t)),UnfoundFatal=.TRUE.)
+               RadiatorTemps(t) = ListGetCReal(RadList, 'Radiator Temperature '//I2S(t),UnfoundFatal=.TRUE.)
              END DO
            END IF
          END IF
@@ -2024,7 +2024,7 @@
          OutputName = TRIM(GebhartFactorsFile) 
        END IF
 
-       IF(RadiationBody > 1) OutputName = OutputName//TRIM(I2S(RadiationBody))
+       IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
 
        OPEN( VFUnit,File=TRIM(OutputName) )
 

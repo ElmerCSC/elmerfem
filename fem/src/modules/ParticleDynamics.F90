@@ -573,7 +573,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
           BLOCK
             TYPE(ValueListEntry_t), POINTER :: ptr
             REAL(KIND=dp) :: cond
-            str = 'Group Condition '//TRIM(I2S(Group))
+            str = 'Group Condition '//I2S(Group)
             ptr => ListFind(Params,str,Found)
             IF ( .NOT.ASSOCIATED(ptr) ) CYCLE
             
@@ -586,15 +586,15 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
         END DO
       ELSE
         DO Group = 1, NoGroups
-          CALL Info('ParticleDynamics','Initializing particles in group '//TRIM(I2S(group)),Level=5)
-          CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
+          CALL Info('ParticleDynamics','Initializing particles in group '//I2S(group),Level=5)
+          CALL ListPushNameSpace('group'//I2S(Group)//':')
           CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
           CALL ListPopNameSpace()
         END DO
       END IF
       DO Group = 1, NoGroups
         j = COUNT( Particles % Group == Group )
-        CALL Info('ParticleDynamics','Group '//TRIM(I2S(Group))//' particles: '//TRIM(I2S(j)),Level=5)
+        CALL Info('ParticleDynamics','Group '//I2S(Group)//' particles: '//I2S(j),Level=5)
       END DO
     ELSE
       CALL InitializeParticles( Particles )
@@ -1079,7 +1079,7 @@ CONTAINS
            NormalizedVars(i) = ListGetLogical( Params, str, GotIt )
          END DO
 
-         CALL Info('ParticleDynamics','Number of particle fields: '//TRIM(I2S(MaxField)),Level=6)
+         CALL Info('ParticleDynamics','Number of particle fields: '//I2S(MaxField),Level=6)
        END IF
        
        DensityName = 'Density'

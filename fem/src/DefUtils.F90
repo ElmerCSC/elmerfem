@@ -391,11 +391,11 @@ CONTAINS
        n = Solver % ColourIndexList % ptr(Solver % CurrentColour+1) &
            - Solver % ColourIndexList % ptr(Solver % CurrentColour)
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentColour)),Level=20)
+           //I2S(n)//' in colour '//I2S(Solver % CurrentColour),Level=20)
      ELSE
        n = Solver % NumberOfActiveElements
        CALL Info('GetNOFActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=20)
+           //I2S(n),Level=20)
      END IF
 
   END FUNCTION GetNOFActive
@@ -418,11 +418,11 @@ CONTAINS
        n = Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour+1) &
            - Solver % BoundaryColourIndexList % ptr(Solver % CurrentBoundaryColour)
        CALL Info('GetNOFBoundaryActive','Number of boundary elements: '&
-           //TRIM(I2S(n))//' in colour '//TRIM(I2S(Solver % CurrentBoundaryColour)),Level=20)
+           //I2S(n)//' in colour '//I2S(Solver % CurrentBoundaryColour),Level=20)
      ELSE
        n = Solver % Mesh % NumberOfBoundaryElements
        CALL Info('GetNOFBoundaryActive','Number of active elements: '&
-           //TRIM(I2S(n)),Level=20)
+           //I2S(n),Level=20)
      END IF
 
   END FUNCTION GetNOFBoundaryActive
@@ -1285,19 +1285,19 @@ CONTAINS
          IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
            mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',GotMat)
          ELSE
-           CALL Warn('GetParentMatProp','Invalid parent BodyId '//TRIM(I2S(Parent % BodyId))//&
-               ' for element '//TRIM(I2S(Parent % ElementIndex)))
+           CALL Warn('GetParentMatProp','Invalid parent BodyId '//I2S(Parent % BodyId)//&
+               ' for element '//I2S(Parent % ElementIndex))
            CYCLE
          END IF
          
          IF(.NOT. GotMat) THEN
-           CALL Warn('GetParentMatProp','Parent body '//TRIM(I2S(Parent % BodyId))//' does not have material associated!')
+           CALL Warn('GetParentMatProp','Parent body '//I2S(Parent % BodyId)//' does not have material associated!')
          END IF
          
          IF( mat_id > 0 .AND. mat_id <= CurrentModel % NumberOfMaterials ) THEN
            Material => CurrentModel % Materials(mat_id) % Values
          ELSE
-           CALL Warn('GetParentMatProp','Material index '//TRIM(I2S(mat_id))//' not associated to material list')
+           CALL Warn('GetParentMatProp','Material index '//I2S(mat_id)//' not associated to material list')
            CYCLE
          END IF
                              
@@ -3235,7 +3235,7 @@ CONTAINS
        k = SlaveSolverIndexes(j)
        SlaveSolver => CurrentModel % Solvers(k)
 
-       CALL Info('DefaultSlaveSolvers','Calling slave solver: '//TRIM(I2S(k)),Level=8)
+       CALL Info('DefaultSlaveSolvers','Calling slave solver: '//I2S(k),Level=8)
        
        IF(ParEnv % PEs>1) THEN
          SParEnv = ParEnv
@@ -3449,8 +3449,8 @@ CONTAINS
     IF( LinearSystemTrialing ) NameSpaceI = MAX( 1, NameSpaceI )
       
     IF( NameSpaceI > 0 ) THEN
-      CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
-      CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+      CALL Info('DefaultSolve','Linear system namespace number: '//I2S(NameSpaceI),Level=7)
+      CALL ListPushNamespace('linsys'//I2S(NameSpaceI)//':')
     END IF
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
@@ -3530,12 +3530,12 @@ CONTAINS
         END IF
       ELSE
         NameSpaceI = NameSpaceI + 1      
-        IF( .NOT. ListCheckPrefix( Params,'linsys'//TRIM(I2S(NameSpaceI)) ) ) THEN
+        IF( .NOT. ListCheckPrefix( Params,'linsys'//I2S(NameSpaceI) ) ) THEN
           CALL Fatal('DefaultSolve','Exhausted all linear system strategies!')
         END IF
         CALL ListPopNamespace()
-        CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
-        CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+        CALL Info('DefaultSolve','Linear system namespace number: '//I2S(NameSpaceI),Level=7)
+        CALL ListPushNamespace('linsys'//I2S(NameSpaceI)//':')
         GOTO 10
       END IF
     END IF
@@ -3599,7 +3599,7 @@ CONTAINS
 
     IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',Found ) ) THEN
       i = Solver % Variable % NonlinConverged
-      CALL Info('DefaultConverged','Convergence status: '//TRIM(I2S(i)),Level=12)      
+      CALL Info('DefaultConverged','Convergence status: '//I2S(i),Level=12)      
       imin = ParallelReduction(i,1)
       imax = ParallelReduction(i,2)
       IF(imin /= imax ) THEN
@@ -5111,7 +5111,7 @@ CONTAINS
          NodalBCsWithBraces = ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {n}')
          IF (NodalBCsWithBraces) THEN
            CALL Info('DefaultDirichletBCs', '{n} construct is now used to set BCs', Level=7)
-           CALL Info('DefaultDirichletBCs', TRIM(I2S(NDOFs))//'-component {n} definition is handled', Level=7)
+           CALL Info('DefaultDirichletBCs', I2S(NDOFs)//'-component {n} definition is handled', Level=7)
            EXIT
          END IF
        END DO
@@ -5207,7 +5207,7 @@ CONTAINS
            ! m = 1,...,NDOFs when an element definition "n:NDOFs e:..." is given. 
            
            IF (NDOFs > 1) THEN 
-             name = TRIM(name)//' '//TRIM(I2S(m))
+             name = TRIM(name)//' '//I2S(m)
            END IF
 
 !           print *, '====== m is ', m
@@ -7162,7 +7162,7 @@ CONTAINS
       END IF
     END IF
 
-    CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+    CALL Info('GetNOFColours','Number of colours: '//I2S(ncolours),Level=12)
   END FUNCTION GetNOFColours
 
   FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours ) 
@@ -7183,7 +7183,7 @@ CONTAINS
       END IF
     END IF
 
-    CALL Info('GetNOFBoundaryColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+    CALL Info('GetNOFBoundaryColours','Number of colours: '//I2S(ncolours),Level=12)
   END FUNCTION GetNOFBoundaryColours
   
   ! Check given colourings are valid and see if they are free of race conditions. 

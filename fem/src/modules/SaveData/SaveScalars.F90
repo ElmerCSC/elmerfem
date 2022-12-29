@@ -82,7 +82,7 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
       IF(.NOT. GotIt) THEN
         CALL Fatal('SaveScalars_init','Failed strategy marked requires > Line Marker <')
       END IF
-      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+      Name = 'FINISHED_MARKER_'//I2S(LineInd)
     END IF
 
     IF( AvoidFailed ) THEN
@@ -595,7 +595,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     ! We may want to do integrals over projected surfaces
     PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate',GotIt )
     IF(.NOT. GotIt ) THEN
-      PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
+      PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate '//I2S(NoOper), GotIt )
     END IF
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
@@ -1261,7 +1261,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       DO WHILE( ASSOCIATED( Lst ) )    
         IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
           IF ( ASSOCIATED(Lst % Fvalues) ) THEN
-            CALL AddToSaveList('component '//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
+            CALL AddToSaveList('component '//I2S(i)//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
             l = l + 1
            END IF
         END IF
@@ -1282,7 +1282,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Warn(Caller,'Found no values to save')
     RETURN
   ELSE
-    CALL Info(Caller,'Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
+    CALL Info(Caller,'Found '//I2S(NoValues)//' values to save in total',Level=6)
   END IF
 
 
@@ -1481,7 +1481,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           DateStr = FormatDate()      
           WRITE( ScalarsUnit,'(A)') '  "starttime": "'//TRIM(DateStr)//'",'
 
-          WRITE( ScalarsUnit,'(A)') '  "columns": '//TRIM(I2S(NoValues))//','
+          WRITE( ScalarsUnit,'(A)') '  "columns": '//I2S(NoValues)//','
                     
           WRITE( ScalarsUnit, '(A)',ADVANCE='no' ) '  "names":['
  
@@ -1560,7 +1560,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
 
       CALL Info(Caller,'Saving True marker at end')
-      Name = 'FINISHED_MARKER_'//TRIM(I2S(LineInd))
+      Name = 'FINISHED_MARKER_'//I2S(LineInd)
       i = 1
       OPEN(NEWUNIT=MarkerUnit,FILE=Name,STATUS='Unknown')
       WRITE(MarkerUnit,'(I0)') i
@@ -1675,7 +1675,7 @@ CONTAINS
           IF( TRIM(ValueNames(i)) == str(1:nlen) ) EXIT
         END DO
         IF( i<=n) THEN
-          CALL Info(Caller,'Found duplicate at '//TRIM(I2S(i))//' for: '//TRIM(str),Level=12)
+          CALL Info(Caller,'Found duplicate at '//I2S(i)//' for: '//TRIM(str),Level=12)
           RETURN
         END IF
       END IF
@@ -1846,7 +1846,7 @@ CONTAINS
     
     t = COUNT( NodeMask )    
     CALL Info(Caller,'Created mask of size: '&
-        //TRIM(I2S(t)),Level=12)
+        //I2S(t),Level=12)
 
   END SUBROUTINE CreateNodeMask
 
@@ -1898,7 +1898,7 @@ CONTAINS
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
         CALL Info(Caller,'Decreasing operator range to size of mask: '&
-            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))), Level=8)
+            //I2S(NoNodes)//' vs. '//I2S(SIZE(NodeMask)), Level=8)
         NoNodes = SIZE(NodeMask)
       END IF
     END IF
@@ -2072,7 +2072,7 @@ CONTAINS
     IF( MaskOper ) THEN
       IF( NoNodes > SIZE(NodeMask) ) THEN
         CALL Info(Caller,'Decreasing operator range to size of mask: '&
-            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+            //I2S(NoNodes)//' vs. '//I2S(SIZE(NodeMask)) )
         NoNodes = SIZE(NodeMask)
       END IF
     END IF
@@ -3478,7 +3478,7 @@ CONTAINS
       DO No=1,NoValues
         IF( TRIM(Name) == TRIM(ValueNames(No)) ) THEN
           NormInd = No
-          CALL Info(Caller,'Associating scalar '//TRIM(I2S(No))//' to norm!',Level=8)
+          CALL Info(Caller,'Associating scalar '//I2S(No)//' to norm!',Level=8)
           EXIT
         END IF
       END DO

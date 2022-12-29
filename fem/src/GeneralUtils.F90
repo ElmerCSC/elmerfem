@@ -152,46 +152,68 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Converts integer to string. Handy when writing output with integer data.
 !------------------------------------------------------------------------------
-  PURE FUNCTION i2s(ival) RESULT(str)
+  PURE FUNCTION i2s(ival) RESULT(s)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(in) :: ival
-    CHARACTER(LEN=12) :: str
+    CHARACTER(:), ALLOCATABLE :: s
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,n,t,v
+    INTEGER :: i,j,n,t,v,len
     INTEGER(8) :: m
     CHARACTER, PARAMETER :: DIGITS(0:9)=['0','1','2','3','4','5','6','7','8','9']
 !------------------------------------------------------------------------------
-     str = ' '
 
-     IF ( ival >= 0 ) THEN
-       j=0
-       v=ival
+     IF(ival>=0) THEN
+       v = ival
+       IF (v<10) THEN
+         s = DIGITS(v)
+       ELSE IF (ival<100) THEN
+         i = v/10
+         s = DIGITS(i)//DIGITS(v-10*i)
+       ELSE
+         n=3
+         m=100
+         DO WHILE(10*m<=v)
+           n=n+1
+           m=m*10
+         END DO
+
+         ALLOCATE(CHARACTER(n)::s)
+         DO i=1,n
+           t = v / m
+           s(i:i) = DIGITS(t)
+           v = v - t*m
+           m = m / 10
+         END DO
+       END IF
      ELSE
-       str(1:1)='-'
-       j=1
-       v=-ival
-     END IF
+       v = -ival
+       IF (v<10) THEN
+         s = '-'//DIGITS(v)
+       ELSE IF (v<100) THEN
+         i = v/10
+         s = '-'//DIGITS(i)//DIGITS(v-10*i)
+       ELSE
+         n=3
+         m=100
+         DO WHILE(10*m<=v)
+           n=n+1
+           m=m*10
+         END DO
 
-     IF (v<10) THEN
-       str(j+1:j+1)=DIGITS(v)
-     ELSE
-       n=2
-       m=10
-       DO WHILE(10*m<=v)
-         n=n+1
-         m=m*10
-       END DO
-
-       DO i=j+1,j+n
-         t = v / m
-         str(i:i) = DIGITS(t)
-         v = v - t*m
-         m = m / 10
-       END DO
+         ALLOCATE(CHARACTER(n+1)::s)
+         s(1:1) = '-'
+         DO i=2,n+1
+           t = v / m
+           s(i:i) = DIGITS(t)
+           v = v - t*m
+           m = m / 10
+         END DO
+       END IF
      END IF
 !------------------------------------------------------------------------------
   END FUNCTION i2s
 !------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -1269,7 +1291,7 @@ CONTAINS
         str = 'pressure'
         RETURN
       ELSE
-        str = 'velocity ' // TRIM(i2s(Component))
+        str = 'velocity ' // i2s(Component)
       END IF
     ELSE
       str = ComponentName(Var % Name, Component)
@@ -1296,7 +1318,7 @@ END FUNCTION ComponentNameVar
     IF ( ind<=0 ) THEN
       str = BaseName
       IF ( Component > 0 ) THEN
-        str = TRIM(str) // ' ' // TRIM(i2s(Component) )
+        str = TRIM(str) // ' ' // i2s(Component)
       END IF
     ELSE IF( Component == 0 ) THEN
       str = BaseName(1:ind-1)
@@ -1315,7 +1337,7 @@ END FUNCTION ComponentNameVar
       str = BaseName(ind+1:ind1-1)
       IF ( DOFs>1 ) THEN
         DOFs = Component - DOFsTot + DOFs
-        str = TRIM(str) // ' ' // TRIM(i2s(DOFs) )
+        str = TRIM(str) // ' ' //i2s(DOFs)
       END IF
     END IF
 !------------------------------------------------------------------------------

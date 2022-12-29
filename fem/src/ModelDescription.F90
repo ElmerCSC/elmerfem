@@ -190,7 +190,7 @@ CONTAINS
         IF( MinOutputPE == MaxOutputPE ) THEN
           InfoFileName = 'InfoFile.txt'
         ELSE
-          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+          InfoFileName = 'InfoFile.txt.'//I2S(ParEnv % MyPe)                 
         END IF
         InfoOutUnit = InfoToFileUnit
         OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
@@ -599,13 +599,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BCcount = BCcount + 1
           ArrayN = BCcount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Boundary Condition < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BcCount = MAX( BcCount, ArrayN )
@@ -635,8 +635,8 @@ CONTAINS
           END DO
           
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
-            WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
-                ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
+            WRITE( Message, * ) 'Boundary Condition section number ('//I2S(Arrayn)// &
+                ') exceeds number of BCs ('//I2S(Model % NumberOfBCs)//')'
             CALL Fatal( Caller, Message )
           END IF
           Model % BCs(ArrayN) % Tag = ArrayN
@@ -661,7 +661,7 @@ CONTAINS
           READ( Section(9:),*,iostat=iostat ) Arrayn
           IF( iostat /= 0 ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
 
           BoundaryIndex = BoundaryIndex + 1
@@ -681,13 +681,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           IcCount = IcCount + 1
           ArrayN = IcCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Initial Condition < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           IcCount = MAX( IcCount, ArrayN ) 
@@ -733,13 +733,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           MatCount = MatCount + 1
           ArrayN = MatCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Material < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           MatCount = MAX( MatCount, ArrayN ) 
@@ -780,13 +780,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BfCount = BfCount + 1
           ArrayN = BfCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Body Force < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BfCount = MAX( ArrayN, BfCount ) 
@@ -828,13 +828,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           EqCount = EqCount + 1
           ArrayN = EqCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Equation < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           EqCount = MAX( EqCount, ArrayN )
@@ -878,13 +878,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           BodyCount = BodyCount + 1
           ArrayN = BodyCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Body < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           BodyCount = MAX( BodyCount, ArrayN ) 
@@ -927,13 +927,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           ComponentCount = ComponentCount + 1
           ArrayN = ComponentCount 
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Component < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           ComponentCount = MAX( ComponentCount, ArrayN )
@@ -975,13 +975,13 @@ CONTAINS
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN
             CALL Fatal(Caller,'Problem reading section '&
-                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+                //I2S(LineCount)//': '//TRIM(Section))
           END IF
           SolverCount = SolverCount + 1
           ArrayN = SolverCount
           IF( ScanOnly ) THEN
             CALL Info(Caller,'Giving an empty > Solver < index next value: &
-                '//TRIM(I2S(ArrayN)),Level=4)
+                '//I2S(ArrayN),Level=4)
           END IF
         ELSE
           SolverCount = MAX( SolverCount, ArrayN )
@@ -1056,7 +1056,7 @@ CONTAINS
       IF( Model % NumberOfBCs == 0 ) THEN
         CALL Warn(Caller,'There are no BCs in the system!')
       ELSE
-        CALL Info(Caller,'Number of BCs: '//TRIM(I2S(Model % NumberOfBCs)),Level=12)
+        CALL Info(Caller,'Number of BCs: '//I2S(Model % NumberOfBCs),Level=12)
       END IF
       DO i = 1, Model % NumberOFBCs
         IF( ListEmpty(Model % BCs(i) % Values) ) THEN
@@ -1066,7 +1066,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Body Forces: '&
-          //TRIM(I2S(Model % NumberOfBodyForces)),Level=12)
+          //I2S(Model % NumberOfBodyForces),Level=12)
       DO i = 1, Model % NumberOfBodyForces
         IF( ListEmpty(Model % BodyForces(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body Force ',i
@@ -1075,7 +1075,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Initial Conditions: '&
-          //TRIM(I2S(Model % NumberOfICs)),Level=12)
+          //I2S(Model % NumberOfICs),Level=12)
       DO i = 1, Model % NumberOfICs
         IF( ListEmpty(Model % ICs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Initial Condition ',i
@@ -1084,7 +1084,7 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of Materials: '&
-          //TRIM(I2S(Model % NumberOfMaterials)),Level=12)      
+          //I2S(Model % NumberOfMaterials),Level=12)      
       DO i = 1, Model % NumberOfMaterials         
         IF( ListEmpty(Model % Materials(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Material ',i
@@ -1096,7 +1096,7 @@ CONTAINS
         CALL Warn(Caller,'There are no Equations in the system!')
       ELSE
         CALL Info(Caller,'Number of Equations: '&
-            //TRIM(I2S(Model % NumberOfEquations)),Level=12)
+            //I2S(Model % NumberOfEquations),Level=12)
       END IF
       DO i = 1, Model % NumberOFEquations 
         IF( ListEmpty(Model % Equations(i) % Values) ) THEN
@@ -1109,7 +1109,7 @@ CONTAINS
         CALL Fatal(Caller,'There are no Solvers in the system!')
       ELSE
         CALL Info(Caller,'Number of Solvers: '&
-            //TRIM(I2S(Model % NumberOfSolvers)),Level=12)
+            //I2S(Model % NumberOfSolvers),Level=12)
       END IF
       DO i = 1, Model % NumberOfSolvers         
         IF( ListEmpty(Model % Solvers(i) % Values) ) THEN
@@ -1122,7 +1122,7 @@ CONTAINS
         CALL Warn(Caller,'There are no Bodies in the system!')
       ELSE
         CALL Info(Caller,'Number of Bodies: '&
-            //TRIM(I2S(Model % NumberOfBodies)),Level=12)
+            //I2S(Model % NumberOfBodies),Level=12)
       END IF     
       DO i = 1, Model % NumberOfBodies
         IF( ListEmpty(Model % Bodies(i) % Values) ) THEN
@@ -1130,13 +1130,13 @@ CONTAINS
           CALL Fatal(Caller,Message)
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Equation', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Equation" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Equation" in body '//I2S(i)//' must have single value')
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Body Force', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Body Force" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Body Force" in body '//I2S(i)//' must have single value')
         END IF
         IF( ListCheckIsArray( Model % Bodies(i) % Values,'Material', Found) ) THEN
-          CALL Fatal(Caller,'Keyword "Material" in body '//TRIM(I2S(i))//' must have single value')
+          CALL Fatal(Caller,'Keyword "Material" in body '//I2S(i)//' must have single value')
         END IF
       END DO
 
@@ -1150,7 +1150,7 @@ CONTAINS
         IF(.NOT. Found ) CYCLE
         DO j = i+1, Model % NumberOfSolvers
           IF( TRIM(str) == TRIM( ListGetString( Model % Solvers(j) % Values,'Equation',Found ))) THEN
-            CALL Fatal(Caller,'Solvers '//TRIM(I2S(i))//' and '//TRIM(I2S(j))//&
+            CALL Fatal(Caller,'Solvers '//I2S(i)//' and '//I2S(j)//&
                 ' have the same Equation name!')
           END IF
         END DO
@@ -1169,7 +1169,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Material',j)
-                CALL Info(Caller,'Giving material > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving material > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1189,7 +1189,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Equation',j)
-                CALL Info(Caller,'Giving equation > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving equation > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1209,7 +1209,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Body Force',j)
-                CALL Info(Caller,'Giving body force > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving body force > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1229,7 +1229,7 @@ CONTAINS
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Initial Condition',j)
-                CALL Info(Caller,'Giving initial condition > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                CALL Info(Caller,'Giving initial condition > '//TRIM(Name)//' < index: '//I2S(j),Level=5)
                 FoundName = .TRUE.
                 EXIT
               END IF
@@ -1260,7 +1260,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfMaterials
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Material '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Material '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1273,7 +1273,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfBodyForces
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Body Force '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Body Force '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1286,7 +1286,7 @@ CONTAINS
         END DO
         DO i = 1,Model % NumberOfEquations
           IF( .NOT. EntryUsed(i) ) THEN
-            CALL Warn(Caller,'> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
+            CALL Warn(Caller,'> Equation '// I2S(i) //' < not used in any Body!')
           END IF
         END DO
       END IF
@@ -1961,7 +1961,7 @@ CONTAINS
              ! Add tag so we know how to make variation to this keyword
              IF( partag > 0 ) THEN
                CALL Info(Caller,'Adding parameter tag '&
-                   //TRIM(I2S(partag))//' to keyword: '//TRIM(Name),Level=7)
+                   //I2S(partag)//' to keyword: '//TRIM(Name),Level=7)
                IF(.NOT. ScanOnly ) CALL ListParTagKeyword( List, Name, partag ) 
              END IF
              ! Add tag so we know to divide this keyword by the entity integral 
@@ -2666,7 +2666,7 @@ CONTAINS
     !--------------------------------------------------------
     Name = ListGetString( Model % Simulation, 'Mesh', GotIt )
     IF(PRESENT(MeshIndex)) THEN
-      IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+      IF ( MeshIndex>0 )Name = TRIM(Name)//I2S(MeshIndex)
     END IF
 
     OneMeshName = .FALSE.
@@ -2700,7 +2700,7 @@ CONTAINS
       MeshName(i:i) = CHAR(0)
     ELSE
       IF(PRESENT(MeshIndex)) THEN
-        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // TRIM(I2S(MeshIndex))//CHAR(0)
+        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // I2S(MeshIndex)//CHAR(0)
       END IF
     END IF
 
@@ -2778,13 +2778,13 @@ CONTAINS
 
       IF( MeshLevels > 1 ) THEN
         CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
-            //TRIM(I2S(MeshLevels)))
+            //I2S(MeshLevels))
       END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep = MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LoadModel','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+        CALL Info('LoadModel','Keeping number of meshes: '//I2S(MeshKeep),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
@@ -2895,7 +2895,7 @@ CONTAINS
       END DO
 
       IF(PRESENT(MeshIndex)) THEN
-        IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+        IF ( MeshIndex>0 )Name = TRIM(Name)//I2S(MeshIndex)
       END IF
 
       IF( GotIt ) THEN
@@ -2916,7 +2916,7 @@ CONTAINS
           READ( Name(7:), * ) nprocs
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','This mesh is only active at partitions: '&
-                //TRIM(I2S(nprocs)),Level=7)
+                //I2S(nprocs),Level=7)
           END IF 
           i = 7
           DO WHILE(Name(i:i)/=' ')
@@ -3302,7 +3302,7 @@ CONTAINS
           IF( nb /= n ) CYCLE          
           IF( Name(1:n) == NameB(1:n) ) THEN
             CALL Info('CompleteModelKeywords','Adding > Mortar BC = '&
-                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+                //I2S(i)//' < to boundary '//I2S(j),Level=5)
             CALL ListAddInteger( ListB,'Mortar BC',i )
             EXIT
           END IF
@@ -3329,7 +3329,7 @@ CONTAINS
           IF( nb /= n ) CYCLE
           IF( Name(1:n) == NameB(1:n) ) THEN
             CALL Info('CompleteModelKeywords','Adding > Contact BC = '&
-                //TRIM(I2S(i))//' < to boundary '//TRIM(I2S(j)),Level=5)
+                //I2S(i)//' < to boundary '//I2S(j),Level=5)
             CALL ListAddInteger( ListB,'Contact BC',i )
             EXIT
           END IF
@@ -3351,19 +3351,19 @@ CONTAINS
 
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Rotational Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Rotational Normals < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Rotational Normals < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Normal-Tangential Displacement < to master BC '//I2S(j),Level=10)
 
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Velocity',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Normal-Tangential Velocity < to master BC '//TRIM(I2S(j)),Level=10)
+          'Added > Normal-Tangential Velocity < to master BC '//I2S(j),Level=10)
     END DO
 
 
@@ -3380,11 +3380,11 @@ CONTAINS
         ! Ok, we need to set automated coupling
         IF( DoIt ) THEN
           CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
-          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//I2S(i),Level=6)
           CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
         ELSE
           CALL Info('CompleteModelKeywords','Setting automated fsi coupling!')
-          CALL Info('CompleteModelKeywords','Fluid solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL Info('CompleteModelKeywords','Fluid solver has index: '//I2S(i),Level=6)
           CALL ListAddLogical( List,'Fluid-Structure Coupling',.TRUE.)
         END IF
           
@@ -3406,7 +3406,7 @@ CONTAINS
         ELSE
           CALL Fatal('CompleteModelKeywords','Cannot find the structure solver!')
         END IF
-        CALL Info('CompleteModelKeywords','Slave structure solver has index: '//TRIM(I2S(j)),Level=6)
+        CALL Info('CompleteModelKeywords','Slave structure solver has index: '//I2S(j),Level=6)
 
         NULLIFY( TmpInts )
         ALLOCATE( TmpInts(2) )
@@ -3479,11 +3479,11 @@ CONTAINS
           IF( BCMode ) THEN
             CALL ListAddIntegerArray( List,'Master Boundaries',j,MasterIndexes)
             CALL Info('CompleteModelKeywords',&
-                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//I2S(j),Level=6)
           ELSE
             CALL ListAddIntegerArray( List,'Master Bodies',j,MasterIndexes)         
             CALL Info('CompleteModelKeywords',&
-                'Created "Master Bodies" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+                'Created "Master Bodies" for '//TRIM(Name)//' of size '//I2S(j),Level=6)
           END IF
         ELSE
           IF( BCMode ) THEN
@@ -3574,11 +3574,11 @@ CONTAINS
 #endif
     
     IF( FileCycle > 0 ) THEN
-      Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
+      Fname = TRIM(Fname)//'_'//I2S(FileInd)//'nc'
     END IF
 
     IF( ParEnv % PEs > 1 ) THEN
-      Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
+      Fname = TRIM(Fname)//'.'//i2s(ParEnv % MyPE)
     END IF        
     PosName = TRIM(FName) // ".pos"
 
@@ -3872,7 +3872,7 @@ CONTAINS
              n = COUNT( CurrPerm > 0 )
 
              CALL Info(Caller,'Writing Perm of size '&
-                 //TRIM(I2S(SIZE(CurrPerm)))//' with '//TRIM(I2S(n))//' nonzeros',Level=20)
+                 //I2S(SIZE(CurrPerm))//' with '//I2S(n)//' nonzeros',Level=20)
 
              IF ( Binary ) THEN
                PrevPermPos = BinFTell( OutputUnit )
@@ -4049,7 +4049,7 @@ CONTAINS
     CALL Info( Caller,' ', Level = 4)
     CALL Info( Caller,'--------------------------------------------', Level= 4 )
     CALL Info( Caller,'Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
-    CALL Info( Caller,'Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
+    CALL Info( Caller,'Restart for number of nodes: '//I2S(Mesh % NumberOfNodes), Level = 8 )    
     IF( ASSOCIATED( Mesh % Child ) ) THEN
       CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
@@ -4078,9 +4078,9 @@ CONTAINS
         READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
         READ( RestartUnit, *, IOSTAT=iostat ) j                
         CLOSE( RestartUnit)
-        CALL Info(Caller,'Using latest saved data for restart: '//TRIM(I2S(j)),Level=6)
+        CALL Info(Caller,'Using latest saved data for restart: '//I2S(j),Level=6)
       END IF
-      RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(j))//'nc'
+      RestartFile = TRIM(RestartFile)//'_'//I2S(j)//'nc'
     END IF
     
     CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
@@ -4096,10 +4096,10 @@ CONTAINS
     END DO
     j = j - 1    
     IF( j > 0 ) THEN
-      CALL Info(Caller,'Number of variable to read is: '//TRIM(I2S(j)),Level=10)
+      CALL Info(Caller,'Number of variable to read is: '//I2S(j),Level=10)
       IF( ALLOCATED( ListVariableFound ) ) DEALLOCATE( ListVariableFound ) 
       ALLOCATE( ListVariableFound(j) )
-      CALL Info(Caller,'Reading only '//TRIM(I2S(j))//' variables given by: "Restart Variable i"',Level=10)
+      CALL Info(Caller,'Reading only '//I2S(j)//' variables given by: "Restart Variable i"',Level=10)
     ELSE
       CALL Info(Caller,'Reading all variables (if not wanted use "Restart Variable i" )',Level=10)      
     END IF
@@ -4146,8 +4146,8 @@ CONTAINS
       CALL Error( Caller,'' )
       CALL Fatal( Caller,'=======================================' )
     ELSE IF( FileCount < ParEnv % PEs ) THEN
-      CALL Info(Caller,'Succefully opened '//TRIM(I2S(FileCount))//&
-          ' restart files out of '//TRIM(I2S(ParEnv % PEs)),Level=6)
+      CALL Info(Caller,'Succefully opened '//I2S(FileCount)//&
+          ' restart files out of '//I2S(ParEnv % PEs),Level=6)
       IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
         ! This partition does not have a mesh
         IF( iostat /= 0 ) RETURN 
@@ -4198,9 +4198,9 @@ CONTAINS
     END IF
     
     IF( Binary ) THEN
-      CALL Info( Caller,'Reading binary restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading binary restart file version '//I2S(FmtVersion), Level = 4)
     ELSE
-      CALL Info( Caller,'Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading ascii restart file version '//I2S(FmtVersion), Level = 4)
     END IF
 
     IF( FmtVersion < 3 .AND. ListVariableCount > 0 ) THEN      
@@ -4221,7 +4221,7 @@ CONTAINS
       END IF
     END DO
     REWIND( RestartUnit )    
-    CALL Info(Caller,'Total number of dofs in restart file: '//TRIM(I2S(TotalDofs)), Level = 5)
+    CALL Info(Caller,'Total number of dofs in restart file: '//I2S(TotalDofs), Level = 5)
 
     ! Components are:
     ! FieldSize, PermSize, Load?, SolverId
@@ -4328,8 +4328,8 @@ CONTAINS
           CALL Fatal(Caller,'Error reading size information: '//TRIM(Row(j+1:nlen)))
         END IF
 
-        CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=20)
-        CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=20)
+        CALL Info(Caller,'Size of the field to load: '//I2S(FieldSize),Level=20)
+        CALL Info(Caller,'Size of the permutation vector to load: '//I2S(PermSize),Level=20)
         
         ! Read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
@@ -4349,7 +4349,7 @@ CONTAINS
         END DO
 
         IF( Found ) THEN
-          CALL Info(Caller,'Associated variable to solver using Eq: '//TRIM(I2S(i)),Level=20)
+          CALL Info(Caller,'Associated variable to solver using Eq: '//I2S(i),Level=20)
         ELSE IF( PermSize > 0 ) THEN
           IF( PRESENT( SolverId ) ) THEN
             i = SolverId
@@ -4360,7 +4360,7 @@ CONTAINS
               IF( .NOT. ListCheckPresent( CurrentModel % Solvers(i) % Values,'Mesh') ) EXIT
             END DO
           END IF
-          CALL Info(Caller,'Associated variable to solver using Mesh: '//TRIM(I2S(i)),Level=20)
+          CALL Info(Caller,'Associated variable to solver using Mesh: '//I2S(i),Level=20)
           Solver => CurrentModel % Solvers(i)
         END IF
       END IF
@@ -4426,26 +4426,26 @@ CONTAINS
 
         IF( Dofs /= Var % Dofs ) THEN
           CALL Fatal(Caller,'Fields have different number of components ('&
-              //TRIM(I2S(Dofs))//' vs. '//TRIM(I2S(Var % Dofs))//'): '//TRIM(VarName))
+              //I2S(Dofs)//' vs. '//I2S(Var % Dofs)//'): '//TRIM(VarName))
         END IF
 
         IF( FieldSize /= SIZE( Var % Values ) ) THEN
           CALL Warn(Caller,'Fields are of different size ('&
-              //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
+              //I2S(FieldSize)//' vs. '//I2S(SIZE(Var % Values))//'): '//TRIM(VarName))
         ELSE
-          CALL Info(Caller,'Fields sizes '//TRIM(I2S(FieldSize))//' match for: '//TRIM(VarName),Level=20)         
+          CALL Info(Caller,'Fields sizes '//I2S(FieldSize)//' match for: '//TRIM(VarName),Level=20)         
         END IF
         
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( PermSize /= SIZE( Var % Perm ) ) THEN
             CALL Warn(Caller,'Permutations are of different size ('&
-                //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
+                //I2S(PermSize)//' vs. '//I2S(SIZE(Var % Perm))//'): '//TRIM(VarName))
           ELSE
-            CALL Info(Caller,'Permutation sizes '//TRIM(I2S(PermSize))//' match for: '//TRIM(VarName),Level=20)
+            CALL Info(Caller,'Permutation sizes '//I2S(PermSize)//' match for: '//TRIM(VarName),Level=20)
           END IF
         ELSE IF(PermSize > 0) THEN
           CALL Warn(Caller,'Existing variable defined without perm: '&
-              //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
+              //TRIM(VarName)//' but size in restart file is: '//I2S(PermSize))
         END IF
       ELSE IF( CreateVariables ) THEN
         CALL Info(Caller,'Creating variable: '//TRIM(NewName),Level=6)
@@ -4635,7 +4635,7 @@ CONTAINS
           ELSE
             n = FieldSize
           END IF
-          CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
+          CALL Info(Caller,'Size of load loop is '//I2S(n),Level=15)
 
           ! If we are renaming the variable also then do it
           j = FileVariableInfo(i,4) 
@@ -4764,7 +4764,7 @@ CONTAINS
 
     DO j=1,ListVariableCount
       IF( .NOT. ListVariableFound(j) ) THEN
-        CALL Warn(Caller,'Could not find restart variable: '//TRIM(I2S(j)))
+        CALL Warn(Caller,'Could not find restart variable: '//I2S(j))
       END IF
     END DO
     
@@ -4951,7 +4951,7 @@ CONTAINS
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
-        CALL Info(Caller,'Allocating permutation vector of size: '//TRIM(I2S(nPerm)),Level=15)
+        CALL Info(Caller,'Allocating permutation vector of size: '//I2S(nPerm),Level=15)
         ALLOCATE( Perm(nPerm) )
       END IF
       Perm = 0
@@ -6195,7 +6195,7 @@ END SUBROUTINE GetNodalElementSize
 
    CALL Info('FreeModel','Freeing solvers',Level=15)  
    DO i=1,Model % NumberOfSolvers
-     CALL Info('FreeModel','Solver: '//TRIM(I2S(i)),Level=20)
+     CALL Info('FreeModel','Solver: '//I2S(i),Level=20)
      CALL FreeSolver(Model % Solvers(i))
    END DO
    DEALLOCATE(Model % Solvers)
@@ -6250,7 +6250,7 @@ END SUBROUTINE GetNodalElementSize
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
 
    DO i=1,NoParam
-     WRITE( cmd, * ) 'rpar('//TRIM(i2s(i-1))//')=', Param(i)
+     WRITE( cmd, * ) 'rpar('//i2s(i-1)//')=', Param(i)
      j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
@@ -6300,7 +6300,7 @@ END SUBROUTINE GetNodalElementSize
    CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
 
    DO i=1,NoParam
-     WRITE( cmd, * ) 'ipar('//TRIM(i2s(i-1))//')=', Param(i)
+     WRITE( cmd, * ) 'ipar('//i2s(i-1)//')=', Param(i)
      j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &

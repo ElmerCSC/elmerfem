@@ -677,7 +677,7 @@ CONTAINS
                          Solver % Values,'Linear System Namespace Number', Found ) ))
 
            IF( ListGetLogical( Solver % Values, 'linsys' // &
-                 TRIM(I2S(NameSpaceI))//': Linear System Use Hypre', Found) ) &
+                 I2S(NameSpaceI)//': Linear System Use Hypre', Found) ) &
 
              CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
          ELSE
@@ -1464,7 +1464,7 @@ CONTAINS
         Pi => Ai % ParallelInfo
         IF(.NOT. ASSOCIATED(Pi) ) THEN
           CALL Fatal('ParallelMergeMatrix',&
-              'Submatrix '//TRIM(I2S(i))//' does not have parallel info!')
+              'Submatrix '//I2S(i)//' does not have parallel info!')
         END IF
         
         n = n + ni         

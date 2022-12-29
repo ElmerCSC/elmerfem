@@ -356,7 +356,7 @@ CONTAINS
         i = ListGetInteger( Params,'Linear System Max Iterations', minv=1 )
         IF( i > 200 ) THEN
           i = 200
-          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//TRIM(I2S(i)),Level=4)
+          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//I2S(i),Level=4)
         END IF
         HUTI_GCR_RESTART = i
       END IF
@@ -918,7 +918,7 @@ CONTAINS
 
     stack_pos = stack_pos+1
     IF(stack_pos>stack_max) THEN
-      CALL Fatal('IterSolver', 'Recursion too deep ('//TRIM(I2S(stack_pos))//' vs '//TRIM(I2S(stack_max))//')')
+      CALL Fatal('IterSolver', 'Recursion too deep ('//I2S(stack_pos)//' vs '//I2S(stack_max)//')')
     ELSE IF(stack_pos<=0) THEN
       CALL Fatal('IterSolver', 'eh')
     END IF
@@ -981,7 +981,7 @@ CONTAINS
         Solver % Variable % LinConverged = 1
       END IF
     ELSE
-      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
+      CALL Info('IterSolve','Returned return code: '//I2S(HUTI_INFO),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                

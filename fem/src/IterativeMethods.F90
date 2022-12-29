@@ -1264,14 +1264,14 @@ CONTAINS
         
       ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+        CALL Fatal('GCR','Failed to allocate memory of size: '//I2S(n))
       END IF
 
       IF ( m > 1 ) THEN
         ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
         IF( allocstat /= 0 ) THEN
           CALL Fatal('GCR','Failed to allocate memory of size: '&
-              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+              //I2S(n)//' x '//I2S(m))
         END IF
         
          V(1:n,1:m-1) = 0.0d0	
@@ -1425,7 +1425,7 @@ CONTAINS
 
            IF( InfoActive(20) ) THEN
              ksum = ksum + k
-             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//I2S(ksum))           
            END IF
            
          END IF

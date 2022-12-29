@@ -160,7 +160,7 @@ CONTAINS
         eq_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values,'Equation')
         IF( eq_id < 1 ) CYCLE
         
-        str='Active Variables['//TRIM(i2s(solver_id))//']'            
+        str='Active Variables['//i2s(solver_id)//']'            
         ActiveVariables => ListGetIntegerArray(CurrentModel % Equations(eq_id) % Values, str)
         IF(.NOT. ASSOCIATED(ActiveVariables)) THEN
           ActiveVariables => ListGetIntegerArray( CurrentModel % Equations(eq_id) % Values, &
@@ -279,7 +279,7 @@ CONTAINS
     ELSE IF( BlockMatrix % Novar /= 0 ) THEN
       CALL Fatal(Caller,'Previous blockmatrix was of different size?')
     ELSE
-      CALL Info(Caller,'Block matrix will be of size '//TRIM(I2S(NoVar)),Level=6)
+      CALL Info(Caller,'Block matrix will be of size '//I2S(NoVar),Level=6)
     END IF
     
     BlockMatrix % Solver => Solver
@@ -335,9 +335,9 @@ CONTAINS
     ! For example, when we have a projector of a scalar field our block size is (2,2)
     ! but we can only create the (1,1) from the initial matrix system. 
     IF( PRESENT( FieldDofs ) ) THEN
-      CALL Info(Caller,'Number of field components: '//TRIM(I2S(FieldDofs)))
+      CALL Info(Caller,'Number of field components: '//I2S(FieldDofs))
       IF( Novar /= FieldDofs ) CALL Info(Caller,'Number of fields and blocks ('&
-          //TRIM(I2S(NoVar))//') differ!')
+          //I2S(NoVar)//') differ!')
       IF(.NOT. GotBlockStruct ) NoVar = FieldDofs
     END IF
 
@@ -369,7 +369,7 @@ CONTAINS
       IF( GotSlaveSolvers ) THEN
         j = SlaveSolvers(i)
 
-        CALL Info(Caller,'Associating block '//TRIM(I2S(i))//' with solver: '//TRIM(I2S(j)),Level=10)
+        CALL Info(Caller,'Associating block '//I2S(i)//' with solver: '//I2S(j),Level=10)
 
         PSolver => CurrentModel % Solvers(j)
         Var => PSolver % Variable 
@@ -554,7 +554,7 @@ CONTAINS
     INTEGER::i,j,k,l,n
     REAL(KIND=DP) :: SumAbsMat
     
-    CALL Info('BlockPickMatrix','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
+    CALL Info('BlockPickMatrix','Picking block matrix of size '//I2S(NoVar)//' from monolithic one',Level=10)
 
     SolverMatrix => Solver % Matrix 
     Params => Solver % Values
@@ -570,7 +570,7 @@ CONTAINS
           ! A generic picking method for submatrices
           !----------------------------------------------------------------------
           CALL Info('BlockPickMatrix','Picking generic block matrix ('&
-              //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)
+              //I2S(RowVar)//','//I2S(ColVar)//')',Level=20)
           CALL CRS_BlockMatrixPick2(SolverMatrix,Amat,TotMatrix % BlockStruct,RowVar,ColVar)
         ELSE
           ! Picking of standard submatrices of size one.
@@ -578,12 +578,12 @@ CONTAINS
           IF( ReuseMatrix ) THEN
             IF( RowVar + ColVar > 2 .AND. Amat % NumberOfRows == 0 ) THEN
               CALL Info('BlockPickMatrix','Copying block matrix topology ('&
-                  //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)
+                  //I2S(RowVar)//','//I2S(ColVar)//')',Level=20)
               CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(1,1) % Mat, Amat )
             END IF
           END IF
           CALL Info('BlockPickMatrix','Picking simple block matrix ('&
-              //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)          
+              //I2S(RowVar)//','//I2S(ColVar)//')',Level=20)          
           CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar)          
             
           IF( EliminateZero ) THEN
@@ -673,7 +673,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     
     
-    CALL Info('BlockPickDofsPhysical','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
+    CALL Info('BlockPickDofsPhysical','Picking block matrix of size '//I2S(NoVar)//' from monolithic one',Level=10)
 
     n_bf = CurrentModel % NumberOfBodyForces
 
@@ -729,7 +729,7 @@ CONTAINS
     
     n = COUNT( BlockIndex == 0 )
     IF( n > 0 ) THEN
-      CALL Info('BlockPickDofsPhysical','Number of indexes without block matrix index: '//TRIM(I2S(n)),Level=7)
+      CALL Info('BlockPickDofsPhysical','Number of indexes without block matrix index: '//I2S(n),Level=7)
       IF( MinBlock > 1 ) THEN
         k = 1
       ELSE
@@ -811,14 +811,14 @@ CONTAINS
       END IF
     END DO
 
-    IF( nncount > 0 ) CALL Info('BlockPickHdiv','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
-    IF( necount > 0 ) CALL Info('BlockPickHdiv','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
-    IF( nfcount > 0 ) CALL Info('BlockPickHdiv','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
-    IF( nbcount > 0 ) CALL Info('BlockPickHdiv','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
+    IF( nncount > 0 ) CALL Info('BlockPickHdiv','Number of nodal dofs: '//I2S(nncount),Level=8)
+    IF( necount > 0 ) CALL Info('BlockPickHdiv','Number of edge dofs: '//I2S(necount),Level=8)
+    IF( nfcount > 0 ) CALL Info('BlockPickHdiv','Number of face dofs: '//I2S(nfcount),Level=8)
+    IF( nbcount > 0 ) CALL Info('BlockPickHdiv','Number of elemental dofs: '//I2S(nbcount),Level=8)
        
     NoVar = nnis + neis + nfis + nbis
 
-    CALL Info('BlockPickHdiv','Found dofs related to '//TRIM(I2S(NoVar))//' groups',Level=6)
+    CALL Info('BlockPickHdiv','Found dofs related to '//I2S(NoVar)//' groups',Level=6)
     
   END SUBROUTINE BlockPickHdiv
   
@@ -1217,13 +1217,13 @@ CONTAINS
           Wproj = ABS( SUM( WBasis(i,:) * Normal ) ) / Wlen 
 
           IF( WProj > 1.0_dp - Wtol ) THEN  
-            IF( DTag(j) == 2 ) PRINT *,'Vertical edge '//TRIM(I2S(j))//' is also horizontal?'
+            IF( DTag(j) == 2 ) PRINT *,'Vertical edge '//I2S(j)//' is also horizontal?'
             DTag(j) = 1  ! set to be vertical
           ELSE IF( Wproj < Wtol ) THEN
-            IF( DTag(j) == 1 ) PRINT *,'Horizontal edge '//TRIM(I2S(j))//' is also vertical?'
+            IF( DTag(j) == 1 ) PRINT *,'Horizontal edge '//I2S(j)//' is also vertical?'
             DTag(j) = 2  ! set to be horizontal
           ELSE
-            PRINT *,'Edge '//TRIM(I2S(j))//' direction undefined: ',Wproj
+            PRINT *,'Edge '//I2S(j)//' direction undefined: ',Wproj
           END IF
         END DO
 
@@ -1246,7 +1246,7 @@ CONTAINS
     i = n - SUM( ndir ) 
     IF( i > 0 ) THEN      
       CALL Fatal('BlockPickMatrixHorVer','Could not determine all nodes: '&
-          //TRIM(I2S(i)))
+          //I2S(i))
     END IF
 
 
@@ -1593,7 +1593,7 @@ CONTAINS
       CM => CM % ConstraintMatrix
     END DO
 
-    CALL Info('BlockPickConstraint','Number of constraint matrices: '//TRIM(I2S(NoCon)),Level=10)
+    CALL Info('BlockPickConstraint','Number of constraint matrices: '//I2S(NoCon),Level=10)
     
     InheritCM = (NoVar == 1 ) .AND. (NoCon == 1 )
     
@@ -1815,7 +1815,7 @@ CONTAINS
         PMat => TotMatrix % Submatrix(RowVar,CopyVar) % Mat
         Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat 
         CALL Info('BlockPrecMatrix','Creating preconditioner from matrix ('&
-            //TRIM(I2S(RowVar))//','//TRIM(I2S(CopyVar))//')',Level=6)
+            //I2S(RowVar)//','//I2S(CopyVar)//')',Level=6)
         PRINT *,'proj matrix sum:',SUM( ABS( PMat % Values ) ) 
         PRINT *,'orig diag matrix sum:',SUM( ABS( TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values ) )
         
@@ -1837,7 +1837,7 @@ CONTAINS
         CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//TRIM(str))       
       END IF
 
-      CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//TRIM(I2S(NoVar)))
+      CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//I2S(NoVar))
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVar % Solver % Matrix
     END IF  
 
@@ -2102,7 +2102,7 @@ CONTAINS
       ind1 = ConstituentSolvers(i)
       ind2 = ConstituentSolvers(j)
       CALL Info(Caller,'Generating coupling between solvers '&
-          //TRIM(I2S(ind1))//' and '//TRIM(I2S(ind2)))
+          //I2S(ind1)//' and '//I2S(ind2))
 
       
       A_fs => TotMatrix % Submatrix(j,i) % Mat
@@ -2221,7 +2221,7 @@ CONTAINS
       IF(.NOT. ALLOCATED( BlockMatrix % SubVector(NoRow) % rhs )) THEN
         ALLOCATE( BlockMatrix % SubVector(NoRow) % rhs(n) )
         BlockMatrix % SubVector(NoRow) % rhs = 0.0_dp
-        CALL Info('BlockUpdateRhs','Creating rhs for component: '//TRIM(I2S(NoRow)),Level=12)
+        CALL Info('BlockUpdateRhs','Creating rhs for component: '//I2S(NoRow),Level=12)
       END IF
       rhs => BlockMatrix % SubVector(NoRow) % rhs
       
@@ -2336,7 +2336,7 @@ CONTAINS
             IF( A % NumberOfRows >  0 ) THEN
               Trans = .TRUE.
               CALL Info('BlockMatrixVectorProd','Multiplying with transpose of submatrix ('&
-                  //TRIM(I2S(j))//','//TRIM(I2S(i))//')',Level=10)
+                  //I2S(j)//','//I2S(i)//')',Level=10)
               IF( isParallel ) THEN
                 Isolated = TotMatrix % SubMatrix(j,i) % ParallelIsolatedMatrix
                 IF( .NOT. Isolated ) THEN
@@ -2351,7 +2351,7 @@ CONTAINS
         IF( A % NumberOfRows == 0) CYCLE
         
         CALL Info('BlockMatrixVectorProd','Multiplying with submatrix ('&
-            //TRIM(I2S(i))//','//TRIM(I2S(j))//')',Level=15)          
+            //I2S(i)//','//I2S(j)//')',Level=15)          
         
         IF (isParallel) THEN
           IF( ASSOCIATED( A % ParMatrix ) ) THEN
@@ -2502,7 +2502,7 @@ CONTAINS
       
     
     CALL Info('ParallelShrinkPerm','Number of parallel dofs in this partition: '// &
-        TRIM(I2S(l))//' / '//TRIM(I2S(n)), Level=6)    
+        I2S(l)//' / '//I2S(n), Level=6)    
     
     ! We can only make the ParBlockPerm if also BlockPerm exists!
     BlockPerm => TotMatrix % BlockPerm 
@@ -2679,12 +2679,12 @@ CONTAINS
         m = m + 1
         ALLOCATE( TotMatrix % SubVector(k) % DiagScaling(n), STAT=istat )
         IF( istat /= 0 ) THEN
-          CALL Fatal(Caller,'Cannot allocate scaling vectors '//TRIM(I2S(k))//' of size: '//TRIM(I2S(n)))
+          CALL Fatal(Caller,'Cannot allocate scaling vectors '//I2S(k)//' of size: '//I2S(n))
         END IF
       END IF
     END DO
     IF( m > 0 ) THEN
-      CALL Info(Caller,'Allocated '//TRIM(I2S(m))//' scaling vectors for rhs!',Level=8)
+      CALL Info(Caller,'Allocated '//I2S(m)//' scaling vectors for rhs!',Level=8)
     END IF
     
 
@@ -2702,10 +2702,10 @@ CONTAINS
         
       IF( ComplexMatrix ) THEN
         m = 2
-        CALL Info(Caller,'Assuming complex matrix block: '//TRIM(I2S(k)),Level=20)
+        CALL Info(Caller,'Assuming complex matrix block: '//I2S(k),Level=20)
       ELSE
         m = 1
-        CALL Info(Caller,'Assuming real valued matrix block: '//TRIM(I2S(k)),Level=20)
+        CALL Info(Caller,'Assuming real valued matrix block: '//I2S(k),Level=20)
       END IF     
       
       n = A % NumberOfRows 
@@ -2788,7 +2788,7 @@ CONTAINS
       ! Scaling of complex component
       IF( ComplexMatrix ) Diag(2::2) = Diag(1::2)
       
-      WRITE( Message,'(A,ES12.5)') 'Unscaled matrix norm for block '//TRIM(I2S(k))//': ', nrm    
+      WRITE( Message,'(A,ES12.5)') 'Unscaled matrix norm for block '//I2S(k)//': ', nrm    
       CALL Info(Caller, Message, Level=10 )      
     END DO
 
@@ -3080,7 +3080,7 @@ CONTAINS
       WRITE(Message,'(A,I0)') 'Solving block: ',i
       CALL Info('BlockMatrixPrec',Message,Level=8)
 
-      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+      CALL ListPushNameSpace('block '//i2s(i)//i2s(i)//':')
       
       ! Set pointers to the new linear system
       !-------------------------------------------------------------------
@@ -3125,7 +3125,7 @@ CONTAINS
         ! l is uninitialized!
         !nrm = CompNorm(b,offset(i+1)-offset(i),npar=l)
         nrm = CompNorm(b,offset(i+1)-offset(i))
-        WRITE( Message,'(A,ES12.5)') 'Rhs '//TRIM(I2S(i))//' norm: ',nrm
+        WRITE( Message,'(A,ES12.5)') 'Rhs '//I2S(i)//' norm: ',nrm
         CALL Info('BlockMatrixPrec',Message,Level=10)
       END IF
         
@@ -3156,10 +3156,10 @@ CONTAINS
           k = TotMatrix % InvBlockStruct(i)
           IF( k <= 0 ) THEN
             CALL Fatal('BlockMatrixPrec','Cannot define the originating block '&
-                //TRIM(I2S(i))//' for scaling!')
+                //I2S(i)//' for scaling!')
           ELSE
-            CALL Info('BlockMatrixPrec','Using initial block '//TRIM(I2S(k))//&
-                ' in scaling of prec matrix '//TRIM(I2S(i)),Level=12)
+            CALL Info('BlockMatrixPrec','Using initial block '//I2S(k)//&
+                ' in scaling of prec matrix '//I2S(i),Level=12)
           END IF
         ELSE
           k = i
@@ -3202,7 +3202,7 @@ CONTAINS
         
       IF( InfoActive(20) ) THEN
         nrm = CompNorm(x,offset(i+1)-offset(i),A=A)
-        WRITE( Message,'(A,ES12.5)') 'Linear system '//TRIM(I2S(i))//' norm: ',nrm
+        WRITE( Message,'(A,ES12.5)') 'Linear system '//I2S(i)//' norm: ',nrm
         CALL Info('BlockMatrixPrec',Message)
       END IF
         
@@ -3227,7 +3227,7 @@ CONTAINS
           WRITE( str,'(A,I0,I0)') 'Block Gauss-Seidel Passive ',k,i
           IF( ListGetLogical( Params, str, Found ) ) CYCLE
 
-          CALL Info('BlockMatrixPrec','Updating r.h.s for component '//TRIM(I2S(k)),Level=15)
+          CALL Info('BlockMatrixPrec','Updating r.h.s for component '//I2S(k),Level=15)
           
           ! The residual is used only as a temporary vector
           !-------------------------------------------------------------
@@ -3242,7 +3242,7 @@ CONTAINS
               IF( Aij % NumberOfRows >  0 ) THEN
                 Trans = .TRUE.
                 CALL Info('BlockMatrixPrec','Multiplying with transpose of submatrix ('&
-                    //TRIM(I2S(i))//','//TRIM(I2S(k))//')',Level=8)
+                    //I2S(i)//','//I2S(k)//')',Level=8)
                 IF(isParallel ) THEN
                   IF( TotMatrix % SubMatrix(i,k) % ParallelIsolatedMatrix ) THEN
                     Isolated = .TRUE.
@@ -3436,7 +3436,7 @@ CONTAINS
         b => TotMatrix % SubVector(RowVar) % rhs
         
         IF( InfoActive( 15 ) ) THEN
-          PRINT *,'rhs'//TRIM(I2S(i))//':',SQRT( SUM(b**2) ), MINVAL( b ), MAXVAL( b ), SUM( b )
+          PRINT *,'rhs'//I2S(i)//':',SQRT( SUM(b**2) ), MINVAL( b ), MAXVAL( b ), SUM( b )
         END IF
 
         Var => TotMatrix % SubVector(RowVar) % Var
@@ -3446,7 +3446,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          CALL Info('BlockStandardIter','Using preconditioning block: '//TRIM(I2S(i)),Level=8)
+          CALL Info('BlockStandardIter','Using preconditioning block: '//I2S(i),Level=8)
         END IF
         
         !Solver % Matrix => A
@@ -3460,7 +3460,7 @@ CONTAINS
         ALLOCATE( dx( SIZE( Var % Values ) ) )
         dx = 0.0_dp
 
-        CALL ListPushNamespace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
+        CALL ListPushNamespace('block '//i2s(RowVar)//i2s(RowVar)//':')          
 
         IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b)
               
@@ -3492,11 +3492,11 @@ CONTAINS
         Var % Norm = xnorm
         Var % NonlinChange = dxnorm / xnorm
 
-        WRITE(Message,'(A,2ES12.3)') 'Block '//TRIM(I2S(RowVar))//' norms: ',xnorm, dxnorm / xnorm
+        WRITE(Message,'(A,2ES12.3)') 'Block '//I2S(RowVar)//' norms: ',xnorm, dxnorm / xnorm
         CALL Info('BlockStandardIter',Message,Level=5)
         
         IF( InfoActive( 20 ) ) THEN
-          PRINT *,'dx'//TRIM(I2S(i))//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx ), SUM( ABS( dx ) )
+          PRINT *,'dx'//I2S(i)//':',SQRT( SUM(dx**2) ), MINVAL( dx ), MAXVAL( dx ), SUM( dx ), SUM( ABS( dx ) )
         END IF
       
         DEALLOCATE( dx )
@@ -3509,7 +3509,7 @@ CONTAINS
       CALL Info('BlockStandardIter',Message,Level=4)
 
       IF( MaxChange < LinTol .AND. iter >= MinIter ) THEN
-        CALL Info('BlockStandardIter','Converged after iterations: '//TRIM(I2S(iter)),Level=5)
+        CALL Info('BlockStandardIter','Converged after iterations: '//I2S(iter),Level=5)
         EXIT
       END IF
       
@@ -3571,23 +3571,23 @@ CONTAINS
     ! Just do some error checks
     DO i=1,NoVar
       IF( .NOT. ASSOCIATED( TotMatrix % Subvector(i) % Var ) ) THEN
-        CALL Fatal(Caller,'Subvector '//TRIM(I2S(i))//' not associated!')
+        CALL Fatal(Caller,'Subvector '//I2S(i)//' not associated!')
       END IF
       A => TotMatrix % SubMatrix(i,i) % Mat
       IF( .NOT. ASSOCIATED( A ) ) THEN
-        CALL Fatal(Caller,'Submatrix '//TRIM(I2S(11*i))//' not associated!')
+        CALL Fatal(Caller,'Submatrix '//I2S(11*i)//' not associated!')
       END IF
       IF( .NOT. ASSOCIATED( A % Rhs ) ) THEN
-        CALL Warn(Caller,'Submatrix rhs '//TRIM(I2S(11*i))//' not associated!')
+        CALL Warn(Caller,'Submatrix rhs '//I2S(11*i)//' not associated!')
       END IF
     END DO
           
     CALL Info(Caller,'Allocating temporal vectors for block system of size: '&
-        //TRIM(I2S(ndim)),Level=15)
+        //I2S(ndim),Level=15)
 
     ALLOCATE(x(ndim), b(ndim),r(ndim),STAT=istat)
     IF( istat /= 0 ) THEN
-      CALL Fatal(Caller,'Cannot allocate temporal vectors of size: '//TRIM(I2S(ndim)))
+      CALL Fatal(Caller,'Cannot allocate temporal vectors of size: '//I2S(ndim))
     END IF
     
     x = 0.0_dp
@@ -3813,10 +3813,10 @@ CONTAINS
 
           IF(InfoActive(20)) THEN
             CALL VectorValuesRange(A % Values,SIZE(A % Values),&
-                'A'//TRIM(I2S(10*NoRow+NoCol)),.TRUE.)       
+                'A'//I2S(10*NoRow+NoCol),.TRUE.)       
             IF( ASSOCIATED( A % MassValues ) ) THEN
               CALL VectorValuesRange(A % MassValues,SIZE(A % MassValues),&
-                  'M'//TRIM(I2S(10*NoRow+NoCol)),.TRUE.)       
+                  'M'//I2S(10*NoRow+NoCol),.TRUE.)       
             END IF
           END IF
           
@@ -3830,7 +3830,7 @@ CONTAINS
         DO NoRow = 1,NoVar 
           A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
           IF(.NOT. ASSOCIATED( A % MassValues ) ) THEN
-            CALL Warn(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
+            CALL Warn(Caller,'MassValues are missing for block: '//I2S(11*NoRow))
           END IF
         END DO
         CALL Info(Caller,'Treating MassValues of block matrix too!',Level=20)
@@ -3862,8 +3862,8 @@ CONTAINS
 
       
       CollMat % NumberOfRows = nc
-      CALL Info(Caller,'Size of monolithic matrix: '//TRIM(I2S(nc)),Level=7)
-      CALL Info(Caller,'Estimated number of nonzeros in monolithic matrix: '//TRIM(I2S(mc)),Level=7)
+      CALL Info(Caller,'Size of monolithic matrix: '//I2S(nc),Level=7)
+      CALL Info(Caller,'Estimated number of nonzeros in monolithic matrix: '//I2S(mc),Level=7)
       
       ALLOCATE( CollMat % rhs(nc), CollMat % Diag(nc), CollMat % Rows(nc+1), CollX(nc) )
       CollMat % rhs = 0.0_dp
@@ -4006,7 +4006,7 @@ CONTAINS
       END IF
     END IF
           
-    CALL Info(Caller,'True number of nonzeros in monolithic matrix: '//TRIM(I2S(k)),Level=7)
+    CALL Info(Caller,'True number of nonzeros in monolithic matrix: '//I2S(k),Level=7)
  
     IF(.NOT. Visited ) THEN
       MonolithicVar % Name = '' ! Some name needed to avoid an uninitialised value error

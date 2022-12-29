@@ -143,7 +143,7 @@ CONTAINS
 
     Velo_n = 0._dp
     DO i=1,dim
-      Velo_n(i,:) = GetReal( Material, 'Convection Velocity '//TRIM(i2s(i)), Found )
+      Velo_n(i,:) = GetReal( Material, 'Convection Velocity '//i2s(i), Found )
     END DO
 
     h_n = GetReal( Material, 'Interface Thickness',Found)

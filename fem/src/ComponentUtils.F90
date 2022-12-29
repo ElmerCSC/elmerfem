@@ -712,16 +712,16 @@ MODULE ComponentUtils
 
       IF( ALL( ComponentList /= j ) ) CYCLE
 
-      CALL Info('UpdateDepedentComponents','Updating component: '//TRIM(I2S(j)))
+      CALL Info('UpdateDepedentComponents','Updating component: '//I2S(j))
       CompParams => CurrentModel % Components(j) % Values
 
 
       NoVar = 0
       DO WHILE( .TRUE. )
         NoVar = NoVar + 1
-        OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
-        VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
-        CoeffName = ListGetString( CompParams,'Coefficient '//TRIM(I2S(NoVar)), GotCoeff)
+        OperName = ListGetString( CompParams,'Operator '//I2S(NoVar), GotOper)
+        VarName = ListGetString( CompParams,'Variable '//I2S(NoVar), GotVar)
+        CoeffName = ListGetString( CompParams,'Coefficient '//I2S(NoVar), GotCoeff)
         
         IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
           VarName = 'Potential'
@@ -788,17 +788,17 @@ MODULE ComponentUtils
         IF( VectorResult ) THEN
           DO i=1,3
             WRITE( Message,'(A,ES15.6)') TRIM(OperName)//': '//TRIM(VarName)//' '&
-                //TRIM(I2S(i))//': ',ScalarVal
+                //I2S(i)//': ',ScalarVal
             CALL Info('UpdateDependentComponents',Message,Level=5)
             CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName)//': '&
-                //TRIM(VarName)//' '//TRIM(I2S(i)),VectorVal(i) )                        
+                //TRIM(VarName)//' '//I2S(i),VectorVal(i) )                        
           END DO
         ELSE          
           WRITE( Message,'(A,ES15.6)') &
-              'comp '//TRIM(I2S(j))//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
+              'comp '//I2S(j)//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
           CALL Info('UpdateDependentComponents',Message,Level=5)
           CALL ListAddConstReal( CurrentModel % Simulation, &
-              'res: comp '//TRIM(I2S(j))//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
+              'res: comp '//I2S(j)//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
         END IF
 
       END DO

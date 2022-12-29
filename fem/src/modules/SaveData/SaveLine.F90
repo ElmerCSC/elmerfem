@@ -176,7 +176,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
-    CALL Info(Caller,'Using mesh of solver '//TRIM(I2S(i)))
+    CALL Info(Caller,'Using mesh of solver '//I2S(i))
     Mesh => Model % Solvers(i) % Mesh
     Model % Mesh => Mesh
   ELSE
@@ -281,21 +281,21 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
       IF( EdgeBasis ) THEN
         IF( AVBasis ) THEN
-          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in nodal+Hcurl: '//TRIM(Var % Name),Level=10)
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in nodal+Hcurl: '//TRIM(Var % Name),Level=10)
           NoResults = NoResults + 4
         ELSE          
           NoResults = NoResults + 3
-          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl: '//TRIM(Var % Name),Level=10)
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in Hcurl: '//TRIM(Var % Name),Level=10)
         END IF
       ELSE
         IF( DgVar ) THEN
-          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living on DGBasis: '//TRIM(Var % Name),Level=10)
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living on DGBasis: '//TRIM(Var % Name),Level=10)
         END IF
         IF( IpVar ) THEN
-          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living in IP points: '//TRIM(Var % Name),Level=10)
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living in IP points: '//TRIM(Var % Name),Level=10)
         END IF
         IF( ElemVar ) THEN
-          CALL Info(Caller,'Variable '//TRIM(I2S(ivar))//' is treated as living on elements: '//TRIM(Var % Name),Level=10)
+          CALL Info(Caller,'Variable '//I2S(ivar)//' is treated as living on elements: '//TRIM(Var % Name),Level=10)
         END IF
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
       END IF
@@ -303,7 +303,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END DO
   
   IF ( CalculateFlux ) NoResults = NoResults + 3
-  CALL Info(Caller,'Maximum number of fields for each node: '//TRIM(I2S(NoResults)),Level=18)
+  CALL Info(Caller,'Maximum number of fields for each node: '//I2S(NoResults),Level=18)
 
   IF( NoVar == 0 .OR. NoResults == 0 ) GOTO 1
 
@@ -355,7 +355,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
   
   IF(FoundNan > 0 ) THEN
-    CALL Warn(Caller,'Replaced '//TRIM(I2S(FoundNan))//' NaN entries with -1')
+    CALL Warn(Caller,'Replaced '//I2S(FoundNan)//' NaN entries with -1')
   END IF
   
   CALL Info(Caller,'All done')
@@ -379,7 +379,7 @@ CONTAINS
     NULLIFY(Var)
     
     IF( i < 1 ) THEN
-      VarName = 'Coordinate '//TRIM(I2S(i+3))
+      VarName = 'Coordinate '//I2S(i+3)
       Found = .TRUE.
     ELSE
       WRITE (Name,'(A,I0)') 'Variable ',i
@@ -393,7 +393,7 @@ CONTAINS
     END IF
       
     IF( PRESENT( Component ) ) THEN
-      VarName = TRIM(VarName)//' '//TRIM(I2S(Component))
+      VarName = TRIM(VarName)//' '//I2S(Component)
     END IF
       
     Var => VariableGet( Mesh % Variables, VarName )
@@ -401,7 +401,7 @@ CONTAINS
       Var => VariableGet( Mesh % Variables, TRIM(VarName)//' 1' )
       IF( ASSOCIATED( Var ) ) THEN
         DO j=2,99
-          Var2 => VariableGet( Mesh % Variables, TRIM(VarName)//' '//TRIM(I2S(j)) )
+          Var2 => VariableGet( Mesh % Variables, TRIM(VarName)//' '//I2S(j) )
           IF(ASSOCIATED( Var2 ) ) THEN
             k = j
           ELSE
@@ -415,7 +415,7 @@ CONTAINS
 
     IF( PRESENT( NoComponents ) ) NoComponents = k
 
-    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//TRIM(I2S(k)),Level=31)
+    CALL Info('VariableGetN','Variable: '//TRIM(VarName)//': '//I2S(k),Level=31)
  
   END FUNCTION VariableGetN
 
@@ -603,7 +603,7 @@ CONTAINS
       A(2,2) = Plane % y(1) - Plane % y(2)
     ELSE
       CALL Fatal('GlobalToLocalCoords','Impossible value for parameter IntersectCoordinate: '&
-          //TRIM(I2S(IntersectCoordinate)))
+          //I2S(IntersectCoordinate))
     END IF
     
     A0 = A
@@ -670,7 +670,7 @@ CONTAINS
     END IF
 
     IF( Parallel ) THEN
-      SideParFile = TRIM(SideFile)//'.'//TRIM(I2S(ParEnv % MyPe))
+      SideParFile = TRIM(SideFile)//'.'//I2S(ParEnv % MyPe)
     ELSE
       SideParFile = TRIM(SideFile)
     END IF
@@ -692,7 +692,7 @@ CONTAINS
     ELSE
       OPEN (NEWUNIT=LineUnit,FILE=SideParFile,iostat=iostat)      
     END IF
-    IF( iostat /= 0 ) CALL Warn(Caller,'Problems closing line file: '//TRIM(I2S(iostat)))
+    IF( iostat /= 0 ) CALL Warn(Caller,'Problems closing line file: '//I2S(iostat))
 
   END SUBROUTINE OpenLineFile
 
@@ -722,18 +722,18 @@ CONTAINS
         NoPart = 0
         IF( NoData > 0 ) NoPart = 1
         NoPart = ParallelReduction(NoPart)
-        CALL Info(Caller,'Data available in number of partitions: '//TRIM(I2S(NoPart)))
+        CALL Info(Caller,'Data available in number of partitions: '//I2S(NoPart))
 
         MaxSize = ParallelReduction(NoData,2)
-        CALL Info(Caller,'Maximum number of lines in partition: '//TRIM(I2S(MaxSize)))
+        CALL Info(Caller,'Maximum number of lines in partition: '//I2S(MaxSize))
 
         TotSize = ParallelReduction(NoData)
-        CALL Info(Caller,'Total number of lines in all partitions: '//TRIM(I2S(TotSize)))
+        CALL Info(Caller,'Total number of lines in all partitions: '//I2S(TotSize))
 
         k = -1
         IF(MaxSize == NoData) k = ParEnv % MyPe
         SavePart = ParallelReduction(k,2)
-        CALL Info(Caller,'Partition chosen for saving the data: '//TRIM(I2S(SavePart)))        
+        CALL Info(Caller,'Partition chosen for saving the data: '//I2S(SavePart))        
         
         ! Ok, we have data in several partitions. Bring it all to partition "SavePart". 
         IF( NoPart > 1 ) THEN
@@ -868,7 +868,7 @@ CONTAINS
       IF( PosData(NoData) > 0.0_dp ) THEN
         ALLOCATE(NewOrder(NoData),STAT=istat)
         IF(istat /= 0) CALL Fatal(Caller,'Problems allocating NewOrder vector!')
-        CALL Info(Caller,'Sorting and saving '//TRIM(I2S(NoData))//' tabulated rows',Level=7)        
+        CALL Info(Caller,'Sorting and saving '//I2S(NoData)//' tabulated rows',Level=7)        
         DO i=1,NoData
           NewOrder(i) = i
         END DO
@@ -891,7 +891,7 @@ CONTAINS
           END IF
         END IF
         DO j=1,NoLabels
-          WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(LabelData(k,j)))//' '
+          WRITE(LineUnit,'(A)',ADVANCE='NO') I2S(LabelData(k,j))//' '
         END DO
         DO j=1,NoResults-1
           WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') ResultData(k,j)
@@ -910,7 +910,7 @@ CONTAINS
     
     IF(FileIsOpen) THEN
       CLOSE(LineUnit,iostat=iostat)
-      IF( iostat /= 0 ) CALL Fatal(Caller,'Problems closing line file: '//TRIM(I2S(iostat)))
+      IF( iostat /= 0 ) CALL Fatal(Caller,'Problems closing line file: '//I2S(iostat))
     END IF
       
   END SUBROUTINE CloseLineFile
@@ -1305,7 +1305,7 @@ CONTAINS
         
         IF( NoData > nold ) THEN
           nnew = MAX(100, 2*nold)
-          CALL Info(Caller,'Increasing temporal size from '//TRIM(I2S(nold))//' to '//TRIM(I2S(nnew)),Level=7)
+          CALL Info(Caller,'Increasing temporal size from '//I2S(nold)//' to '//I2S(nnew),Level=7)
           ALLOCATE(tmpPosData(nnew),tmpLabelData(nnew,NoLabels),tmpResultData(nnew,NoResults))
           tmpPosData = 0.0_dp
           tmpLabelData = 0
@@ -1332,7 +1332,7 @@ CONTAINS
     ELSE    
       CALL OpenLineFile()      
       DO i=1,n0
-        WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
+        WRITE(LineUnit,'(A)',ADVANCE='NO') I2S(Labels(i))//' '
       END DO
       DO j=1,NoResults-1
         WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
@@ -1588,7 +1588,7 @@ CONTAINS
         IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
           CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
         END IF
-        CALL Info(Caller,'Number of nodes in specified boundary: '//TRIM(I2S(SaveNodes(1))),Level=12)
+        CALL Info(Caller,'Number of nodes in specified boundary: '//I2S(SaveNodes(1)),Level=12)
       END IF
     ELSE
       SaveNodes(1) = 0
@@ -1603,7 +1603,7 @@ CONTAINS
     IF( SaveNodes(1) > 0 ) THEN
 
       ALLOCATE( InvPerm(SaveNodes(1)), BoundaryIndex(SaveNodes(1)), STAT=istat )
-      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3: '//TRIM(I2S(SaveNodes(1)))) 
+      IF( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 3: '//I2S(SaveNodes(1))) 
       
       BoundaryIndex = 0
       InvPerm = 0
@@ -2057,10 +2057,10 @@ CONTAINS
       END DO
 
       IF( NoTests > 0 ) THEN
-        CALL Info(Caller,'Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
+        CALL Info(Caller,'Number of candidate nodes: '//I2S(NoTests),Level=8)
       END IF
 
-      CALL Info(Caller,'Number of nodes in specified lines: '//TRIM(I2S(SaveNodes(2))))
+      CALL Info(Caller,'Number of nodes in specified lines: '//I2S(SaveNodes(2)))
       
       IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag )
     END IF
@@ -2087,7 +2087,7 @@ CONTAINS
     NoLines = SIZE(PointCoordinates,1) 
     NoDims = SIZE(PointCoordinates,2)
     IF( NoDims /= 7 ) THEN
-      CALL Fatal(Caller,'By construction the circle is defined by 7 values: '//TRIM(I2S(NoDims)))
+      CALL Fatal(Caller,'By construction the circle is defined by 7 values: '//I2S(NoDims))
     END IF
 
     NoDivisions => ListGetIntegerArray( Params,'Circle Divisions',GotIt)
@@ -2096,10 +2096,10 @@ CONTAINS
     END IF
     IF( SIZE( NoDivisions ) < NoLines ) THEN
       CALL Fatal(Caller,'Polyline divisions size too small: '&
-          //TRIM(I2S(SIZE(NoDivisions))))
+          //I2S(SIZE(NoDivisions)))
     END IF
 
-    CALL Info(Caller,'Saving data on given circles: '//TRIM(I2S(NoLines)),Level=7)
+    CALL Info(Caller,'Saving data on given circles: '//I2S(NoLines),Level=7)
 
     NoTests = 0
     
@@ -2109,7 +2109,7 @@ CONTAINS
 
     DO Line = 1,NoLines 
       
-      CALL Info(Caller,'Saving circle number: '//TRIM(I2S(Line)),Level=12)
+      CALL Info(Caller,'Saving circle number: '//I2S(Line),Level=12)
       MaxBoundary = MaxBoundary + 1
       LineTag = .FALSE.
       
@@ -2239,10 +2239,10 @@ CONTAINS
 
 
     IF( NoTests > 0 ) THEN
-      CALL Info(Caller,'Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
+      CALL Info(Caller,'Number of candidate nodes: '//I2S(NoTests),Level=8)
     END IF
     
-    CALL Info(Caller,'Number of nodes in specified circle: '//TRIM(I2S(SaveNodes(3))))
+    CALL Info(Caller,'Number of nodes in specified circle: '//I2S(SaveNodes(3)))
     
     IF(ALLOCATED(LineTag)) DEALLOCATE( LineTag, STAT=istat)
     IF(istat /= 0) CALL Fatal(Caller,'Could not deallocate LineTag')
@@ -2485,10 +2485,10 @@ CONTAINS
       WRITE( NamesUnit,'(A,A)') 'File started at: ',TRIM(DateStr)
 
       WRITE(NamesUnit,'(A)') 'Number of data nodes for each step'
-      WRITE(NamesUnit,'(A)') '  bc nodes: '//TRIM(I2S(SaveNodes(1)))
-      WRITE(NamesUnit,'(A)') '  polyline nodes: '//TRIM(I2S(SaveNodes(2)))
-      WRITE(NamesUnit,'(A)') '  circle nodes: '//TRIM(I2S(SaveNodes(3)))
-      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//TRIM(I2S(SaveNodes(4)))
+      WRITE(NamesUnit,'(A)') '  bc nodes: '//I2S(SaveNodes(1))
+      WRITE(NamesUnit,'(A)') '  polyline nodes: '//I2S(SaveNodes(2))
+      WRITE(NamesUnit,'(A)') '  circle nodes: '//I2S(SaveNodes(3))
+      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//I2S(SaveNodes(4))
 
       WRITE(NamesUnit,'(A)') 'Data on different columns'
       j = 0

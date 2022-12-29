@@ -252,7 +252,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     IF( n == 0 ) THEN
       CALL Warn('JfixPotentialSolver','No Dirichlet conditions used to define Jfix level!')
     ELSE
-      CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//TRIM(I2S(n)),Level=7)
+      CALL Info('JfixPotentialSolver','Number of dirichlet nodes: '//I2S(n),Level=7)
     END IF
     
     CALL Info('JfixPotentialSolver','Solving for Jfix',Level=10)

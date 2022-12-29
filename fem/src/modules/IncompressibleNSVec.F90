@@ -1412,7 +1412,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
   IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
   CALL Info('IncompressibleNSSolver', &
-      'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
+      'Number of 1st integration points: '//I2S(IP % n), Level=5)
   
   !-----------------------------------------------------------------------------
   ! Set the flags/parameters which define how the system is assembled: 

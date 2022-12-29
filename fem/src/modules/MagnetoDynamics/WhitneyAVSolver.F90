@@ -618,7 +618,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
     IF(.NOT. Found ) Newton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
-      CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
+      CALL Info('WhitneyAVSolver','Nonlinear iteration: '//I2S(i),Level=8 )
     END IF
 
     IF( DoSolve(i) ) THEN
@@ -1124,8 +1124,8 @@ END BLOCK
   IF (TG) THEN
     IF ( .NOT.ALLOCATED(TreeEdges) ) &
         CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
-    CALL Info('WhitneyAVSolver', 'Volume tree edges: '//TRIM(i2s(COUNT(TreeEdges)))// &
-        ' of total: '//TRIM(I2S(Mesh % NumberOfEdges)),Level=5)
+    CALL Info('WhitneyAVSolver', 'Volume tree edges: '//i2s(COUNT(TreeEdges))// &
+        ' of total: '//I2S(Mesh % NumberOfEdges),Level=5)
     
     DO i=1,SIZE(TreeEdges)
       IF(TreeEdges(i)) CALL SetDOFToValue(Solver,i,0._dp)
@@ -1331,9 +1331,9 @@ END BLOCK
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential / bodyforce ' &
-             //TRIM(i2s(i)),u(i)/a(i))
+             //i2s(i),u(i)/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
-             //TRIM(i2s(i)),a(i))
+             //i2s(i),a(i))
        END IF
      END DO
    END IF
@@ -2584,8 +2584,8 @@ END SUBROUTINE LocalConstraintMatrix
     ! ---------------------------------
     CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
-    CALL Info('WhitneyAVSolver', 'Boundary tree edges: '//TRIM(i2s(COUNT(TreeEdges(FluxMap)))) // &
-        ' of total: '//TRIM(I2S(FluxCount)),Level=5)
+    CALL Info('WhitneyAVSolver', 'Boundary tree edges: '//i2s(COUNT(TreeEdges(FluxMap))) // &
+        ' of total: '//I2S(FluxCount),Level=5)
     
     ! Get (B,n) for BC faces:
     ! -----------------------

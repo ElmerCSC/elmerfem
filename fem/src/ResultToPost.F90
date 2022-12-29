@@ -231,7 +231,7 @@
            IF ( PostFile(i:i) == ' ' ) EXIT
          END DO
          PostFile(i:i) = '.'
-         WRITE( PostFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+         WRITE( PostFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
        END IF
        Mesh => CurrentModel % Meshes
        DO WHILE( ASSOCIATED( Mesh ) )

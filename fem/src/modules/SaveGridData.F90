@@ -198,7 +198,7 @@ CONTAINS
       RETURN
     ELSE
       CALL Info('AllocateParticles','Allocating number of particles: '// &
-          TRIM(I2S(NoParticles)),Level=12)    
+          I2S(NoParticles),Level=12)    
     END IF
     
     dim = Particles % dim 
@@ -347,14 +347,14 @@ CONTAINS
       griddim = meshdim - 1
       ElemStart = Mesh % NumberOfBulkElements + 1
       ElemFin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      CALL Info('SaveGridData','Assuming reduced coordinate to be: '//TRIM(I2S(meshdim)),Level=5)
+      CALL Info('SaveGridData','Assuming reduced coordinate to be: '//I2S(meshdim),Level=5)
     ELSE
       griddim = meshdim
       ElemStart = 1
       ElemFin = Mesh % NumberOfBulkElements 
       ActiveCoordinate = 0
     END IF
-    CALL Info('SaveGridData','Saving data on '//TRIM(I2S(griddim))//'D grid',Level=5)
+    CALL Info('SaveGridData','Saving data on '//I2S(griddim)//'D grid',Level=5)
     
     ! The bounding box may be given, otherwise it is taken to include the whole mesh
     !-------------------------------------------------------------------------------
@@ -467,11 +467,11 @@ CONTAINS
     END IF
 
     CALL Info('SaveGridData','Index i range: '&
-        //TRIM(I2S(imintot))//' - '//TRIM(I2S(imaxtot)),Level=12)
+        //I2S(imintot)//' - '//I2S(imaxtot),Level=12)
     CALL Info('SaveGridData','Index j range: '&
-        //TRIM(I2S(jmintot))//' - '//TRIM(I2S(jmaxtot)),Level=12)
+        //I2S(jmintot)//' - '//I2S(jmaxtot),Level=12)
     CALL Info('SaveGridData','Index k range: '&
-        //TRIM(I2S(kmintot))//' - '//TRIM(I2S(kmaxtot)),Level=12)
+        //I2S(kmintot)//' - '//I2S(kmaxtot),Level=12)
 
     ioff = imintot-1
     joff = jmintot-1
@@ -898,7 +898,7 @@ END SUBROUTINE SaveGridData
           IF(i==1) BaseString = 'Scalar Field'
           IF(i==2) BaseString = 'Vector Field'
           DO Vari= 1, 99
-            WRITE(Txt,'(A)') TRIM(BaseString)//' '//TRIM(I2S(Vari))
+            WRITE(Txt,'(A)') TRIM(BaseString)//' '//I2S(Vari)
             IF(i==1) THEN          
               FieldName = ListGetString( Params, TRIM(Txt), Found )
               IF(.NOT. Found) EXIT
@@ -936,13 +936,13 @@ END SUBROUTINE SaveGridData
               FieldName = ListGetString( Params, TRIM(Txt), Found )
               IF(.NOT. Found) EXIT
               DO j=1,10
-                Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' '//TRIM(I2S(j)),ThisOnly )
+                Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' '//I2S(j),ThisOnly )
                 IF( .NOT. ASSOCIATED(Solution)) THEN
                   EXIT
                 END IF
                 IF(Dim==2) THEN
                   NetCDFStatus =  NF90_DEF_VAR(FileId,&
-                                TRIM(FieldName)//' '//TRIM(I2S(j)), 6,&
+                                TRIM(FieldName)//' '//I2S(j), 6,&
                                 (/ DimId(2), DimId(3), DimId(1) /),VarId(NumVars))
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
@@ -957,7 +957,7 @@ END SUBROUTINE SaveGridData
                   END IF
                 ELSE IF(Dim==3) THEN
                   NetCDFStatus =  NF90_DEF_VAR(FileId,&
-                                TRIM(FieldName)//' '//TRIM(I2S(j)), 6,&
+                                TRIM(FieldName)//' '//I2S(j), 6,&
                                 (/ DimId(2), DimId(3), DimId(4), DimId(1) /),VarId(NumVars))
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))

@@ -90,7 +90,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     SolverParams => GetSolverParams()
 
     dim = CoordinateSystemDimension()   
-    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//TRIM(I2S(dim))//' Displacement' )
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//I2S(dim)//' Displacement' )
 
     MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
     IF (.NOT.MaxwellMaterial) THEN
@@ -109,7 +109,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
-          '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
+          '-dofs '//i2s(dim**2)//' -ip ve_stress' )
 
       i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
@@ -185,7 +185,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF (CalcVelocities) THEN
       CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
-            '-dofs '//TRIM(I2S(dim))//' Displacement Velocity')
+            '-dofs '//I2S(dim)//' Displacement Velocity')
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
@@ -667,7 +667,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        at0 = RealTime()
 
        IF( MaxIter > 1 ) THEN
-         CALL Info( 'StressSolve','Displacement iteration: '//TRIM(I2S(iter)),Level=4)
+         CALL Info( 'StressSolve','Displacement iteration: '//I2S(iter),Level=4)
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
@@ -1440,8 +1440,8 @@ CONTAINS
 
             DO i=1,dim
               DO j=1,dim
-                IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), Found)
+                IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
               END DO
             END DO
           END IF

@@ -343,14 +343,14 @@ CONTAINS
     
     IF(.NOT. ALLOCATED( NodePerm ) ) THEN
       n = Mesh % NumberOfNodes
-      CALL Info(Caller,'Allocating NodePerm of size: '//TRIM(I2S(n)),Level=15)
+      CALL Info(Caller,'Allocating NodePerm of size: '//I2S(n),Level=15)
       ALLOCATE(NodePerm(n))
     END IF
     NodePerm = 0
     
     IF(.NOT. ALLOCATED(ActiveElem) ) THEN
       n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      CALL Info(Caller,'Allocating ActiveElem of size: '//TRIM(I2S(n)),Level=15)
+      CALL Info(Caller,'Allocating ActiveElem of size: '//I2S(n),Level=15)
       ALLOCATE(ActiveElem(n) )
     END IF
     ActiveElem = .FALSE.
@@ -405,7 +405,7 @@ CONTAINS
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-      CALL Info(Caller,'Mask is positive for nodes: '//TRIM(I2S(NumberOfGeomNodes)),Level=15)
+      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)
       IF( NumberOfGeomNodes == 0 ) THEN
         CALL Info(Caller,'Leaving early since mask is negative everywhere')
         RETURN
@@ -568,10 +568,10 @@ CONTAINS
     IF( NumberOfElements == 0 ) THEN
       CALL Info(Caller,'No active elements forthis mask',Level=12)
     ELSE
-      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)      
-      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
+      CALL Info(Caller,'Number of active elements '//I2S(NumberOfElements)//&
+          ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)      
+      CALL Info(Caller,'Number of geometry nodes '//I2S(NumberOfGeomNodes)//&
+          ' out of '//I2S(Mesh % NumberOfNodes),Level=10)
     END IF
       
   END SUBROUTINE GenerateSaveMask
@@ -623,7 +623,7 @@ CONTAINS
           Element => Mesh % Elements(i)
           k = k + Element % TYPE % NumberOfNodes
         END DO
-        CALL Info(Caller,'Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+        CALL Info(Caller,'Maximum number of dofs in DG: '//I2S(k),Level=12)
         ALLOCATE( DgPerm(k) )
       END IF
       DgPerm = 0
@@ -688,7 +688,7 @@ CONTAINS
         END IF
 
         IF( Sweep == 1 ) THEN
-          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//TRIM(I2S(l)),Level=10)
+          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//I2S(l),Level=10)
           NumberOfDofNodes = l
           IF(ALLOCATED(InvNodePerm)) DEALLOCATE( InvNodePerm )
           IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm ) 
@@ -701,7 +701,7 @@ CONTAINS
       IF( DN ) DEALLOCATE( BodyVisited ) 
 
     ELSE IF( LagN > 0 ) THEN
-      CALL Info(Caller,'Creating permutation for order '//TRIM(I2S(LagN))//' Lagrange nodes!', Level=12)
+      CALL Info(Caller,'Creating permutation for order '//I2S(LagN)//' Lagrange nodes!', Level=12)
 
       ! Calling without Element as argument returns the max. index value
       n = GetLagrangeIndexes( Mesh, LagN )
@@ -733,7 +733,7 @@ CONTAINS
       NumberOfGeomNodes = m
       NoPermutation = .TRUE.
       
-      CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//TRIM(I2S(m)),Level=12)
+      CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//I2S(m),Level=12)
     ELSE
       NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
       IF( NoPermutation ) THEN
@@ -743,7 +743,7 @@ CONTAINS
         IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm ) 
         
         ALLOCATE( InvNodePerm( NumberOfGeomNodes ) ) 
-        CALL Info(Caller,'Allocating InvNodePerm of size: '//TRIM(I2S(NumberOfGeomNodes)),Level=15)
+        CALL Info(Caller,'Allocating InvNodePerm of size: '//I2S(NumberOfGeomNodes),Level=15)
         
         InvNodePerm = 0
         j = 0

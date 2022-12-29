@@ -522,9 +522,9 @@ CONTAINS
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
-         CALL Info( Caller,'Number of update iterations taken: '//TRIM(I2S(IPARAM(3))),Level=4)
-         CALL Info( Caller,'Computed '//TRIM(I2S(NEIG))//' Eigen Values',Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
+         CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1064,7 +1064,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
@@ -1516,7 +1516,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
@@ -1997,7 +1997,7 @@ END SUBROUTINE CheckResidualsComplex
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info(Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info(Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )

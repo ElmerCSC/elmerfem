@@ -198,7 +198,7 @@ CONTAINS
            k1 = k
 
            CALL Info(Caller,&
-               'Group '//TRIM(I2S(group0))//' starts from index '//TRIM(I2S(k1)),Level=10)
+               'Group '//I2S(group0)//' starts from index '//I2S(k1),Level=10)
            
            DO t=1,Mesh % NumberOfBulkElements
              Element => Mesh % Elements(t) 
@@ -234,12 +234,12 @@ CONTAINS
            END DO
 
            IF( k > k1 ) THEN
-             CALL Info( Caller,'Group '//TRIM(I2S(group0))//&
-                 ' has '//TRIM(I2S(k-k1))//' db dofs',Level=15)
+             CALL Info( Caller,'Group '//I2S(group0)//&
+                 ' has '//I2S(k-k1)//' db dofs',Level=15)
            END IF
          END DO
 
-         CALL Info(Caller,'Numbered '//TRIM(I2S(k))//&
+         CALL Info(Caller,'Numbered '//I2S(k)//&
              ' db nodes from bulk hits',Level=15)
 
          IF ( FoundDG ) THEN
@@ -283,7 +283,7 @@ CONTAINS
          END DO
        END DO
 
-       CALL Info(Caller,'Numbered '//TRIM(I2S(k))//&
+       CALL Info(Caller,'Numbered '//I2S(k)//&
            ' nodes from face hits',Level=15)
        k1 = k
 
@@ -321,7 +321,7 @@ CONTAINS
          END DO
        END DO
 
-       CALL Info(Caller,'Numbered '//TRIM(I2S(k-k1))//&
+       CALL Info(Caller,'Numbered '//I2S(k-k1)//&
            ' nodes from bulk hits',Level=15)
        
        IF ( FoundDG ) THEN
@@ -546,7 +546,7 @@ CONTAINS
            n = SIZE( Mesh % PeriodicPerm )
            IF( n < SIZE( Perm ) ) THEN
              CALL Info(Caller,'Increasing size of periodic tables from '&
-                 //TRIM(I2S(n))//' to '//TRIM(I2S(SIZE(Perm)))//'!',Level=7)
+                 //I2S(n)//' to '//I2S(SIZE(Perm))//'!',Level=7)
              ALLOCATE( TmpPerm(SIZE(Perm)) )
              TmpPerm = 0
              TmpPerm(1:n) = Mesh % PeriodicPerm(1:n)
@@ -584,7 +584,7 @@ CONTAINS
              END DO
 
              Solver % PeriodicFlipActive = ( n > 0 )
-             CALL Info(Caller,'Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+             CALL Info(Caller,'Number of periodic flips in the field: '//I2S(n),Level=8)
            END IF
          END IF
        END BLOCK
@@ -696,7 +696,7 @@ CONTAINS
 
             
       CALL Info(Caller,'Inserting variable > '//TRIM(NewVar % Name)//&
-          ' < of size '//TRIM(I2S(SIZE(NewVar % Values))),Level=15)
+          ' < of size '//I2S(SIZE(NewVar % Values)),Level=15)
 
       IF ( .NOT.ASSOCIATED(NewVar) ) THEN
         CALL Warn(Caller,'Cannot insert null variable to list!')
@@ -762,7 +762,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       CALL Info('VariableAdd','Adding variable > '//TRIM(Name)//&
-          ' < of size '//TRIM(I2S(SIZE(Values))),Level=15)
+          ' < of size '//I2S(SIZE(Values)),Level=15)
 
       NULLIFY(VSolver)
       IF (PRESENT(Solver)) VSolver => Solver
@@ -1150,7 +1150,7 @@ CONTAINS
       
 
       CALL Info('VariableAddVector','Adding variable > '//TRIM(Name)//' < with '&
-          //TRIM(I2S(ndofs))//' components',Level=15)
+          //I2S(ndofs)//' components',Level=15)
       
       IF(PRESENT(Values)) THEN
         TmpValues => Values
@@ -1170,7 +1170,7 @@ CONTAINS
         ELSE
           nsize = Mesh % NumberOfNodes          
         END IF
-        CALL Info('VariableAddVector','Allocating field of size: '//TRIM(I2S(nsize)),Level=12)
+        CALL Info('VariableAddVector','Allocating field of size: '//I2S(nsize),Level=12)
         
         NULLIFY(TmpValues)
         ALLOCATE(TmpValues(ndofs*nsize))
@@ -1356,7 +1356,7 @@ CONTAINS
              HackMesh = .TRUE.
              CurrentModel % Mesh % MaxNDOFs = 1
            ELSE
-             CALL Fatal('VariableGet', 'non-matching permutation occurs due to an element definition n:'//TRIM(I2S(MaxNDOFs)))
+             CALL Fatal('VariableGet', 'non-matching permutation occurs due to an element definition n:'//I2S(MaxNDOFs))
            END IF
          ELSE
            HackMesh = .FALSE.
@@ -2087,7 +2087,7 @@ CONTAINS
        IF( Found ) n = n + 1
      END DO
      IF( n > 0 ) CALL Info('ListRenameAllBCs',&
-         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//TRIM(I2S(n))//' BCs',Level=6)
+         '"'//TRIM(Name)//'" renamed to "'//TRIM(Name2)//'" on '//I2S(n)//' BCs',Level=6)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE ListRenameAllBC
@@ -2553,7 +2553,7 @@ CONTAINS
     
     IF( Found ) THEN
       CALL Info('ListTagKeywords',&
-          'Tagged '//TRIM(I2S(cnt))//' parameters with suffix: '//TRIM(suffix),Level=7)
+          'Tagged '//I2S(cnt)//' parameters with suffix: '//TRIM(suffix),Level=7)
     ELSE
       CALL Info('ListTagKeywords','No parameters width suffix: '//TRIM(suffix),Level=20)
     END IF
@@ -2599,7 +2599,7 @@ CONTAINS
                     IF(partag<1) THEN
                       CALL Warn('ListTagKeywords','Positive integer expected for parameter tag!')           
                     ELSE
-                      WRITE( Message,'(A)') 'Adding tag '//TRIM(I2S(partag))//&
+                      WRITE( Message,'(A)') 'Adding tag '//I2S(partag)//&
                           ' to "'//TRIM( ptr2 % Name )//'"'
                       CALL Info('ListTagKeywords',Message,Level=15)
                       ptr2 % partag = partag
@@ -2617,7 +2617,7 @@ CONTAINS
 
       IF( m > 0 ) THEN
         CALL Info('ListTagKeywords',&
-            'Tagged '//TRIM(I2S(m))//' parameters in list',Level=15)
+            'Tagged '//I2S(m)//' parameters in list',Level=15)
       END IF
       cnt = cnt + m
 
@@ -2663,7 +2663,7 @@ CONTAINS
       CALL ListTagCnt(Model % Bodies(i) % Values, tagwei, cnt )
     END DO
     IF(tagwei) THEN
-      IF(cnt>0) CALL Info('ListTagCount','Found number of normalized keywords: '//TRIM(I2S(cnt)),Level=6)
+      IF(cnt>0) CALL Info('ListTagCount','Found number of normalized keywords: '//I2S(cnt),Level=6)
       RETURN
     END IF
     
@@ -2685,7 +2685,7 @@ CONTAINS
       CALL ListTagCnt(Model % Solvers(i) % Values, tagwei, cnt )
     END DO
     
-    IF(cnt>0) CALL Info('ListTagCount','Found number of parameters: '//TRIM(I2S(cnt)),Level=6)
+    IF(cnt>0) CALL Info('ListTagCount','Found number of parameters: '//I2S(cnt),Level=6)
 
   CONTAINS
     
@@ -2715,7 +2715,7 @@ CONTAINS
       
       IF( m > 0 ) THEN
         CALL Info('ListTagParameters',&
-            'Tagged number of parameters in list: '//TRIM(I2S(m)),Level=15)
+            'Tagged number of parameters in list: '//I2S(m),Level=15)
       END IF
       cnt = cnt + m
 
@@ -2744,7 +2744,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Weights(:)
     
     CALL Info('ListSetParameters',&
-        'Setting variation to parameter: '//TRIM(I2S(partag)),Level=12)
+        'Setting variation to parameter: '//I2S(partag),Level=12)
     cnt = 0
 
     Weights => NULL()
@@ -2791,7 +2791,7 @@ CONTAINS
     
     IF( Found ) THEN
       CALL Info('ListSetParameters',&
-          'Altered number of parameters: '//TRIM(I2S(cnt)),Level=6)
+          'Altered number of parameters: '//I2S(cnt),Level=6)
     ELSE
       CALL Warn('ListSetParameters','No parameters were altered!')
     END IF
@@ -2970,7 +2970,7 @@ CONTAINS
 
      IF( ncopy > 0 ) THEN
        CALL Info('ListCopyPrefixedKeywords',&
-           'Copied '//TRIM(I2S(ncopy))//' keywords with prefix: '//TRIM(prefix),Level=6)
+           'Copied '//I2S(ncopy)//' keywords with prefix: '//TRIM(prefix),Level=6)
      END IF
      
    END SUBROUTINE ListCopyPrefixedKeywords
@@ -2997,7 +2997,7 @@ CONTAINS
      
      IF( ncopy > 0 ) THEN
        CALL Info('ListCopyAllKeywords',&
-           'Copied '//TRIM(I2S(ncopy))//' keywords to new list',Level=6)
+           'Copied '//I2S(ncopy)//' keywords to new list',Level=6)
      END IF
      
    END SUBROUTINE ListCopyAllKeywords
@@ -3530,7 +3530,7 @@ CONTAINS
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
 
      CALL Info('ListRealArrayToDepReal',&
-         'Changed constant array to dependence table of size '//TRIM(I2S(n))//'!')
+         'Changed constant array to dependence table of size '//I2S(n)//'!')
      
    END SUBROUTINE ListRealArrayToDepReal
 
@@ -4298,7 +4298,7 @@ CONTAINS
        IF( count < DummyCount ) THEN
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
          IF(ASSOCIATED(Var)) THEN 
-           CALL Fatal('ListParseStrToVars','Function has '//TRIM(I2S(DummyCount))//&
+           CALL Fatal('ListParseStrToVars','Function has '//I2S(DummyCount)//&
                ' internal variables, use dummy names not: '//str(l0:l1))
          END IF
          AllGlobal = .FALSE.
@@ -4333,9 +4333,9 @@ CONTAINS
              VarTable(count) % Variable => NULL()
              VarTable(count) % ParamValue = Val
            ELSE
-             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count))//' of '//str(1:slen),Level=3)
+             CALL Info('ListParseStrToVars','Parsed variable '//I2S(count)//' of '//str(1:slen),Level=3)
              CALL Info('ListParseStrToVars','Parse counters: '&
-                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+                 //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
              CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
                  TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
            END IF
@@ -4444,8 +4444,8 @@ CONTAINS
                END BLOCK
              END IF
              IF( k1 == 0 ) THEN
-               CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
-                   ' in element '//TRIM(I2S(Element % ElementIndex))//' for '//TRIM(Var % Name))
+               CALL Fatal('VarsToValueOnNodes','Could not find index '//I2S(ind)//&
+                   ' in element '//I2S(Element % ElementIndex)//' for '//TRIM(Var % Name))
              END IF
            ELSE
              CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
@@ -4872,7 +4872,7 @@ CONTAINS
            CALL Fatal('VarsToValuesOnIPs','Ip field '//TRIM(Var % Name)//' given but no ip point given as parameter!')
            IF( n < ind ) THEN
              CALL Warn('VarsToValuesOnIPs','Too few integration points ('&
-                 //TRIM(I2S(n))//' vs. '//TRIM(I2S(ind))//') tabulated!')
+                 //I2S(n)//' vs. '//I2S(ind)//') tabulated!')
            ELSE
              k1 = Var % Perm(i) + ind
            END IF
@@ -4949,9 +4949,9 @@ CONTAINS
        IF ( str(l0:l1) /= 'coordinate' ) THEN
          Variable => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
          IF ( .NOT. ASSOCIATED( Variable ) ) THEN
-           CALL Info('ListParseStrToValues','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+           CALL Info('ListParseStrToValues','Parsed variable '//I2S(count+1)//' of '//str(1:slen),Level=3)
            CALL Info('ListParseStrToValues','Parse counters: '&
-               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+               //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
            CALL Fatal('ListParseStrToValues','Can''t find independent variable:['// &
                TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']')
          END IF
@@ -5088,10 +5088,10 @@ CONTAINS
            IF ( ptr % DependName(l0:l1) /= 'coordinate' ) THEN
              Variable => VariableGet( CurrentModel % Variables,TRIM(ptr % DependName(l0:l1)) )
              IF ( .NOT. ASSOCIATED( Variable ) ) THEN             
-               CALL Info('ListCheckGlobal','Parsed variable '//TRIM(I2S(count))//' of '&
+               CALL Info('ListCheckGlobal','Parsed variable '//I2S(count)//' of '&
                    //ptr % DependName(1:slen),Level=3)
                CALL Info('ListCheckGlobal','Parse counters: '&
-                   //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+                   //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
 
                WRITE( Message, * ) 'Can''t find independent variable:[', &
                    TRIM(ptr % DependName(l0:l1)),']'
@@ -5667,7 +5667,7 @@ CONTAINS
 #ifdef HAVE_LUA
            IF ( .NOT. ptr % LuaFun ) THEN
 #endif                  
-             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)-xeps
+             WRITE( cmd, * ) 'tx('//I2S(i-1)//')=', x(i)-xeps
              k1 = LEN_TRIM(cmd)
              CALL matc( cmd, tmp_str, k1 )
 
@@ -5676,7 +5676,7 @@ CONTAINS
              CALL matc( cmd, tmp_str, k1 )
              READ( tmp_str(1:k1), * ) F1
 
-             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)+xeps
+             WRITE( cmd, * ) 'tx('//I2S(i-1)//')=', x(i)+xeps
              k1 = LEN_TRIM(cmd)
              CALL matc( cmd, tmp_str, k1 )
 
@@ -5686,7 +5686,7 @@ CONTAINS
              READ( tmp_str(1:k1), * ) F2
 
              ! Revert back to original value
-             WRITE( cmd, * ) 'tx('//TRIM(I2S(i-1))//')=', x(i)
+             WRITE( cmd, * ) 'tx('//I2S(i-1)//')=', x(i)
 #ifdef HAVE_LUA
            ELSE
              T(i) = T(i) - eps
@@ -5944,7 +5944,7 @@ CONTAINS
          Handle % ConstantEverywhere = .FALSE.
          
        CASE DEFAULT
-         CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
+         CALL Fatal('ListInitElementKeyword','Unknown section: '//I2S(Handle % SectionType))
 
        END SELECT
   
@@ -6040,7 +6040,7 @@ CONTAINS
          maxn1 = MAX( n1, maxn1 )
          maxn2 = MAX( n2, maxn2 )
        ELSE
-         CALL Fatal('ListInitElementKeyword','Unknown value type: '//TRIM(I2S(ValueType)))
+         CALL Fatal('ListInitElementKeyword','Unknown value type: '//I2S(ValueType))
 
        END IF
 
@@ -6049,7 +6049,7 @@ CONTAINS
 
      CALL Info('ListInitElementKeyword',&
          'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
-         TRIM(I2S(Handle % ValueType)),Level=12)
+         I2S(Handle % ValueType),Level=12)
 
      IF( PRESENT( UnfoundFatal ) ) THEN
        Handle % Unfoundfatal = UnfoundFatal
@@ -6606,11 +6606,11 @@ CONTAINS
      IF( Handle % IntVarCount > 0 ) THEN
        IF(.NOT. PRESENT( DummyVals ) ) THEN
          CALL Fatal('ListGetElementReal','This handle expects '&
-             //TRIM(I2S(Handle % IntVarCount))//' internal variables: '//TRIM(Handle % Name))
+             //I2S(Handle % IntVarCount)//' internal variables: '//TRIM(Handle % Name))
        END IF
        IF( SIZE( DummyVals ) /= Handle % IntVarCount ) THEN
          CALL Fatal('ListGetElementReal','We are expecting '&
-             //TRIM(I2S(Handle % IntVarCount))//' internal variables: '//TRIM(Handle % Name))
+             //I2S(Handle % IntVarCount)//' internal variables: '//TRIM(Handle % Name))
        END IF
        !Handle % VarTable(1:Handle % IntVarCount) % ParamValue = DummyVals
      END IF
@@ -6882,7 +6882,7 @@ CONTAINS
          
        CASE DEFAULT
          
-         CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip: '//TRIM(I2S(ptr % Type)))
+         CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip: '//I2S(ptr % Type))
          
        END SELECT
        
@@ -7882,7 +7882,7 @@ CONTAINS
        CASE DEFAULT
          CALL Info('ListGetElementRealVec','This one implemented ONLY for "ListGetElementReal"',Level=3)
          CALL Fatal('ListGetElementRealVec','Impossible entry type for "'&
-             //TRIM(Handle % Name)//'": '//TRIM(I2S(ptr % TYPE)))
+             //TRIM(Handle % Name)//'": '//I2S(ptr % TYPE))
          
        END SELECT
 
@@ -8913,7 +8913,7 @@ CONTAINS
        IF(PRESENT(Found)) Found = .FALSE.
        AnyFound = .FALSE.
        DO i=1,SIZE(F,1)
-         F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
+         F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//I2S(i),n,NodeIndexes,lFound)
          AnyFound = AnyFound.OR.lFound
        END DO
        IF(PRESENT(Found)) THEN
@@ -9025,7 +9025,7 @@ CONTAINS
 
      F = F + G
      cnt = cnt + 1
-     ptr => ListFind(List,Name//'{'//TRIM(I2S(cnt))//'}',lFound)
+     ptr => ListFind(List,Name//'{'//I2S(cnt)//'}',lFound)
      IF(ASSOCIATED(ptr)) GOTO 100
 
 200  IF( ListGetLogical( List, Name//' Property Rotate', lFound ) ) THEN
@@ -10263,7 +10263,7 @@ END SUBROUTINE
      IF( GotFile ) THEN
        ReportUnit = 10
        !IF( ParEnv % PEs > 1 ) THEN
-       !  filename = TRIM(filename)//'.'//TRIM(I2S(ParEnv % MyPe))
+       !  filename = TRIM(filename)//'.'//I2S(ParEnv % MyPe)
        !END IF         
        OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
        CALL GETCWD(dirname)
@@ -10271,8 +10271,8 @@ END SUBROUTINE
        ! These are only for reference if writing lot of data to same file
        WRITE( ReportUnit,'(A)') 'Working directory: '//TRIM(dirname)
        nelem = Model % Mesh % NumberOfBulkElements       
-       WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
-       WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))       
+       WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//I2S(nelem)
+       WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//I2S(Model % Mesh % NumberOfNodes)       
      ELSE
        IF( .NOT. InfoActive(12) ) RETURN
        ! IF( ParEnv % MyPe /= 0) RETURN 
@@ -10293,28 +10293,28 @@ END SUBROUTINE
      CALL ReportList('Simulation', Model % Simulation, Unused )
      CALL ReportList('Constants', Model % Constants, Unused )
      DO i=1,Model % NumberOfEquations
-       CALL ReportList('Equation '//TRIM(I2S(i)), Model % Equations(i) % Values, Unused )
+       CALL ReportList('Equation '//I2S(i), Model % Equations(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfComponents
-       CALL ReportList('Component '//TRIM(I2S(i)), Model % Components(i) % Values, Unused )
+       CALL ReportList('Component '//I2S(i), Model % Components(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBodyForces
-       CALL ReportList('Body Force '//TRIM(I2S(i)), Model % BodyForces(i) % Values, Unused )
+       CALL ReportList('Body Force '//I2S(i), Model % BodyForces(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfICs
-       CALL ReportList('Initial Condition '//TRIM(I2S(i)), Model % ICs(i) % Values, Unused )
+       CALL ReportList('Initial Condition '//I2S(i), Model % ICs(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBCs
-       CALL ReportList('Boundary Condition '//TRIM(I2S(i)), Model % BCs(i) % Values, Unused )
+       CALL ReportList('Boundary Condition '//I2S(i), Model % BCs(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfMaterials
-       CALL ReportList('Material '//TRIM(I2S(i)), Model % Materials(i) % Values, Unused )
+       CALL ReportList('Material '//I2S(i), Model % Materials(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBoundaries
-       CALL ReportList('Boundary '//TRIM(I2S(i)), Model % Boundaries(i) % Values, Unused )
+       CALL ReportList('Boundary '//I2S(i), Model % Boundaries(i) % Values, Unused )
      END DO     
      DO i=1,Model % NumberOfSolvers
-       CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values, Unused )
+       CALL ReportList('Solver '//I2S(i), Model % Solvers(i) % Values, Unused )
      END DO
 
      IF( Unused ) THEN
@@ -10324,7 +10324,7 @@ END SUBROUTINE
 
      IF( GotFile ) CLOSE(ReportUnit)
          
-     CALL Info('ReportListCounters','List operations total count:'//TRIM(I2S(totcount)))     
+     CALL Info('ReportListCounters','List operations total count:'//I2S(totcount))     
 
    CONTAINS
 
