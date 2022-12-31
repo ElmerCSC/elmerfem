@@ -45,7 +45,7 @@
 SUBROUTINE SaveLine_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
@@ -87,6 +87,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   USE ElementUtils
   USE SolverUtils
   USE MeshUtils
+  USE SaveUtils
   USE BandwidthOptimize
   USE DefUtils
   
@@ -128,7 +129,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
-  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis
+  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis, DoEigen
   
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
@@ -918,13 +919,14 @@ CONTAINS
 
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
-  SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
-      node_id, dgnode_id, UseNode, NodalFlux, LocalCoord, &
+  SUBROUTINE WriteFieldsAtElement( Element, BC_id, &
+      node_id, dgnode_id, Basis, UseNode, NodalFlux, LocalCoord, &
       GlobalCoord, linepos, ParNode )
 
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp), TARGET :: Basis(:)
+    REAL(KIND=dp), TARGET, OPTIONAL :: Basis(:)
     INTEGER :: bc_id, node_id, dgnode_id
+    
     LOGICAL, OPTIONAL :: UseNode 
     REAL(KIND=dp), OPTIONAL :: NodalFlux(3)
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
@@ -988,23 +990,10 @@ CONTAINS
         Norm = Norm + 1.0_dp * Labels(NormInd )
       END IF
     END IF
-    
+
+    ! If we just got the closest node, not really the exact node, do not use it.
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
-
-    IF( UseGivenNode ) THEN
-      n = 1
-      nd = n
-      NodeIndex(1) = node_id
-      PtoIndexes => NodeIndex
-      PointBasis(1) = 1.0_dp
-      PtoBasis => PointBasis
-    END IF
-
-    IF( .NOT. PRESENT( LocalCoord ) ) THEN      
-      EdgeBasis = .FALSE.
-      PiolaVersion = .FALSE.
-    END IF
     
     No = 0
     Values = 0.0d0
@@ -1021,258 +1010,16 @@ CONTAINS
         Var3 => VariableGetN( ivar, component = 3 ) 
       ELSE
         Var3 => NULL()
-      END IF      
-      
-      EdgeBasis = ( Var % TYPE == variable_on_edges )
-      DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
-      IpVar = ( Var % TYPE == variable_on_gauss_points )
-      ElemVar = ( Var % TYPE == Variable_on_elements )       
-      PiolaVersion = .FALSE.
-      pElem = .FALSE.
-      np = 0
-      
-      IF( PRESENT( LocalCoord ) ) THEN
-        
-        CALL GetElementNodes(Nodes, Element) 
-        PtoIndexes => Indexes
-
-        u = LocalCoord(1)
-        v = LocalCoord(2)
-        w = LocalCoord(3)
-
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
-        ! Should we map (u,v,w) for piola reference element? 
-        IF( ASSOCIATED( Var % Solver ) ) THEN
-          nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
-        ELSE
-          nd = GetElementDOFs( Indexes, Element )  
-        END IF          
-        n = Element % TYPE % NumberOfNodes                  
-
-        IF(nd > n) pElem = isActivePElement(Element,Var % Solver)                              
-
-        IF( EdgeBasis ) THEN
-          IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
-            PiolaVersion = .TRUE.
-          ELSE
-            PiolaVersion = GetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
-          END IF
-          np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-        END IF
-        
-        IF( EdgeBasis ) THEN
-          stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
-              RotBasis = RotWBasis, USolver = Var % Solver)
-        ELSE          
-          IF( pElem ) THEN
-            ! The standard element of SaveLine is most likely standard nodal element.
-            ! In the user gives something else we may be trouble...
-            up=u; vp=v; wp=w
-            CALL ConvertToPReference(Element % Type % ElementCode,up,vp,wp)            
-            stat = ElementInfo( Element, Nodes, up, vp, wp, detJ, NodeBasis, &
-                USolver = Var % Solver )
-          ELSE
-            stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
-          END IF
-
-          IF( DgVar ) THEN
-            PtoIndexes => Element % DgIndexes
-
-            IF(.NOT. ASSOCIATED(pToIndexes) ) THEN
-              BLOCK
-                INTEGER :: lr
-                TYPE(Element_t), POINTER :: Parent
-                
-                DO lr=1,2
-                  IF(lr==1) THEN
-                    Parent => Element % BoundaryInfo % Left
-                  ELSE
-                    Parent => Element % BoundaryInfo % Right
-                  END IF
-                  IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-                  IF(.NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
-                  IF( ALL( Var % Perm( Parent % DGIndexes ) /= 0) ) THEN                  
-                    DO i=1,n
-                      DO j=1,Parent % TYPE % NumberOfNodes
-                        IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
-                          DGIndexes(i) = Parent % DGIndexes(j)
-                        END IF
-                      END DO
-                    END DO
-                    PToIndexes => DGIndexes
-                    EXIT
-                  END IF
-                END DO
-              END BLOCK
-            END IF            
-          ELSE IF( pElem ) THEN
-            pToIndexes => Indexes
-          ELSE
-            PtoIndexes => Element % NodeIndexes 
-          END IF           
-          PtoBasis => NodeBasis
-        END IF
-        
-      ELSE IF( .NOT. UseGivenNode ) THEN
-        PtoBasis => Basis
-        n = Element % TYPE % NumberOfNodes
-        nd = n
-        
-        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-          PtoIndexes => Element % DgIndexes
-        ELSE
-          PtoIndexes => Element % NodeIndexes 
-        END IF
-
-      ELSE ! UseGivenNode
-        IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-          NodeIndex(1) = dgnode_id
-        ELSE
-          NodeIndex(1) = node_id 
-        END IF       
       END IF
 
-      
-      IF( EdgeBasis ) THEN
-        DO j=1,3
-          No = No + 1
-          Values(No) = 0.0_dp
-          IF( ASSOCIATED( PtoIndexes ) ) THEN
-            DO k=1,nd-np
-              l = PtoIndexes(np+k)
-              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-              IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
-            END DO
-          END IF
-        END DO
-        IF( AVBasis ) THEN
-          No = No + 1
-          Values(No) = 0.0_dp
-          DO k=1,n
-            l = PtoIndexes(k)
-            IF( l > SIZE( Var % Values ) ) THEN
-              PRINT *,'Too large l:',l,SIZE(Var % Values), TRIM( Var % Name)
-            END IF
-            IF( k <= 0 .OR. k > SIZE(NodeBasis) ) THEN
-              PRINT *,'Too large k:',k,SIZE(NodeBasis)              
-            END IF
-            IF( No <= 0 .OR. No > SIZE( Values ) ) THEN
-              PRINT *,'Too large No:',No,SIZE(Values)
-            END IF
-            IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
-          END DO
-        END IF
-          
-      ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
-        IF( nd > SIZE( PtoIndexes ) ) THEN
-          CALL Warn(Caller,'nd exceeds size of index table!')
-          nd = SIZE( PToIndexes ) 
-        END IF
-
-        NoEigenValues = SIZE(Var % EigenValues) 
-        IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO j=1,NoEigenValues          
-            DO k=1,nd
-              l = PtoIndexes(k)
-              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-              IF(l > 0) THEN 
-                DO ii=1,Var % DOFs
-                  Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
-                      PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
-                END DO
-              END IF
-            END DO
-          END DO
-        END IF
-        No = No + Var % Dofs * NoEigenValues
-
-      ELSE                          
-        IF( ElemVar ) THEN
-          l = Element % ElementIndex 
-          IF( SIZE( Var % Perm ) >= l ) THEN
-            l = Var % Perm(l)
-          END IF
-          IF( l > 0 ) THEN
-            IF( Var % Dofs > 1 ) THEN
-              DO ii=1,Var % Dofs
-                Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
-              END DO
-            ELSE
-              Values(No+1) = Var % Values(l)              
-              IF( comps >= 2 ) THEN
-                Values(No+2) = Var % Values(l)
-              END IF
-              IF( comps >= 3 ) THEN
-                Values(No+3) = Var % Values(l)
-              END IF
-            END IF
-          END IF
-        ELSE IF ( IpVar ) THEN
-          l = 0 
-          IF( SIZE( Var % Perm ) > Element % ElementIndex ) THEN 
-            i1 = Var % Perm(Element % ElementIndex)
-            i2 = Var % Perm(Element % ElementIndex+1)
-            l = i2-i1
-          END IF
-            
-          IF(l>0) THEN
-            IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
-              IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
-              ALLOCATE( fip(l) )
-            END IF
-            
-            IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
-              IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
-              ALLOCATE( fdg(n) )
-            END IF
-            
-            DO ii=1,MAX(Var % Dofs,comps)
-              IF( Var % Dofs > 1 ) THEN
-                CONTINUE
-              ELSE
-                IF( ii == 1 ) THEN
-                  pVar => Var
-                ELSE IF( ii == 2 ) THEN
-                  pVar => Var2
-                ELSE IF( ii == 3 ) THEN
-                  pVar => Var3
-                END IF
-                fip(1:l) = pVar % Values(i1+1:i2)
-              END IF
-              
-              CALL Ip2DgFieldInElement( Mesh, Element, l, fip, n, fdg )              
-              Values(No+ii) = SUM( PtoBasis(1:n) * fdg(1:n) )
-            END DO
-          END IF
-            
-        ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO k=1,nd
-            l = PtoIndexes(k)
-            IF(l==0) CYCLE
-            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) THEN
-              IF( Var % Dofs > 1 ) THEN
-                DO ii=1,Var % Dofs
-                  Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
-                      Var % Values(Var%Dofs*(l-1)+ii)
-                END DO
-              ELSE                
-                Values(No+1) = Values(No+1) + PtoBasis(k) * Var % Values(l)
-                IF( comps >= 2 ) THEN
-                  Values(No+2) = Values(No+2) + PtoBasis(k) * Var2 % Values(l)
-                END IF
-                IF( comps >= 3 ) THEN
-                  Values(No+3) = Values(No+3) + PtoBasis(k) * Var3 % Values(l)
-                END IF
-              END IF
-            END IF
-          END DO
-        END IF
-        
-        No = No + MAX( Var % Dofs, comps )
+      IF( UseGivenNode ) THEN
+        k = node_id; l = dgnode_id
+      ELSE
+        k = 0; l = 0
       END IF
+      ! This is additive adding to "No" for each call!!
+      CALL EvaluteVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
+          Basis,k,l,GotEigen=DoEigen,GotEdge=EdgeBasis)
     END DO
     
     IF( CalculateFlux ) THEN
@@ -1289,7 +1036,6 @@ CONTAINS
         Values(j) = -1.0_dp
       END IF
     END DO
-
     
     IF( Tabulate ) THEN
       NoLabels = MAX(n0, NoLabels) 
@@ -1751,12 +1497,13 @@ CONTAINS
             linepos = -1.0_dp
             IF( ParEnv % PEs > 1 ) THEN
             END IF
+
             IF( CalculateFlux ) THEN
-              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
+              CALL WriteFieldsAtElement( CurrentElement, k, node, &
                   dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
                   linepos = linepos, ParNode = Parallel )
             ELSE
-              CALL WriteFieldsAtElement( CurrentElement, Basis, k, node, &
+              CALL WriteFieldsAtElement( CurrentElement, k, node, &
                   dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
             END IF
             
@@ -1781,11 +1528,11 @@ CONTAINS
         DO t = 1, SaveNodes(1)    
           node = InvPerm(t)
           IF( CalculateFlux ) THEN
-            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+            CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
                 dgnode, UseNode = .TRUE., NodalFlux = PointFluxes(t,:), &
                 linepos = linepos, ParNode = Parallel )
           ELSE
-            CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+            CALL WriteFieldsAtElement( CurrentElement, BoundaryIndex(t), node, &
                 dgnode, UseNode = .TRUE., linepos = linepos, ParNode = Parallel )
           END IF
         END DO
@@ -1997,13 +1744,16 @@ CONTAINS
               
               IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
                   LocalCoord, USolver = pSolver, LocalEps = eps ) ) THEN
-                LineTag(i) = .TRUE.
-                
-                SaveNodes(2) = SaveNodes(2) + 1
-                
+                stat = ElementInfo( CurrentElement, ElementNodes, LocalCoord(1), &
+                LocalCoord(2), LocalCoord(3), detJ, Basis, USolver = pSolver )
+
+                LineTag(i) = .TRUE.                
+                SaveNodes(2) = SaveNodes(2) + 1               
                 linepos = 1.0_dp*i/nsize + 2*(Line-1)
-                CALL WriteFieldsAtElement( CurrentElement, Basis, Line, i, 0, &
-                    LocalCoord = LocalCoord, linepos = linepos )
+
+                n = CurrentElement % type % numberofnodes
+                CALL WriteFieldsAtElement( CurrentElement, Line, i, 0, &
+                    Basis, LocalCoord = LocalCoord, linepos = linepos )
               END IF
             END DO
           END DO
@@ -2036,8 +1786,6 @@ CONTAINS
                   DetEpsilon,Inside,Basis,i,linepos,LocalCoord)
             END IF
 
-
-            
             IF(.NOT. Inside) CYCLE
 
             ! When the line goes through a node it might be saved several times 
@@ -2050,8 +1798,8 @@ CONTAINS
             SaveNodes(2) = SaveNodes(2) + 1
             
             linepos = linepos + 2*(Line-1)
-            CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, &
-                NodeIndexes(i), 0, LocalCoord = LocalCoord, linepos = linepos )
+            CALL WriteFieldsAtElement( CurrentElement, MaxBoundary, &
+                NodeIndexes(i), 0, Basis, LocalCoord = LocalCoord, linepos = linepos )
           END DO
         END IF
       END DO
@@ -2224,8 +1972,8 @@ CONTAINS
 
             LineTag(ii) = .TRUE.
             SaveNodes(3) = SaveNodes(3) + 1
-            CALL WriteFieldsAtElement( CurrentElement, Basis, Line, ii, &
-                0, LocalCoord = LocalCoord, linepos = 20 + 2*Line + 1.0_dp *ii / nsize )
+            CALL WriteFieldsAtElement( CurrentElement, Line, ii, &
+                0, Basis, LocalCoord = LocalCoord, linepos = 20 + 2*Line + 1.0_dp *ii / nsize )
           END IF
         END DO
       END DO
@@ -2358,8 +2106,8 @@ CONTAINS
 
         No = 0
         Values = 0.0d0
-        
-        CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0, linepos = -1.0_dp )         
+
+        CALL WriteFieldsAtElement( CurrentElement, MaxBoundary, k, 0, Basis, linepos = -1.0_dp )         
       END DO
 
       WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes(4)
@@ -2389,7 +2137,7 @@ CONTAINS
       
       No = 0
       DO ivar = -2,NoVar
-        Var => VariableGetN( ivar, comps ) 
+        Var => VariableGetN( ivar, comps )
 
         IF (ASSOCIATED (Var % EigenVectors)) THEN
           NoEigenValues = SIZE(Var % EigenValues) 
