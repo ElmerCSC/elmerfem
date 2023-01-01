@@ -86,6 +86,9 @@ GLcontrol::GLcontrol(QWidget *parent)
 	  this, SLOT(okButtonClicked()));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 }
 
 GLcontrol::~GLcontrol()

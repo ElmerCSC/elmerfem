@@ -63,7 +63,8 @@ GeneralSetup::GeneralSetup(QWidget *parent)
   ui.headerFreeTextEdit->setMinimumHeight(3*fontHeight);
   ui.simulationFreeTextEdit->setMinimumHeight(3*fontHeight);
   ui.constantsFreeTextEdit->setMinimumHeight(3*fontHeight);  
-}
+
+  ui.acceptButton->setIcon(QIcon::fromTheme("dialog-accept"));}
 
 GeneralSetup::~GeneralSetup()
 {

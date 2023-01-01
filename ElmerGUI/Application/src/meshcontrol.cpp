@@ -74,6 +74,9 @@ MeshControl::MeshControl(QWidget *parent)
   connect(ui.elementCodesStringEdit, SIGNAL(textChanged(const QString&)), this, SLOT(defineElementCodesString(const QString&)));
 
   //  defaultControls(); // Note - already called from mainwindow.cpp
+
+  this->setWindowIcon(QIcon::fromTheme("configure"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 MeshControl::~MeshControl()

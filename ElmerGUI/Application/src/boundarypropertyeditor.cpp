@@ -63,6 +63,9 @@ BoundaryPropertyEditor::BoundaryPropertyEditor(QWidget *parent)
 
   connect(ui.boundaryConditionCombo, SIGNAL(currentIndexChanged(QString)), this, 
            SLOT(boundaryComboChanged(QString)));
+
+  ui.applyButton->setIcon(QIcon::fromTheme("list-add"));
+  ui.discardButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 }
 
 BoundaryPropertyEditor::~BoundaryPropertyEditor()
