@@ -7276,7 +7276,7 @@ void MainWindow::showaboutSlot() {
       tr("<P>The GPL-licensed source code of ElmerGUI is available "
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
-         "<P>Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki, "
+         "<P>Written by Mikko Lyly, Saeki Takayuki, Juha Ruokolainen, "
          "Peter Råback and Sampo Sillanpaa 2008-2020</P>"
          "<P>Compiled on " __DATE__ "</P>"));
   msgBox.exec();
