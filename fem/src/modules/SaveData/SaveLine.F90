@@ -2211,7 +2211,7 @@ CONTAINS
       IF( GotIt ) THEN
         WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
-      WRITE(NamesUnit,'(A,A)') 'Variables in file: ',TRIM(SideFile)
+      WRITE(NamesUnit,'(A,A)') 'Metadata for SaveLine file: ',TRIM(SideFile)
 
       DateStr = GetVersion()
       WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     

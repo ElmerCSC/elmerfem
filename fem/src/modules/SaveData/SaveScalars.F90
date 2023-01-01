@@ -1380,6 +1380,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
 
+      WRITE(NamesUnit,'(A,A)') 'Metadata for SaveScalars file: ',TRIM(ScalarsFile)
+
       DateStr = GetVersion()
       WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
 
@@ -1402,7 +1404,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WRITE( NamesUnit,'(A)') 'File started at: '//TRIM(DateStr)
 
       WRITE(NamesUnit,'(A)') ' '
-      WRITE(NamesUnit,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
+      WRITE(NamesUnit,'(A)') 'Variables in columns of matrix: '
       IF( LineInd /= 0 ) THEN
         i = 1
         WRITE(NamesUnit,'(I4,": ",A)') 1,'Line Marker'
