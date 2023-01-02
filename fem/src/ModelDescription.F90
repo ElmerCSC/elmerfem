@@ -44,16 +44,15 @@
 
 MODULE ModelDescription
 
-    USE LoadMod
     USE MeshUtils
-    USE ElementDescription
+    USE LoadMod
     USE BinIO
     USE Messages
+    USE ElementDescription
  
     IMPLICIT NONE
 
-
-    CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId = ' '
+    CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
 
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
@@ -210,8 +209,8 @@ CONTAINS
      CHARACTER(LEN=*) :: FileName
      CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_STRING_LEN) :: FName
      INTEGER :: k,k0,k1,l,iostat
+     CHARACTER(:), ALLOCATABLE :: FName
 !------------------------------------------------------------------------------
 
      CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
@@ -225,8 +224,7 @@ CONTAINS
          END DO 
 
          IF ( k >= k0 ) THEN
-           WRITE( FName, '(a,a,a)' ) IncludePath(k0:k), '/', &
-              TRIM( FileName )
+           FName = IncludePath(k0:k)//'/'//TRIM(FileName)
            OPEN( InFileUnit, FILE=TRIM(FName), STATUS='OLD',ERR=10 )
            CALL LoadInputFile( Model, InFileUnit, FName, &
                  MeshDir, MeshName, .FALSE., ScanOnly )
@@ -288,8 +286,8 @@ CONTAINS
     LOGICAL, OPTIONAL :: RewindFile
 
     INTEGER :: pos, posn
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
     INTEGER :: iostat
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
     
     IF( PRESENT( RewindFile ) ) THEN
       IF( RewindFile ) THEN
@@ -1149,7 +1147,7 @@ CONTAINS
         str = ListGetString( Model % Solvers(i) % Values,'Equation',Found )
         IF(.NOT. Found ) CYCLE
         DO j = i+1, Model % NumberOfSolvers
-          IF( TRIM(str) == TRIM( ListGetString( Model % Solvers(j) % Values,'Equation',Found ))) THEN
+          IF( str == ListGetString( Model % Solvers(j) % Values,'Equation',Found)) THEN
             CALL Fatal(Caller,'Solvers '//I2S(i)//' and '//I2S(j)//&
                 ' have the same Equation name!')
           END IF
@@ -1365,7 +1363,6 @@ CONTAINS
        LOGICAL :: FirstTime = .TRUE.,lstat, fexist, ReTry
        CHARACTER(LEN=:), ALLOCATABLE :: str
        CHARACTER(LEN=MAX_STRING_LEN) :: str1
-!       EXTERNAL ENVIR
 
        IF ( PRESENT( ReturnType ) ) ReturnType = .FALSE.
 
@@ -1517,7 +1514,7 @@ CONTAINS
        IF ( ASSOCIATED( Val ) ) THEN
           IF ( PRESENT( ReturnType ) ) THEN
              ReturnType = .TRUE.
-             TYPE = Val % TYPE
+             TYPE = TRIM(Val % TYPE)
           END IF
           IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) RETURN
        END IF
@@ -1547,7 +1544,7 @@ CONTAINS
            IF ( ASSOCIATED( Val ) ) THEN
              IF ( PRESENT( ReturnType ) ) THEN
                ReturnType = .TRUE.
-               TYPE = Val % TYPE
+               TYPE = TRIM(Val % TYPE)
              END IF
              IF  ( HashEqualKeys( Val % TYPE, TYPE ) ) THEN
                CALL info('CheckKeyword','Found keyword type assuming suffix 1 for: '//TRIM(Name),Level=20)
@@ -1631,8 +1628,8 @@ CONTAINS
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
-      CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
-      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
+      CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname,Keyword
+      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
           Cubic, AllInt, Monotone, Stat, Harmonic
 
@@ -2238,7 +2235,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Mapping(:)
     INTEGER :: i,j,k,l,n,m,p
     REAL(KIND=dp) :: s
-    CHARACTER(LEN=MAX_STRING_LEN) :: FName
+    CHARACTER(:), ALLOCATABLE :: FName
     TYPE(Element_t), POINTER :: elm,celm
 
 !------------------------------------------------------------------------------
@@ -2329,8 +2326,8 @@ CONTAINS
      LOGICAL :: Found
      TYPE(Mesh_t), POINTER :: Mesh
      REAL(KIND=dp) :: x,y,z
-     CHARACTER(LEN=MAX_NAME_LEN) :: csys
      INTEGER :: Mesh_dim, Model_dim
+     CHARACTER(:), ALLOCATABLE :: csys
      
      csys = ListGetString( Model % Simulation, 'Coordinate System', Found )
      IF ( .NOT. Found ) Csys = 'cartesian'
@@ -2417,13 +2414,13 @@ CONTAINS
     INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,ElementDef,ElementDef0
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
+    CHARACTER(:), ALLOCATABLE :: Name, ElementDef, str
+    LOGICAL :: Parallel
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
-    LOGICAL :: Parallel
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES)
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES), ElementDef0
     INTEGER :: MeshCount, MeshI
     LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
 !------------------------------------------------------------------------------
@@ -2905,7 +2902,8 @@ CONTAINS
         single = .FALSE.     
         IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.          
-          Name=Name(9:)
+          str = Name(9:)
+          Name = str
           IF( ParEnv % PEs > 1 ) THEN
             CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
           END IF
@@ -2922,7 +2920,8 @@ CONTAINS
           DO WHILE(Name(i:i)/=' ')
            i=i+1
           END DO
-          Name=Name(i+1:)
+          str = Name(i+1:) ! allocatable string bug in some gcc-versions
+          Name = str       !                 ....
         END IF
 
         OneMeshName = .FALSE.
@@ -3255,9 +3254,9 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
     LOGICAL :: Found, Flag, DoIt, DoItB
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
     REAL(KIND=dp) :: Tol = 1.0e-8
     INTEGER, POINTER :: TmpInts(:)
+    CHARACTER(:), ALLOCATABLE :: Name, NameB
     
     CALL Info('CompleteModelKeywords','Completing keywords for mortars and mechanics!',Level=12)
 
@@ -3521,7 +3520,6 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd
     TYPE(Variable_t), POINTER :: Var
-    CHARACTER(LEN=MAX_NAME_LEN) :: FName, PosName, DateStr, EqName, VarName
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
         SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile 
     INTEGER, POINTER :: PrevPerm(:) 
@@ -3530,6 +3528,7 @@ CONTAINS
     LOGICAL :: Found
     CHARACTER(1) :: E
     TYPE(ValueList_t), POINTER :: ResList
+    CHARACTER(:), ALLOCATABLE :: FName, PosName, DateStr, EqName, VarName
     CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
    
     SAVE SaveCoordinates
@@ -4013,9 +4012,9 @@ CONTAINS
     INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,NewName,FullName,PosName
-    CHARACTER(LEN=:), ALLOCATABLE :: Row
-    CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
+    CHARACTER(:), ALLOCATABLE :: Name,VarName,VarName2,NewName,FullName,PosName
+    CHARACTER(LEN=:), ALLOCATABLE :: Row, RestartFileL, FName
+    CHARACTER(LEN=MAX_STRING_LEN) :: Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
     INTEGER :: nNodes, Stat, FieldSize, PermSize, FieldSize2, PermSize2
     INTEGER, SAVE :: FmtVersion, DofCount, TotalDofs
@@ -4063,9 +4062,10 @@ CONTAINS
     END IF
 
     j = ListGetInteger( ResList,'Restart File Cycle',Found )
+    RestartFileL = RestartFile
     IF( Found ) THEN
       IF( j == 0 ) THEN
-        FName = RestartFile
+        FName = RestartFileL
 #if 0
         IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 .AND. &
             LEN_TRIM(OutputPath)>0 ) THEN
@@ -4080,10 +4080,10 @@ CONTAINS
         CLOSE( RestartUnit)
         CALL Info(Caller,'Using latest saved data for restart: '//I2S(j),Level=6)
       END IF
-      RestartFile = TRIM(RestartFile)//'_'//I2S(j)//'nc'
+      RestartFileL = RestartFileL//'_'//I2S(j)//'nc'
     END IF
-    
-    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
+
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFileL), Level = 4 )
     
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
@@ -4115,17 +4115,17 @@ CONTAINS
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
-    FName = RestartFile
+    FName = RestartFileL
     ! By convention let us use the "Mesh DB" rather than "Results Directory" for restart.    
 #if 0    
-    IF ( .NOT. FileNameQualified(RestartFile) .AND. INDEX(RestartFile,'/') == 0 ) THEN
+    IF ( .NOT. FileNameQualified(RestartFileL) .AND. INDEX(RestartFileL,'/') == 0 ) THEN
       n = LEN_TRIM(OutputPath)
       IF( n==0 ) THEN
         CONTINUE
       ELSE IF( n==1 .AND. OutputPath(1:1) == '.') THEN
         CONTINUE
       ELSE
-        FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
+        FName = TRIM(OutputPath) // '/' // TRIM(RestartFileL)
       END IF
     END IF
 #endif
@@ -4373,7 +4373,7 @@ CONTAINS
         FileVariableInfo(DofCount,2) = PermSize
       END IF
         
-      k = LEN_TRIM( VarName )
+      k = LEN_TRIM(VarName)
       IF( k == 0 ) THEN
         CALL Warn(Caller,'Could not deduce variable name!')
         CYCLE 
@@ -4386,17 +4386,17 @@ CONTAINS
       ! If list is give check that variable is on the list.
       !---------------------------------------------------------------------------
       IF( ListVariableCount > 0  ) THEN
-        LoadThis = .FALSE.
         DO j=1,ListVariableCount
+          LoadThis = .FALSE.
           VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
-          IF( VarName2(1:k2) == VarName(1:k2) ) THEN
+          IF( VarName2(1:k2) == VarName(1:MIN(k,k2)) ) THEN
             LoadThis = .TRUE.
             ! This makes it possible to request loading of vectors
             ! so that also all the corresponding scalar components (1,2,3,...) are saved. 
-            IF( k > k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
+            IF( k>k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
             IF( LoadThis ) THEN
               ListVariableFound(j) = .TRUE.
               EXIT
@@ -4404,6 +4404,7 @@ CONTAINS
           END IF
         END DO        
         IF(.NOT. LoadThis ) CYCLE
+
 
         NewName = ListGetString( ResList,'Target Variable '//I2S(j), Found ) 
         IF( Found ) THEN
@@ -4903,8 +4904,8 @@ CONTAINS
       INTEGER, ALLOCATABLE :: Perm(:)
       LOGICAL :: GotPerm
       INTEGER :: nPerm, nPositive, i, j, k
-      CHARACTER(MAX_NAME_LEN) :: Row
       INTEGER(Int8_k) :: Pos
+      CHARACTER(MAX_NAME_LEN) :: Row
 
       GotPerm = .FALSE.
       IF ( Binary ) THEN
@@ -5024,7 +5025,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
      !------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+     CHARACTER(:), ALLOCATABLE :: tmpname
      INTEGER :: i
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER :: Var,Var1
@@ -5104,8 +5105,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Variable_t), POINTER :: Var,Var1,Displacement,MeshUpdate,MaskVar
 
-    CHARACTER(LEN=:), ALLOCATABLE :: Row
-    CHARACTER(MAX_NAME_LEN) :: Str, DateStr
+    CHARACTER(MAX_NAME_LEN) :: Str
+    CHARACTER(LEN=:), ALLOCATABLE :: Row, DateStr
 
     LOGICAL :: gotIt, SaveCoordinates, MoveBoundary, MeshMoved, MaskExists
 

@@ -101,7 +101,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
   LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_MMG3D_Mesh"
+  CHARACTER(:), PARAMETER :: FuncName="Set_MMG3D_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("MMG3D","Only works for 3D meshes!")
 
   ALLOCATE(NodeRefs(6))
@@ -549,7 +549,7 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   INTEGER, POINTER :: ngdof_ptr(:), ogdof_ptr(:)
   LOGICAL :: Root, Debug = .FALSE.
   LOGICAL, ALLOCATABLE :: AvailGDOF(:), pool_duplicate(:), im_using(:), used(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="RenumberGDOFs"
+  CHARACTER(:), PARAMETER :: FuncName="RenumberGDOFs"
 
   Root = ParEnv % MyPE == 0
   OldNN = OldMesh % NumberOfNodes
@@ -820,7 +820,7 @@ SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   !---------------------------------
   INTEGER, ALLOCATABLE :: GtoNewLMap(:)
   INTEGER :: i,k,n,MaxNGDof, MinNGDof
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="MapNewBCInfo"
+  CHARACTER(:), PARAMETER :: FuncName="MapNewBCInfo"
   
   MinNGDof = HUGE(MinNGDof)
   MaxNGDof = 0
@@ -902,8 +902,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   INTEGER, ALLOCATABLE :: TetraQuality(:)
   LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
-       premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
+  CHARACTER(:), ALLOCATABLE :: FuncName, MeshName, SolName, &
+        premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
 
   SAVE :: WorkReal,WorkArray
 
@@ -1098,11 +1098,11 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   END IF
 
   IF(SaveMMGMeshes) THEN
-    WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+    MeshName = TRIM(premmg_meshfile)//I2S(time)//'.mesh'
     CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
   END IF
   IF(SaveMMGSols) THEN
-    WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+    SolName = TRIM(premmg_solfile)//I2S(time)//'.sol'
     CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
@@ -1129,11 +1129,11 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
 
   IF(SaveMMGMeshes) THEN
-    WRITE(MeshName, '(A,i0,A)') TRIM(mmg_meshfile), time, '.mesh'
+    MeshName = TRIM(mmg_meshfile)//I2S(time)//'.mesh'
     CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
   END IF
   IF(SaveMMGSols) THEN
-    WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
+    SolName = TRIM(mmg_solfile)//I2S(time)//'.sol'
     CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
   END IF
 
@@ -1238,8 +1238,8 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   INTEGER, ALLOCATABLE :: TetraQuality(:)
   LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
-       premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
+  CHARACTER(:), ALLOCATABLE :: FuncName, MeshName, SolName, &
+        premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
 
   SAVE :: WorkReal,WorkArray
 
@@ -1444,11 +1444,11 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
     END IF
 
     IF(SaveMMGMeshes) THEN
-      WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+      MeshName = TRIM(premmg_meshfile)//I2S(time)//'.mesh'
       CALL PMMG_SaveMesh_Centralized(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
     END IF
     IF(SaveMMGSols) THEN
-      WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+      SolName = TRIM(premmg_solfile)//I2S(time)/'.sol'
       CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
     END IF
     IF (DEBUG) PRINT *,'--**-- SET PMMG3D PARAMETERS '
@@ -1478,11 +1478,11 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
 
   IF(Boss) THEN
     IF(SaveMMGMeshes) THEN
-      WRITE(MeshName, '(A,i0,A)') TRIM(mmg_meshfile), time, '.mesh'
+      MeshName = TRIM(mmg_meshfile)//I2S(time)//'.mesh'
       CALL PMMG_SaveMesh_Centralized(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
     END IF
     IF(SaveMMGSols) THEN
-      WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
+      SolName = TRIM(mmg_solfile)//I2S(time)//'.sol'
       CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
     END IF
 
@@ -1555,7 +1555,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   LOGICAL, ALLOCATABLE :: IsNeighbour(:)
   INTEGER, POINTER :: Neighbours(:)
   LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_ParMMG_Mesh"
+  CHARACTER(:), PARAMETER :: FuncName="Set_ParMMG_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("ParMMG","Only works for 3D meshes!")
 
   ALLOCATE(NodeRefs(6))
@@ -1972,8 +1972,8 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   INTEGER, ALLOCATABLE :: TetraQuality(:)
   LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
-       premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
+  CHARACTER(:), ALLOCATABLE :: FuncName, MeshName, SolName, &
+        premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
 
   SAVE :: WorkReal,WorkArray
 
@@ -2177,11 +2177,11 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   !! need to set face communicators eg neighbour procs either nodes or faces
 
   IF(SaveMMGMeshes) THEN
-    WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+    MeshName = TRIM(premmg_meshfile)//I2S(time)//'.mesh'
     CALL PMMG_SaveMesh_Distributed(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
   END IF
   IF(SaveMMGSols) THEN
-    WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+    SolName = TRIM(premmg_solfile)//I2S(time)//'.sol'
     CALL PMMG_SaveMet_Distributed(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
   END IF
   IF (DEBUG) PRINT *,'--**-- SET PMMG3D PARAMETERS '
@@ -2212,11 +2212,11 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,Nod
   IF (DEBUG) PRINT *,'--**-- PMMG_parmmglib_centralized DONE'
 
   IF(SaveMMGMeshes) THEN
-    WRITE(MeshName, '(A,i0,A)') TRIM(mmg_meshfile), time, '.mesh'
+    MeshName = TRIM(mmg_meshfile)//I2S(time)//'.mesh'
     CALL PMMG_SaveMesh_Distributed(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
   END IF
   IF(SaveMMGSols) THEN
-    WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
+    SolName = TRIM(mmg_solfile)//I2S(time)//'.sol'
     CALL PMMG_SaveMet_Distributed(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
   END IF
 

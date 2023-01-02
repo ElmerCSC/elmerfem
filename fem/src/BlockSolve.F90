@@ -59,7 +59,7 @@ CONTAINS
     
     TYPE(Solver_t), POINTER :: Solver
     INTEGER :: VariableNo
-    CHARACTER(LEN=max_name_len) :: VarName
+    CHARACTER(LEN=*) :: VarName
     INTEGER, OPTIONAL :: ExtDofs
     INTEGER, POINTER, OPTIONAL :: ExtPerm(:)
     TYPE(Variable_t), POINTER :: Var
@@ -73,7 +73,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Indexes(:)
     REAL(KIND=dp), POINTER :: Values(:)
     LOGICAL :: Hit, GotIt
-    CHARACTER(LEN=max_name_len) :: str, eq
+    CHARACTER(:), ALLOCATABLE :: str
     
     LOGICAL :: GlobalBubbles, Found
     INTEGER :: MaxNDOFs, MaxDGDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
@@ -87,8 +87,8 @@ CONTAINS
     IF( PRESENT( ExtDofs ) ) THEN
       Dofs = ExtDofs
     ELSE 
-      WRITE (str,'(A,I0,A)') 'Variable ',VariableNo,' Dofs'
-      Dofs = ListGetInteger( Params, TRIM(str), GotIt )
+      str = 'Variable '//I2S(VariableNo)//' Dofs'
+      Dofs = ListGetInteger( Params,str, GotIt )
       IF(.NOT. GotIt) Dofs = 1
     END IF
     
@@ -224,7 +224,7 @@ CONTAINS
     INTEGER :: i,j,k,n,Novar
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var
-    CHARACTER(LEN=max_name_len) :: VarName, str
+    CHARACTER(:), ALLOCATABLE :: VarName, str
     LOGICAL :: UseSolverMatrix, IsComplex
     CHARACTER(*), PARAMETER :: Caller = 'BlockInitMatrix'
 
@@ -373,18 +373,18 @@ CONTAINS
 
         PSolver => CurrentModel % Solvers(j)
         Var => PSolver % Variable 
-        VarName = Var % Name
+        VarName = TRIM(Var % Name)
 
         BlockMatrix % SubVector(i) % Solver => PSolver
         BlockMatrix % SubMatrix(i,i) % Mat => PSolver % Matrix        
 
       ELSE
-        WRITE (str,'(A,I0)') 'Variable ',i
+        str = 'Variable '//I2S(i)
 
-        VarName = ListGetString( Params, TRIM(str), Found )
+        VarName = ListGetString( Params, str, Found )
         IF(.NOT. Found ) THEN       
           IF( BlockMatrix % GotBlockStruct ) THEN
-            WRITE (VarName,'(A,I0)') 'BlockVar ',i
+           VarName = 'BlockVar '//I2S(i)
           ELSE
             VarName = ComponentName(Solver % Variable % Name,i)            
           END IF
@@ -400,9 +400,9 @@ CONTAINS
       ! pointers to the components of the full vector.
       !-----------------------------------------------------------------------------------
       IF(ASSOCIATED( Var ) ) THEN
-        CALL Info(Caller,'Using existing variable > '//TRIM(VarName)//' <')		
+        CALL Info(Caller,'Using existing variable > '//VarName//' <')		
       ELSE		
-        CALL Info(Caller,'Variable > '//TRIM(VarName)//' < does not exist, creating')
+        CALL Info(Caller,'Variable > '//VarName//' < does not exist, creating')
         PSolver => Solver
         IF( BlockMatrix % GotBlockStruct ) THEN
           j = COUNT( BlockMatrix % BlockStruct == i ) 
@@ -445,7 +445,7 @@ CONTAINS
     INTEGER :: i,j,k,n,Novar
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var
-    CHARACTER(LEN=max_name_len) :: VarName, str
+    CHARACTER(:), ALLOCATABLE :: VarName, str
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), POINTER :: Vals(:)
     
@@ -463,7 +463,7 @@ CONTAINS
       VarName = ComponentName("Block variable",i)            
       Var => VariableGet( Mesh % Variables, VarName )
       IF(.NOT. ASSOCIATED( Var ) ) THEN
-        CALL Info('BlockInitVar','Variable > '//TRIM(VarName)//' < does not exist, creating')
+        CALL Info('BlockInitVar','Variable > '//VarName//' < does not exist, creating')
         PSolver => Solver
         NULLIFY( Vals )
         ALLOCATE( Vals(n) )
@@ -1563,7 +1563,7 @@ CONTAINS
     REAL(KIND=dp) :: PrecCoeff,val
     INTEGER, POINTER :: ConsPerm(:)
     INTEGER :: DoPrec
-    CHARACTER(LEN=max_name_len) :: VarName
+    CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(Variable_t), POINTER :: Var
     TYPE(Solver_t), POINTER :: PSolver
     LOGICAL :: InheritCM, PrecTrue 
@@ -1738,9 +1738,9 @@ CONTAINS
     VarName = "lambda"
     Var => VariableGet( Solver % Mesh % Variables, VarName )
     IF(ASSOCIATED( Var ) ) THEN
-      CALL Info('BlockPickConstraint','Using existing variable > '//TRIM(VarName)//' <')		
+      CALL Info('BlockPickConstraint','Using existing variable > '//VarName//' <')		
     ELSE		
-      CALL Info('BlockPickConstraint','Variable > '//TRIM(VarName)//' < does not exist, creating')
+      CALL Info('BlockPickConstraint','Variable > '//VarName//' < does not exist, creating')
       PSolver => Solver
       
       n = i1
@@ -1768,7 +1768,7 @@ CONTAINS
     INTEGER :: Novar
 
     INTEGER :: i, RowVar, ColVar, CopyVar
-    CHARACTER(LEN=max_name_len) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     REAL(KIND=dp) :: Coeff
     LOGICAL :: GotIt, GotIt2
     INTEGER, POINTER :: VarPerm(:)
@@ -1785,11 +1785,11 @@ CONTAINS
       i = TotMatrix % Submatrix(RowVar,RowVar) % PrecMat % NumberOfRows 
       IF( i > 0 ) CYCLE
       
-      WRITE (str,'(A,I0)') 'Prec Matrix Diffusion ',RowVar
-      Coeff = ListGetCReal( Params, TRIM(str), GotIt)
+      str = 'Prec Matrix Diffusion '//I2S(RowVar)
+      Coeff = ListGetCReal( Params, str, GotIt)
       
-      WRITE (str,'(A,I0)') 'Prec Matrix Density ',RowVar
-      Coeff = ListGetCReal( Params, TRIM(str), GotIt2)
+      str = 'Prec Matrix Density '//I2S(RowVar)
+      Coeff = ListGetCReal( Params, str, GotIt2)
       
       IF( GotIt .OR. GotIt2 ) THEN
         CALL Info('BlockPrecMatrix','Creating simple preconditioning matrix')
@@ -1808,8 +1808,8 @@ CONTAINS
         END IF
       END IF
 
-      WRITE (str,'(A,I0)') 'Prec Matrix Diagonal ',RowVar
-      Coeff = ListGetCReal( Params, TRIM(str), GotIt)
+      str = 'Prec Matrix Diagonal '//I2S(RowVar)
+      Coeff = ListGetCReal( Params, str, GotIt)
       IF( GotIt ) THEN
         CopyVar = NoVar+1 - RowVar
         PMat => TotMatrix % Submatrix(RowVar,CopyVar) % Mat
@@ -1828,13 +1828,13 @@ CONTAINS
     IF( GotIt ) THEN
       AVAr => VariableGet( Solver % Mesh % Variables, str )
       IF( .NOT. ASSOCIATED( AVar ) ) THEN
-        CALL Fatal('BlockPrecMatrix','Schur variable does not exist: '//TRIM(str))       
+        CALL Fatal('BlockPrecMatrix','Schur variable does not exist: '//str)
       END IF            
       IF( .NOT. ASSOCIATED( AVar % Solver ) ) THEN
-        CALL Fatal('BlockPrecMatrix','Schur solver does not exist for: '//TRIM(str))      
+        CALL Fatal('BlockPrecMatrix','Schur solver does not exist for: '//str)
       END IF
       IF( .NOT. ASSOCIATED( AVar % Solver % Matrix ) ) THEN
-        CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//TRIM(str))       
+        CALL Fatal('BlockPrecMatrix','Schur matrix does not exist for: '//str)
       END IF
 
       CALL Info('BlockPrecMatrix','Using Schur matrix to precondition block '//I2S(NoVar))
@@ -2987,7 +2987,7 @@ CONTAINS
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
         IsComplex, BlockScaling, DoDiagScaling, DoPrecScaling, UsePrecMat, Trans, &
         Isolated, NoNestedScaling
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
 
@@ -3224,7 +3224,7 @@ CONTAINS
             k = l
           END IF
 
-          WRITE( str,'(A,I0,I0)') 'Block Gauss-Seidel Passive ',k,i
+          str = 'Block Gauss-Seidel Passive '//I2S(k)//I2S(i)
           IF( ListGetLogical( Params, str, Found ) ) CYCLE
 
           CALL Info('BlockMatrixPrec','Updating r.h.s for component '//I2S(k),Level=15)
@@ -3777,10 +3777,10 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, CompVar, SolverVar
     TYPE(Variable_t), TARGET :: MonolithicVar
     REAL(KIND=dp) :: TotNorm
+    CHARACTER(:), ALLOCATABLE :: CompName
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: CollMat
     LOGICAL :: Found, HaveMass, HaveDamp, SaveImag, Visited = .FALSE.
-    CHARACTER(LEN=max_name_len) :: CompName
     CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
     
     SAVE Visited, CollMat, CollX, HaveMass, HaveDamp, SaveImag
@@ -4063,7 +4063,7 @@ CONTAINS
           vdofs = Var % Dofs
           IF( vdofs > 1 ) THEN
             DO comp=1,vdofs
-              Compname = ComponentName(Var % Name,comp)
+              CompName = ComponentName(Var % Name,comp)
               CompVar => VariableGet( Solver % Mesh % Variables, Compname )
               CompVar % EigenValues => Var % EigenValues
               CompVar % EigenVectors => Var % EigenVectors(:,comp::vdofs)
@@ -4108,7 +4108,6 @@ CONTAINS
         Coeff
     REAL(KIND=dp), POINTER :: SaveValues(:)
     REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
-    CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
         ReuseMatrix, LS, BlockScaling, BlockMonolithic, Found
     INTEGER :: HaveConstraint, HaveAdd

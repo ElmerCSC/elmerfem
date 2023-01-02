@@ -748,7 +748,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MaskPerm(:)
     LOGICAL, POINTER :: MaskActive(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: ClusterMethod 
+    CHARACTER(:), ALLOCATABLE :: ClusterMethod 
 
     ClusterMethod = ListGetString( Solver % Values,'MG Cluster Method',GotIt)
     IF(.NOT. GotIt ) ClusterMethod = 'default'

@@ -65,7 +65,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Found, Parallel
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
 
     Params => ListGetSolverParams(Solver)
@@ -221,7 +221,6 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
 
      LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
-     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
      INTEGER :: list_ind
      REAL(KIND=dp) :: RotMatrix(3,3), Angles(3,1)
      REAL(KIND=dp), POINTER :: Pmatrix(:,:)
@@ -231,6 +230,7 @@ CONTAINS
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: List
      LOGICAL :: Visited = .FALSE.
+     CHARACTER(:), ALLOCATABLE :: Suffix
 
      SAVE Visited, Suffix, AnyBC, AnyBodyForce, AnyMat, AnyBody
 
@@ -651,14 +651,14 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER :: DGPerm(:)
      INTEGER :: DGCount
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName 
+     CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName 
      
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element, Parent
      INTEGER :: t, n, i, j, k, DGIndex
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      LOGICAL :: Found, ActiveElem, HaveSome
      TYPE(ValueList_t), POINTER :: BF
+     CHARACTER(:), ALLOCATABLE :: EquationName
      
 
      CALL Info('CreateDGPerm','Creating permutation for DG variable',Level=12)
@@ -822,8 +822,8 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, i, j
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      LOGICAL :: Found
+     CHARACTER(:), ALLOCATABLE :: EquationName
      
      CALL Info('CreateNodalPerm','Creating simple permutation for nodal variable',Level=12)
      
@@ -866,14 +866,14 @@ CONTAINS
      TYPE(Solver_t),POINTER :: Solver
      INTEGER, POINTER :: Perm(:)
      INTEGER :: nsize
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName
+     CHARACTER(LEN=*), OPTIONAL :: MaskName, SecName
 
      INTEGER :: t, n, m
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: Found, ActiveElem
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: BF
+     CHARACTER(:), ALLOCATABLE :: EquationName
 
      CALL Info('CreateElementsPerm','Creating permutation for elemental fields',Level=8)
 
@@ -926,18 +926,18 @@ CONTAINS
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER :: FullPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+     CHARACTER(LEN=*) :: MaskName
      INTEGER, POINTER :: MaskPerm(:) 
      INTEGER :: nsize
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: SecName
+     CHARACTER(LEN=*), OPTIONAL :: SecName
          
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, m
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      TYPE(ValueList_t), POINTER :: BF
      LOGICAL :: Found, ActiveElem
      INTEGER, ALLOCATABLE :: Indexes(:)
+     CHARACTER(:), ALLOCATABLE :: EquationName
      
      
      CALL Info('CreateMaskedPerm','Creating variable with mask: '//TRIM(MaskName),Level=8)
@@ -1002,8 +1002,8 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
 
      TYPE(ValueList_t), POINTER :: SolverParams
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
      LOGICAL :: Found
+     CHARACTER(:), ALLOCATABLE :: str
      
      SolverParams => ListGetSolverParams(Solver)
 
@@ -1093,7 +1093,8 @@ CONTAINS
         IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt, &
         GotSecName, NoPerm
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
+    CHARACTER(LEN=MAX_NAME_LEN) :: var_name
+    CHARACTER(:), ALLOCATABLE :: proc_name, tmpname, mask_name,sec_name,eq,str
 
     TYPE(ValueList_t), POINTER :: SolverParams
     TYPE(Mesh_t),   POINTER :: NewMesh,OldMesh
@@ -1387,7 +1388,7 @@ CONTAINS
           Solver % Order = ListGetInteger( CurrentModel % &
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
-        ELSE IF( str(1:5)=='adams') THEN
+        ELSE IF( SEQL(str,'adams')) THEN
           Solver % Order = 2          
         END IF
         CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
@@ -1457,33 +1458,33 @@ CONTAINS
       DO WHILE( var_name(1:1) == '-' )
         IF ( SEQL(var_name, '-noperm ') ) THEN
           NoPerm = .TRUE.
-          var_name(1:LEN(var_name)-8) = var_name(9:)
+          var_name = var_name(9:)
 
         ELSE IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
-          var_name(1:LEN(var_name)-10) = var_name(11:)
+          var_name = var_name(11:)
         
         ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
-          var_name(1:LEN(var_name)-8) = var_name(9:)
+          var_name = var_name(9:)
         
         ELSE IF ( SEQL(var_name, '-ip ') ) THEN
           VariableIp = .TRUE.
-          var_name(1:LEN(var_name)-4) = var_name(5:)
+          var_name = var_name(5:)
 
         ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
-          var_name(1:LEN(var_name)-6) = var_name(7:)
+          var_name = var_name(7:)
                
         ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
-          j = LEN_TRIM( var_name )
+          j = LEN_TRIM(var_name)
           DO WHILE( var_name(i:i) /= ' '  )
             i = i + 1
             IF ( i > j ) EXIT
           END DO
-          var_name(1:LEN(var_name)-i) = var_name(i+1:)
+          var_name = var_name(i+1:)
         ELSE
           CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))
         END IF
@@ -1772,6 +1773,7 @@ CONTAINS
           IF( i1 > 0 ) THEN
             DO WHILE( tmpname(i2:i2) == ' ')
               i2 = i2 + 1 
+              IF(i2>i3) EXIT
             END DO
           END IF
           sec_name = tmpname(1:i1)
@@ -2060,11 +2062,11 @@ CONTAINS
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 
     TYPE(Variable_t), POINTER :: pVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: kword, str, varname
     REAL(KIND=dp), POINTER :: Component(:)
     INTEGER :: k
     LOGICAL :: Found, DoIt
     INTEGER :: TimeOrder
+    CHARACTER(:), ALLOCATABLE :: str,kword
     
     IF( PRESENT( Var ) ) THEN
       pVar => Var
@@ -5035,10 +5037,10 @@ CONTAINS
     LOGICAL, OPTIONAL :: CreateInv
     
     INTEGER :: i, n, Sweep, MeshDim 
-    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Found, HasFCT, Parallel
     TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(:), ALLOCATABLE :: EquationName
     
     IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
 
@@ -5131,8 +5133,8 @@ CONTAINS
      INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, str, Message, Equation
      INTEGER(KIND=AddrInt) :: SolverAddr
+     CHARACTER(:), ALLOCATABLE :: EquationName
 
      INTEGER, ALLOCATABLE :: memb(:)
      TYPE(Matrix_t), POINTER :: M
@@ -5345,9 +5347,9 @@ END BLOCK
 
      CALL Info("SingleSolver", "Attempting to call solver: "//I2S(Solver % SolverId), level=8)
      SolverParams => ListGetSolverParams(Solver)
-     Equation = GetString(SolverParams, 'Equation', GotIt)
+     EquationName = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
-        WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
+        Message = 'Solver Equation string is: '//TRIM(EquationName)
         CALL Info("SingleSolver", Message, level=8)
      END IF
 
@@ -5411,13 +5413,13 @@ END BLOCK
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
      TYPE(Variable_t), POINTER :: TimeVar, IterV
-     CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
 
      INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar, Var
+     CHARACTER(:), ALLOCATABLE :: str, CoordTransform
         
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5565,9 +5567,8 @@ END BLOCK
      END DO
      IF ( IsPassiveBC ) THEN
        CALL GetPassiveBoundary( Model, Model % Mesh, PassiveBcId )
-       WRITE(Message, '(A,I0,A,I0,A)' ) &
-           'Passive element BC no. ',j, ' assigned to BC-ID no. ', &
-           PassiveBcId
+       Message = 'Passive element BC no. '//I2S(j)//' assigned to BC-ID no. '// &
+            I2S(PassiveBcId)
        CALL Info('MainUtils',Message,Level=6)
      END IF
 

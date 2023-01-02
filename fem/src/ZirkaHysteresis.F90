@@ -821,7 +821,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
   INTEGER, PARAMETER :: n_dir_default = 8
   logical :: found, zeroinit, HasZirka
   integer :: n_dir, n_zirka_mat, n_initialized, n_cachesubsample
-  CHARACTER(len=MAX_NAME_LEN) :: str
+  CHARACTER(:), ALLOCATABLE :: str
   type(GlobalHysteresisModel_t), POINTER :: zirkamodel
   type(Variable_t), POINTER :: hystvar
   type(ZirkaABC_t), POINTER :: ABCParams
@@ -984,9 +984,9 @@ FUNCTION CreateZirkaVariable(Material) RESULT(var)
   TYPE(ValueList_t), POINTER, intent(in) :: Material
   TYPE(Variable_t), POINTER :: var
 !-------------------------------------------------------------------------------
-  CHARACTER(len=MAX_NAME_LEN) :: str
   type(mesh_t), pointer :: mesh
   logical :: found
+  CHARACTER(:), ALLOCATABLE :: str
 
   mesh => getmesh()
 
@@ -1001,7 +1001,7 @@ FUNCTION CreateZirkaVariable(Material) RESULT(var)
   BLOCK
     LOGICAL :: HasZirka, Found
     TYPE(ValueListEntry_t), POINTER :: zmat
-    CHARACTER(len=MAX_NAME_LEN) :: maskname, mask_sec
+    CHARACTER(:), ALLOCATABLE :: maskname, mask_sec
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Values(:)
     type(Solver_t), POINTER :: PSolver
@@ -1032,7 +1032,7 @@ FUNCTION GetZirkaVariable(Material) RESULT(ZirkaVariable) ! {{{
   TYPE(ValueList_t), POINTER, intent(in) :: Material
   TYPE(Variable_t), POINTER :: ZirkaVariable
 !-------------------------------------------------------------------------------
-  CHARACTER(len=MAX_NAME_LEN) :: str
+  CHARACTER(:), ALLOCATABLE :: str
   type(mesh_t), pointer :: mesh
   logical :: found
 

@@ -1491,7 +1491,6 @@ END SUBROUTINE FetiProject
     LOGICAL :: Found
     REAL(KIND=dp) :: xc,yc,zc,hc,ss
     INTEGER, ALLOCATABLE :: floatinds(:)
-    CHARACTER(MAX_NAME_LEN) :: Method
     COMPLEX(KIND=dp) :: EigValues(maxnz)
     COMPLEX(KIND=dp), ALLOCATABLE :: EigVectors(:,:)
 !------------------------------------------------------------------------------

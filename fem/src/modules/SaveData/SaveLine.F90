@@ -124,8 +124,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes, LineNodes
   TYPE(Element_t), POINTER   :: CurrentElement
   CHARACTER(LEN=MAX_NAME_LEN) :: SideFile, SideNamesFile, VarName, Name, CondName, &
-       TempName, MaskName, PrevMaskName, SideParFile, DateStr, OutputDirectory
+       TempName, MaskName, PrevMaskName, SideParFile, DateStr
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
   LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis

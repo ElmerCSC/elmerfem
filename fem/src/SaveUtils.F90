@@ -328,7 +328,7 @@ CONTAINS
     LOGICAL GotIt, SkipHalo, SaveOnlyHalo, GotMaskName, GotMaskCond, MaskExists, &
         SaveBulkOnly, SaveBoundariesOnly, GroupCollection, IsBoundaryElement, &
         IsHalo, Hit
-    CHARACTER(MAX_NAME_LEN) :: Str, MaskName
+    CHARACTER(:), ALLOCATABLE :: Str, MaskName
     REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
     INTEGER :: LeftIndex, RightIndex, ElemFirst, ElemLast, n, m, i, k, l
     TYPE(Variable_t), POINTER :: MaskVar

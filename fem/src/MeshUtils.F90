@@ -355,7 +355,7 @@ CONTAINS
      CHARACTER(MAX_NAME_LEN) :: str, RESULT
 
      TYPE(ValueList_t), POINTER :: BodyParams
-     CHARACTER(MAX_NAME_LEN) :: ElementDefBody
+     CHARACTER(:), ALLOCATABLE :: ElementDefBody
      
      BodyParams => Model % Bodies(BodyId) % Values
 
@@ -614,11 +614,11 @@ CONTAINS
    INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem, OtherElem
-   CHARACTER(MAX_NAME_LEN) :: DiscontFlag
    LOGICAL :: CheckForHalo
    LOGICAL, POINTER :: HaloNode(:)
    TYPE(ValueList_t), POINTER :: BCList
    LOGICAL :: DoneThisAlready = .FALSE.
+   CHARACTER(:), ALLOCATABLE :: DiscontFlag
    CHARACTER(*), PARAMETER :: Caller = 'CreateDiscontMesh'
 
    IF(.NOT.PRESENT(DoAlways)) THEN
@@ -1446,12 +1446,12 @@ CONTAINS
    TYPE(Mesh_t), POINTER :: Mesh
    INTEGER :: PrevStep=0, iostat
    INTEGER, PARAMETER :: FileUnit = 10
-   CHARACTER(MAX_NAME_LEN) :: BaseName, FileName
    INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype = 0, numprocs = 0
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
    LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel, &
        PseudoParallel, Found
+   CHARACTER(:), ALLOCATABLE :: BaseName, FileName
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
@@ -2192,12 +2192,12 @@ CONTAINS
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
    LOGICAL :: GotIt, Found
-   CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
-   CHARACTER(*), PARAMETER :: Caller='LoadMesh'
    TYPE(ValueList_t), POINTER :: VList
+   CHARACTER(:), ALLOCATABLE :: FileName
+   CHARACTER(*), PARAMETER :: Caller='LoadMesh'
 
    Mesh => Null()
    
@@ -3904,7 +3904,6 @@ CONTAINS
      CHARACTER(LEN=*) :: FileName
      TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: MAXLEN=1024
     CHARACTER(LEN=:), ALLOCATABLE :: str
     INTEGER :: i,j,n
     INTEGER, PARAMETER :: FileUnit = 10
@@ -4020,11 +4019,9 @@ CONTAINS
       IF ( ASSOCIATED( Mesh, Solver % Mesh ) ) THEN
         Stabilize = Stabilize .OR. &
             ListGetLogical( Solver % Values, 'Stabilize', Stat )
-        Stabilize = Stabilize .OR. &
-            ListGetString( Solver % Values,  &
+        Stabilize = Stabilize .OR. ListGetString( Solver % Values,  &
             'Stabilization Method', Stat )=='vms'
-        Stabilize = Stabilize .OR. &
-            ListGetString( Solver % Values,  &
+        Stabilize = Stabilize .OR.  ListGetString( Solver % Values, &
             'Stabilization Method', Stat )=='stabilized'
       END IF
     END DO
@@ -4375,8 +4372,8 @@ CONTAINS
     INTEGER, ALLOCATABLE :: BCCount(:)
     REAL(KIND=dp) :: x,y,z,f
     REAL(KIND=dp), ALLOCATABLE :: BCVal(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
     LOGICAL :: Debug = .FALSE., Hit
+    CHARACTER(:), ALLOCATABLE :: str
     
     ! The code can detect pairs to be glued in different coordinate systems
     SELECT CASE( BCMode )
@@ -14477,12 +14474,12 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: InvPerm(:)
     LOGICAL, OPTIONAL :: Parallel
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
     INTEGER :: i,j,ii,jj
     REAL(KIND=dp) :: rowsum, dia, val
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
     INTEGER, POINTER :: GlobalDofs(:)
+    CHARACTER(:), ALLOCATABLE :: Filename
     CHARACTER(*), PARAMETER :: Caller = "SaveProjector"
     
     IF(.NOT.ASSOCIATED(Projector)) RETURN
@@ -14845,8 +14842,8 @@ CONTAINS
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
     REAL(KIND=dp) :: NodeScale, EdgeScale, Radius, Coeff, val 
     TYPE(ValueList_t), POINTER :: BC
-    CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix
     TYPE(Variable_t), POINTER :: v
+    CHARACTER(MAX_NAME_LEN) :: FilePrefix
     CHARACTER(*), PARAMETER :: Caller="PeriodicProjector"
     
     INTERFACE
@@ -15632,7 +15629,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: ExtrudedMeshName
+    CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
     INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
@@ -16188,7 +16185,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: ExtrudedMeshName
+    CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
     INTEGER :: i,j,k,l,n,m,cnt,ind(8),bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n,totalnumberofelements
     INTEGER, POINTER :: pInds(:)
@@ -16788,17 +16785,17 @@ CONTAINS
     INTEGER, POINTER :: BList(:)
     INTEGER, ALLOCATABLE :: ElementCodes(:)
     LOGICAL :: Parallel, WarnNoTarget, Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: headerFN, elementFN, nodeFN,&
+    CHARACTER(:), ALLOCATABLE :: headerFN, elementFN, nodeFN,&
          boundFN, sharedFN
 !------------------------------------------------------------------------------
 
     IF(PRESENT(Partition)) THEN
        Parallel = .TRUE.
-       WRITE(headerFN, '(A,I0,A)') '/part.',Partition+1,'.header'
-       WRITE(elementFN, '(A,I0,A)') '/part.',Partition+1,'.elements'
-       WRITE(nodeFN, '(A,I0,A)') '/part.',Partition+1,'.nodes'
-       WRITE(boundFN, '(A,I0,A)') '/part.',Partition+1,'.boundary'
-       WRITE(sharedFN, '(A,I0,A)') '/part.',Partition+1,'.shared'
+       headerFN = '/part.'//I2S(Partition+1)//'.header'
+       elementFN = '/part.'//I2S(Partition+1)//'.elements'
+       nodeFN =  '/part.'//I2S(Partition+1)//'.nodes'
+       boundFN = '/part.'//I2S(Partition+1)//'.boundary'
+       sharedFN ='/part.'//I2S(Partition+1)//'.shared'
     ELSE
        Parallel = .FALSE.
        headerFN = '/mesh.header'
@@ -16991,23 +16988,23 @@ CONTAINS
     INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeCounts(827),&
          Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
     LOGICAL :: Found, Hit
-    CHARACTER(LEN=MAX_NAME_LEN) :: DirectoryName, PrefixName
+    CHARACTER(:), ALLOCATABLE :: DirectoryName, PrefixName
 !------------------------------------------------------------------------------
 
     NoPartitions = MAXVAL( ElementPart ) 
     NumElmCodes = 0
     NumElements = Mesh % NumberOfBoundaryElements + Mesh % NumberOfBulkElements
         
-    WRITE(DirectoryName, '(A,A,I0)') TRIM(PATH),'/partitioning.',NoPartitions
-    CALL MakeDirectory( TRIM(DirectoryName) // CHAR(0) )
-    CALL Info('WriteMeshToDiskPartitioned','Writing parallel mesh to disk: '//TRIM(DirectoryName))
+    DirectoryName = TRIM(PATH)//'/partitioning.'//I2S(NoPartitions)
+    CALL MakeDirectory( DirectoryName // CHAR(0) )
+    CALL Info('WriteMeshToDiskPartitioned','Writing parallel mesh to disk: '//DirectoryName)
    
 
     DO Partition = 1, NoPartitions 
       
       CALL Info('WriteMeshToDiskPartitioned','Writing piece to file: '//I2S(Partition),Level=12)
       
-      WRITE( PrefixName,'(A,A,I0)') TRIM(DirectoryName),'/part.',Partition  
+      PrefixName = DirectoryName//'/part.'//I2S(Partition)
 
       CALL Info('WriteMeshToDiskPartitioned','Write nodes file',Level=12)
       OPEN( 1,FILE=TRIM(PrefixName) // '.nodes', STATUS='UNKNOWN' )
@@ -18465,7 +18462,7 @@ END SUBROUTINE FindNeighbourNodes
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
      TYPE(Variable_t), POINTER :: TimeVar, SaveVar, Var
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
@@ -21463,7 +21460,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Quadrant_t), POINTER, SAVE :: RootQuadrant =>NULL(), LeafQuadrant
     REAL(kind=dp) :: BoundingBox(6), eps2, eps1 = 1d-3, GlobalEps, LocalEps
-    CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+    CHARACTER(:), ALLOCATABLE :: MaskName
 
 
     SAVE :: Allocated, ElementNodes, DummySearch, Mesh, MaskName, MaskExists, &
@@ -21704,7 +21701,7 @@ CONTAINS
         MaxTop, MinBot, MaxBot
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
+    CHARACTER(:), ALLOCATABLE :: VarName, CoordTransform
     CHARACTER(*), PARAMETER :: Caller="DetectExtrudedStructure"
    
     CALL Info(Caller,'Determining extruded structure',Level=6)
@@ -22275,7 +22272,7 @@ CONTAINS
     
     !---------------------------------------------------------------
     SUBROUTINE CoordinateTransformationNodal( CoordTransform, R )
-      CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform
+      CHARACTER(LEN=*) :: CoordTransform
       REAL(KIND=dp) :: R(3)
       !---------------------------------------------------------------
       REAL(KIND=dp) :: Rtmp(3)
@@ -22356,7 +22353,6 @@ CONTAINS
     REAL(KIND=dp) :: FaceCenter(3),FaceDx(3),Height(2),Eps, MinTop, MaxTop, MinBot, MaxBot, Diam
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
     INTEGER :: TestCounter(3),ElementIndex(2)
     CHARACTER(*),PARAMETER :: Caller="DetectExtrudedElements"
          
@@ -22728,7 +22724,7 @@ CONTAINS
   SUBROUTINE CoordinateTransformation( Mesh, CoordTransform, Params, &
       IrreversibleTransformation )
     TYPE(Mesh_t), POINTER :: Mesh
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform
+    CHARACTER(LEN=*) :: CoordTransform
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL, OPTIONAL :: IrreversibleTransformation
     !---------------------------------------------------------------   
@@ -23097,7 +23093,7 @@ CONTAINS
         SumCoord(3), AveCoord(3), Weights(3), RefScore, Score, &
         PosMeasure, NegMeasure, OffLineCoeff, DirDistance, &
         InLine, OffLine, Dist, MinDist, InLineMeasure, ScoreLimit
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method
+    CHARACTER(:), ALLOCATABLE :: Method
 !---------------------------------------------------------------
 
     CALL Info('FindRigidBodyFixingNodes','Starting',Level=6)
@@ -23413,8 +23409,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementType_t),POINTER :: elmt
     REAL(KIND=dp) :: MeshVector(3), Length, Coord(3)
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshName
     REAL(KIND=dp), ALLOCATABLE :: w(:)
+    CHARACTER(:), ALLOCATABLE :: MeshName
     
 !------------------------------------------------------------------------------
     Mesh => NULL()
@@ -23538,7 +23534,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementType_t),POINTER :: elmt
     REAL(KIND=dp) :: MeshVector(3), Length, Coord(3)
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshName, FuncName="CreateRectangularMesh"
+    CHARACTER(*), PARAMETER :: FuncName="CreateRectangularMesh"
 
 !------------------------------------------------------------------------------
     Mesh => NULL()
@@ -25113,11 +25109,11 @@ CONTAINS
 !------------------------------------------------------------------------------    
    TYPE(ParallelInfo_t), POINTER :: ParInfo=>NULL()
    TYPE(ValueList_t), POINTER :: Params
-   CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile
    INTEGER :: i,j,k,n,maxnei
    LOGICAL :: Found, MeshMode, MatrixMode
    CHARACTER(*), PARAMETER :: Caller = "SaveParallelInfo"
    TYPE(Nodes_t), POINTER :: Nodes
+   CHARACTER(:), ALLOCATABLE :: dumpfile
    
    Params => Solver % Values 
 
@@ -25867,13 +25863,13 @@ CONTAINS
         NodeCnt, FaceCnt, Node, ParentId 
     LOGICAL :: Found, EdgesPresent
     TYPE(Element_t), POINTER :: Enew,Eold,Edge,Eptr,Parent 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str       
     INTEGER, POINTER :: Child(:,:)
     REAL(KIND=dp) :: h1,h2,hprod,r,s1,s2 
     REAL(KIND=dp), POINTER :: stime(:)
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
     INTEGER :: BodyOffset, SgnNode, BodyCount, LevelsetBC
     LOGICAL :: PosOffset, BulkParent, Parallel
+    CHARACTER(:), ALLOCATABLE :: str       
     CHARACTER(*), PARAMETER :: Caller = 'SplitMeshLevelset'
         
 !------------------------------------------------------------------------------
@@ -27012,7 +27008,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: Coord(3), eps, val, rad, phi, phimin, phimax, RuleC
     LOGICAL :: Found, Hit, Parallel
-    CHARACTER(MAX_NAME_LEN) :: RuleStr
+    CHARACTER(:), ALLOCATABLE :: RuleStr
     CHARACTER(*), PARAMETER :: Caller = 'TagBCsUsingLevelset'
      
     
@@ -27322,8 +27318,7 @@ CONTAINS
     END SUBROUTINE TagElements
     
   END SUBROUTINE TagBCsUsingLevelset
-    
-  
+
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------

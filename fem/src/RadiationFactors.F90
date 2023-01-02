@@ -407,12 +407,12 @@
 
        OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'
 
-       INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
+       INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'
        END IF
 
-       OPEN( VFUnit,File=TRIM(OutputName) )
+       OPEN( VFUnit,File=OutputName )
        dx = MAXVAL(Mesh % Nodes % x) - MINVAL(Mesh % Nodes % x)
        dy = MAXVAL(Mesh % Nodes % y) - MINVAL(Mesh % Nodes % y)
        dz = MAXVAL(Mesh % Nodes % z) - MINVAL(Mesh % Nodes % z)
@@ -443,7 +443,7 @@
 
        IF(.NOT. Found) THEN
          HasChanged = .TRUE.
-         CALL Info('RadiationFactors','Mismatch in coordinates compared to file: '//TRIM(OutputName))
+         CALL Info('RadiationFactors','Mismatch in coordinates compared to file: '//OutputName)
        ELSE
          WRITE(Message,'(A,E15.5)') 'Maximum geometry alteration on radiation BCs:',maxds
          CALL Info('RadiationFactors',Message)
@@ -551,7 +551,7 @@
        IF( UpdateGeometry ) THEN
          CALL Info('RadiationFactors','Temporarily updating the mesh.nodes file!',Level=5)
          
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
+         OutputName  = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
          CALL Rename(OutputName, OutputName2)         
 
@@ -566,7 +566,7 @@
            END DO
          END IF
 
-         OPEN( VFUnit,FILE=TRIM(OutputName), STATUS='unknown' )                 
+         OPEN( VFUnit,FILE=OutputName, STATUS='unknown' )                 
          DO i=1,Mesh % NumberOfNodes
            Coord(1) = Mesh % Nodes % x(i)
            Coord(2) = Mesh % Nodes % y(i)
@@ -617,12 +617,12 @@
        
            IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
              OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
-                     // '/' // TRIM(ViewFactorsFile)
+                     // '/' // ViewFactorsFile
            ELSE
-             OutputName = TRIM(ViewFactorsFile)
+             OutputName = ViewFactorsFile
            END IF
            IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
-           INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
+           INQUIRE(FILE=OutputName,EXIST=Found)
            IF(.NOT. Found) FilesExist = .FALSE.
          END DO
          IF(.NOT. FilesExist) ComputeViewFactors = .TRUE.
@@ -636,12 +636,12 @@
          
            IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
              OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
-                     // '/' // TRIM(RadiatorFactorsFile)
+                     // '/' // RadiatorFactorsFile
            ELSE
-             OutputName = TRIM(RadiatorFactorsFile)
+             OutputName = RadiatorFactorsFile
            END IF
            IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
-           INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
+           INQUIRE(FILE=OutputName,EXIST=Found)
            IF(.NOT. Found) FilesExist = .FALSE.
          END DO
          IF(.NOT. FilesExist) ComputeRadiatorFactors = .TRUE.
@@ -673,14 +673,14 @@
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
-                 '/' // TRIM(RadiatorFactorsFile)
+                 '/' // RadiatorFactorsFile
        ELSE
-            OutputName = TRIM(RadiatorFactorsFile)
+            OutputName = RadiatorFactorsFile
        END IF
 
-       INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
+       INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'Radiator Factors File does NOT exist:',TRIM(OutputName)
+         WRITE(Message,*) 'Radiator Factors File does NOT exist:',OutputName
          CALL Info('RadiationFactors','Message')
          Success = .FALSE.
          RETURN
@@ -690,8 +690,8 @@
        IF(.NOT. Found) BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
          
        IF( BinaryMode ) THEN
-         CALL Info('RadiationFactors','Loading radiator factors from binary file: '//TRIM(OutputName),Level=5)
-         OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+         CALL Info('RadiationFactors','Loading radiator factors from binary file: '//OutputName,Level=5)
+         OPEN( UNIT=VFUnit, FILE=OutputName, FORM = 'unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read' )         
          READ( VFUnit ) n
          IF( n /= RadiationSurfaces ) THEN
@@ -699,8 +699,8 @@
                //I2S(n)//' vs. '//I2S(RadiationSurfaces))
          END IF
        ELSE
-         CALL Info('RadiationFactors','Loading radiator factors from ascii file: '//TRIM(OutputName),Level=5)
-         OPEN( VFUnit,File=TRIM(OutputName) )
+         CALL Info('RadiationFactors','Loading radiator factors from ascii file: '//OutputName,Level=5)
+         OPEN( VFUnit,File=OutputName )
        END IF
 
        IF( .NOT. ListCheckPresentAnyBodyForce( Model,'Radiator Coordinates',RadList ) ) &
@@ -783,16 +783,16 @@
 
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
-             '/' // TRIM(ViewFactorsFile)
+             '/' // ViewFactorsFile
        ELSE
-         OutputName = TRIM(ViewFactorsFile)
+         OutputName = ViewFactorsFile
        END IF
 
        IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
 
-       INQUIRE(FILE=TRIM(OutputName),EXIST=Found)
+       INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'View Factors File does NOT exist:',TRIM(OutputName)
+         WRITE(Message,*) 'View Factors File does NOT exist:',OutputName
          CALL Info('RadiationFactors','Message')
          Success = .FALSE.
          RETURN
@@ -801,9 +801,9 @@
        BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
 
        IF( BinaryMode ) THEN
-         CALL Info('RadiationFactors','Loading view factors from binary file: '//TRIM(OutputName),Level=5)
+         CALL Info('RadiationFactors','Loading view factors from binary file: '//OutputName,Level=5)
 
-         OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+         OPEN( UNIT=VFUnit, FILE=OutputName, FORM = 'unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read' )         
          READ( VFUnit ) n
          IF( n /= RadiationSurfaces ) THEN
@@ -813,8 +813,8 @@
            RETURN
          END IF
        ELSE
-         CALL Info('RadiationFactors','Loading view factors from ascii file: '//TRIM(OutputName),Level=5)
-         OPEN( VFUnit,File=TRIM(OutputName) )
+         CALL Info('RadiationFactors','Loading view factors from ascii file: '//OutputName,Level=5)
+         OPEN( VFUnit,File=OutputName )
        END IF
 
        ! Read in the ViewFactors
@@ -2019,16 +2019,16 @@
 
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
          OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
-             '/' // TRIM(GebhartFactorsFile)
+             '/' // GebhartFactorsFile
        ELSE
-         OutputName = TRIM(GebhartFactorsFile) 
+         OutputName = GebhartFactorsFile
        END IF
 
        IF(RadiationBody > 1) OutputName = OutputName//I2S(RadiationBody)
 
-       OPEN( VFUnit,File=TRIM(OutputName) )
+       OPEN( VFUnit,File=OutputName )
 
-       WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',TRIM(OutputName)
+       WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',OutputName
        CALL Info('RadiationFactors',Message,Level=5)
 
        WRITE( VFUnit,* ) RadiationSurfaces

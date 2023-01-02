@@ -605,7 +605,7 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       TYPE(Model_t) :: Model
       CHARACTER(LEN=*) :: Equation
-      CHARACTER(LEN=MAX_NAME_LEN) :: PrevEquation
+      CHARACTER(:), ALLOCATABLE :: PrevEquation
       
       LOGICAL :: Flag,Found,PrevFlag
 
@@ -1121,7 +1121,7 @@ CONTAINS
       LOGICAL, OPTIONAL :: IpPoints
       CHARACTER(LEN=*), OPTIONAL :: VarSuffix
 !------------------------------------------------------------------------------
-      CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+      CHARACTER(:), ALLOCATABLE :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
       INTEGER :: i,nsize, ndofs, FieldType
       LOGICAL :: IsPerm, IsGlobal, IsIPPoints
@@ -1268,8 +1268,8 @@ CONTAINS
       INTEGER :: i,k,n, DOFs, MAXNDOFs
       LOGICAL :: Found, GlobalBubbles, UseProjector, HackMesh
       CHARACTER(LEN=LEN_TRIM(Name)) :: str
-      CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       DOUBLE PRECISION :: t1
+      CHARACTER(:), ALLOCATABLE :: tmpname
 !------------------------------------------------------------------------------
       INTERFACE
         SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
@@ -3858,16 +3858,13 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
-     CHARACTER(LEN=MAX_NAME_LEN) :: S
+     CHARACTER(:), ALLOCATABLE :: S
      CHARACTER(*), OPTIONAL :: DefValue
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
-     IF(PRESENT(DefValue)) THEN
-       S = TRIM(DefValue)
-     ELSE
-       S = ' '
-     END IF
+     S = ' '
+     IF(PRESENT(DefValue)) S = TRIM(DefValue)
 
      ptr => ListFind(List,Name,Found)
      IF (.NOT.ASSOCIATED(ptr) ) THEN
@@ -3881,15 +3878,13 @@ CONTAINS
      END IF
      
      IF( ptr % Type == LIST_TYPE_STRING ) THEN     
-       S = ptr % Cvalue
+       S = TRIM(ptr % Cvalue)
      ELSE
        CALL Fatal('ListGetString','Invalid list type: '//TRIM(Name))
      END IF
-       
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 !> Get a constant real from the list by its name. 
@@ -4138,8 +4133,8 @@ CONTAINS
 
     LOGICAL, OPTIONAL :: Found, FatalFound
     LOGICAL :: LFound, LFatal
-    CHARACTER(LEN=MAX_NAME_LEN) ::  str
     INTEGER :: k
+    CHARACTER(LEN=LEN(SectionName)) ::  str
     
     k = StringToLowerCase( str,SectionName )
         
@@ -6291,10 +6286,10 @@ CONTAINS
      CHARACTER(LEN=*) :: RefValue     
      LOGICAL :: Same
 !------------------------------------------------------------------------------     
-     CHARACTER(LEN=MAX_NAME_LEN) :: ThisValue     
      TYPE(ValueList_t), POINTER :: List
      LOGICAL :: Found, EndLoop
      INTEGER :: id, n
+     CHARACTER(:), ALLOCATABLE :: ThisValue     
 !------------------------------------------------------------------------------
 
      Same = .FALSE.
@@ -9138,11 +9133,11 @@ CONTAINS
 
     CHARACTER(LEN=*) :: Keyword0
     TYPE(ValueList_t), POINTER  :: List
-    CHARACTER(LEN=MAX_NAME_LEN) :: Keyword
+    CHARACTER(:), ALLOCATABLE :: Keyword
     INTEGER :: No
     
     DO No = 1, 9999
-      WRITE( Keyword,'(A,I0)') TRIM(Keyword0)//' ',No
+      Keyword = TRIM(Keyword0)//' '//I2S(No)
       IF( .NOT. ListCheckPresent(List,Keyword)) EXIT
     END DO
 

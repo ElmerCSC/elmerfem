@@ -278,8 +278,8 @@ MODULE ComponentUtils
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams
      TYPE(Variable_t), POINTER :: Var
-     CHARACTER(LEN=MAX_NAME_LEN) :: OperName
      REAL(KIND=dp) :: OperX
+     CHARACTER(LEN=*) :: OperName
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -484,7 +484,7 @@ MODULE ComponentUtils
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams 
      TYPE(Variable_t), POINTER :: Var 
-     CHARACTER(LEN=MAX_NAME_LEN) :: OperName, CoeffName
+     CHARACTER(LEN=*) :: OperName, CoeffName
      LOGICAL :: GotCoeff
      REAL(KIND=dp) :: OperX
 !------------------------------------------------------------------------------
@@ -700,7 +700,7 @@ MODULE ComponentUtils
     INTEGER, POINTER :: ComponentList(:)
 
     INTEGER :: i,j,NoVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName, TmpOper
+    CHARACTER(:), ALLOCATABLE :: OperName, VarName, CoeffName, TmpOper
     LOGICAL :: GotVar, GotOper, GotCoeff, VectorResult
     TYPE(ValueList_t), POINTER :: CompParams
     REAL(KIND=dp) :: ScalarVal, VectorVal(3), Power, Voltage

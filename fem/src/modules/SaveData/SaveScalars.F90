@@ -163,8 +163,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
       VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, OldOper0, ParOper, Name, &
-      CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
+      CoefficientName, ScalarParFile, MinOper, MaxOper, &
       MaskName, OldMaskName, SaveName
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &

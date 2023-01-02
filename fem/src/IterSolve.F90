@@ -185,7 +185,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Params
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
@@ -493,12 +493,10 @@ CONTAINS
 
     
     IF ( .NOT. PRESENT(PrecF) ) THEN
-      str = ListGetString( Params, &
-          'Linear System Preconditioning',gotit )
+      str = ListGetString( Params, 'Linear System Preconditioning',gotit )
       IF ( .NOT.gotit ) str = 'none'
       
-      A % Cholesky = ListGetLogical( Params, &
-          'Linear System Symmetric ILU', Gotit )
+      A % Cholesky = ListGetLogical( Params,'Linear System Symmetric ILU', Gotit )
       
       ILUn = -1
       IF ( str == 'none' ) THEN
@@ -515,13 +513,15 @@ CONTAINS
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
-        IF ( .NOT.gotit ) &
-            ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        IF ( .NOT.gotit ) THEN
+          IF(LEN(str)>=4) ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        END IF
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
 
       ELSE IF ( SEQL(str, 'bilu') ) THEN
-        ILUn = ICHAR(str(5:5)) - ICHAR('0')
+        ILUn = 0
+        IF(LEN(str)>=5) ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
           CALL Warn('IterSolver','BILU for one dofs is equal to ILU!')

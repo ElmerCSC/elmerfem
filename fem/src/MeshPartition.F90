@@ -113,7 +113,8 @@ CONTAINS
     LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
     LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface", ImbTolStr, Messageq
+    CHARACTER(MAX_NAME_LEN) :: ImbTolStr
+    CHARACTER(*), PARAMETER :: FuncName="Zoltan_Interface"
 
     !Zoltan things
     TYPE(Zoltan_Struct), POINTER :: zz_obj
@@ -566,7 +567,7 @@ CONTAINS
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GlobalElemAdjacency"
+    CHARACTER(*), PARAMETER :: FuncName="GlobalElemAdjacency"
     TYPE FaceShare_t
        INTEGER :: count
        INTEGER, ALLOCATABLE :: GFaceIDX(:), GParIDX(:),GParLIDX(:)
@@ -792,7 +793,7 @@ CONTAINS
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="LocalElemAdjacency"
+    CHARACTER(*), PARAMETER :: FuncName="LocalElemAdjacency"
 
     NBulk = Mesh % NumberOfBulkElements
     IF( NBulk == 0 ) RETURN
@@ -963,7 +964,7 @@ CONTAINS
     LOGICAL :: Debug
     LOGICAL, ALLOCATABLE :: IsNeighbour(:), keep_mask(:)
     LOGICAL, POINTER :: SharedNode(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="MeshParallelDualGraph"
+    CHARACTER(*), PARAMETER :: FuncName="MeshParallelDualGraph"
 
     TYPE PartShareList_t
        INTEGER, ALLOCATABLE :: GNodeNums(:), NodeNums(:), GElemNums(:),&
@@ -1736,7 +1737,7 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Nodeno_map(:),EIdx_map(:)
     INTEGER, POINTER :: NodeIndexes(:), work_pInt(:)
     LOGICAL, POINTER :: RmElement(:),work_logical(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CutMesh"
+    CHARACTER(*), PARAMETER :: FuncName="CutMesh"
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     NBdry = Mesh % NumberOfBoundaryElements
@@ -4605,7 +4606,7 @@ CONTAINS
       LOGICAL :: IsBoundary      
       INTEGER :: PartOffset, PartOffsetBC
      
-      CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform, SetMethod
+      CHARACTER(:), ALLOCATABLE :: CoordTransform, SetMethod
       LOGICAL :: GotCoordTransform, SetNodes
       INTEGER :: SumPartitions, NoPartitions, NoCand
       LOGICAL :: Found, GotMethod

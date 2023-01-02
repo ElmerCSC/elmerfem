@@ -301,7 +301,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: slen,n_Circuits
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
@@ -333,8 +334,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: nofc, char_len, slen, CId, i
-    CHARACTER(LEN=MAX_NAME_LEN) :: Var_type
-    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
+    CHARACTER(LEN=*) :: Var_type
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
     TYPE(Circuit_t), POINTER :: Circuit
     
     Circuit => CurrentModel % Circuits(CId)
@@ -360,8 +362,9 @@ CONTAINS
     IMPLICIT NONE
     INTEGER :: nofc, nofvar, slen, CId, i, j, CompId, ibracket
     INTEGER :: ComponentIDs(nofvar)
-    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     nofc = 0
     ComponentIDs = -1
@@ -417,10 +420,11 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc, ibracket
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
     LOGICAL :: LondonEquations = .FALSE.
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
 
@@ -514,8 +518,9 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId, n, slen 
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     
@@ -536,8 +541,7 @@ END FUNCTION isComponentName
   SUBROUTINE AllocateCircuit(CId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: slen,CId,n
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
     Circuit => CurrentModel % Circuits(CId)
@@ -1088,8 +1092,9 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
@@ -1114,8 +1119,9 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
@@ -1324,12 +1330,11 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t), POINTER :: CVar
     TYPE(Variable_t), POINTER :: Var, VarIm
     INTEGER :: p,i,n,nv,ni,m,iv,nsize
-    CHARACTER(LEN=MAX_NAME_LEN) :: CrtName,VarName,VarnameIm
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Found 
+    CHARACTER(:), ALLOCATABLE :: CrtName,VarName,VarnameIm
     
     IF( .NOT. ListGetLogical( Solver % Values,'Export Circuit Variables',Found ) ) RETURN
-    
 
     CALL Info('Circuit_ToMeshVariable','Adding circuit variables to be mesh variables')
     
@@ -1366,17 +1371,17 @@ END FUNCTION isComponentName
       DO iv=1,2      
         IF( Circuit % Harmonic ) THEN
           IF(iv==1) THEN
-            varname =  TRIM(crtname)//' i re'
-            varnameim =  TRIM(crtname)//' i im'
+            varname =  crtname//' i re'
+            varnameim =  crtname//' i im'
           ELSE
-            varname = TRIM(crtname)//' v re'
-            varnameim = TRIM(crtname)//' v im'
+            varname = crtname//' v re'
+            varnameim = crtname//' v im'
           END IF
         ELSE
           IF(iv==1) THEN
-            varname =  TRIM(crtname)//' i'
+            varname =  crtname//' i'
           ELSE
-            varname = TRIM(crtname)//' v'
+            varname = crtname//' v'
           END IF
         END IF
         

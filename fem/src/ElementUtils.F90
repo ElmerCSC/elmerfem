@@ -310,7 +310,7 @@ CONTAINS
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, Left, Right
-    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    CHARACTER(:), ALLOCATABLE :: RadiationFlag
     LOGICAL :: GotIt, PSA
     CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrix'
 !------------------------------------------------------------------------------
@@ -1141,7 +1141,7 @@ CONTAINS
     INTEGER :: CurrentColour, BoundaryColour, CurrentColourStart, &
           CurrentColourEnd, NumberOfMeshColours
     LOGICAL :: NeedLocking, GotIt
-    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    CHARACTER(:), ALLOCATABLE :: RadiationFlag
     CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrixArray'
 !------------------------------------------------------------------------------
 
@@ -1724,7 +1724,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: A
      TYPE(Element_t), POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: CList
-     CHARACTER(LEN=MAX_NAME_LEN) :: Eq, str
+     CHARACTER(:), ALLOCATABLE :: Eq,str
      LOGICAL :: GotIt, DG, GB, UseOptimized, Found
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
            minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat, &
@@ -1835,8 +1835,13 @@ CONTAINS
      
      Mesh % MaxBDOFs = BDOFs
      
-     Eq = ''
-     IF ( PRESENT( Equation ) ) n = StringToLowerCase( Eq,Equation )
+     IF (PRESENT( Equation)) THEN
+       n = LEN(Equation)
+       ALLOCATE(CHARACTER(n)::Eq)
+       n=StringToLowerCase(Eq,Equation)
+     ELSE
+       Eq = ' '
+     END IF
 
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
@@ -2014,7 +2019,7 @@ CONTAINS
        Cols = 0
        A % Rows(1) = 1
        DO i=1,n
-         WRITE( str, '(a)' ) 'Constraint DOF ' // i2s(i) // ' Body' 
+         str = 'Constraint DOF '//i2s(i)//' Body' 
          ivals => ListGetIntegerArray( Solver % Values, str, Found )
          IF ( ASSOCIATED(ivals) ) THEN
            ConstrainedNode = .FALSE.
@@ -2027,7 +2032,7 @@ CONTAINS
            Cols = Cols+DOFs*COUNT(ConstrainedNode)
          END IF
 
-         WRITE( str, '(a)' ) 'Constraint DOF ' // i2s(i) // ' BC'
+         str = 'Constraint DOF ' // i2s(i) // ' BC'
          Ivals => ListGetIntegerArray( Solver % Values, str, Found )
          IF ( ASSOCIATED(Ivals) ) THEN
            ConstrainedNode = .FALSE.
@@ -2051,7 +2056,7 @@ CONTAINS
        A % Values = 0
 
        DO i=1,n
-         WRITE( str, '(a)' ) 'Constraint DOF ' // i2s(i) // ' Body' 
+         str = 'Constraint DOF ' // i2s(i) // ' Body' 
          ivals => ListGetIntegerArray( Solver % Values, str, Found )
          IF ( ASSOCIATED(ivals) ) THEN
            DO k=1,Solver % Mesh % NumberOfBulkElements
@@ -2070,7 +2075,7 @@ CONTAINS
            END DO
          END IF
 
-         WRITE( str, '(a)' ) 'Constraint DOF ' // i2s(i) // ' BC'
+         str = 'Constraint DOF ' // i2s(i) // ' BC'
          ivals => ListGetIntegerArray( Solver % Values, str, Found )
          IF ( ASSOCIATED(ivals) ) THEN
            DO k=Solver % Mesh % NumberOfBulkElements+1, &
@@ -2471,7 +2476,7 @@ CONTAINS
      REAL(KIND=dp), DIMENSION(Model % MaxElementNodes,3) :: IntegrandFunction
 !     REAL(KIND=dp), POINTER :: IntegrandFunction(:,:)
      CHARACTER(LEN=2) :: Component
-     CHARACTER(LEN=MAX_NAME_LEN) :: IntegrandFunctionComponent
+     CHARACTER(:), ALLOCATABLE :: IntegrandFunctionComponent
      REAL(KIND=dp) :: s,ug,vg,wg
      REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
      REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3),SqrtElementMetric
@@ -2622,7 +2627,7 @@ CONTAINS
      REAL(KIND=dp), DIMENSION(Model % MaxElementNodes,3) :: IntegrandFunction
 !     REAL(KIND=dp), POINTER :: IntegrandFunction(:,:)
      CHARACTER(LEN=2) :: Component
-     CHARACTER(LEN=MAX_NAME_LEN) :: IntegrandFunctionComponent
+     CHARACTER(:), ALLOCATABLE :: IntegrandFunctionComponent
      REAL(KIND=dp) :: s,ug,vg,wg
      REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
      REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3),SqrtElementMetric
@@ -2768,7 +2773,7 @@ CONTAINS
 !     LineElementNodes
 !     INPUT: List of nodal point coordinates
 !
-!  CHARACTER(LEN=MAX_NAME_LEN) :: IntegrandFunctionName
+!  CHARACTER(LEN=*) :: IntegrandFunctionName
 !     INPUT: Name the function has in the .sif file or somewhere else
 !
 !  LOGICAL :: QuadrantTreeExists
@@ -2807,7 +2812,7 @@ CONTAINS
 ! IntegrandFunction at the Gauss points
      REAL(KIND=dp), DIMENSION(LineElement % TYPE % GaussPoints,3) :: IntegrandFunction
      CHARACTER(LEN=2) :: Component
-     CHARACTER(LEN=MAX_NAME_LEN) :: IntegrandFunctionComponent
+     CHARACTER(:), ALLOCATABLE :: IntegrandFunctionComponent
      REAL(KIND=dp) :: s,ug,vg,wg
      REAL(KIND=dp) :: Basis(LineElement % TYPE % NumberOfNodes)
      REAL(KIND=dp) :: dBasisdx(LineElement % TYPE % NumberOfNodes,3),SqrtElementMetric

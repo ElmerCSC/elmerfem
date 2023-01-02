@@ -39,7 +39,7 @@
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: Tcoef(3,3,n)
-    CHARACTER(LEN=MAX_NAME_LEN):: CoilType
+    CHARACTER(LEN=*):: CoilType
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
@@ -104,7 +104,7 @@
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     LOGICAL :: CoilBody
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    CHARACTER(LEN=*) :: CoilType
     
     TCoef=0._dp
     TCoefRe=0._dp

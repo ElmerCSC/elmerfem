@@ -1437,8 +1437,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   TYPE (BasicMatrix_t), POINTER :: CurrIf
   TYPE (GlueTableT), POINTER :: GT
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: Prec, IterativeMethod
-  CHARACTER(LEN=MAX_NAME_LEN) :: XmlFile
+  CHARACTER(:), ALLOCATABLE :: Prec, IterativeMethod, XmlFile
   REAL(KIND=dp) :: TOL, hypre_dppara(5) = 0
   INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
       hypre_sol, hypre_pre, hypremethod,  &
@@ -1638,7 +1637,7 @@ INTEGER::inside
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
            Ilun = 0
-           READ( Prec(4:), *, END=10 ) ILUn
+           IF(LEN(Prec)>=4) READ( Prec(4:), *, END=10 ) ILUn
 10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
@@ -1727,8 +1726,7 @@ INTEGER::inside
               'BoomerAMG Cycle Type', Found )
          IF (.NOT.Found)  hypre_intpara(7) = 1
 
-         BPC = ListGetLogical( Params, &
-              'Block Preconditioner', Found )
+         BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
          IF (.NOT.Found) BPC=.FALSE.
          
          hypre_intpara(8) = ListGetInteger( Params, &
@@ -1899,8 +1897,7 @@ INTEGER::inside
       ! which is their usual way of getting parameters. If no 
       ! file is given, we use default settings and issue a    
       ! warning.
-      xmlfile = ListGetString( Params, & 
-          'Trilinos Parameter File', Found )
+      xmlfile = ListGetString( Params, 'Trilinos Parameter File', Found )
       IF (.NOT. Found) THEN
         xmlfile = 'none'
       END IF
@@ -2162,7 +2159,6 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   EXTERNAL :: AddrFunc
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn
-  CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
   INTEGER, POINTER :: SPerm(:)

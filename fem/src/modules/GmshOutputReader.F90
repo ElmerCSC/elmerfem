@@ -55,7 +55,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: x1(:), x2(:)
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
-  CHARACTER(MAX_NAME_LEN) :: InputFile, InputDirectory, VarName
+  CHARACTER(MAX_NAME_LEN) :: InputFile, VarName
+  CHARACTER(:), ALLOCATABLE :: InputDirectory
   INTEGER :: FileUnit=1
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var

@@ -79,8 +79,8 @@ CONTAINS
      INTEGER :: i,dim
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      TYPE(Solver_t), POINTER :: Solver
+     CHARACTER(:), ALLOCATABLE :: str
      TYPE(NormalTangential_t), POINTER :: NT
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
      
      CALL Info('InitializeToZero','Initializing the linear system to zero',Level=12)
@@ -352,12 +352,12 @@ CONTAINS
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l,m,Order
      REAL(KIND=dp) :: s, t, zeta
-     CHARACTER(LEN=MAX_NAME_LEN) :: Method
      REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), CurSol(DOFs*n), LForce(n*DOFs)
      TYPE(Variable_t), POINTER :: DtVar
      REAL(KIND=dp) :: Dts(Solver % Order)
      LOGICAL :: ConstantDt
      TYPE(Element_t), POINTER :: Element
+     CHARACTER(:), ALLOCATABLE :: Method
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
 
@@ -498,12 +498,12 @@ CONTAINS
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l,m,n,Order
      REAL(KIND=dp) :: s, t, msum
-     CHARACTER(LEN=MAX_NAME_LEN) :: Method
      TYPE(Variable_t), POINTER :: DtVar
      REAL(KIND=dp) :: Dts(Solver % Order)
      REAL(KIND=dp), POINTER :: PrevSol(:,:), ML(:), CurrSol(:)
      INTEGER, POINTER :: Rows(:), Cols(:)
      LOGICAL :: ConstantDt, Lumped, Found
+     CHARACTER(:), ALLOCATABLE :: Method
 !------------------------------------------------------------------------------
 
      CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
@@ -570,8 +570,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      LOGICAL :: GotIt
      INTEGER :: i,j,k,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: Method
      REAL(KIND=dp) :: s,t
+!    CHARACTER(:), ALLOCATABLE :: Method
      REAL(KIND=dp) :: X(DOFs*n),V(DOFs*N),A(DOFs*N),LForce(n*DOFs)
 
 !------------------------------------------------------------------------------
@@ -657,12 +657,12 @@ CONTAINS
          K = DOFs * (i-1) + j
          IF ( NodeIndexes(i) > 0 ) THEN
            L = DOFs * (NodeIndexes(i)-1) + j
-           SELECT CASE(Method)
-           CASE DEFAULT
+!          SELECT CASE(Method)
+!          CASE DEFAULT
              X(K) = Solver % Variable % PrevValues(L,3)
              V(K) = Solver % Variable % PrevValues(L,4)
              A(K) = Solver % Variable % PrevValues(L,5)
-           END SELECT
+!          END SELECT
          END IF
        END DO
      END DO
@@ -671,12 +671,12 @@ CONTAINS
      CALL UpdateGlobalForce( Solver % Matrix % Force(:,1), LForce, &
                   n, DOFs, NodeIndexes )
 !------------------------------------------------------------------------------
-     Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
-     SELECT CASE(Method)
-     CASE DEFAULT
+!    Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
+!    SELECT CASE(Method)
+!    CASE DEFAULT
        CALL Bossak2ndOrder( n*DOFs, dt, MassMatrix, DampMatrix, StiffMatrix, &
                     Force, X, V, A, Solver % Alpha )
-     END SELECT
+!    END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE Add2ndOrderTime
 !------------------------------------------------------------------------------
@@ -1080,12 +1080,13 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: LimitDone(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params, Entity
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, InitName, ActiveName
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
      TYPE(Mesh_t), POINTER :: Mesh
+
+     CHARACTER(:), ALLOCATABLE :: Name,LimitName, InitName, ActiveName
      CHARACTER(*), PARAMETER :: Caller = 'DetermineSoftLimiter'
      
      Model => CurrentModel
@@ -1200,7 +1201,7 @@ CONTAINS
        !-------------------------------------------------
        DO DOF = 1,dofs
 
-         name = Var % name
+         Name = TRIM(Var % name)
          IF ( Var % DOFs > 1 ) name = ComponentName(name,DOF)
 
          ! The keywords for the correct lower or upper limit of the variable
@@ -1667,7 +1668,7 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: LimitDone(:),InterfaceDof(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params
-     CHARACTER(LEN=MAX_NAME_LEN) :: Str, LimitName, VarName, ContactType
+     CHARACTER(:), ALLOCATABLE ::  Str,VarName, ContactType
      INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
@@ -4476,7 +4477,7 @@ CONTAINS
 
     LOGICAL :: Conditional
     LOGICAL, ALLOCATABLE :: DonePeriodic(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: CondName, DirName, PassName, PassCondName
+    CHARACTER(:), ALLOCATABLE :: CondName, DirName, PassName, PassCondName
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
@@ -7233,7 +7234,7 @@ END SUBROUTINE SetNodalSources
     REAL(KIND=dp) ::  s
 
     LOGICAL :: Conditional
-    CHARACTER(LEN=MAX_NAME_LEN) :: LoadName
+    CHARACTER(:), ALLOCATABLE :: LoadName
 
     INTEGER, POINTER :: IndNodes(:)
     INTEGER :: NoNodes,NoDims,bf_id,nlen,NOFNodesFound
@@ -7424,7 +7425,6 @@ CONTAINS
        INTEGER :: n
        REAL(KIND=dp) :: Work(n)
        LOGICAL :: ImaginaryLoads
-       CHARACTER(LEN=MAX_NAME_LEN) :: LoadNameIm
 
        IF(n<=0) RETURN
        ImaginaryLoads = ASSOCIATED(A % RHS_im)
@@ -9136,7 +9136,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
      TYPE(Solver_t), TARGET :: Solver  !< Solver to be initialized.
 !------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_NAME_LEN) :: Method
+     CHARACTER(:), ALLOCATABLE :: Method
      LOGICAL :: GotIt, ExtrapolateInTime
      INTEGER :: i, Order,ndofs
      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
@@ -9312,8 +9312,8 @@ END FUNCTION SearchNodeL
      ! They only have normal prevvalues, when writing this always 2. 
      BLOCK
        INTEGER :: VarNo,n
-       CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
        LOGICAL :: Found
+       CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
        
        VarNo =0      
        DO WHILE( .TRUE. )
@@ -9357,9 +9357,9 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: ForceVector(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method, Simulation
     INTEGER :: Order
     LOGICAL :: Found
+    CHARACTER(:), ALLOCATABLE :: Method, Simulation
 !------------------------------------------------------------------------------
 
     IF ( Solver % Matrix % FORMAT == MATRIX_LIST ) THEN
@@ -9391,7 +9391,7 @@ END FUNCTION SearchNodeL
     CHARACTER(LEN=*) :: Name
     TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+    CHARACTER(:), ALLOCATABLE :: tmpname
     INTEGER :: i
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var,Var1, PrimVar
@@ -9913,7 +9913,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Found, DoIt
     REAL(KIND=dp) :: dt
     TYPE(Variable_t), POINTER :: dtVar, VeloVar, pVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     INTEGER, POINTER :: UpdateComponents(:)
     INTEGER :: k
     CHARACTER(*), PARAMETER :: Caller = 'UpdateDependentObjects'
@@ -10026,11 +10026,11 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: x0(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Change, PrevChange, Relaxation, tmp(1),dt, &
         Tolerance, MaxNorm, eps, Ctarget, Poffset, nsum, dpsum
-    CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
     INTEGER, TARGET  ::  Dnodes(1)
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: iterVar, VeloVar, dtVar, WeightVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
+    CHARACTER(:), ALLOCATABLE :: str,SolverName,ConvergenceType
+
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
         SkipConstraints, ResidualMode, RelativeP, NodalNorm
     TYPE(Matrix_t), POINTER :: MMatrix
@@ -10497,7 +10497,7 @@ END FUNCTION SearchNodeL
     
     ! Steady state output is done in MainUtils
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
-    IF(.NOT. Stat) SolverName = Solver % Variable % Name
+    IF(.NOT. Stat) SolverName = TRIM(Solver % Variable % Name)
  
     IF(SteadyState) THEN        
       WRITE( Message, '(a,g15.8,g15.8,a)') &
@@ -10605,7 +10605,7 @@ END FUNCTION SearchNodeL
     SUBROUTINE WriteConvergenceInfo()
 
       INTEGER :: ConvInds(5),ConvUnit
-      CHARACTER(LEN=MAX_NAME_LEN) :: ConvFile
+      CHARACTER(:), ALLOCATABLE :: ConvFile
       LOGICAL, SAVE :: ConvVisited = .FALSE.
 
       IF( ParEnv % MyPe /= 0 ) RETURN
@@ -10664,7 +10664,7 @@ END FUNCTION SearchNodeL
     LOGICAL, OPTIONAL :: EdgeBasis                   !< Choosing IP points for edge basis function
     TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName, GaussDef
+    CHARACTER(:), ALLOCATABLE :: VarName, GaussDef
     TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
     TYPE(Variable_t), POINTER :: IntegVar
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
@@ -10895,8 +10895,8 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: TempRHS(:)
     INTEGER, POINTER :: Indexes(:)
     LOGICAL :: Stat, Init, Newton, Ortho, Debug, SaveToFile
-    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ConvergenceType, FileName
     TYPE(ValueList_t), POINTER :: SolverParams
+    CHARACTER(:), ALLOCATABLE :: SolverName, ConvergenceType, FileName
 
 
     SAVE SolverParams, Alpha, Myy, Relaxation, MaxTests, tests, &
@@ -11232,7 +11232,7 @@ END FUNCTION SearchNodeL
       END IF
       
       SolverName = ListGetString( SolverParams, 'Equation',Stat)
-      IF(.NOT. Stat) SolverName = Solver % Variable % Name
+      IF(.NOT. Stat) SolverName = TRIM(Solver % Variable % Name)
             
       IterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter')
       m = NINT(IterVar % Values(1))
@@ -11873,7 +11873,7 @@ END FUNCTION SearchNodeL
     CHARACTER(*), OPTIONAL :: VarName
     TYPE(Variable_t), POINTER, OPTIONAL :: Var
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: IntVarName
+    CHARACTER(:), ALLOCATABLE :: IntVarName
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: WeightsVar
     TYPE(ValueList_t), POINTER :: ElemParams
@@ -11894,7 +11894,7 @@ END FUNCTION SearchNodeL
 
     NULLIFY( WeightsVar ) 
     IF( PRESENT( VarName ) ) THEN
-      IntVarName = VarName
+      IntVarName = TRIM(VarName)
     ELSE IF ( WeightAtBoundary ) THEN
       IntVarName = GetVarName(Solver % Variable) // ' Boundary Weights'
     ELSE
@@ -13287,7 +13287,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: Val
     LOGICAL :: Found
     INTEGER, POINTER :: Perm(:), BCPerm(:)
-    CHARACTER(MAX_NAME_LEN) :: Name   
+    CHARACTER(:), ALLOCATABLE :: Name   
     TYPE(Variable_t), POINTER :: BCVar
 
 
@@ -13406,7 +13406,7 @@ END FUNCTION SearchNodeL
     TYPE(Solver_t) :: Solver
 
     TYPE(Matrix_t), POINTER :: BCMat
-    CHARACTER(MAX_NAME_LEN) :: Name   
+    CHARACTER(:), ALLOCATABLE :: Name   
     TYPE(Variable_t), POINTER :: BCVar
 
 
@@ -13598,7 +13598,7 @@ END FUNCTION SearchNodeL
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
                RecursiveAnalysis, CalcLoads
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
+    CHARACTER(:), ALLOCATABLE :: Method, Prec, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
                 TempVector(:), TempRHS(:), NonlinVals(:)
@@ -14255,7 +14255,7 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode,ConstraintMode, BlockMode, GloNum
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method, ProcName, VariableName
+    CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp) :: Relaxation,Beta,Gamma
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
@@ -14514,7 +14514,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         b0(:), A0(:), TempRhs(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
-    CHARACTER(LEN=MAX_NAME_LEN) :: MatrixFile
+    CHARACTER(:), ALLOCATABLE :: MatrixFile
     CHARACTER(*), PARAMETER :: Caller = 'SolveConstraintModesSystem'
     INTEGER, SAVE :: ThisMode = 0
     SAVE FluxesMatrix, ImFluxesMatrix
@@ -14883,18 +14883,18 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
     TYPE(Solver_t), POINTER :: Solver
     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
-    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
     LOGICAL, OPTIONAL :: UpdateOnly
+    CHARACTER(*), OPTIONAL :: MaskName, SecName      
 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Element_t), POINTER :: Element
     INTEGER :: t, n, IpCount , RelOrder, nIp
-    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
     LOGICAL :: Found, ActiveElem, ActiveElem2
     INTEGER, POINTER :: IpOffset(:) 
     TYPE(ValueList_t), POINTER :: BF
     LOGICAL :: UpdatePerm
+    CHARACTER(:), ALLOCATABLE :: EquationName
 
     n = 0
     IF( PRESENT( MaskPerm ) ) n = n + 1
@@ -15014,7 +15014,6 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     TYPE(Solver_t), TARGET :: Solver
 
     INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2,NoGauss
-    CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
     REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
     INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
     LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
@@ -15029,6 +15028,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     TYPE(ValueHandle_t) :: LocalSol_h
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: pSolver
+    CHARACTER(LEN=MAX_NAME_LEN) :: var_name
+    CHARACTER(:), ALLOCATABLE :: str, tmpname,condname
     CHARACTER(*), PARAMETER :: Caller = 'UpdateExportedVariables'
 
 
@@ -15295,10 +15296,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, DerVar, dtVar
-  CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
   INTEGER :: VarNo, Cnt
   LOGICAL :: Found, DoIt
   REAL(KIND=dp) :: dt
+  CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
   
   
   CALL Info('DerivateExportedVariables','Derivating variables, if any!',Level=20)
@@ -15378,7 +15379,6 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     TYPE(Matrix_t), POINTER :: BMatrix, A => NULL()
     INTEGER :: i,j,k,n, kr, ki, DOFs, ne, niter
     LOGICAL :: stat, Found, OptimizeBW, Real_given,Imag_given
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
     REAL(KIND=dp) :: Omega, norm, s
     REAL(KIND=dp), POINTER :: Freqv(:,:)
     REAL(KIND=dp), ALLOCATABLE :: x(:)
@@ -15386,6 +15386,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     REAL(KIND=dp) :: frequency
     INTEGER :: Nfrequency
     TYPE(ValueList_t), POINTER :: BC
+    CHARACTER(:), ALLOCATABLE :: Name
 
     CALL Info( 'SolveHarmonicSystem', 'Solving initially transient style system as harmonic one', Level=5)
     
@@ -15530,7 +15531,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   TYPE(Matrix_t), POINTER :: Are => NULL(), Aharm => NULL(), SaveMatrix 
   INTEGER :: i,j,k,n, kr, ki, DOFs
   LOGICAL :: stat, Found, OptimizeBW, Real_given, Imag_given
-  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+  CHARACTER(:), ALLOCATABLE :: Name
   REAL(KIND=dp) :: Omega, s, val
   REAL(KIND=dp), POINTER :: b(:), TmpVals(:)
   REAL(KIND=dp) :: frequency
@@ -15900,7 +15901,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName, str
   TYPE(ListMatrix_t), POINTER :: cList
   TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
 
@@ -15912,6 +15912,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
   INTEGER, ALLOCATABLE :: Iperm(:)
+
+  CHARACTER(:), ALLOCATABLE :: str,MultiplierName
   CHARACTER(*), PARAMETER :: Caller = 'SolveWithLinearRestriction'
 
   
@@ -17004,7 +17006,7 @@ CONTAINS
     REAL(KIND=dp) :: Coord(3), MinDist
     REAL(KIND=dp), POINTER :: RealWork(:,:)
     LOGICAL :: Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     CHARACTER(*), PARAMETER :: Caller = 'GetControlNode'
 
     str = 'Control Node Index '//I2S(iControl)                
@@ -17062,7 +17064,7 @@ CONTAINS
     INTEGER :: dof0
     REAL(KIND=dp) :: val0
     LOGICAL :: Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: str, varname
+    CHARACTER(:), ALLOCATABLE :: str, varname
     CHARACTER(*), PARAMETER :: Caller = 'GetControlValue'
 
     IF(.NOT. ASSOCIATED(Mesh)) CALL Fatal(Caller,'Mesh not associated!')
@@ -17175,7 +17177,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: cAmp(:), cTarget(:), cVal(:), dc(:), cSens(:,:)
     INTEGER, ALLOCATABLE :: cDof(:)
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     CHARACTER(*), PARAMETER :: Caller = 'ControlLinearSystem'
 
     
@@ -17417,7 +17419,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: cAmp(:), cTarget(:), cVal(:), dc(:), cSens(:,:)
     INTEGER, ALLOCATABLE :: cDof(:)
     TYPE(Model_t), POINTER :: Model    
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     CHARACTER(*), PARAMETER :: Caller = 'ControlNonlinearSystem'
     
     SAVE cAmp, cTarget, cSens, cVal, dc, cDof, iControl, &
@@ -17629,7 +17631,7 @@ CONTAINS
 !------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile, dumpprefix
+    CHARACTER(:), ALLOCATABLE :: dumpfile, dumpprefix
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     INTEGER :: i
@@ -17760,7 +17762,7 @@ CONTAINS
     INTEGER :: i,j,k,n,t,istat,BoundaryNodes
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
-    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryName
+    CHARACTER(:), ALLOCATABLE :: BoundaryName
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -19856,7 +19858,7 @@ CONTAINS
     INTEGER :: i,j,j2,k,l,jk,n,Mode,Dofs
     LOGICAL :: Found, UpdateRhs, Symmetric
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
+    CHARACTER(:), ALLOCATABLE :: str, VarName
 
     Params => Solver % Values
     Mesh => Solver % Mesh
@@ -19888,15 +19890,14 @@ CONTAINS
     DO k=1,Dofs
       Mode = 0
       
-      WRITE( str,'(A)') 'Linear System Rhs Factor'
+      str = 'Linear System Rhs Factor'
       Coeff = ListGetCReal( Params, str, Found )
       IF( Found ) THEN
         Mode = 1
         WRITE( Message,'(A,ES12.3)') 'Multiplying the rhs with ',Coeff
         CALL Info('LinearSystemMultiply',Message, Level=6 )
       ELSE
-        WRITE( str,'(A,I0)') TRIM(str)//' ',k
-        Coeff = ListGetCReal( Params, str, Found )
+        Coeff = ListGetCReal( Params, str//' '//I2S(k), Found )
         IF( Found ) THEN
           Mode = 2 
           WRITE( Message,'(A,I0,A,ES12.3)') 'Multiplying component ',k,' of the rhs with ',Coeff
@@ -19910,8 +19911,7 @@ CONTAINS
         IF( Found ) THEN
           CoeffVar => VariableGet( Mesh % Variables, VarName )
         ELSE
-          WRITE( str,'(A,I0)') TRIM(str)//' ',k
-          VarName = ListGetString( Params,str,Found )
+          VarName = ListGetString( Params,str//' '//I2S(k),Found )
           IF( Found ) CoeffVar => VariableGet( Mesh % Variables, VarName )
         END IF
         IF( ASSOCIATED( CoeffVar ) ) THEN
@@ -19954,8 +19954,7 @@ CONTAINS
           WRITE( Message,'(A,ES12.3)') 'Multiplying the matrix with ',Coeff
           CALL Info('LinearSystemMultiply',Message, Level=6 )
         ELSE
-          WRITE( str,'(A,I0,I0)') TRIM(str)//' ',k,l
-          Coeff = ListGetCReal( Params, str, Found )
+          Coeff = ListGetCReal( Params, str//' '//I2S(k)//I2S(l), Found )
           IF( Found ) THEN
             Mode = 2
             WRITE( Message,'(A,I0,I0,A,ES12.3)') 'Multiplying block (',k,l,') of the matrix with ',Coeff
@@ -19969,8 +19968,7 @@ CONTAINS
           IF( Found ) THEN
             CoeffVar => VariableGet( Mesh % Variables, str )                                    
           ELSE
-            WRITE( str,'(A,I0,I0)') TRIM(str)//' ',k,l
-            VarName = ListGetString( Params,str,Found )
+            VarName = ListGetString( Params,str//' '//I2S(k)//I2S(l),Found )
             IF( Found ) CoeffVar => VariableGet( Mesh % Variables, VarName )
           END IF
           IF( ASSOCIATED( CoeffVar ) ) THEN
@@ -20024,8 +20022,7 @@ CONTAINS
         WRITE( Message,'(A,ES12.3)') 'Multiplying the diagonal with ',Coeff
         CALL Info('LinearSystemMultiply',Message, Level=6 )
       ELSE
-        WRITE( str,'(A,I0)') TRIM(str)//' ',k
-        Coeff = ListGetCReal( Params, str, Found )
+        Coeff = ListGetCReal( Params, str//' '//I2S(k), Found )
         IF( Found ) THEN
           Mode = 2 
           WRITE( Message,'(A,I0,A,ES12.3)') 'Multiplying component ',k,' of the matrix diagonal with ',Coeff
@@ -20040,8 +20037,7 @@ CONTAINS
         IF( Found ) THEN
           CoeffVar => VariableGet( Mesh % Variables, VarName )
         ELSE
-          WRITE( str,'(A,I0)') TRIM(str)//' ',k
-          VarName = ListGetString( Params,str,Found )
+          VarName = ListGetString( Params,str//' '//I2S(k),Found )
           IF( Found ) CoeffVar => VariableGet( Mesh % Variables, VarName )
         END IF
         IF( ASSOCIATED( CoeffVar ) ) THEN
@@ -20098,7 +20094,7 @@ CONTAINS
     INTEGER :: i,j,j2,k,l,jk,n,Mode,Dofs
     LOGICAL :: Found, UpdateRhs, Symmetric
     TYPE(ValueList_t), POINTER :: Params
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     INTEGER :: NoSet
     REAL(KIND=dp) :: DiagSum, val, DiagMax
 
@@ -20141,8 +20137,7 @@ CONTAINS
         WRITE( Message,'(A,ES12.3)') 'Setting minimum of the diagonal to ',Coeff
         CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
       ELSE
-        WRITE( str,'(A,I0)') TRIM(str)//' ',k
-        Coeff = ListGetCReal( Params, str, Found )
+        Coeff = ListGetCReal( Params, str//' '//I2S(k), Found )
         IF( Found ) THEN
           Mode = 2 
           WRITE( Message,'(A,I0,A,ES12.3)') 'Setting minimum of diagonal component ',k,' to ',Coeff
@@ -20211,7 +20206,7 @@ CONTAINS
         rmi,rmj,rpi,rpj,dt
     TYPE(Variable_t), POINTER :: Var, Variables
     LOGICAL :: Found, Symmetric, SaveFields, SkipCorrection
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TmpVarName
+    CHARACTER(:), ALLOCATABLE :: VarName, TmpVarName
 
     REAL(KIND=dp), POINTER :: mmc(:), mmc_h(:), fct_d(:)
     TYPE(Element_t), POINTER :: Element
@@ -20780,7 +20775,6 @@ CONTAINS
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
      INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows, sumrow0, k20
-     CHARACTER(LEN=MAX_NAME_LEN) :: Str
      LOGICAL :: ThisIsMortar, Reorder
      LOGICAL :: AnyPriority
      INTEGER :: Priority, PrevPriority
@@ -20795,9 +20789,9 @@ CONTAINS
      LOGICAL :: IntegralBC
      REAL(KIND=dp) :: SetVal(6)
      REAL(KIND=dp), ALLOCATABLE :: PrevValues(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MultName
      INTEGER, ALLOCATABLE :: PrevInvPerm(:)
      TYPE(Variable_t), POINTER :: Var
+     CHARACTER(:), ALLOCATABLE :: Str,MultName
      
      
      ! Should we genarete the matrix
@@ -21033,7 +21027,7 @@ CONTAINS
            IF( Dofs > 1 ) THEN
              str = ComponentName( Solver % Variable, i )
            ELSE
-             str = Solver % Variable % Name 
+             str = TRIM(Solver % Variable % Name)
            END IF
 
            IF( IntegralBC ) THEN
@@ -21950,8 +21944,9 @@ CONTAINS
        MakeDir, UseMeshDir  )
 
      TYPE(Solver_t) :: Solver
-     CHARACTER(LEN=MAX_NAME_LEN) :: Filename, OutputDirectory
      LOGICAL, OPTIONAL :: MakeDir, UseMeshDir
+     CHARACTER(*) :: Filename
+     CHARACTER(:), ALLOCATABLE :: OutputDirectory
 
      LOGICAL :: Found, AbsPathInName, DoDir, PartitioningSubDir
      INTEGER :: nd, nf, n
@@ -22067,7 +22062,7 @@ CONTAINS
      LOGICAL :: DgField, NodalField, ElemField, Listed
      INTEGER, ALLOCATABLE :: NodeHits(:)
      INTEGER, POINTER :: Indexes(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: TmpName
+     CHARACTER(:), ALLOCATABLE :: TmpName
      CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
 
      INTERFACE 
@@ -22622,11 +22617,11 @@ CONTAINS
      INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, LGuessMode, Ntimes, Nslices, mmin
      LOGICAL :: ExportMult, ParallelTime, ParallelSlices
      TYPE(Variable_t), POINTER :: Var
-     CHARACTER(LEN=MAX_NAME_LEN) :: MultName
      REAL(KIND=dp) :: Relax, AveErr, AveNrm, Tol
      CHARACTER(*), PARAMETER :: Caller = 'StoreCyclicSolution'
      INTEGER :: nSol     
      TYPE(CyclicSol_t), POINTER :: Sols(:) => NULL(), pSol
+     CHARACTER(:), ALLOCATABLE :: MultName
      
      
      SAVE Sols

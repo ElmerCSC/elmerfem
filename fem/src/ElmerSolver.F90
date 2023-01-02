@@ -73,7 +73,8 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,k,n,l,t,k1,k2,iter,Ndeg,istat,nproc,tlen,nthreads
-     CHARACTER(LEN=MAX_STRING_LEN) :: threads, CoordTransform
+     CHARACTER(LEN=MAX_STRING_LEN) :: threads
+     CHARACTER(:), ALLOCATABLE :: CoordTransform
 
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
@@ -98,9 +99,11 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, ExecCommand, ExtrudedMeshName, eq, str
-     CHARACTER(LEN=MAX_STRING_LEN) :: OutputFile, PostFile, RestartFile, &
-                OutputName=' ',PostName=' ', When, OptionString
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq
+     CHARACTER(LEN=MAX_STRING_LEN) :: OptionString
+
+     CHARACTER(:), ALLOCATABLE :: str, PostFile, ExecCommand, OutputFile, RestartFile, &
+          OutputName, PostName, When
 
      TYPE(Variable_t), POINTER :: Var
      TYPE(Mesh_t), POINTER :: Mesh
@@ -108,8 +111,8 @@
 
      REAL(KIND=dp) :: CT0,RT0,tt
 
+     LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
-     LOGICAL :: Silent, Version, GotModelName, FinishEarly
 
      INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
@@ -118,11 +121,11 @@
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      TYPE(Model_t), POINTER, SAVE :: Control
-     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
-     LOGICAL :: DoControl, ProcControl, GotParams
+     LOGICAL :: DoControl=.FALSE., ProcControl=.FALSE., GotParams=.FALSE.
      INTEGER :: nr,ni,ExtMethod
-     REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      INTEGER, ALLOCATABLE :: ipar(:)
+     REAL(KIND=dp), ALLOCATABLE :: rpar(:)
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
      
 #ifdef HAVE_TRILINOS
      INTERFACE
@@ -331,6 +334,8 @@
 
          ! If there are no parameters this does nothing
          CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
+print*,gotparams
+print*,finishearly
        ELSE
          OptimIters = 1 
        END IF
@@ -406,7 +411,7 @@
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
-         CoordTransform = ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
+         CoordTransform=ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
          IF( GotIt ) THEN
            CALL CoordinateTransformation( CurrentModel % Meshes, CoordTransform, &
                CurrentModel % Simulation, .TRUE. )
@@ -534,11 +539,11 @@
        ExtMethod = 0
        str = ListGetString( CurrentModel % Control,'Optimization Method',Found)       
        IF( Found ) THEN
-         IF( str(1:5) == 'hybrd' ) THEN
+         IF( SEQL(str, 'hybrd') ) THEN
            ExtMethod = 1
-         ELSE IF( str(1:6) == 'newuoa' ) THEN
+         ELSE IF( SEQL(str,'newuoa') ) THEN
            ExtMethod = 2
-         ELSE IF( str(1:6) == 'bobyqa' ) THEN 
+         ELSE IF( SEQL(str,'bobyqa') ) THEN 
            ExtMethod = 3
          END IF
        END IF
@@ -925,7 +930,7 @@
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution, AbsoluteErr
-       CHARACTER(LEN=MAX_STRING_LEN) :: PassedMsg
+       CHARACTER(:), ALLOCATABLE :: PassedMsg
 
        SAVE TestCount, PassCount 
 
@@ -956,7 +961,7 @@
            IF( ParEnv % MyPe == 0 ) THEN
              IF( ParEnv % PEs > 1 ) THEN
                ! Parallel test, add the number of tasks as a suffix
-               WRITE(PassedMsg, '("TEST.PASSED_",I0)') ParEnv % PEs
+               PassedMsg = "TEST.PASSED_"//I2S(ParEnv % PEs)
                OPEN( 10, FILE = PassedMsg )
              ELSE
                OPEN( 10, FILE = 'TEST.PASSED' )
@@ -1166,8 +1171,8 @@
        
        LOGICAL :: Found
        INTEGER :: i,j
+       CHARACTER(:), ALLOCATABLE :: str
        TYPE(Solver_t), POINTER :: pSolver
-       CHARACTER(LEN=MAX_NAME_LEN) :: str
 
        solver_id = 0       
        Found = .FALSE.
@@ -1196,7 +1201,7 @@
      !----------------------------------------------------------------------------------------------
      SUBROUTINE AddVtuOutputSolverHack()     
        TYPE(Solver_t), POINTER :: pSolver
-       CHARACTER(LEN=MAX_NAME_LEN) :: str
+       CHARACTER(:), ALLOCATABLE :: str
        INTEGER :: j,k
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
@@ -1257,7 +1262,7 @@
      !----------------------------------------------------------------------------------------------
      SUBROUTINE AddSaveScalarsHack()     
        TYPE(Solver_t), POINTER :: ABC(:), PSolver
-       CHARACTER(LEN=MAX_NAME_LEN) :: str
+       CHARACTER(:), ALLOCATABLE :: str
        INTEGER :: k
        TYPE(ValueList_t), POINTER :: Params, Simu
        LOGICAL :: Found, VtuFormat
@@ -1548,7 +1553,7 @@
 !------------------------------------------------------------------------------
      USE DefUtils
      INTEGER :: DOFs
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
@@ -1618,7 +1623,7 @@
 
              IF( AnyNameSpace ) THEN
                str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
-               IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
+               IF (NamespaceFound) CALL ListPushNamespace(str)
              END IF               
 
              ! This seems to be a more robust marker for DG type
@@ -1778,7 +1783,7 @@
      USE DefUtils
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,i,i2,j,k,k1,k2,l,n,n2,m,nsize
-     CHARACTER(LEN=MAX_NAME_LEN) :: str, VarName
+     CHARACTER(:), ALLOCATABLE :: str, VarName
      LOGICAL :: Found, ThingsToDO, NamespaceFound, AnyNameSpace
      TYPE(Solver_t), POINTER :: Solver, CSolver
      INTEGER, ALLOCATABLE :: Indexes(:)
@@ -2063,7 +2068,7 @@
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
 
-           VarName = Var % Name 
+           VarName = TRIM(Var % Name)
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
            
@@ -2075,11 +2080,11 @@
            VarOrder = -1
            DO VarOrder = 0, 2
              IF( VarOrder == 0 ) THEN
-               VarName = Var % Name
+               VarName = TRIM(Var % Name)
              ELSE IF( VarOrder == 1 ) THEN
-               VarName = TRIM( Var % Name )//' Velocity'
+               VarName = TRIM(Var % Name )//' Velocity'
              ELSE IF( VarOrder == 2 ) THEN
-               VarName = TRIM( Var % Name )//' Acceleration'
+               VarName = TRIM(Var % Name )//' Acceleration'
              END IF
 
              !CALL ListInitElementKeyword( LocalSol_h,'Initial Condition',VarName, &
@@ -2263,7 +2268,7 @@
            IF ( LEN_TRIM(Mesh % Name) > 0 ) THEN
              OutputName = TRIM(Mesh % Name) // '/' // TRIM(RestartFile)
            ELSE
-             OutputName = TRIM(RestartFile)
+             OutputName = RestartFile
            END IF
 
            ! If we have single mesh we have the luxury of using either parallel or serial restart
@@ -2271,7 +2276,7 @@
            IF(isParallel .AND. Mesh % SingleMesh ) THEN
              isParallel = ListGetLogical( RestartList,'Restart Parallel',Found )
            END IF                        
-           IF(isParallel) OutputName = TRIM(OutputName) // '.' // i2s(ParEnv % MyPe)
+           IF(isParallel) OutputName = OutputName // '.' // i2s(ParEnv % MyPe)
 
            CALL SetCurrentMesh( CurrentModel, Mesh )
            
@@ -2763,7 +2768,7 @@
          BLOCK
            TYPE(Mesh_t), POINTER :: Mesh
            REAL(KIND=dp) :: MeshR
-           CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
+           CHARACTER(:), ALLOCATABLE :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
@@ -2778,7 +2783,7 @@
              IF( i > 0 .AND. i /= PrevMeshI ) THEN                             
                MeshStr = ListGetString( GetSimulation(),'Mesh Name '//I2S(i),GotIt)
                IF( GotIt ) THEN
-                 CALL Info(Caller,'Swapping mesh to: '//TRIM(MeshStr),Level=5)
+                 CALL Info(Caller,'Swapping mesh to: '//MeshStr,Level=5)
                ELSE
                  CALL Fatal(Caller,'Could not find >Mesh Name '//I2S(i)//'<')
                END IF
@@ -3451,9 +3456,8 @@
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: EigAnal = .FALSE., Found
     INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
-    CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
-    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
+    CHARACTER(:), ALLOCATABLE :: Simul, SaveWhich
     
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
@@ -3461,11 +3465,7 @@
 
     IF ( Gotit ) THEN
       IF ( ParEnv % PEs > 1 ) THEN
-        DO i=1,MAX_NAME_LEN
-          IF ( OutputFile(i:i) == ' ' ) EXIT
-        END DO
-        OutputFile(i:i) = '.'
-        WRITE( OutputFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
+        OutputFile = OutputFile // '.' // i2s(ParEnv % MyPE)
       END IF
     END IF
     
@@ -3473,11 +3473,7 @@
     IF( .NOT. GotIt ) RETURN
 
     IF ( ParEnv % PEs > 1 ) THEN
-      DO i=1,MAX_NAME_LEN
-        IF ( PostFile(i:i) == ' ' ) EXIT
-      END DO
-      PostFile(i:i) = '.'
-      WRITE( PostFile(i+1:), '(a)' ) i2s(ParEnv % MyPE)
+      PostFile = PostFile // '.' // i2s(ParEnv % MyPE)
     END IF
 
     ! Loop over all meshes

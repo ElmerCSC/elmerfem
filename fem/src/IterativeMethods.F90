@@ -694,7 +694,6 @@ CONTAINS
           IluOrder
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)

@@ -335,7 +335,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FormatDate() RESULT( date )
 !------------------------------------------------------------------------------
-    CHARACTER( LEN=20 ) :: date
+    CHARACTER(20) :: date
     INTEGER :: dates(8)
 
     CALL DATE_AND_TIME( VALUES=dates )
@@ -1282,7 +1282,7 @@ CONTAINS
     TYPE(Variable_t),INTENT(in) :: Var
     INTEGER, OPTIONAL,INTENT(in) :: Component
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
     IF ( Var % Name(1:Var % NameLen) == 'flow solution' ) THEN
       str='flow solution'
@@ -1305,10 +1305,10 @@ END FUNCTION ComponentNameVar
   FUNCTION ComponentNameStr( BaseName, Component_arg ) RESULT(str)
 !------------------------------------------------------------------------------
     INTEGER, OPTIONAL, INTENT(in) :: Component_arg
+    CHARACTER(:), ALLOCATABLE :: str
     CHARACTER(LEN=*), INTENT(in) :: BaseName
 !------------------------------------------------------------------------------
     INTEGER :: ind, ind1, DOFsTot, DOFs, Component
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
     ind = INDEX( BaseName,'[' )
 
@@ -1316,9 +1316,9 @@ END FUNCTION ComponentNameVar
     IF ( PRESENT(Component_arg) ) Component=Component_arg
 
     IF ( ind<=0 ) THEN
-      str = BaseName
+      str = TRIM(BaseName)
       IF ( Component > 0 ) THEN
-        str = TRIM(str) // ' ' // i2s(Component)
+        str = str // ' ' // i2s(Component)
       END IF
     ELSE IF( Component == 0 ) THEN
       str = BaseName(1:ind-1)
@@ -1327,7 +1327,7 @@ END FUNCTION ComponentNameVar
       DO WHILE( .TRUE. )
         ind1 = INDEX( BaseName(ind+1:),':' )+ind
         IF ( ind1 <= ind ) THEN
-           CALL Fatal( 'ComponentName', 'Syntax error in variable definition.' )
+          CALL Fatal( 'ComponentName', 'Syntax error in variable definition.' )
         END IF
         READ(BaseName(ind1+1:),'(i1)') DOFs
         DOFsTot = DOFsTot+DOFs
@@ -1337,7 +1337,7 @@ END FUNCTION ComponentNameVar
       str = BaseName(ind+1:ind1-1)
       IF ( DOFs>1 ) THEN
         DOFs = Component - DOFsTot + DOFs
-        str = TRIM(str) // ' ' //i2s(DOFs)
+        str = str // ' ' //i2s(DOFs)
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -2425,11 +2425,10 @@ INCLUDE "mpif.h"
 
   FUNCTION NextFreeFilename(Filename0,Suffix0,LastExisting) RESULT (Filename)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename0
-    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: Suffix0 
+    CHARACTER(LEN=*) :: Filename0
+    CHARACTER(LEN=*), OPTIONAL :: Suffix0 
     LOGICAL, OPTIONAL :: LastExisting
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
-    CHARACTER(LEN=MAX_NAME_LEN) :: Prefix, Suffix, PrevFilename
+    CHARACTER(:), ALLOCATABLE :: Filename,Prefix,Suffix,PrevFilename
     LOGICAL :: FileIs
     INTEGER :: No, ind, len
     
@@ -2476,7 +2475,7 @@ INCLUDE "mpif.h"
 
   FUNCTION AddFilenameParSuffix(Filename0,Suffix0,Parallel,MyPe,NumWidth,PeMax,PeSeparator) RESULT (Filename)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename0
+    CHARACTER(LEN=*) :: Filename0
     CHARACTER(LEN=*), OPTIONAL :: Suffix0 
     CHARACTER(LEN=*), OPTIONAL :: PeSeparator
     LOGICAL :: Parallel
@@ -2485,7 +2484,8 @@ INCLUDE "mpif.h"
     INTEGER, OPTIONAL :: PeMax
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
  !------------------------------------------------------------------------------   
-    CHARACTER(LEN=MAX_NAME_LEN) :: OutStyle, Prefix, Suffix
+    CHARACTER(LEN=MAX_NAME_LEN) :: OutStyle
+    CHARACTER(:), ALLOCATABLE ::  Prefix, Suffix
     INTEGER :: No, ind, len, NumW, NoLim
 
     ind = INDEX( FileName0,'.',.TRUE. )
@@ -2521,7 +2521,7 @@ INCLUDE "mpif.h"
       END IF
               
       IF( No >= NoLim ) THEN
-        WRITE( FileName,'(A,I0,A)') TRIM(Prefix),No,TRIM(Suffix)
+        FileName = TRIM(Prefix)//I2S(No)//TRIM(Suffix)
       ELSE
         WRITE( OutStyle,'(A,I1,A,I1,A)') '(A,I',NumW,'.',NumW,',A)'
         WRITE( FileName,OutStyle) TRIM(Prefix),No,TRIM(Suffix)

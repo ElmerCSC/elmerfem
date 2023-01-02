@@ -42,8 +42,8 @@ CONTAINS
     LOGICAL :: GotCost
 
     REAL(KIND=dp) :: CostTarget
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
     LOGICAL :: GotIt
+    CHARACTER(:), ALLOCATABLE :: Name
 
     Cost = ListGetCReal(OptList,'Cost Function',GotCost)
 
@@ -86,7 +86,7 @@ CONTAINS
     LOGICAL :: Found
 
     INTEGER :: i,n
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
+    CHARACTER(:), ALLOCATABLE :: Name
     LOGICAL :: fileis, GotIt, OptimalStart
     INTEGER :: IOUnit
 
@@ -134,8 +134,8 @@ CONTAINS
     INTEGER, OPTIONAL :: Improvements
 
     INTEGER :: IOUnit
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
     LOGICAL :: GotIt
+    CHARACTER(:), ALLOCATABLE :: Name
     
     Name = ListGetString(OptList,'Parameter Best File',GotIt )
     IF(.NOT. GotIt) RETURN
@@ -166,7 +166,7 @@ CONTAINS
     INTEGER :: i,npar,niter,iflag 
     REAL(KIND=dp), ALLOCATABLE :: rpar(:), fvec(:)
     REAL(KIND=dp) :: xtol, epsfcn
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found
 
@@ -267,7 +267,7 @@ PRINT *,'niter minpack:',niter
     
     REAL(KIND=dp), ALLOCATABLE :: rpar(:)
     REAL(KIND=dp) :: xtol, rhobeg, rhoend, minv, maxv
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found, Found2
 
@@ -330,7 +330,7 @@ PRINT *,'niter minpack:',niter
     
     REAL(KIND=dp), ALLOCATABLE :: rpar(:),xl(:),xu(:)
     REAL(KIND=dp) :: xtol, rhobeg, rhoend
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found
 
@@ -495,8 +495,8 @@ PRINT *,'niter minpack:',niter
      
      REAL(KIND=dp) :: MinCost = HUGE(MinCost)
      INTEGER :: NoBetter = 0, i, IOUnit
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: GotIt
+     CHARACTER(:), ALLOCATABLE :: Name
      
      SAVE MinCost , NoBetter
      
@@ -521,10 +521,10 @@ PRINT *,'niter minpack:',niter
    !-----------------------------------------------------------------------------
    SUBROUTINE SaveParameterHistory()
      
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: DoAppend
      INTEGER :: IOunit
      LOGICAL :: GotIt
+     CHARACTER(:), ALLOCATABLE :: Name
      
      ! Save the results to a file
      !---------------------------
@@ -564,12 +564,12 @@ PRINT *,'niter minpack:',niter
     INTEGER :: NoParam
     REAL(KIND=dp), ALLOCATABLE :: Param(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: FileName
     LOGICAL :: Found, HaveFile, HaveArray
     REAL(KIND=dp), POINTER :: PArray(:,:)
     TYPE(Variable_t), POINTER :: PVar
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: LineCounter = 0
+    CHARACTER(:), ALLOCATABLE :: FileName
     CHARACTER(*), PARAMETER :: Caller = 'SetTabulatedParameters'
 
         
@@ -615,8 +615,9 @@ PRINT *,'niter minpack:',niter
     SUBROUTINE ReadTabulatedParameters()
 
       INTEGER :: FileUnit, Line, NOffset, FileTypeInd, FileRow, iostat, i, j, k
-      CHARACTER(LEN=MAX_NAME_LEN) :: FileType, readstr 
       REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
+      CHARACTER(:), ALLOCATABLE :: FileType
+      CHARACTER(LEN=MAX_NAME_LEN) :: readstr 
           
       FileType = ListGetString( Params,'Parameter Filetype',Found )
       FileTypeInd = 0
@@ -729,10 +730,9 @@ PRINT *,'niter minpack:',niter
     REAL(KIND=dp), ALLOCATABLE :: MinParam(:), MaxParam(:), dParam(:), PrevParam(:,:), &
         PrevCost(:), BestParam(:), InitParam(:)
     REAL(KIND=dp) :: Cost, MinCost, x(10), c(10), minv, maxv, OptTol
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name, ParamStr, Method
-    CHARACTER(LEN=MAX_NAME_LEN) :: BestFile
     TYPE(Variable_t),POINTER :: Var
     INTEGER :: IOUnit
+    CHARACTER(:), ALLOCATABLE :: Name, ParamStr, Method
     CHARACTER(*), PARAMETER :: Caller = 'SetOptimizationParameters'
 
     
@@ -766,7 +766,7 @@ PRINT *,'niter minpack:',niter
 
       NoFreeParam = 0
       DO i=1,NoParam
-        WRITE( ParamStr,'(A,I0)') 'Parameter ',i
+        ParamStr = 'Parameter '//I2S(i)
 
         FixedParam(i) = ListGetLogical(OptList,'Fixed '//TRIM(ParamStr),GotIt)
         InitParam(i) = ListGetConstReal(OptList,'Initial '//TRIM(ParamStr),GotInit)

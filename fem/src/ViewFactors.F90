@@ -131,8 +131,8 @@
      
      LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftEmis, RightEmis
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: eq,RadiationFlag, &
-           ViewFactorsFile,OutputName,ModelName,LMessage, TempString
+     CHARACTER(:), ALLOCATABLE :: eq, RadiationFlag, ViewFactorsFile, OutputName, &
+                 ModelName, LMessage, TempString
 
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
@@ -312,9 +312,8 @@
 
      RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
-       WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
+       LMessage = 'Computing view factors for radiation body'//I2S(RadiationBody)
        CALL Info(Caller,LMessage,Level=3)
-    
 !------------------------------------------------------------------------------
 !    Here we start...
 !------------------------------------------------------------------------------
@@ -464,7 +463,8 @@
          
          IF ( RadBody>0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
            CALL Error( Caller, 'Inconsistent direction information (Radiation Target Body)' )
-           WRITE( LMessage, * ) 'Radiation Target: ', RadBody, ' Left, Right: ', LeftBody, RightBody
+           LMessage = 'Radiation Target: '//I2S(RadBody)//' Left, Right: '//&
+                        I2S(LeftBody)//I2S(RightBody)
            CALL Fatal( Caller, LMessage )
          END IF
          
@@ -669,7 +669,7 @@
        IF ( .NOT.GotIt ) ViewFactorsFile = 'ViewFactors.dat'
        IF(RadiationBody > 1) THEN
          TempString = ViewFactorsFile
-         WRITE(ViewFactorsFile, '(A,I1)') TRIM(TempString),RadiationBody
+         ViewFactorsFile = TRIM(TempString)//I2S(RadiationBody)
        END IF
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN

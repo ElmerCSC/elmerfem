@@ -111,8 +111,7 @@ CONTAINS
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, MeshNumbering
     INTEGER :: MaxDepth, NLen
-    CHARACTER(LEN=1024) :: Path
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
@@ -808,7 +807,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Lambda
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
+    CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
 !------------------------------------------------------------------------------
 
     OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh' )

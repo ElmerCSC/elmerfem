@@ -556,7 +556,8 @@ SUBROUTINE VtkOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt
-  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix, OutputDirectory
+  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
+  CHARACTER(:), ALLOCATABLE, SAVE :: OutputDirectory
   
   ! Avoid compiler warings about unused variables
   IF ( TransientSimulation ) CONTINUE

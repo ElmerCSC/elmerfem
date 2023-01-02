@@ -1921,7 +1921,7 @@ RETURN
     INTEGER :: i,j,Cnt,NoParticles,TotParticles,dim
     REAL(KIND=dp), POINTER :: TargetVector(:,:)
     INTEGER, POINTER :: Status(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: DataName
+    CHARACTER(:), ALLOCATABLE :: DataName
 
     
     MeanCoord = 0.0_dp
@@ -2412,7 +2412,7 @@ RETURN
     INTEGER :: dim, ElementIndex, body_id, bf_id
     REAL(KIND=dp), POINTER :: rWork(:,:),Coordinate(:,:), Velocity(:,:)
     REAL(KIND=dp) :: Velo(3), Coord(3), Center(3), CenterVelo(3), time0, dist
-    CHARACTER(LEN=MAX_NAME_LEN) :: InitMethod
+    CHARACTER(:), ALLOCATABLE :: InitMethod
     INTEGER :: i,j,k,l,n,vdofs,nonodes, InitStatus, TotParticles, No
     INTEGER, POINTER :: MaskPerm(:), InvPerm(:), NodeIndexes(:)
     LOGICAL :: Found, GotIt, GotMask, RequirePositivity, GotWeight
@@ -2425,7 +2425,7 @@ RETURN
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
     LOGICAL :: CheckForSize, Parallel, SaveParticleOrigin
     LOGICAL, POINTER :: DoneParticle(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
+    CHARACTER(:), ALLOCATABLE :: VariableName
     CHARACTER(*), PARAMETER :: Caller = 'InitializeParticles'
 
     
@@ -4721,7 +4721,7 @@ RETURN
   FUNCTION GetMaterialPropertyInMesh(PropertyName, BulkElement, Basis, &
       BulkElement2, VolumeFraction ) RESULT ( Property )
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: PropertyName
+    CHARACTER(LEN=*) :: PropertyName
     TYPE(Element_t), POINTER :: BulkElement
     REAL(KIND=dp) :: Basis(:)
     TYPE(Element_t), POINTER, OPTIONAL :: BulkElement2
@@ -5518,9 +5518,9 @@ RETURN
     TYPE(ValueList_t), POINTER :: BodyForce
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
-    CHARACTER(LEN=MAX_NAME_LEN) :: str, VariableName
     LOGICAL :: TimeInteg, DistInteg, UseGradSource, TimeDepFields
     TYPE(ValueHandle_t), SAVE :: TimeSource_h, DistSource_h
+    CHARACTER(:), ALLOCATABLE :: VariableName
     CHARACTER(*), PARAMETER :: Caller = 'ParticlePathIntegral'
 
 
@@ -5758,7 +5758,7 @@ RETURN
     LOGICAL :: Mapped,Reflect,Found,SaveCount,Visited = .FALSE.
     INTEGER :: Operations, No, NoParticles, Status, NoCount(6), NoStep
     INTEGER, POINTER :: TmpInteger(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    CHARACTER(:), ALLOCATABLE :: Filename
     
     SAVE Visited, Reflect, PeriodicDir, NoPeriodic, MinCoord, MaxCoord, dim, &
         SaveCount, NoCount, Filename, NoStep
@@ -6499,17 +6499,17 @@ RETURN
     !-------------------------------------------------------------------------
     SUBROUTINE WriteParticleFileNames( Prefix, Dim ) 
       
-      CHARACTER(LEN=MAX_NAME_LEN) :: Prefix
+      CHARACTER(*) :: Prefix
       INTEGER :: dim
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: FileName
+      CHARACTER(:), ALLOCATABLE :: FileName
       INTEGER :: i,j,dofs
       TYPE(Variable_t), POINTER :: Solution
       LOGICAL :: ComponentVector, ThisOnly = .TRUE.
-      CHARACTER(LEN=1024) :: Txt, FieldName
+      CHARACTER(:), ALLOCATABLE :: Txt, FieldName
 
 
-      WRITE( FileName,'(A,A)') TRIM(FilePrefix),'.dat.names'
+      FileName =  TRIM(FilePrefix)//'.dat.names'
       
       OPEN (TableUnit, FILE=FileName )
       
@@ -6555,12 +6555,12 @@ RETURN
           DO Vari = 1, 99
             
             IF( Rank == 1 ) THEN
-              WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+              Txt = 'Scalar Field '//I2S(Vari)
             ELSE
-              WRITE(Txt,'(A,I0)') 'Vector Field ',Vari             
+              Txt = 'Vector Field '//I2S(Vari)
             END IF
             
-            FieldName = ListGetString( Params, TRIM(Txt), Found )
+            FieldName = ListGetString( Params, Txt, Found )
             IF(.NOT. Found) EXIT
             
             Solution => VariableGet( Mesh % Variables, &
@@ -6572,15 +6572,13 @@ RETURN
                 IF( ASSOCIATED(Solution)) THEN 
                   ComponentVector = .TRUE.
                 ELSE
-                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                  CALL Warn('WriteParticleLine', Txt)
+                  CALL Warn('WriteParticleLine', 'Nonexistent variable: '//TRIM(FieldName))
                   CYCLE
                 END IF
               END IF
             ELSE
               IF(.NOT. ASSOCIATED(Solution)) THEN
-                WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                CALL Warn('WriteParticleLine', Txt)
+                CALL Warn('WriteParticleLine','Nonexistent variable: '//TRIM(FieldName))
                 CYCLE
               END IF
             END IF
@@ -6628,12 +6626,10 @@ RETURN
     !-------------------------------------------------------------------------
     SUBROUTINE OpenParticleFile( Prefix, FileNo ) 
       
-      CHARACTER(LEN=MAX_NAME_LEN) :: Prefix
+      CHARACTER(LEN=*) :: Prefix
       INTEGER :: FileNo
       LOGICAL, SAVE :: Visited = .FALSE.
-
-
-      CHARACTER(LEN=MAX_NAME_LEN) :: FileName
+      CHARACTER(:), ALLOCATABLE :: FileName
       
       IF( FileNo == 0 ) THEN
         WRITE( FileName,'(A,A)') TRIM(FilePrefix),'.dat'
@@ -6669,7 +6665,7 @@ RETURN
       REAL(KIND=dp), POINTER :: Values(:)
       REAL(KIND=dp) :: u,v,w,val,detJ,r(3)
       LOGICAL :: stat, ThisOnly=.TRUE., ComponentVector
-      CHARACTER(LEN=1024) :: Txt, FieldName
+      CHARACTER(:), ALLOCATABLE :: Txt, FieldName
       TYPE(Element_t), POINTER :: Element
 
       INTEGER, ALLOCATABLE :: ElemInd(:)
@@ -6732,9 +6728,9 @@ RETURN
           DO Vari = 1, 99
             
             IF( Rank == 1 ) THEN
-              WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+              Txt = 'Scalar Field '//I2S(Vari)
             ELSE
-              WRITE(Txt,'(A,I0)') 'Vector Field ',Vari             
+              Txt = 'Vector Field '//I2S(Vari)
             END IF
             
             FieldName = ListGetString( Params, TRIM(Txt), Found )
@@ -6749,15 +6745,13 @@ RETURN
                 IF( ASSOCIATED(Solution)) THEN 
                   ComponentVector = .TRUE.
                 ELSE
-                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                  CALL Warn('WriteParticleLine', Txt)
+                  CALL Warn('WriteParticleLine', 'Nonexistent variable: '//TRIM(FieldName))
                   CYCLE
                 END IF
               END IF
             ELSE
               IF(.NOT. ASSOCIATED(Solution)) THEN
-                WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                CALL Warn('WriteParticleLine', Txt)
+                CALL Warn('WriteParticleLine','Nonexistent variable: '//TRIM(FieldName))
                 CYCLE
               END IF
             END IF
@@ -6844,7 +6838,7 @@ RETURN
     
     TYPE(Variable_t), POINTER :: TimeVar
     TYPE(ValueList_t), POINTER :: Params 
-    CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, FileNameGmsh, FileNameOut
+    CHARACTER(:), ALLOCATABLE :: FilePrefix, FileNameGmsh, FileNameOut
     LOGICAL :: Found
     REAL(KIND=dp), POINTER :: Coord(:,:), Velo(:,:), Dist(:)
     REAL(KIND=dp), POINTER :: CoordInit(:,:)
@@ -6862,7 +6856,7 @@ RETURN
     Params => ListGetSolverParams()
     FilePrefix = ListGetString(Params,'Filename Prefix')
 
-    WRITE( FileNameGmsh,'(A,A)') TRIM(FilePrefix),'.pos'
+    FileNameGmsh = FilePrefix // '.pos'
     
     Mesh => GetMesh()
     dim = Particles % dim
@@ -6963,8 +6957,8 @@ RETURN
     INTEGER, SAVE :: nTime = 0
     LOGICAL :: GotIt, Parallel, FixedMeshend,SinglePrec
     
-    CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
-    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile, BaseFile, OutputDirectory
+    CHARACTER(:), ALLOCATABLE :: FilePrefix, BaseFile, OutputDirectory
+    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
@@ -6975,11 +6969,10 @@ RETURN
     REAL(KIND=dp) :: DoubleWrk
     REAL :: SingleWrk
 
-    CHARACTER(MAX_NAME_LEN) :: Str
-    INTEGER :: NumberOfNodes, ParallelNodes, Dim
     TYPE(Solver_t), POINTER :: pSolver
+    INTEGER :: NumberOfNodes, ParallelNodes, Dim
     
-    SAVE :: MinSaveStatus, MaxSaveStatus
+    SAVE :: MinSaveStatus, MaxSaveStatus, FilePrefix
     
     Params => ListGetSolverParams()
     Mesh => GetMesh()
@@ -7099,10 +7092,13 @@ RETURN
       CHARACTER(LEN=*), INTENT(IN) :: VtuFile
       INTEGER, PARAMETER :: VtuUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution
-      CHARACTER(LEN=512) :: str
       INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs,IsVector,Offset,PartDim
-      CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
-          FieldName2, BaseString, OutStr
+
+      CHARACTER(:), ALLOCATABLE :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
+          FieldName2, BaseString
+
+      CHARACTER(1024) :: OutStr
+
       CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat
@@ -7200,7 +7196,7 @@ RETURN
               BaseString = 'Vector Field'
             END IF
 
-            WRITE(Txt,'(A)') TRIM(BaseString)//' '//I2S(Vari)
+            Txt = TRIM(BaseString)//' '//I2S(Vari)
             FieldName = ListGetString( Params, TRIM(Txt), Found )
             IF(.NOT. Found) EXIT
 
@@ -7221,8 +7217,7 @@ RETURN
                 END IF
               END IF
               IF( .NOT. ASSOCIATED( Solution ) ) THEN
-                WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                CALL Warn('WriteVtuXMLFile', Txt)
+                CALL Warn('WriteVtuXMLFile','Nonexistent variable: '//TRIM(FieldName))
                 CYCLE
               END IF
 
@@ -7255,7 +7250,7 @@ RETURN
               ! displacement & mesh update 
               !---------------------------------------------------------------------
               ComplementExists = .FALSE.
-              WRITE(Txt,'(A,I0,A)') TRIM(BaseString)//' ',Vari,' Complement'
+              Txt = TRIM(BaseString)//' '//I2S(Vari)//' Complement'
 
               FieldName2 = ListGetString( Params, TRIM(Txt), Found )
               IF( Found ) THEN
@@ -7283,8 +7278,7 @@ RETURN
                 ELSE IF( FieldName == 'force') THEN
                   VecValues => Particles % Force 
                 ELSE
-                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                  CALL Warn('WriteVtuXMLFile', Txt)
+                  CALL Warn('WriteVtuXMLFile', 'Nonexistent variable: '//TRIM(FieldName))
                   CYCLE
                 END IF
               ELSE
@@ -7314,8 +7308,7 @@ RETURN
                     CALL Fatal('WriteVTUFile','> Particle Group < does not exist!')
                   END IF
                 ELSE
-                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-                  CALL Warn('WriteVtuXMLFile', Txt)
+                  CALL Warn('WriteVtuXMLFile','Nonexistent variable: '//TRIM(FieldName))
                   CYCLE
                 END IF
               END IF
@@ -7708,9 +7701,8 @@ RETURN
       CHARACTER(LEN=*), INTENT(IN) :: VtuFile
       INTEGER, PARAMETER :: VtuUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution
-      CHARACTER(LEN=512) :: str
       INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs
-      CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
+      CHARACTER(:), ALLOCATABLE :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
           FieldName2
       LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, ThisOnly
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:)
@@ -7743,7 +7735,7 @@ RETURN
       ! Do the scalars
       !-------------------------------------------------------          
       DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+        Txt = 'Scalar Field '//I2S(Vari)
         FieldName = ListGetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
@@ -7757,8 +7749,7 @@ RETURN
           IF( FieldName /= 'particle distance' .OR. &
               FieldName /= 'particle time'     .OR. &
               FieldName /= 'particle dt' ) THEN
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtuXMLFile', Txt)
+            CALL Warn('WriteVtuXMLFile','Nonexistent variable: '//TRIM(FieldName))
             CYCLE
           END IF
         END IF
@@ -7779,7 +7770,7 @@ RETURN
       !-------------------------------------------------------          
 
       DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
+        Txt = 'Vector Field '//I2S(Vari)
         FieldName = ListGetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
@@ -7792,8 +7783,7 @@ RETURN
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
+              CALL Warn('WriteVtuXMLFile','Nonexistent variable: '//TRIM(FieldName))
               CYCLE
             END IF
           END IF
@@ -7812,8 +7802,7 @@ RETURN
         ELSE
           dofs = 3
           IF( FieldName /= 'velocity' .AND. FieldName /= 'force') THEN
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtuXMLFile', Txt)
+            CALL Warn('WriteVtuXMLFile','Nonexistent variable: '//TRIM(FieldName))
             CYCLE
           END IF
         END IF
@@ -7892,12 +7881,11 @@ RETURN
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, iTime
-    CHARACTER(MAX_NAME_LEN) :: Dir
+    CHARACTER(:), ALLOCATABLE :: Dir
     REAL(KIND=dp) :: SaveNodeFraction
     LOGICAL :: Found,BinaryOutput,AsciiOutput,SinglePrec,NoFileIndex, &
         Visited = .FALSE.
   
-    CHARACTER(MAX_NAME_LEN) :: Str
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
     
     
@@ -7972,10 +7960,10 @@ RETURN
       CHARACTER(LEN=*), INTENT(IN) :: VtiFile
       INTEGER, PARAMETER :: VtiUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution, Solution2
-      CHARACTER(LEN=512) :: str
       INTEGER :: i,j,k,l,dofs,Rank,cumn,n,vari,sdofs,ind,IsVector,IsAppend,GridPoints,Offset
-      CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
-          FieldName2, BaseString, OutStr
+      CHARACTER(:), ALLOCATABLE :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
+          FieldName2, BaseString
+      CHARACTER(LEN=1024) :: OutStr
       CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat, WriteData, WriteXML
@@ -8072,7 +8060,7 @@ RETURN
             BaseString = 'Vector Field'
           END IF
           
-          WRITE(Txt,'(A)') TRIM(BaseString)//' '//I2S(Vari)          
+          Txt = TRIM(BaseString)//' '//I2S(Vari)          
           FieldName = ListGetString( Params, TRIM(Txt), Found )
           IF(.NOT. Found) EXIT
           
@@ -8092,8 +8080,7 @@ RETURN
             END IF
           END IF
           IF( .NOT. ASSOCIATED( Solution ) ) THEN
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtiXMLFile', Txt)
+            CALL Warn('WriteVtiXMLFile','Nonexistent variable: '//TRIM(FieldName))
             CYCLE
           END IF
 
@@ -8129,7 +8116,7 @@ RETURN
           ! displacement & mesh update 
           !---------------------------------------------------------------------
           ComplementExists = .FALSE.
-          WRITE(Txt,'(A,I0,A)') TRIM(BaseString),Vari,' Complement'
+          Txt = TRIM(BaseString)//I2S(Vari)//' Complement'
 
           FieldName2 = ListGetString( Params, TRIM(Txt), Found )
           IF( Found ) THEN
@@ -8342,9 +8329,8 @@ RETURN
       CHARACTER(LEN=*), INTENT(IN) :: VtiFile
       INTEGER, PARAMETER :: VtiUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution
-      CHARACTER(LEN=512) :: str
       INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs
-      CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
+      CHARACTER(:), ALLOCATABLE :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
           FieldName2
       LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, ThisOnly
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:)
@@ -8377,7 +8363,7 @@ RETURN
       ! Do the scalars
       !-------------------------------------------------------          
       DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+        Txt = 'Scalar Field '//I2S(Vari)
         FieldName = ListGetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
@@ -8397,7 +8383,7 @@ RETURN
       !-------------------------------------------------------          
       
       DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
+        Txt = 'Vector Field '//I2S(Vari)
         FieldName = ListGetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
@@ -8409,8 +8395,7 @@ RETURN
           IF( ASSOCIATED(Solution)) THEN 
             ComponentVector = .TRUE.
           ELSE
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtiXMLFile', Txt)
+            CALL Warn('WriteVtiXMLFile', 'Nonexistent variable: '//TRIM(FieldName))
             CYCLE
           END IF
         END IF

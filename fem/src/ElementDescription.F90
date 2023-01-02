@@ -428,8 +428,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Local variables
 !------------------------------------------------------------------------------
-      CHARACTER(LEN=:), ALLOCATABLE :: str
-      CHARACTER(LEN=MAX_STRING_LEN) :: tstr,elmer_home
+      CHARACTER(LEN=:), ALLOCATABLE :: tstr, str,elmer_home
 
       INTEGER :: k, n
       INTEGER, DIMENSION(MaxDeg3) :: BasisTerms
@@ -459,37 +458,35 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
+      ALLOCATE(CHARACTER(MAX_STRING_LEN)::elmer_home)
+
       tstr = 'ELMER_LIB'
       CALL envir( tstr,elmer_home,k ) 
       
       fexist = .FALSE.
       IF (  k > 0 ) THEN
-         WRITE( tstr, '(a,a)' ) elmer_home(1:k),'/elements.def'
+         tstr = elmer_home(1:k) // '/elements.def'
 	 INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
       END IF
       IF (.NOT. fexist) THEN
         tstr = 'ELMER_HOME'
         CALL envir( tstr,elmer_home,k ) 
         IF ( k > 0 ) THEN
-           WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
-'/share/elmersolver/lib/elements.def'
+           tstr = elmer_home(1:k)//'/share/elmersolver/lib/elements.def'
            INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
         END IF
         IF ((.NOT. fexist) .AND. k > 0) THEN
-           WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
-                '/elements.def'
+           tstr = elmer_home(1:k)//'/elements.def'
            INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
         END IF
      END IF
      IF (.NOT. fexist) THEN
         CALL GetSolverHome(elmer_home, n)
-        WRITE(tstr, '(a,a)') elmer_home(1:n), &
-                             '/lib/elements.def'
+        tstr = elmer_home(1:n)//'/lib/elements.def'
         INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
      END IF
      IF (.NOT. fexist) THEN
-        CALL Fatal('InitializeElementDescriptions', &
-             'elements.def not found')
+        CALL Fatal('InitializeElementDescriptions','elements.def not found')
      END IF
 
       OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )
@@ -12132,7 +12129,7 @@ END SUBROUTINE PickActiveFace
     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
     LOGICAL :: Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: PassName
+    CHARACTER(:), ALLOCATABLE :: PassName
     LOGICAL :: NoPassiveElements = .FALSE.
     TYPE(Solver_t), POINTER :: pSolver, PrevSolver => NULL()
     
@@ -12146,7 +12143,7 @@ END SUBROUTINE PickActiveFace
       PrevSolver => pSolver          
       nlen = CurrentModel % Solver % Variable % NameLen
       PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
-      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
+      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce(CurrentModel, PassName)
     END IF
     
     IF( NoPassiveElements ) RETURN       
