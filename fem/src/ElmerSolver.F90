@@ -109,7 +109,7 @@
      REAL(KIND=dp) :: CT0,RT0,tt
 
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
-     LOGICAL :: Silent, Version, GotModelName, FinishEarly
+     LOGICAL :: Silent = .FALSE., Version = .FALSE., GotModelName, FinishEarly = .FALSE.
 
      INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
@@ -119,7 +119,7 @@
 
      TYPE(Model_t), POINTER, SAVE :: Control
      CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
-     LOGICAL :: DoControl, ProcControl, GotParams
+     LOGICAL :: DoControl = .FALSE., ProcControl = .FALSE., GotParams = .FALSE.
      INTEGER :: nr,ni,ExtMethod
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      INTEGER, ALLOCATABLE :: ipar(:)
