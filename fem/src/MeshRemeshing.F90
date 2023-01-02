@@ -1555,7 +1555,7 @@ SUBROUTINE Set_ParMMG_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   LOGICAL, ALLOCATABLE :: IsNeighbour(:)
   INTEGER, POINTER :: Neighbours(:)
   LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
-  CHARACTER(:), PARAMETER :: FuncName="Set_ParMMG_Mesh"
+  CHARACTER(*), PARAMETER :: FuncName="Set_ParMMG_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("ParMMG","Only works for 3D meshes!")
 
   ALLOCATE(NodeRefs(6))
