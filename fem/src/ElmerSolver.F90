@@ -113,6 +113,10 @@
 
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
+<<<<<<< HEAD
+=======
+     LOGICAL :: Silent = .FALSE., Version = .FALSE., GotModelName, FinishEarly = .FALSE.
+>>>>>>> 38481fb5f22a1b3580eb576540d324b2855942fc
 
      INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
@@ -121,7 +125,12 @@
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      TYPE(Model_t), POINTER, SAVE :: Control
+<<<<<<< HEAD
      LOGICAL :: DoControl=.FALSE., ProcControl=.FALSE., GotParams=.FALSE.
+=======
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+     LOGICAL :: DoControl = .FALSE., ProcControl = .FALSE., GotParams = .FALSE.
+>>>>>>> 38481fb5f22a1b3580eb576540d324b2855942fc
      INTEGER :: nr,ni,ExtMethod
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)

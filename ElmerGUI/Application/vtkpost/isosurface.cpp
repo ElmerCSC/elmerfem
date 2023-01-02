@@ -74,6 +74,10 @@ IsoSurface::IsoSurface(QWidget *parent)
   connect(ui.keepColorLimits, SIGNAL(stateChanged(int)), this, SLOT(keepColorLimitsSlot(int)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 IsoSurface::~IsoSurface()

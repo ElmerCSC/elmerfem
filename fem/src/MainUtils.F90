@@ -1733,7 +1733,12 @@ CONTAINS
         IF ( DG ) THEN
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
         END IF
-          
+
+        IF( ListGetLogical(SolverParams,'Hcurl Basis',Found ) ) THEN
+          Solver % Variable % Type = Variable_on_edges
+        END IF
+
+        
       END IF
       !------------------------------------------------------------------------------
     END IF

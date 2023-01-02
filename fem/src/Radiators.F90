@@ -283,6 +283,7 @@
 ! Check the maximum radiation body
      MaxRadiationBody = 0
 
+#if 0
      DO t= 1, Mesh % NumberOfBoundaryElements
 
        Element => GetBoundaryElement(t)
@@ -297,13 +298,10 @@
          MaxRadiationBody = MAX(i, MaxRadiationBody)
        END IF
      END DO
+#else
+     MaxRadiationBody = 1
+#endif
 
-     IF( Mesh % NumberOfBoundaryElements == 0) THEN
-       CALL Warn(Caller,'There are no radiation boundary elements!')
-       STOP
-     END IF
-
-     RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
        WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
        CALL Info(Caller,LMessage,Level=3)
@@ -328,6 +326,7 @@
          
          RadiationFlag = GetLogical( BC, 'Radiator BC', GotIt )
          IF ( RadiationFlag ) THEN
+#if 0
            i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ))
            IF(i == RadiationBody) THEN
              RadiationOpen = RadiationOpen .OR. GetLogical( BC, 'Radiation Boundary Open', GotIt )
@@ -335,6 +334,12 @@
              j = t + Mesh % NumberOFBulkElements
              RadElements(RadiationSurfaces) = Mesh % Elements(j)
            END IF
+#else
+           RadiationOpen = RadiationOpen .OR. GetLogical(BC,'Radiation Boundary Open', GotIt)
+           RadiationSurfaces = RadiationSurfaces + 1
+           j = t + Mesh % NumberOFBulkElements
+           RadElements(RadiationSurfaces) = Mesh % Elements(j)
+#endif
          END IF
        END DO
        

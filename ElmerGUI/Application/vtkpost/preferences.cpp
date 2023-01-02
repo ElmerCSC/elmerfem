@@ -55,6 +55,10 @@ Preferences::Preferences(QWidget *parent)
   connect(ui.applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Preferences::~Preferences()
