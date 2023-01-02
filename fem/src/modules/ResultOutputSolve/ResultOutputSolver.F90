@@ -189,7 +189,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
         
-    IF(NowSave) CALL Info(Caller,'Dimension of mesh is: '//TRIM(I2S(iMesh % MeshDim)),Level=7)
+    IF(NowSave) CALL Info(Caller,'Dimension of mesh is: '//I2S(iMesh % MeshDim),Level=7)
 
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping lower dimensional mesh: '//TRIM(iMesh % Name), Level=7 )
@@ -298,7 +298,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( .NOT. NowSave ) THEN
     CALL ListAddInteger( Params,'Number of Output Meshes',NoMeshes)
-    CALL Info(Caller,'Number of output meshes: '//TRIM(I2S(NoMeshes)),Level=12)
+    CALL Info(Caller,'Number of output meshes: '//I2S(NoMeshes),Level=12)
     NowSave = .TRUE.
     GOTO 1
   END IF

@@ -661,7 +661,7 @@ CONTAINS
     END IF
 
     CALL Info('ButlerVolmerUpdate','Solver index related to variable "phis" is: '&
-        //TRIM(I2S(i)),Level=10)       
+        //I2S(i),Level=10)       
     
     EtaFixed = ListGetLogical( Params,'Fixed Overpotential',Found )
     IF( EtaFixed ) THEN
@@ -791,7 +791,7 @@ CONTAINS
       !n = COUNT( JliVar % Values /= JliVar % Values ) 
       !IF( n > 0 ) THEN
       !  CALL Fatal('ButlerVolmerUpdate',&
-      !      'There are NaNs in the flux solution: '//TRIM(I2S(n)))
+      !      'There are NaNs in the flux solution: '//I2S(n))
       !END IF
 
       ! This is only performed if "Max Output Level" is 7 or more. 

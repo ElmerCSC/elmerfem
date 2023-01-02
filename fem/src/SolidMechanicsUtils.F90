@@ -616,7 +616,7 @@ CONTAINS
       h = MAX(l21,l32,l43,l14)
       Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
     CASE DEFAULT
-      CALL Fatal('ShearCorrectionFactor','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
+      CALL Fatal('ShearCorrectionFactor','Illegal number of nodes for Smitc elements: '//I2S(n))
     END SELECT
 !------------------------------------------------------------------------------
   END SUBROUTINE ShearCorrectionFactor

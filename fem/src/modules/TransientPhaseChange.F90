@@ -217,7 +217,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
       NormalDirection = j
-      CALL Info('TransientPhaseChange','Normal coordinate set to: '//TRIM(I2S(j)),Level=7)
+      CALL Info('TransientPhaseChange','Normal coordinate set to: '//I2S(j),Level=7)
     END IF
     
     ALLOCATE(IsBoundaryNode(SIZE(Surface)))
@@ -249,7 +249,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     END DO
 
     n = COUNT( IsBoundaryNode )
-    CALL Info('TransientPhaseChange','Number of boundary nodes: '//TRIM(I2S(n)),Level=7)
+    CALL Info('TransientPhaseChange','Number of boundary nodes: '//I2S(n),Level=7)
 
     n = Solver % Mesh % MaxElementNodes  
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &

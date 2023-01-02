@@ -84,20 +84,20 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   IF( ListGetLogical(Params,'Calculate Volume Current',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Volume Current e[Volume Current e:'//TRIM(I2S(dim))//']' )
+        '-dg Volume Current e[Volume Current e:'//I2S(dim)//']' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Volume Current[Volume Current:'//TRIM(I2S(dim))//']' )       
+        'Volume Current[Volume Current:'//I2S(dim)//']' )       
     PostActive = .TRUE.
   END IF
   
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Electric Field e[Electric Field e:'//TRIM(I2S(dim))//']' )
+        '-dg Electric Field e[Electric Field e:'//I2S(dim)//']' )
     IF( CalculateNodal ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )
+        'Electric Field[Electric Field:'//I2S(dim)//']' )
     PostActive = .TRUE.
   END IF
 
@@ -109,7 +109,7 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
   END IF
   IF( ListGetLogical(Params,'Calculate Nodal Current',Found) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Nodal Current[Nodal Current:'//TRIM(I2S(dim))//']' )
+        'Nodal Current[Nodal Current:'//I2S(dim)//']' )
     PostActive = .TRUE.
   END IF
 
@@ -215,7 +215,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     DO col=1,nColours
       
       !$OMP SINGLE
-      CALL Info( Caller,'Assembly of colour: '//TRIM(I2S(col)),Level=15)
+      CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
@@ -253,7 +253,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
       !$OMP SINGLE
-      CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !$OMP END SINGLE
 
@@ -731,7 +731,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   CalcField = ANY( PostVars(7:8) % HaveVar ) 
 
   n = COUNT( PostVars(1:8) % HaveVar )
-  CALL Info(Caller,'Number of '//TRIM(I2S(n))//' postprocessing fields',Level=8)
+  CALL Info(Caller,'Number of '//I2S(n)//' postprocessing fields',Level=8)
     
   ! Only create the nodal weights if we need to scale some nodal field
   NeedScaling = .FALSE.
@@ -739,7 +739,7 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     IF( .NOT. PostVars(i) % HaveVar ) CYCLE
     IF( PostVars(i) % NodalField ) CYCLE
     IF( PostVars(i) % Var % TYPE == Variable_on_nodes ) THEN
-      CALL Info(Caller,'Creating a weighting for scaling purposes from '//TRIM(I2S(i)),Level=10)
+      CALL Info(Caller,'Creating a weighting for scaling purposes from '//I2S(i),Level=10)
       NeedScaling = .TRUE.
       WeightPerm => PostVars(i) % Var % Perm 
       ALLOCATE( WeightVector( MAXVAL( WeightPerm ) ) )
@@ -800,10 +800,10 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
       DO i = 1, n
         IF( PotVol(i) < EPSILON( PotVol(i) ) ) CYCLE
         PotAve = PotInteg(i) / PotVol(i)
-        WRITE( Message,'(A,ES12.5)') 'Average body'//TRIM(I2S(i))//' potential: ',PotAve
+        WRITE( Message,'(A,ES12.5)') 'Average body'//I2S(i)//' potential: ',PotAve
         CALL Info(Caller,Message,Level=7)
         CALL ListAddConstReal( Model % Simulation,&
-            'res: Average body'//TRIM(I2S(i))//' potential',PotAve)
+            'res: Average body'//I2S(i)//' potential',PotAve)
       END DO
     END BLOCK
   END IF
@@ -1022,7 +1022,7 @@ CONTAINS
             j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
             pVar % Values(j) = SUM( x(1:n) ) / n
           ELSE
-            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//TRIM(I2S(pVar % TYPE)))
+            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//I2S(pVar % TYPE))
           END IF
         END DO
       END DO

@@ -240,7 +240,7 @@ use spariterglobals
      ALLOCATE(DoneAlready(LocalNodes),STAT=istat)
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for DoneAlready of size: '&
-           //TRIM(I2S(LocalNodes)))
+           //I2S(LocalNodes))
      END IF
 
      MaxLevel = 0
@@ -280,14 +280,14 @@ use spariterglobals
      ALLOCATE( PermLocal(SIZE(Perm)), STAT=istat )
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for PermLocal: '//&
-           TRIM(I2S(SIZE(Perm))))
+           I2S(SIZE(Perm)))
      END IF
      PermLocal = 0
 
      ALLOCATE( DoneIndex(LocalNodes), STAT=istat )
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for DoneIndex: '&
-           //TRIM(I2S(LocalNodes)))
+           //I2S(LocalNodes))
      END IF
      DoneIndex = 0
 !-------------------------------------------------------------------------------

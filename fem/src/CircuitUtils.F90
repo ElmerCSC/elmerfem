@@ -189,7 +189,7 @@ CONTAINS
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
         IF (Found) CALL Fatal ('AddComponentsToBodyList', &
-                              'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+                              'Body '//i2s(BodyId)//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
       END DO
@@ -202,7 +202,7 @@ CONTAINS
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A)') '"Body '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
+      WRITE(Message,'(A)') '"Body '//I2S(i)//'" associated to "Component '//I2S(j)//'"' 
       CALL Info('AddComponentsToBodyList',Message,Level=5)
       BodyParams => Null()
     END DO
@@ -301,7 +301,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: slen,n_Circuits
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
@@ -333,8 +334,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: nofc, char_len, slen, CId, i
-    CHARACTER(LEN=MAX_NAME_LEN) :: Var_type
-    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
+    CHARACTER(LEN=*) :: Var_type
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
     TYPE(Circuit_t), POINTER :: Circuit
     
     Circuit => CurrentModel % Circuits(CId)
@@ -343,7 +345,7 @@ CONTAINS
     
     char_len = LEN_TRIM(Var_type)
     DO i=1,Circuit % n
-      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
 
@@ -360,8 +362,9 @@ CONTAINS
     IMPLICIT NONE
     INTEGER :: nofc, nofvar, slen, CId, i, j, CompId, ibracket
     INTEGER :: ComponentIDs(nofvar)
-    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     nofc = 0
     ComponentIDs = -1
@@ -370,7 +373,7 @@ CONTAINS
     
    
     DO i=1,Circuit % n
-      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
 
@@ -417,10 +420,11 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc, ibracket
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
     LOGICAL :: LondonEquations = .FALSE.
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
 
@@ -431,7 +435,7 @@ END FUNCTION isComponentName
 
     CompInd = 0
     DO i=1,Circuit % n
-      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
       Circuit % names(i) = name(1:slen)
@@ -514,12 +518,13 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId, n, slen 
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     
-    cmd = 'C.'//TRIM(i2s(CId))//'.variables'
+    cmd = 'C.'//i2s(CId)//'.variables'
     slen = LEN_TRIM(cmd)
     CALL Matc( cmd, name, slen )
       
@@ -536,8 +541,7 @@ END FUNCTION isComponentName
   SUBROUTINE AllocateCircuit(CId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: slen,CId,n
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
 
     Circuit => CurrentModel % Circuits(CId)
@@ -664,7 +668,7 @@ END FUNCTION isComponentName
     LOGICAL :: Found
     INTEGER :: ExtMaster
 
-    CALL Info('ReadComponents','Reading component: '//TRIM(I2S(Cid)),Level=20)
+    CALL Info('ReadComponents','Reading component: '//I2S(Cid),Level=20)
     
     Circuit => CurrentModel % Circuits(CId)
     
@@ -676,9 +680,9 @@ END FUNCTION isComponentName
       Comp % BodyIds => GetComponentBodyIds(Comp % ComponentId)
 
       IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
-        CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+        CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//i2s(Comp % ComponentId))
       ELSE IF (.NOT. ASSOCIATED(Comp % vvar) ) THEN
-        CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+        CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Component '//i2s(Comp % ComponentId))
       END IF
 
       CompParams => CurrentModel % Components (Comp % ComponentId) % Values
@@ -686,7 +690,7 @@ END FUNCTION isComponentName
       
       Comp % CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (.NOT. Found) THEN
-        CALL Info('Circuits_Init', 'Component '//TRIM(i2s(Comp % ComponentId))//' is not a coil. &
+        CALL Info('Circuits_Init', 'Component '//i2s(Comp % ComponentId)//' is not a coil. &
           Checking if it has a component type.', Level=7)
         Comp % ComponentType = GetString(CompParams, 'Component Type', Found)
         IF (.NOT. Found) CALL Fatal ('Circuits_Init', 'Component Type not found!')
@@ -871,7 +875,7 @@ END FUNCTION isComponentName
           CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')      
       BCid = Comp % ElBoundaries(1)
       IF( BCid > CurrentModel % NumberOfBCs ) &     
-          CALL Fatal('ComputeElectrodeArea', 'BCid is beyond range: '//TRIM(I2S(BCid)))
+          CALL Fatal('ComputeElectrodeArea', 'BCid is beyond range: '//I2S(BCid))
       BC => CurrentModel % BCs(BCid) % Values
       IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Boundary not found!')
       Comp % ElArea = GetConstReal(BC, 'Area', Found)
@@ -1068,15 +1072,15 @@ END FUNCTION isComponentName
     ! Ax' + Bx = source:
     ! ------------------------------------------------------------
 
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
-    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
+    CALL matc_get_array('C.'//i2s(CId)//'.A'//CHAR(0),Circuit % A,n,n)
+    CALL matc_get_array('C.'//i2s(CId)//'.B'//CHAR(0),Circuit % B,n,n)
 
     IF (Circuit % Harmonic) THEN
       ! Complex multiplier matrix is used for:
       ! B = times(M,B), where B times is the element-wise product
       ! ---------------------------------------------------------
-      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+      CALL matc_get_array('C.'//i2s(CId)//'.Mre'//CHAR(0),Circuit % Mre,n,n)
+      CALL matc_get_array('C.'//i2s(CId)//'.Mim'//CHAR(0),Circuit % Mim,n,n)
     END IF
 
 !------------------------------------------------------------------------------
@@ -1088,14 +1092,15 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
-      cmd = 'C.'//TRIM(i2s(CId))//'.perm('//TRIM(i2s(i-1))//')'
+      cmd = 'C.'//i2s(CId)//'.perm('//i2s(i-1)//')'
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
       READ(name(1:slen),*) Circuit % Perm(i)
@@ -1114,8 +1119,9 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
-    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
+    CHARACTER(:), ALLOCATABLE :: cmd
+    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
@@ -1124,7 +1130,7 @@ END FUNCTION isComponentName
       ! in the "Body Force 1" block of the .sif file.
       ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
       ! ---------------------------------------------------------------------------
-      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))
+      cmd = 'nc:C.'//i2s(CId)//'.source.'//i2s(i)
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
       Circuit % Source(i) = name(1:slen)
@@ -1324,19 +1330,18 @@ END FUNCTION isComponentName
     TYPE(CircuitVariable_t), POINTER :: CVar
     TYPE(Variable_t), POINTER :: Var, VarIm
     INTEGER :: p,i,n,nv,ni,m,iv,nsize
-    CHARACTER(LEN=MAX_NAME_LEN) :: CrtName,VarName,VarnameIm
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Found 
+    CHARACTER(:), ALLOCATABLE :: CrtName,VarName,VarnameIm
     
     IF( .NOT. ListGetLogical( Solver % Values,'Export Circuit Variables',Found ) ) RETURN
-    
 
     CALL Info('Circuit_ToMeshVariable','Adding circuit variables to be mesh variables')
     
     Mesh => Solver % Mesh
             
     DO p=1,CurrentModel % n_Circuits
-      CALL Info('Circuit_ToMeshVariable','Adding circuit: '//TRIM(I2S(p)),Level=12)
+      CALL Info('Circuit_ToMeshVariable','Adding circuit: '//I2S(p),Level=12)
 
       Circuit => CurrentModel % Circuits(p)
 
@@ -1345,7 +1350,7 @@ END FUNCTION isComponentName
       IF( CurrentModel % n_Circuits == 1) THEN
         crtName = 'crt'
       ELSE
-        crtName = 'crt '//TRIM(I2S(p))
+        crtName = 'crt '//I2S(p)
       END IF
     
       ! Count the v and i variables of the circuit.
@@ -1366,17 +1371,17 @@ END FUNCTION isComponentName
       DO iv=1,2      
         IF( Circuit % Harmonic ) THEN
           IF(iv==1) THEN
-            varname =  TRIM(crtname)//' i re'
-            varnameim =  TRIM(crtname)//' i im'
+            varname =  crtname//' i re'
+            varnameim =  crtname//' i im'
           ELSE
-            varname = TRIM(crtname)//' v re'
-            varnameim = TRIM(crtname)//' v im'
+            varname = crtname//' v re'
+            varnameim = crtname//' v im'
           END IF
         ELSE
           IF(iv==1) THEN
-            varname =  TRIM(crtname)//' i'
+            varname =  crtname//' i'
           ELSE
-            varname = TRIM(crtname)//' v'
+            varname = crtname//' v'
           END IF
         END IF
         
@@ -1416,7 +1421,7 @@ END FUNCTION isComponentName
           IF(iv==1 .AND. .NOT. CVar % isIvar ) CYCLE          
           IF(iv==2 .AND. .NOT. Cvar % isVvar) CYCLE
           
-          CALL Info('Circuts_toMeshVariable','Inserting variable '//TRIM(I2S(CVar % ValueId))//': '&
+          CALL Info('Circuts_toMeshVariable','Inserting variable '//I2S(CVar % ValueId)//': '&
               //TRIM(Circuit % names(i)),Level=20)
                     
           m = m + 1

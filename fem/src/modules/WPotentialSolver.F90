@@ -98,7 +98,7 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
   CALL ListAddLogical( SolverParams, 'Optimize Bandwidth',.FALSE.)
   CALL ListAddString( SolverParams, 'Equation', &
-  'elementaladd'//TRIM(i2s(visited)) )
+  'elementaladd'//i2s(visited) )
   CALL ListAddString( SolverParams, 'Procedure', &
               'WPotentialSolver Wsolve_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput '//TRIM(varname)//'_dummy' )
@@ -111,19 +111,19 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
 
   i = 1
   DO WHILE(.TRUE.)
-    IF(ListCheckPresent(SolverParams, "Exported Variable "//TRIM(i2s(i)))) THEN
+    IF(ListCheckPresent(SolverParams, "Exported Variable "//i2s(i))) THEN
       i=i+1
     ELSE
       EXIT
     END IF
   END DO
 
-  CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+  CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
         TRIM(varname)//" Potential" )
 
   i=i+1
 
-  CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+  CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
           "-dg "//TRIM(varname)//" Vector E["//TRIM(varname)//" Vector E:3]" )
 
   IF (GetLogical(GetSolverParams(), 'Compute J Vector', Found)) THEN
@@ -131,7 +131,7 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
     IF (.NOT. Found) jvarname = 'J'
     i=i+1
 
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "-dg "//TRIM(jvarname)//" Vector E["//TRIM(jvarname)//" Vector E:3]" )
   END IF
 

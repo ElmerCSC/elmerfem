@@ -46,7 +46,7 @@ CONTAINS
 
     ALLOCATE( Matrix(n), STAT=istat )
     IF( istat /= 0 ) THEN
-      CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//TRIM(I2S(n)))
+      CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//I2S(n))
     END IF
 
     !$OMP PARALLEL
@@ -147,7 +147,7 @@ CONTAINS
     END DO
 
     CALL Info('List_ToCRS',&
-        'Number of entries in CRS matrix: '//TRIM(I2S(Rows(n+1)-1)),Level=8)
+        'Number of entries in CRS matrix: '//I2S(Rows(n+1)-1),Level=8)
 
     A => AllocateMatrix()
     A % NumberOfRows = n
@@ -201,7 +201,7 @@ CONTAINS
     END DO
 
     CALL Info('List_ToCRSMatrix',&
-        'Changing matrix type with number of non-zeros: '//TRIM(I2S(Rows(n+1)-1)),Level=8)
+        'Changing matrix type with number of non-zeros: '//I2S(Rows(n+1)-1),Level=8)
 
     ALLOCATE( Cols(Rows(n+1)-1)) 
     ALLOCATE( Values(Rows(n+1)-1) )

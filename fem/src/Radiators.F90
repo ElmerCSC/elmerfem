@@ -214,7 +214,7 @@
 
          IF(.NOT. Found ) CYCLE
 
-         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
 
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
@@ -222,7 +222,7 @@
 
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( Caller,'Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
+     CALL Info( Caller,'Number of nodes in mesh: '//I2S(Mesh % NumberOfNodes),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -356,7 +356,7 @@
          END IF
        END IF
        
-       CALL Info(Caller,'Number of surfaces participating in radiation: '//TRIM(I2S(N)))
+       CALL Info(Caller,'Number of surfaces participating in radiation: '//I2S(N))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -558,7 +558,7 @@
 
            IF(.NOT.Found) CYCLE
 
-           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//I2S((l+1)/2))
            
            k = 0
            DO i=1,NofRadiators
@@ -598,7 +598,7 @@
        WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
        CALL Info( Caller, Message )
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
-           //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
+           //I2S(nprob)//' (out of '//I2S(n)//')')
        
        IF( .NOT. RadiationOpen ) THEN 
          at0 = CPUTime()

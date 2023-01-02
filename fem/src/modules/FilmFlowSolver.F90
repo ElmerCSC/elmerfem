@@ -101,7 +101,7 @@ SUBROUTINE FilmFlowSolver_init(Model, Solver, dt, Transient)
     CALL ListAddNewString(Params, 'Variable', &
         'Flow[FilmSpeed:1 FilmPressure:1]')
   ELSE
-    CALL Fatal(Caller,'This module does not make sense in dim: '//TRIM(I2S(mdim)))    
+    CALL Fatal(Caller,'This module does not make sense in dim: '//I2S(mdim))    
   END IF
 
   ! Study only velocity components in linear system
@@ -174,8 +174,8 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
-    CALL Info(Caller,'Dimension of Navier-Stokes equation: '//TRIM(I2S(mdim)))
-    CALL Info(Caller,'Dimension of coordinate system: '//TRIM(I2S(dim)))
+    CALL Info(Caller,'Dimension of Navier-Stokes equation: '//I2S(mdim))
+    CALL Info(Caller,'Dimension of coordinate system: '//I2S(dim))
 
     n = (mdim+1)*(Mesh % MaxElementDOFs+BDOFs)  ! just big enough for elemental arrays
     ALLOCATE( FORCE(n), LOAD(n,4), STIFF(n,n), MASS(n,n), &
@@ -298,7 +298,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       END WHERE
 
       DO i=1,mdim
-        Load(i,1:n) = GetReal( BC, 'Pressure '//TRIM(I2S(i)), Found ) 
+        Load(i,1:n) = GetReal( BC, 'Pressure '//I2S(i), Found ) 
       END DO
       Load(mdim+1,1:n) = GetReal( BC, 'Mass Flux', Found )
       

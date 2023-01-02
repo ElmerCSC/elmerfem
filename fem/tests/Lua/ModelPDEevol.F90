@@ -55,7 +55,7 @@ SUBROUTINE AdvDiffSolver_evol( Model,Solver,dt,TransientSimulation )
     DO col=1,nColours
       
       !$OMP SINGLE
-      CALL Info('ModelPDEthreaded','Assembly of colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info('ModelPDEthreaded','Assembly of colour: '//I2S(col),Level=10)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
@@ -89,7 +89,7 @@ SUBROUTINE AdvDiffSolver_evol( Model,Solver,dt,TransientSimulation )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
        !$OMP SINGLE
-       CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+       CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//I2S(col),Level=10)
        Active = GetNOFBoundaryActive(Solver)
        !$OMP END SINGLE
 

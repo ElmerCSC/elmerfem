@@ -169,7 +169,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IF( Solver % Variable % dofs /= 2) THEN
     CALL Fatal ('VectorHelmholtzSolver', &
-        'Variable is not of size two ('//TRIM(I2S(Solver % Variable % dofs))//'), &
+        'Variable is not of size two ('//I2S(Solver % Variable % dofs)//'), &
         Use: Variable = E[E re:1 E im:1]')
   ENDIF
 
@@ -800,9 +800,9 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   END IF
     
   IF( soln == 0 ) THEN
-    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//TRIM(I2S(soln)))      
+    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))      
   ELSE
-    CALL Info('VectorHelmholtzCalcFields_Init0','The primary solver index is: '//TRIM(I2S(soln)),Level=12)
+    CALL Info('VectorHelmholtzCalcFields_Init0','The primary solver index is: '//I2S(soln),Level=12)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
@@ -1051,7 +1051,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
    IF( vDofs /= 2 ) THEN
-     CALL Fatal(Caller,'Primary variable should have 2 dofs: '//TRIM(I2S(vDofs)))
+     CALL Fatal(Caller,'Primary variable should have 2 dofs: '//I2S(vDofs))
    END IF
 
    IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN

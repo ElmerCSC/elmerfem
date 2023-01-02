@@ -67,7 +67,8 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-  CHARACTER(MAX_NAME_LEN) :: OutputFile, OutputDirectory
+  CHARACTER(MAX_NAME_LEN) :: OutputFile
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   INTEGER :: GmshUnit
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputSolver'
     

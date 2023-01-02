@@ -75,8 +75,8 @@ CONTAINS
        REAL(KIND=dp) CONTIG :: ForceVector(:), Solution(:)
 !------------------------------------------------------------------------------
        LOGICAL :: Found, Algebraic, Cluster, Geometric, Pelement
-       CHARACTER(LEN=MAX_NAME_LEN) :: MGMethod
        TYPE(ValueList_t), POINTER :: Params
+       CHARACTER(:), ALLOCATABLE :: MGMethod
 
        IF( Level == Solver % MultigridLevel ) THEN 
          CALL Info('MultiGridSolve','*********************************',Level=10)
@@ -135,7 +135,7 @@ CONTAINS
 
 
        INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100,ndofs
-       CHARACTER(LEN=MAX_NAME_LEN) :: Path,str,mgname, LowestSolver
+       CHARACTER(:), ALLOCATABLE :: Path,str,mgname, LowestSolver
        LOGICAL :: Condition, Found, Parallel, Project,Transient, LIter
 
        TYPE(Matrix_t), POINTER :: ProjPN, ProjQT
@@ -283,7 +283,7 @@ CONTAINS
           mgname = ListGetString( Params, 'MG Mesh Name', Found )
           IF ( .NOT. Found ) mgname = 'mgrid'
 
-          WRITE( Path,'(a,i1)' ) TRIM(OutputPath) // '/' // TRIM(mgname), Level - 1
+          Path = TRIM(OutputPath)//'/'//TRIM(mgname)//I2S(Level-1)
 
           Mesh2 => LoadMesh2( CurrentModel, OutputPath, Path, &
                .FALSE., ParEnv % PEs, ParEnv % MyPE )
@@ -451,7 +451,8 @@ CONTAINS
 
        ELSE IF ( SEQL(str, 'ilu') ) THEN
           IF ( NewLinearSystem ) THEN
-             k = ICHAR(str(4:4)) - ICHAR('0')
+             k = 0
+             IF(LEN(str)>=4) k = ICHAR(str(4:4))-ICHAR('0')
              IF ( k < 0 .OR. k > 9 ) k = 0
              IF ( Parallel ) THEN
                 PMatrix % Cholesky = ListGetLogical( Params, &
@@ -884,7 +885,7 @@ CONTAINS
 
        INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
        LOGICAL :: Condition, Found, Parallel, Project,Transient
-       CHARACTER(LEN=MAX_NAME_LEN) :: Path,str,mgname, LowestSolver
+       CHARACTER(:), ALLOCATABLE :: Path,str,mgname, LowestSolver
 
        TYPE(Matrix_t), POINTER :: ProjPN, ProjQT
        INTEGER, POINTER :: Permutation(:), Permutation2(:), Indexes(:), Deg(:), &
@@ -1213,7 +1214,8 @@ CONTAINS
              Condition = CRS_ILUT( Matrix1, ILUTOL )
            END IF
          ELSE IF ( SEQL(str, 'ilu') ) THEN
-           k = ICHAR(str(4:4)) - ICHAR('0')
+           k = 0
+           IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k < 0 .OR. k > 9 ) k = 0
            IF ( Parallel ) THEN
               PMatrix % Cholesky = ListGetLogical( Params, &
@@ -1521,7 +1523,7 @@ CONTAINS
     INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, DirectLimit, &
         MinLevel, InvLevel
     LOGICAL :: Condition, Found, Parallel, EliminateDir, CoarseSave, RecomputeProjector
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,IterMethod,FileName
+    CHARACTER(:), ALLOCATABLE :: str,IterMethod,FileName
     INTEGER, POINTER :: CF(:), InvCF(:)
     LOGICAL, POINTER :: Fixed(:)
     
@@ -1661,7 +1663,7 @@ CONTAINS
       CALL ChooseCoarseNodes(Matrix1, Solver, ProjT, DOFs, CF, InvCF)        
       
       IF( ListGetLogical(Params,'MG Projector Matrix Save',GotIt) ) THEN
-        WRITE(Filename,'(A,I1,A)') 'P',Level,'.dat'
+        Filename = 'P'//I2S(Level)//'.dat'
         CALL SaveMatrix(ProjT,TRIM(FileName))          
       END IF
       
@@ -1695,7 +1697,7 @@ CONTAINS
       END IF
 
       IF( ListGetLogical(Params,'MG Projected Matrix Save', GotIt ) ) THEN
-        WRITE(Filename,'(A,I1,A)') 'B',Level,'.dat'
+        Filename = 'B'//I2S(Level)//'.dat'
         CALL SaveMatrix(Matrix2,TRIM(FileName))          
       END IF
             
@@ -4457,7 +4459,7 @@ CONTAINS
 
       INTEGER :: i,j,Rounds, nods1, nods2, SaveLimit
       LOGICAL :: GotIt
-      CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+      CHARACTER(:), ALLOCATABLE :: Filename
       REAL(KIND=dp) :: RNorm
       REAL(KIND=dp), POINTER :: Ina(:), Inb(:), Outa(:), Outb(:)
 
@@ -4473,13 +4475,13 @@ CONTAINS
 !      ----------------------------------------
 
       IF(Direction == 0) THEN
-        WRITE( Filename,'(a,i1,a,i1,a)' ) 'mapping', Level,'to',Level-1, '.dat'
+        Filename = 'mapping'//I2S(Level)//'to'//I2S(Level-1)//'.dat'
 
         ALLOCATE( Ina(nods1), Inb(nods1), Outa(nods2), Outb(nods2) )
 
         IF(nods1 < SaveLimit) THEN
           IF ( Level == Solver % MultiGridTotal ) THEN
-            WRITE( Filename,'(a,i1,a)' ) 'nodes', Solver % MultiGridTotal - Level,'.dat'
+            Filename = 'nodes'//I2S(Solver % MultiGridTotal-Level)//'.dat'
             OPEN (10,FILE=Filename)        
             DO i=1,nods1
               WRITE (10,'(3ES17.8E3)') Mesh % Nodes % X(i), Mesh % Nodes % Y(i), Mesh % Nodes % Z(i)
@@ -4487,7 +4489,7 @@ CONTAINS
           END IF
         END IF
 
-        WRITE( Filename,'(a,i1,a)' ) 'nodes', Solver % MultiGridTotal - Level+1,'.dat'
+        Filename='nodes'//I2S(Solver % MultiGridTotal-Level+1)//'.dat'
         OPEN (10,FILE=Filename)        
         DO i=1,nods2
           WRITE (10,'(3ES17.8E3)') Mesh % Nodes % X(AMG(Level) % InvCF(i)), &
@@ -4498,7 +4500,7 @@ CONTAINS
   
 
       IF(Direction == 1) THEN
-        WRITE( Filename,'(a,i1,a,i1,a)' ) 'mapping', Level,'to',Level-1, '.dat'
+        Filename = 'mapping'//I2S(Level)//'to'//I2S(Level-1)//'.dat'
 
         ALLOCATE( Ina(nods1), Inb(nods1), Outa(nods2), Outb(nods2) )
 
@@ -4529,7 +4531,7 @@ CONTAINS
 
       IF(Direction == 2) THEN
 
-        WRITE( Filename,'(a,i1,a,i1,a)' ) 'mapping', Level-1,'to',Level, '.dat'
+        Filename = 'mapping'//I2S(Level-1)//'to'//I2S(Level)//'.dat'
 
         ALLOCATE( Ina(nods2), Inb(nods2), Outa(nods1), Outb(nods1) )
       
@@ -5103,8 +5105,8 @@ CONTAINS
     INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, DirectLimit, &
         MinLevel, OrigSize=0, InvLevel, Sweeps
     LOGICAL :: Condition, Found, Parallel, EliminateDir, CoarseSave, Liter
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,str2,str3,FileName,LowestSolver
     INTEGER, POINTER :: CF(:), InvCF(:), Iters(:)
+    CHARACTER(:), ALLOCATABLE :: str,FileName,LowestSolver
     
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:),  Solution2(:)
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
@@ -6000,7 +6002,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
      REAL(KIND=dp) :: st
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      TYPE(Element_t), POINTER :: CurrentElement
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, str
+     CHARACTER(:), ALLOCATABLE :: EquationName, str
 
      INTEGER :: comm_active, group_active, group_world, ierr
      INTEGER, ALLOCATABLE :: memb(:)

@@ -185,7 +185,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Params
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
@@ -356,7 +356,7 @@ CONTAINS
         i = ListGetInteger( Params,'Linear System Max Iterations', minv=1 )
         IF( i > 200 ) THEN
           i = 200
-          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//TRIM(I2S(i)),Level=4)
+          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//I2S(i),Level=4)
         END IF
         HUTI_GCR_RESTART = i
       END IF
@@ -493,12 +493,10 @@ CONTAINS
 
     
     IF ( .NOT. PRESENT(PrecF) ) THEN
-      str = ListGetString( Params, &
-          'Linear System Preconditioning',gotit )
+      str = ListGetString( Params, 'Linear System Preconditioning',gotit )
       IF ( .NOT.gotit ) str = 'none'
       
-      A % Cholesky = ListGetLogical( Params, &
-          'Linear System Symmetric ILU', Gotit )
+      A % Cholesky = ListGetLogical( Params,'Linear System Symmetric ILU', Gotit )
       
       ILUn = -1
       IF ( str == 'none' ) THEN
@@ -515,13 +513,15 @@ CONTAINS
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
-        IF ( .NOT.gotit ) &
-            ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        IF ( .NOT.gotit ) THEN
+          IF(LEN(str)>=4) ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        END IF
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
 
       ELSE IF ( SEQL(str, 'bilu') ) THEN
-        ILUn = ICHAR(str(5:5)) - ICHAR('0')
+        ILUn = 0
+        IF(LEN(str)>=5) ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
           CALL Warn('IterSolver','BILU for one dofs is equal to ILU!')
@@ -918,7 +918,7 @@ CONTAINS
 
     stack_pos = stack_pos+1
     IF(stack_pos>stack_max) THEN
-      CALL Fatal('IterSolver', 'Recursion too deep ('//TRIM(I2S(stack_pos))//' vs '//TRIM(I2S(stack_max))//')')
+      CALL Fatal('IterSolver', 'Recursion too deep ('//I2S(stack_pos)//' vs '//I2S(stack_max)//')')
     ELSE IF(stack_pos<=0) THEN
       CALL Fatal('IterSolver', 'eh')
     END IF
@@ -981,7 +981,7 @@ CONTAINS
         Solver % Variable % LinConverged = 1
       END IF
     ELSE
-      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
+      CALL Info('IterSolve','Returned return code: '//I2S(HUTI_INFO),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                

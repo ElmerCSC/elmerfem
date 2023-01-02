@@ -125,7 +125,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
-    CALL Info('Circuits2D','Associated circuit with solver index: '//TRIM(I2S(i)),Level=10)
+    CALL Info('Circuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
     
     AngVar => DefaultVariableGet( 'Rotor Angle' )
     ! Variable should already exist as it was introduced in the _init section.
@@ -230,7 +230,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//TRIM(i2s(p))//'.variables'
+      cmd = 'C.'//i2s(p)//'.variables'
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
 
@@ -245,7 +245,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//TRIM(i2s(p))//'.name.'//TRIM(i2s(i))
+        cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
         slen = LEN_TRIM(cmd)
         CALL Matc( cmd, name, slen )
 
@@ -276,15 +276,15 @@ CONTAINS
       m = Circuits(p) % m
       ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n) )
 
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.A'//CHAR(0),Circuits(p) % A,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.B'//CHAR(0),Circuits(p) % B,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.A'//CHAR(0),Circuits(p) % A,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.B'//CHAR(0),Circuits(p) % B,n,n)
 
       DO i=1,n
         ! Names of the source functions, these functions should be found
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))
+        cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
         slen = LEN_TRIM(cmd)
         CALL Matc( cmd, name, slen )
         Circuits(p) % Source(i) = name(1:slen)
@@ -804,7 +804,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
-    CALL Info('HarmonicCircuits2D','Associated circuit with solver index: '//TRIM(I2S(i)),Level=10)
+    CALL Info('HarmonicCircuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
     
     PiolaVersion = GetLogical(Asolver % Values, 'Use Piola Transform',Found)
 
@@ -869,7 +869,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//TRIM(i2s(p))//'.variables'
+      cmd = 'C.'//i2s(p)//'.variables'
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
 
@@ -884,7 +884,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//TRIM(i2s(p))//'.name.'//TRIM(i2s(i))
+        cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
         slen = LEN_TRIM(cmd)
         CALL Matc( cmd, name, slen )
 
@@ -915,15 +915,15 @@ CONTAINS
       m = Circuits(p) % m
       ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n) )
 
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.A'//CHAR(0),Circuits(p) % A,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.B'//CHAR(0),Circuits(p) % B,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.A'//CHAR(0),Circuits(p) % A,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.B'//CHAR(0),Circuits(p) % B,n,n)
 
       DO i=1,n
         ! Names of the source functions, these functions should be found
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))
+        cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
         slen = LEN_TRIM(cmd)
         CALL Matc( cmd, name, slen )
         Circuits(p) % Source(i) = name(1:slen)
@@ -934,7 +934,7 @@ CONTAINS
     ! circuit defs, or from the sif-file defs:
     ! -----------------------------------------------
     DO p=1,n_Circuits
-      cmd = 'nc:C.'//TRIM(i2s(p))//'.omega'
+      cmd = 'nc:C.'//i2s(p)//'.omega'
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
       Circuits(p) % FoundOmega = slen >= 1
@@ -1224,7 +1224,7 @@ return
       BF => Model % BodyForces(1) % Values
       DO p = 1,n_Circuits
         IF(Circuits(p) % FoundOmega) omega = Circuits(p) % omega
-        WRITE(Message, * ) 'Circuit(' // TRIM(I2S(p)) // ') Angular Frequency', Omega
+        WRITE(Message, * ) 'Circuit(' // I2S(p) // ') Angular Frequency', Omega
         CALL Info( 'ApplyCircuits', Message, Level = 8 )
         DO i=1,Circuits(p) % m
           vphi_re = 0._dp

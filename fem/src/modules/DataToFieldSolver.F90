@@ -266,7 +266,7 @@ CONTAINS
     DO WHILE(.TRUE.) 
       READ(IOUnit,*,IOSTAT=Success) InputData(1:DataColumn)
       IF( Success /= 0 ) THEN
-        CALL Info('DataToFieldSolver','End of file after '//TRIM(I2S(No))//' values')
+        CALL Info('DataToFieldSolver','End of file after '//I2S(No)//' values')
         IF( No == 0 ) CALL Fatal('DataToFieldSolver','Could not read any points from file!')
         EXIT
       END IF

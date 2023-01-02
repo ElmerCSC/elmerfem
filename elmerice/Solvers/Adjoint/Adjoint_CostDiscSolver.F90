@@ -82,8 +82,8 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN):: ObsFileName
   CHARACTER(LEN=MAX_NAME_LEN):: SideFile,SideParFile
   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CostFile
-  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
-  CHARACTER(LEN=MAX_NAME_LEN) :: OutPutDirectory
+  CHARACTER(:), ALLOCATABLE :: OutPutDirectory
+  CHARACTER(*), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
 
   TYPE(Variable_t), POINTER :: TimeVar ! Time
   TYPE(Variable_t), POINTER :: CostVar ! Cost Value

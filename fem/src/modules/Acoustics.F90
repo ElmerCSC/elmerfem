@@ -322,7 +322,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       IP = GaussPoints( CurrentElement, RelOrder = RelOrder )
       j = IP % n 
       CALL Info('AcousticsSolver','Number of Gauss Points: '&
-          //TRIM(I2S(j))//' (vs. '//TRIM(I2S(i))//')',Level=6)
+          //I2S(j)//' (vs. '//I2S(i)//')',Level=6)
     END IF
   END IF
 

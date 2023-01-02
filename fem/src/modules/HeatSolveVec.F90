@@ -226,7 +226,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
-    CALL Info(Caller,'Heat solver iteration: '//TRIM(I2S(iter)))
+    CALL Info(Caller,'Heat solver iteration: '//I2S(iter))
 
     Newton = GetNewtonActive()
     IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., Newton) 
@@ -257,7 +257,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     DO col=1,nColours
       
       !$OMP SINGLE
-      CALL Info( Caller,'Assembly of colour: '//TRIM(I2S(col)),Level=15)
+      CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
       
@@ -302,7 +302,7 @@ BLOCK
         n = SIZE(RadiatorCoords,1)
         ALLOCATE( RadiatorPowers(n))
         DO t=1,n
-          RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//TRIM(I2S(t)), Found)
+          RadiatorPowers(t)=GetCReal(RadList, 'Radiator Power '//I2S(t), Found)
         END DO
       END IF
 END BLOCK
@@ -313,7 +313,7 @@ END BLOCK
     !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
       !!OMP SINGLE
-      CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !!OMP END SINGLE
       
@@ -455,7 +455,7 @@ CONTAINS
 
       CALL ListInitElementKeyword( ConvFlag_h,'Equation','Convection')      
       DO i=1,3
-        CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//TRIM(I2S(i)))
+        CALL ListInitElementKeyword( ConvVelo_h(i),'Material','Convection Velocity '//I2S(i))
       END DO
 
       str = GetString( Params, 'Temperature Convection Field', Found )
@@ -605,7 +605,7 @@ CONTAINS
 
     IF( n /= 4 .AND. n /= 8 ) THEN
       CALL Warn('CalculatePlateTangent',&
-          'Heuristics is well suited only for structural meshes: '//TRIM(I2S(n)))
+          'Heuristics is well suited only for structural meshes: '//I2S(n))
     END IF
     
     xmean = SUM(x(1:n)) / n
@@ -1846,7 +1846,7 @@ CONTAINS
             Perm(i) = nsize
           END IF
         END DO
-        CALL Info(Caller,'Number of active nodes for boundary fields: '//TRIM(I2S(nsize)),Level=10)
+        CALL Info(Caller,'Number of active nodes for boundary fields: '//I2S(nsize),Level=10)
         
         CALL DefaultVariableAdd('Radiation Weight',Perm=Perm,Var=PostWeight,Output=.FALSE.)
         CALL DefaultVariableAdd('Radiation Flux',Perm=Perm,Var=PostFlux,Secondary=.TRUE.)

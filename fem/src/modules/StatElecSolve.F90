@@ -63,13 +63,13 @@ SUBROUTINE StatElecSolver_Init( Model,Solver,dt,TransientSimulation)
     Calculate = ListGetLogical(Params,'Calculate Electric Field',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//TRIM(I2S(dim))//' electric field' )
+          '-dofs '//I2S(dim)//' electric field' )
     END IF
     
     Calculate = ListGetLogical(Params,'Calculate Electric Flux',Found)
     IF( Calculate ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-dofs '//TRIM(I2S(dim))//' electric flux' )
+          '-dofs '//I2S(dim)//' electric flux' )
     END IF
 
     str = ListGetString(Params,'Element',Found )
@@ -383,7 +383,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      CALL DefaultInitialize()
   
      IF ( NonlinearIter > 1 ) THEN
-       CALL Info( Caller,'Electrostatic iteration: '//TRIM(I2S(iter)) , Level=5 )
+       CALL Info( Caller,'Electrostatic iteration: '//I2S(iter) , Level=5 )
      END IF
      CALL Info( Caller, 'Starting Assembly...', Level=7 )
 

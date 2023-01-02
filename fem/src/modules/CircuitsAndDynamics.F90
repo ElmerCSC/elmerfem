@@ -183,7 +183,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
     CALL Info(Caller,'Circuit equations associated with solver index: '&
-        //TRIM(I2S(ASolver % SolverId)),Level=6)
+        //I2S(ASolver % SolverId),Level=6)
     Model % ASolver => ASolver 
        
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
@@ -451,7 +451,7 @@ CONTAINS
       IF ( IsActive ) THEN
         IF (Comp % ComponentType == 'resistor') THEN
             CALL Info('AddComponentEquationsAndCouplings',&
-                'Writing resistor equation, component '//TRIM(i2s(CompInd)), Level = 7)
+                'Writing resistor equation, component '//i2s(CompInd), Level = 7)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
             CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
         ELSE
@@ -459,7 +459,7 @@ CONTAINS
           CASE('stranded')
             IF (Comp % UseCoilResistance) THEN
               CALL Info('AddComponentEquationsAndCouplings',&
-                  'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
+                  'Using coil resistance for component '//i2s(CompInd), Level = 7)
               CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
             ELSE
               Comp % Resistance = 0._dp
@@ -1299,7 +1299,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ASolver => FindSolverWithKey('Export Lagrange Multiplier')
     END IF
     CALL Info(Caller,'Circuit equations associated with solver index: '&
-        //TRIM(I2S(ASolver % SolverId)),Level=6)
+        //I2S(ASolver % SolverId),Level=6)
     Model % ASolver => ASolver 
 
     IF( XOR( Solver % Parallel, Asolver % Parallel ) ) THEN
@@ -1523,7 +1523,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', &
-                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
+                'Using coil resistance for component '//i2s(CompInd), Level = 7)
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
             Comp % Resistance = 0._dp
@@ -2471,7 +2471,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
    IF(ASSOCIATED(LagrangeVar)) THEN
      CALL Info(Caller,'Initializing Lagrange multipliers of size: '&
-         //TRIM(I2S(SIZE(LagrangeVar % Values))),Level=8)
+         //I2S(SIZE(LagrangeVar % Values)),Level=8)
      IF( Parallel ) THEN
        DO i=1,circuit_tot_n 
          IF (ASSOCIATED(Model%CircuitMatrix)) THEN  
@@ -2497,8 +2497,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    CALL Info(Caller, 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
      CALL Info(Caller, 'Writing Circuit Variables for &
-       Circuit '//TRIM(i2s(p)), Level=8) 
-     CALL Info(Caller, 'There are '//TRIM(i2s(Circuits(p)%n))//&
+       Circuit '//i2s(p), Level=8) 
+     CALL Info(Caller, 'There are '//i2s(Circuits(p)%n)//&
        ' Circuit Variables', Level=8)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
@@ -2537,14 +2537,14 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
      END DO
 
      CALL Info(Caller, 'Writing Component Variables for &
-       Circuit '//TRIM(i2s(p)), Level=8) 
+       Circuit '//i2s(p), Level=8) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
              Comp % Resistance = 1._dp / Comp % Conductance
 
          CALL SimListAddAndOutputConstReal('r_component('//&
-           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance, Level=8) 
+           i2s(Comp % ComponentId)//')', Comp % Resistance, Level=8) 
 
          Current = 0._dp + im * 0._dp
          Current = crt(Comp % ivar % ValueId) 
@@ -2555,18 +2555,18 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
            'Component parameters not found!')
 
          p_dc_component = ABS(Current)**2._dp * Comp % Resistance
-         CALL SimListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
+         CALL SimListAddAndOutputConstReal('p_dc_component('//i2s(Comp % ComponentId)//')',&
            p_dc_component, Level=8) 
 
          CompRealPower = GetConstReal( Model % Simulation, TRIM(CktPrefix)//' Power re & 
-                 in Component '//TRIM(i2s(Comp % ComponentId)), Found)
+                 in Component '//i2s(Comp % ComponentId), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
            CALL SimListAddAndOutputConstReal('p_ac_component('//&
-             TRIM(i2s(Comp % ComponentId))//')', CompRealPower, Level=8)
+             i2s(Comp % ComponentId)//')', CompRealPower, Level=8)
            CALL SimListAddAndOutputConstReal('r_ac_component('//&
-             TRIM(i2s(Comp % ComponentId))//')', CompRealPower/ABS(Current)**2._dp, Level=8)
+             i2s(Comp % ComponentId)//')', CompRealPower/ABS(Current)**2._dp, Level=8)
            CALL SimListAddAndOutputConstReal('AC to DC of component '&
-             //TRIM(i2s(Comp % ComponentId)), CompRealPower/p_dc_component, Level=8)
+             //i2s(Comp % ComponentId), CompRealPower/p_dc_component, Level=8)
          END IF
           
        END DO  

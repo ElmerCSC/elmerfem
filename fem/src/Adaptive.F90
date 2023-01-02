@@ -111,8 +111,7 @@ CONTAINS
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, MeshNumbering
     INTEGER :: MaxDepth, NLen
-    CHARACTER(LEN=1024) :: Path
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
@@ -454,7 +453,7 @@ CONTAINS
     
     NewMesh % AdaptiveDepth = RefMesh % AdaptiveDepth + 1
     IF( MeshNumbering ) THEN
-      NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // TRIM(I2S(NewMesh % AdaptiveDepth))
+      NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // I2S(NewMesh % AdaptiveDepth)
     END IF
       
     Nlen = LEN_TRIM(OutputPath)
@@ -808,7 +807,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,n
     REAL(KIND=dp) :: Lambda
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshCommand, Name, MeshInputFile
+    CHARACTER(:), ALLOCATABLE :: MeshCommand, Name, MeshInputFile
 !------------------------------------------------------------------------------
 
     OPEN( 11, STATUS='UNKNOWN', FILE='bgmesh' )
@@ -857,7 +856,7 @@ CONTAINS
 
     i = RefMesh % AdaptiveDepth + 1
     nLen = LEN_TRIM(Path)
-    Path = Path(1:nlen) // TRIM(I2S(i))
+    Path = Path(1:nlen) // I2S(i)
 
     nLen = LEN_TRIM(OutputPath)
     IF ( nlen > 0 ) THEN

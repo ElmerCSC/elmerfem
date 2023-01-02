@@ -1570,7 +1570,7 @@ CONTAINS
 
     LOGICAL :: Factorize, FreeFactorize
     INTEGER :: tlen, allocstat
-    CHARACTER(LEN=MAX_NAME_LEN) :: threads, mat_type
+    CHARACTER(:), ALLOCATABLE :: mat_type
 
     REAL(KIND=dp), POINTER :: values(:)
     INTEGER, POINTER  :: rows(:), cols(:)
@@ -1581,7 +1581,7 @@ CONTAINS
     IF ( .NOT. Found ) Factorize = .TRUE.
 
     ! Set matrix type for Pardiso
-    mat_type = ListGetString( Solver % Values, 'Linear System Matrix Type', Found )
+    mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
     
     IF (Found) THEN
       SELECT CASE(mat_type)
@@ -1796,7 +1796,7 @@ CONTAINS
 
       LOGICAL :: Factorize, FreeFactorize
       INTEGER :: tlen
-      CHARACTER(LEN=MAX_STRING_LEN) :: threads
+      CHARACTER(LEN=16) :: threads
 
       REAL(KIND=dp), POINTER :: values(:)
       INTEGER, POINTER  :: rows(:), cols(:)
@@ -2081,7 +2081,7 @@ CONTAINS
     INTEGER, DIMENSION(:), POINTER CONTIG :: iparm, ia, ja, owner, dsize, iperm, Order
 
     INTEGER :: fid
-    CHARACTER(LEN=MAX_NAME_LEN) :: mat_type
+    CHARACTER(:), ALLOCATABLE :: mat_type
 
     ! Free old factorization if necessary
     IF (ASSOCIATED(A % CPardisoId)) THEN
@@ -2111,7 +2111,7 @@ CONTAINS
     END DO
 
     ! Set matrix type for CPardiso
-    mat_type = ListGetString( Solver % Values, 'Linear System Matrix Type', Found )
+    mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
     IF (Found) THEN
       SELECT CASE(mat_type)
       CASE('positive definite')
@@ -2391,7 +2391,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     LOGICAL :: GotIt
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method
+    CHARACTER(:), ALLOCATABLE :: Method
 !------------------------------------------------------------------------------
 
     IF ( PRESENT(Free_Fact) ) THEN
@@ -2426,13 +2426,13 @@ CONTAINS
       END IF
     END IF
 
-    Method = ListGetString( Solver % Values, 'Linear System Direct Method',GotIt )
+    Method=ListGetString(Solver % Values,'Linear System Direct Method',GotIt)
     IF ( .NOT. GotIt ) Method = 'banded'
     
     
-    CALL Info('DirectSolver','Using direct method: '//TRIM(Method),Level=9)
+    CALL Info('DirectSolver','Using direct method: '//Method,Level=9)
 
-    SELECT CASE( Method )
+    SELECT CASE(Method)
       CASE( 'banded', 'symmetric banded' )
         IF ( .NOT. A % Complex ) THEN
            CALL BandSolver( A, x, b )
