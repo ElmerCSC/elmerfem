@@ -401,10 +401,10 @@ MODULE Types
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
      REAL(KIND=dp) :: Coeff = 1.0_dp    
-     CHARACTER(:), ALLOCATABLE :: CValue
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
-     CHARACTER(:, ALLOCATABLE) :: Name,DependName
+     CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
 
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
