@@ -13046,43 +13046,43 @@ END FUNCTION SearchNodeL
         DO i = 1, (Aaid % NumberOfRows / 2)
           IF ( Parallel ) THEN
             IF ( Aaid% ParMatrix % ParallelInfo % &
-              NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+                NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
           END IF
           Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
           Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
-       END DO
-       Energy    = ParallelReduction(Energy)
-       Energy_im = ParallelReduction(Energy_im)
+        END DO
+        Energy    = ParallelReduction(Energy)
+        Energy_im = ParallelReduction(Energy_im)
 
-       CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
-       CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
+        CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
 
-       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
-       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
-       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+        CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
-       WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
-       CALL Info( 'CalculateLoads', Message, Level=5)
-     ELSE 
-       DO i=1,Aaid % NumberOfRows
-         IF ( Parallel ) THEN
-           IF ( Aaid % ParMatrix % ParallelInfo % &
+        WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+        CALL Info( 'CalculateLoads', Message, Level=5)
+      ELSE 
+        DO i=1,Aaid % NumberOfRows
+          IF ( Parallel ) THEN
+            IF ( Aaid % ParMatrix % ParallelInfo % &
                 NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
-         END IF
-         Energy = Energy + x(i)*TempVector(i)
-      END DO
-      Energy = ParallelReduction(Energy)
-      CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
+          END IF
+          Energy = Energy + x(i)*TempVector(i)
+        END DO
+        Energy = ParallelReduction(Energy)
+        CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
 
-      WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
-      CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+        CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
-      WRITE( Message, * ) 'Energy Norm: ', Energy
-      CALL Info( 'CalculateLoads', Message, Level=5)
+        WRITE( Message, * ) 'Energy Norm: ', Energy
+        CALL Info( 'CalculateLoads', Message, Level=5)
+      END IF
     END IF
-  END IF
 
     IF ( Parallel ) THEN
       DO i=1,Aaid % NumberOfRows
@@ -13127,10 +13127,11 @@ END FUNCTION SearchNodeL
 
     IF( UseVar ) THEN
       DO i=1,SIZE( NodalLoads % Perm )
-        IF ( NodalLoads % Perm(i)>0 .AND. Solver % Variable % Perm(i)>0 ) THEN
-          DO j=1,DOFs
-            NodalLoads % Values(DOFs*(NodalLoads % Perm(i)-1)+j) =  &
-                TempVector(DOFs*(Solver % Variable % Perm(i)-1)+j)
+        j = NodalLoads % Perm(i)
+        k = Solver % Variable % Perm(i)
+        IF ( j>0 .AND. k>0 ) THEN
+          DO dof=1,DOFs
+            NodalLoads % Values(DOFs*(j-1)+dof) = TempVector(DOFs*(k-1)+dof)
           END DO
         END IF
       END DO
@@ -13138,9 +13139,6 @@ END FUNCTION SearchNodeL
       NodalValues = TempVector
     END IF
       
-    DEALLOCATE( TempVector )
-
-
     IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found ) ) THEN
       CALL Info('CalculateLoads','Computing boundary fluxes from nodal loads',Level=6)
 
@@ -13199,7 +13197,6 @@ END FUNCTION SearchNodeL
         END DO
       END DO
       
-
       NoBoundaryActive = 0
       IF( Parallel ) THEN
         ALLOCATE( BufInteg( NoBCs ), BufReal( NoBCs * DOFs ) )
@@ -13207,7 +13204,7 @@ END FUNCTION SearchNodeL
         BufInteg = BoundaryActive
         CALL MPI_ALLREDUCE( BufInteg, BoundaryActive, NoBCs, MPI_INTEGER, &
             MPI_SUM, ParEnv % ActiveComm, ierr )
-        
+
         BufInteg = BoundaryShared
         CALL MPI_ALLREDUCE( BufInteg, BoundaryShared, NoBCs, MPI_INTEGER, &
             MPI_SUM, ParEnv % ActiveComm, ierr )
@@ -13218,7 +13215,6 @@ END FUNCTION SearchNodeL
 
         DEALLOCATE( BufInteg, BufReal ) 
       END IF
-
 
       DO i=1,CurrentModel % NumberOfBCs 
         IF( BoundaryActive(i) == 0 ) CYCLE
@@ -13257,9 +13253,56 @@ END FUNCTION SearchNodeL
       END IF
       
       DEALLOCATE( DofSummed, BoundaryShared, BoundaryActive, BoundarySum )      
+
+
+      IF( ListGetLogical( Solver % Values,'Calculate Boundary Weights', Found ) ) THEN
+        BLOCK
+          CHARACTER(MAX_NAME_LEN) :: Name   
+          TYPE(Variable_t), POINTER :: WVar, FVar
+          REAL(KIND=dp) :: eps
+
+          CALL Info('CalculateLoads','Computing fluxes on boundaries!',Level=10)
+          
+          Name = GetVarName(Solver % Variable) // ' Boundary Weights'
+          WVar => VariableGet( Solver % Mesh % Variables, Name )
+
+          IF(.NOT. ASSOCIATED(WVar) ) THEN
+            CALL Fatal('CalculateLoads','Weight variable is not available!')
+          END IF
+
+          Name = GetVarName(Solver % Variable) // ' Boundary Flux'        
+          FVar => VariableGet( Solver % Mesh % Variables, Name ) 
+          IF(.NOT. ASSOCIATED(FVar) ) THEN
+            CALL VariableAddVector( Solver % Mesh % Variables,&
+                Solver % Mesh, Solver, Name, Solver % Variable % DOFs, Secondary = .TRUE., &
+                Perm = WVar % Perm )
+            FVar => VariableGet( Solver % Mesh % Variables, Name ) 
+          END IF
+          IF(.NOT. ASSOCIATED(FVar) ) THEN
+            CALL Fatal('CalculateLoads','Flux variable is not available!')
+          END IF
+
+          eps = EPSILON(eps)
+          FVar % Values = 0.0_dp
+          
+          DO i=1,SIZE( WVar % Perm )
+            j = WVar % Perm(i)
+            IF(j==0) CYCLE
+            k = Solver % Variable % Perm(i)
+            IF(k==0) CYCLE
+
+            DO dof=1,DOFs
+              IF( WVar % Values(j) < eps ) CYCLE 
+              FVar % Values(DOFs*(j-1)+dof) = TempVector(DOFs*(k-1)+dof) / WVar % Values(j)
+            END DO
+          END DO
+
+        END BLOCK
+      END IF
     END IF
-
-
+    
+    DEALLOCATE( TempVector )
+    
     IF( UseBulkValues ) THEN
       Aaid % Values => SaveValues
     END IF

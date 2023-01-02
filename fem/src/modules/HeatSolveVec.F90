@@ -234,7 +234,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! Initialize the matrix equation to zero.
     !---------------------------------------
     CALL DefaultInitialize()
-    CALL CalculateSurfaceFluxes(Pre=.TRUE.)
+    CALL CalculateRadiosityFields(Pre=.TRUE.)
     
     ! For speed compute averaged emissivity and temperature over boundary elements
     ! for diffuse gray radiation.
@@ -397,7 +397,7 @@ END BLOCK
   END DO
   
   CALL DefaultFinish()
-  CALL CalculateSurfaceFluxes(Pre=.FALSE.)
+  CALL CalculateRadiosityFields(Pre=.FALSE.)
 
 CONTAINS 
   
@@ -1260,11 +1260,6 @@ CONTAINS
             STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*(RadCoeffAtIp + RadiosityCoeff)
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * (RadLoadAtIp + RadiosityLoad)
-
-          IF (Radiators .AND. .NOT. Radiosity) THEN
-            FORCE(p) = FORCE(p) + s * Basis(p) * Emis1 * SUM(Element % BoundaryInfo % &
-                          Radiators * RadiatorPowers ) 
-          END IF
         END DO
                 
         Base(1:n) = Base(1:n) + s * Basis(1:n) 
@@ -1332,6 +1327,17 @@ CONTAINS
             END DO
           END IF
         END DO
+        
+
+        ! Add radiators in case the radiosity model is not used
+        !----------------------------------------------------------------------------
+        IF( Radiators ) THEN
+          DO p=1,n
+            FORCE(p) = FORCE(p) + Base(p) * Emis1 * SUM(Element % BoundaryInfo % &
+                Radiators * RadiatorPowers ) 
+          END DO          
+        END IF
+                  
       END IF
     ELSE IF ( .NOT. Radiosity ) THEN
       ! Compute the weighted sum of T^4
@@ -1407,8 +1413,8 @@ CONTAINS
         ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
         IF(ALL(ElemPerm(1:n) > 0 )) THEN
           PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + Base(1:n)
-          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + FORCE(1:n)
-          IF(Spectral) THEN
+          PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + Fact(1) * Base(1:n)
+          IF( Spectral ) THEN
             PostEmis % Values(ElemPerm(1:n)) = PostEmis % Values(ElemPerm(1:n)) + Emiss(bindex) * Base(1:n)
             PostAbs % Values(ElemPerm(1:n)) = PostAbs % Values(ElemPerm(1:n)) + Fact(3) * Base(1:n)
             PostTemp % Values(ElemPerm(1:n)) = PostTemp % Values(ElemPerm(1:n)) + Fact(4) * Base(1:n)
@@ -1807,33 +1813,37 @@ CONTAINS
   END SUBROUTINE LocalJumpsDisContBC
 !------------------------------------------------------------------------------
 
-  SUBROUTINE CalculateSurfaceFluxes(Pre) 
+  SUBROUTINE CalculateRadiosityFields(Pre) 
     LOGICAL :: Pre    
-    LOGICAL :: Visited = .FALSE., CalcFluxes = .TRUE.
+    LOGICAL :: Visited = .FALSE., CalcRadiosityFields = .TRUE.
     INTEGER, POINTER :: Perm(:)
     INTEGER :: i,t,nsize = 0
     TYPE(ValueList_t), POINTER :: BC
     REAL(KIND=dp) :: c
     
-    SAVE Perm, nsize, CalcFluxes, Visited
+    SAVE Perm, nsize, CalcRadiosityFields, Visited
 
-    IF(.NOT. CalcFluxes ) RETURN
+    IF(.NOT. CalcRadiosityFields ) RETURN
     
     IF(.NOT. Visited ) THEN    
       Visited = .TRUE.
-      CalcFluxes = ListGetLogical( Params,'Calculate Radiation Fluxes',Found ) 
-      IF( CalcFluxes ) THEN
+      CalcRadiosityFields = ListGetLogical( Params,'Calculate Radiosity Fields',Found ) 
+      IF( CalcRadiosityFields ) THEN
+        IF(.NOT. Radiosity ) THEN
+          CALL Warn('CalculateRadiosityFields','Radiosity Model is not active, fields omitted!')
+          CalcRadiosityFields = .FALSE.
+          RETURN
+        END IF
+        
         ALLOCATE(Perm(Solver % Mesh % NumberOfNodes))
         Perm = 0
         
-        CALL Info(Caller,'Creating permutation for boundary fluxes',Level=8)
+        CALL Info(Caller,'Creating permutation for radiosity fields',Level=8)
         DO t=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           Element => Mesh % Elements(t)
           BC => GetBC(Element)
-          IF(.NOT. ASSOCIATED( BC ) ) CYCLE
-       
+          IF(.NOT. ASSOCIATED( BC ) ) CYCLE       
           IF( ListCheckPresent( BC,'Radiation') .OR. &
-              ListCheckPresent( BC,'Heat Flux') .OR. &
               ListCheckPresent( BC,'Radiator') ) THEN
             Perm(Element % NodeIndexes) = 1
           END IF
@@ -1855,9 +1865,9 @@ CONTAINS
           CALL DefaultVariableAdd('Emissivity',Perm=Perm,Var=PostEmis,Secondary=.TRUE.)
           CALL DefaultVariableAdd('Radiation Temperature',Perm=Perm,Var=PostTemp,Secondary=.TRUE.)
         END IF
-        IF(nsize == 0) CalcFluxes = .FALSE.
+        IF(nsize == 0) CalcRadiosityFields = .FALSE.
       END IF
-      PostCalc = CalcFluxes 
+      PostCalc = CalcRadiosityFields 
     ELSE IF(Pre) THEN
       PostWeight % Values = 0.0_dp
       PostFlux % Values = 0.0_dp
@@ -1879,7 +1889,7 @@ CONTAINS
       END IF      
     END IF
          
-  END SUBROUTINE CalculateSurfaceFluxes
+  END SUBROUTINE CalculateRadiosityFields
 
 !------------------------------------------------------------------------------
 END SUBROUTINE HeatSolver
