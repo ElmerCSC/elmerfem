@@ -334,8 +334,6 @@
 
          ! If there are no parameters this does nothing
          CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
-print*,gotparams
-print*,finishearly
        ELSE
          OptimIters = 1 
        END IF
