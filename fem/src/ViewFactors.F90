@@ -132,7 +132,8 @@
      LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftEmis, RightEmis
 
      CHARACTER(:), ALLOCATABLE :: eq, RadiationFlag, ViewFactorsFile, OutputName, &
-                 ModelName, LMessage, TempString
+                  LMessage, TempString
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
 
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
