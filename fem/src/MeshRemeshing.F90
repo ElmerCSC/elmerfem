@@ -101,7 +101,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
   LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
-  CHARACTER(:), PARAMETER :: FuncName="Set_MMG3D_Mesh"
+  CHARACTER(*), PARAMETER :: FuncName="Set_MMG3D_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("MMG3D","Only works for 3D meshes!")
 
   ALLOCATE(NodeRefs(6))
@@ -549,7 +549,7 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   INTEGER, POINTER :: ngdof_ptr(:), ogdof_ptr(:)
   LOGICAL :: Root, Debug = .FALSE.
   LOGICAL, ALLOCATABLE :: AvailGDOF(:), pool_duplicate(:), im_using(:), used(:)
-  CHARACTER(:), PARAMETER :: FuncName="RenumberGDOFs"
+  CHARACTER(*), PARAMETER :: FuncName="RenumberGDOFs"
 
   Root = ParEnv % MyPE == 0
   OldNN = OldMesh % NumberOfNodes
@@ -820,7 +820,7 @@ SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   !---------------------------------
   INTEGER, ALLOCATABLE :: GtoNewLMap(:)
   INTEGER :: i,k,n,MaxNGDof, MinNGDof
-  CHARACTER(:), PARAMETER :: FuncName="MapNewBCInfo"
+  CHARACTER(*), PARAMETER :: FuncName="MapNewBCInfo"
   
   MinNGDof = HUGE(MinNGDof)
   MaxNGDof = 0
