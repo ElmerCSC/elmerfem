@@ -1052,18 +1052,17 @@
 
        INTEGER :: istat
 
-       IF(Radiosity.AND.FirstTime) RETURN
-
        CALL Info('RadiationFactors','Computing factors...',Level=5)
+
        CALL InitRadiationSolver(TSolver,Solver)
        CALL CreateRadiationMatrix(RadiationSurfaces)
 
        ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
        IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
-
        CALL TabulateEmissivity()
 
        IF( Radiosity ) THEN
+         IF(FirstTime) RETURN
          CALL CalculateRadiosity()
        ELSE
          ! Fill the matrix for gebhardt factors
@@ -1669,6 +1668,9 @@
              S = -q*e**2/r*Black
              SOL(i) = SOL(i) + S
              IF(Newton) SOL_d(i) = SOL_d(i) + 4*S/Temp
+
+             EffTemp(i) = EffTemp(i) + Trad * S
+             EffAbs(i) = EffAbs(i) + Emissivity(i) * S
            END IF
          END DO
 
