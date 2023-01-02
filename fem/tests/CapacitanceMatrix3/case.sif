@@ -28,7 +28,12 @@ End
 Body 1
   Equation = 1
   Material = 1
+  Body Force = 1
 End
+
+Body Force 1
+  Calc This = Logical True
+End 
 
 Equation 1
   Active Solvers(2) = 1 2
@@ -77,6 +82,23 @@ Solver 2
 End
 
 
+Solver 3
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Show Norm = True
+  Show Norm Index = 1
+
+  Variable 1 = Potential
+  Coefficient 1 = "Relative Permittivity"
+  Operator 1 = "diffusive energy"
+  Mask Name 1 = "calc this"
+
+  Parallel Reduce = True
+End
+
+
+
 Material 1
   Relative Permittivity = 1
 End
@@ -123,4 +145,5 @@ Boundary Condition 6
 End
 
 Solver 1 :: Reference Norm = 1.57909356E-01
+Solver 3 :: Reference Norm = 5.09226094E+00
 

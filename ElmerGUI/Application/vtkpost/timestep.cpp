@@ -67,8 +67,8 @@ TimeStep::TimeStep(QWidget *parent)
   setWindowTitle("Time step control");
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
 
-  ui.applyButton->setIcon(QIcon(":/icons/dialog-ok.png"));
-  ui.loopButton->setIcon(QIcon(":/icons/dialog-ok.png"));
+  ui.applyButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  ui.loopButton->setIcon(QIcon::fromTheme("view-refresh"));
 }
 
 TimeStep::~TimeStep()
@@ -160,19 +160,19 @@ void TimeStep::canProceedWithNextSlot(vtkRenderWindow *renderWindow)
   if(current > stop) {
     loopOn = false;
     ui.loopButton->setText("Loop");
-    ui.loopButton->setIcon(QIcon(":/icons/dialog-ok.png"));
+    ui.loopButton->setIcon(QIcon::fromTheme("dialog-accept"));
     this->repaint();
 
   } else {
     ui.loopButton->setText("Stop");
-    ui.loopButton->setIcon(QIcon(":/icons/dialog-close.png"));
+    ui.loopButton->setIcon(QIcon::fromTheme("dialog-error-round"));
     this->repaint();
     current += increment;
 
     if(current > stop) {
       loopOn = false;
       ui.loopButton->setText("Loop");
-      ui.loopButton->setIcon(QIcon(":/icons/dialog-ok.png"));
+      ui.loopButton->setIcon(QIcon::fromTheme("dialog-accept"));
       this->repaint();
       return;
     }
@@ -188,13 +188,13 @@ void TimeStep::loopButtonClicked()
   if(loopOn) {
     loopOn = false;
     ui.loopButton->setText("Loop");
-    ui.loopButton->setIcon(QIcon(":/icons/dialog-ok.png"));
+    ui.loopButton->setIcon(QIcon::fromTheme("dialog-accept"));
     this->repaint();
  
   } else {
     loopOn = true;
     ui.loopButton->setText("Stop");
-    ui.loopButton->setIcon(QIcon(":/icons/dialog-close.png"));
+    ui.loopButton->setIcon(QIcon::fromTheme("dialog-error-round"));
     this->repaint();
     int start = ui.start->value();
     int stop = ui.stop->value();

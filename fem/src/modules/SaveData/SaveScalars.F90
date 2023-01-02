@@ -122,7 +122,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE Interpolation
-
+  USE SaveUtils
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
@@ -137,7 +138,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(ValueListEntry_t), POINTER :: Lst
   TYPE(Variable_t), POINTER :: Var, OldVar, Var2, Var3
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Element_t),POINTER :: CurrentElement
+  TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t) :: ElementNodes
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
@@ -483,7 +484,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF    
       OldVar => Var
       OldVariableName = VariableName
-
+      
       ! A 0D variable cannot really be much operated, hence save it as is
       !-------------------------------------------------------------------
       IF(SIZE(Var % Values) == Var % Dofs) THEN
@@ -504,6 +505,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CYCLE
       END IF
 
+      !EdgeBasis = ( Var % TYPE == variable_on_edges )
+      !DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
+      !IpVar = ( Var % TYPE == variable_on_gauss_points )
+      !ElemVar = ( Var % TYPE == Variable_on_elements )       
+      !PiolaVersion = .FALSE.
+      !pElem = .FALSE.
+      
       WRITE (Name,'(A,I0)') 'Nodal Variable ',NoVar
       NodalOper = ListGetLogical(Params,TRIM(Name),GotNodalOper)   
     ELSE
@@ -1071,17 +1079,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     lpar = l
     IF( l > 0 ) THEN
-      CurrentElement => Mesh % Elements(l)
-      IF( IsParallel ) lpar = CurrentElement % GElementIndex
+      Element => Mesh % Elements(l)
+      IF( IsParallel ) lpar = Element % GElementIndex
     END IF
 
     lpar = ParallelReduction(lpar, 2 ) 
     IF( lpar == 0 ) CYCLE
-    
+   
     IF( l > 0 ) THEN
-      n = CurrentElement % TYPE % NumberOfNodes
+      n = Element % TYPE % NumberOfNodes
 
-      NodeIndexes => CurrentElement % NodeIndexes
+      NodeIndexes => Element % NodeIndexes
 
       Coords(1:NoDims) = PointCoordinates(k,1:NoDims)
       IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
@@ -1090,19 +1098,62 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
                
-      Hit = PointInElement( CurrentElement, ElementNodes, &
+      Hit = PointInElement( Element, ElementNodes, &
           Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	          
 
       ElementValues(1:n) = 0.0d0          
       CoordinateBasis = 0.0_dp
       DO q=1,N
         ElementValues(q) = 1.0d0
-        CoordinateBasis(q) = InterpolateInElement( CurrentElement, ElementValues, &
+        CoordinateBasis(q) = InterpolateInElement( Element, ElementValues, &
             LocalCoords(1), LocalCoords(2), LocalCoords(3) )
         ElementValues(q) = 0.0d0
       END DO
     END IF
 
+#if 1
+
+    Var => Model % Variables
+    DO WHILE( ASSOCIATED( Var ) )
+
+      IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs) THEN
+        CONTINUE 
+      ELSE IF( Var % Dofs == 1 ) THEN
+        BLOCK
+          REAL(KIND=dp) :: Vals(100)
+          INTEGER :: NoVals
+          LOGICAL :: GotEigen, GotEdge
+          NoVals = 0
+          CALL EvaluteVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
+              LocalCoord=LocalCoords, GotEigen=GotEigen, GotEdge=GotEdge)
+
+          DO i = 1, NoVals
+            IF( GotEigen ) THEN 
+              Name = "value: Eigen "//TRIM(I2S(i))//" "//TRIM(Var % Name)
+            ELSE IF( GotEdge ) THEN
+              IF( i <= 3 ) THEN
+                Name = "value: "//TRIM(Var % Name)//' {e} '//TRIM(I2S(i))
+              ELSE IF(i == 4 ) THEN
+                Name = "value: "//TRIM(Var % Name)//' nodal'
+              END IF
+            ELSE 
+              IF( NoVals == 1 ) THEN
+                Name = "value: "//TRIM(Var % Name)
+              ELSE
+                Name = "value: "//TRIM(Var % Name)
+              END IF
+            END IF
+            Name = TRIM(Name)//' in element '//TRIM(I2S(lpar))
+            CALL AddToSaveList(TRIM(Name), Vals(i),.FALSE.,ParOper)
+          END DO
+        END BLOCK
+      END IF
+
+      Var => Var % Next      
+
+    END DO
+#else
+    
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
 
@@ -1110,7 +1161,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs) THEN
         CONTINUE 
-      
+
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
         NoEigenValues = SIZE(Var % EigenValues) 
         EigenDofs = SIZE( Var % EigenVectors(1,:) ) / SIZE( Var % Perm )
@@ -1125,9 +1176,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
               IF( l > 0 ) THEN
                 IF( ElementalVar ) THEN
-                  NodeIndexes => CurrentElement % DgIndexes
+                  NodeIndexes => Element % DgIndexes
                 ELSE
-                  NodeIndexes => CurrentElement % NodeIndexes 
+                  NodeIndexes => Element % NodeIndexes 
                 END IF
                 
                 IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN
@@ -1171,9 +1222,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
         IF( l > 0 ) THEN
           IF( ElementalVar ) THEN
-            NodeIndexes => CurrentElement % DgIndexes
+            NodeIndexes => Element % DgIndexes
           ELSE
-            NodeIndexes => CurrentElement % NodeIndexes 
+            NodeIndexes => Element % NodeIndexes 
           END IF
           
           IF( ASSOCIATED( Var % Perm ) ) THEN
@@ -1198,6 +1249,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Var => Var % Next      
 
     END DO
+#endif
+
+    
   END DO
 
   IF( NoElements > 0 ) THEN
@@ -1326,6 +1380,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
 
+      WRITE(NamesUnit,'(A,A)') 'Metadata for SaveScalars file: ',TRIM(ScalarsFile)
+
       DateStr = GetVersion()
       WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
 
@@ -1348,7 +1404,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WRITE( NamesUnit,'(A)') 'File started at: '//TRIM(DateStr)
 
       WRITE(NamesUnit,'(A)') ' '
-      WRITE(NamesUnit,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
+      WRITE(NamesUnit,'(A)') 'Variables in columns of matrix: '
       IF( LineInd /= 0 ) THEN
         i = 1
         WRITE(NamesUnit,'(I4,": ",A)') 1,'Line Marker'
@@ -1652,7 +1708,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: TargetVar
     INTEGER :: MPIOper
     INTEGER :: istat
-    LOGICAL :: GotParOper
+    LOGICAL :: GotParOper, GotIt
 
     SAVE TmpValues, TmpValueNames
 
@@ -2169,16 +2225,17 @@ CONTAINS
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
     REAL(KIND=dp) :: EnergyTensor(3,3,Model % MaxElementNodes),&
         EnergyCoeff(Model % MaxElementNodes), ElemVals(Model % MaxElementNodes) 
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
+    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z,Vals(3),uvw(3)
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     LOGICAL :: Stat
     TYPE(ValueList_t), POINTER :: MaskList
 
-    INTEGER :: i,j,k,p,q,DIM,NoDofs
+    INTEGER :: i,j,k,p,q,DIM,NoDofs,No
     
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
-
+    LOGICAL :: DiffEnergy
+    
     hits = 0
     integral1 = 0._dp
     integral2 = 0._dp
@@ -2189,7 +2246,9 @@ CONTAINS
 
     DIM = CoordinateSystemDimension()
 
+    DiffEnergy = ( OperName == 'diffusive energy' )  
 
+    
     DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
       IF(t == Mesh % NumberOfBulkElements + 1 .AND. hits > 0) GOTO 10
@@ -2240,21 +2299,21 @@ CONTAINS
         IF( .NOT. ListGetLogical( MaskList, MaskName, GotIt ) ) CYCLE
       END IF
 
-      IF( NoDOFs == 1 ) THEN      
-        ElemVals(1:n) = Var % Values(Var % Perm(PermIndexes) )
-      ELSE
-        ElemVals(1:n) = 0.0_dp
-        DO i=1,NoDOFs
-          ElemVals(1:n) = ElemVals(1:n) + Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+i )**2
-        END DO
-        ElemVals(1:) = SQRT(ElemVals(1:n))
-      END IF
+      !IF( NoDOFs == 1 ) THEN      
+      !  ElemVals(1:n) = Var % Values(Var % Perm(PermIndexes) )
+      !ELSE
+      !  ElemVals(1:n) = 0.0_dp
+      !  DO i=1,NoDOFs
+      !    ElemVals(1:n) = ElemVals(1:n) + Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+i )**2
+      !  END DO
+      !  ElemVals(1:) = SQRT(ElemVals(1:n))
+      !END IF
         
       
       k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
           'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
 
-      IF( OperName == 'diffusive energy' ) THEN 
+      IF( DiffEnergy ) THEN
         EnergyTensor = 0.0d0
         IF(GotCoeff) THEN
           CALL ListGetRealArray( Model % Materials(k) % Values, &
@@ -2322,68 +2381,88 @@ CONTAINS
         coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
         vol =  coeff * vol + S
 
-        SELECT CASE(OperName)
+
+        uvw(1)=u;uvw(2)=v;uvw(3)=w;
+
+        No = 0
+        IF( DiffEnergy ) THEN
+          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw,&
+              DoGrad=.TRUE.)
+          Grad(1:dim) = Vals(1:dim)
+        ELSE
+          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw)
+        END IF
+
+        IF(No > 1) THEN
+          func = SQRT(SUM(Vals(1:No)**2))
+        ELSE
+          func = Vals(1)
+        END IF
+        
           
-          CASE ('volume')
+        SELECT CASE(OperName)
+
+        CASE ('volume')
           integral1 = integral1 + coeff * S
 
-          CASE ('int','int mean')
-          func = SUM( ElemVals(1:n) * Basis(1:n) )
+        CASE ('int','int mean')
+          !          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
-
           integral1 = integral1 + S * coeff * func 
 
-          CASE ('int square','int square mean','int rms')
-          func = SUM( ElemVals(1:n) * Basis(1:n) )
+        CASE ('int square','int square mean','int rms')
+          !          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func**2 
-          
-          CASE ('int abs','int abs mean')
-          func = ABS( SUM( ElemVals(1:n) * Basis(1:n) ) )
+
+        CASE ('int abs','int abs mean')
+          !          func = ABS( SUM( ElemVals(1:n) * Basis(1:n) ) )
+          func = ABS(func)
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
 
-          CASE ('int variance')
-          func = SUM( ElemVals(1:n) * Basis(1:n) )
+        CASE ('int variance')
+          !          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
           integral2 = integral2 + S * coeff * func**2 
 
-          CASE ('diffusive energy')
+        CASE ('diffusive energy')
           CoeffGrad = 0.0d0
           DO j = 1, DIM
-            Grad(j) = SUM( dBasisdx(1:n,j) * ElemVals(1:n) )
+            !            Grad(j) = SUM( dBasisdx(1:n,j) * ElemVals(1:n) )
             DO k = 1, DIM
-              CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
-                  SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
+              !              CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
+              !                  SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
+              CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * Grad(k)
             END DO
           END DO
-          
+
           integral1 = integral1 + s * SUM( Grad(1:DIM) * CoeffGrad(1:DIM) )
 
-          CASE ('convective energy')
-          func = SUM( ElemVals(1:n) * Basis(1:n) )
+        CASE ('convective energy')
+          !          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
-          
+
           IF(NoDofs == 1) THEN
-            func = SUM( ElemVals(1:n) * Basis(1:n) )
+            !func = SUM( ElemVals(1:n) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
           ELSE
-            func = 0.0d0
-            DO j=1,MIN(DIM,NoDofs)
-              func = SUM( Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+j) * Basis(1:n) )
-              integral1 = integral1 + s * coeff * func**2
-            END DO
+            !func = 0.0d0
+            j=MIN(DIM,NoDofs)
+            !func = SUM( Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+j) * Basis(1:n) )
+            integral1 = integral1 + s * coeff * SUM(Grad(1:j)**2)
+            !END DO
           END IF
 
-          CASE ('potential energy')
+        CASE ('potential energy')
 
-          func = SUM( ElemVals(1:n) * Basis(1:n) )
+          !func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
@@ -2397,8 +2476,7 @@ CONTAINS
       END DO
 
     END DO
-
-
+    
 10  CONTINUE 
     
     operx = 0.0d0

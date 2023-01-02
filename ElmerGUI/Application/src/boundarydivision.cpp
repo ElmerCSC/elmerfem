@@ -54,6 +54,9 @@ BoundaryDivide::BoundaryDivide(QWidget *parent)
   ui.angleDegreeEdit->setText("20.0");
 
   target = TARGET_UNKNOWN;
+  
+  ui.divideButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 }
 
 BoundaryDivide::~BoundaryDivide()

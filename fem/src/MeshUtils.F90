@@ -24649,14 +24649,12 @@ CONTAINS
             j = COUNT(BodyCount > 0) 
             IF( j > 0 ) THEN
               AveHits = 1.0_dp * SUM( BodyCount ) / j
-            ELSE
-              AveHits = 0.0_dp
+              WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
+              CALL Info('CalculateBodyAverage',Message) 
+              WRITE(Message,'(A,I0,A,I0)') 'In body '//TRIM(I2S(i))//' hit count range is: ',&
+                  MINVAL(BodyCount,BodyCount>0),' - ',MAXVAL(BodyCount)
+              CALL Info('CalculateBodyAverage',Message)
             END IF
-            WRITE(Message,'(A,ES12.3)') 'In body '//TRIM(I2S(i))//' average hit count is: ',AveHits
-            CALL Info('CalculateBodyAverage',Message) 
-            WRITE(Message,'(A,2I0)') 'In body '//TRIM(I2S(i))//' hit count range is: ',&
-                MINVAL(BodyCount,BodyCount>0), MAXVAL(BodyCount)
-            CALL Info('CalculateBodyAverage',Message) 
           END IF
         END IF
           
@@ -24665,6 +24663,9 @@ CONTAINS
           CALL SendInterface(); CALL RecvInterface()
         END IF
 
+        j = COUNT( BodyCount > 0 )
+        IF( j == 0 ) CYCLE
+        
         ! Do not average weighted quantities (like nodal forces) - they should only be summed.
         ! But do average all other quantities. 
         IF( .NOT. BodySum ) THEN
