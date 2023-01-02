@@ -1448,7 +1448,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
       CALL PMMG_SaveMesh_Centralized(pmmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
     END IF
     IF(SaveMMGSols) THEN
-      SolName = TRIM(premmg_solfile)//I2S(time)/'.sol'
+      SolName = TRIM(premmg_solfile)//I2S(time)//'.sol'
       CALL PMMG_SaveMet_Centralized(pmmgMesh,SolName,LEN(TRIM(SolName)),ierr)
     END IF
     IF (DEBUG) PRINT *,'--**-- SET PMMG3D PARAMETERS '
