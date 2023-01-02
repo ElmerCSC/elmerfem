@@ -1052,6 +1052,8 @@
 
        INTEGER :: istat
 
+       IF(Radiosity .AND. FirstTime) RETURN
+
        CALL Info('RadiationFactors','Computing factors...',Level=5)
 
        CALL InitRadiationSolver(TSolver,Solver)
@@ -1062,7 +1064,6 @@
        CALL TabulateEmissivity()
 
        IF( Radiosity ) THEN
-         IF(FirstTime) RETURN
          CALL CalculateRadiosity()
        ELSE
          ! Fill the matrix for gebhardt factors
