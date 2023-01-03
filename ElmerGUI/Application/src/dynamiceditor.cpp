@@ -285,6 +285,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
   applyButton->setIcon(addIcon);
   connect(applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
   nameEdit->setWhatsThis("Name of this " + Section);
+  nameEdit->setToolTip("Name of this " + Section);
   
   discardButton = new QPushButton(tr("&Remove"));
   discardButton->setIcon(removeIcon);
@@ -294,6 +295,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
   whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
   connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
   whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  whatsThisButton->setToolTip("Press this button, then click the widget to be explained.");
   
   okButton = new QPushButton(tr("&OK"));
   okButton->setIcon(okIcon);

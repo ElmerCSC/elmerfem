@@ -7293,12 +7293,12 @@ void MainWindow::getStartedSlot() {
   msgBox.setTextFormat(Qt::RichText);
   QIcon icon(windowIcon());
   msgBox.setIconPixmap( icon.pixmap(32));
-  msgBox.setWindowTitle(tr("Information to get started"));
+  msgBox.setWindowTitle(tr("Get started with Elmer"));
   msgBox.setText(tr(
-	"<P>Please fill this with html code to be shown. For example,</P>"
 	"<ls>"
 	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf>GetStartedElmer.pdf</a>"
 	"<li><a href=https://www.youtube.com/watch?v=XfHqaq2bbgU>Elmer FEM Webinar - Introduction to Elmer</a>"
+	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/ElmerTutorials.pdf>ElmerGUI Tutorials</a>"
 	"</ls>"
   ));
   msgBox.exec();
