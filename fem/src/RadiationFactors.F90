@@ -680,8 +680,7 @@
 
        INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'Radiator Factors File does NOT exist:',OutputName
-         CALL Info('RadiationFactors','Message')
+         CALL Warn('RadiationFactors','Radiator Factors File does NOT exist: '//TRIM(OutputName))
          Success = .FALSE.
          RETURN
        END IF
@@ -792,8 +791,7 @@
 
        INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'View Factors File does NOT exist:',OutputName
-         CALL Info('RadiationFactors','Message')
+         CALL Warn('RadiationFactors','View Factors File does NOT exist: '//TRIM(OutputName))
          Success = .FALSE.
          RETURN
        END IF
@@ -901,13 +899,17 @@
 
        ! Check whether the element already sees itself, it will when 
        ! gebhardt factors are computed. Also compute matrix size.
+       RowSpace = 0
        DO i=1,n
-         RowSpace(i) = ViewFactors(i) % NumberOfFactors
+         j = ViewFactors(i) % NumberOfFactors
+         IF(j==0) CYCLE
+         RowSpace(i) = j
          Cols => ViewFactors(i) % Elements
          IF (ALL(Cols/=i)) RowSpace(i) = RowSpace(i)+1
        END DO
        MatrixEntries = SUM(RowSpace(1:n))
-
+       CALL Info('CreateRadiationMatrix','Number of entries in matrix: '//I2S(MatrixEntries),Level=7)
+       
        IF(.NOT.ASSOCIATED(G) .OR. UpdateViewFactors) THEN
          IF(ASSOCIATED(G)) CALL FreeMatrix(G)
 
