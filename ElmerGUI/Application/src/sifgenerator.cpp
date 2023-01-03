@@ -1222,7 +1222,19 @@ void SifGenerator::handleLineEdit(const QDomElement &elem, QWidget *widget)
 
   QLineEdit *lineEdit = static_cast<QLineEdit*>(widget);
   QString value = lineEdit->text().trimmed();
-  addSifLine("  " + name + " = ", value);
+  
+  // Adjust array parameters, i.e.:
+  // eliminate the first '=' in "Save Coordinates = (2,3) = 1.2 2.3 3.4 4.5 5.6 6.7"
+  QRegularExpression qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
+  QRegularExpressionMatch match = qre.match(value);
+  if(match.hasMatch()){
+    addSifLine("  " + name, value);
+	cout << " [SifGenerator] array parameter adjusted: '" 
+	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
+	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
+  }else{
+    addSifLine("  " + name + " = ", value);
+  }
 }
 
 void SifGenerator::handleTextEdit(const QDomElement &elem, QWidget *widget)
