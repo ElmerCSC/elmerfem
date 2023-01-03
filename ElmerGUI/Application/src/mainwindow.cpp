@@ -922,8 +922,8 @@ void MainWindow::createActions() {
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
 
-  // Help -> Get Started
-  getStartedAct = new QAction(QIcon(""), tr("Get Started..."), this);
+  // Help -> Get started
+  getStartedAct = new QAction(QIcon(""), tr("Get started..."), this);
   getStartedAct->setStatusTip(tr("Information to get started"));
   connect(getStartedAct, SIGNAL(triggered()), this, SLOT(getStartedSlot()));
   
