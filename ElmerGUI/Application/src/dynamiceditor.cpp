@@ -279,15 +279,21 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
   nameEdit  = new QLineEdit;
   nameEdit->setText(Section + " " + QString::number(ID+1));
-
+  nameEdit->setToolTip(tr("press this button, then click a wdiget to be expanined."));
   applyButton = new QPushButton(tr("&Add"));
   applyButton->setIcon(addIcon);
   connect(applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
+  nameEdit->setWhatsThis("Name of this " + Section);
   
   discardButton = new QPushButton(tr("&Remove"));
   discardButton->setIcon(removeIcon);
   connect(discardButton, SIGNAL(clicked()), this, SLOT(discardButtonClicked()));
 
+  whatsThisButton = new QPushButton(tr(""));
+  whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
+  connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
+  whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  
   okButton = new QPushButton(tr("&OK"));
   okButton->setIcon(okIcon);
   connect(okButton, SIGNAL(clicked()), this, SLOT(okButtonClicked()));
@@ -305,6 +311,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
   buttonLayout->addWidget(applyButton);
   buttonLayout->addWidget(okButton);
   buttonLayout->addWidget(discardButton);
+  buttonLayout->addWidget(whatsThisButton);
 
   QHBoxLayout *spareButtonLayout = new QHBoxLayout;
   spareButton = new QPushButton(tr("SpareButton"));;
@@ -538,6 +545,7 @@ void DynamicEditor::applyButtonClicked()
   touched = true;
 
   emit(dynamicEditorReady(MAT_APPLY, ID));
+  
 }
 
 
@@ -574,6 +582,12 @@ void DynamicEditor::newButtonClicked()
   touched = false;
 
   emit(dynamicEditorReady(MAT_NEW, ID));
+}
+
+//----------------------------------------------------------------------------
+void DynamicEditor::whatsThisButtonClicked()
+{
+  QWhatsThis::enterWhatsThisMode();
 }
 
 //----------------------------------------------------------------------------
