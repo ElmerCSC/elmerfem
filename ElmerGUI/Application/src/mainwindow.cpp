@@ -922,6 +922,11 @@ void MainWindow::createActions() {
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
 
+  // Help -> Get Started
+  getStartedAct = new QAction(QIcon(""), tr("Get Started..."), this);
+  getStartedAct->setStatusTip(tr("Information to get started"));
+  connect(getStartedAct, SIGNAL(triggered()), this, SLOT(getStartedSlot()));
+  
   generateAndSaveAndRunAct =
       new QAction(QIcon::fromTheme("doubletriangle-right"),
                   tr("&Generate, save and run"), this);
@@ -1137,6 +1142,7 @@ void MainWindow::createMenus() {
 
   // Help menu
   helpMenu = menuBar()->addMenu(tr("&Help"));
+  helpMenu->addAction(getStartedAct);  
   helpMenu->addAction(aboutAct);
 
   // Sys tray menu:
@@ -7282,6 +7288,23 @@ void MainWindow::showaboutSlot() {
   msgBox.exec();
 }
 
+void MainWindow::getStartedSlot() {
+  QMessageBox msgBox(this);
+  msgBox.setTextFormat(Qt::RichText);
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
+  msgBox.setWindowTitle(tr("Information to get started"));
+  msgBox.setText(tr(
+	"<P>Please fill this with html code to be shown. For example,</P>"
+	"<ls>"
+	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf>GetStartedElmer.pdf</a>"
+	"<li><a href=https://www.youtube.com/watch?v=XfHqaq2bbgU>Elmer FEM Webinar - Introduction to Elmer</a>"
+	"</ls>"
+  ));
+  msgBox.exec();
+}
+ 
+ 
 //*****************************************************************************
 //
 //                           Auxiliary non-menu items
