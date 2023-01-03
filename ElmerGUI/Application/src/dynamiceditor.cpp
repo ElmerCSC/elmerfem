@@ -209,6 +209,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
         if ( h.widget ) {
           h.widget->setWhatsThis(whatis);
+          h.widget->setToolTip(whatis);
           h.widget->setStatusTip(statusTip);
           h.widget->setProperty( "dom address",fullName);
           h.elem = param;
