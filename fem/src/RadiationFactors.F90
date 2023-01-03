@@ -1852,7 +1852,7 @@
        REAL(KIND=dp), POINTER :: Vals(:) 
        INTEGER, POINTER :: Cols(:) 
        INTEGER :: i, j, nf, previ
-       REAL(KIND=dp) :: s,r,e,rj,ej,a
+       REAL(KIND=dp) :: s,r,e,rj,ej,c
 
        DO i=1,n
          nf = ViewFactors(i) % NumberOfFactors
@@ -1860,7 +1860,7 @@
          Cols => ViewFactors(i) % Elements
          e = Emissivity(i)
          r = 1-e
-         a = RelAreas(i) * (r/e)**2
+         c = RelAreas(i) * (r/e)**2
          previ = G % Rows(i)-1
          DO j=1,nf
            ej = Emissivity(Cols(j))
@@ -1868,7 +1868,7 @@
            s = r*Vals(j) * (r/e*rj/ej)
            CALL CRS_AddToMatrixElement(G,i,Cols(j),s,previ)
          END DO
-         CALL CRS_AddToMatrixElement(G,i,i,-a)
+         CALL CRS_AddToMatrixElement(G,i,i,-c)
        END DO
        Diag = G % Values(G % Diag)
      END SUBROUTINE RadiosityAssembly
