@@ -1342,7 +1342,7 @@
          MaxOmittedFactor = MAX(MaxOmittedFactor,(FactorSum-ConsideredSum)/FactorSum) 
 
          IF ( RealTime() - st > 10.0 ) THEN
-           WRITE(Message,'(a,i3,a)' ) '   Solution: ', &
+           WRITE(Message,'(A,I3,A)' ) '   Solution: ', &
                INT((100.0*t)/RadiationSurfaces),' % done'
            CALL Info( 'RadiationFactors', Message, Level=5 )
            st = RealTime()
@@ -1500,7 +1500,7 @@
  
        LOGICAL :: RBC
        INTEGER :: i
-       REAL(KIND=dp) :: r, e, a, Temp, Black
+       REAL(KIND=dp) :: r, e, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
 
@@ -1520,11 +1520,11 @@
        DO i=1,RadiationSurfaces
          e = Emissivity(i)
          r = 1-e
-         a = RelAreas(i) * (r/e)
+         c = RelAreas(i) * (r/e)
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
-         RHS(i) = -a*e*Black
-         IF(Newton) RHS_d(i) = -a*e*Black*4/Temp
+         RHS(i) = -c*e*Black
+         IF(Newton) RHS_d(i) = -c*e*Black*4/Temp
        END DO
 
        ! Check for radiation sources:
@@ -1535,8 +1535,8 @@
            IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
              e = Emissivity(i)
              r = 1-e
-             a = RelAreas(i) * (r/e)
-             RHS(i) = RHS(i) - a*r* & 
+             c = RelAreas(i) * (r/e)
+             RHS(i) = RHS(i) - c*r* & 
                       SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
          END DO
@@ -1565,7 +1565,7 @@
 
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad
        INTEGER :: i,j,k,kmin,kmax
-       REAL(KIND=dp) :: q, qsum, totsum, a, r, e, s, Temp, Black
+       REAL(KIND=dp) :: q, qsum, totsum, c, r, e, s, Temp, Black
 
        LOGICAL :: RBC, ApproxNewton, AccurateNewton, UsedEdT
        INTEGER, ALLOCATABLE :: RadiatorSet(:)
@@ -1656,7 +1656,7 @@
          DO i=1,RadiationSurfaces
            e = Emissivity(i)
            r = 1-e
-           a = RelAreas(i) * (r/e)
+           c = RelAreas(i) * (r/e)
            Temp = SurfaceTemperature(i)
            Black = Sigma*Temp**4
            ! The portion of the emissivity to consider for this radiating element
@@ -1665,7 +1665,7 @@
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
-             RHS(i) = -q*a*e*Black
+             RHS(i) = -q*c*e*Black
              IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp
 
              S = -q*e**2/r*Black
@@ -1753,10 +1753,10 @@
              IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
                e = Emissivity(i)
                r = 1-e
-               a = RelAreas(i) * (r/e)
+               c = RelAreas(i) * (r/e)
                DO j=1,SIZE(RadiatorSet)
                  IF(RadiatorSet(j) == k) THEN
-                   RHS(i) = RHS(i) - a * r * &
+                   RHS(i) = RHS(i) - c * r * &
                        Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
                  END IF
                END DO
