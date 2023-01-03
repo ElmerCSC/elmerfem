@@ -1005,6 +1005,8 @@ CONTAINS
               T0**2*RadText+T0*RadText**2 + RadText**3)
           RadF = RadC * RadText
         END IF
+      ELSE
+        RadC = 0; RadF=0;
       END IF
         
       IF( RobinBC .OR. RadIdeal) THEN
