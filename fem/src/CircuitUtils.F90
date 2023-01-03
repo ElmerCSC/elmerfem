@@ -308,7 +308,7 @@ CONTAINS
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
     READ(name(1:slen), *) n_Circuits
     
     CurrentModel % n_Circuits = n_Circuits
@@ -347,7 +347,7 @@ CONTAINS
     DO i=1,Circuit % n
       cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
       IF(name(1:char_len) == Var_type(1:char_len)) nofc = nofc + 1
     END DO
@@ -375,7 +375,7 @@ CONTAINS
     DO i=1,Circuit % n
       cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
       IF(isComponentName(name,slen)) THEN
         DO ibracket=1,slen
@@ -437,7 +437,7 @@ END FUNCTION isComponentName
     DO i=1,Circuit % n
       cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
       Circuit % names(i) = name(1:slen)
 
       CVar => Circuit % CircuitVariables(i)
@@ -526,7 +526,7 @@ END FUNCTION isComponentName
     
     cmd = 'C.'//i2s(CId)//'.variables'
     slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
       
     READ(name(1:slen), *) Circuit % n
 
@@ -1102,7 +1102,7 @@ END FUNCTION isComponentName
     DO i=1,n
       cmd = 'C.'//i2s(CId)//'.perm('//i2s(i-1)//')'
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
       READ(name(1:slen),*) Circuit % Perm(i)
     END DO
     
@@ -1132,7 +1132,7 @@ END FUNCTION isComponentName
       ! ---------------------------------------------------------------------------
       cmd = 'nc:C.'//i2s(CId)//'.source.'//i2s(i)
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
       Circuit % Source(i) = name(1:slen)
     END DO
 !------------------------------------------------------------------------------

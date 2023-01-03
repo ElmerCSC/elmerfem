@@ -83,9 +83,9 @@ MODULE LoadMod
     END INTERFACE
 
     INTERFACE
-        SUBROUTINE matc(cmd,value,len) BIND(C,name='matc')
+        SUBROUTINE matc(cmd,value,len,maxlen) BIND(C,name='matc')
             USE, INTRINSIC :: ISO_C_BINDING
-            INTEGER(C_INT) :: len
+            INTEGER(C_INT) :: len,maxlen
             CHARACTER(C_CHAR) :: cmd(*), value(*)
         END SUBROUTINE matc
     END INTERFACE

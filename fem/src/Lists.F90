@@ -3974,7 +3974,7 @@ CONTAINS
 
         cmd = ptr % CValue
         k = LEN_TRIM( ptr % CValue )
-        CALL matc( cmd, tmp_str, k )
+        CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
         READ( tmp_str(1:k), * ) F
         F = ptr % Coeff * F
 
@@ -5057,11 +5057,11 @@ CONTAINS
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
          WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
          k = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k )
+         CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
 
          cmd = ptr % CValue
          k = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k )
+         CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
          READ( tmp_str(1:k), * ) F(1)
          F(1) = ptr % Coeff * F(1)
          F(2:n) = F(1)
@@ -5090,11 +5090,11 @@ CONTAINS
                WRITE(cmd,*) 'tx=(',T(1:j),')'
              END IF             
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) F(i)
              F(i) = Ptr % Coeff * F(i)
            END IF
@@ -5281,11 +5281,11 @@ CONTAINS
 #endif       
          WRITE( cmd, * ) 'tx=', X
          k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
+         CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
          
          cmd = ptr % CValue
          k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
+         CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
          READ( tmp_str(1:k1), * ) F
 #ifdef HAVE_LUA
        ELSE
@@ -5302,7 +5302,7 @@ CONTAINS
 #endif       
                cmd = derptr % CValue 
                k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
+               CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                READ( tmp_str(1:k1), * ) dFdx
 #ifdef HAVE_LUA
              ELSE
@@ -5326,20 +5326,20 @@ CONTAINS
 #endif       
              WRITE( cmd, * ) 'tx=', x-xeps
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) F1
 
              WRITE( cmd, * ) 'tx=', x+xeps
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) F2
 #ifdef HAVE_LUA
            ELSE
@@ -5458,11 +5458,11 @@ CONTAINS
 #endif       
          WRITE( cmd, * ) 'tx=(', X(1:dofs),')'
          k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
+         CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
          
          cmd = ptr % CValue
          k1 = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k1 )
+         CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
          READ( tmp_str(1:k1), * ) F
 #ifdef HAVE_LUA
        ELSE
@@ -5483,20 +5483,20 @@ CONTAINS
 #endif                  
              WRITE( cmd, * ) 'tx('//I2S(i-1)//')=', x(i)-xeps
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) F1
 
              WRITE( cmd, * ) 'tx('//I2S(i-1)//')=', x(i)+xeps
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) F2
 
              ! Revert back to original value
@@ -6572,11 +6572,11 @@ CONTAINS
              WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
            END IF
            k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )             
+           CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                               
            cmd = ptr % CValue
            k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
+           CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
            READ( tmp_str(1:k1), * ) RValue
          END IF
 
@@ -6681,11 +6681,11 @@ CONTAINS
              WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
            END IF           
            k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )             
+           CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
            
            cmd = ptr % CValue
            k1 = LEN_TRIM(cmd)
-           CALL matc( cmd, tmp_str, k1 )
+           CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
            READ( tmp_str(1:k1), * ) ((Handle % Rtensor(j,k),k=1,N2),j=1,N1)
                  
 #ifdef HAVE_LUA
@@ -6796,11 +6796,11 @@ CONTAINS
              TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
              WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
              k = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k )
+             CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
              
              cmd = ptr % CValue
              k = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k )
+             CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
              READ( tmp_str(1:k), * ) F(1)
              F(1) = ptr % Coeff * F(1) 
            END IF
@@ -6823,11 +6823,11 @@ CONTAINS
                    WRITE(cmd,*) 'tx=(',T(1:j),')'
                  END IF
                  k1 = LEN_TRIM(cmd)
-                 CALL matc( cmd, tmp_str, k1 )
+                 CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                  
                  cmd = ptr % CValue
                  k1 = LEN_TRIM(cmd)
-                 CALL matc( cmd, tmp_str, k1 )
+                 CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                  READ( tmp_str(1:k1), * ) F(i)
                  F(i) = ptr % Coeff * F(i)
                END IF
@@ -6961,11 +6961,11 @@ CONTAINS
                  WRITE(cmd,*) 'tx=(',T(1:j),')'
                END IF
                k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
+               CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                
                cmd = ptr % CValue
                k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
+               CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                READ( tmp_str(1:k1), * ) ((Handle % Rtensor(j,k),k=1,N2),j=1,N1)
                
 #ifdef HAVE_LUA
@@ -7506,11 +7506,11 @@ CONTAINS
                WRITE(cmd,*) 'tx=(',T(1:Handle % ParNo),')'
              END IF               
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) RValue
 
 #ifdef HAVE_LUA
@@ -7622,11 +7622,11 @@ CONTAINS
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
          WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
          k = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k )
+         CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
 
          cmd = ptr % CValue
          k = LEN_TRIM(cmd)
-         CALL matc( cmd, tmp_str, k )
+         CALL matc( cmd, tmp_str, k, MAX_NAME_LEN )
          READ( tmp_str(1:k), * ) F(1)
          F(1) = ptr % Coeff * F(1) 
 
@@ -7650,11 +7650,11 @@ CONTAINS
                  WRITE(cmd,*) 'tx=(',T(1:j),')'
                END IF
                k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
+               CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                
                cmd = ptr % CValue
                k1 = LEN_TRIM(cmd)
-               CALL matc( cmd, tmp_str, k1 )
+               CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
                READ( tmp_str(1:k1), * ) F(i)
                F(i) = ptr % Coeff * F(i)
              END IF
@@ -8645,11 +8645,11 @@ CONTAINS
                WRITE(cmd,*) 'tx=(',T(1:j),')'
              END IF
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
 #ifdef HAVE_LUA
            ELSE
@@ -8788,11 +8788,11 @@ CONTAINS
                WRITE(cmd,*) 'tx=(',T(1:j),')'
              END IF
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
 
              cmd = ptr % CValue
              k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
+             CALL matc( cmd, tmp_str, k1, MAX_NAME_LEN )
              READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
 #ifdef HAVE_LUA
            ELSE

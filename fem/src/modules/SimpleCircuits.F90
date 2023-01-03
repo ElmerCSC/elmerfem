@@ -214,7 +214,7 @@ CONTAINS
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -232,7 +232,7 @@ CONTAINS
       ! ---------------------------
       cmd = 'C.'//i2s(p)//'.variables'
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
       READ(name(1:slen), *) Circuits(p) % n
 
@@ -247,7 +247,7 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
         slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
         Circuits(p) % names(i) = name(1:slen)
 
@@ -286,7 +286,7 @@ CONTAINS
         ! ---------------------------------------------------------------------------
         cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
         slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        CALL Matc( cmd, name, slen, MAX_NAME_LEN )
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -853,7 +853,7 @@ CONTAINS
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -871,7 +871,7 @@ CONTAINS
       ! ---------------------------
       cmd = 'C.'//i2s(p)//'.variables'
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
       READ(name(1:slen), *) Circuits(p) % n
 
@@ -886,7 +886,7 @@ CONTAINS
       DO i=1,Circuits(p) % n
         cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
         slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        CALL Matc( cmd, name, slen, MAX_NAME_LEN )
 
         Circuits(p) % names(i) = name(1:slen)
 
@@ -925,7 +925,7 @@ CONTAINS
         ! ---------------------------------------------------------------------------
         cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
         slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        CALL Matc( cmd, name, slen, MAX_NAME_LEN )
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -936,7 +936,7 @@ CONTAINS
     DO p=1,n_Circuits
       cmd = 'nc:C.'//i2s(p)//'.omega'
       slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
       Circuits(p) % FoundOmega = slen >= 1
       IF(Circuits(p) % FoundOmega) &
           READ( name(1:slen), *) Circuits(p) % Omega

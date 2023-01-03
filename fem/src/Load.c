@@ -595,9 +595,9 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
   This routine will call matc and return matc result
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL matc( char *cmd, char *Value, int *len )
+void STDCALLBULL matc( char *cmd, char *Value, int *len, int *maxlen )
 #else
-void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
+void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len, int *maxlen )
 #endif
 {
 #define MAXLEN 8192
@@ -628,8 +628,12 @@ void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
   ptr = (char *)mtc_domath(&ccmd[start]);
   if ( ptr )
   {
+    *len = strlen(ptr)-1; /* ignore linefeed! */
+    if(*len >= *maxlen) {
+      fprintf( stderr, "MATC result too long %d %d\n", *len, *maxlen );
+      exit(0);
+    }
     strcpy( Value, (char *)ptr );
-    *len = strlen(Value)-1; /* ignore linefeed! */
 
     if ( strncmp(Value, "MATC ERROR:",11)==0 || strncmp(Value,"WARNING:",8)==0 ) {
       if (start==0) {

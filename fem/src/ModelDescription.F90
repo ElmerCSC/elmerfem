@@ -6258,7 +6258,7 @@ END SUBROUTINE GetNodalElementSize
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
      tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     CALL matc( tcmd, ttmp_str, tj, MAX_STRING_LEN )
      !$OMP END PARALLEL
    END DO
 
@@ -6308,7 +6308,7 @@ END SUBROUTINE GetNodalElementSize
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
      tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     CALL matc( tcmd, ttmp_str, tj, MAX_STRING_LEN )
      !$OMP END PARALLEL
    END DO
 

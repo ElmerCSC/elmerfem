@@ -1162,7 +1162,7 @@ CONTAINS
 
              tninlen = ninlen
              tcmdstr = copystr(i+1:inlen)
-             CALL MATC( tcmdstr, tmatcstr, tninlen )
+             CALL MATC( tcmdstr, tmatcstr, tninlen, MAXLEN )
              !$OMP BARRIER
 
              !$OMP SINGLE

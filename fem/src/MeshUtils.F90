@@ -441,7 +441,7 @@ CONTAINS
           WRITE( str, * ) 'cx= ',i2s(Element % BodyId),x,y,z
           str = TRIM(str) // '; ' // TRIM(ElementDef(j+3:))//'(cx)'
           slen = LEN_TRIM(str)
-          CALL matc(str,RESULT,slen)
+          CALL matc(str,RESULT,slen,MAX_NAME_LEN)
           READ(RESULT(1:slen),*) x
 
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
