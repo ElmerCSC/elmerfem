@@ -23432,7 +23432,7 @@ CONTAINS
     MeshName = ListGetString( Params,'1D Mesh Name',Found)
     IF(.NOT. Found) MeshName = '1d_mesh'
     
-    Mesh % Name = MeshName
+    Mesh % Name = TRIM(MeshName)
     Mesh % OutputActive = .FALSE.
 
 !   Compute the resulting mesh parameters

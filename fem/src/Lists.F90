@@ -774,6 +774,7 @@ CONTAINS
         ALLOCATE( ptr )
       END IF
 
+      ALLOCATE(CHARACTER(LEN_TRIM(Name))::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
 
       IF ( .NOT. ASSOCIATED(ptr, Variables) ) THEN
@@ -1634,9 +1635,7 @@ CONTAINS
      ALLOCATE( ptr )
      ptr % PROCEDURE = 0
      ptr % TYPE = 0
-     ptr % Name = ' '
      ptr % NameLen = 0
-     ptr % CValue = ' '
      ptr % LValue = .FALSE.
      NULLIFY( ptr % CubicCoeff )
      NULLIFY( ptr % Cumulative )
@@ -1731,13 +1730,12 @@ CONTAINS
        ptr  => List % Head
        NULLIFY( prev )
        DO WHILE( ASSOCIATED(ptr) )
-         IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
-           Found = .TRUE.
-           EXIT
-         ELSE
-           Prev => ptr
-           ptr  => ptr % Next 
-         END IF
+         Found = ptr % NameLen == k
+         IF(Found) Found = ptr % Name(1:k)  == str(1:k)
+         IF(Found) EXIT
+
+         Prev => Ptr
+         Ptr => Ptr % Next
        END DO
 
        IF ( Found ) THEN
@@ -2053,7 +2051,7 @@ CONTAINS
      
      IF( ASSOCIATED( ptr ) ) THEN
        k2 = StringToLowerCase( str2,Name2,.TRUE. )
-       ptr % Name(1:k2) = str2(1:k2)
+       ptr % Name = str2(1:k2)
        ptr % NameLen = k2 
        !PRINT *,'renaming >'//str(1:k)//'< to >'//str2(1:k2)//'<', k, k2
      END IF
@@ -2853,7 +2851,7 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
      IF( PRESENT( name ) ) THEN
-       ptrb => ListAdd( List, name ) 
+       ptrb => ListAdd( List, Name ) 
      ELSE
        ptrb => ListAdd( List, ptr % Name ) 
      END IF
@@ -3170,7 +3168,7 @@ CONTAINS
       CHARACTER(LEN=*) :: CValue
       LOGICAL, OPTIONAL :: CaseConversion
 !------------------------------------------------------------------------------
-      INTEGER :: k
+      INTEGER :: n
       LOGICAL :: DoCase
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
@@ -3179,14 +3177,20 @@ CONTAINS
       DoCase = .TRUE.
       IF ( PRESENT(CaseConversion) ) DoCase = CaseConversion
 
+      n = LEN_TRIM(Cvalue)
+      IF(ALLOCATED(ptr % Cvalue)) DEALLOCATE(ptr % Cvalue)
+      ALLOCATE(CHARACTER(n)::ptr % Cvalue)
       IF ( DoCase ) THEN
-        k = StringToLowerCase( ptr % CValue,CValue )
+        n = StringToLowerCase( ptr % CValue,CValue )
       ELSE
-        k = MIN( MAX_NAME_LEN,LEN(CValue) )
-        ptr % CValue(1:k) = CValue(1:k)
+        n = MIN( MAX_NAME_LEN,LEN(CValue) )
+        ptr % CValue = TRIM(Cvalue)
       END IF
 
       ptr % TYPE   = LIST_TYPE_STRING
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
       ptr % NameLen = StringToLowerCase( Ptr % Name,Name )
 !------------------------------------------------------------------------------
     END SUBROUTINE ListAddString
@@ -3202,12 +3206,16 @@ CONTAINS
       CHARACTER(LEN=*) :: Name
       LOGICAL :: LValue
 !------------------------------------------------------------------------------
+      INTEGER :: n
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
       Ptr % LValue = LValue
       Ptr % TYPE   = LIST_TYPE_LOGICAL
 
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
       Ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddLogical
 !------------------------------------------------------------------------------
@@ -3223,6 +3231,7 @@ CONTAINS
       INTEGER :: IValue
       INTEGER(Kind=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+      INTEGER :: n
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
@@ -3232,6 +3241,9 @@ CONTAINS
       ptr % IValues(1) = IValue
       ptr % TYPE       = LIST_TYPE_INTEGER
 
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddInteger
 !------------------------------------------------------------------------------
@@ -3240,30 +3252,29 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Adds an integer array to the list.
 !------------------------------------------------------------------------------
-    SUBROUTINE ListAddIntegerArray( List,Name,N,IValues,Proc )
+    SUBROUTINE ListAddIntegerArray( List,Name,Nv,IValues,Proc )
 !------------------------------------------------------------------------------
       TYPE(ValueList_t), POINTER :: List
       CHARACTER(LEN=*) :: Name
-      INTEGER :: N
-      INTEGER :: IValues(N)
+      INTEGER :: Nv
+      INTEGER :: IValues(Nv)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+      INTEGER :: n
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
-      ALLOCATE( ptr % IValues(N) )
+      ALLOCATE( ptr % IValues(Nv) )
 
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-      IF( n == 1 ) THEN
-        ptr % TYPE = LIST_TYPE_INTEGER
-      ELSE
-        ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
-      END IF
-      
-      ptr % IValues(1:n) = IValues(1:n)
+      ptr % TYPE = LIST_TYPE_INTEGER
+      ptr % IValues(1:nv) = IValues(1:nv)
 
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddIntegerArray
 !------------------------------------------------------------------------------
@@ -3279,6 +3290,7 @@ CONTAINS
       REAL(KIND=dp) :: FValue
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+      INTEGER :: n
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
@@ -3297,10 +3309,13 @@ CONTAINS
       END IF
 
       IF ( PRESENT( CValue ) ) THEN
-         ptr % Cvalue = CValue
+         ptr % Cvalue = TRIM(CValue)
          ptr % TYPE  = LIST_TYPE_CONSTANT_SCALAR_STR
       END IF
 
+      n = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(n)::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddConstReal
 !------------------------------------------------------------------------------
@@ -3321,6 +3336,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+     INTEGER :: l
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListAdd( List, Name )
@@ -3356,7 +3372,14 @@ CONTAINS
      CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
           Ptr % CubicCoeff, Ptr % Cumulative )
 
+     l = LEN_TRIM(Name)
+     IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+     ALLOCATE(CHARACTER(l)::ptr % Name)
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
+
+     l = LEN_TRIM(DependName)
+     IF(ALLOCATED(ptr % DependName)) DEALLOCATE(ptr % DependName)
+     ALLOCATE(CHARACTER(l)::ptr % DependName)
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
 
      IF ( PRESENT( Cvalue ) ) THEN
@@ -3380,6 +3403,7 @@ CONTAINS
       REAL(KIND=dp) :: FValues(:,:)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+      INTEGER :: l
       TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
@@ -3411,6 +3435,9 @@ CONTAINS
         END IF
       END IF
       
+      l = LEN_TRIM(Name)
+      IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+      ALLOCATE(CHARACTER(l)::ptr % Name)
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddConstRealArray
 !------------------------------------------------------------------------------
@@ -3430,6 +3457,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
+     INTEGER :: l
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
 
@@ -3451,7 +3479,14 @@ CONTAINS
         ptr % TYPE = LIST_TYPE_VARIABLE_TENSOR_STR
      END IF
 
+     l = LEN_TRIM(Name)
+     IF(ALLOCATED(ptr % Name)) DEALLOCATE(ptr % Name)
+     ALLOCATE(CHARACTER(l)::ptr % Name)
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
+
+     l = LEN_TRIM(DependName)
+     IF(ALLOCATED(ptr % DependName)) DEALLOCATE(ptr % DependName)
+     ALLOCATE(CHARACTER(l)::ptr % DependName)
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
 !------------------------------------------------------------------------------
    END SUBROUTINE ListAddDepRealArray
@@ -3469,7 +3504,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: CubicTable, Monotone
      
      TYPE(ValueListEntry_t), POINTER :: ptr
-     INTEGER :: n,m
+     INTEGER :: n,m, l
      REAL(KIND=dp), ALLOCATABLE :: TmpValues(:,:,:)
      
      ptr => ListFind( List, Name )
@@ -3524,6 +3559,9 @@ CONTAINS
           Ptr % CubicCoeff, Ptr % Cumulative )
      
      ! Copy the depname     
+     l = LEN_TRIM(DepName)
+     IF(ALLOCATED(ptr % DependName)) DEALLOCATE(ptr % DependName)
+     ALLOCATE(CHARACTER(l)::ptr % DependName)
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DepName )
 
      ! Finally, change the type 
@@ -5556,7 +5594,7 @@ CONTAINS
      INTEGER :: i, n, NoVal, ValueType, IValue, dim, n1, n2, maxn1, maxn2
      TYPE(Model_t), POINTER :: Model
      REAL(KIND=dp)  :: val, Rvalue
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     CHARACTER(:), ALLOCATABLE :: CValue
      LOGICAL :: ConstantEverywhere, NotPresentAnywhere, Lvalue, FirstList, AllGlobal, Found
      REAL(KIND=dp), POINTER :: Basis(:)
      INTEGER, POINTER :: NodeIndexes(:)
@@ -5657,7 +5695,7 @@ CONTAINS
      Handle % SomewhereEvaluateAtIP = .FALSE.
      Handle % GlobalEverywhere = .TRUE.
      Handle % SomeVarAtIp = .FALSE.
-     Handle % Name = Name 
+     Handle % Name = TRIM(Name)
      Handle % ListId = -1
      Handle % EvaluateAtIp = .FALSE.       
      Handle % List => NULL()

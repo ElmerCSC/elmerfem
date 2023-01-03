@@ -401,10 +401,10 @@ MODULE Types
      INTEGER(KIND=AddrInt) :: PROCEDURE
 
      REAL(KIND=dp) :: Coeff = 1.0_dp    
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     CHARACTER(:), ALLOCATABLE :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
+     CHARACTER(:), ALLOCATABLE :: Name,DependName
 
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
@@ -452,10 +452,10 @@ MODULE Types
      REAL(KIND=dp), POINTER :: RTensor(:,:) => NULL()
      REAL(KIND=dp), POINTER :: RTensorValues(:,:,:) => NULL()
      LOGICAL :: LValue, DefLValue = .FALSE.
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     CHARACTER(:), ALLOCATABLE :: CValue
      INTEGER :: CValueLen
      LOGICAL :: Found
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
+     CHARACTER(:), ALLOCATABLE :: Name
      LOGICAL :: Initialized = .FALSE.
      LOGICAL :: AllocationsDone = .FALSE.
      LOGICAL :: ConstantEverywhere = .FALSE.
@@ -568,7 +568,7 @@ MODULE Types
      TYPE(Variable_t), POINTER :: Next => NULL()
      TYPE(Variable_t), POINTER :: EVar => NULL() 
      INTEGER :: NameLen = 0
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
+     CHARACTER(:), ALLOCATABLE :: Name
 
      TYPE(Solver_t), POINTER :: Solver => NULL()
      LOGICAL :: Valid = .TRUE.
@@ -759,7 +759,7 @@ MODULE Types
 !------------------------------------------------------------------------------
 
    TYPE NormalTangential_t     
-     CHARACTER(LEN=MAX_NAME_LEN) :: NormalTangentialName
+     CHARACTER(:), ALLOCATABLE :: NormalTangentialName
      INTEGER :: NormalTangentialNOFNodes = 0
      INTEGER, POINTER :: BoundaryReorder(:) => NULL()
      REAL(KIND=dp), POINTER :: BoundaryNormals(:,:)  => NULL()
@@ -917,8 +917,7 @@ MODULE Types
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    CHARACTER(LEN=MAX_NAME_LEN) :: ComponentType
+    CHARACTER(:), ALLOCATABLE :: CoilType, ComponentType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
     LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
@@ -929,7 +928,8 @@ MODULE Types
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
     LOGICAL :: UsePerm = .FALSE., Harmonic, Parallel
     INTEGER :: n, m, n_comp,CvarDofs
-    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
+!   CHARACTER(:), ALLOCATABLE :: names(:), source(:)
+    CHARACTER(MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)
     TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
   END TYPE Circuit_t
