@@ -6911,7 +6911,7 @@ CONTAINS
            ELSE
              DO j2=1,SIZE( Handle % RTensor, 1 )
                DO k2=1,SIZE( Handle % RTensor, 2 )               
-                 Handle % RTensor(j2,k2) = SUM( Basis(1:n) * Handle % RtensorValues(j2,k2,1:n) )
+                 Handle % RTensor(j2,k2) = SUM( Basis(1:ni) * Handle % RtensorValues(j2,k2,1:ni) )
                END DO
              END DO
            END IF
