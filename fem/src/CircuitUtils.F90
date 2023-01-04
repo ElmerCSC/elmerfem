@@ -1078,7 +1078,7 @@ END FUNCTION isComponentName
     n = Circuit % n
 
     DO i=1,n
-      Circuit % Perm(i) = GetMatcReal('C.'//i2s(CId)//'.perm('//i2s(i-1)//')')
+      Circuit % Perm(i) = NINT(GetMatcReal('C.'//i2s(CId)//'.perm('//i2s(i-1)//')'))
     END DO
     IF(ANY(Circuit % Perm /= 0)) THEN 
       Circuit % UsePerm = .TRUE.
