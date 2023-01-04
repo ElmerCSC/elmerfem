@@ -2728,6 +2728,100 @@ CONTAINS
    END FUNCTION GaussPoints
 
 
+
+!------------------------------------------------------------------------------
+!>    Given element structure return Gauss integration points for the element.
+!----------------------------------------------------------------------------------------------
+   FUNCTION CornerGaussPoints( elm, EdgeBasis, PReferenceElement ) RESULT(CornerStuff)
+!---------------------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE( Element_t ) :: elm
+     LOGICAL, OPTIONAL :: EdgeBasis
+     LOGICAL, OPTIONAL :: PReferenceElement 
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+!------------------------------------------------------------------------------
+     LOGICAL :: pElement
+     INTEGER :: n, i, j, k, t, ecode
+     TYPE( GaussIntegrationPoints_t), POINTER :: ip
+!------------------------------------------------------------------------------
+     ecode = elm % TYPE % ElementCode
+
+     IF (PRESENT(PReferenceElement)) THEN
+       pElement = PReferenceElement
+     ELSE IF (PRESENT(EdgeBasis)) THEN
+       pElement = .TRUE.
+     ELSE
+       pElement = isActivePElement(elm)
+     END IF
+
+     IF(.NOT. Ginit) CALL GaussPointsInit()
+     ip => IntegStuff
+     
+     ! Compute the number of corner nodes
+     n = ecode / 100
+     IF( n >= 5 .AND. n <= 7 ) n = n-1 
+     ip % n = n
+     ip % s(1:n) = 1.0_dp / n
+     
+     SELECT CASE( ecode  / 100 )
+
+     CASE( 3 )
+       ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp
+       ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp
+       ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp
+       
+     CASE( 4 )
+       t = 0
+       DO i=1,2
+         DO j=1,2
+           t = t+1
+           ip % u(t) = (-1.0_dp)**i
+           ip % v(t) = (-1.0_dp)**j
+         END DO
+       END DO
+
+     CASE( 5 )
+       ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp; ip % w(1) = 0.0_dp
+       ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp; ip % w(2) = 0.0_dp
+       ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp; ip % w(3) = 0.0_dp
+       ip % u(4) = 0.0_dp; ip % v(4) = 0.0_dp; ip % w(4) = 1.0_dp
+       
+     CASE( 8 )
+       t = 0
+       DO i=1,2
+         DO j=1,2
+           DO k=1,2
+             t = t+1
+             ip % u(t) = (-1.0_dp)**i
+             ip % v(t) = (-1.0_dp)**j
+             ip % w(t) = (-1.0_dp)**k
+           END DO
+         END DO
+       END DO
+
+     CASE DEFAULT
+       WRITE(Message,'(A,I0)') 'Not implemented for element type: ', ecode
+       CALL Fatal('CornerGaussPoints',Message)
+     END SELECT
+
+     IF( pElement ) THEN
+       DO i=1,n
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+       END DO
+     END IF
+     
+#if 0
+     PRINT *,'Corner Gauss Points:',n
+     PRINT *,'u:',IP % u(1:n)
+     PRINT *,'v:',IP % v(1:n)
+     IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
+#endif
+     
+     CornerStuff = ip
+     
+   END FUNCTION CornerGaussPoints
+  
+   
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
 !>  H(curl)-conforming finite elements. The default here is that the edge basis

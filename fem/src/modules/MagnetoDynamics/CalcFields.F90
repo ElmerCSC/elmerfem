@@ -1131,10 +1131,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IF (SecondOrder) THEN
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+     IF( ElementalMode == 3 ) THEN
+       IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+     ELSE IF (SecondOrder) THEN
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
      ELSE
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
      END IF
 
      MASS  = 0._dp
