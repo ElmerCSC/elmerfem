@@ -62,8 +62,8 @@
           
      INTEGER :: i,istat,nBndr,nBulk
 
-     REAL (KIND=dp), ALLOCATABLE :: Reflectivity(:),Emissivity(:),Areas(:), &
-                   RelAreas(:)
+     REAL (KIND=dp), ALLOCATABLE :: Reflectivity(:),Emissivity(:),Absorptivity(:), &
+         Areas(:), RelAreas(:)
      REAL (KIND=dp) :: at, bt,  st
      REAL (KIND=dp) :: SteadyChange, Tol, Sigma
 
@@ -680,8 +680,7 @@
 
        INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'Radiator Factors File does NOT exist:',OutputName
-         CALL Info('RadiationFactors','Message')
+         CALL Warn('RadiationFactors','Radiator Factors File does NOT exist: '//TRIM(OutputName))
          Success = .FALSE.
          RETURN
        END IF
@@ -792,8 +791,7 @@
 
        INQUIRE(FILE=OutputName,EXIST=Found)
        IF(.NOT. Found) THEN
-         WRITE(Message,*) 'View Factors File does NOT exist:',OutputName
-         CALL Info('RadiationFactors','Message')
+         CALL Warn('RadiationFactors','View Factors File does NOT exist: '//TRIM(OutputName))
          Success = .FALSE.
          RETURN
        END IF
@@ -901,13 +899,17 @@
 
        ! Check whether the element already sees itself, it will when 
        ! gebhardt factors are computed. Also compute matrix size.
+       RowSpace = 0
        DO i=1,n
-         RowSpace(i) = ViewFactors(i) % NumberOfFactors
+         j = ViewFactors(i) % NumberOfFactors
+         IF(j==0) CYCLE
+         RowSpace(i) = j
          Cols => ViewFactors(i) % Elements
          IF (ALL(Cols/=i)) RowSpace(i) = RowSpace(i)+1
        END DO
        MatrixEntries = SUM(RowSpace(1:n))
-
+       CALL Info('CreateRadiationMatrix','Number of entries in matrix: '//I2S(MatrixEntries),Level=7)
+       
        IF(.NOT.ASSOCIATED(G) .OR. UpdateViewFactors) THEN
          IF(ASSOCIATED(G)) CALL FreeMatrix(G)
 
@@ -1000,24 +1002,25 @@
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
      !------------------------------------------------------------------------------
-     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Trad,Emissivity_d)
+     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
        REAL(KIND=dp) :: Trad
        REAL(KIND=dp) :: Emissivity(:)
-       REAL(KIND=dp), OPTIONAL :: Emissivity_d(:)
-       
+       REAL(KIND=dp) :: Absorptivity(:)
+              
        TYPE(ValueList_t), POINTER :: Vlist
        TYPE(Element_t), POINTER :: Element, Parent
-       INTEGER :: i,k,ent_id
+       INTEGER :: i,k,bc_id,mat_id
+
        
        DO i=1,RadiationSurfaces         
          Element => Mesh % Elements(ElementNumbers(i))
-         
-         DO ent_id=1,CurrentModel % NumberOfBCs
-           IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(ent_id) % Tag ) EXIT
+
+         DO bc_id=1,CurrentModel % NumberOfBCs
+           IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
          END DO
-         IF ( ent_id > CurrentModel % NumberOfBCs ) CALL Fatal('TabulateSpectralEmissivity','Could not find BC!')
-         Vlist => CurrentModel % BCs(ent_id) % Values
-         
+         IF ( bc_id > CurrentModel % NumberOfBCs ) CALL Fatal('TabulateSpectralEmissivity','Could not find BC!')
+           
+         Vlist => CurrentModel % BCs(bc_id) % Values         
          IF( .NOT. ListCheckPresent(Vlist,'Emissivity') ) THEN
            DO k=1,2
              IF(k==1) THEN
@@ -1027,9 +1030,9 @@
              END IF
              IF(ASSOCIATED(Parent) ) THEN
                IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
-                 ent_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',Found)
+                 mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',Found)
                  IF(Found) THEN
-                   Vlist => CurrentModel % Materials(ent_id) % Values
+                   Vlist => CurrentModel % Materials(mat_id) % Values
                    IF(ListCheckPresent(Vlist,'Emissivity') ) EXIT
                  END IF
                END IF
@@ -1037,12 +1040,9 @@
            END DO
          END IF
 
-         IF(PRESENT(Emissivity_d))  THEN
-           Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp, &
-                         dfdx=Emissivity_d(i), eps=0.1_dp)
-         ELSE
-           Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
-         END IF
+         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
+         Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
+         IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)         
        END DO
        
      END SUBROUTINE TabulateSpectralEmissivity
@@ -1059,7 +1059,8 @@
        CALL InitRadiationSolver(TSolver,Solver)
        CALL CreateRadiationMatrix(RadiationSurfaces)
 
-       ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), STAT=istat)
+       ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), &
+           Absorptivity(RadiationSurfaces), STAT=istat)
        IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 10.')
        CALL TabulateEmissivity()
 
@@ -1071,7 +1072,7 @@
          CALL FreeMatrix(G);G => Null()
        END IF
 
-       DEALLOCATE(Emissivity,Reflectivity)
+       DEALLOCATE(Emissivity,Reflectivity,Absorptivity)
      END SUBROUTINE CalculateRadiation
 
 
@@ -1340,7 +1341,7 @@
          MaxOmittedFactor = MAX(MaxOmittedFactor,(FactorSum-ConsideredSum)/FactorSum) 
 
          IF ( RealTime() - st > 10.0 ) THEN
-           WRITE(Message,'(a,i3,a)' ) '   Solution: ', &
+           WRITE(Message,'(A,I3,A)' ) '   Solution: ', &
                INT((100.0*t)/RadiationSurfaces),' % done'
            CALL Info( 'RadiationFactors', Message, Level=5 )
            st = RealTime()
@@ -1498,7 +1499,7 @@
  
        LOGICAL :: RBC
        INTEGER :: i
-       REAL(KIND=dp) :: r, e, a, Temp, Black
+       REAL(KIND=dp) :: r, e, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
 
@@ -1518,11 +1519,11 @@
        DO i=1,RadiationSurfaces
          e = Emissivity(i)
          r = 1-e
-         a = RelAreas(i) * (r/e)
+         c = RelAreas(i) * (r/e)
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
-         RHS(i) = -a*e*Black
-         IF(Newton) RHS_d(i) = -a*e*Black*4/Temp
+         RHS(i) = -c*e*Black
+         IF(Newton) RHS_d(i) = -c*e*Black*4/Temp
        END DO
 
        ! Check for radiation sources:
@@ -1533,8 +1534,8 @@
            IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
              e = Emissivity(i)
              r = 1-e
-             a = RelAreas(i) * (r/e)
-             RHS(i) = RHS(i) - a*r* & 
+             c = RelAreas(i) * (r/e)
+             RHS(i) = RHS(i) - c*r* & 
                       SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
          END DO
@@ -1563,7 +1564,7 @@
 
        REAL(KIND=dp) :: Tmin, Tmax, dT, Trad
        INTEGER :: i,j,k,kmin,kmax
-       REAL(KIND=dp) :: q, qsum, totsum, a, r, e, s, Temp, Black
+       REAL(KIND=dp) :: q, qsum, totsum, c, r, e, a, s, Temp, Black
 
        LOGICAL :: RBC, ApproxNewton, AccurateNewton, UsedEdT
        INTEGER, ALLOCATABLE :: RadiatorSet(:)
@@ -1649,26 +1650,31 @@
          
          ! This is the temperature under study for which we will get the emissivities for. 
          Trad = k*dT         
-         CALL TabulateSpectralEmissivity(Emissivity,Trad)
+         CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
          CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
          DO i=1,RadiationSurfaces
-           e = Emissivity(i)
-           r = 1-e
-           a = RelAreas(i) * (r/e)
            Temp = SurfaceTemperature(i)
-           Black = Sigma*Temp**4
            ! The portion of the emissivity to consider for this radiating element
            q = ( SurfaceTemperature(i) / dT - k )
            IF( ABS(q) < 1 ) THEN
+             Black = Sigma*Temp**4
+             e = Emissivity(i)
+             a = Absorptivity(i)
+             r = 1-a
+             c = RelAreas(i) * (r/e)
+
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
              q = 1-ABS(q)
-             RHS(i) = -q*a*e*Black
+             RHS(i) = -q*c*e*Black
              IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp
 
-             S = -q*e**2/r*Black
-             SOL(i) = SOL(i) + S
              IF(Newton) SOL_d(i) = SOL_d(i) + 4*S/Temp
+
+             ! This is correction term of radiation not included in the radiosity.
+             ! Confusingly we sum it up to SOL already...
+             S = -q*e*a/r*Black
+             SOL(i) = SOL(i) + S
 
              EffTemp(i) = EffTemp(i) + Trad * S
              EffAbs(i) = EffAbs(i) + Emissivity(i) * S
@@ -1744,17 +1750,18 @@
            RHS = 0.0_dp         
            G % Values = 0.0_dp
            
-           CALL TabulateSpectralEmissivity(Emissivity,Trad)
+           CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces
              Element => Mesh % Elements(ElementNumbers(i))
              IF(ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
                e = Emissivity(i)
-               r = 1-e
-               a = RelAreas(i) * (r/e)
+               a = Absorptivity(i) 
+               r = 1-a
+               c = RelAreas(i) * (r/e)
                DO j=1,SIZE(RadiatorSet)
                  IF(RadiatorSet(j) == k) THEN
-                   RHS(i) = RHS(i) - a * r * &
+                   RHS(i) = RHS(i) - c * r * &
                        Element % BoundaryInfo % Radiators(j) * RadiatorPowers(j)
                  END IF
                END DO
@@ -1850,7 +1857,7 @@
        REAL(KIND=dp), POINTER :: Vals(:) 
        INTEGER, POINTER :: Cols(:) 
        INTEGER :: i, j, nf, previ
-       REAL(KIND=dp) :: s,r,e,rj,ej,a
+       REAL(KIND=dp) :: s,r,e,rj,ej,c
 
        DO i=1,n
          nf = ViewFactors(i) % NumberOfFactors
@@ -1858,7 +1865,7 @@
          Cols => ViewFactors(i) % Elements
          e = Emissivity(i)
          r = 1-e
-         a = RelAreas(i) * (r/e)**2
+         c = RelAreas(i) * (r/e)**2
          previ = G % Rows(i)-1
          DO j=1,nf
            ej = Emissivity(Cols(j))
@@ -1866,7 +1873,7 @@
            s = r*Vals(j) * (r/e*rj/ej)
            CALL CRS_AddToMatrixElement(G,i,Cols(j),s,previ)
          END DO
-         CALL CRS_AddToMatrixElement(G,i,i,-a)
+         CALL CRS_AddToMatrixElement(G,i,i,-c)
        END DO
        Diag = G % Values(G % Diag)
      END SUBROUTINE RadiosityAssembly
