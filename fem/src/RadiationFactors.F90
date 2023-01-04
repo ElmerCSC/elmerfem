@@ -1669,12 +1669,11 @@
              RHS(i) = -q*c*e*Black
              IF (AccurateNewton) RHS_d(i) = 4*RHS(i)/Temp
 
-             IF(Newton) SOL_d(i) = SOL_d(i) + 4*S/Temp
-
              ! This is correction term of radiation not included in the radiosity.
              ! Confusingly we sum it up to SOL already...
              S = -q*e*a/r*Black
              SOL(i) = SOL(i) + S
+             IF(Newton) SOL_d(i) = SOL_d(i) + 4*S/Temp
 
              EffTemp(i) = EffTemp(i) + Trad * S
              EffAbs(i) = EffAbs(i) + Emissivity(i) * S
