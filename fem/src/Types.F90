@@ -52,9 +52,7 @@ MODULE Types
    USE omp_lib 
 #endif 
 
-#ifdef HAVE_LUA
    USE Lua
-#endif
    IMPLICIT NONE
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048

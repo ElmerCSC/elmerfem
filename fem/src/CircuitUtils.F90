@@ -306,11 +306,7 @@ CONTAINS
 
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
-    READ(name(1:slen), *) n_Circuits
-    
+    n_Circuits = NINT(GetMatcReal("Circuits"))
     CurrentModel % n_Circuits = n_Circuits
 
     IF( ASSOCIATED( CurrentModel % Circuits ) ) THEN
@@ -345,10 +341,7 @@ CONTAINS
     
     char_len = LEN_TRIM(Var_type)
     DO i=1,Circuit % n
-      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
-
+      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
       IF(name(1:char_len) == Var_type(1:char_len)) nofc = nofc + 1
     END DO
 
@@ -373,9 +366,7 @@ CONTAINS
     
    
     DO i=1,Circuit % n
-      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
+      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
 
       IF(isComponentName(name,slen)) THEN
         DO ibracket=1,slen
@@ -435,9 +426,7 @@ END FUNCTION isComponentName
 
     CompInd = 0
     DO i=1,Circuit % n
-      cmd = 'C.'//i2s(CId)//'.name.'//i2s(i)
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
+      slen = Matc('C.'//i2s(CId)//'.name.'//i2s(i),name)
       Circuit % names(i) = name(1:slen)
 
       CVar => Circuit % CircuitVariables(i)
@@ -519,19 +508,10 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     INTEGER :: CId, n, slen 
     TYPE(Circuit_t), POINTER :: Circuit
-    CHARACTER(:), ALLOCATABLE :: cmd
-    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
-    
-    cmd = 'C.'//i2s(CId)//'.variables'
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen, MAX_NAME_LEN )
-      
-    READ(name(1:slen), *) Circuit % n
-
+    Circuit % n = NINT(GetMatcReal('C.'//i2s(CId)//'.variables'))
     n = Circuit % n
-
 !------------------------------------------------------------------------------
   END FUNCTION GetNofCircVariables
 !------------------------------------------------------------------------------
@@ -1093,19 +1073,13 @@ END FUNCTION isComponentName
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
     TYPE(Circuit_t), POINTER :: Circuit
-    CHARACTER(:), ALLOCATABLE :: cmd
-    CHARACTER(LEN=MAX_NAME_LEN) :: name
 
     Circuit => CurrentModel % Circuits(CId)
     n = Circuit % n
 
     DO i=1,n
-      cmd = 'C.'//i2s(CId)//'.perm('//i2s(i-1)//')'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
-      READ(name(1:slen),*) Circuit % Perm(i)
+      Circuit % Perm(i) = GetMatcReal('C.'//i2s(CId)//'.perm('//i2s(i-1)//')')
     END DO
-    
     IF(ANY(Circuit % Perm /= 0)) THEN 
       Circuit % UsePerm = .TRUE.
       CALL Info( 'IHarmonic2D','Found Permutation vector for circuit '//i2s(CId), Level=4 )
@@ -1130,9 +1104,7 @@ END FUNCTION isComponentName
       ! in the "Body Force 1" block of the .sif file.
       ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
       ! ---------------------------------------------------------------------------
-      cmd = 'nc:C.'//i2s(CId)//'.source.'//i2s(i)
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen, MAX_NAME_LEN )
+      slen = Matc('nc:C.'//i2s(CId)//'.source.'//i2s(i),name)
       Circuit % Source(i) = name(1:slen)
     END DO
 !------------------------------------------------------------------------------

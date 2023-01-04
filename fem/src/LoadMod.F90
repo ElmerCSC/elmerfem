@@ -83,11 +83,11 @@ MODULE LoadMod
     END INTERFACE
 
     INTERFACE
-        SUBROUTINE matc(cmd,value,len,maxlen) BIND(C,name='matc')
+        SUBROUTINE matc_c(cmd,cmdlen,res,reslen) BIND(C,name='matc_c')
             USE, INTRINSIC :: ISO_C_BINDING
-            INTEGER(C_INT) :: len,maxlen
-            CHARACTER(C_CHAR) :: cmd(*), value(*)
-        END SUBROUTINE matc
+            INTEGER(C_INT) :: cmdlen,reslen
+            CHARACTER(C_CHAR) :: cmd(*), res(*)
+        END SUBROUTINE matc_c
     END INTERFACE
 
     ! CPUTime.c
@@ -153,6 +153,22 @@ MODULE LoadMod
     END INTERFACE IterCall
 
     CONTAINS
+
+        FUNCTION matc(cmd, res, inlen) RESULT(reslen)
+          INTEGER :: reslen
+          CHARACTER(*) :: cmd, res
+          INTEGER, OPTIONAL :: inlen
+
+          INTEGER :: cmdlen
+
+          reslen = LEN(res)
+          IF(PRESENT(inlen)) THEN
+            cmdlen = inlen
+          ELSE
+            cmdlen = LEN_TRIM(cmd)
+          END IF
+          CALL matc_c(cmd,cmdlen,res,reslen)
+        END FUNCTION matc
 
         SUBROUTINE systemc(cmd)
             IMPLICIT NONE

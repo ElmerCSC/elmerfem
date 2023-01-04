@@ -6252,13 +6252,11 @@ END SUBROUTINE GetNodalElementSize
 
    DO i=1,NoParam
      WRITE( cmd, * ) 'rpar('//i2s(i-1)//')=', Param(i)
-     j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj, MAX_STRING_LEN )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 
@@ -6302,13 +6300,11 @@ END SUBROUTINE GetNodalElementSize
 
    DO i=1,NoParam
      WRITE( cmd, * ) 'ipar('//i2s(i-1)//')=', Param(i)
-     j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj, MAX_STRING_LEN )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 

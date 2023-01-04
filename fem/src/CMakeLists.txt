@@ -61,6 +61,8 @@ IF(WITH_LUA)
     PATTERN lua-scripts/*.lua)
   FILE(GLOB DEFAULT_LUA_SCRIPTS "lua-scripts/*.lua")
   FILE(COPY ${DEFAULT_LUA_SCRIPTS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/elmersolver/lua-scripts/)
+ELSE()
+  LIST(APPEND solverlib_SOURCES Lua.F90)
 ENDIF()
 
 IF(HAVE_FETI4I)
