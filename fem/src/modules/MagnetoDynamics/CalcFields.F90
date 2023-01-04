@@ -1131,8 +1131,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IF( ElementalMode == 3 ) THEN
-       IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+     IF( ElementalMode >= 3 ) THEN
+       IF( ElementalMode == 3 ) THEN
+         IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+       ELSE
+         IP = CenterGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+       END IF
      ELSE IF (SecondOrder) THEN
        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
      ELSE
@@ -1927,7 +1931,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
 
-       IF( ElementalMode /= 2 ) THEN
+       IF( ElementalMode /= 2 .AND. ElementalMode /= 4) THEN
          CALL LUdecomp(MASS,n,pivot,Erroneous)
          IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
        END IF
@@ -3253,7 +3257,7 @@ CONTAINS
    DO i=1,m
       dofs = dofs+1
       
-      IF( ElementalMode == 2 ) THEN
+      IF( ElementalMode == 2 .OR. ElementalMode == 4 ) THEN
         ! Perform total lumping 
         s = SUM(MASS(1:n,1:n))
         x(1:n) = SUM(b(1:n,dofs)) / s
