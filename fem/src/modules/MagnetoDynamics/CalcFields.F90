@@ -655,7 +655,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), POINTER :: muTensor(:,:)
    LOGICAL :: HasReluctivityFunction, HBIntegProblem 
    REAL(KIND=dp) :: rdummy
-   INTEGER :: mudim
+   INTEGER :: mudim, ElementalMode
    
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -671,6 +671,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    fdim = 3   
    IF( ListGetLogical( SolverParams,'2D result fields',Found ) ) fdim = dim
 
+   ElementalMode = ListGetInteger( SolverParams,'Calculate Elemental Mode',Found )
+   
   ! This is a hack to be able to control the norm that is tested for
    NormIndex = GetInteger(SolverParams,'Show Norm Index',Found ) 
    SaveNorm = 0.0_dp
@@ -1913,8 +1915,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      IF(ElementalFields) THEN
        dofs = 0
-       CALL LUdecomp(MASS,n,pivot,Erroneous)
-       IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
+       
+       IF( ElementalMode == 1 ) THEN
+         ! Perform classical mass lumping
+         DO k=1,n
+           s = SUM(MASS(k,1:n))
+           MASS(k,1:n) = 0.0_dp
+           MASS(k,k) = s
+         END DO
+       END IF
+
+       IF( ElementalMode /= 2 ) THEN
+         CALL LUdecomp(MASS,n,pivot,Erroneous)
+         IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
+       END IF
+         
        CALL LocalSol(EL_MFD,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MFS,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_VP,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
@@ -3223,7 +3238,7 @@ CONTAINS
    REAL(KIND=dp) :: b(:,:), A(:,:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   REAL(KIND=dp) :: x(n)
+   REAL(KIND=dp) :: x(n),s 
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
@@ -3236,8 +3251,14 @@ CONTAINS
    DO i=1,m
       dofs = dofs+1
       
-      x = b(1:n,dofs)
-      CALL LUSolve(n,MASS,x,pivot)
+      IF( ElementalMode == 2 ) THEN
+        ! Perform total lumping 
+        s = SUM(MASS(1:n,1:n))
+        x(1:n) = SUM(b(1:n,dofs)) / s
+      ELSE
+        x(1:n) = b(1:n,dofs)
+        CALL LUSolve(n,MASS,x,pivot)
+      END IF
       Var % Values(ind(1:n)+i) = x(1:n)
    END DO
 !------------------------------------------------------------------------------
