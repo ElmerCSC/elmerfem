@@ -438,8 +438,8 @@ CONTAINS
           y = SUM(Mesh % Nodes % y(Element % NodeIndexes))/n
           z = SUM(Mesh % Nodes % z(Element % NodeIndexes))/n
 !          WRITE( str, * ) 'cx= ',i2s(Element % ElementIndex),x,y,z
+          str = TRIM(ElementDef(j+3:))//'(cx)'
           x = GetMatcReal(str,4,[1._dp*Element % BodyId,x,y,z],'cx')
-
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
           Family = Element % TYPE % ElementCode / 100
           Body_Dofs(Family, 6) = &
