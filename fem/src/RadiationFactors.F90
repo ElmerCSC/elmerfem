@@ -1653,9 +1653,9 @@
          CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
          CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
          DO i=1,RadiationSurfaces
-           Temp = SurfaceTemperature(i)
            ! The portion of the emissivity to consider for this radiating element
-           q = ( SurfaceTemperature(i) / dT - k )
+           Temp = SurfaceTemperature(i)
+           q = ( Temp / dT - k )
            IF( ABS(q) < 1 ) THEN
              Black = Sigma*Temp**4
              e = Emissivity(i)

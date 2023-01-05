@@ -46,7 +46,6 @@
 MODULE Types
  
    USE Messages
-   USE iso_varying_string
    USE, INTRINSIC :: ISO_C_BINDING
 #ifdef _OPENMP
    USE omp_lib 
@@ -654,7 +653,7 @@ MODULE Types
 
    TYPE ElementData_t
      TYPE(ElementData_t), POINTER :: Next=>NULL()
-     TYPE(varying_string) :: Name
+     CHARACTER(:), ALLOCATABLE :: Name
      REAL(KIND=dp), POINTER :: Values(:)=>NULL()
    END TYPE ElementData_t
 

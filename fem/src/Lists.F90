@@ -47,8 +47,8 @@
 MODULE Lists
 
    USE Messages
-   USE GeneralUtils
    USE LoadMod
+   USE GeneralUtils
    
    IMPLICIT NONE
 
@@ -83,7 +83,7 @@ MODULE Lists
    end INTERFACE
 
     TYPE String_stack_t
-      TYPE(Varying_string) :: Name
+      CHARACTER(:), ALLOCATABLE :: Name
       TYPE(String_stack_t), POINTER :: Next => Null()
    END TYPE String_stack_t
 
@@ -1863,13 +1863,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: n
 !------------------------------------------------------------------------------
-
      n = StringToLowerCase( str_lcase,str,.TRUE. )
 
      CALL Info('ListSetNamespace','Setting namespace to: '//TRIM(str_lcase),Level=15)
      
      NameSpace = str_lcase
-
 !------------------------------------------------------------------------------
    END SUBROUTINE ListSetNamespace
 !------------------------------------------------------------------------------
@@ -2061,7 +2059,7 @@ CONTAINS
 
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
-         strn = char(stack % name)
+         strn = stack % name
          stack => stack % next
        END DO
      END IF
@@ -2212,7 +2210,7 @@ CONTAINS
 
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
-         strn = char(stack % name)
+         strn = stack % name
          stack => stack % next
        END DO
      END IF
@@ -2432,7 +2430,7 @@ CONTAINS
 
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
-         strn = char(stack % name)
+         strn = stack % name
          stack => stack % next
        END DO
      END IF
