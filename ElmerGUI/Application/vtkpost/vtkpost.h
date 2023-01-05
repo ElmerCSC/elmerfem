@@ -405,6 +405,9 @@ private:
   void getPostLineStream(QTextStream*);
 
   QHash<QString, QAction*> groupActionHash;
+  QHash<QString, vtkUnstructuredGrid*> volumeGridHash;
+  QHash<QString, vtkUnstructuredGrid*> surfaceGridHash;
+  QHash<QString, vtkUnstructuredGrid*> lineGridHash;
 
 #if VTK_MAJOR_VERSION >= 8
   QVTKOpenGLNativeWidget* qvtkWidget;

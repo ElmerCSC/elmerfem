@@ -1532,6 +1532,24 @@ bool VtkPost::ReadVtuFile(QString postFileName)
     groupActionHash.insert(groupName, groupAction);
   }
 
+  // Geberate unstructured grid by Group
+  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
+  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
+  volumeGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
+  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
+  surfaceGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
+  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
+  lineGridHash.clear();
+  QHashIterator<QString, int> i_gah(groupActionHash);
+  while (i_gah.hasNext()) {
+    i_gah.next();
+    volumeGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+    surfaceGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+    lineGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+  }
+
   // Populate the widgets in user interface dialogs:
   //-------------------------------------------------
   populateWidgetsSlot();
@@ -1896,6 +1914,24 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     groupActionHash.insert(groupName, groupAction);
   }
 
+  // Geberate unstructured grid by Group
+  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
+  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
+  volumeGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
+  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
+  surfaceGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
+  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
+  lineGridHash.clear();
+  QHashIterator<QString, int> i_gah(groupActionHash);
+  while (i_gah.hasNext()) {
+    i_gah.next();
+    volumeGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+    surfaceGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+    lineGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
+  }
+
   // Populate the widgets in user interface dialogs:
   //-------------------------------------------------
   populateWidgetsSlot();
@@ -2101,22 +2137,24 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   vtkQuadraticEdge* qedge = vtkQuadraticEdge::New();
   vtkUnstructuredGrid* grid = NULL;
 
+  QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
+  
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
 	switch(epe->code){
-		case 504: cell = tetra; grid = volumeGrid; break;
-		case 510: cell = qtetra; grid = volumeGrid; break;
-		case 808: cell = hexa; grid = volumeGrid; break;
-		case 820: cell = qhexa;  grid = volumeGrid; break;
-		case 827: cell = tqhexa;  grid = volumeGrid; break;
-		case 303: cell = tria; grid = surfaceGrid; break;
-		case 306: cell = qtria; grid = surfaceGrid; break;
-		case 404: cell = quad; grid = surfaceGrid; break;
-		case 408: cell = qquad; grid = surfaceGrid; break;
-		case 202: cell = line; grid = lineGrid; break;
-		case 203: cell = qedge; grid = lineGrid; break;
-		default: cell = NULL; grid = NULL; break;
+		case 504: cell = tetra; grid = volumeGrid; gridHash = volumeGridHash; break;
+		case 510: cell = qtetra; grid = volumeGrid; gridHash = volumeGridHash; break;
+		case 808: cell = hexa; grid = volumeGrid; gridHash = volumeGridHash; break;
+		case 820: cell = qhexa;  grid = volumeGrid; gridHash = volumeGridHash; break;
+		case 827: cell = tqhexa;  grid = volumeGrid; gridHash = volumeGridHash; break;
+		case 303: cell = tria; grid = surfaceGrid; gridHash = surfaceGridHash; break;
+		case 306: cell = qtria; grid = surfaceGrid; gridHash = surfaceGridHash; break;
+		case 404: cell = quad; grid = surfaceGrid; gridHash = surfaceGridHash; break;
+		case 408: cell = qquad; grid = surfaceGrid; gridHash = surfaceGridHash; break;
+		case 202: cell = line; grid = lineGrid; gridHash = lineGridHash; break;
+		case 203: cell = qedge; grid = lineGrid; gridHash = lineGridHash; break;
+		default: cell = NULL; grid = NULL; gridHash = NULL; break;
 	}
 
 	if(cell != NULL){
@@ -2131,6 +2169,8 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 	      
 		if(groupAction->isChecked())
 		grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+	    
+		gridHash.value(groupName)->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
 	}
   }
 
