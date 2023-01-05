@@ -1302,49 +1302,10 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
         END IF
       END DO
     END IF
-    !STOP MMG5_STRONGFAILURE
-  ENDIF
-
-  IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
-
-  IF(SaveMMGMeshes) THEN
-    MeshName = TRIM(mmg_meshfile)//I2S(time)//'.mesh'
-    CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
-  END IF
-  IF(SaveMMGSols) THEN
-    SolName = TRIM(mmg_solfile)//I2S(time)//'.sol'
-    CALL MMG3D_SaveSol(mmgMesh, mmgSol,SolName,LEN(TRIM(SolName)),ierr)
-  END IF
-
-  CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
-
-  counter=0
-  Do i=1, NTetras
-    CALL MMG3D_Get_TetrahedronQuality(mmgMesh, mmgSol, i, Quality)
-    IF(Quality == 0) CALL WARN(FuncName, 'Remeshing could not determine elem quality')
-    IF(Quality <= RemeshMinQuality) counter = counter+1
-  END DO
-  IF(Debug) PRINT*, 'Bad Element Count: ', Counter
-  IF ( Counter > 0 ) THEN
-    PRINT*,"Bad elements detected - rerunning remeshing"
-    !! Release mmg mesh
-    CALL MMG3D_Free_all(MMG5_ARG_start, &
-        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-        MMG5_ARG_end)
-    WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
-    CALL WARN(FuncName, Message)
-    IF(mmgloops==MaxRemeshIter) THEN
-      Success=.FALSE.
-      PRINT*, 'remesh failed on bad elements'
-      GO TO 20
-    ELSE
-      GO TO 10
-=======
     
     IF(SaveMMGMeshes) THEN
       WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
       CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
->>>>>>> merge-mmg-to-devel
     END IF
     
     IF(SaveMMGSols) THEN
