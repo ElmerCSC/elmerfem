@@ -209,7 +209,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
         if ( h.widget ) {
           h.widget->setWhatsThis(whatis);
-//          h.widget->setToolTip(whatis);
+//          h.widget->setToolTip(whatis); // This is to show whatis just by hovering mouse cursor
           h.widget->setStatusTip(statusTip);
           h.widget->setProperty( "dom address",fullName);
           h.elem = param;
