@@ -63,7 +63,7 @@ SolverParameterEditor::SolverParameterEditor(QWidget *parent)
   
   ui.applyButton->setIcon(QIcon::fromTheme("dialog-accept"));
 
-  whatsThisButton = new QPushButton(tr(""));
+  whatsThisButton = new QPushButton(tr("Whatis"));
   whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
   connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
   whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");

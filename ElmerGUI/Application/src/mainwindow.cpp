@@ -2675,6 +2675,7 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
       de->spareButton->setText("Edit Solver Settings");
       de->spareButton->show();
       de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setWhatsThis(tr("Open solver setting window"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(editNumericalMethods(int, int)));
       equationMenu->addAction(act);
@@ -2686,6 +2687,7 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
       de->spareButton->setText("Material library");
       de->spareButton->show();
       de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setWhatsThis(tr("Open material library"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(showMaterialLibrary(int, int)));
       materialMenu->addAction(act);
@@ -3035,6 +3037,7 @@ void MainWindow::addEquationSlot() {
   pe->spareButton->setText("Edit Solver Settings");
   pe->spareButton->show();
   pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setWhatsThis(tr("Open solver setting window"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(editNumericalMethods(int, int)));
 
@@ -3241,6 +3244,7 @@ void MainWindow::addMaterialSlot() {
   pe->spareButton->setText("Material library");
   pe->spareButton->show();
   pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setWhatsThis(tr("Open material library"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(showMaterialLibrary(int, int)));
 

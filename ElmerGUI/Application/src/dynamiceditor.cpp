@@ -209,7 +209,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
         if ( h.widget ) {
           h.widget->setWhatsThis(whatis);
-          h.widget->setToolTip(whatis);
+//          h.widget->setToolTip(whatis);
           h.widget->setStatusTip(statusTip);
           h.widget->setProperty( "dom address",fullName);
           h.elem = param;
@@ -280,22 +280,19 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
   nameEdit  = new QLineEdit;
   nameEdit->setText(Section + " " + QString::number(ID+1));
-  nameEdit->setToolTip(tr("press this button, then click a wdiget to be expanined."));
   applyButton = new QPushButton(tr("&Add"));
   applyButton->setIcon(addIcon);
   connect(applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
   nameEdit->setWhatsThis("Name of this " + Section);
-  nameEdit->setToolTip("Name of this " + Section);
   
   discardButton = new QPushButton(tr("&Remove"));
   discardButton->setIcon(removeIcon);
   connect(discardButton, SIGNAL(clicked()), this, SLOT(discardButtonClicked()));
 
-  whatsThisButton = new QPushButton(tr(""));
+  whatsThisButton = new QPushButton(tr("Whatis"));
   whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
   connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
   whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
-  whatsThisButton->setToolTip("Press this button, then click the widget to be explained.");
   
   okButton = new QPushButton(tr("&OK"));
   okButton->setIcon(okIcon);
