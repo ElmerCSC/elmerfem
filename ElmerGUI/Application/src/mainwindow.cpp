@@ -2686,7 +2686,7 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
               SLOT(matEditorFinishedSlot(int, int)));
       de->spareButton->setText("Material library");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
       de->spareButton->setWhatsThis(tr("Open material library"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(showMaterialLibrary(int, int)));
@@ -3243,7 +3243,7 @@ void MainWindow::addMaterialSlot() {
   // Use "spareButton" to invoke material library:
   pe->spareButton->setText("Material library");
   pe->spareButton->show();
-  pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
   pe->spareButton->setWhatsThis(tr("Open material library"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(showMaterialLibrary(int, int)));
