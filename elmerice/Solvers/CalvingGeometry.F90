@@ -3939,10 +3939,10 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER, POINTER :: OldMaskPerm(:)=>NULL(), NewMaskPerm(:)=>NULL()
     INTEGER, POINTER  :: InterpDim(:)
-    INTEGER :: i,j,dummyint
+    INTEGER :: i,j,dummyint,BCTag
     REAL(KIND=dp) :: geps,leps
-    LOGICAL :: Debug, skip, PartMask, Complete
-    LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
+    LOGICAL :: Debug, skip, PartMask, Complete, ThisBC, Found
+    LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL(), OldElemMask(:)
     LOGICAL, ALLOCATABLE :: PartsMask(:), FoundNode(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
     INTEGER, ALLOCATABLE :: PartUnfoundCount(:), AllUnfoundDOFS(:), UnfoundDOFS(:), disps(:), Unique(:), &
@@ -3964,6 +3964,24 @@ CONTAINS
     NewMaskLogical = (NewMaskPerm <= 0)
     IF(PRESENT(SeekNodes)) NewMaskLogical = &
     NewMaskLogical .OR. .NOT. SeekNodes
+
+    !create mask of elems as with an unstructred mesh all nodes can be in mask but not elem
+    DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values, MaskName, Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      BCtag =  Model % BCs(i) % Tag
+      EXIT
+    END DO
+
+    ALLOCATE(OldElemMask(OldMesh % NumberOfBulkElements &
+         + OldMesh % NumberOfBoundaryElements))
+    OldElemMask = .TRUE.
+    DO i=OldMesh % NumberOfBulkElements+1, &
+         OldMesh % NumberOfBulkElements+OldMesh % NumberOfBoundaryElements
+       IF(OldMesh % Elements(i) % BoundaryInfo % constraint == BCTag) &
+            OldElemMask(i) = .FALSE.
+    END DO
+
     
     IF(PRESENT(globaleps)) THEN
       geps = globaleps
@@ -4003,8 +4021,8 @@ CONTAINS
 
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(OldMesh, NewMesh, HeightName, InterpDim, &
-         UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
-         GlobalEps=geps, LocalEps=leps)
+         UnfoundNodes, OldMaskLogical, NewMaskLogical, OldElemMask, OldMesh % Variables, &
+         geps, leps)
 
 
     UnfoundCount = COUNT(UnfoundNodes)
@@ -4131,7 +4149,7 @@ CONTAINS
     DEALLOCATE(OldMaskLogical, &
          NewMaskLogical, NewMaskPerm, &
          OldMaskPerm, UnfoundNodes, &
-         InterpDim)
+         InterpDim, OldElemMask)
 
   END SUBROUTINE InterpMaskedBCReduced
 
