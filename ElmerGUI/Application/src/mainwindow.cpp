@@ -922,6 +922,11 @@ void MainWindow::createActions() {
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
 
+  // Help -> Get started
+  getStartedAct = new QAction(QIcon(""), tr("Get started..."), this);
+  getStartedAct->setStatusTip(tr("Information to get started"));
+  connect(getStartedAct, SIGNAL(triggered()), this, SLOT(getStartedSlot()));
+  
   generateAndSaveAndRunAct =
       new QAction(QIcon::fromTheme("doubletriangle-right"),
                   tr("&Generate, save and run"), this);
@@ -1137,6 +1142,7 @@ void MainWindow::createMenus() {
 
   // Help menu
   helpMenu = menuBar()->addMenu(tr("&Help"));
+  helpMenu->addAction(getStartedAct);  
   helpMenu->addAction(aboutAct);
 
   // Sys tray menu:
@@ -2669,6 +2675,7 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
       de->spareButton->setText("Edit Solver Settings");
       de->spareButton->show();
       de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setWhatsThis(tr("Open solver setting window"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(editNumericalMethods(int, int)));
       equationMenu->addAction(act);
@@ -2679,7 +2686,8 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
               SLOT(matEditorFinishedSlot(int, int)));
       de->spareButton->setText("Material library");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+      de->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
+      de->spareButton->setWhatsThis(tr("Open material library"));
       connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
               SLOT(showMaterialLibrary(int, int)));
       materialMenu->addAction(act);
@@ -3029,6 +3037,7 @@ void MainWindow::addEquationSlot() {
   pe->spareButton->setText("Edit Solver Settings");
   pe->spareButton->show();
   pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setWhatsThis(tr("Open solver setting window"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(editNumericalMethods(int, int)));
 
@@ -3234,7 +3243,8 @@ void MainWindow::addMaterialSlot() {
   // Use "spareButton" to invoke material library:
   pe->spareButton->setText("Material library");
   pe->spareButton->show();
-  pe->spareButton->setIcon(QIcon::fromTheme("preferences-system"));
+  pe->spareButton->setIcon(QIcon::fromTheme("book-cover-A-Z"));
+  pe->spareButton->setWhatsThis(tr("Open material library"));
   connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
           SLOT(showMaterialLibrary(int, int)));
 
@@ -7282,6 +7292,23 @@ void MainWindow::showaboutSlot() {
   msgBox.exec();
 }
 
+void MainWindow::getStartedSlot() {
+  QMessageBox msgBox(this);
+  msgBox.setTextFormat(Qt::RichText);
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
+  msgBox.setWindowTitle(tr("Get started with Elmer"));
+  msgBox.setText(tr(
+	"<ls>"
+	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf>GetStartedElmer.pdf</a>"
+	"<li><a href=https://www.youtube.com/watch?v=XfHqaq2bbgU>Elmer FEM Webinar - Introduction to Elmer</a>"
+	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/ElmerTutorials.pdf>ElmerGUI Tutorials</a>"
+	"</ls>"
+  ));
+  msgBox.exec();
+}
+ 
+ 
 //*****************************************************************************
 //
 //                           Auxiliary non-menu items
