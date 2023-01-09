@@ -85,7 +85,7 @@
 
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: Stabilize = .TRUE., Bubbles = .TRUE., UseBubbles,NewtonLinearization = .FALSE., &
-         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, InfBC
+         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, IsRadiosity, InfBC
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, ConvectionField
      INTEGER :: CompressibilityModel
@@ -132,7 +132,8 @@
        PerfusionRate(:), PerfusionDensity(:), PerfusionHeatCapacity(:), PerfusionRefTemperature(:)
 
      REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:)
-
+     LOGICAL :: Spectral, Radiosity
+     
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
        Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
@@ -212,16 +213,17 @@
 
      SolverParams => GetSolverParams()
 
-     IF( GetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
-         GetLogical( SolverParams,'Spectral Model',Found ) ) THEN
-       CALL Fatal('HeatSolve','For Radiosity and Spectral models use HeatSolveVec instead!')
-     END IF
+     Radiosity = GetLogical( SolverParams,'Radiosity Model',Found ) 
+     Spectral = GetLogical( SolverParams,'Spectral Model',Found )
+     IF( Spectral ) Radiosity = .TRUE.
 
-     IF( ListCheckPresent( SolverParams,'Radiator Coordinates' ) .OR. &
-         ListCheckPresentAnyBodyForce(Model,'Radiator Coordinates') ) THEN
-       CALL Fatal('HeatSolve','For radiative point sources use HeatSolveVec instead!')
+     IF(.NOT. Radiosity ) THEN
+       IF( ListCheckPresent( SolverParams,'Radiator Coordinates' ) .OR. &
+           ListCheckPresentAnyBodyForce(Model,'Radiator Coordinates') ) THEN
+         CALL Fatal('HeatSolve','For radiative point sources use HeatSolveVec instead!')
+       END IF
      END IF
-
+       
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
        ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
@@ -586,32 +588,32 @@
      HeaterControlLocal = .FALSE.
 
      IF(isRadiation) THEN
-BLOCK
-       TYPE(ValueList_t), POINTER :: BC
-       INTEGER :: bindex, nb
+       BLOCK
+         TYPE(ValueList_t), POINTER :: BC
+         INTEGER :: bindex, nb
 
-       nb = Solver % Mesh % NumberOfBoundaryElements
-       ALLOCATE(Areas(nb), Emiss(nb))
-       Areas=0; Emiss=0
+         nb = Solver % Mesh % NumberOfBoundaryElements
+         ALLOCATE(Areas(nb), Emiss(nb))
+         Areas=0; Emiss=0
 
-       DO j=1,nb
-         bindex = j + Solver % Mesh % NumberOfBulkElements
-         Element => Solver % Mesh % Elements(bindex)
+         DO j=1,nb
+           bindex = j + Solver % Mesh % NumberOfBulkElements
+           Element => Solver % Mesh % Elements(bindex)
 
-         BC => GetBC(Element)
-         IF (ASSOCIATED(BC)) THEN
-           IF (ListCheckPresent(BC, 'Radiation')) THEN
-             n = GetElementNOFNodes(Element)
-             Areas(j) = ElementArea( Solver % Mesh, Element, n )
+           BC => GetBC(Element)
+           IF (ASSOCIATED(BC)) THEN
+             IF (ListCheckPresent(BC, 'Radiation')) THEN
+               n = GetElementNOFNodes(Element)
+               Areas(j) = ElementArea( Solver % Mesh, Element, n )
 
-             NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
-             IF (.NOT. Found) &
-               NodalEmissivity(1:n) = GetParentMatProp('Emissivity',Element)
-             Emiss(j) = SUM(NodalEmissivity(1:n)) / n
+               NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
+               IF (.NOT. Found) &
+                   NodalEmissivity(1:n) = GetParentMatProp('Emissivity',Element)
+               Emiss(j) = SUM(NodalEmissivity(1:n)) / n
+             END IF
            END IF
-         END IF
-       END DO
-END BLOCK
+         END DO
+       END BLOCK
      END IF
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
@@ -661,6 +663,8 @@ END BLOCK
          GOTO 1000
        END IF
 
+       IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)
+       
 !------------------------------------------------------------------------------
        CALL DefaultInitialize()
 !------------------------------------------------------------------------------
@@ -1372,47 +1376,54 @@ CONTAINS
         Emissivity = SUM( NodalEmissivity(1:n) ) / n
 
 !------------------------------------------------------------------------------
+        IsRadiosity = .FALSE.
         IF (  RadiationFlag == 'idealized' ) THEN
           AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
         ELSE
-          CALL DiffuseGrayRadiation( Model, Solver, Element, & 
-              Temperature, TempPerm, ForceVector, VisibleFraction, Text)
-
-          IF( GetLogical( BC, 'Radiation Boundary Open', Found) ) THEN
-            AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
-            IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
-            IF( VisibleFraction >= 1.0_dp ) THEN
-              Atext(1:n) = Text
+          IF( Radiosity ) THEN
+            CALL RadiosityRadiation( Model, Solver, Element, & 
+                n, Temperature, TempPerm, ForceVector )
+            IsRadiosity = .TRUE.
+          ELSE          
+            CALL DiffuseGrayRadiation( Model, Solver, Element, & 
+                Temperature, TempPerm, ForceVector, VisibleFraction, Text)
+            
+            IF( GetLogical( BC, 'Radiation Boundary Open', Found) ) THEN
+              AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
+              IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
+              IF( VisibleFraction >= 1.0_dp ) THEN
+                Atext(1:n) = Text
+              ELSE
+                Atext(1:n) = ( (1 - VisibleFraction) * Atext(1:n)**4 + &
+                    VisibleFraction * Text**4 ) ** 0.25_dp
+              END IF
             ELSE
-              Atext(1:n) = ( (1 - VisibleFraction) * Atext(1:n)**4 + &
-                  VisibleFraction * Text**4 ) ** 0.25_dp
+              AText(1:n) = Text
             END IF
-          ELSE
-            AText(1:n) = Text
           END IF
         END IF
 !------------------------------------------------------------------------------
 !       Add our own contribution to surface temperature (and external
 !       if using linear type iteration or idealized radiation)
 !------------------------------------------------------------------------------
-        DO j=1,n
-          k = TempPerm(Element % NodeIndexes(j))
-          Text = AText(j)
-
-          IF ( .NOT. HeatGapBC .AND. NewtonLinearization ) THEN
-             HeatTransferCoeff(j) = Emissivity * 4*Temperature(k)**3 * &
-                               StefanBoltzmann
-
-             LOAD(j) = Emissivity*(3*Temperature(k)**4+Text**4) * &
-                               StefanBoltzmann
-          ELSE
-             HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 +   &
-             Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
-                               StefanBoltzmann 
-             LOAD(j) = HeatTransferCoeff(j) * Text
-          END IF
-        END DO
+        IF(.NOT. IsRadiosity ) THEN
+          DO j=1,n
+            k = TempPerm(Element % NodeIndexes(j))
+            Text = AText(j)
+            IF ( .NOT. HeatGapBC .AND. NewtonLinearization ) THEN
+              HeatTransferCoeff(j) = Emissivity * 4*Temperature(k)**3 * &
+                  StefanBoltzmann
+              LOAD(j) = Emissivity*(3*Temperature(k)**4+Text**4) * &
+                  StefanBoltzmann
+            ELSE
+              HeatTransferCoeff(j) = Emissivity * (Temperature(k)**3 +   &
+                  Temperature(k)**2*Text+Temperature(k)*Text**2 + Text**3) * &
+                  StefanBoltzmann 
+              LOAD(j) = HeatTransferCoeff(j) * Text
+            END IF
+          END DO
+        END IF
       END IF  ! of radition
 !------------------------------------------------------------------------------
 
@@ -1563,9 +1574,9 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       INTEGER :: TempPerm(:)
       REAL(KIND=dp) :: Temperature(:), ForceVector(:)
-      REAL(KIND=dp) :: AngleFraction, Text, LOAD, TransCoeff
+      REAL(KIND=dp) :: AngleFraction, Text
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Area, Asum, gEmissivity, Base(12)
+      REAL(KIND=dp) :: Area, Asum, gEmissivity, Base(12), Load, TransCoeff
       REAL(KIND=dp), POINTER :: Fact(:)
       INTEGER :: i,j,k,l,m,ImplicitFactors, nf,nr, bindex, nb
       INTEGER, POINTER :: ElementList(:)
@@ -1575,7 +1586,6 @@ CONTAINS
 
       Asum = 0.0_dp
       IF ( .NOT. NewtonLinearization ) THEN
-
         Text = ComputeRadiationLoad( Model, Solver % Mesh, Element, &
            Temperature, TempPerm, Emissivity, AngleFraction, Areas, Emiss )
 
@@ -1596,14 +1606,8 @@ CONTAINS
         Fact => Element % BoundaryInfo % RadiationFactors % Factors
 
         DO j=1,nf
-
           RadiationElement => Solver % Mesh % Elements(ElementList(j))
-
-!         Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
-!         bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-!         Text = Areas(bindex) * Emiss(bindex) * ABS(Fact(j)) / Area
           Text = Fact(j)
-
           Asum = Asum + Text
 
 !------------------------------------------------------------------------------
@@ -1630,15 +1634,6 @@ CONTAINS
 !          Integrate the contribution of surface j over surface i
 !          and add to global matrix
 !------------------------------------------------------------------------------
-!           CALL IntegOverA( STIFF, FORCE, LOAD, &
-!                TransCoeff, Element, n, k, ElementNodes ) 
-
-!           IF ( TransientAssembly ) THEN
-!             MASS = 0.0_dp
-!             CALL Add1stOrderTime( MASS, STIFF, &
-!                 FORCE,dt,n,1,TempPerm(Element % NodeIndexes),Solver )
-!           END IF
-            
             DO m=1,n
               k1 = TempPerm( Element % NodeIndexes(m) )
               DO l=1,k
@@ -1649,21 +1644,15 @@ CONTAINS
             END DO
 
           ELSE
-
             S = (SUM( Temperature( TempPerm( RadiationElement % &
                 NodeIndexes))**4 )/k )
             
             LOAD = Text * S * StefanBoltzmann
             
-!           TransCoeff = 0.0_dp
-!           CALL IntegOverA( STIFF, FORCE, LOAD, &
-!               TransCoeff, Element, n, k, ElementNodes ) 
-
             DO m=1,n
               k1 = TempPerm( Element % NodeIndexes(m) )
               ForceVector(k1) = ForceVector(k1) + LOAD*Base(m)
-            END DO
-            
+            END DO            
           END IF 
 
         END DO
@@ -1680,6 +1669,59 @@ CONTAINS
     END SUBROUTINE DiffuseGrayRadiation
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+    SUBROUTINE RadiosityRadiation( Model, Solver, Element,  &
+      n, Temperature, TempPerm, ForceVector)
+!------------------------------------------------------------------------------
+      TYPE(Model_t)  :: Model
+      TYPE(Solver_t) :: Solver
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: n
+      INTEGER :: TempPerm(:)
+      REAL(KIND=dp) :: Temperature(:), ForceVector(:)      
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: Emis1, RadCoeffAtIp, RadLoadAtIp, TempAtIp
+      REAL(KIND=dp) :: Base(12)
+      REAL(KIND=dp), POINTER :: Fact(:)
+      INTEGER :: p,q,k1,k2
+      INTEGER, POINTER :: pIndexes(:)
+!------------------------------------------------------------------------------
+!     If linear iteration compute radiation load
+!------------------------------------------------------------------------------
+      
+      CALL GetBase( Base, Element, n, ElementNodes )
+      pIndexes => Element % NodeIndexes
+      
+      Emis1 = Emissivity            
+      IF(.NOT.Spectral ) Emis1 = Emis1 / (1-Emis1)
+      Fact => Element % BoundaryInfo % RadiationFactors % Factors
+      
+      TempAtIp = SUM(Temperature(TempPerm(pIndexes(1:n))))/n
+
+      IF(NewtonLinearization) THEN
+        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefanBoltzmann + &
+             (Fact(1) - Fact(2)*TempAtIp)
+        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefanBoltzmann - Fact(2)
+      ELSE
+        RadCoeffAtIp = Emis1 * StefanBoltzmann * TempAtIp**3
+        RadLoadAtIp = Fact(1)
+      END IF
+      
+      DO p=1,n
+        k1 = TempPerm( pIndexes(p) )
+        DO q=1,n
+          k2 = TempPerm( pIndexes(q) )
+          CALL AddToMatrixElement( Solver % Matrix,k1,k2,Base(p)*RadCoeffAtIp*(1.0_dp/n))
+        END DO
+        ForceVector(k1) = ForceVector(k1) + Base(p) * RadLoadAtIp
+      END DO
+      
+    END SUBROUTINE RadiosityRadiation
+!------------------------------------------------------------------------------
+
+
+    
 !------------------------------------------------------------------------------
     SUBROUTINE EffectiveHeatCapacity()
       LOGICAL :: Found, Specific, GotFraction

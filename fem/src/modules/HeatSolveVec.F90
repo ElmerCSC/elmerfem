@@ -1142,9 +1142,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: F,C,T0, Emis, Emis2, RadC, RadF, RadText, Text, Fj, &
-        RadLoadAtIp, A1, A2, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac, Text0
+        RadLoadAtIp, A1, A2, AngleFraction, Topen, Emis1, Abso1, Refl1, AssFrac
     REAL(KIND=dp) :: Basis(nd),DetJ,Coord(3),Normal(3),Atext(12),Base(12),S,RadCoeffAtIP
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), RadiosityLoad, RadiosityCoeff,TempAtIp
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), TempAtIp
     REAL(KIND=dp), POINTER :: Fact(:) 
     TYPE(Element_t), POINTER :: RadElement
     LOGICAL :: Stat,Found,BCOpen,Radiators
@@ -1215,37 +1215,33 @@ CONTAINS
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
     END IF
     
-    Text0 = 0.0_dp
     Text  = 0.0_dp
+
+    Radiators = ALLOCATED(Element % BoundaryInfo % Radiators) .AND. &
+             ALLOCATED(RadiatorPowers)
+        
     IF(Radiosity) THEN 
+      IF( BCOpen ) THEN
+        CALL Fatal(Caller,'Radiosity model not yet working with open boundaries!')
+      END IF
+
       IF(Refl1 < EPSILON(Refl1) ) THEN
         CALL Fatal(Caller,'Radiosity Model does not work for zero reflectivity (emissivity one)!')
       END IF
 
-      IF(.NOT.Spectral ) Emis1 = Emis1 / Refl1
+      Base = 0.0_dp
+      IF(.NOT.Spectral ) Emis1 = Emis1 / Refl1     
+      TempAtIp = SUM(NodalTemp(1:n))/n
 
       IF(Newton) THEN
-        RadiosityLoad = (Fact(1) - Fact(2)*SUM(NodalTemp(1:n))/n)  
-        RadiosityCoeff = -Fact(2) 
+        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz + &
+             (Fact(1) - Fact(2)*TempAtIp)
+        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
       ELSE
-        RadiosityCoeff = 0
-        RadiosityLoad = Fact(1) 
+        RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
+        RadLoadAtIp = Fact(1)
       END IF
-    ELSE
-      RadiosityLoad = 0._dp
-      RadiosityCoeff = 0._dp
-    END IF
-    
-    Radiators = ALLOCATED(Element % BoundaryInfo % Radiators) .AND. &
-             ALLOCATED(RadiatorPowers)
-    
-    ! Go through surfaces (j) this surface (i) is getting radiated from.
-    !------------------------------------------------------------------------------        
-    IF ( Newton ) THEN                
-      ! Linearization of T^4_i term
-      !----------------------------------------------------------------------------
-      Base = 0.0_dp
-
+      
       DO t=1,IP % n
         stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
         s = detJ * IP % s(t)        
@@ -1253,29 +1249,50 @@ CONTAINS
           s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
         END IF
 
-        TempAtIp = SUM(NodalTemp(1:n))/n
-        RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz
-        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz
-
         DO p=1,n
           DO q=1,n
-            STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*(RadCoeffAtIp + RadiosityCoeff)
+            STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q) * RadCoeffAtIp 
           END DO
-          FORCE(p) = FORCE(p) + s * Basis(p) * (RadLoadAtIp + RadiosityLoad)
+          FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
-                
         Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
+        
+    ELSE ! .NOT. Radiosity ) 
+      ! Go through surfaces (j) this surface (i) is getting radiated from.
+      !------------------------------------------------------------------------------        
+      IF ( Newton ) THEN                
+        ! Linearization of T^4_i term
+        !----------------------------------------------------------------------------
+        Base = 0.0_dp
 
-      IF(.NOT.Radiosity)  THEN
+        DO t=1,IP % n
+          stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+          s = detJ * IP % s(t)        
+          IF ( AxiSymmetric ) THEN
+            s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+          END IF
+
+          TempAtIp = SUM(NodalTemp(1:n))/n
+          RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz
+          RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz
+
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p)*Basis(q)*RadCoeffAtIp 
+            END DO
+            FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp
+          END DO            
+          Base(1:n) = Base(1:n) + s * Basis(1:n) 
+        END DO
+
         ! Linearization of the G_jiT^4_j term
         !------------------------------------------------------------------------------
-
         DO j=1,nf
           RadElement => Mesh % Elements(ElementList(j))
           k = RadElement % TYPE % NumberOfNodes
           Fj = Fact(j)
-  
+
           ! Gebhart factors are given elementwise at the center
           ! of the element, so take average of nodal temperatures
           !-------------------------------------------------------------
@@ -1291,12 +1308,11 @@ CONTAINS
             IF(Radiators) THEN
               IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
                 RadLoadAtIp = RadLoadAtIp + &
-                   Fj * SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
-                         (1-Emiss(bindex)) / Emiss(bindex)
-             END IF
+                    Fj * SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
+                    (1-Emiss(bindex)) / Emiss(bindex)
+              END IF
             END IF
 
-          
             ! Integrate the contribution of surface j over surface j and add to global matrix
             !------------------------------------------------------------------------------                    
             IF( Dg ) THEN
@@ -1329,7 +1345,6 @@ CONTAINS
             END DO
           END IF
         END DO
-        
 
         ! Add radiators in case the radiosity model is not used
         !----------------------------------------------------------------------------
@@ -1337,77 +1352,77 @@ CONTAINS
           DO p=1,n
             FORCE(p) = FORCE(p) + Base(p) * Emis1 * SUM(Element % BoundaryInfo % &
                 Radiators * RadiatorPowers ) 
-          END DO          
+          END DO
         END IF
-                  
-      END IF
-    ELSE IF ( .NOT. Radiosity ) THEN
-      ! Compute the weighted sum of T^4
-      
-      Text = 0._dp
-      DO j=1,nf
-        Fj = Fact(j)
+        
+      ELSE ! .NOT. Newton 
+        ! Compute the weighted sum of T^4
+        
+        Text = 0._dp
+        DO j=1,nf
+          Fj = Fact(j)
 
-        RadElement => Mesh % Elements(ElementList(j))
-        bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
-        Text = Text + Fj*Temps4(bindex)**4 / Emis1
+          RadElement => Mesh % Elements(ElementList(j))
+          bindex = RadElement % ElementIndex - Solver % Mesh % NumberOfBulkElements
+          Text = Text + Fj*Temps4(bindex)**4 / Emis1
 
-        IF(Radiators) THEN
-          IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
-            Text = Text + Fj * &
-               SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
-                     (1-Emiss(bindex)) / Emiss(bindex) / Emis1 / StefBoltz
+          IF(Radiators) THEN
+            IF(ALLOCATED(RadElement % BoundaryInfo % Radiators)) THEN
+              Text = Text + Fj * &
+                  SUM(RadElement % BoundaryInfo % Radiators * RadiatorPowers) * &
+                  (1-Emiss(bindex)) / Emiss(bindex) / Emis1 / StefBoltz
+            END IF
           END IF
-        END IF
-      END DO
-    END IF
+        END DO
+      END IF
    
 
-    ! Add the missing part of the incoming radiation in case the boundary is open
-    !----------------------------------------------------------------------------
-    IF( BCOpen ) THEN
-      AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
-      IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
+      ! Add the missing part of the incoming radiation in case the boundary is open
+      !----------------------------------------------------------------------------
+      IF( BCOpen ) THEN
+        AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
+        IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
 
-      IF( AngleFraction < 1.0_dp ) THEN
-        Topen = (SUM( Atext(1:n)**2 ) )**0.25_dp
-        IF( Newton ) THEN        
-          RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
-          DO p=1,n
-            FORCE(p) = FORCE(p) + Base(p) * RadLoadAtIp 
-          END DO
-        ELSE
-          Text = Text + (1.0_dp-AngleFraction) * Topen**4
+        IF( AngleFraction < 1.0_dp ) THEN
+          Topen = (SUM( Atext(1:n)**2 ) )**0.25_dp
+          IF( Newton ) THEN        
+            RadLoadAtIp = (1.0_dp-AngleFraction) * Emis1 * Topen**4 * StefBoltz
+            DO p=1,n
+              FORCE(p) = FORCE(p) + Base(p) * RadLoadAtIp 
+            END DO
+          ELSE
+            Text = Text + (1.0_dp-AngleFraction) * Topen**4
+          END IF
         END IF
       END IF
-    END IF
         
-    ! Because we split the product in T^4-T_ext^4 we cannot linearize it before
-    ! having computed the complete T_ext^4. So this is done in the end.
-    !----------------------------------------------------------------------------
-    IF( .NOT. Newton ) THEN      
-      Base = 0.0_dp
-      Text = Text0 + Text**0.25_dp
-      DO t=1,IP % n
-        stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
-        s = detJ * IP % s(t)        
-        IF ( AxiSymmetric ) THEN
-          s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
-        END IF
+      ! Because we split the product in T^4-T_ext^4 we cannot linearize it before
+      ! having computed the complete T_ext^4. So this is done in the end.
+      !----------------------------------------------------------------------------
+      IF( .NOT. Newton ) THEN      
+        Base = 0.0_dp
+        Text = Text**0.25_dp
+        DO t=1,IP % n
+          stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+          s = detJ * IP % s(t)        
+          IF ( AxiSymmetric ) THEN
+            s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+          END IF
 
-        T0 = SUM( Basis(1:n) * NodalTemp(1:n) )
-        RadCoeffAtIp = Emis1 * StefBoltz*(T0**3 + T0**2*Text + T0*Text**2 + Text**3)
-                
-        DO p=1,n
-          DO q=1,n
-            STIFF(p,q) = STIFF(p,q) + s * Basis(p) * Basis(q) * RadCoeffAtIp
+          T0 = SUM( Basis(1:n) * NodalTemp(1:n) )
+          RadCoeffAtIp = Emis1 * StefBoltz*(T0**3 + T0**2*Text + T0*Text**2 + Text**3)
+
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + s * Basis(p) * Basis(q) * RadCoeffAtIp
+            END DO
+            FORCE(p) = FORCE(p) + s * Basis(p) * RadCoeffAtIp * Text
           END DO
-          FORCE(p) = FORCE(p) + s * Basis(p) * (RadCoeffAtIp * Text + RadiosityLoad)
+          Base(1:n) = Base(1:n) + s * Basis(1:n) 
         END DO
-        Base(1:n) = Base(1:n) + s * Basis(1:n) 
-      END DO
-    END IF
-
+      END IF
+    END IF ! .NOT. Radiosity
+      
     ! Calculate fluxes on-the-fly
     IF( PostCalc ) THEN
       BLOCK
