@@ -90,7 +90,7 @@
       INTEGER :: dimids(2) 
       REAL(KIND=dp), ALLOCATABLE :: Values(:)
       REAL(KIND=dp) :: Time
-      INTEGER :: TimeIndex,TimePoint
+      INTEGER :: TimeIndex,TimePoint,TimeOffset
       INTEGER :: EIndex,NIndex,VarIndex
       LOGICAL :: Parallel,Found,VarExist
       INTEGER, SAVE :: VisitedTimes=0
@@ -166,7 +166,12 @@
       ! get time index
       VisitedTimes = VisitedTimes + 1
       IF( ListGetLogical( SolverParams, "Is Time Counter", Found ) ) THEN
-        TimePoint = VisitedTimes
+        TimeOffset=ListGetInteger( SolverParams, "Time Counter start", Found )
+        IF (Found) THEN
+          TimePoint = VisitedTimes + TimeOffset - 1
+        ELSE
+          TimePoint = VisitedTimes
+        ENDIF
       ELSE
         TimePoint = ListGetInteger( SolverParams, "Time Index", Found )
         IF (.NOT.Found) THEN
@@ -314,8 +319,15 @@
                k=i
              ENDIF
              IF (k==0) CYCLE
-             IF (i.GT.nvals) &
-                CALL FATAL(SolverName,"Too many nodes "//TRIM(VarName))
+             !IF NIndex>nvals assume the mesh is structured
+             ! and nodenumbering is  by layers
+             IF (NIndex.GT.nvals) THEN
+                     NIndex=MOD(NIndex,nvals)
+                     IF (NIndex.EQ.0) NIndex=nvals
+             ENDIF
+             IF ((NIndex.GT.nvals).OR.(NIndex.LT.1)) &
+                CALL FATAL(SolverName,"Wrong NIndex for "//TRIM(VarName)//" "//I2S(NIndex))
+
              Var%Values(k)=Values(NIndex)
            END DO
 

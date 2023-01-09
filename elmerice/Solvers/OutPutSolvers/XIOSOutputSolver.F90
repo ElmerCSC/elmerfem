@@ -545,10 +545,12 @@
         INTEGER,DIMENSION(:),ALLOCATABLE :: EdgeIndexes
         INTEGER, DIMENSION(:),ALLOCATABLE :: PartECount
         INTEGER :: begin
+        INTEGER :: ProjCoord
 
         INTEGER :: ierr
         INTEGER :: TotalCount,nv
         LOGICAL :: FieldActive,ok
+        LOGICAL :: DoProj
 
         ALLOCATE(Vertice(NumberOfActiveNodes),Node_x(NumberOfActiveNodes),Node_y(NumberOfActiveNodes))
         ALLOCATE(cell_area(NumberOfElements),Indexes(MaxElementNodes,NumberOfElements),GIndexes(NumberOfElements))
@@ -640,6 +642,7 @@
         END IF
 
         ! Elements
+        ProjCoord = ListGetInteger(Solver % Values,"projection coordinate",DoProj)
         cell_area=0._dp
         t=0
         DO i = ElemFirst, ElemLast
@@ -687,6 +690,20 @@
           END DO
 
           CALL GetElementNodes( ElementNodes, Element )
+          IF (DoProj) THEN
+             SELECT CASE (ProjCoord)
+                CASE (1)
+                        ElementNodes % x(:)=0._dp
+                CASE (2)
+                        ElementNodes % y(:)=0._dp
+                CASE (3)
+                        ElementNodes % z(:)=0._dp
+                CASE DEFAULT
+                        CALL FATAL(Caller, &
+                            "Wrong projection coordinate"//I2S(ProjCoord))
+
+             END SELECT
+          END IF
 
           IntegStuff = GaussPoints( Element )
           Do k=1,IntegStuff % n
