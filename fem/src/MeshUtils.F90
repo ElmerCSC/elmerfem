@@ -3306,6 +3306,80 @@ CONTAINS
  END SUBROUTINE PrepareMesh
 
 
+!------------------------------------------------------------------------------
+!> Transfer coordinate and time from one mesh toanother when swapping meshes
+!> for some reason.
+!------------------------------------------------------------------------------  
+  SUBROUTINE TransferCoordAndTime(M1,M2)
+    TYPE(Solver_t), POINTER :: Solver => Null()
+    TYPE(Mesh_t) :: M1,M2
+    TYPE(Variable_t), POINTER :: DtVar, V
+
+     CALL VariableAdd( M2 % Variables, M2,Solver, &
+           'Coordinate 1',1, M2 % Nodes % x )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+           'Coordinate 2',1, M2 % Nodes % y )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+          'Coordinate 3',1,M2 % Nodes % z )
+
+     V => VariableGet( M1 % Variables, 'Time' )     
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Periodic Time' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
+     END IF
+       
+     V => VariableGet( M1 % Variables, 'Timestep' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep interval' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
+
+     ! Save some previous timesteps for variable timestep multistep methods
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
+     DtVar % PrevValues => V % PrevValues
+
+     V => VariableGet( M1 % Variables, 'nonlin iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'nonlin iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'coupled iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'coupled iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'partition' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+     END IF
+       
+     V => VariableGet( M1 % Variables, 'scan' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'finish' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'finish', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'produce' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'produce', 1, V % Values)
+     END IF
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE TransferCoordAndTime
+!------------------------------------------------------------------------------
+
 
   !-------------------------------------------------------------------------------
   !> Communicate logical tag related to mesh or linear system.
@@ -18447,18 +18521,20 @@ END SUBROUTINE FindNeighbourNodes
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE UpdateSolverMesh( Solver, Mesh )
+  SUBROUTINE UpdateSolverMesh( Solver, Mesh, NoInterp )
 !------------------------------------------------------------------------------
      TYPE( Mesh_t ), POINTER :: Mesh
      TYPE( Solver_t ), TARGET :: Solver
+     LOGICAL, OPTIONAL :: NoInterp 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
-     LOGICAL :: Found, OptimizeBandwidth
+     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
      TYPE(Variable_t), POINTER :: TimeVar, SaveVar, Var
      CHARACTER(:), ALLOCATABLE :: str
+     LOGICAL :: DoInterp 
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
@@ -18469,54 +18545,90 @@ END SUBROUTINE FindNeighbourNodes
 !    Create matrix and variable structures for
 !    current equation on the new mesh:
 !    -----------------------------------------
-     Solver % Variable => VariableGet( Mesh % Variables, &
-        Solver % Variable % Name, ThisOnly = .FALSE. )
 
-     CALL AllocateVector( Permutation, SIZE(Solver % Variable % Perm) )
+     ! Backward compatibility
+     DoInterp = .TRUE.
+     IF(PRESENT(NoInterp)) THEN
+       DoInterp = .NOT. NoInterp
+     END IF
 
+     IF(DoInterp ) THEN
+       ! Interpolate the field.
+       Solver % Variable => VariableGet( Mesh % Variables, &
+           SaveVar % Name, ThisOnly = .FALSE. )       
+       CALL AllocateVector( Permutation, SIZE(Solver % Variable % Perm) )
+     ELSE
+       CALL AllocateVector( Permutation, Mesh % NumberOfNodes ) 
+     END IF
+     Permutation = 0
+     
+     GlobalBubbles = ListGetLogical( Solver % Values, &
+         'Bubbles in Global System', Found )
+     IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+     
      OptimizeBandwidth = ListGetLogical( Solver % Values, 'Optimize Bandwidth', Found )
      IF ( .NOT. Found ) OptimizeBandwidth = .TRUE.
-
+     
      Matrix => CreateMatrix( CurrentModel, Solver, &
-        Mesh, Permutation, DOFs, MATRIX_CRS, OptimizeBandwidth, &
-        ListGetString( Solver % Values, 'Equation' ) )
+         Mesh, Permutation, DOFs, MATRIX_CRS, OptimizeBandwidth, &
+         ListGetString( Solver % Values, 'Equation' ), &
+         GlobalBubbles=GlobalBubbles)
 
-     Matrix % Symmetric = ListGetLogical( Solver % Values, &
-             'Linear System Symmetric', Found )
+     IF( ASSOCIATED( Matrix ) ) THEN
+       Matrix % Symmetric = ListGetLogical( Solver % Values, &
+           'Linear System Symmetric', Found )
+       
+       Matrix % Lumped = ListGetLogical( Solver % Values, &
+           'Lumped Mass Matrix', Found )    
+     END IF
+       
+     IF(.NOT. DoInterp) THEN
+       Solver % Variable => VariableGet( Mesh % Variables, &
+           SaveVar % Name, ThisOnly = .TRUE. )                     
 
-     Matrix % Lumped = ListGetLogical( Solver % Values, &
-             'Lumped Mass Matrix', Found )
+       CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
+           SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
+       Solver % Variable => VariableGet( Mesh % Variables, &
+           SaveVar % Name, ThisOnly = .TRUE. )                     
 
-     ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
-     Work = Solver % Variable % Values
-     DO k=0,DOFs-1
-        DO i=1,SIZE(Permutation)
+       Solver % Variable % Perm => Permutation
+       IF(.NOT. ASSOCIATED( Solver % Variable % perm) ) THEN
+         CALL Fatal('UpdateSolverMesh','No Perm associated?!')
+       END IF
+       NULLIFY(Permutation)
+     ELSE
+       ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
+       Work = Solver % Variable % Values
+       DO k=0,DOFs-1
+         DO i=1,SIZE(Permutation)
            IF ( Permutation(i) > 0 ) THEN
-              Solver % Variable % Values( DOFs*Permutation(i)-k ) = &
+             Solver % Variable % Values( DOFs*Permutation(i)-k ) = &
                  Work( DOFs*Solver % Variable % Perm(i)-k )
            END IF
-        END DO
-     END DO
-
-     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-        DO j=1,SIZE(Solver % Variable % PrevValues,2)
+         END DO
+       END DO
+       
+       IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+         DO j=1,SIZE(Solver % Variable % PrevValues,2)
            Work = Solver % Variable % PrevValues(:,j)
            DO k=0,DOFs-1
-              DO i=1,SIZE(Permutation)
-                 IF ( Permutation(i) > 0 ) THEN
-                    Solver % Variable % PrevValues( DOFs*Permutation(i) - k,j ) =  &
-                        Work( DOFs * Solver % Variable % Perm(i) - k )
-                  END IF
-              END DO
+             DO i=1,SIZE(Permutation)
+               IF ( Permutation(i) > 0 ) THEN
+                 Solver % Variable % PrevValues( DOFs*Permutation(i) - k,j ) =  &
+                     Work( DOFs * Solver % Variable % Perm(i) - k )
+               END IF
+             END DO
            END DO
-        END DO
+         END DO
+       END IF
+       DEALLOCATE( Work )
+       Solver % Variable % Perm = Permutation
+       DEALLOCATE( Permutation )
      END IF
-     DEALLOCATE( Work )
-
-     Solver % Variable % Perm = Permutation
+       
      Solver % Variable % Solver => Solver
 
-     DEALLOCATE( Permutation )
+
      CALL AllocateVector( Matrix % RHS, Matrix % NumberOfRows )
 
      IF ( ASSOCIATED(SaveVar % EigenValues) ) THEN
@@ -18562,6 +18674,7 @@ END SUBROUTINE FindNeighbourNodes
   END SUBROUTINE UpdateSolverMesh
 !------------------------------------------------------------------------------
 
+  
 !------------------------------------------------------------------------------
 !> Split a mesh equally to smaller pieces by performing a uniform split.
 !> Also known as mesh multiplication. A 2D element splits into 4 elements of

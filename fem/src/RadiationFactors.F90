@@ -985,15 +985,19 @@
 
            IF( Found ) THEN
              Transmittivity = SUM(GetReal(BC,'Transmissivity', Found, Element))/n
-             Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+             Absorptivity(i) = SUM(GetReal(BC,'Absorptivity', Found, Element))/n
+             IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+             Reflectivity(i) = 1 - Absorptivity(i) - Transmittivity
            ELSE
               Emissivity(i) = SUM(GetParentMatProp( 'Emissivity', Element, Found))/n
               IF(.NOT. Found) THEN
                 WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,GetBCId(Element)
                 CALL Fatal('RadiationFactors',Message)
               END IF
+              Absorptivity(i) = SUM(GetParentMatProp('Absorptivity', Element, Found, Element))/n
+              IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
               Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
-              Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+              Reflectivity(i) = 1 - Absorptivity(i) - Transmittivity
            END IF
          END DO
        END IF
@@ -1499,7 +1503,7 @@
  
        LOGICAL :: RBC
        INTEGER :: i
-       REAL(KIND=dp) :: r, e, c, Temp, Black
+       REAL(KIND=dp) :: r, e, a, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
 
@@ -1518,8 +1522,9 @@
        ! ---------------------
        DO i=1,RadiationSurfaces
          e = Emissivity(i)
-         r = 1-e
-         c = RelAreas(i) * (r/e)
+         a = Absorptivity(i)
+         r = 1-a  ! 1-e
+         c = RelAreas(i) * (r/a)  ! (r/e) 
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
          RHS(i) = -c*e*Black
@@ -1533,8 +1538,9 @@
            Element => Mesh % Elements(ElementNumbers(i))
            IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
              e = Emissivity(i)
-             r = 1-e
-             c = RelAreas(i) * (r/e)
+             a = Absorptivity(i)
+             r = 1-a  ! e
+             c = RelAreas(i) * (r/a) !(r/e)
              RHS(i) = RHS(i) - c*r* & 
                       SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
@@ -1661,7 +1667,7 @@
              e = Emissivity(i)
              a = Absorptivity(i)
              r = 1-a
-             c = RelAreas(i) * (r/e)
+             c = RelAreas(i) * (r/a) !(r/e)
 
              ! As a weight we use linear interpolation.
              ! Perfect hit get weight 1 that goes to zero when hitting next temperature interval. 
@@ -1757,7 +1763,7 @@
                e = Emissivity(i)
                a = Absorptivity(i) 
                r = 1-a
-               c = RelAreas(i) * (r/e)
+               c = RelAreas(i) * (r/a)  ! (r/e)
                DO j=1,SIZE(RadiatorSet)
                  IF(RadiatorSet(j) == k) THEN
                    RHS(i) = RHS(i) - c * r * &
@@ -1856,20 +1862,22 @@
        REAL(KIND=dp), POINTER :: Vals(:) 
        INTEGER, POINTER :: Cols(:) 
        INTEGER :: i, j, nf, previ
-       REAL(KIND=dp) :: s,r,e,rj,ej,c
+       REAL(KIND=dp) :: s,r,e,a,rj,ej,aj,c
 
        DO i=1,n
          nf = ViewFactors(i) % NumberOfFactors
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
-         e = Emissivity(i)
-         r = 1-e
-         c = RelAreas(i) * (r/e)**2
+         !e = Emissivity(i)
+         a = Absorptivity(i)
+         r = 1-a !e
+         c = RelAreas(i) * (r/a)**2  !(r/e)**2
          previ = G % Rows(i)-1
          DO j=1,nf
-           ej = Emissivity(Cols(j))
-           rj = 1-ej
-           s = r*Vals(j) * (r/e*rj/ej)
+           !ej = Emissivity(Cols(j))
+           aj = Absorptivity(i)
+           rj = 1-aj !ej
+           s = r*Vals(j) * (r/a*rj/aj) !(r/e*rj/ej)
            CALL CRS_AddToMatrixElement(G,i,Cols(j),s,previ)
          END DO
          CALL CRS_AddToMatrixElement(G,i,i,-c)
