@@ -47,6 +47,9 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90
     BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90 
     GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90)
+
+SET(ElmerIce_SRC ${ElmerIce_SRC} ./Covarianceutils/CovarianceUtils.F90 ./Covarianceutils/BackgroundErrorCostSolver.F90 ./Covarianceutils/CovarianceVectorMultiplySolver.F90 ./Covarianceutils/GaussianSimulationSolver.F90)
+
 IF(HAVE_ODEPack)
   SET(ElmerIce_SRC ${ElmerIce_SRC} PlumeSolver.F90 )
 ENDIF()
