@@ -1532,24 +1532,6 @@ bool VtkPost::ReadVtuFile(QString postFileName)
     groupActionHash.insert(groupName, groupAction);
   }
 
-  // Geberate unstructured grid by Group
-  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
-  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
-  volumeGridHash.clear();
-  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
-  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
-  surfaceGridHash.clear();
-  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
-  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
-  lineGridHash.clear();
-  QHashIterator<QString, int> i_gah(groupActionHash);
-  while (i_gah.hasNext()) {
-    i_gah.next();
-    volumeGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-    surfaceGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-    lineGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-  }
-
   // Populate the widgets in user interface dialogs:
   //-------------------------------------------------
   populateWidgetsSlot();
@@ -1914,24 +1896,6 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     groupActionHash.insert(groupName, groupAction);
   }
 
-  // Geberate unstructured grid by Group
-  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
-  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
-  volumeGridHash.clear();
-  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
-  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
-  surfaceGridHash.clear();
-  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
-  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
-  lineGridHash.clear();
-  QHashIterator<QString, int> i_gah(groupActionHash);
-  while (i_gah.hasNext()) {
-    i_gah.next();
-    volumeGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-    surfaceGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-    lineGridHash.insert(i_gah.key(), vtkUnstructuredGrid::New());
-  }
-
   // Populate the widgets in user interface dialogs:
   //-------------------------------------------------
   populateWidgetsSlot();
@@ -2065,6 +2029,17 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   surfaceGrid = vtkUnstructuredGrid::New();
   lineGrid = vtkUnstructuredGrid::New();
 
+  // Release unstructured grids for drawing feature edges
+  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
+  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
+  volumeGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
+  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
+  surfaceGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
+  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
+  lineGridHash.clear();
+  
   // Points:
   //---------
   int index = -1;
@@ -2119,7 +2094,21 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   volumeGrid->SetPoints(points);
   surfaceGrid->SetPoints(points);
   lineGrid->SetPoints(points);
-  points->Delete();
+
+  // Generate unstructured grids for drawing feature edges
+  QHashIterator<QString, QAction*> i_gah(groupActionHash);
+  while (i_gah.hasNext()) {
+    i_gah.next();
+	vtkUnstructuredGrid* g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);
+    volumeGridHash.insert(i_gah.key(), g);
+	g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);	
+    surfaceGridHash.insert(i_gah.key(), g);
+	g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);		
+    lineGridHash.insert(i_gah.key(), g);
+  }
 
   /// Elements:
   ///-----------
@@ -2137,23 +2126,23 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   vtkQuadraticEdge* qedge = vtkQuadraticEdge::New();
   vtkUnstructuredGrid* grid = NULL;
 
-  QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
+  QHash<QString, vtkUnstructuredGrid*>* gridHash = NULL;
   
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
 	switch(epe->code){
-		case 504: cell = tetra; grid = volumeGrid; gridHash = volumeGridHash; break;
-		case 510: cell = qtetra; grid = volumeGrid; gridHash = volumeGridHash; break;
-		case 808: cell = hexa; grid = volumeGrid; gridHash = volumeGridHash; break;
-		case 820: cell = qhexa;  grid = volumeGrid; gridHash = volumeGridHash; break;
-		case 827: cell = tqhexa;  grid = volumeGrid; gridHash = volumeGridHash; break;
-		case 303: cell = tria; grid = surfaceGrid; gridHash = surfaceGridHash; break;
-		case 306: cell = qtria; grid = surfaceGrid; gridHash = surfaceGridHash; break;
-		case 404: cell = quad; grid = surfaceGrid; gridHash = surfaceGridHash; break;
-		case 408: cell = qquad; grid = surfaceGrid; gridHash = surfaceGridHash; break;
-		case 202: cell = line; grid = lineGrid; gridHash = lineGridHash; break;
-		case 203: cell = qedge; grid = lineGrid; gridHash = lineGridHash; break;
+		case 504: cell = tetra; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 510: cell = qtetra; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 808: cell = hexa; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 820: cell = qhexa;  grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 827: cell = tqhexa;  grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 303: cell = tria; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 306: cell = qtria; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 404: cell = quad; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 408: cell = qquad; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 202: cell = line; grid = lineGrid; gridHash = &lineGridHash; break;
+		case 203: cell = qedge; grid = lineGrid; gridHash = &lineGridHash; break;
 		default: cell = NULL; grid = NULL; gridHash = NULL; break;
 	}
 
@@ -2167,13 +2156,14 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 		for(int j = 0; j < epe->code % 100; j++)
 		cell->GetPointIds()->SetId(j, epe->index[j]);
 	      
-		if(groupAction->isChecked())
-		grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
-	    
-		gridHash.value(groupName)->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		if(groupAction->isChecked()){
+		  grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		  gridHash->value(groupName)->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		}
 	}
   }
 
+  points->Delete();
   tetra->Delete();
   qtetra->Delete();
   hexa->Delete();
@@ -2332,6 +2322,7 @@ void VtkPost::drawMeshPointSlot()
 #endif
 }
 
+
 // Draw mesh edges:
 //----------------------------------------------------------------------
 void VtkPost::drawMeshEdgeSlot()
@@ -2348,21 +2339,84 @@ void VtkPost::drawMeshEdgeSlot()
 #endif
 }
 
+
+// The new drawFeatureEdgesSlot()which draws one group by one FeatureEdge instance
+// using the specified vtkUnstructuredGrid to darw bondary of two groups.
+//
+// Draw feature edges:
+//----------------------------------------------------------------------
+void VtkPost::drawFeatureEdgesSlot()
+{
+  
+  
+  FeatureEdge* featureEdge = NULL;
+  
+  if(!postFileRead) return;
+  for(int i=0; i < featureEdgeVector.size(); i++){
+	featureEdge = featureEdgeVector.at(i);
+	featureEdge->removeActorFrom(renderer);
+	delete featureEdge;
+  }
+  featureEdgeVector.clear();
+
+  if(!drawFeatureEdgesAct->isChecked()) return;
+    
+  vtkUnstructuredGrid* grid = NULL;
+  QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
+
+  bool useSurfaceGrid = preferences->ui.surfaceRButton->isChecked();  
+  if(useSurfaceGrid){
+	gridHash = GetSurfaceGridHash();
+  } else {
+	gridHash = GetVolumeGridHash();
+  }
+  if(!gridHash) return;  
+  if(gridHash->count() == 0 ) return;
+  
+  QHashIterator<QString, vtkUnstructuredGrid*> i_gh(*gridHash);
+  int port_count = 0;
+  while (i_gh.hasNext())
+  {
+    i_gh.next();
+	grid = i_gh.value();
+	
+	if(grid->GetNumberOfCells() >= 1){
+	  featureEdge = new FeatureEdge();
+	  featureEdgeVector.append(featureEdge);
+	  featureEdge->draw(this, preferences, grid);
+	  
+      featureEdge->addActorTo(renderer);
+
+	}
+  }
+  #if VTK_MAJOR_VERSION >= 9
+	  qvtkWidget->renderWindow()->Render();
+#else
+	  qvtkWidget->GetRenderWindow()->Render();
+#endif
+}
+
+
+/*
+// The original drawFeatureEdgesSlot() which draws all the groups by one FeatureEdge instance
+// using one vtkUstructuredGrid. This ends up with boundary of two groups not drawn. 
+//
 // Draw feature edges:
 //----------------------------------------------------------------------
 void VtkPost::drawFeatureEdgesSlot()
 {
   if(!postFileRead) return;
-  renderer->RemoveActor(featureEdgeActor);
+  featureEdge->removeActorFrom(renderer);//renderer->RemoveActor(featureEdgeActor);
   if(!drawFeatureEdgesAct->isChecked()) return;
   featureEdge->draw(this, preferences);
-  renderer->AddActor(featureEdgeActor);
+  featureEdge->addActorTo(renderer);//renderer->AddActor(featureEdgeActor);
 #if VTK_MAJOR_VERSION >= 9
   qvtkWidget->renderWindow()->Render();
 #else
   qvtkWidget->GetRenderWindow()->Render();
 #endif
 }
+*/
 
 // Draw stream lines:
 //----------------------------------------------------------------------
@@ -3667,4 +3721,14 @@ void VtkPost::viewZXmPlaneSlot(){
   renderer->GetActiveCamera()->SetViewUp(1,0,0);
   renderer->ResetCamera();
   redrawSlot();
+}
+
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetLineGridHash(){
+	return &lineGridHash;
+}
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetSurfaceGridHash(){
+	return &surfaceGridHash;
+}
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetVolumeGridHash(){
+	return &volumeGridHash;
 }

@@ -134,6 +134,15 @@ public:
   vtkUnstructuredGrid* GetLineGrid();
   vtkUnstructuredGrid* GetSurfaceGrid();
   vtkUnstructuredGrid* GetVolumeGrid();
+
+  // These three hashes are to draw feature edge for each group seperately.
+  // To do so, one group uses three grids(volume, surface,line) 
+  QHash<QString, vtkUnstructuredGrid*>* GetLineGridHash();
+  QHash<QString, vtkUnstructuredGrid*>* GetSurfaceGridHash();
+  QHash<QString, vtkUnstructuredGrid*>* GetVolumeGridHash();
+  // and one group uses one FeatureEdge to draw its edge
+  QVector<FeatureEdge*> featureEdgeVector;
+  
   vtkPlane* GetClipPlane();
   vtkImplicitPlaneWidget* GetPlaneWidget();
 //  vtkLookupTable* GetCurrentLut();
