@@ -1332,6 +1332,7 @@ CONTAINS
     NULLIFY( Solver % Matrix )    
     var_name = ListGetString( SolverParams, 'Variable', Found )
 
+    NoPerm = .FALSE.
     
     IF(.NOT. Found ) THEN
       ! Variable does not exist
@@ -1367,7 +1368,6 @@ CONTAINS
       VariableIp = ListGetLogical( SolverParams, 'Variable IP', Found )
       VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )                 
 
-      NoPerm = .FALSE.
       
       DOFs = ListGetInteger( SolverParams, 'Variable DOFs', Found, minv=1 )
       IF ( .NOT. Found ) THEN
