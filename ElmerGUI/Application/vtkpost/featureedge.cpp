@@ -177,6 +177,8 @@ void FeatureEdge::draw(VtkPost* vtkPost, Preferences* preferences, vtkUnstructur
   bool useClip = preferences->ui.featureEdgesClip->isChecked();
   bool boundaryEdges = preferences->ui.drawBoundaryEdges->isChecked();
   useClip |= vtkPost->GetClipAll();
+  QColor color = preferences->getFeatureEdgeColor();
+  
 
   if(!grid) return;
 
@@ -236,7 +238,7 @@ void FeatureEdge::draw(VtkPost* vtkPost, Preferences* preferences, vtkUnstructur
   // mapper->ImmediateModeRenderingOn();
 
   actor->GetProperty()->SetLineWidth(lineWidth);
-  actor->GetProperty()->SetColor(0, 0, 0);
+  actor->GetProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
   actor->SetMapper(mapper);
 
   mapper->Delete();

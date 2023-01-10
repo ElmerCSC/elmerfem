@@ -110,9 +110,9 @@ public:
 
   void parseCmdLine();
 
-  QVariant settings_value(const QString &key,
-                          const QVariant &defaultValue = QVariant()) const;
-  void settings_setValue(const QString &key, const QVariant &value);
+  static QVariant settings_value(const QString &key,
+                          const QVariant &defaultValue = QVariant());
+  static void settings_setValue(const QString &key, const QVariant &value);
   void saveAndRun(bool generateSif);
   void showContextMenu(QPoint);
 

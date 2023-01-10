@@ -370,9 +370,6 @@ private:
   QAction *savePictureAct;
   QAction *savePovrayAct;
   QAction *preferencesAct;
-  QAction *drawMeshPointAct;
-  QAction *drawMeshEdgeAct;
-  QAction *drawFeatureEdgesAct;
   QAction *drawSurfaceAct;
   QAction *drawVectorAct;
   QAction *drawIsoContourAct;

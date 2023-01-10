@@ -8047,7 +8047,7 @@ void MainWindow::checkAndLoadExtraSolvers(QFile *file) {
 }
 
 QVariant MainWindow::settings_value(const QString &key,
-                                    const QVariant &defaultValue) const {
+                                    const QVariant &defaultValue) {
   QString oldElmerGuiIniFilePath =
       QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";

@@ -547,27 +547,6 @@ void VtkPost::createActions()
 
   // View menu:
   //------------
-  drawMeshPointAct = new QAction(QIcon(""), tr("Mesh points"), this);
-  drawMeshPointAct->setStatusTip("Draw mesh points");
-  drawMeshPointAct->setCheckable(true);
-  drawMeshPointAct->setChecked(false);
-  connect(drawMeshPointAct, SIGNAL(triggered()), this, SLOT(drawMeshPointSlot()));
-  connect(drawMeshPointAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
-  drawMeshEdgeAct = new QAction(QIcon(""), tr("Mesh edges"), this);
-  drawMeshEdgeAct->setStatusTip("Draw mesh edges");
-  drawMeshEdgeAct->setCheckable(true);
-  drawMeshEdgeAct->setChecked(false);
-  connect(drawMeshEdgeAct, SIGNAL(triggered()), this, SLOT(drawMeshEdgeSlot()));
-  connect(drawMeshEdgeAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
-  drawFeatureEdgesAct = new QAction(QIcon(""), tr("Feature edges"), this);
-  drawFeatureEdgesAct->setStatusTip("Draw feature edges");
-  drawFeatureEdgesAct->setCheckable(true);
-  drawFeatureEdgesAct->setChecked(true);
-  connect(drawFeatureEdgesAct, SIGNAL(triggered()), this, SLOT(drawFeatureEdgesSlot()));
-  connect(drawFeatureEdgesAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
   drawAxesAct = new QAction(QIcon(""), tr("Coordinate axes"), this);
   drawAxesAct->setStatusTip("Draw cordinate axes");
   drawAxesAct->setCheckable(true);
@@ -760,9 +739,6 @@ void VtkPost::createMenus()
   // View menu:
   //-----------
   viewMenu = menuBar()->addMenu(tr("&View"));
-  viewMenu->addAction(drawMeshPointAct);
-  viewMenu->addAction(drawMeshEdgeAct);
-  viewMenu->addAction(drawFeatureEdgesAct);
   viewMenu->addAction(drawAxesAct);
   viewMenu->addSeparator();
   viewMenu->addAction(drawTextAct);
@@ -2312,7 +2288,7 @@ void VtkPost::drawMeshPointSlot()
 {
   if(!postFileRead) return;
   renderer->RemoveActor(meshPointActor);
-  if(!drawMeshPointAct->isChecked()) return;
+  if(!preferences->ui.meshPointsGroup->isChecked()) return;
   meshPoint->draw(this, preferences);
   renderer->AddActor(meshPointActor);
 #if VTK_MAJOR_VERSION >= 9
@@ -2329,7 +2305,7 @@ void VtkPost::drawMeshEdgeSlot()
 {
   if(!postFileRead) return;
   renderer->RemoveActor(meshEdgeActor);
-  if(!drawMeshEdgeAct->isChecked()) return;
+  if(!preferences->ui.meshEdgesGroup->isChecked()) return;
   meshEdge->draw(this, preferences);
   renderer->AddActor(meshEdgeActor);
 #if VTK_MAJOR_VERSION >= 9
@@ -2347,8 +2323,6 @@ void VtkPost::drawMeshEdgeSlot()
 //----------------------------------------------------------------------
 void VtkPost::drawFeatureEdgesSlot()
 {
-  
-  
   FeatureEdge* featureEdge = NULL;
   
   if(!postFileRead) return;
@@ -2359,7 +2333,7 @@ void VtkPost::drawFeatureEdgesSlot()
   }
   featureEdgeVector.clear();
 
-  if(!drawFeatureEdgesAct->isChecked()) return;
+  if(!preferences->ui.featureGroup->isChecked()) return;
     
   vtkUnstructuredGrid* grid = NULL;
   QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
@@ -3110,19 +3084,19 @@ void VtkPost::SetColorBar(bool b)
 
 void VtkPost::SetMeshPoints(bool b)
 {
-  drawMeshPointAct->setChecked(b);
+  preferences->ui.featureGroup->setChecked(b);
   drawMeshPointSlot();
 }
 
 void VtkPost::SetMeshEdges(bool b)
 {
-  drawMeshEdgeAct->setChecked(b);
+  preferences->ui.meshEdgesGroup->setChecked(b);
   drawMeshEdgeSlot();
 }
 
 void VtkPost::SetFeatureEdges(bool b)
 {
-  drawFeatureEdgesAct->setChecked(b);
+  preferences->ui.featureGroup->setChecked(b);
   drawFeatureEdgesSlot();
 }
 

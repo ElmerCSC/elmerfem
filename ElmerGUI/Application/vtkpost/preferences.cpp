@@ -39,6 +39,7 @@
  *****************************************************************************/
 
 #include <QtGui>
+#include <QColorDialog.h>
 #include <iostream>
 #include "vtkpost.h"
 #include "preferences.h"
@@ -59,6 +60,16 @@ Preferences::Preferences(QWidget *parent)
   ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
   ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
   ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  
+  setMeshPointColor(Qt::gray);
+  setMeshEdgeColor(Qt::darkGray);
+  setFeatureEdgeColor(Qt::black);
+  connect(ui.meshPointColorButton, SIGNAL(clicked()), this, SLOT(meshPointColorButtonClicked()));
+  connect(ui.meshEdgeColorButton, SIGNAL(clicked()), this, SLOT(meshEdgeColorButtonClicked()));
+  connect(ui.featureEdgeColorButton, SIGNAL(clicked()), this, SLOT(featureEdgeColorButtonClicked()));
+//  connect(ui.meshPointsGroup, SIGNAL(toggled(bool)), this, SLOT(meshPointToggled(bool)));
+//  connect(ui.meshEdgesGroup, SIGNAL(toggled(bool)), this, SLOT(meshEdgeToggled(bool)));
+//  connect(ui.featureGroup, SIGNAL(toggled(bool)), this, SLOT(featureEdgeToggled(bool)));
 }
 
 Preferences::~Preferences()
@@ -218,4 +229,76 @@ void Preferences::SetClipPlaneNy(double f)
 void Preferences::SetClipPlaneNz(double f)
 {
   ui.clipNormalZ->setText(QString::number(f));
+}
+
+void Preferences::meshPointColorButtonClicked()
+{
+  setMeshPointColor(QColorDialog::getColor(meshPointColor));
+}
+
+void Preferences::setMeshPointColor(QColor color){
+  if(!color.isValid()) return;
+	  
+  meshPointColor = color;
+
+  QPalette plt(ui.meshPointColorLabel->palette());
+  plt.setColor(QPalette::WindowText, meshPointColor);
+  ui.meshPointColorLabel->setPalette(plt);
+}
+
+void Preferences::meshEdgeColorButtonClicked()
+{
+  setMeshEdgeColor(QColorDialog::getColor(meshEdgeColor));
+}
+
+void Preferences::setMeshEdgeColor(QColor color){
+  if(!color.isValid()) return;
+	  
+  meshEdgeColor = color;
+
+  QPalette plt(ui.meshEdgeColorLabel->palette());
+  plt.setColor(QPalette::WindowText, meshEdgeColor);
+  ui.meshEdgeColorLabel->setPalette(plt);
+}
+
+void Preferences::featureEdgeColorButtonClicked()
+{
+  setFeatureEdgeColor(QColorDialog::getColor(featureEdgeColor));
+}
+
+void Preferences::setFeatureEdgeColor(QColor color){
+  if(!color.isValid()) return;
+	  
+  featureEdgeColor = color;
+
+  QPalette plt(ui.featureEdgeColorLabel->palette());
+  plt.setColor(QPalette::WindowText, featureEdgeColor);
+  ui.featureEdgeColorLabel->setPalette(plt);
+}
+
+QColor Preferences::getMeshPointColor(){
+  return meshPointColor;
+}
+
+QColor Preferences::getMeshEdgeColor(){
+  return meshEdgeColor;
+}
+
+QColor Preferences::getFeatureEdgeColor(){
+  return featureEdgeColor;
+}
+
+void Preferences::meshPointToggled(bool checked)
+{
+  
+}
+
+void Preferences::meshEdgeToggled(bool checked)
+{
+  
+}
+
+void Preferences::featureEdgeToggled(bool checked)
+{
+  
 }
