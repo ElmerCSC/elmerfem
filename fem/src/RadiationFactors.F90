@@ -1006,10 +1006,11 @@
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
      !------------------------------------------------------------------------------
-     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
+     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,IsRadiator)
        REAL(KIND=dp) :: Trad
        REAL(KIND=dp) :: Emissivity(:)
        REAL(KIND=dp) :: Absorptivity(:)
+       LOGICAL :: IsRadiator
               
        TYPE(ValueList_t), POINTER :: Vlist
        TYPE(Element_t), POINTER :: Element, Parent
@@ -1045,7 +1046,11 @@
          END IF
 
          Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
-         Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
+         Found = .FALSE.
+         IF(IsRadiator) THEN
+           Absorptivity(i) = ListGetFun( VList,'Radiator Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
+         END IF
+         IF(.NOT. Found ) Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)         
          IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)         
        END DO
        
@@ -1656,7 +1661,7 @@
          
          ! This is the temperature under study for which we will get the emissivities for. 
          Trad = k*dT         
-         CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
+         CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.FALSE.)
          CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
          DO i=1,RadiationSurfaces
            ! The portion of the emissivity to consider for this radiating element
@@ -1755,7 +1760,7 @@
            RHS = 0.0_dp         
            G % Values = 0.0_dp
            
-           CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad)
+           CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces
              Element => Mesh % Elements(ElementNumbers(i))
