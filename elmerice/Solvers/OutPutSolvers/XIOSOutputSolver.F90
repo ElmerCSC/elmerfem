@@ -663,10 +663,12 @@
           ENDIF
 
           NodeIndexes => Element % NodeIndexes
-          IF(IsClockwise( Mesh%Nodes%x(NodeIndexes(1:n)),Mesh%Nodes%y(NodeIndexes(1:n)),n)) THEN
-            CALL FATAL(Caller, &
-                  "Clock wise ordering ... implement reordering!")
-          END IF
+
+          !! Clockwise ordering do not seems to be an issue for XIOS
+          !IF(IsClockwise( Mesh%Nodes%x(NodeIndexes(1:n)),Mesh%Nodes%y(NodeIndexes(1:n)),n)) THEN
+          !  CALL FATAL(Caller, &
+          !        "Clock wise ordering ... implement reordering!")
+          !END IF
 
           IF( NoPermutation ) THEN
             Indexes(1:n,t) = NodeIndexes(1:n)
