@@ -3088,6 +3088,48 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Check that obsolite keyword is not used instead of the new one.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListObsoliteWarn( List,OldName,NewName ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: OldName,NewName
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,OldName,Found)
+     IF( Found ) THEN
+       CALL Warn('ListFatalObsolite',&
+           'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListObsoliteWarn
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check that obsolite keyword is not used instead of the new one.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListObsoliteFatal( List,OldName,NewName ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: OldName,NewName
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,OldName,Found)
+     IF( Found ) THEN
+       CALL Fatal('ListFatalObsolite',&
+           'Use keyword "'//TRIM(NewName)//'" instead of "'//TRIM(OldName)//'"')
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListObsoliteFatal
+!------------------------------------------------------------------------------
+
+   
+   
+!------------------------------------------------------------------------------
 !> Just checks if there is a untreated keyword in the routine in the list.
 !> In case there is return a warning. 
 !------------------------------------------------------------------------------
@@ -4093,10 +4135,11 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, UnfoundFatal) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, minv, maxv, UnfoundFatal) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     REAL(KIND=dp), OPTIONAL :: minv,maxv
      LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
@@ -4116,9 +4159,9 @@ CONTAINS
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
         IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal )
         ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, UnfoundFatal=UnfoundFatal)
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, minv=minv, maxv=maxv, UnfoundFatal=UnfoundFatal)
         END IF
      END IF
      s = x(1)

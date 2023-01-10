@@ -576,15 +576,15 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      SUBROUTINE BulkAssembly()
        !------------------------------------------------------------------------------
-       !$omp parallel shared(Solver, Model, dim, at0, &
-       !$omp                 PermittivityOfVacuum, Message) &
-       !$omp          private(t, CurrentElement, i, j, k, n, ntot, NodeIndexes, &
-       !$omp                  bf_id, gotIt, Var, TID) default(none)
+       !!omp parallel shared(Solver, Model, dim, at0, &
+       !!omp                 PermittivityOfVacuum, Message) &
+       !!omp          private(t, CurrentElement, i, j, k, n, ntot, NodeIndexes, &
+       !!omp                  bf_id, gotIt, Var, TID) default(none)
 
        TID = 1
-       !$ TID = omp_get_thread_num()+1
+       !! TID = omp_get_thread_num()+1
 
-       !$omp do 
+       !!omp do 
        DO t = 1,GetNOFActive()
 
          !------------------------------------------------------------------------------
@@ -698,8 +698,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
            at0 = RealTime()
          END IF
        END DO
-       !$omp end do
-       !$omp end parallel
+       !!omp end do
+       !!omp end parallel
 
        !------------------------------------------------------------------------------
      END SUBROUTINE BulkAssembly
