@@ -6620,7 +6620,7 @@ CONTAINS
          j0 = Handle % IntVarCount + 1
          DO j=j0,Handle % ParNo 
            IF( Handle % ParUsed(j) ) THEN
-             T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
+             T(j) = SUM( Basis(1:ni) *  Handle % ParValues(j,1:ni) )
            END IF
          END DO
          
