@@ -598,7 +598,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                                 EL_NF
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
-              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree
+              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree,eq_n, Indexes(100)
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
@@ -610,7 +610,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka, DoAve
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
    
    TYPE(GaussIntegrationPoints_t) :: IP
@@ -872,7 +872,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
    
    n = Mesh % MaxElementDOFs
-
    ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
 
    SOL = 0._dp; PSOL=0._dp
@@ -924,9 +923,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
+
      n = GetElementNOFNodes()
+
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
+
+     IF(dim==2) THEN
+       eq_n = GetElementDOFs(Indexes)
+     ELSE
+       eq_n = n
+       Indexes(1:n) = Element % NodeIndexes
+     END IF
 
      IF (SIZE(Tcoef,3) /= n) THEN
        DEALLOCATE(Tcoef)
@@ -1128,19 +1136,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
      END IF
      
-
      ! Calculate nodal fields:
      ! -----------------------
+     pRef = dim==3 .AND. PiolaVersion .OR. isPelement(element)
      IF( ElementalMode >= 3 ) THEN
        IF( ElementalMode == 3 ) THEN
-         IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+         IP = CornerGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
        ELSE
-         IP = CenterGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)       
+         IP = CenterGaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
        END IF
      ELSE IF (SecondOrder) THEN
-       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef, EdgeBasisDegree=EdgeBasisDegree)
      ELSE
-       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
      END IF
 
      MASS  = 0._dp
@@ -1589,14 +1597,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Energy(3) = Energy(3) + (HdotB - w_dens) * s
 
        IF (ElementalFields .OR. .NOT. ConstantMassMatrixInUse) THEN
-         DO p=1,n
-           DO q=1,n
+         DO p=1,eq_n
+           DO q=1,eq_n
              MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
            END DO
          END DO
        END IF
 
-       DO p=1,n
+       DO p=1,eq_n
          k = 0
          
          IF( ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD) ) THEN
@@ -1924,33 +1932,33 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        
        IF( ElementalMode == 1 ) THEN
          ! Perform classical mass lumping
-         DO k=1,n
-           s = SUM(MASS(k,1:n))
-           MASS(k,1:n) = 0.0_dp
+         DO k=1,eq_n
+           s = SUM(MASS(k,1:eq_n))
+           MASS(k,1:eq_n) = 0.0_dp
            MASS(k,k) = s
          END DO
        END IF
 
        IF( ElementalMode /= 2 .AND. ElementalMode /= 4) THEN
-         CALL LUdecomp(MASS,n,pivot,Erroneous)
+         CALL LUdecomp(MASS,eq_n,pivot,Erroneous)
          IF (Erroneous) CALL Fatal('MagnetoDynamicsCalcFields', 'LU-decomposition fails')
        END IF
-         
-       CALL LocalSol(EL_MFD,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MFS,  fdim*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_VP,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_EF,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_CD,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_JXB,  3*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MPerm,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
+
+       CALL LocalSol(EL_MFD,  fdim*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MFS,  fdim*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_VP,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_EF,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_CD,   3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_JXB,  3*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_FWP,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MPerm,  1*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_JH,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML,   1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML2,  1, n, eq_n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_MST,  6*vdofs, n, eq_n, MASS, FORCE, pivot, Dofs)
 
        ! This is a nodal quantity
-       CALL LocalCopy(EL_NF, fdim, n, FORCE, Dofs)
+       CALL LocalCopy(EL_NF, fdim, eq_n, FORCE, Dofs)
      END IF
    END DO   
 
@@ -2053,7 +2061,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IF (NodalFields .AND. jh_k>0) THEN
          l = jh_k
          CALL UpdateGlobalForce( GForce(:,l), &
-             Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)
+             Force(1:eq_n,l), eq_n, 1, Solver % Variable % Perm(Indexes(1:eq_n)), UElement=Element)
        END IF
        !END DO       
      END DO
@@ -3236,20 +3244,19 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalSol(Var, m, n, A, b, pivot, dofs )
+ SUBROUTINE LocalSol(Var, m, n, nd, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
    IMPLICIT NONE
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: pivot(:), m,n,dofs
    REAL(KIND=dp) :: b(:,:), A(:,:)
+   INTEGER :: pivot(:), m,n,nd,dofs
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   REAL(KIND=dp) :: x(n),s 
+   REAL(KIND=dp) :: x(nd),s 
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
    ind(1:n) = Var % Perm(Element % DGIndexes(1:n))
-
    IF( ANY( ind(1:n) <= 0 ) ) RETURN
 
    ind(1:n) = Var % DOFs * (ind(1:n)-1)
@@ -3259,11 +3266,11 @@ CONTAINS
       
       IF( ElementalMode == 2 .OR. ElementalMode == 4 ) THEN
         ! Perform total lumping 
-        s = SUM(MASS(1:n,1:n))
-        x(1:n) = SUM(b(1:n,dofs)) / s
+        s = SUM(MASS(1:nd,1:nd))
+        x(1:nd) = SUM(b(1:nd,dofs)) / s
       ELSE
-        x(1:n) = b(1:n,dofs)
-        CALL LUSolve(n,MASS,x,pivot)
+        x(1:nd) = b(1:nd,dofs)
+        CALL LUSolve(nd,MASS,x,pivot)
       END IF
       Var % Values(ind(1:n)+i) = x(1:n)
    END DO
