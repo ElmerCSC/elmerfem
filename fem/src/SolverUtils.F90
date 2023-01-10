@@ -6865,7 +6865,7 @@ CONTAINS
     ! part of any boundary element in parallel. Hence we need to communicate the tag. 
     IF( Parallel ) THEN
       CALL Info('SetConstraintModesBoundaries','Communicating tags for constraint modes',Level=20)
-      CALL CommunicateParallelSystemTag(A % ParallelInfo,Itag = Var % ConstraintModesIndeces,CommVal=.TRUE.)
+      CALL CommunicateParallelSystemTag(A % ParallelInfo,Itag = Var % ConstraintModesIndeces,ParOper=2)
     END IF
       
     ! Set the p dofs to negative since we don't ever want to set them to one!

@@ -3385,18 +3385,19 @@ CONTAINS
   !> Communicate logical tag related to mesh or linear system.
   !> This could related to setting Neumann BCs to zero, for example.
   !-------------------------------------------------------------------------------
-  SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,CommVal)
+  SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,ParOper)
   !-------------------------------------------------------------------------------
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo
      LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
      INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
-     LOGICAL, OPTIONAL :: CommVal            !< If integer tag is used, should we consider also the value
+     INTEGER, OPTIONAL :: ParOper            !< If integer tag is used, we can also have an operator
 
      LOGICAL, POINTER :: IsNeighbour(:)
      INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:), s_i(:,:), r_i(:)
      INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
      INTEGER :: NewZeros, nsize
-     LOGICAL :: UseL, GotIt, CommI
+     LOGICAL :: UseL, GotIt
+     INTEGER :: CommI
      
      IF( ParEnv % PEs<=1 ) RETURN
    
@@ -3404,9 +3405,9 @@ CONTAINS
      IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
        CALL Fatal('CommunicateParallelSystemTag','Give either logical or integer tag!')
      END IF
-     CommI = .FALSE.
+     CommI = -1
      IF(.NOT. UseL) THEN
-       IF(PRESENT(CommVal)) CommI = CommVal
+       IF(PRESENT(ParOper)) CommI = ParOper
      END IF
      
      nsize = SIZE( ParallelInfo % NodeInterface)
@@ -3460,12 +3461,12 @@ CONTAINS
      ! Allocate for the data to sent (s_e) and receive (r_e)
      ALLOCATE( s_e(n, nn ), r_e(n) )
      s_e = 0
-     IF( CommI ) THEN
+     IF( CommI >= 0 ) THEN
        ALLOCATE( s_i(n, nn), r_i(n) )
        s_i = 0
      END IF
 
-     IF( CommI ) THEN
+     IF( CommI >= 0) THEN
        CALL CheckBuffer( nn*6*n )
      ELSE
        CALL CheckBuffer( nn*3*n )
@@ -3488,7 +3489,7 @@ CONTAINS
          IF ( k> 0) THEN
            ii(k) = ii(k) + 1
            s_e(ii(k),k) = ParallelInfo % GlobalDOFs(i)
-           IF( CommI ) THEN
+           IF( CommI >= 0 ) THEN
              s_i(ii(k),k) = Itag(i)
            END IF
          END IF
@@ -3502,7 +3503,7 @@ CONTAINS
        IF( ii(i) > 0 ) THEN
          ! Sent the global index 
          CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
-         IF( CommI ) THEN
+         IF( CommI >= 0 ) THEN
            ! Sent the value of the integer tag, if requested
            CALL MPI_BSEND( s_i(1:ii(i),i),ii(i),MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,ierr )
          END IF
@@ -3519,7 +3520,7 @@ CONTAINS
          IF( n>SIZE(r_e)) THEN
            DEALLOCATE(r_e)
            ALLOCATE(r_e(n))
-           IF(CommI) THEN
+           IF(CommI >= 0) THEN
              DEALLOCATE(r_i)
              ALLOCATE(r_i(n))
            END IF
@@ -3527,7 +3528,7 @@ CONTAINS
 
          ! Receive the global index
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
-         IF( CommI ) THEN
+         IF( CommI >= 0) THEN
            ! Receive the value of the integer tag, if requested
            CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
          END IF
@@ -3541,21 +3542,23 @@ CONTAINS
                  NewZeros = NewZeros + 1
                END IF
              ELSE
-               IF(ITag(k) == 0) THEN
-                 IF( CommI ) THEN
-                   ITag(k) = r_i(j)
-                 ELSE
-                   ITag(k) = 1
-                 END IF
-                 NewZeros = NewZeros + 1
+               IF( CommI == 0 ) THEN
+                 Itag(i) = Itag(k) + r_i(j)
+               ELSE IF( CommI == 1 ) THEN
+                 ITag(k) = MIN(r_i(j),Itag(k))
+               ELSE IF( CommI == 2 ) THEN
+                 ITag(k) = MAX(r_i(j),Itag(k))
+               ELSE IF( Itag(k) == 0 ) THEN
+                 ITag(k) = 1
                END IF
+               NewZeros = NewZeros + 1
              END IF
            END IF
          END DO
        END IF
      END DO
      DEALLOCATE(s_e, r_e )
-     IF(CommI) DEALLOCATE(s_i, r_i)
+     IF(CommI >= 0) DEALLOCATE(s_i, r_i)
 
      !PRINT *,'New Zeros:',ParEnv % MyPe, NewZeros
      
@@ -21274,7 +21277,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(PRESENT(ParallelComm)) THEN
-      Parallel = ParallelComm
+      Parallel = ParallelComm .AND. ( ParEnv % PEs > 1 )
     ELSE
       Parallel = ParEnv % PEs > 1
     END IF
