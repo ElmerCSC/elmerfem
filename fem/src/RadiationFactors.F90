@@ -994,7 +994,7 @@
                 WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,GetBCId(Element)
                 CALL Fatal('RadiationFactors',Message)
               END IF
-              Absorptivity(i) = SUM(GetParentMatProp('Absorptivity', Element, Found, Element))/n
+              Absorptivity(i) = SUM(GetParentMatProp('Absorptivity', Element, Found))/n
               IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
               Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
               Reflectivity(i) = 1 - Absorptivity(i) - Transmittivity
@@ -1873,14 +1873,13 @@
          nf = ViewFactors(i) % NumberOfFactors
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
-         !e = Emissivity(i)
+         e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a !e
          c = RelAreas(i) * (r/a)**2  !(r/e)**2
          previ = G % Rows(i)-1
          DO j=1,nf
-           !ej = Emissivity(Cols(j))
-           aj = Absorptivity(i)
+           aj = Absorptivity(Cols(j))
            rj = 1-aj !ej
            s = r*Vals(j) * (r/a*rj/aj) !(r/e*rj/ej)
            CALL CRS_AddToMatrixElement(G,i,Cols(j),s,previ)
