@@ -925,7 +925,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      Element => GetActiveElement(i)
 
      n = GetElementNOFNodes()
-     eq_n = GetElementDOFs(Indexes)
+     IF(dim==2) THEN
+       eq_n = GetElementDOFs(Indexes)
+     ELSE
+       eq_n = n
+       Indexes(1:n) = Element % NodeIndexes
+     END IF
 
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
