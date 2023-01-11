@@ -93,6 +93,7 @@
 
       CHARACTER(LEN=MAX_NAME_LEN) :: strg_var
       TYPE(xios_duration) :: dtime,time_units
+      TYPE(xios_duration) :: sync_freq,out_freq
       TYPE(xios_context) :: ctx_hdl
       TYPE(xios_date) :: date_origin,ref_date
       TYPE(xios_date),SAVE :: date1,date2
@@ -294,7 +295,22 @@
         END IF
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !! 
+        !! set out_freq and sync_freq to the top file_definition
+        !! if they are provided
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        strg_var=ListGetString(Params,"output frequency",GotIt)
+        IF (GotIt) THEN
+                out_freq=xios_duration_convert_from_string(TRIM(strg_var))
+                CALL xios_set_filegroup_attr("file_definition",output_freq=out_freq)
+        END IF
+        strg_var=ListGetString(Params,"sync frequency",GotIt)
+        IF (GotIt) THEN
+                sync_freq=xios_duration_convert_from_string(TRIM(strg_var))
+                CALL xios_set_filegroup_attr("file_definition",sync_freq=sync_freq)
+        END IF
+
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! Update File names suffix
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         strg_var=ListGetString(Params,"file names suffix",GotIt)
         IF (GotIt) call UpdateFileSuffix(TRIM(strg_var))
