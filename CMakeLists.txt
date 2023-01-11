@@ -165,11 +165,11 @@ SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 STRING(TIMESTAMP ELMER_FEM_COMPILATIONDATE "%Y-%m-%d")
 SET(COMPILATIONDATE ${ELMER_FEM_COMPILATIONDATE})
 
-# Check that the gfortran version is >= 4.8
+# Check that the gfortran version is >= 7
 IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   INCLUDE(testGFortranVersion)
   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
-    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+    MESSAGE(FATAL_ERROR "GNU Fortran major version is too old, should be at least 7")
   ENDIF()
 ENDIF()
 
