@@ -3532,8 +3532,11 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF (m /= 6) CALL Fatal('ShellLocalMatrix', 'Wrong number of unknown fields')
     Pversion = IsActivePElement(BGElement)
-    IF (PVersion .AND. BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
-        'Set Cartesian Formulation = True to use p-elements with p > 1')
+
+    IF (PVersion )THEN
+        IF(BGElement % PDefs % P > 1) CALL Fatal('ShellLocalMatrix', &
+         'Set Cartesian Formulation = True to use p-elements with p > 1')
+    END IF
     Family = GetElementFamily(BGElement)
 
     ! ------------------------------------------------------------------------------
