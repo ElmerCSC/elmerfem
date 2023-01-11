@@ -3848,11 +3848,13 @@ CONTAINS
          ELSE
 
            SameAsPrev = .FALSE.
-           IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
-             SameAsPrev = .TRUE.
-           ELSE IF ( ASSOCIATED( PrevPerm ) ) THEN
-             IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
-               IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+           IF( ASSOCIATED(PrevPerm) ) THEN
+             IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
+               SameAsPrev = .TRUE.
+             ELSE
+               IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
+                 IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+               END IF
              END IF
            END IF
 

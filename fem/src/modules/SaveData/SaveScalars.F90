@@ -140,6 +140,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t) :: ElementNodes
+
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, SaveCVS, &
@@ -1125,7 +1126,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           INTEGER :: NoVals
           LOGICAL :: GotEigen, GotEdge
           NoVals = 0
-          CALL EvaluteVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
+          CALL EvaluateVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
               LocalCoord=LocalCoords, GotEigen=GotEigen, GotEdge=GotEdge)
 
           DO i = 1, NoVals
@@ -2377,11 +2378,11 @@ CONTAINS
 
         No = 0
         IF( DiffEnergy ) THEN
-          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw,&
+          CALL EvaluateVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw,&
               DoGrad=.TRUE.)
           Grad(1:dim) = Vals(1:dim)
         ELSE
-          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw)
+          CALL EvaluateVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw)
         END IF
 
         IF(No > 1) THEN

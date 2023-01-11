@@ -1019,7 +1019,7 @@ CONTAINS
         k = 0; l = 0
       END IF
       ! This is additive adding to "No" for each call!!
-      CALL EvaluteVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
+      CALL EvaluateVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
           Basis,k,l,GotEigen=DoEigen,GotEdge=EdgeBasis)
     END DO
     

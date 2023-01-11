@@ -925,16 +925,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      Element => GetActiveElement(i)
 
      n = GetElementNOFNodes()
+     eq_n = GetElementDOFs(Indexes)
 
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
-
-     IF(dim==2) THEN
-       eq_n = GetElementDOFs(Indexes)
-     ELSE
-       eq_n = n
-       Indexes(1:n) = Element % NodeIndexes
-     END IF
 
      IF (SIZE(Tcoef,3) /= n) THEN
        DEALLOCATE(Tcoef)
@@ -1230,9 +1224,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            angular_velo(3) = SUM(basis(1:n)*omega_velo(3,1:n))
            DO k=1,n
              rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
-                 basis(k) * Nodes % x(k), &
-                 basis(k) * Nodes % y(k), &
-                 basis(k) * Nodes % z(k)])
+                 Basis(k) * Nodes % x(k), &
+                 Basis(k) * Nodes % y(k), &
+                 Basis(k) * Nodes % z(k)])
            END DO
          END IF
          IF( HasLorenzVelocity ) THEN

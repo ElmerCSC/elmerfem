@@ -3984,10 +3984,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
 !------------------------------------------------------------------------------
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
 
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     DO WHILE( ReadAndTrim(FileUnit,str) )
       READ( str(9:),*) i
       IF ( i < 0 .OR. i > Mesh % NumberOFBulkElements ) THEN
