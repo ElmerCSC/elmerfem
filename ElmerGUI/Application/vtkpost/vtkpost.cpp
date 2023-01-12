@@ -273,7 +273,7 @@ VtkPost::VtkPost(QWidget *parent)
   // Default color map (from blue to red):
   //--------------------------------------
   double hueRange[2] = {0.6667, 0};
-  int nColor =128;
+  int nColor =512;
   currentLut = vtkLookupTable::New();
   currentLut->SetHueRange(hueRange);
   currentLut->SetNumberOfColors(nColor);
