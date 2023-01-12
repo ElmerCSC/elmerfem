@@ -1272,6 +1272,7 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
       {
+         if( !owner[i] ) continue;
          nnz = grows[i+1] - grows[i];
          if ( nnz>csize ) {
            rcols = (int *)realloc( rcols, nnz*sizeof(int) );
@@ -1287,7 +1288,7 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       free( rcols );
    }
 
-//   HYPRE_IJMatrixAssemble(G);
+   HYPRE_IJMatrixAssemble(G);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
 
    /* Create the rhs and solution */
