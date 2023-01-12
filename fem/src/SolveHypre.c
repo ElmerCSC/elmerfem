@@ -1223,7 +1223,6 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
    }
 
-fprintf( stderr, "%d %d %d %d %d\n", myid, ilower, iupper, nlower, nupper );
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition
       size twice (since number of rows = number of cols) */
