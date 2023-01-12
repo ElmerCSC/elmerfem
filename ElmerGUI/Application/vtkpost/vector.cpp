@@ -39,7 +39,7 @@
  *****************************************************************************/
 
 #include <QtGui>
-#include <QColorDialog.h>
+#include <QColorDialog>
 #include <iostream>
 #include "epmesh.h"
 #include "vtkpost.h"
