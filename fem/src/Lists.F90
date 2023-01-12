@@ -660,9 +660,11 @@ CONTAINS
              
              DO i=1,SIZE( Mesh % PeriodicPerm )
                j = Mesh % PeriodicPerm(i)
-               IF( j > 0 .AND. Perm(i) /= 0 ) THEN             
-                 Perm(i) = Perm(j)
-                 IF(Mesh % PeriodicFlip(i)) n = n + 1
+               IF( j > 0 ) THEN
+                 IF( Perm(i) /= 0 ) THEN             
+                   Perm(i) = Perm(j)
+                   IF(Mesh % PeriodicFlip(i)) n = n + 1
+                 END IF
                END IF
              END DO
 
