@@ -1873,12 +1873,13 @@
          nf = ViewFactors(i) % NumberOfFactors
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
-         e = Emissivity(i)
+!        e = Emissivity(i)
          a = Absorptivity(i)
          r = 1-a !e
          c = RelAreas(i) * (r/a)**2  !(r/e)**2
          previ = G % Rows(i)-1
          DO j=1,nf
+!          ej = Emissivity(Cols(j))
            aj = Absorptivity(Cols(j))
            rj = 1-aj !ej
            s = r*Vals(j) * (r/a*rj/aj) !(r/e*rj/ej)

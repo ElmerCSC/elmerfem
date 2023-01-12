@@ -1822,12 +1822,13 @@ INTEGER::inside
 
         CALL ContinuousNumbering( Solver % Mesh % ParallelInfo, &
              NodePerm, BPerm, NodeOwner, nnd, Solver % Mesh)
+        bPerm = bPerm -1 ! at some point Hypre switched to zero based indexing
 
         GM => AllocateMatrix()
         GM % FORMAT = MATRIX_LIST
 
         DO i=Solver % Mesh % NumberofEdges,1,-1
-          ind=Solver % Mesh % Edges(i) % NodeIndexes
+          ind = Solver % Mesh % Edges(i) % NodeIndexes
           IF (Solver % Mesh % ParallelInfo % GlobalDOFs(ind(1))> &
               Solver % Mesh % ParallelInfo % GlobalDOFs(ind(2))) THEN
             k=ind(1); ind(1)=ind(2);ind(2)=k
