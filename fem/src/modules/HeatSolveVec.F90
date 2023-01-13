@@ -2033,17 +2033,19 @@ END SUBROUTINE HeatSolver
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     ALLOCATE(Nodes % x(pn), Nodes % y(pn), Nodes % z(pn) )
+     nd = GetElementNOFDOFs(Element)
+     ALLOCATE( Temperature(nd), Basis(nd), ExtTemperature(nd), &
+        TransferCoeff(en), x(en), y(en), z(en), EdgeBasis(nd), &
+        dBasisdx(nd,3), NodalConductivity(nd), Flux(nd), &
+        NodalEmissivity(nd), Indexes(nd) ) 
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
 
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( Temperature(n), Basis(n), ExtTemperature(n), &
-        TransferCoeff(En), x(En), y(En), z(n), EdgeBasis(n), &
-        dBasisdx(n,3), NodalConductivity(n), Flux(n), &
-        NodalEmissivity(n), Indexes(n) ) 
+     ALLOCATE(Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
+     Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
+
 
      DO l = 1,en
        DO k = 1,pn
@@ -2163,9 +2165,9 @@ END SUBROUTINE HeatSolver
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               s = IntegStuff % s(t) * detJ
            ELSE
-              gx = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:en) )
-              gy = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:en) )
-              gz = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:en) )
+              gx = SUM( EdgeBasis(1:en) * EdgeNodes % x(1:en) )
+              gy = SUM( EdgeBasis(1:en) * EdgeNodes % y(1:en) )
+              gz = SUM( EdgeBasis(1:en) * EdgeNodes % z(1:en) )
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, gx, gy, gz )
               s = IntegStuff % s(t) * detJ * SqrtMetric
@@ -2303,12 +2305,7 @@ END SUBROUTINE HeatSolver
 !
 !    ---------------------------------------------
 
-     Element => Edge % BoundaryInfo % Left
-     n = Element % TYPE % NumberOfNodes
-
-     Element => Edge % BoundaryInfo % Right
-     n = MAX( n, Element % TYPE % NumberOfNodes )
-
+     n = Mesh % MaxElementDOFs
      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
      en = Edge % TYPE % NumberOfNodes
@@ -2318,7 +2315,6 @@ END SUBROUTINE HeatSolver
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     n = Mesh % MaxElementDOFs
      ALLOCATE( NodalConductivity(en), EdgeBasis(en), Basis(n), &
         dBasisdx(n,3), x(en), y(en), z(en), Temperature(n), Indexes(n) )
 
@@ -2372,7 +2368,7 @@ END SUBROUTINE HeatSolver
 !          Next, get the integration point in parent
 !          local coordinates:
 !          -----------------------------------------
-           Pn = Element % TYPE % NumberOfNodes
+           pn = Element % TYPE % NumberOfNodes
 
            DO j = 1,en
               DO k = 1,pn
@@ -2385,19 +2381,18 @@ END SUBROUTINE HeatSolver
               END DO
            END DO
 
-           u = SUM( EdgeBasis(1:en) * x(1:en) )
-           v = SUM( EdgeBasis(1:en) * y(1:en) )
-           w = SUM( EdgeBasis(1:en) * z(1:en) )
+           u = SUM(EdgeBasis(1:en) * x(1:en))
+           v = SUM(EdgeBasis(1:en) * y(1:en))
+           w = SUM(EdgeBasis(1:en) * z(1:en))
 !
 !          Get parent element basis & derivatives at the integration point:
 !          -----------------------------------------------------------------
            nd = GetElementDOFs(Indexes,Element)
+           Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+           Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+           Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
 
-           Nodes % x(1:pn) = Mesh % Nodes % x(Element % NodeIndexes)
-           Nodes % y(1:pn) = Mesh % Nodes % y(Element % NodeIndexes)
-           Nodes % z(1:pn) = Mesh % Nodes % z(Element % NodeIndexes)
-
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+           stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
 !
 !          Material parameters:
 !          --------------------
@@ -2522,24 +2517,23 @@ END SUBROUTINE HeatSolver
 
 !    Alllocate local arrays
 !    ----------------------
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( NodalDensity(n), NodalCapacity(n), NodalConductivity(n),       &
-         Velo(3,n), Pressure(n), NodalSource(n), Temperature(n), PrevTemp(n), &
-         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), Indexes(n) )
+     nd = GetElementNOFDOFs(Element)
+     n = GetElementNOFNodes(Element)
+     ALLOCATE( NodalDensity(nd), NodalCapacity(nd), NodalConductivity(nd),      &
+         Velo(3,nd), Pressure(nd), NodalSource(nd), Temperature(nd), PrevTemp(nd), &
+         Basis(nd), dBasisdx(nd,3), ddBasisddx(nd,3,3), Indexes(nd) )
 !
 !    Element nodal points:
 !    ---------------------
-     n = GetElementNOFNOdes()
-     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+     ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
+     Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z = Mesh % Nodes % z(Indexes(1:nd))
 !
 !    Elementwise nodal solution:
 !    ---------------------------
-     nd = GetElementNOFDOFs(Element)
-     nd = GetElementDOFs(Indexes,Element)
      Temperature(1:nd) = Quant(Perm(Indexes(1:nd)))
 !
 !    Check for time dep.
@@ -2658,9 +2652,9 @@ END SUBROUTINE HeatSolver
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            s = IntegStuff % s(t) * detJ
         ELSE
-           u = SUM(Basis(1:n) * Nodes % x(1:n))
-           v = SUM(Basis(1:n) * Nodes % y(1:n))
-           w = SUM(Basis(1:n) * Nodes % z(1:n))
+           u = SUM(Basis(1:nd) * Nodes % x(1:nd))
+           v = SUM(Basis(1:nd) * Nodes % y(1:nd))
+           w = SUM(Basis(1:nd) * Nodes % z(1:nd))
 
            CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                        Symb, dSymb, u, v, w )
