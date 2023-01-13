@@ -23,18 +23,17 @@ ENDIF()
 
 SET(PROJ_FOUND FALSE)
 SET(PROJINCLUDE
-  "${PROJROOT}/"
-  "$ENV{PROJROOT}/"
-  "${PROJ_ROOT}/"
-  "$ENV{PROJ_ROOT}/"
-  "${CMAKE_SOURCE_DIR}/proj/"
+  "${PROJROOT}/include"
+  "$ENV{PROJROOT}/include"
+  "${PROJ_ROOT}/include"
+  "$ENV{PROJ_ROOT}/include"
+  "${CMAKE_SOURCE_DIR}/proj/include"
   INTERNAL
   )
 
 # Try to find PROJ
 FIND_PATH(PROJ_INCLUDE_DIR
-  proj_api.h 
-  projects.h 
+  proj.mod
   HINTS 
   ${PROJINCLUDE}
   )
