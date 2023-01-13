@@ -627,11 +627,11 @@ CONTAINS
              ELSE
                ! Interpolate scalar variables using automatic internal interpolation 
                NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
-               k = SIZE( NewVar % Values )
+               k = SIZE(NewVar % Values)
                IF ( ASSOCIATED( NewVar % Perm ) ) THEN
                  k = COUNT( NewVar % Perm > 0 )
                END IF
-               NewVar % Norm = SQRT( SUM(NewVar % Values**2) / k )
+               NewVar % Norm = SQRT(SUM(NewVar % Values**2)/k)
              END IF
              
           END IF
@@ -666,7 +666,6 @@ CONTAINS
     !   -----------------------------------------
 #if 1
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
-
 #else
 !
 !   Update the solvers variable pointer:
@@ -822,8 +821,10 @@ CONTAINS
 
 !   Comment the next calls, if you want to keep the edge tables:
 !   ------------------------------------------------------------
-    CALL ReleaseMeshEdgeTables( RefMesh )
-    CALL ReleaseMeshFaceTables( RefMesh )
+    IF(.NOT.isPelement(RefMesh % Elements(1))) THEN
+      CALL ReleaseMeshEdgeTables( RefMesh )
+      CALL ReleaseMeshFaceTables( RefMesh )
+    END IF
 
     CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
@@ -2222,7 +2223,7 @@ USE crsmatrix
     Fnorm = 0.0d0
     ErrorIndicator = 0.0d0
 
-    CALL AllocateArray( TempIndicator, 2,SIZE(ErrorIndicator) )
+    CALL AllocateArray(TempIndicator,2,SIZE(ErrorIndicator))
     TempIndicator = 0.0d0
 !
 !   Bulk equation residuals:

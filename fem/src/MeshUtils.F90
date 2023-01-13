@@ -18540,9 +18540,6 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
-
-     Solver % Mesh => Mesh
-     CALL SetCurrentMesh( CurrentModel, Mesh )
 !
 !    Create matrix and variable structures for
 !    current equation on the new mesh:
@@ -18554,15 +18551,21 @@ END SUBROUTINE FindNeighbourNodes
        DoInterp = .NOT. NoInterp
      END IF
 
-     IF(DoInterp ) THEN
-       ! Interpolate the field.
+
+     IF  (DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
-           SaveVar % Name, ThisOnly = .FALSE. )       
-       CALL AllocateVector( Permutation, SIZE(Solver % Variable % Perm) )
+          SaveVar % Name, ThisOnly = .FALSE. )
+       CALL AllocateVector(Permutation, SIZE(Solver % Variable % Perm))
      ELSE
-       CALL AllocateVector( Permutation, Mesh % NumberOfNodes ) 
-     END IF
-     Permutation = 0
+       ALLOCATE(Permutation(Mesh % NumberOfNodes + &
+          Solver % Mesh % MaxEdgeDofs*Mesh % NumberOfEdges + &
+            Solver % Mesh % MaxFaceDofs*Mesh % NumberOfFaces + &
+              Solver % Mesh % MaxBDofs*Mesh % NumberOfBulkElements))
+    END IF
+    Permutation = 0
+
+     Solver % Mesh => Mesh
+     CALL SetCurrentMesh( CurrentModel, Mesh )
      
      GlobalBubbles = ListGetLogical( Solver % Values, &
          'Bubbles in Global System', Found )

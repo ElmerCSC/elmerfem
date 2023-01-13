@@ -2667,7 +2667,7 @@ CONTAINS
       BodyId = Element % BodyId
       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
         Parent => Element % PDefs % LocalParent
-        BodyId = Parent % BodyId
+        IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
       END IF
       IF (BodyId==0) THEN
         CALL Warn('ElementInfo', 'Element has no body index, assuming the index 1')

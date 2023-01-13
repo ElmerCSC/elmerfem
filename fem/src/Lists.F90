@@ -1339,20 +1339,21 @@ CONTAINS
 !> If it not to be found in the current mesh, interpolation between
 !> meshes is automatically requested for.
 !------------------------------------------------------------------------------
-    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName, UnfoundFatal ) RESULT(Var)
+    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName, UnfoundFatal, &
+           DoInterp ) RESULT(Var)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       CHARACTER(LEN=*) :: Name
       LOGICAL, OPTIONAL :: ThisOnly
       CHARACTER(LEN=*),OPTIONAL :: MaskName
-      LOGICAL, OPTIONAL :: UnfoundFatal
+      LOGICAL, OPTIONAL :: UnfoundFatal, DoInterp
 !------------------------------------------------------------------------------
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Projector_t), POINTER :: Projector
       TYPE(Variable_t), POINTER :: Var,PVar,Tmp,AidVar
       REAL(KIND=dp), POINTER :: Vals(:)
       INTEGER :: i,k,n, DOFs, MAXNDOFs
-      LOGICAL :: Found, GlobalBubbles, UseProjector, HackMesh
+      LOGICAL :: Found, GlobalBubbles, UseProjector, HackMesh, ExecInterpolation
       CHARACTER(LEN=LEN_TRIM(Name)) :: str
       DOUBLE PRECISION :: t1
       CHARACTER(:), ALLOCATABLE :: tmpname
@@ -1371,25 +1372,26 @@ CONTAINS
       END INTERFACE
 !------------------------------------------------------------------------------
 
+ 
+      ExecInterpolation = .TRUE.
+      IF(PRESENT(DoInterp)) ExecInterpolation = DoInterp
+
       k = StringToLowerCase( str,Name,.TRUE. )
 
       Tmp => Variables
       DO WHILE( ASSOCIATED(tmp) )
         IF ( tmp % NameLen == k ) THEN
           IF ( tmp % Name(1:k) == str(1:k) ) THEN
-
             IF ( Tmp % Valid ) THEN
                Var => Tmp
                RETURN
             END IF
             EXIT
-
           END IF
         END IF
         tmp => tmp % Next
       END DO
       Var => Tmp
-
 
 !------------------------------------------------------------------------------
       IF ( PRESENT(ThisOnly) ) THEN
@@ -1407,7 +1409,6 @@ CONTAINS
       NULLIFY( PVar )
       Mesh => CurrentModel % Meshes
       DO WHILE( ASSOCIATED( Mesh ) )
-
         IF ( .NOT.ASSOCIATED( Variables, Mesh % Variables ) ) THEN
           PVar => VariableGet( Mesh % Variables, Name, ThisOnly=.TRUE. )
           IF ( ASSOCIATED( PVar ) ) THEN
@@ -1419,7 +1420,7 @@ CONTAINS
         Mesh => Mesh % Next
       END DO
 
-      IF ( .NOT.ASSOCIATED( PVar ) ) THEN
+      IF (.NOT.ASSOCIATED( PVar ) ) THEN
          IF ( PRESENT(UnfoundFatal) ) THEN
             IF ( UnfoundFatal ) THEN
               CALL Fatal("VariableGet","Failed to find or interpolate variable: "//TRIM(Name))
@@ -1429,18 +1430,18 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
-
       IF ( .NOT.ASSOCIATED( Tmp ) ) THEN
          GlobalBubbles = .FALSE.
          IF(ASSOCIATED(Pvar % Solver)) GlobalBubbles = Pvar % Solver % GlobalBubbles
         
-         IF (PVar % PrimaryMesh % MaxNDOFs /= CurrentModel % Mesh % MaxNDOFs) THEN
-           MaxNDOFs = CurrentModel % Mesh % MaxNDOFs
+         Mesh => CurrentModel % Mesh
+         IF (PVar % PrimaryMesh % MaxNDOFs /= Mesh % MaxNDOFs) THEN
+           MaxNDOFs = Mesh % MaxNDOFs
            IF (PVar % PrimaryMesh % MaxNDOFs == 1) THEN
              ! Try to tamper the mesh temporarily, so that the permutation will be created as if
              ! one nodal field was present
              HackMesh = .TRUE.
-             CurrentModel % Mesh % MaxNDOFs = 1
+             Mesh % MaxNDOFs = 1
            ELSE
              CALL Fatal('VariableGet', 'non-matching permutation occurs due to an element definition n:'//I2S(MaxNDOFs))
            END IF
@@ -1448,26 +1449,28 @@ CONTAINS
            HackMesh = .FALSE.
          END IF
 
-         DOFs = CurrentModel % Mesh % NumberOfNodes * PVar % DOFs
+
+         DOFs = Mesh % NumberOfNodes
+         DOFs = DOFs + Mesh % NumberOfEdges * Mesh % MaxEdgeDOFs
+         DOFs = DOFs + Mesh % NumberOfFaces * Mesh % MaxFaceDOFs
          IF ( GlobalBubbles ) THEN
             DOFs = DOFs + CurrentModel % Mesh % MaxBDOFs * &
-                CurrentModel % Mesh % NumberOfBulkElements * PVar % DOFs
+                CurrentModel % Mesh % NumberOfBulkElements
          END IF
 
          ALLOCATE( Var )
-         ALLOCATE( Var % Values(DOFs) )
+         ALLOCATE( Var % Values(DOFs*Pvar % DOFs) )
          Var % Values = 0
 
          NULLIFY( Var % Perm )
-         IF ( ASSOCIATED( PVar % Perm ) ) THEN
-            ALLOCATE( Var % Perm( DOFs/Pvar % DOFs ) )
+         IF (ASSOCIATED(PVar % Perm)) THEN
+            ALLOCATE( Var % Perm(DOFs) )
 
             n = InitialPermutation( Var % Perm, CurrentModel, PVar % Solver, &
-                CurrentModel % Mesh, ListGetString(PVar % Solver % Values,'Equation'), &
-                 GlobalBubbles=GlobalBubbles )
+                  CurrentModel % Mesh, ListGetString(PVar % Solver % Values,'Equation'), &
+                     GlobalBubbles=GlobalBubbles )
  
             IF ( n==0 ) n=CurrentModel % Mesh % NumberOfNodes
-
             IF ( n == CurrentModel % Mesh % NumberOfNodes ) THEN
                DO i=1,n 
                   Var % Perm(i) = i
@@ -1548,6 +1551,7 @@ CONTAINS
         Var => VariableGet( Variables, Name, ThisOnly=.TRUE. )
       END IF
 
+      IF(.NOT.ExecInterpolation) RETURN
 !------------------------------------------------------------------------------
 ! Build a temporary variable list of variables to be interpolated
 !------------------------------------------------------------------------------
