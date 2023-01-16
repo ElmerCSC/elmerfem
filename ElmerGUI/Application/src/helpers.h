@@ -44,7 +44,7 @@
 #include "meshtype.h"
 #include <QMatrix4x4>
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #define qreal float
 #endif
 

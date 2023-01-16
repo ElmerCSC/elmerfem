@@ -35,6 +35,9 @@
 #ifndef OBJECTBROWSER_H
 #define OBJECTBROWSER_H
 
+#if WITH_QT6
+#include <QtWidgets>
+#endif
 #include <QWidget>
 #include "projectio.h"
 #include "dynamiceditor.h"
@@ -49,7 +52,7 @@ class ObjectBrowser : public QDockWidget
 //signals:
 
 public:
-  ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags=0);
+  ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags=Qt::Widget);
   ~ObjectBrowser();
 
 //public slots:

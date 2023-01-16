@@ -1430,7 +1430,7 @@ void MainWindow::newProjectSlot() {
     for (int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++) {
       message = "Load " + extraDirPath + "/" +
                 dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << string(message.toLatin1());
       cout.flush();
 #else
@@ -1461,7 +1461,7 @@ void MainWindow::parseCmdLine() {
     QFileInfo fileInfo(fileName);
 
     if (!fileInfo.exists()) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Input file \"" << fileName.toLatin1().data()
            << "\" does not exist" << endl;
 #else
@@ -1473,7 +1473,7 @@ void MainWindow::parseCmdLine() {
     }
 
     if (fileName.left(1) != "-") {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Reading input file " << fileName.toLatin1().data() << endl;
 #else
       cout << "Reading input file " << fileName.toAscii().data() << endl;
@@ -1543,7 +1543,7 @@ void MainWindow::readInputFile(QString fileName) {
   QString baseName = fi.baseName();
   QString fileSuffix = fi.suffix();
   QString baseFileName = absolutePath + "/" + baseName;
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   sprintf(cs, "%s", baseFileName.toLatin1().data());
 #else
   sprintf(cs, "%s", baseFileName.toAscii().data());
@@ -1662,7 +1662,7 @@ void MainWindow::readInputFile(QString fileName) {
     activeGenerator = GEN_ELMERGRID;
     cout << "Selected elmergrid" << endl;
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     int errstat = elmergridAPI->loadElmerMeshStructure(
         (const char *)(fileName.toLatin1()));
 #else
@@ -1787,7 +1787,7 @@ void MainWindow::loadElmerMesh(QString dirName) {
 
   glWidget->newMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   bool success = glWidget->getMesh()->load(dirName.toLatin1().data());
 #else
   bool success = glWidget->getMesh()->load(dirName.toAscii().data());
@@ -2746,7 +2746,7 @@ void MainWindow::saveElmerMesh(QString dirName) {
 
   // Save mesh files:
   //------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   glWidget->getMesh()->save(dirName.toLatin1().data());
 #else
   glWidget->getMesh()->save(dirName.toAscii().data());
@@ -2772,7 +2772,9 @@ void MainWindow::saveElmerMesh(QString dirName) {
   file.open(QIODevice::WriteOnly);
   QTextStream startinfo(&file);
 
-#if WITH_QT5
+#if WITH_QT6
+  startinfo << sifName.toLatin1() << Qt::endl << "1" << Qt::endl;
+#elif WITH_QT5
   startinfo << sifName.toLatin1() << endl << "1" << endl;
 #else
   startinfo << sifName.toAscii() << endl << "1" << endl;
@@ -2809,7 +2811,11 @@ void MainWindow::savePictureSlot() {
 
   grabTimeLine->stop();
   grabTimeLine->setDuration(delay);
+#if WITH_QT6
+  grabTimeLine->setEasingCurve(QEasingCurve(QEasingCurve::Linear));  
+#else
   grabTimeLine->setCurveShape(QTimeLine::LinearCurve);
+#endif
   grabTimeLine->setDirection(QTimeLine::Backward);
   grabTimeLine->setFrameRange(0, 10);
   progressLabel->setText("Delay screen shot");
@@ -2839,9 +2845,13 @@ void MainWindow::grabFrameSlot() {
   glWidget->updateGL();
   glReadBuffer(GL_BACK);
 
+#if WITH_QT6
+  QImage image(glWidget->grabFramebuffer());
+#else
   QImage image(glWidget->grabFrameBuffer(withAlpha));
+#endif
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   bool success(image.save(pictureFileName, suffix.toLatin1(), imageQuality));
 #else
   bool success(image.save(pictureFileName, suffix.toAscii(), imageQuality));
@@ -3932,7 +3942,7 @@ void MainWindow::modelSummarySlot() {
   delete[] elementtypes;
 
   te->append("BOUNDING BOX");
-  QString coordnames = "XYZ";
+  QString coordnames[3] = {"X","Y","Z"};
   for (int j = 0; j < 3; j++) {
     double mincoord, maxcoord, coord;
     mincoord = maxcoord = mesh->getNode(0)->getX(j);
@@ -4957,7 +4967,11 @@ void MainWindow::colorizeBodySlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::backgroundColorSlot() {
   QColor newColor = QColorDialog::getColor(glWidget->backgroundColor, this);
+#if WITH_QT6
+  glClearColor(newColor.redF(), newColor.greenF(), newColor.redF(), newColor.alphaF());
+#else
   glWidget->qglClearColor(newColor);
+#endif
   glWidget->backgroundColor = newColor;
 }
 
@@ -5235,7 +5249,7 @@ void MainWindow::remeshSlot() {
     glWidget->newMesh();
     mesh_t *mesh = glWidget->getMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     elmergridAPI->createElmerMeshStructure(
         mesh, meshControl->elmerGridControlString.toLatin1());
 #else
@@ -5304,7 +5318,7 @@ void MainWindow::remeshSlot() {
     nglib::Ng_Init();
 
     char backgroundmesh[1024];
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     sprintf(backgroundmesh, "%s",
             meshControl->nglibBackgroundmesh.toLatin1().data());
 #else
@@ -5331,7 +5345,7 @@ void MainWindow::remeshSlot() {
 
         // STL: regenerate structures for nglib:
         //--------------------------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), 0);
 #else
         nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), 0);
@@ -5382,7 +5396,7 @@ void MainWindow::remeshSlot() {
 
         ngmesh = nglib::Ng_NewMesh();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
 #else
         nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
@@ -7318,7 +7332,7 @@ void MainWindow::getStartedSlot() {
 // Log message...
 //-----------------------------------------------------------------------------
 void MainWindow::logMessage(QString message) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << string(message.toLatin1()) << endl;
 #else
   cout << string(message.toAscii()) << endl;
@@ -7448,7 +7462,7 @@ void MainWindow::loadDefinitions() {
 
   // Load general definitions file:
   //--------------------------------
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << "Load " << string(generalDefs.toLatin1()) << "... ";
 #else
   cout << "Load " << string(generalDefs.toAscii()) << "... ";
@@ -7531,7 +7545,7 @@ void MainWindow::loadDefinitions() {
 
     if ((fileSuffix == "xml") && (fileName != generalDefs)) {
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Load " << string(fileName.toLatin1()) << "... ";
 #else
       cout << "Load " << string(fileName.toAscii()) << "... ";
@@ -7976,7 +7990,7 @@ bool MainWindow::loadExtraSolver(QString solverName) {
 
                 message =
                     "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
                 cout << string(message.toLatin1());
                 cout.flush();
 #else

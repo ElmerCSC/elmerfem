@@ -42,7 +42,7 @@
 
 #include "ecmaconsole.h"
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   #include <QtWidgets>
 #endif
 #include <QWidget>
@@ -214,7 +214,7 @@ void EcmaConsole::addNames(QString className, const QMetaObject* metaObject)
     QMetaMethod::MethodType methodType = method.methodType();
     if((access == QMetaMethod::Public) && (methodType == QMetaMethod::Slot)) {
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       QString signature = method.methodSignature();
 #else
       QString signature = method.signature();

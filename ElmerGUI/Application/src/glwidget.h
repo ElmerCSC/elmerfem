@@ -71,7 +71,11 @@ enum ListTypes {
 #endif
 #endif
 
+#if WITH_QT6
+#include <QOpenGLWidget>
+#else
 #include <QGLWidget>
+#endif
 #include <QHash>
 #include <QMap>
 #include <QVector>
@@ -113,9 +117,23 @@ class list_t {
   bool visible;      // Currently visible?
 };
 
+#ifdef WITH_QT6
+class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
+{
+  Q_OBJECT
+public:
+  void updateGL(); // just to replace updateGL() in .cpp file to update() for Qt6 compatibility;
+  void renderText(double x, double y, double z, const QString & str, const QFont & font = QFont(), int listBase = 2000);
+  inline GLint project(GLdouble objx, GLdouble objy, GLdouble objz,
+    const GLdouble model[16], const GLdouble proj[16],
+    const GLint viewport[4],
+    GLdouble * winx, GLdouble * winy, GLdouble * winz);
+  inline void transformPoint(GLdouble out[4], const GLdouble m[16], const GLdouble in[4]);
+#else
 class GLWidget : public QGLWidget
 {
   Q_OBJECT
+#endif
     
 public:
   GLWidget(QWidget *parent = 0);

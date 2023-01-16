@@ -37,12 +37,16 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   #include <QtWidgets>
 #endif
 
 #include <QtGui>
+#if WITH_QT6
+#include <QJSEngine>
+#else
 #include <QScriptEngine>
+#endif
 #include <iostream>
 #include <vtkXMLUnstructuredGridReader.h>
 #include <vtkUnstructuredGrid.h>
@@ -127,6 +131,8 @@ using namespace std;
 // Custom print for QtScript:
 //----------------------------
 #if QT_VERSION >= 0x040403
+#if WITH_QT6
+#else
 QScriptValue printFun(QScriptContext* context, QScriptEngine* engine)
 {
   QString result;
@@ -143,6 +149,8 @@ QScriptValue printFun(QScriptContext* context, QScriptEngine* engine)
   return engine->undefinedValue();
 }
 #endif
+#endif
+
 
 // Interaction event handler (press 'i' to interact):
 //-------------------------------------------------------------------
@@ -462,14 +470,36 @@ VtkPost::VtkPost(QWidget *parent)
 
   connect(ecmaConsole, SIGNAL(cmd(QString)), this, SLOT(evaluateECMAScriptSlot(QString)));
 
+#if WITH_QT6
+  engine = new QJSEngine(this);
+#else
   engine = new QScriptEngine(this);
+#endif
 
 #if QT_VERSION >= 0x040403
+#if WITH_QT6
+#else
   QScriptValue fun = engine->newFunction(printFun);
   fun.setData(engine->newQObject(ecmaConsole));
   engine->globalObject().setProperty("print", fun);
 #endif
+#endif
 
+#if WITH_QT6
+  QJSValue egpValue = engine->newQObject(this);
+#ifdef EG_MATC
+  QJSValue matcValue = engine->newQObject(matc);
+#endif
+  QJSValue surfacesValue = engine->newQObject(surface);
+  QJSValue vectorsValue = engine->newQObject(vector);
+  QJSValue isoContoursValue = engine->newQObject(isoContour);
+  QJSValue isoSurfacesValue = engine->newQObject(isoSurface);
+  QJSValue streamLinesValue = engine->newQObject(streamLine);
+  QJSValue preferencesValue = engine->newQObject(preferences);
+  QJSValue timeStepValue = engine->newQObject(timeStep);
+  QJSValue colorBarValue = engine->newQObject(colorBar);
+  QJSValue textValue = engine->newQObject(text);
+#else
   QScriptValue egpValue = engine->newQObject(this);
 #ifdef EG_MATC
   QScriptValue matcValue = engine->newQObject(matc);
@@ -483,6 +513,7 @@ VtkPost::VtkPost(QWidget *parent)
   QScriptValue timeStepValue = engine->newQObject(timeStep);
   QScriptValue colorBarValue = engine->newQObject(colorBar);
   QScriptValue textValue = engine->newQObject(text);
+#endif
 
   engine->globalObject().setProperty("egp", egpValue);
 #ifdef EG_MATC
@@ -864,12 +895,17 @@ void VtkPost::evaluateECMAScriptSlot(QString cmd)
 {
   if(cmd.isEmpty()) return;
   if(cmd.trimmed().toLower() == "quit") ecmaConsole->hide();
-  QScriptValue val = engine->evaluate(cmd);
-
+#if WITH_QT6
+  QJSValue val = engine->evaluate(cmd);
   QString msg = val.toString();
-
+  if(val.isError())
+    msg = "Error:" + msg;
+#else
+  QScriptValue val = engine->evaluate(cmd);
+  QString msg = val.toString();
   if(engine->hasUncaughtException())
     msg = "Uncaught exception:" + msg;
+#endif
 
   // do not show "undefined"
   if(msg.trimmed() != "undefined")
@@ -1242,7 +1278,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
 
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
      QByteArray nm = sf->name.trimmed().toLatin1();
 #else
      QByteArray nm = sf->name.trimmed().toAscii();
@@ -1277,7 +1313,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 		if( pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents() > 1) fieldType = "vector";
 		else fieldType = "scalar";
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     cout << fieldType.toLatin1().data() << ": ";
     cout << fieldName.toLatin1().data() << endl;
 #else
@@ -1457,7 +1493,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
         QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         mtc_domath(cmd.toLatin1().data());
 
         VARIABLE *var = var_check(name.toLatin1().data());
@@ -1485,7 +1521,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
       } else {
         size=sf->values*sizeof(double);
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         VARIABLE *var = var_check(name.toLatin1().data());
 #else
         VARIABLE *var = var_check(name.toAscii().data());
@@ -1636,7 +1672,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
 
-#ifdef WITH_QT5
+#if WITH_QT5 || WITH_QT6
      QByteArray nm = sf->name.trimmed().toLatin1();
 #else
      QByteArray nm = sf->name.trimmed().toAscii();
@@ -1667,7 +1703,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     fieldType = fieldType.trimmed();
     fieldName = fieldName.trimmed();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     cout << fieldType.toLatin1().data() << ": ";
     cout << fieldName.toLatin1().data() << endl;
 #else
@@ -1819,7 +1855,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
         QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         mtc_domath(cmd.toLatin1().data());
 
         VARIABLE *var = var_check(name.toLatin1().data());
@@ -1847,7 +1883,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
       } else {
         size=sf->values*sizeof(double);
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
         VARIABLE *var = var_check(name.toLatin1().data());
 #else
         VARIABLE *var = var_check(name.toAscii().data());
@@ -1940,7 +1976,7 @@ void VtkPost::addVectorField(QString fieldName, int values)
    
 #ifdef EG_MATC
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     QByteArray nm=fieldName.trimmed().toLatin1();
 #else
     QByteArray nm=fieldName.trimmed().toAscii();
@@ -1980,7 +2016,7 @@ ScalarField* VtkPost::addScalarField(QString fieldName, int values, double *valu
   if ( !sf->value ) {
 #ifdef EG_MATC
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
     QByteArray nm=fieldName.trimmed().toLatin1();
 #else
     QByteArray nm=fieldName.trimmed().toAscii();
@@ -3449,7 +3485,7 @@ bool VtkPost::SavePngFile(QString fileName)
 
   writer->SetInputConnection(image->GetOutputPort());
   
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   writer->SetFileName(fileName.toLatin1().data());
 #else
   writer->SetFileName(fileName.toAscii().data());
@@ -3512,6 +3548,16 @@ bool VtkPost::Execute(QString fileName)
   QByteArray script = scriptFile.readAll();
   scriptFile.close();
 
+#if WITH_QT6
+  QJSValue val = engine->evaluate(script);
+
+  if(val.isError()) {
+    int line = val.property("lineNumber").toInt();
+    QString msg = "Error at line" + QString::number(line) + ":" + val.toString();
+    ecmaConsole->append(msg);
+    return false;
+  }
+#else
   QScriptValue val = engine->evaluate(script);
 
   if(engine->hasUncaughtException()) {
@@ -3520,6 +3566,7 @@ bool VtkPost::Execute(QString fileName)
     ecmaConsole->append(msg);
     return false;
   }
+#endif
 
   // do not show "undefined"
   if(val.toString().trimmed() != "undefined")

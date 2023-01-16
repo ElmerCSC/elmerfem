@@ -179,10 +179,17 @@ void IsoSurface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   QStringList contourList = contourListText.split(";");
   int contourValues = contourList.count();
 
+#if WITH_QT6
+  vector<double> contourValue;
+  for(int i = 0; i < contourValues; i++)
+    contourValue.push_back(contourList.at(i).toDouble());  
+  sort(contourValue.begin(), contourValue.end());
+#else
   QVector<double> contourValue(contourValues);
   for(int i = 0; i < contourValues; i++)
     contourValue[i] = contourList.at(i).toDouble();  
   qSort(contourValue);
+#endif
 
   bool useListValues = false;
   if(!contourListText.isEmpty())

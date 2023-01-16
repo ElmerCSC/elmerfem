@@ -43,8 +43,7 @@
 #include <QtGui>
 #include <iostream>
 
-
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QtWidgets>
@@ -115,61 +114,72 @@ SifHighlighter::SifHighlighter(int type, QTextDocument *parent)
                 << "^\\s*Constants\\s*!"
                 << "^\\s*End\\s*!";
   foreach (const QString &pattern, blockPatterns) {
-    rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+    rule.pattern = REG_EXP_CLASS(pattern, OPTION_CASE_INSENSITIVE );
     rule.format = blockFormat;
     highlightingRules.append(rule);
   }
 
   keywordFormat.setForeground(cKeyword);
-  rule.pattern = QRegExp("\\bInteger\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bInteger\\b", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
-  rule.pattern = QRegExp("\\bReal\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bReal\\b", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
-  rule.pattern = QRegExp("\\bLogical\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bLogical\\b", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
-  rule.pattern = QRegExp("\\bMATC\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bMATC\\b", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
-  rule.pattern = QRegExp("\\bEquals\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bEquals\\b", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
 
   valueFormat.setForeground(cValue);
-  rule.pattern = QRegExp("\\bTrue\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bTrue\\b", OPTION_CASE_INSENSITIVE );
   rule.format = valueFormat;
   highlightingRules.append(rule);
-  rule.pattern = QRegExp("\\bFalse\\b", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\bFalse\\b", OPTION_CASE_INSENSITIVE );
   rule.format = valueFormat;
   highlightingRules.append(rule);
 
   quotationFormat.setForeground(cQuotation);
-  rule.pattern = QRegExp("\".*\"");
+  rule.pattern = REG_EXP_CLASS("\".*\"");
   rule.format = quotationFormat;
   highlightingRules.append(rule);
 
   suffixFormat.setForeground(cSuffix);
-  rule.pattern = QRegExp("\\([1-9][0-9]*\\)", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("\\([1-9][0-9]*\\)", OPTION_CASE_INSENSITIVE );
   rule.format = suffixFormat;
   highlightingRules.append(rule);
 
   commentFormat.setForeground(cComment);
   commentFormat.setFontWeight(QFont::Normal);
-  rule.pattern = QRegExp("![^\n]*");
+  rule.pattern = REG_EXP_CLASS("![^\n]*");
   rule.format = commentFormat;
   highlightingRules.append(rule);
 }
 
 void SifHighlighter::highlightBlock(const QString &text) {
   foreach (const HighlightingRule &rule, highlightingRules) {
-    QRegExp expression(rule.pattern);
+    REG_EXP_CLASS expression(rule.pattern);
+#if WITH_QT6
+	QRegularExpressionMatch rem;
+    int index = text.indexOf(expression, 0, &rem);
+#else
     int index = expression.indexIn(text);
+#endif
     while (index >= 0) {
+#if WITH_QT6
+      int length = rem.captured(0).length();
+      setFormat(index, length, rule.format);
+      index = text.indexOf(expression, index + length, &rem);
+#else
       int length = expression.matchedLength();
       setFormat(index, length, rule.format);
       index = expression.indexIn(text, index + length);
+#endif	
     }
   }
 }

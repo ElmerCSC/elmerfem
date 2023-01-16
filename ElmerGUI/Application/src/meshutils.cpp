@@ -1358,13 +1358,21 @@ int Meshutils::divideEdgeBySharpPoints(mesh_t *mesh)
 
 void Meshutils::sort_index(int n, double *a, int *b)
 {
+#if WITH_QT6
+  vector<QPair<double, int>> list;
+
+  for(int i = 0; i < n; i++)
+    list.push_back(qMakePair(a[i], b[i]));
+
+  sort(list.begin(), list.end());
+#else
   QList<QPair<double, int> > list;
 
   for(int i = 0; i < n; i++)
     list << qMakePair(a[i], b[i]);
 
   qSort(list);
-
+#endif
   for(int i = 0; i < n; i++) {
     a[i] = list[i].first;
     b[i] = list[i].second;

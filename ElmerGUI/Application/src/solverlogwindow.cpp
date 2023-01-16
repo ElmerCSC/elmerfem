@@ -43,7 +43,7 @@
 #include <QtGui>
 #include <iostream>
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QtWidgets>
@@ -89,21 +89,15 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
   HighlightingRule rule;
 
   keywordFormat.setForeground(cKeyword);
-  rule.pattern = QRegExp("^(.*)\\bWARNING\\b(.*)$", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("^(.*)\\bWARNING\\b(.*)$", OPTION_CASE_INSENSITIVE );
   rule.format = keywordFormat;
   highlightingRules.append(rule);
 
   suffixFormat.setForeground(cSuffix);
-  rule.pattern = QRegExp("^(.*)\\bERROR\\b(.*)$", Qt::CaseInsensitive);
+  rule.pattern = REG_EXP_CLASS("^(.*)\\bERROR\\b(.*)$", OPTION_CASE_INSENSITIVE );
   rule.format = suffixFormat;
   highlightingRules.append(rule);
-
-  commentFormat.setForeground(cComment);
-  rule.pattern =
-      QRegExp("^(.*) Elmer Solver: ALL DONE (.*)$", Qt::CaseSensitive);
-  rule.format = commentFormat;
-  highlightingRules.append(rule);
-
+  
   commentFormat.setForeground(cComment);
   QStringList patterns;
   patterns << "^(.*) Elmer Solver: ALL DONE (.*)$"
@@ -111,7 +105,7 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
            << "^(.*)SOLVER TOTAL TIME(.*)$"
            << "^(.*)ELMER SOLVER FINISHED AT:(.*)$";
   foreach (const QString &pattern, patterns) {
-    rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+    rule.pattern = REG_EXP_CLASS(pattern, OPTION_CASE_INSENSITIVE );
     rule.format = commentFormat;
     highlightingRules.append(rule);
   }
@@ -120,7 +114,7 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
   patterns.clear();
   patterns << "^(.*)\\b(\\S)*.ep\\b(.*)$";
   foreach (const QString &pattern, patterns) {
-    rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+    rule.pattern = REG_EXP_CLASS(pattern, OPTION_CASE_INSENSITIVE );
     rule.format = valueFormat;
     highlightingRules.append(rule);
   }
@@ -128,12 +122,23 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
 
 void SolverLogHighlighter::highlightBlock(const QString &text) {
   foreach (const HighlightingRule &rule, highlightingRules) {
-    QRegExp expression(rule.pattern);
+    REG_EXP_CLASS expression(rule.pattern);
+#if WITH_QT6
+	QRegularExpressionMatch rem;
+    int index = text.indexOf(expression, 0, &rem);
+#else
     int index = expression.indexIn(text);
+#endif
     while (index >= 0) {
+#if WITH_QT6
+      int length = rem.captured(0).length();
+      setFormat(index, length, rule.format);
+      index = text.indexOf(expression, index + length, &rem);
+#else
       int length = expression.matchedLength();
       setFormat(index, length, rule.format);
       index = expression.indexIn(text, index + length);
+#endif	
     }
   }
 }

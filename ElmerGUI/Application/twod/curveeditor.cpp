@@ -298,7 +298,7 @@ void CurveEditor::deletePoint()
   //---------------------------
   if(attached) {
     QString message = "Point is attached to curve " + QString::number(curve);
-    #if  WITH_QT5
+    #if  WITH_QT5 || WITH_QT6
     cout << message.toLatin1().data() << endl;
     #else
     cout << message.toAscii().data() << endl;
