@@ -1833,20 +1833,21 @@ MODULE PElementBase
 !          La*Lb*dLc*Lb_Laj*Lc_1n + La*Lb*Lc*j*toExp(Lb-La,j-1)*(dLb-dLa)*Lc_1n + &
 !          La*Lb*Lc*Lb_Laj*n*toExp(2*Lc-1,n-1)*(2d0*dLc)
 
+!     value = La*Lb*Lc*((Lb-La)**j)*((2*Lc-1)**n)
+
+
       grad(1,1) = &
          dLa(1)*(dLb(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(1)*(Lb*Lc*Lc_1n)+dLc_1n(1)*(Lb*Lc*Lb_Laj)) + &
-         dLb(1)*(dLa(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lc*Lc_1n)+dLc_1n(1)*(Lb*Lc*Lb_Laj)) + &
-         dLc(1)*(dLa(1)*(Lb*Lb_Laj*Lc_1n)+dLb(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lb*Lc_1n)+dLc_1n(1)*(Lb*Lc*Lb_Laj)) + &
+         dLb(1)*(dLa(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lc*Lc_1n)+dLc_1n(1)*(La*Lc*Lb_Laj)) + &
+         dLc(1)*(dLa(1)*(Lb*Lb_Laj*Lc_1n)+dLb(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lb*Lc_1n)+dLc_1n(1)*(La*Lb*Lb_Laj)) + &
          dLb_Laj(1)*(dLa(1)*(Lb*Lc*Lc_1n)+dLb(1)*(La*Lc*Lc_1n)+dLc(1)*(La*Lb*Lc_1n)+dLc_1n(1)*(La*Lb*Lc)) + &
          dLc_1n(1)*(dLa(1)*(Lb*Lc*Lb_Laj)+dLb(1)*(La*Lc*Lb_Laj)+dLc(1)*(La*Lb*Lb_Laj)+dLb_Laj(1)*(La*Lb*Lc)) + &
          ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(1)-dLa(1))**2 + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(1)**2
 
-
-
       grad(1,2) = &
         dLa(1)*(dLb(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(2)*(Lb*Lc*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
-        dLb(1)*(dLa(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lc*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
-        dLc(1)*(dLa(2)*(Lb*Lb_Laj*Lc_1n)+dLb(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
+        dLb(1)*(dLa(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lc*Lc_1n)+dLc_1n(2)*(La*Lc*Lb_Laj)) + &
+        dLc(1)*(dLa(2)*(Lb*Lb_Laj*Lc_1n)+dLb(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(La*Lb*Lb_Laj)) + &
         dLb_Laj(1)*(dLa(2)*(Lb*Lc*Lc_1n)+dLb(2)*(La*Lc*Lc_1n)+dLc(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(La*Lb*Lc)) + &
         dLc_1n(1)*(dLa(2)*(Lb*Lc*Lb_Laj)+dLb(2)*(La*Lc*Lb_Laj)+dLc(2)*(La*Lb*Lb_Laj)+dLb_Laj(2)*(La*Lb*Lc)) + &
         ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2)) + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(1)*dLc(2)
@@ -1855,8 +1856,8 @@ MODULE PElementBase
 
       grad(2,2) = &
         dLa(2)*(dLb(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(2)*(Lb*Lc*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
-        dLb(2)*(dLa(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lc*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
-        dLc(2)*(dLa(2)*(Lb*Lb_Laj*Lc_1n)+dLb(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
+        dLb(2)*(dLa(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lc*Lc_1n)+dLc_1n(2)*(La*Lc*Lb_Laj)) + &
+        dLc(2)*(dLa(2)*(Lb*Lb_Laj*Lc_1n)+dLb(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(La*Lb*Lb_Laj)) + &
         dLb_Laj(2)*(dLa(2)*(Lb*Lc*Lc_1n)+dLb(2)*(La*Lc*Lc_1n)+dLc(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(La*Lb*Lc)) + &
         dLc_1n(2)*(dLa(2)*(Lb*Lc*Lb_Laj)+dLb(2)*(La*Lc*Lb_Laj)+dLc(2)*(La*Lb*Lb_Laj)+dLb_Laj(2)*(La*Lb*Lc)) + &
         ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(2)-dLa(2))**2 + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(2)**2
