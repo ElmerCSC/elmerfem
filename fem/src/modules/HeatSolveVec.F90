@@ -114,7 +114,6 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('material','Phase Change Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('material','Heat Transfer Multiplier',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
-!  CALL ListWarnUnsupportedKeyword('solver','Adaptive Mesh Refinement',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
@@ -268,11 +267,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! for diffuse gray radiation.
     !-----------------------------------------------------------------------------
     IF( HaveFactors ) THEN
-      IF( iter == 1 ) THEN
-        CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
-      ELSE
-        CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect)
-      END IF
+      CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
     END IF
     
     totelem = 0
@@ -1132,29 +1127,36 @@ CONTAINS
 
        IF( PRESENT( Emiss ) ) THEN
          NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
-         Emiss(j) = SUM(NodalVal(1:n)) / n
-
-         NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
-         IF(Found) THEN
-           Absorp(j) = SUM(NodalVal(1:n)) / n
+         IF (Found) THEN
+           Emiss(j) = SUM(NodalVal(1:n)) / n
+           NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
+           IF(Found) THEN
+             Absorp(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp(j) = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp(j)
+           END IF
          ELSE
-           Absorp(j) = Emiss(j)
+           NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
+           Emiss(j) = SUM(NodalVal(1:n)) / n
+           NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
+           IF(Found) THEN
+             Absorp(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp(j) = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp(j)
+           END IF
          END IF
-
-         NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
-         IF(Found) THEN
-           Reflect(j) = SUM(NodalVal(1:n)) / n
-         ELSE
-           Reflect(j) = 1-Emiss(j)
-         END IF
-
- 
        END IF
      END DO
      
@@ -1262,12 +1264,12 @@ CONTAINS
       END IF
 
       Base = 0.0_dp
-      IF(.NOT.Spectral ) Emis1 = Emis1 / Refl1     
+      IF(.NOT. Spectral) Emis1 = Emis1 / Refl1     
       TempAtIp = SUM(NodalTemp(1:n))/n
 
       IF(Newton) THEN
-        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz + &
-             (Fact(1) - Fact(2)*TempAtIp)
+        RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
+             + Fact(1) 
         RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
       ELSE
         RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
@@ -1287,7 +1289,6 @@ CONTAINS
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
-        Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
         
     ELSE ! .NOT. Radiosity ) 

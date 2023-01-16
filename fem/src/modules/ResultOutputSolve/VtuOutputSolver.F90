@@ -173,10 +173,12 @@ CONTAINS
         ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
-            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name", Found)
+            IF(.NOT. Found) GroupName = 'Body'//I2S(GroupId)
           ELSE
             i = GroupId - CurrentModel % NumberOfBodies
-            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name",Found)
+            IF(.NOT. Found) GroupName = 'BC'//I2S(i)
           END IF
           VtuFile = TRIM(VtuFile)//"_"//TRIM(GroupName)
         END IF
