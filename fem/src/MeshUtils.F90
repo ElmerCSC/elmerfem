@@ -18551,6 +18551,8 @@ END SUBROUTINE FindNeighbourNodes
        DoInterp = .NOT. NoInterp
      END IF
 
+     Solver % Mesh => Mesh
+     CALL SetCurrentMesh( CurrentModel, Mesh )
 
      IF  (DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
@@ -18564,8 +18566,6 @@ END SUBROUTINE FindNeighbourNodes
     END IF
     Permutation = 0
 
-     Solver % Mesh => Mesh
-     CALL SetCurrentMesh( CurrentModel, Mesh )
      
      GlobalBubbles = ListGetLogical( Solver % Values, &
          'Bubbles in Global System', Found )
