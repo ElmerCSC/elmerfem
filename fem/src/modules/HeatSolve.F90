@@ -2189,7 +2189,7 @@ CONTAINS
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,n,l,t,DIM,Pn,En,nd
+     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
 
@@ -2259,17 +2259,19 @@ CONTAINS
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     ALLOCATE(Nodes % x(pn), Nodes % y(pn), Nodes % z(pn) )
+     nd = GetElementNOFDOFs(Element)
+     ALLOCATE( Temperature(nd), Basis(nd), ExtTemperature(nd), &
+        TransferCoeff(en), x(en), y(en), z(en), EdgeBasis(nd), &
+        dBasisdx(nd,3), NodalConductivity(nd), Flux(nd), &
+        NodalEmissivity(nd), Indexes(nd) ) 
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
 
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( Temperature(n), Basis(n), ExtTemperature(n), &
-        TransferCoeff(En), x(En), y(En), z(n), EdgeBasis(n), &
-        dBasisdx(n,3), NodalConductivity(n), Flux(n), &
-        NodalEmissivity(n), Indexes(n) ) 
+     ALLOCATE(Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
+     Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
+
 
      DO l = 1,en
        DO k = 1,pn
@@ -2362,8 +2364,7 @@ CONTAINS
 
         CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Heat Conductivity', Hwrk, en, Edge % NodeIndexes )
-
-        NodalConductivity( 1:en ) = Hwrk(1,1,1:en)
+        NodalConductivity(1:en) = Hwrk(1,1,1:en)
 
 !       elementwise nodal solution:
 !       ---------------------------
@@ -2389,9 +2390,9 @@ CONTAINS
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               s = IntegStuff % s(t) * detJ
            ELSE
-              gx = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:en) )
-              gy = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:en) )
-              gz = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:en) )
+              gx = SUM( EdgeBasis(1:en) * EdgeNodes % x(1:en) )
+              gy = SUM( EdgeBasis(1:en) * EdgeNodes % y(1:en) )
+              gz = SUM( EdgeBasis(1:en) * EdgeNodes % z(1:en) )
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, gx, gy, gz )
               s = IntegStuff % s(t) * detJ * SqrtMetric
@@ -2485,7 +2486,7 @@ CONTAINS
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,l,n,t,DIM,En,Pn,nd
+     INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
      LOGICAL :: stat, Found
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2529,12 +2530,7 @@ CONTAINS
 !
 !    ---------------------------------------------
 
-     Element => Edge % BoundaryInfo % Left
-     n = Element % TYPE % NumberOfNodes
-
-     Element => Edge % BoundaryInfo % Right
-     n = MAX( n, Element % TYPE % NumberOfNodes )
-
+     n = Mesh % MaxElementDOFs
      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
      en = Edge % TYPE % NumberOfNodes
@@ -2544,7 +2540,6 @@ CONTAINS
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     n = Mesh % MaxElementDOFs
      ALLOCATE( NodalConductivity(en), EdgeBasis(en), Basis(n), &
         dBasisdx(n,3), x(en), y(en), z(en), Temperature(n), Indexes(n) )
 
@@ -2598,7 +2593,7 @@ CONTAINS
 !          Next, get the integration point in parent
 !          local coordinates:
 !          -----------------------------------------
-           Pn = Element % TYPE % NumberOfNodes
+           pn = Element % TYPE % NumberOfNodes
 
            DO j = 1,en
               DO k = 1,pn
@@ -2611,19 +2606,18 @@ CONTAINS
               END DO
            END DO
 
-           u = SUM( EdgeBasis(1:en) * x(1:en) )
-           v = SUM( EdgeBasis(1:en) * y(1:en) )
-           w = SUM( EdgeBasis(1:en) * z(1:en) )
+           u = SUM(EdgeBasis(1:en) * x(1:en))
+           v = SUM(EdgeBasis(1:en) * y(1:en))
+           w = SUM(EdgeBasis(1:en) * z(1:en))
 !
 !          Get parent element basis & derivatives at the integration point:
 !          -----------------------------------------------------------------
            nd = GetElementDOFs(Indexes,Element)
+           Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+           Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+           Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
 
-           Nodes % x(1:pn) = Mesh % Nodes % x(Element % NodeIndexes)
-           Nodes % y(1:pn) = Mesh % Nodes % y(Element % NodeIndexes)
-           Nodes % z(1:pn) = Mesh % Nodes % z(Element % NodeIndexes)
-
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+           stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
 !
 !          Material parameters:
 !          --------------------
@@ -2656,7 +2650,7 @@ CONTAINS
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
            ELSE
-              DO l=1,DIM
+              DO l=1,dim
                  Jump = Jump + &
                        Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
               END DO
@@ -2741,31 +2735,30 @@ CONTAINS
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 
 !    Alllocate local arrays
 !    ----------------------
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( NodalDensity(n), NodalCapacity(n), NodalConductivity(n),       &
-         Velo(3,n), Pressure(n), NodalSource(n), Temperature(n), PrevTemp(n), &
-         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), Indexes(n) )
+     nd = GetElementNOFDOFs(Element)
+     n = GetElementNOFNodes(Element)
+     ALLOCATE( NodalDensity(nd), NodalCapacity(nd), NodalConductivity(nd),      &
+         Velo(3,nd), Pressure(nd), NodalSource(nd), Temperature(nd), PrevTemp(nd), &
+         Basis(nd), dBasisdx(nd,3), ddBasisddx(nd,3,3), Indexes(nd) )
 !
 !    Element nodal points:
 !    ---------------------
-     n = GetElementNOFNOdes()
-     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+     ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
+     Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z = Mesh % Nodes % z(Indexes(1:nd))
 !
 !    Elementwise nodal solution:
 !    ---------------------------
-     nd = GetElementNOFDOFs(Element)
-     nd = GetElementDOFs(Indexes,Element)
      Temperature(1:nd) = Quant(Perm(Indexes(1:nd)))
 !
 !    Check for time dep.
@@ -2871,6 +2864,7 @@ CONTAINS
      Area = 0.0d0
 
      IntegStuff = GaussPoints( Element )
+     ddBasisddx = 0
 
      DO t=1,IntegStuff % n
         u = IntegStuff % u(t)
@@ -2883,9 +2877,9 @@ CONTAINS
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            s = IntegStuff % s(t) * detJ
         ELSE
-           u = SUM(Basis(1:n) * Nodes % x(1:n))
-           v = SUM(Basis(1:n) * Nodes % y(1:n))
-           w = SUM(Basis(1:n) * Nodes % z(1:n))
+           u = SUM(Basis(1:nd) * Nodes % x(1:nd))
+           v = SUM(Basis(1:nd) * Nodes % y(1:nd))
+           w = SUM(Basis(1:nd) * Nodes % z(1:nd))
 
            CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                        Symb, dSymb, u, v, w )
@@ -2932,8 +2926,8 @@ CONTAINS
                  SUM( Temperature(1:nd) * ddBasisddx(1:nd,j,j) )
            END DO
         ELSE
-           DO j=1,DIM
-              DO k=1,DIM
+           DO j=1,dim
+              DO k=1,dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
@@ -2951,7 +2945,7 @@ CONTAINS
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,DIM
+                 DO l=1,dim
                     Residual = Residual + Metric(j,k) * Conductivity * &
                       Symb(j,k,l) * SUM( Temperature(1:nd) * dBasisdx(1:nd,l) )
                  END DO
@@ -2976,13 +2970,13 @@ CONTAINS
 !          + p div(u) or p u^j_{,j}:
 !          -------------------------
 !
-           DO j=1,DIM
+           DO j=1,dim
               Residual = Residual + &
                  SUM( Pressure(1:n) * Basis(1:n) ) * &
                       SUM( Velo(j,1:n) * dBasisdx(1:n,j) )
 
               IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-                 DO k=1,DIM
+                 DO k=1,dim
                     Residual = Residual + &
                        SUM( Pressure(1:n) * Basis(1:n) ) * &
                            Symb(j,k,j) * SUM( Velo(k,1:n) * Basis(1:n) )
