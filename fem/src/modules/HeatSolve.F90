@@ -2733,10 +2733,6 @@ CONTAINS
      IF (dim==3) EdgeLength = SQRT(EdgeLength)
      Indicator = EdgeLength * ResidualNorm
 
-     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, x, y, z)
-     DEALLOCATE( EdgeNodes % x, EdgeNodes % y, EdgeNodes % z)
-     DEALLOCATE( NodalConductivity, EdgeBasis, Basis, dBasisdx, Temperature)
-
 !------------------------------------------------------------------------------
   END FUNCTION HeatEdgeResidual
 !------------------------------------------------------------------------------
@@ -3075,10 +3071,6 @@ CONTAINS
 
 !    Fnorm = Element % hk**2 * Fnorm
      Indicator = Element % hK**2 * ResidualNorm
-
-     DEALLOCATE( NodalDensity, NodalCapacity, NodalConductivity,    &
-         Velo, Pressure, NodalSource, Temperature, PrevTemp, Basis, &
-         dBasisdx, ddBasisddx )
 !------------------------------------------------------------------------------
   END FUNCTION HeatInsideResidual
 !------------------------------------------------------------------------------
