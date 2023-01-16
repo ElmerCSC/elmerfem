@@ -2820,7 +2820,7 @@ CONTAINS
                     dLBasisdx(q,1:2) = dTriangleBubblePBasis(i,j,u,v)
 
                     IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,k+1,u,v)
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,j,u,v)
                     END IF
                  END IF
                  
@@ -2869,7 +2869,7 @@ CONTAINS
                     dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
 
                     IF(Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,k+1,u,v)
+                      ddLBasisddx(q,1:2,1:2) = ddQuadEdgePBasis(i,k+1,u,v,invert)
                     END IF
                  END IF
                  
@@ -2914,10 +2914,18 @@ CONTAINS
                  IF (Element % PDefs % isEdge) THEN
                     Basis(q) = QuadBubblePBasis(i,j,u,v,direction)
                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v,direction)
+
+                    IF(Compute2ndDerivatives) THEN
+                      CALL Fatal('ElementInfo', 'Out of luck for 3d boundary quad edge 2nd derivatives' )
+                    END IF
                  ELSE
                  ! 2d element bubbles have no direction
                     Basis(q) = QuadBubblePBasis(i,j,u,v)
                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
+                    END IF
                  END IF
 
                  ! Polynomial degree of basis function to vector
@@ -11507,7 +11515,7 @@ END SUBROUTINE PickActiveFace
      TYPE(Nodes_t)   :: nodes
      TYPE(Element_t) :: elm
 
-     INTEGER, OPTIONAL :: nd
+     INTEGER :: nd
  
      REAL(KIND=dp) :: u,v,w
      REAL(KIND=dp) ::  Metric(:,:)
