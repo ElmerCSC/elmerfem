@@ -3352,17 +3352,17 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'nonlin iter' )
      CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'nonlin iter', 1, V % Values )
-
+         'nonlin iter', 1, V % Values )
+     
      V => VariableGet( M1 % Variables, 'coupled iter' )
      CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'coupled iter', 1, V % Values )
-
+         'coupled iter', 1, V % Values )
+     
      V => VariableGet( M1 % Variables, 'partition' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
      END IF
-       
+     
      V => VariableGet( M1 % Variables, 'scan' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
@@ -3374,6 +3374,10 @@ CONTAINS
      V => VariableGet( M1 % Variables, 'produce' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'produce', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'run' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'run', 1, V % Values)
      END IF
      
 !------------------------------------------------------------------------------
@@ -20895,17 +20899,23 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t),  POINTER :: Mesh
 !------------------------------------------------------------------------------
+
+    IF(.NOT. ASSOCIATED(Mesh) ) THEN
+      CALL Fatal('SetCurrentMesh','Target mesh is not associated!')
+    END IF
+
     Model % Variables => Mesh % Variables
 
     Model % Mesh  => Mesh
     Model % Nodes => Mesh % Nodes
     Model % NumberOfNodes = Mesh % NumberOfNodes
     Model % Nodes % NumberOfNodes = Mesh % NumberOfNodes
-
+    
     Model % Elements => Mesh % Elements
     Model % MaxElementNodes = Mesh % MaxElementNodes
     Model % NumberOfBulkElements = Mesh % NumberOfBulkElements
     Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SetCurrentMesh
 !------------------------------------------------------------------------------

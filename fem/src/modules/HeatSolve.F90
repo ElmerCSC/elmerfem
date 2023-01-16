@@ -2368,8 +2368,8 @@ CONTAINS
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        s = ListGetConstReal( Model % BCs(j) % Values,'Temperature',Dirichlet )
-
+        Dirichlet = ListCheckPresent( Model % BCs(j) % Values,'Temperature')       
+        
 !       Get various flux bc options:
 !       ----------------------------
 

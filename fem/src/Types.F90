@@ -590,7 +590,7 @@ MODULE Types
           EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
-     INTEGER :: NumberOfConstraintModes = 0
+     INTEGER :: NumberOfConstraintModes = -1
      REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
           PrevValues(:,:) => NULL(), &
           PValues(:) => NULL(), NonlinValues(:) => NULL(), &
@@ -843,7 +843,16 @@ MODULE Types
      REAL(KIND=dp), POINTER :: dBasisdx(:,:) => NULL()
      REAL(KIND=dp) :: Weight = 0.0_dp
    END TYPE TabulatedBasisAtIp_t
-   
+
+   TYPE LumpedModel_t
+     LOGICAL :: IsComplex = .FALSE.
+     INTEGER :: CurrentRow = -1
+     INTEGER :: NoModes = 0
+     REAL(KIND=dp), POINTER :: CMatrix(:,:) => NULL()
+     REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
+   END TYPE LumpedModel_t
+
+        
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
@@ -891,7 +900,11 @@ MODULE Types
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
       LOGICAL :: Parallel = .FALSE.
 
-      TYPE(NormalTangential_t) :: NormalTangential      
+      TYPE(NormalTangential_t) :: NormalTangential
+
+      INTEGER :: NumberOfConstraintModes = -1 
+      TYPE(LumpedModel_t), POINTER :: Lumped => NULL()
+      
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
