@@ -5075,8 +5075,34 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckAllGlobal
 !------------------------------------------------------------------------------
+   
+!------------------------------------------------------------------------------
+!> Check Gets a real valued parameter in each node of an element.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListCheckIsConstant( List,Name,Found) RESULT( IsConstant ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*)  :: Name
+     LOGICAL, OPTIONAL :: Found
+     LOGICAL :: IsConstant
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
-
+     IsConstant = .FALSE.
+     ptr => ListFind(List,Name,Found)
+     IF (.NOT.ASSOCIATED(ptr) ) RETURN
+      
+     SELECT CASE(ptr % TYPE)
+     CASE( LIST_TYPE_CONSTANT_SCALAR, &
+         LIST_TYPE_CONSTANT_TENSOR, &
+         LIST_TYPE_LOGICAL, &
+         LIST_TYPE_INTEGER )
+       IsConstant = .TRUE.
+     END SELECT
+     IF( ptr % PROCEDURE /= 0) IsConstant = .FALSE.
+            
+   END FUNCTION ListCheckIsConstant
+!------------------------------------------------------------------------------
 
    
 !------------------------------------------------------------------------------
