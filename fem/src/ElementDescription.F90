@@ -2584,7 +2584,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: PSolver => NULL(), PrevSolver => NULL()
      REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
-     LOGICAL :: invert, degrees
+     LOGICAL :: invert, degrees, Compute2ndDerivatives
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
           tmp(4), direction(4)
      INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble
@@ -2592,6 +2592,8 @@ CONTAINS
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
              dLBasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
+
+     REAL(KIND=dp), ALLOCATABLE :: ddlBasisddx(:,:,:)
 
      TYPE(Element_t) :: Bubble
      TYPE(Element_t), POINTER :: Parent, Edge, Face
@@ -2642,11 +2644,33 @@ CONTAINS
         RETURN
      END IF
 
+     Compute2ndDerivatives = PRESENT(SecondDerivatives) .AND. PRESENT(ddBasisddx)
+     IF(Compute2ndDerivatives) Compute2ndDerivatives = SecondDerivatives
+
+     IF(Compute2ndDerivatives) THEN
+       ALLOCATE(ddLBasisddx(MAX(SIZE(Nodes % x),SIZE(ddBasisddx)),3,3))
+       Basis = 0
+       ddLBasisddx = 0._dp
+       DO i=1,n
+         Basis(i) = 1
+         SELECT CASE(dim)
+         CASE(1)
+           ddLBasisddx(i,1,1) = SecondDerivatives1D(element,basis,u)
+         CASE(2)
+           ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
+         CASE(3)
+           ddLBasisddx(i,1:3,1:3) = SecondDerivatives3D(element,basis,u,v,w)
+         END SELECT
+         Basis(i) = 0
+       END DO
+     END IF
+
      Basis = 0.0d0
      CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
 
      dLbasisdx = 0.0d0
      CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
+
 
      q = n
 
@@ -2699,6 +2723,11 @@ CONTAINS
               
               Basis(q) = LineBubblePBasis(i+1,u,invert)
               dLBasisdx(q,1) = dLineBubblePBasis(i+1,u,invert)
+
+
+              IF(Compute2ndDerivatives) THEN
+                ddLBasisddx(q,1,1) = ddLineBubblePBasis(i+1,u,invert)
+              END IF
               
               ! Polynomial degree of basis function to vector
               IF (degrees) BasisDegree(q) = 1+i
@@ -2738,6 +2767,10 @@ CONTAINS
                  Basis(q) = TriangleEdgePBasis(i, k+1, u, v, invert)
                  ! Value of derivative of basis function
                  dLBasisdx(q,1:2) = dTriangleEdgePBasis(i, k+1, u, v, invert)
+
+                 IF(Compute2ndDerivatives) THEN
+                   ddLBasisddx(q,1:2,1:2) = ddTriangleEdgePBasis(i,k+1,u,v,invert)
+                 END IF
                  
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
@@ -2777,10 +2810,18 @@ CONTAINS
                  IF (Element % PDefs % isEdge) THEN
                     Basis(q) = TriangleEBubblePBasis(i,j,u,v,direction) 
                     dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
+
+                    IF(Compute2ndDerivatives) THEN
+                      CALL Fatal('ElementInfo: ', 'Out of luck for triangle edge 2nd derivatives, sorry ?' )
+                    END IF
                  ELSE
                  ! 2d element bubbles have no direction
                     Basis(q) = TriangleBubblePBasis(i,j,u,v) 
                     dLBasisdx(q,1:2) = dTriangleBubblePBasis(i,j,u,v)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,k+1,u,v)
+                    END IF
                  END IF
                  
                  ! Polynomial degree of basis function to vector
@@ -2816,12 +2857,20 @@ CONTAINS
                  IF (Edge % PDefs % pyramidQuadEdge) THEN
                     Basis(q) = QuadPyraEdgePBasis(i,k+1,u,v,invert)
                     dLBasisdx(q,1:2) = dQuadPyraEdgePBasis(i,k+1,u,v,invert)
+
+                    IF(Compute2ndDerivatives) THEN
+                      CALL Fatal('ElementInfo: ', 'Out of luck for pyramid edge 2nd derivatives, sorry ?' )
+                    END IF
                  ! Normal case, use basis of quadrilateral
                  ELSE
                     ! Get values of basis functions for edge=i and i=k+1 by parity
                     Basis(q) = QuadEdgePBasis(i,k+1,u,v,invert)
                     ! Get value of derivatives of basis functions
                     dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,k+1,u,v)
+                    END IF
                  END IF
                  
                  ! Polynomial degree of basis function to vector
@@ -3379,17 +3428,9 @@ CONTAINS
 
      ! Get matrix of second derivatives, if needed:
      !---------------------------------------------
-     IF ( PRESENT(ddBasisddx) .AND. PRESENT(SecondDerivatives) ) THEN
-       IF ( SecondDerivatives ) THEN
-         NodalBasis = 0.0d0
-         ddBasisddx(1:n,:,:) = 0.0d0
-         DO q=1,n
-           NodalBasis(q) = 1.0d0
-           CALL GlobalSecondDerivatives(Element,Nodes,NodalBasis, &
-               ddBasisddx(q,:,:),u,v,w,ElmMetric,dLBasisdx )
-           NodalBasis(q) = 0.0d0
-         END DO
-       END IF
+     IF ( Compute2ndDerivatives ) THEN
+       CALL GlobalSecondDerivatives(Element,Nodes, &
+           ddBasisddx,u,v,w,ElmMetric,dLBasisdx,ddLBasisddx,q )
      END IF
 
 !------------------------------------------------------------------------------
@@ -11448,7 +11489,8 @@ END SUBROUTINE PickActiveFace
 !>          Compute elementwise matrix of second partial derivatives
 !>          at given point u,v,w in global coordinates.
 !------------------------------------------------------------------------------
-   SUBROUTINE GlobalSecondDerivatives(elm,nodes,f,values,u,v,w,Metric,dBasisdx)
+   SUBROUTINE GlobalSecondDerivatives(elm,nodes,values,u,v,w,Metric,&
+                     dBasisdx,ddLBasisddx,nd)
 !------------------------------------------------------------------------------
 !  
 !       Parameters:
@@ -11464,25 +11506,25 @@ END SUBROUTINE PickActiveFace
 
      TYPE(Nodes_t)   :: nodes
      TYPE(Element_t) :: elm
+
+     INTEGER, OPTIONAL :: nd
  
      REAL(KIND=dp) :: u,v,w
-     REAL(KIND=dp) ::  f(:),Metric(:,:)
-     REAL(KIND=dp) ::  values(:,:)
-     REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)
+     REAL(KIND=dp) ::  Metric(:,:)
+     REAL(KIND=dp) ::  values(:,:,:)
+     REAL(KIND=dp) :: dBasisdx(:,:), ddLBasisddx(:,:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,l,dim,cdim
+     INTEGER :: i,j,k,l,n,q,dim,cdim
 
      REAL(KIND=dp), DIMENSION(3,3,3) :: C1,C2,ddx
-     REAL(KIND=dp), DIMENSION(3)     :: df
-     REAL(KIND=dp), DIMENSION(3,3)   :: cddf,ddf,dx
+     REAL(KIND=dp) :: df(3), cddf(3,3),ddf(3,3),dx(3,3)
 
-     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
      REAL(KIND=dp) :: s
-
-     INTEGER :: n
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
 !------------------------------------------------------------------------------
+#if 0
 #if 1
 !
 ! This is actually not quite correct...
@@ -11496,6 +11538,7 @@ END SUBROUTINE PickActiveFace
           elm % TYPE % ElementCode == 303 .OR. &
           elm % TYPE % ElementCode == 504 ) RETURN
 #endif
+#endif
 
      n  = elm % TYPE % NumberOfNodes
      x => nodes % x
@@ -11505,62 +11548,41 @@ END SUBROUTINE PickActiveFace
      dim  = elm % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
+
 !------------------------------------------------------------------------------
 !    Partial derivatives of the basis functions are given, just
 !    sum for the first partial derivatives...
 !------------------------------------------------------------------------------
      dx = 0.0d0
-     df = 0.0d0
      SELECT CASE( cdim )
        CASE(1)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
          END DO
 
        CASE(2)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           dx(2,i) = SUM( y(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
+           dx(2,i) = SUM( y(1:nd)*dBasisdx(1:nd,i) )
          END DO
 
        CASE(3)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           dx(2,i) = SUM( y(1:n)*dBasisdx(1:n,i) )
-           dx(3,i) = SUM( z(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
+           dx(2,i) = SUM( y(1:nd)*dBasisdx(1:nd,i) )
+           dx(3,i) = SUM( z(1:nd)*dBasisdx(1:nd,i) )
          END DO
      END SELECT
 !------------------------------------------------------------------------------
 !     Get second partial derivatives with respect to local coordinates
 !------------------------------------------------------------------------------
-     SELECT CASE( dim )
-       CASE(1)
-!------------------------------------------------------------------------------
-!        Line elements
-!------------------------------------------------------------------------------
-         ddx(1,1,1) = SecondDerivatives1D( elm,x,u )
-         ddx(2,1,1) = SecondDerivatives1D( elm,y,u )
-         ddx(3,1,1) = SecondDerivatives1D( elm,z,u )
-
-       CASE(2)
-!------------------------------------------------------------------------------
-!        Surface elements
-!------------------------------------------------------------------------------
-         ddx(1,1:2,1:2) = SecondDerivatives2D( elm,x,u,v )
-         ddx(2,1:2,1:2) = SecondDerivatives2D( elm,y,u,v )
-         ddx(3,1:2,1:2) = SecondDerivatives2D( elm,z,u,v )
-
-       CASE(3)
-!------------------------------------------------------------------------------
-!        Volume elements
-!------------------------------------------------------------------------------
-         ddx(1,1:3,1:3) = SecondDerivatives3D( elm,x,u,v,w )
-         ddx(2,1:3,1:3) = SecondDerivatives3D( elm,y,u,v,w )
-         ddx(3,1:3,1:3) = SecondDerivatives3D( elm,z,u,v,w )
-      END SELECT
+     DO i=1,dim
+       DO j=1,dim
+         ddx(1,i,j) = SUM(ddLBasisddx(1:nd,i,j)*x(1:nd) )
+         ddx(2,i,j) = SUM(ddLBasisddx(1:nd,i,j)*y(1:nd) )
+         ddx(3,i,j) = SUM(ddLBasisddx(1:nd,i,j)*z(1:nd) )
+       END DO
+     END DO
 !
 !------------------------------------------------------------------------------
 !    Christoffel symbols of the second kind of the element coordinate system
@@ -11593,55 +11615,50 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !     First add ordinary partials (change of the quantity with coordinates)...
 !------------------------------------------------------------------------------
-      SELECT CASE(dim)
-        CASE(1)
-          ddf(1,1) = SecondDerivatives1D( elm,f,u )
+     Values = 0.0d0
+     DO q=1,nd
+       df  = dBasisdx(q,:)
+       ddf = ddLBasisddx(q,:,:)
 
-        CASE(2)
-          ddf(1:2,1:2) = SecondDerivatives2D( elm,f,u,v )
-
-        CASE(3)
-          ddf(1:3,1:3) = SecondDerivatives3D( elm,f,u,v,w )
-      END SELECT
 !------------------------------------------------------------------------------
 !     ... then add change of coordinates
 !------------------------------------------------------------------------------
-      DO i=1,dim
-        DO j=1,dim
-          s = 0.0d0
-          DO k=1,dim
-            s = s - C1(i,j,k)*df(k)
-          END DO
-          ddf(i,j) = ddf(i,j) + s
-        END DO
-      END DO
-!------------------------------------------------------------------------------
-!     Convert to contravariant base
-!------------------------------------------------------------------------------
-      DO i=1,dim
-        DO j=1,dim
-          s = 0.0d0
-          DO k=1,dim
-            DO l=1,dim
-              s = s + Metric(i,k)*Metric(j,l)*ddf(k,l)
+        DO i=1,dim
+          DO j=1,dim
+            s = 0.0d0
+            DO k=1,dim
+              s = s - C1(i,j,k)*df(k)
             END DO
+            ddf(i,j) = ddf(i,j) + s
           END DO
-          cddf(i,j) = s
         END DO
-      END DO
 !------------------------------------------------------------------------------
-!    And finally transform to global coordinates 
+!       Convert to contravariant base
 !------------------------------------------------------------------------------
-      Values = 0.0d0
-      DO i=1,cdim
-        DO j=1,cdim
-          s = 0.0d0
-          DO k=1,dim
-            DO l=1,dim
-              s = s + dx(i,k)*dx(j,l)*cddf(k,l)    
+        DO i=1,dim
+          DO j=1,dim
+            s = 0.0d0
+            DO k=1,dim
+              DO l=1,dim
+                s = s + Metric(i,k)*Metric(j,l)*ddf(k,l)
+              END DO
             END DO
+            cddf(i,j) = s
           END DO
-          Values(i,j) = s
+        END DO
+!------------------------------------------------------------------------------
+!      And finally transform to global coordinates 
+!------------------------------------------------------------------------------
+        DO i=1,cdim
+          DO j=1,cdim
+            s = 0.0d0
+            DO k=1,dim
+              DO l=1,dim
+                s = s + dx(i,k)*dx(j,l)*cddf(k,l)    
+              END DO
+            END DO
+            Values(q,i,j) = s
+          END DO
         END DO
       END DO
 !------------------------------------------------------------------------------

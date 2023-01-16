@@ -1963,7 +1963,7 @@ END SUBROUTINE HeatSolver
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,n,l,t,DIM,Pn,En,nd
+     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
 
@@ -2138,8 +2138,7 @@ END SUBROUTINE HeatSolver
 
         CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Heat Conductivity', Hwrk, en, Edge % NodeIndexes )
-
-        NodalConductivity( 1:en ) = Hwrk(1,1,1:en)
+        NodalConductivity(1:en) = Hwrk(1,1,1:en)
 
 !       elementwise nodal solution:
 !       ---------------------------
@@ -2261,7 +2260,7 @@ END SUBROUTINE HeatSolver
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,l,n,t,DIM,En,Pn,nd
+     INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
      LOGICAL :: stat, Found
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2425,7 +2424,7 @@ END SUBROUTINE HeatSolver
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
            ELSE
-              DO l=1,DIM
+              DO l=1,dim
                  Jump = Jump + &
                        Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
               END DO
@@ -2510,9 +2509,9 @@ END SUBROUTINE HeatSolver
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 
 !    Alllocate local arrays
@@ -2701,8 +2700,8 @@ END SUBROUTINE HeatSolver
                  SUM( Temperature(1:nd) * ddBasisddx(1:nd,j,j) )
            END DO
         ELSE
-           DO j=1,DIM
-              DO k=1,DIM
+           DO j=1,dim
+              DO k=1,dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
@@ -2720,7 +2719,7 @@ END SUBROUTINE HeatSolver
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,DIM
+                 DO l=1,dim
                     Residual = Residual + Metric(j,k) * Conductivity * &
                       Symb(j,k,l) * SUM( Temperature(1:nd) * dBasisdx(1:nd,l) )
                  END DO
@@ -2745,13 +2744,13 @@ END SUBROUTINE HeatSolver
 !          + p div(u) or p u^j_{,j}:
 !          -------------------------
 !
-           DO j=1,DIM
+           DO j=1,dim
               Residual = Residual + &
                  SUM( Pressure(1:n) * Basis(1:n) ) * &
                       SUM( Velo(j,1:n) * dBasisdx(1:n,j) )
 
               IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-                 DO k=1,DIM
+                 DO k=1,dim
                     Residual = Residual + &
                        SUM( Pressure(1:n) * Basis(1:n) ) * &
                            Symb(j,k,j) * SUM( Velo(k,1:n) * Basis(1:n) )
