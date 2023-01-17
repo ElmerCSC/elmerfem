@@ -220,8 +220,8 @@ CONTAINS
      MaxFDOFs = Mesh % MaxFaceDOFs
      MaxNDOFs = Mesh % MaxNDOFs
      NodalIndexOffset = MaxNDOFs * Mesh % NumberOfNodes
-     EdgeIndexOffset = MaxEDOFs * Mesh % NumberOfEdges
-     FaceIndexOffset = MaxFDOFs * Mesh % NumberOfFaces
+     EdgeIndexOffset  = MaxEDOFs * Mesh % NumberOfEdges
+     FaceIndexOffset  = MaxFDOFs * Mesh % NumberOfFaces
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles

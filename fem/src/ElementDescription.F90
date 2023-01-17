@@ -2660,6 +2660,7 @@ CONTAINS
            ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
          CASE(3)
            ddLBasisddx(i,1:3,1:3) = SecondDerivatives3D(element,basis,u,v,w)
+!          ddLBasisddx(i,1:3,1:3) = ddBrickNodalPBasis(i,u,v,w)
          END SELECT
          Basis(i) = 0
        END DO
@@ -3325,11 +3326,19 @@ CONTAINS
                     ! Get values of edge basis functions and their derivatives
                     Basis(q) = BrickPyraEdgePBasis(i,k+1,u,v,w,invert)
                     dLBasisdx(q,1:3) = dBrickPyraEdgePBasis(i,k+1,u,v,w,invert)
+
+                    IF(Compute2ndDerivatives) THEN
+                      CALL Fatal('ElementInfo', 'Out of luck for brick/pyramid edge 2nd derivatives' )
+                    END IF
                  ! Normal case. Use standard brick edge functions
                  ELSE
                     ! Get values of edge basis functions and their derivatives
                     Basis(q) = BrickEdgePBasis(i,k+1,u,v,w,invert)
                     dLBasisdx(q,1:3) = dBrickEdgePBasis(i,k+1,u,v,w,invert)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:3,1:3) = ddBrickEdgePBasis(i,k+1,u,v,w,invert)
+                    END IF
                  END IF
 
                  ! Polynomial degree of basis function to vector
@@ -3363,6 +3372,9 @@ CONTAINS
                     Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
                     dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
 
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:3,1:3) = ddBrickFacePBasis(F,i,j,u,v,w,direction)
+                    END IF
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = i+j
                  END DO
@@ -3392,6 +3404,9 @@ CONTAINS
                     Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
 
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:3,1:3) = ddBrickBubblePBasis(i,j,k,u,v,w)
+                    END IF
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = i+j+k
                  END DO

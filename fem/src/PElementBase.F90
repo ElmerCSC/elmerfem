@@ -995,7 +995,7 @@ MODULE PElementBase
 
 
 !------------------------------------------------------------------------------
-!>     Gradient of quadrilateral bubble basis at point (u,v).
+!>     2nd derivatives of quadrilateral bubble basis at point (u,v).
 !------------------------------------------------------------------------------
     FUNCTION ddQuadBubblePBasis(i,j,u,v, localNumbers) RESULT(grad)
 !------------------------------------------------------------------------------
@@ -1138,11 +1138,11 @@ MODULE PElementBase
       CASE (1)
          grad(1:2) = [ -1d0/2, -1d0/2 ]
       CASE (2)
-         grad(1:2) = [ 1d0/2, -1d0/2 ]
+         grad(1:2) = [  1d0/2, -1d0/2 ]
       CASE (3)
-         grad(1:2) = [ 1d0/2, 1d0/2 ]
+         grad(1:2) = [  1d0/2,  1d0/2 ]
       CASE (4)
-         grad(1:2) = [ -1d0/2, 1d0/2 ]
+         grad(1:2) = [ -1d0/2,  1d0/2 ]
       CASE DEFAULT
          CALL Fatal('PElementBase::dQuadL', 'Unknown helper function dL for quad')
       END SELECT
@@ -1558,50 +1558,35 @@ MODULE PElementBase
 
       SELECT CASE(edge)
       CASE (1)
-         LA = TriangleNodalPBasis(1,u,v)
-         LB = TriangleNodalPBasis(2,u,v)
-
          dLAu = dL1u
          dLBu = dL2u
          dLAv = dL1v
          dLBv = dL2v
-         IF(Invert) THEN
-           swap = LA; LA=LB; LB = swap
-           swap = dLAu; dLAu=dLBu; dLBu = swap
-           swap = dLAv; dLAv=dLBv; dLBv = swap
-         END IF
+         LA = TriangleNodalPBasis(1,u,v)
+         LB = TriangleNodalPBasis(2,u,v)
       CASE(2)
-         LA = TriangleNodalPBasis(2,u,v)
-         LB = TriangleNodalPBasis(3,u,v)
-
          dLAu = dL2u
          dLBu = dL3u
          dLAv = dL2v
          dLBv = dL3v
-         IF(Invert) THEN
-           swap = LA; LA=LB; LB = swap
-           swap = dLAu; dLAu=dLBu; dLBu = swap
-           swap = dLAv; dLAv=dLBv; dLBv = swap
-         END IF
-
+         LA = TriangleNodalPBasis(2,u,v)
+         LB = TriangleNodalPBasis(3,u,v)
       CASE(3)
-         LA = TriangleNodalPBasis(3,u,v)
-         LB = TriangleNodalPBasis(1,u,v)
-
          dLAu = dL3u
          dLBu = dL1u
          dLAv = dL3v
          dLBv = dL1v
-         IF(Invert) THEN
-           swap = LA; LA=LB; LB = swap
-           swap = dLAu; dLAu=dLBu; dLBu = swap
-           swap = dLAv; dLAv=dLBv; dLBv = swap
-         END IF
+         LA = TriangleNodalPBasis(3,u,v)
+         LB = TriangleNodalPBasis(1,u,v)
       CASE DEFAULT
          CALL Fatal('PElementBase::dTriangleEdgePBasis', 'Unknown edge for triangle')
       END SELECT 
 
-
+      IF(Invert) THEN
+        swap = LA; LA=LB; LB = swap
+        swap = dLAu; dLAu=dLBu; dLBu = swap
+        swap = dLAv; dLAv=dLBv; dLBv = swap
+      END IF
 
       grad(1,1) = LA*LB*(dLBu-dLAu)**2*ddVarPhi(i,LB-LA) + &
         2*(dLAu*LB+LA*dLBu)*(dLBu-dLAu)*dVarPhi(i,LB-LA) + &
@@ -1891,6 +1876,7 @@ MODULE PElementBase
            La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*(2*dLc)
     END FUNCTION dTriangleEBubblePBasis
 
+
     ! 3D ELEMENTS
 
     FUNCTION BrickNodalPBasis(node, u, v, w) RESULT(value)
@@ -1994,6 +1980,62 @@ MODULE PElementBase
          CALL Fatal('PElementBase::dBrickNodalPBasis','Unknown node for brick')
       END SELECT
     END FUNCTION dBrickNodalPBasis
+
+
+    FUNCTION ddBrickNodalPBasis(node, u, v, w) RESULT(grad)
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: node
+      REAL(Kind=dp), INTENT(IN) :: u,v,w
+
+      ! Variables
+      REAL(Kind=dp) :: grad(3,3)
+
+      grad = 0
+
+      SELECT CASE (node)
+      CASE (1)
+         grad(1,2) =  (1-w)
+         grad(1,3) =  (1-v)
+         grad(2,3) =  (1-u)
+      CASE (2)
+         grad(1,2) = -(1-w) 
+         grad(1,3) = -(1-v)
+         grad(2,3) =  (1+u)
+      CASE (3)
+         grad(1,2) =  (1-w) 
+         grad(1,3) = -(1+v)
+         grad(2,3) = -(1+u)
+      CASE (4)
+         grad(1,2) = -(1-w) 
+         grad(1,3) =  (1+v)
+         grad(2,3) = -(1-u)
+      CASE (5)
+         grad(1,2) =  (1+w) 
+         grad(1,3) = -(1-v)
+         grad(2,3) = -(1-u)
+      CASE (6)
+         grad(1,2) = -(1+w) 
+         grad(1,3) =  (1-v)
+         grad(2,3) = -(1+u)
+      CASE (7)
+         grad(1,2) = (1+w) 
+         grad(1,3) = (1+v)
+         grad(2,3) = (1+u)
+      CASE (8)
+         grad(1,2) = -(1+w) 
+         grad(1,3) = -(1+v)
+         grad(2,3) =  (1-u)
+      CASE DEFAULT
+         CALL Fatal('PElementBase::dBrickNodalPBasis','Unknown node for brick')
+      END SELECT
+      grad = grad / 8
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddBrickNodalPBasis
+
 
 
     ! As previous except obtain all nodal values at once. 
@@ -2253,6 +2295,154 @@ MODULE PElementBase
 
 
 !------------------------------------------------------------------------------
+!>     2nd derivatives of brick edge basis at point (u,v,w).
+!------------------------------------------------------------------------------
+    FUNCTION ddBrickEdgePBasis(edge, i , u, v, w, invertEdge) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: edge
+!      INPUT: number of bricks edge function to calculate
+!        edge = {1,2,..,12}
+!
+!    INTEGER :: i
+!      INPUT: index of edge function, i = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    LOGICAL, OPTIONAL :: invertEdge
+!      INPUT: whether to invert edge or not. If this flag is set to true
+!        edge changing parameter of edge function is varied from [1,-1] in
+!        stead of usual [-1,1].
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3,3)
+!       gradient of bricks edge function i at point (u,v,w), i.e.
+!       grad = dN_i^{edge}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+      
+      ! Parameters 
+      INTEGER, INTENT(IN) :: edge, i
+      REAL (KIND=dp), INTENT(IN) :: u, v, w
+      LOGICAL, OPTIONAL :: invertEdge
+      ! Variables
+      LOGICAL :: invert
+      REAL (KIND=dp) :: phiU, phiV, phiW, phiPar 
+      REAL (KIND=dp), DIMENSION(3,3) :: grad
+      
+      ! By default do not invert edges
+      invert = .FALSE.
+      IF (PRESENT(invertEdge)) invert = invertEdge
+
+      ! For inverted edges parameter inside phi function changes mark
+      SELECT CASE(edge)
+      ! Xi
+      CASE (1,3,5,7)
+         phiPar = u
+      ! Eta
+      CASE (2,4,6,8)
+         phiPar = v
+      ! Zeta
+      CASE (9,10,11,12)
+         phiPar = w
+      END SELECT
+      IF (invert) phiPar = -phiPar
+
+      grad = 0
+      SELECT CASE(edge)
+      CASE (1)
+         grad(1,1) = ddPhi(i,phiPar)*(1-v)*(1-w)
+         grad(1,2) = -dPhi(i,phiPar)*(1-w)
+         grad(1,3) = -dPhi(i,phiPar)*(1-v)
+         grad(2,3) = Phi(i,phiPar)
+      CASE (2)
+         grad(1,2) = dPhi(i,phiPar)*(1-w)
+         grad(1,3) = -Phi(i,phiPar)
+         grad(2,2) = ddPhi(i,phiPar)*(1+u)*(1-w)
+         grad(2,3) = -dPhi(i,phiPar)*(1+u)
+      CASE (3)
+         grad(1,1) =  ddPhi(i,phiPar)*(1+v)*(1-w)
+         grad(1,2) =  dPhi(i,phiPar)*(1-w)
+         grad(1,3) = -dPhi(i,phiPar)*(1+v)
+         grad(2,3) = -Phi(i,phiPar)
+      CASE (4)
+         grad(1,2) = -dPhi(i,phiPar)*(1-w)
+         grad(1,3) = Phi(i,phiPar)
+         grad(2,2) = ddPhi(i,phiPar)*(1-u)*(1-w)
+         grad(2,3) = -dPhi(i,phiPar)*(1-u)
+      CASE (5)
+         grad(1,1) = ddPhi(i,phiPar)*(1-v)*(1+w)
+         grad(1,2) = -dPhi(i,phiPar)*(1+w)
+         grad(1,3) =  dPhi(i,phiPar)*(1-v)
+         grad(2,3) = -Phi(i,phiPar)
+      CASE (6)
+         grad(1,2) = dPhi(i,phiPar)*(1+w)
+         grad(1,3) = Phi(i,phiPar)
+         grad(2,2) = ddPhi(i,phiPar)*(1+u)*(1+w)
+         grad(2,3) = dPhi(i,phiPar)*(1+u)
+      CASE (7)
+         grad(1,1) = ddPhi(i,phiPar)*(1+v)*(1+w)
+         grad(1,2) = dPhi(i,phiPar)*(1+w)
+         grad(1,3) = dPhi(i,phiPar)*(1+v)
+         grad(2,3) = Phi(i,phiPar)
+      CASE (8)
+         grad(1,2) = -dPhi(i,phiPar)*(1+w)
+         grad(1,3) = -Phi(i,phiPar)
+         grad(2,2) = ddPhi(i,phiPar)*(1-u)*(1+w)
+         grad(2,3) = dPhi(i,phiPar)*(1-u)
+      CASE (9)
+         grad(1,2) = Phi(i,phiPar)
+         grad(1,3) = -dPhi(i,phiPar)*(1-v)
+         grad(2,3) = -dPhi(i,phiPar)*(1-u)
+         grad(3,3) = ddPhi(i,phiPar)*(1-u)*(1-v)
+      CASE (10)
+         grad(1,2) = -Phi(i,phiPar)
+         grad(1,3) = dPhi(i,phiPar)*(1-v)
+         grad(2,3) = -dPhi(i,phiPar)*(1+u)
+         grad(3,3) = ddPhi(i,phiPar)*(1+u)*(1-v)
+      CASE (11)
+         grad(1,2) = Phi(i,phiPar)
+         grad(1,3) = dPhi(i,phiPar)*(1+v)
+         grad(2,3) = dPhi(i,phiPar)*(1+u)
+         grad(3,3) = ddPhi(i,phiPar)*(1+u)*(1+v)
+      CASE (12)
+         grad(1,2) = -Phi(i,phiPar)
+         grad(1,3) = -dPhi(i,phiPar)*(1+v)
+         grad(2,3) = dPhi(i,phiPar)*(1-u)
+         grad(3,3) = ddPhi(i,phiPar)*(1-u)*(1+v)
+      CASE DEFAULT
+         CALL Fatal('PElementBase::ddBrickEdgePBasis','Unknown edge for brick')
+      END SELECT 
+
+      ! Finally add derivative of dPhi s inner function to gradient
+      ! if edge was inverted (=multiply by -1)
+      IF (invert) THEN
+         SELECT CASE(edge)
+         ! Xi
+         CASE (1,3,5,7)
+            grad(1,2) = -grad(1,2)
+            grad(1,3) = -grad(1,3)
+         ! Eta
+         CASE (2,4,6,8)
+            grad(1,2) = -grad(1,2)
+            grad(2,3) = -grad(2,3)
+         ! Zeta
+         CASE (9,10,11,12)
+            grad(1,3) = -grad(1,3)
+            grad(2,3) = -grad(2,3)
+         END SELECT
+      END IF
+      grad = grad / 4
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddBrickEdgePBasis
+
+
+!------------------------------------------------------------------------------
 !>     Brick edge basis at point (u,v,w). Compatible with pyramidal edge basis.
 !------------------------------------------------------------------------------
     FUNCTION BrickPyraEdgePBasis(edge, i , u, v, w, invertEdge) RESULT(value)
@@ -2398,6 +2588,7 @@ MODULE PElementBase
       ! Get value of edge function
       grad = dNa*Nb*vPhi + Na*dNb*vPhi + Na*Nb*dVarPhi(i,Lb-La)*(dLb-dLa)
     END FUNCTION dBrickPyraEdgePBasis
+
 
 !------------------------------------------------------------------------------    
 !>     Brick face basis at point (u,v,w)
@@ -2556,6 +2747,142 @@ MODULE PElementBase
            Lh*phiI*dPhi(j,Lc-La)*(dLc-dLa))
     END FUNCTION dBrickFacePBasis
 
+!------------------------------------------------------------------------------
+!>     2nd derivatives of brick face basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddBrickFacePBasis(face, i, j, u, v, w, localNumbers) RESULT(grad)
+!------------------------------------------------------------------------------    
+!
+!  ARGUMENTS:
+!    INTEGER :: face
+!      INPUT: number of bricks face function to calculate
+!        edge = {1,2,..,6}
+!
+!    INTEGER :: i,j
+!      INPUT: index of face function, i,j = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    INTEGER, OPTIONAL :: localNumber(4)
+!      INPUT: local numbering of square face to define direction of face
+!        function. Default numbering is that defined for face in PElementMaps
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of bricks face function m(i,j) at point (u,v,w), i.e.
+!       grad = N_{m(i,j)}^{face}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE 
+
+      ! Parameters 
+      INTEGER, INTENT(IN) :: face, i, j
+      REAL (KIND=dp), INTENT(IN) :: u, v, w
+      INTEGER, DIMENSION(4), OPTIONAL :: localNumbers
+
+      ! Variables
+      INTEGER, DIMENSION(4) :: local
+      REAL (KIND=dp) :: La, Lb, Lc, Lh, phiI, phiJ, grad(3,3)
+      REAL (KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dLh
+      
+      ! If local numbering not present use default numbering
+      IF (.NOT. PRESENT(localNumbers)) THEN
+         local(1:4) = getBrickFaceMap(face)
+      ELSE
+         local(1:4) = localNumbers(1:4)
+      END IF
+
+      ! Set parameters for face calculation
+      La = BrickL(local(1),u,v,w)
+      Lb = BrickL(local(2),u,v,w)
+      Lc = BrickL(local(4),u,v,w)
+      dLa = dBrickL(local(1),u,v,w)
+      dLb = dBrickL(local(2),u,v,w)
+      dLc = dBrickL(local(4),u,v,w)
+
+      SELECT CASE(face)
+      CASE(1)
+         Lh = (1-w)
+         dLh = [ 0d0,0d0,-1d0 ]
+      CASE(2)
+         Lh = (1+w)
+         dLh = [ 0d0,0d0,1d0 ]
+      CASE(3)
+         Lh = (1-v)
+         dLh = [ 0d0,-1d0,0d0 ]
+      CASE(4)
+         Lh = (1+u)
+         dLh = [ 1d0, 0d0, 0d0]
+      CASE(5)
+         Lh = (1+v)
+         dLh = [ 0d0,1d0,0d0 ]
+      CASE(6)
+         Lh = (1-u)
+         dLh = [ -1d0,0d0,0d0 ]
+      CASE DEFAULT
+         CALL Fatal('PElementBase::dBrickFacePBasis','Unknown face for brick')
+      END SELECT
+
+      ! Calculate value of gradient from general form
+      grad = 0
+      phiI = Phi(i,Lb-La)
+      phiJ = Phi(j,Lc-La)
+
+!     grad = (dLh*phiI*phiJ + Lh*dPhi(i,Lb-La)*(dLb-dLa)*phiJ + &
+!                  Lh*phiI*dPhi(j,Lc-La)*(dLc-dLa)) / 2
+
+      grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLa(1)-dLb(1))*Phi(j,Lc-La)
+      grad(1,1) = grad(1,1) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
+      grad(1,1) = grad(1,1) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))**2*Phi(j,Lc-La)
+      grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLC(1)-dLa(1))
+      grad(1,1) = grad(1,1) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,1) = grad(1,1) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))**2
+
+      grad(1,2) = grad(1,2) + dLh(1)*dPhi(i,Lb-La)*(dLa(2)-dLb(2))*Phi(j,Lc-La)
+      grad(1,2) = grad(1,2) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(1,2) = grad(1,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
+      grad(1,2) = grad(1,2) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
+      grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*ddPhi(j,Lc-La)*(dLC(2)-dLa(2))
+      grad(1,2) = grad(1,2) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,2) = grad(1,2) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(2)-dLa(2))
+
+      grad(1,3) = grad(1,3) + dLh(1)*dPhi(i,Lb-La)*(dLa(3)-dLb(3))*Phi(j,Lc-La)
+      grad(1,3) = grad(1,3) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
+      grad(1,3) = grad(1,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
+      grad(1,3) = grad(1,3) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
+      grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*ddPhi(j,Lc-La)*(dLC(3)-dLa(3))
+      grad(1,3) = grad(1,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,3) = grad(1,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(3)-dLa(3))
+
+      grad(2,2) = grad(2,2) + dLh(2)*dPhi(i,Lb-La)*(dLa(2)-dLb(2))*Phi(j,Lc-La)
+      grad(2,2) = grad(2,2) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(2,2) = grad(2,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
+      grad(2,2) = grad(2,2) + Lh*ddPhi(i,Lb-La)*(dLb(2)-dLa(2))**2*Phi(j,Lc-La)
+      grad(2,2) = grad(2,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLC(2)-dLa(2))
+      grad(2,2) = grad(2,2) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(2,2) = grad(2,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(2,2) = grad(2,2) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(2)-dLa(2))**2
+
+      grad(2,3) = grad(2,3) + dLh(2)*dPhi(i,Lb-La)*(dLa(3)-dLb(3))*Phi(j,Lc-La)
+      grad(2,3) = grad(2,3) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
+      grad(2,3) = grad(2,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
+      grad(2,3) = grad(2,3) + Lh*ddPhi(i,Lb-La)*(dLb(2)-dLa(2))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
+      grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*ddPhi(j,Lc-La)*(dLC(3)-dLa(3))
+      grad(2,3) = grad(2,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(2,3) = grad(2,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(2)-dLa(2))*(dLc(3)-dLa(3))
+
+      grad = grad / 2
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddBrickFacePBasis
+
 
 !------------------------------------------------------------------------------
 !>    Brick bubble basis at point (u,v,w).
@@ -2624,6 +2951,51 @@ MODULE PElementBase
       grad(2) = phiU*dPhi(j,v)*phiW
       grad(3) = phiU*phiV*dPhi(k,w)
     END FUNCTION dBrickBubblePBasis
+
+!------------------------------------------------------------------------------
+!>    2nd derivatives of brick bubble basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddBrickBubblePBasis(i, j, k, u, v, w) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: i,j,k
+!      INPUT: index of bubble function, (i,j,k) = {(2,2,2),(2,2,3),...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of bricks bubble function (i,j,k) at point (u,v,w), 
+!       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters 
+      INTEGER, INTENT(IN) :: i, j, k
+      REAL (KIND=dp), INTENT(IN) :: u, v, w
+      ! Variables
+      REAL (KIND=dp) :: phiU, phiV, phiW
+      REAL (KIND=dp), DIMENSION(3,3) :: grad
+
+      grad = 0
+
+      grad(1,1) = ddPhi(i,u)*PhiV*phiW
+      grad(1,2) = dPhi(i,u)*dPhi(j,v)*phiW
+      grad(1,3) = dPhi(i,u)*PhiV*dPhi(k,w)
+
+      grad(2,2) = PhiU*ddPhi(j,v)*phiW
+      grad(2,3) = PhiU*dPhi(j,v)*dPhi(k,w)
+
+      grad(3,3) = PhiU*PhiV*ddPhi(k,w)
+
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddBrickBubblePBasis
+
 
     FUNCTION BrickL(which, u, v, w) RESULT(value)
       IMPLICIT NONE
