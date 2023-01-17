@@ -1235,11 +1235,11 @@ CONTAINS
             CASE(4)
               ngp = 20
             CASE(5)
-              ngp = 25
-            CASE(6)
               ngp = 36
-            CASE(7)
+            CASE(6)
               ngp = 45
+            CASE(7)
+              ngp = 60
             CASE(8)
               ngp = 60
             END SELECT
