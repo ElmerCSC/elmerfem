@@ -3404,6 +3404,12 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
        CALL ApplyExplicitControl( Solver )
      END IF
+
+     IF( Solver % NumberOfConstraintModes > 0 ) THEN
+       IF( ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) ) THEN
+         CALL FinalizeLumpedMatrix( Solver )            
+       END IF
+     END IF
      
      CALL Info('DefaultFinish','Finished solver: '//&         
                 GetString(Solver % Values,'Equation'),Level=8)
@@ -5847,7 +5853,7 @@ CONTAINS
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
-       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
+       CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
       
      

@@ -579,6 +579,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        INTEGER :: Nelem
 
        Nelem = GetNOFActive()
+       
        Var => VariableGet( Model % Variables, 'Displacement' )
 
        !------------------------------------------------------------------------------
@@ -592,7 +593,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
        !$omp do 
        DO t = 1,Nelem
-
+         
          !------------------------------------------------------------------------------
          !        Check if this element belongs to a body where potential
          !        should be calculated
@@ -622,6 +623,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
                Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
+         
          !------------------------------------------------------------------------------
          !      Read permittivity values (might be a tensor)
          !------------------------------------------------------------------------------
@@ -679,7 +681,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
                    Var % Values(Var % DOFs*(Var % Perm(NodeIndexes )-1)+i)
            END DO
          END IF
-
+         
          !------------------------------------------------------------------------------
          !      Get element local matrix, and rhs vector
          !------------------------------------------------------------------------------
@@ -1621,8 +1623,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        s = ListGetConstReal( Model % BCs(j) % Values, &
-              ComponentName(Model % Solver % Variable), Dirichlet )
+        Dirichlet = ListCheckPresent( Model % BCs(j) % Values, &
+            ComponentName(Model % Solver % Variable) )
+        IF(.NOT. Dirichlet ) THEN
+          Dirichlet = ListCheckPrefix( Model % BCs(j) % Values, &
+              'Constraint Mode')
+        END IF
 
 !       Get various flux bc options:
 !       ----------------------------
