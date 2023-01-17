@@ -688,55 +688,49 @@ MODULE PElementBase
       SELECT CASE(edge)
       CASE (1)
          IF (.NOT. invert) THEN
-            grad(1,1) =  1d0/2*(1-v)*ddPhi(i,u)
-            grad(1,2) = -1d0/2*dPhi(i,u)
-            grad(2,1) = -1d0/2*dPhi(i,u)
+            grad(1,1) =  (1-v)*ddPhi(i,u)
+            grad(1,2) = -dPhi(i,u)
             grad(2,2) = 0
          ELSE 
-            grad(1,1) =  1d0/2*(1-v)*ddPhi(i,-u)
-            grad(1,2) =  1d0/2*dPhi(i,-u)
-            grad(2,1) =  1d0/2*dPhi(i,-u)
+            grad(1,1) =  (1-v)*ddPhi(i,-u)
+            grad(1,2) =  dPhi(i,-u)
             grad(2,2) = 0
          END IF
       CASE (2)
          IF (.NOT. invert) THEN
             grad(1,1) = 0
-            grad(1,2) = 1d0/2*dPhi(i,v)
-            grad(2,1) = 1d0/2*dPhi(i,v)
-            grad(2,2) = 1d0/2*ddPhi(i,v)
+            grad(1,2) = dPhi(i,v)
+            grad(2,2) = (1+u)*ddPhi(i,v)
          ELSE 
             grad(1,1) = 0
-            grad(1,2) =-1d0/2*dPhi(i,-v)
-            grad(2,1) =-1d0/2*dPhi(i,v)
-            grad(2,2) = 1d0/2*ddPhi(i,v)
+            grad(1,2) =-dPhi(i,-v)
+            grad(2,2) = (1+u)*ddPhi(i,-v)
          END IF
       CASE (3)
          IF (.NOT. invert) THEN
-            grad(1,1) = 1d0/2*(1+v)*ddPhi(i,u)
-            grad(1,2) = 1d0/2*dPhi(i,u)
-            grad(2,1) = 1d0/2*dPhi(i,u)
+            grad(1,1) = (1+v)*ddPhi(i,u)
+            grad(1,2) = dPhi(i,u)
             grad(2,2) = 0
          ELSE
-            grad(1,1) =-1d0/2*(1+v)*ddPhi(i,u)
-            grad(1,2) =-1d0/2*dPhi(i,u)
-            grad(2,1) =-1d0/2*dPhi(i,u)
+            grad(1,1) = (1+v)*ddPhi(i,-u)
+            grad(1,2) =-dPhi(i,-u)
             grad(2,2) = 0
          END IF
       CASE (4)
          IF (.NOT. invert) THEN
             grad(1,1) = 0
-            grad(1,2) =-1d0/2*dPhi(i,v)
-            grad(2,1) =-1d0/2*dPhi(i,v)
-            grad(2,2) = 1d0/2*(1-u)*ddPhi(i,v)
+            grad(1,2) =-dPhi(i,v)
+            grad(2,2) = (1-u)*ddPhi(i,v)
          ELSE
             grad(1,1) = 0
-            grad(1,2) = 1d0/2*dPhi(i,v)
-            grad(2,1) = 1d0/2*dPhi(i,v)
-            grad(2,2) = 1d0/2*(1-u)*ddPhi(i,-v)
+            grad(1,2) = dPhi(i,-v)
+            grad(2,2) = (1-u)*ddPhi(i,-v)
          END IF
       CASE DEFAULT
          CALL Fatal('PElementBase::ddQuadEdgePBasis', 'Unknown edge for quadrilateral')
       END SELECT
+      grad = grad/2
+      grad(2,1)=grad(1,2)
     END FUNCTION ddQuadEdgePBasis
 
 
