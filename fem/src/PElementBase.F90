@@ -415,14 +415,14 @@ MODULE PElementBase
          grad(1) = -1d0/4*(1-v)
          grad(2) = -1d0/4*(1-u)
       CASE (2)
-         grad(1) = 1d0/4*(1-v)
+         grad(1) =  1d0/4*(1-v)
          grad(2) = -1d0/4*(1+u)
       CASE (3)
-         grad(1) = 1d0/4*(1+v)
-         grad(2) = 1d0/4*(1+u)
+         grad(1) =  1d0/4*(1+v)
+         grad(2) =  1d0/4*(1+u)
       CASE (4)
          grad(1) = -1d0/4*(1+v)
-         grad(2) = 1d0/4*(1-u)
+         grad(2) =  1d0/4*(1-u)
       CASE DEFAULT
          CALL Fatal('PElementBase::dQuadNodalPBasis', 'Unknown node for quadrilateral')
       END SELECT
@@ -730,7 +730,7 @@ MODULE PElementBase
          CALL Fatal('PElementBase::ddQuadEdgePBasis', 'Unknown edge for quadrilateral')
       END SELECT
       grad = grad/2
-      grad(2,1)=grad(1,2)
+      grad(2,1) = grad(1,2)
     END FUNCTION ddQuadEdgePBasis
 
 
@@ -1046,20 +1046,17 @@ MODULE PElementBase
       dLb = dQuadL(localNumbers(2),u,v)
       dLc = dQuadL(localNumbers(4),u,v)
 
-      grad(1,1) = ddPhi(i,Lb-La)*(dLb(1)-dLb(1))**2*Phi(j,Lc-La)
-      grad(1,1) = grad(1,1) + dPhi(i,Lb-La)*(dLb(1)-dLb(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
+      grad(1,1) = ddPhi(i,Lb-La)*(dLb(1)-dLa(1))**2*Phi(j,Lc-La)
+      grad(1,1) = grad(1,1) + dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLC(1)-dLa(1))
-      grad(1,1) = grad(1,1) + Phi(i,Lb-La)**ddPhi(j,Lc-La)*(dLC(1)-dLa(1))**2
+      grad(1,1) = grad(1,1) + Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLC(1)-dLa(1))**2
 
-      grad(1,2) = dPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
-      grad(1,2) = grad(1,2) + Phi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
+      grad(1,2) = ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
+      grad(1,2) = grad(1,2) + dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(1,2) = grad(1,2) + dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,2) = grad(1,2) + Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(2)-dLa(2))
 
-      grad(2,1) = dPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
-      grad(2,1) = grad(1,2) + Phi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
-      grad(2,1) = grad(1,2) + dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
-      grad(2,1) = grad(1,2) + Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(2)-dLa(2))
+      grad(2,1) = grad(1,2)
 
       grad(2,2) = ddPhi(i,Lb-La)*(dLb(2)-dLa(2))**2*Phi(j,Lc-La)
       grad(2,2) = grad(2,2) + dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
