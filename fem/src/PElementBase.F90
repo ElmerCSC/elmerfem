@@ -2832,7 +2832,7 @@ MODULE PElementBase
 !     grad = (dLh*phiI*phiJ + Lh*dPhi(i,Lb-La)*(dLb-dLa)*phiJ + &
 !                  Lh*phiI*dPhi(j,Lc-La)*(dLc-dLa)) / 2
 
-      grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLa(1)-dLb(1))*Phi(j,Lc-La)
+      grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,1) = grad(1,1) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,1) = grad(1,1) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))**2*Phi(j,Lc-La)
@@ -2841,7 +2841,7 @@ MODULE PElementBase
       grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))**2
 
-      grad(1,2) = grad(1,2) + dLh(1)*dPhi(i,Lb-La)*(dLa(2)-dLb(2))*Phi(j,Lc-La)
+      grad(1,2) = grad(1,2) + dLh(1)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
       grad(1,2) = grad(1,2) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(1,2) = grad(1,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,2) = grad(1,2) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
@@ -2850,7 +2850,7 @@ MODULE PElementBase
       grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,2) = grad(1,2) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(2)-dLa(2))
 
-      grad(1,3) = grad(1,3) + dLh(1)*dPhi(i,Lb-La)*(dLa(3)-dLb(3))*Phi(j,Lc-La)
+      grad(1,3) = grad(1,3) + dLh(1)*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*Phi(j,Lc-La)
       grad(1,3) = grad(1,3) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
       grad(1,3) = grad(1,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,3) = grad(1,3) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
@@ -2859,7 +2859,7 @@ MODULE PElementBase
       grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,3) = grad(1,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(3)-dLa(3))
 
-      grad(2,2) = grad(2,2) + dLh(2)*dPhi(i,Lb-La)*(dLa(2)-dLb(2))*Phi(j,Lc-La)
+      grad(2,2) = grad(2,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
       grad(2,2) = grad(2,2) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,2) = grad(2,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
       grad(2,2) = grad(2,2) + Lh*ddPhi(i,Lb-La)*(dLb(2)-dLa(2))**2*Phi(j,Lc-La)
@@ -2868,7 +2868,7 @@ MODULE PElementBase
       grad(2,2) = grad(2,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,2) = grad(2,2) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(2)-dLa(2))**2
 
-      grad(2,3) = grad(2,3) + dLh(2)*dPhi(i,Lb-La)*(dLa(3)-dLb(3))*Phi(j,Lc-La)
+      grad(2,3) = grad(2,3) + dLh(2)*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*Phi(j,Lc-La)
       grad(2,3) = grad(2,3) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
       grad(2,3) = grad(2,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
       grad(2,3) = grad(2,3) + Lh*ddPhi(i,Lb-La)*(dLb(2)-dLa(2))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
@@ -2876,6 +2876,15 @@ MODULE PElementBase
       grad(2,3) = grad(2,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,3) = grad(2,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(2)-dLa(2))*(dLc(3)-dLa(3))
+
+      grad(3,3) = grad(3,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*Phi(j,Lc-La)
+      grad(3,3) = grad(3,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
+      grad(3,3) = grad(3,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*Phi(j,Lc-La)
+      grad(3,3) = grad(3,3) + Lh*ddPhi(i,Lb-La)*(dLb(3)-dLa(3))**2*Phi(j,Lc-La)
+      grad(3,3) = grad(3,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLC(3)-dLa(3))
+      grad(3,3) = grad(3,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
+      grad(3,3) = grad(3,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
+      grad(3,3) = grad(3,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(3)-dLa(3))**2
 
       grad = grad / 2
       grad(2,1) = grad(1,2)
@@ -3442,6 +3451,172 @@ MODULE PElementBase
     END FUNCTION dTetraEdgePBasis
       
 
+!------------------------------------------------------------------------------
+!>     2nd derivatives of tetrahedrons edge basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddTetraEdgePBasis(edge, i, u, v, w, tetratype) RESULT(grad)
+!******************************************************************************
+!
+!  ARGUMENTS:
+!    INTEGER :: edge
+!      INPUT: number of tetras edge function to calculate
+!        edge = {1,2,..,6}
+!
+!    INTEGER :: i
+!      INPUT: index of edge function, i = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    INTEGER, OPTIONAL :: tetratype
+!      INPUT: Type of tetrahedron. Defines type of tetrahedron and thus
+!        direction for some edge basis functions. Default is 1, tetratype={1,2}
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of tetras edge function i at point (u,v,w), i.e.
+!       grad = dN_i^{edge}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+      
+      ! Parameters 
+      INTEGER, INTENT(IN) :: edge, i
+      INTEGER, INTENT(IN), OPTIONAL :: tetratype 
+      REAL (KIND=dp), INTENT(IN) :: u,v,w
+      
+      ! Variables
+      INTEGER :: t
+      REAL (KIND=dp) :: Lb, La, vPhi, grad(3,3)
+      REAL (KIND=dp), DIMENSION(3) :: dLb_La, dLb, dLa
+      
+      ! Use default type (1) if type not present
+      t = 1 
+      IF (PRESENT(tetratype)) t = tetratype
+
+      ! Set parameters for gradient 
+      SELECT CASE(edge)
+      CASE(1)
+         La  = TetraNodalPBasis(1,u,v,w)
+         Lb  = TetraNodalPBasis(2,u,v,w)
+         dLa = dTetraNodalPBasis(1,u,v,w)
+         dLb = dTetraNodalPBasis(2,u,v,w) 
+         dLb_La(1) = 1
+         dLb_La(2) = 0
+         dLb_La(3) = 0
+      CASE(2)
+         ! Choose correct edge function by type
+         SELECT CASE(t)
+         ! Type 1 tetrahedron, edge 4:(2->3)
+         CASE (1)
+            La  = TetraNodalPBasis(2,u,v,w)
+            Lb  = TetraNodalPBasis(3,u,v,w)
+            dLa = dTetraNodalPBasis(2,u,v,w)
+            dLb = dTetraNodalPBasis(3,u,v,w) 
+            dLb_La(1) = -1d0/2
+            dLb_La(2) = SQRT(3d0)/2
+            dLb_La(3) = 0 
+         ! Type 2 tetrahedron, edge 4:(3->2)
+         CASE (2) 
+            La  = TetraNodalPBasis(3,u,v,w)
+            Lb  = TetraNodalPBasis(2,u,v,w)
+            dLa = dTetraNodalPBasis(3,u,v,w)
+            dLb = dTetraNodalPBasis(2,u,v,w) 
+            dLb_La(1) = 1d0/2
+            dLb_La(2) = -SQRT(3d0)/2
+            dLb_La(3) = 0
+         CASE DEFAULT
+            CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown type for tetrahedron')
+         END SELECT
+      CASE(3)
+         La  = TetraNodalPBasis(1,u,v,w)
+         Lb  = TetraNodalPBasis(3,u,v,w)
+         dLa = dTetraNodalPBasis(1,u,v,w)
+         dLb = dTetraNodalPBasis(3,u,v,w) 
+         dLb_La(1) = 1d0/2
+         dLb_La(2) = SQRT(3d0)/2 
+         dLb_La(3) = 0
+      CASE(4)
+         La = TetraNodalPBasis(1,u,v,w)
+         Lb = TetraNodalPBasis(4,u,v,w)
+         dLa = dTetraNodalPBasis(1,u,v,w)
+         dLb = dTetraNodalPBasis(4,u,v,w) 
+         dLb_La(1) = 1d0/2
+         dLb_La(2) = SQRT(3d0)/6
+         dLb_La(3) = SQRT(6d0)/3
+      CASE(5)
+         La = TetraNodalPBasis(2,u,v,w)
+         Lb = TetraNodalPBasis(4,u,v,w)
+         dLa = dTetraNodalPBasis(2,u,v,w)
+         dLb = dTetraNodalPBasis(4,u,v,w) 
+         dLb_La(1) = -1d0/2
+         dLb_La(2) = SQRT(3d0)/6
+         dLb_La(3) = SQRT(6d0)/3
+      CASE(6)
+         La = TetraNodalPBasis(3,u,v,w)
+         Lb = TetraNodalPBasis(4,u,v,w)
+         dLa = dTetraNodalPBasis(3,u,v,w)
+         dLb = dTetraNodalPBasis(4,u,v,w) 
+         dLb_La(1) = 0
+         dLb_La(2) = -SQRT(3d0)/3
+         dLb_La(3) = SQRT(6d0)/3
+      CASE DEFAULT 
+         CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown edge for tetrahedron')
+      END SELECT
+
+      ! Calculate gradient from given parameters
+      ! General form for tetra edge gradients is 
+      ! 
+      ! Grad(Le) = 
+      ! Grad(La)*Lb*varPhi(i,Lb-La) + La*Grad(Lb)*varPhi(i,Lb-La) + 
+      ! La*Lb*dVarPhi(i,Lb-La)*Grad(Lb-La) 
+
+      vPhi = varPhi(i, Lb-La)
+!     grad = dLa*Lb*vPhi + La*dLb*vPhi + La*Lb*dVarPhi(i,Lb-La)*dLb_La
+
+      grad = 0
+      grad(1,1) = grad(1,1) + dLa(1)*(dLb(1)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(1)-dLa(1)))
+      grad(1,1) = grad(1,1) + dLb(1)*(dLa(1)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(1)-dLa(1)))
+      grad(1,1) = grad(1,1) + dLa(1)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,1) = grad(1,1) + La*dLb(1)*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,1) = grad(1,1) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(1)-dLa(1))*dLb_La(1)
+
+      grad(1,2) = grad(1,2) + dLa(1)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(1,2) = grad(1,2) + dLb(1)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(1,2) = grad(1,2) + dLa(2)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,2) = grad(1,2) + La*dLb(2)*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,2) = grad(1,2) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(2)-dLa(2))*dLb_La(1)
+
+      grad(1,3) = grad(1,3) + dLa(1)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(1,3) = grad(1,3) + dLb(1)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(1,3) = grad(1,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,3) = grad(1,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(1)
+      grad(1,3) = grad(1,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(1)
+
+      grad(2,2) = grad(2,2) + dLa(2)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(2,2) = grad(2,2) + dLb(2)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(2,2) = grad(2,2) + dLa(2)*Lb*dVarPhi(i,Lb-La)*dLb_La(2)
+      grad(2,2) = grad(2,2) + La*dLb(2)*dVarPhi(i,Lb-La)*dLb_La(2)
+      grad(2,2) = grad(2,2) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(2)-dLa(2))*dLb_La(2)
+
+      grad(2,3) = grad(2,3) + dLa(2)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(2,3) = grad(2,3) + dLb(2)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(2,3) = grad(2,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(2)
+      grad(2,3) = grad(2,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(2)
+      grad(2,3) = grad(2,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(2)
+
+      grad(3,3) = grad(3,3) + dLa(3)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(3,3) = grad(3,3) + dLb(3)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(3,3) = grad(3,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(3)
+      grad(3,3) = grad(3,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(3)
+      grad(3,3) = grad(3,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(3)
+
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddTetraEdgePBasis
+      
+
 !------------------------------------------------------------------------------    
 !>     Tetra face basis at point (u,v,w)
 !------------------------------------------------------------------------------    
@@ -3677,6 +3852,307 @@ MODULE PElementBase
     
     END FUNCTION dTetraFacePBasis
 
+!------------------------------------------------------------------------------
+!>     2nd derivatives of tetra face basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddTetraFacePBasis(face, i, j, u, v, w, tetratype) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: face
+!      INPUT: number of tetras face function to calculate
+!        edge = {1,2,..,4}
+!
+!    INTEGER :: i,j
+!      INPUT: index of face function, i,j = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    INTEGER, OPTIONAL :: tetratype
+!      INPUT: Type of tetrahedron. Defines type of tetrahedron and thus
+!        direction for some face basis functions. Default is 1, tetratype={1,2}
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of tetras face function m(i,j) at point (u,v,w), i.e.
+!       grad = N_{m(i,j)}^{face}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters 
+      INTEGER, INTENT(IN) :: face, i, j
+      INTEGER, INTENT(IN), OPTIONAL :: tetratype
+      REAL (KIND=dp), INTENT(IN) :: u,v,w
+      ! Variables
+      INTEGER :: t
+      REAL (KIND=dp) :: La, Lb, Lc, Legi, Legj, grad(3,3)
+      REAL (KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dLb_La, dLc_1
+      
+      ! Use default type (1) if type not present
+      t = 1 
+      IF (PRESENT(tetratype)) t = tetratype
+
+      SELECT CASE(face)
+      CASE (1)
+         SELECT CASE (t)
+         CASE (1)
+            La=TetraNodalPBasis(1,u,v,w)
+            Lb=TetraNodalPBasis(2,u,v,w)
+            Lc=TetraNodalPBasis(3,u,v,w)
+            dLa = dTetraNodalPbasis(1,u,v,w)
+            dLb = dTetraNodalPBasis(2,u,v,w)
+            dLc = dTetraNodalPBasis(3,u,v,w)
+            ! Set up derivative of first inner function
+            dLb_La(1) =  1d0 
+            dLb_La(2) =  0d0
+            dLb_La(3) =  0d0
+            ! Derivative of second inner function
+            dLc_1(1) =  0d0
+            dLc_1(2) =  2d0*SQRT(3d0)/3
+            dLc_1(3) =  -SQRT(6d0)/6
+         CASE (2)
+            La=TetraNodalPBasis(1,u,v,w)
+            Lb=TetraNodalPBasis(3,u,v,w)
+            Lc=TetraNodalPBasis(2,u,v,w)
+            dLa = dTetraNodalPbasis(1,u,v,w)
+            dLb = dTetraNodalPBasis(3,u,v,w)
+            dLc = dTetraNodalPBasis(2,u,v,w)
+            ! Set up derivative of first inner function
+            dLb_La(1) = 1d0/2 
+            dLb_La(2) = SQRT(3d0)/2 
+            dLb_La(3) = 0 
+            ! Derivative of second inner function
+            dLc_1(1) = 1d0 
+            dLc_1(2) = -SQRT(3d0)/3 
+            dLc_1(3) = -SQRT(6d0)/6 
+         CASE DEFAULT
+            CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')       
+         END SELECT
+      CASE (2)
+         La=TetraNodalPBasis(1,u,v,w)
+         Lb=TetraNodalPBasis(2,u,v,w)
+         Lc=TetraNodalPBasis(4,u,v,w)
+         dLa = dTetraNodalPBasis(1,u,v,w)
+         dLb = dTetraNodalPBasis(2,u,v,w)
+         dLc = dTetraNodalPBasis(4,u,v,w)
+         dLb_La(1) =  1d0 
+         dLb_La(2) =  0d0
+         dLb_La(3) =  0d0
+         dLc_1(1) =  0d0
+         dLc_1(2) =  0d0
+         dLc_1(3) =  SQRT(6d0)/2
+      CASE (3)
+         SELECT CASE(t)
+         ! Type 1 tetrahedron: Face 4:(2,3,4)
+         CASE (1)
+            La=TetraNodalPBasis(2,u,v,w)
+            Lb=TetraNodalPBasis(3,u,v,w)
+            Lc=TetraNodalPBasis(4,u,v,w)
+            dLa = dTetraNodalPBasis(2,u,v,w)
+            dLb = dTetraNodalPBasis(3,u,v,w)
+            dLc = dTetraNodalPBasis(4,u,v,w)
+            dLb_La(1) =  -1d0/2 
+            dLb_La(2) =  SQRT(3d0)/2
+            dLb_La(3) =  0d0
+         ! Type 2 tetrahedron: Face 4:(3,2,4)
+         CASE (2)
+            La=TetraNodalPBasis(3,u,v,w)
+            Lb=TetraNodalPBasis(2,u,v,w)
+            Lc=TetraNodalPBasis(4,u,v,w)
+            dLa = dTetraNodalPBasis(3,u,v,w)
+            dLb = dTetraNodalPBasis(2,u,v,w)
+            dLc = dTetraNodalPBasis(4,u,v,w)
+            dLb_La(1) =  1d0/2 
+            dLb_La(2) =  -SQRT(3d0)/2
+            dLb_La(3) =  0d0
+         CASE DEFAULT
+            CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')
+         END SELECT
+         ! Derivative of second inner function is equal for both types
+         dLc_1(1) =  0d0
+         dLc_1(2) =  0d0
+         dLc_1(3) =  SQRT(6d0)/2
+      CASE (4)
+         La=TetraNodalPBasis(1,u,v,w)
+         Lb=TetraNodalPBasis(3,u,v,w)
+         Lc=TetraNodalPBasis(4,u,v,w)
+         dLa = dTetraNodalPBasis(1,u,v,w)
+         dLb = dTetraNodalPBasis(3,u,v,w)
+         dLc = dTetraNodalPBasis(4,u,v,w)
+         dLb_La(1) =  1d0/2 
+         dLb_La(2) =  SQRT(3d0)/2
+         dLb_La(3) =  0d0
+         dLc_1(1) =  0d0
+         dLc_1(2) =  0d0
+         dLc_1(3) =  SQRT(6d0)/2
+      CASE DEFAULT 
+         CALL Fatal('PElementBase::dTetraFacePBasis','Unknown face for tetrahedron')
+      END SELECT
+      
+      Legi = LegendreP(i, Lb-La)
+      Legj = LegendreP(j, 2*Lc-1)
+
+      ! Calculate gradient from given parameters 
+!     grad = dLa*Lb*Lc*Legi*Legj + La*dLb*Lc*Legi*Legj + La*Lb*dLc*Legi*Legj + &
+!          La*Lb*Lc*dLegendreP(i,Lb-La)*dLb_La*Legj + La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1) * dLc_1
+
+      grad = 0
+      grad(1,1) = grad(1,1) + dLa(1)*(dLb(1)*Lc*Legi*Legj + Lb*dLc(1)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) )
+
+      grad(1,1) = grad(1,1) + dLb(1)*(dLa(1)*Lc*Legi*Legj + La*dLc(1)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) )
+
+      grad(1,1) = grad(1,1) + dLc(1)*(dLa(1)*Lb*Legi*Legj + La*dLb(1)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) )
+
+      grad(1,1) = grad(1,1) + dLa(1)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*dLb(1)*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*dLc(1)*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(1)-dLa(1))**2*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*dLegendreP(j,2*Lc-1)*2*dLc(1)
+
+      grad(1,1) = grad(1,1) + dLa(1)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*dLb(1)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*dLc(1)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(1)**2
+
+      grad(2,2) = grad(2,2) + dLa(2)*(dLb(2)*Lc*Legi*Legj + Lb*dLc(2)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+      grad(2,2) = grad(2,2) + dLb(2)*(dLa(2)*Lc*Legi*Legj + La*dLc(2)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+      grad(2,2) = grad(2,2) + dLc(2)*(dLa(2)*Lb*Legi*Legj + La*dLb(2)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+      grad(2,2) = grad(2,2) + dLa(2)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*dLb(2)*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*dLc(2)*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(2)-dLa(2))**2*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*dLegendreP(j,2*Lc-1)*2*dLc(2)
+
+      grad(2,2) = grad(2,2) + dLa(2)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*dLb(2)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*dLc(2)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(2)**2
+    
+      grad(3,3) = grad(3,3) + dLa(3)*(dLb(3)*Lc*Legi*Legj + Lb*dLc(3)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(3,3) = grad(3,3) + dLb(3)*(dLa(3)*Lc*Legi*Legj + La*dLc(3)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(3,3) = grad(3,3) + dLc(3)*(dLa(3)*Lb*Legi*Legj + La*dLb(3)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(3,3) = grad(3,3) + dLa(3)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*dLb(3)*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*dLc(3)*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(3)-dLa(3))**2*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*dLegendreP(j,2*Lc-1)*2*dLc(3)
+
+      grad(3,3) = grad(3,3) + dLa(3)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) + &
+                              La*dLb(3)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) + &
+                              La*Lb*dLc(3)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*dLegendreP(j,2*Lc-1)*2*dLc(3) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(3)**2
+
+
+      grad(1,2) = grad(1,2) + dLa(1)*(dLb(2)*Lc*Legi*Legj + Lb*dLc(2)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+      grad(1,2) = grad(1,2) + dLb(1)*(dLa(2)*Lc*Legi*Legj + La*dLc(2)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+      grad(1,2) = grad(1,2) + dLc(1)*(dLa(2)*Lb*Legi*Legj + La*dLb(2)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) )
+
+
+      grad(1,2) = grad(1,2) + dLa(2)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*dLb(2)*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*dLc(2)*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*dLegendreP(j,2*Lc-1)*2*dLc(2)
+
+      grad(1,2) = grad(1,2) + dLa(2)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*dLb(2)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*dLc(2)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(1)*dLc(2)
+    
+      grad(1,3) = grad(1,3) + dLa(1)*(dLb(3)*Lc*Legi*Legj + Lb*dLc(3)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(1,3) = grad(1,3) + dLb(1)*(dLa(3)*Lc*Legi*Legj + La*dLc(3)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(1,3) = grad(1,3) + dLc(1)*(dLa(3)*Lb*Legi*Legj + La*dLb(3)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+
+      grad(1,3) = grad(1,3) + dLa(3)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*dLb(3)*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*dLc(3)*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(1)-dLa(1))*dLegendreP(j,2*Lc-1)*2*dLc(3)
+
+      grad(1,3) = grad(1,3) + dLa(3)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*dLb(3)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*dLc(3)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*dLegendreP(j,2*Lc-1)*2*dLc(1) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(1)*dLc(3)
+
+      grad(2,3) = grad(2,3) + dLa(2)*(dLb(3)*Lc*Legi*Legj + Lb*dLc(3)*Legi*Legj + &
+                              Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(2,3) = grad(2,3) + dLb(2)*(dLa(3)*Lc*Legi*Legj + La*dLc(3)*Legi*Legj + &
+                              La*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+      grad(2,3) = grad(2,3) + dLc(2)*(dLa(3)*Lb*Legi*Legj + La*dLb(3)*Legi*Legj + &
+                              La*Lb*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Legi*dLegendreP(j,2*Lc-1)*2*dLc(3) )
+
+
+      grad(2,3) = grad(2,3) + dLa(3)*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*dLb(3)*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*dLc(3)*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*Legj + &
+                              La*Lb*Lc*ddLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*(dLb(3)-dLa(3))*Legj + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(2)-dLa(2))*dLegendreP(j,2*Lc-1)*2*dLc(3)
+
+      grad(2,3) = grad(2,3) + dLa(3)*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*dLb(3)*Lc*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*dLc(3)*Legi*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb(3)-dLa(3))*dLegendreP(j,2*Lc-1)*2*dLc(2) + &
+                              La*Lb*Lc*Legi*ddLegendreP(j,2*Lc-1)*4*dLc(2)*dLc(3)
+    
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    
+    END FUNCTION ddTetraFacePBasis
+
 
 !------------------------------------------------------------------------------
 !>    Tetra bubble basis at point (u,v,w)
@@ -3710,7 +4186,7 @@ MODULE PElementBase
       L2 = TetraNodalPBasis(2,u,v,w)
       L3 = TetraNodalPBasis(3,u,v,w)
       L4 = TetraNodalPBasis(4,u,v,w)
-      
+
       value = L1*L2*L3*L4*LegendreP(i,L2-L1)*LegendreP(j,2*L3-1)*LegendreP(k,2*L4-1)
     END FUNCTION TetraBubblePBasis
 
@@ -3763,6 +4239,42 @@ MODULE PElementBase
            + SQRT(6d0)/4*L1*L2*L3*a*b*c - SQRT(6d0)/6*L1*L2*L3*L4*a*dLegendreP(j,L3_1)*c &
            + SQRT(6d0)/2*L1*L2*L3*L4*a*b*dLegendreP(k,L4_1)
     END FUNCTION dTetraBubblePBasis
+
+
+!------------------------------------------------------------------------------
+!>    2nd derivatives of tetra bubble basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddTetraBubblePBasis(i,j,k,u,v,w) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: i,j,k
+!      INPUT: index of bubble function, (i,j,k) = {(0,0,0),(0,0,1),...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of tetras bubble function (i,j,k) at point (u,v,w), 
+!       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters 
+      INTEGER, INTENT(IN) :: i, j, k
+      REAL (KIND=dp), INTENT(IN) :: u,v,w
+      ! Variables
+      REAL (KIND=dp) :: L1, L2, L3, L4, L2_L1, L3_1, L4_1, a, b, c 
+      REAL (KIND=dp), DIMENSION(3) :: grad
+
+      L1 = TetraNodalPBasis(1,u,v,w)
+      L2 = TetraNodalPBasis(2,u,v,w)
+      L3 = TetraNodalPBasis(3,u,v,w)
+      L4 = TetraNodalPBasis(4,u,v,w)
+
+    END FUNCTION ddTetraBubblePBasis
 
 
 !------------------------------------------------------------------------------
@@ -6078,8 +6590,151 @@ MODULE PElementBase
       ! Value now contains P,(l,x)
     END FUNCTION dLegendreP
 
-    ! Function value = x^n
+!------------------------------------------------------------------------------
+!>    Function ddLegendreP returns value of 2nd derivative of l:th Legendre polynomial
+!>    at point x.
+!
+!>    Value of legendre polynomial is precalculated for l=<20 and calculated from 
+!>    recursion for l>20,
+!
+!>    P,(l+1,x)=x*P,(l,x)+(l+1)*P(l,x), 
+!>    where P,(0,x)=0, P(1,x)=1.
+!------------------------------------------------------------------------------
+    RECURSIVE FUNCTION ddLegendreP(l,x) RESULT(value)
+!------------------------------------------------------------------------------
+! 
+!  ARGUMENTS:
+!    INTEGER, INTENT(IN) :: l
+!      INPUT: parameter of Legendre polynomial
+!
+!    REAL(Kind=dp), INTENT(IN) :: x
+!      INPUT: point at which to evaluate Legendre polynomial
+!
+!  FUNCTION VALUE:
+!    REAL(Kind=dp) :: value
+!       value of derivative of legendre polynomial l at point x i.e
+!       value = P,(i,x)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+      
+      ! Parameters
+      INTEGER, INTENT(IN) :: l
+      REAL (KIND=dp), INTENT(IN) :: x
+      ! Return value
+      REAL (KIND=dp) :: value
+      
+      ! Internal variables
+      REAL (KIND=dp) :: P_l, dP_l, dPT
+      INTEGER :: k 
 
+      SELECT CASE(l)
+      CASE (:-1)
+         CALL Fatal('PElementBase::dLegendreP','dLegendreP not defined for l < 0')
+      CASE (0)
+         value = 0
+      CASE (1)
+         value = 1
+      CASE (2)
+         value = 3
+      CASE (3)
+         value = 0.15D2 / 0.2D1 * 2*x
+      CASE (4)
+         value = 0.35D2 / 0.2D1 * 3*x**2 - 0.15D2 / 0.2D1
+      CASE (5)
+         value = 0.315D3 / 0.8D1 * 4*x ** 3 - 0.105D3 / 0.4D1 * 2*x
+      CASE (6)
+         value = 0.693D3 / 0.8D1 * 5*x ** 4 - 0.315D3 / 0.4D1 * 3*x ** 2 + 0.105D3/0.8D1
+      CASE (7)     
+         value = 0.3003D4 / 0.16D2 * 6*x ** 5 - 0.3465D4 / 0.16D2 * 4*x ** 3 + &
+              0.945D3 / 0.16D2 * 2*x
+      CASE (8)     
+         value = 0.6435D4 / 0.16D2 * 7*x ** 6 - 0.9009D4 / 0.16D2 * 5*x ** 4 + &
+              0.3465D4 / 0.16D2 * 3*x ** 2 - 0.315D3 / 0.16D2
+      CASE (9)   
+         value = 0.109395D6 / 0.128D3 * 8*x ** 7 - 0.45045D5 / 0.32D2 * 6*x ** 5 +&
+              0.45045D5 / 0.64D2 * 4*x ** 3 - 0.3465D4 / 0.32D2 * 2*x
+      CASE (10)
+         value = 0.230945D6 / 0.128D3 * 9*x ** 8 - 0.109395D6 / 0.32D2 * 7*x ** 6 + &
+              0.135135D6 / 0.64D2 * 5*x ** 4 - 0.15015D5 / 0.32D2 * 3*x ** 2 + &
+              0.3465D4 / 0.128D3
+      CASE (11)
+         value = 0.969969D6 / 0.256D3 * 10*x ** 9 - 0.2078505D7 / 0.256D3 * 8*x ** 7 +&
+              0.765765D6 / 0.128D3 * 6*x ** 5 - 0.225225D6 / 0.128D3 * 4*x ** 3 + 0.45045D5 / &
+              0.256D3 * 2*x
+      CASE (12) 
+         value = 0.2028117D7 / 0.256D3 * 11*x ** 10 - 0.4849845D7 / 0.256D3 * 9*x ** 8 + &
+              0.2078505D7 / 0.128D3 * 7*x ** 6 - 0.765765D6 / 0.128D3 * 5*x ** 4 + &
+              0.225225D6 / 0.256D3 * 3*x ** 2 - 0.9009D4 / 0.256D3
+      CASE (13) 
+         value = 0.16900975D8 / 0.1024D4 * 12*x ** 11 - 0.22309287D8 / 0.512D3 * &
+              10*x ** 9 + 0.43648605D8 / 0.1024D4 * 8*x ** 7 - 0.4849845D7 / 0.256D3 * &
+              6*x ** 5 + 0.3828825D7 / 0.1024D4 * 4*x ** 3 - 0.135135D6 / 0.512D3 * 2*x
+      CASE (14)   
+         value = 0.35102025D8 / 0.1024D4 * 13*x ** 12 - 0.50702925D8 / 0.512D3 * &
+              11*x ** 10 + 0.111546435D9 / 0.1024D4 * 9*x ** 8 - 0.14549535D8 / 0.256D3 * &
+              7*x ** 6 + 0.14549535D8 / 0.1024D4 * 5*x ** 4 - 0.765765D6 / 0.512D3 * &
+              3*x ** 2 + 0.45045D5 / 0.1024D4
+      CASE (15)     
+         value = 0.145422675D9 / 0.2048D4 * 14*x ** 13 - 0.456326325D9 / 0.2048D4 * &
+              12*x ** 11 + 0.557732175D9 / 0.2048D4 * 10*x ** 9 - 0.334639305D9 / 0.2048D4 * &
+              8*x ** 7 + 0.101846745D9 / 0.2048D4 * 6*x ** 5 - 0.14549535D8 / 0.2048D4 * &
+              4*x ** 3 + 0.765765D6 / 0.2048D4 * 2*x
+      CASE (16)
+         value = 0.300540195D9 / 0.2048D4 * 15*x ** 14 - 0.1017958725D10 / 0.2048D4 * &
+              13*x ** 12 + 0.1368978975D10 / 0.2048D4 * 11*x ** 10 - 0.929553625D9 / 0.2048D4 * &
+              9*x ** 8 + 0.334639305D9 / 0.2048D4 * 7*x ** 6 - 0.61108047D8 / 0.2048D4 * &
+              5*x ** 4 + 0.4849845D7 / 0.2048D4 * 3*x ** 2 - 0.109395D6 / 0.2048D4
+      CASE (17)      
+         value = 0.9917826435D10 / 0.32768D5 * 16*x ** 15 - 0.4508102925D10 / 0.4096D4 * &
+              14*x ** 13 + 0.13233463425D11 / 0.8192D4 * 12*x ** 11 - &
+              0.5019589575D10 / 0.4096D4 * 10*x ** 9 + 0.8365982625D10 / 0.16384D5 * 8*x ** 7 -&
+              0.468495027D9 / 0.4096D4 * 6*x ** 5 + 0.101846745D9 / 0.8192D4 * 4*x ** 3 - &
+              0.2078505D7 / 0.4096D4 * 2*x
+      CASE (18)
+         value = 0.20419054425D11 / 0.32768D5 * 17*x ** 16 - 0.9917826435D10 / &
+              0.4096D4 * 15*x ** 14 + 0.31556720475D11 / 0.8192D4 * 13*x ** 12 - &
+              0.13233463425D11 / 0.4096D4 * 11*x ** 10 + 0.25097947875D11 / 0.16384D5 * &
+              9*x ** 8 - 0.1673196525D10 / 0.4096D4 * 7*x ** 6 + 0.468495027D9 / 0.8192D4 * &
+              5*x ** 4 - 0.14549535D8 / 0.4096D4 * 3*x ** 2 + 0.2078505D7 / 0.32768D5
+      CASE (19)
+         value = 0.83945001525D11 / 0.65536D5 * 18*x ** 17 - 0.347123925225D12 / &
+              0.65536D5 * 16*x ** 15 + 0.148767396525D12 / 0.16384D5 * 14*x ** 13 - &
+              0.136745788725D12 / 0.16384D5 * 12*x ** 11 + 0.145568097675D12 / 0.32768D5 * &
+              10*x ** 9 - 0.45176306175D11 / 0.32768D5 * 8*x ** 7 + 0.3904125225D10 / &
+              0.16384D5 * 6*x ** 5 - 0.334639305D9 / 0.16384D5 * 4*x ** 3 + 0.43648605D8 / &
+              0.65536D5 * 2*x
+      CASE (20)   
+         value = 0.172308161025D12 / 0.65536D5 * 19*x ** 18 - 0.755505013725D12 / &
+              0.65536D5 * 17*x ** 16 + 0.347123925225D12 / 0.16384D5 * 15*x ** 14 - & 
+              0.347123925225D12 / 0.16384D5 * 13*x ** 12 + 0.410237366175D12 / 0.32768D5 * &
+              11*x ** 10 - 0.145568097675D12 / 0.32768D5 * 9*x ** 8 + 0.15058768725D11 / &
+              0.16384D5 * 7*x ** 6 - 0.1673196525D10 / 0.16384D5 * 5*x ** 4 + 0.334639305D9 /&
+              0.65536D5 * 3*x ** 2 - 0.4849845D7 / 0.65536D5
+      CASE DEFAULT
+         ! Generate derivative of n:th Legendre polynomial
+
+         STOP 'No 2nd derivative for Legendre > 20'
+
+         ! Initialize derivative of legendre polynomial for l=20
+         ! P,(20,x)=... 
+         dP_l = dLegendreP(20,x)
+
+         ! Generate derivative of (k+1):th legendre polynomial
+         DO k=20,(l-1)
+            ! P(k,x)=...
+            P_l=LegendreP(k,x)
+            dPT = x*dP_l+(k+1)*P_l
+            ! Advance to next legendre polynomial
+            dP_l=dPT
+         END DO
+     
+         value = dP_l
+      END SELECT
+      ! Value now contains P,(l,x)
+    END FUNCTION ddLegendreP
+
+    ! Function value = x^n
     FUNCTION toExp(x,n) RESULT(value)
       IMPLICIT NONE
       

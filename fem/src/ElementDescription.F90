@@ -2587,7 +2587,7 @@ CONTAINS
      LOGICAL :: invert, degrees, Compute2ndDerivatives
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
           tmp(4), direction(4)
-     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble
+     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble, tetraType
      REAL(KIND=dp) :: LinBasis(8), dLinBasisdx(8,3), ElmMetric(3,3)
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
@@ -2939,6 +2939,8 @@ CONTAINS
      CASE(504)
         p = pSolver % Def_Dofs(5,BodyId,6)
         EDOFs = GetEdgeDOFs(Element, p)
+        tetraType = Element % PDefs % TetraType
+
         ! Edges of p tetrahedron
         IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN   
            ! For each edge i calculate the values of edge functions
@@ -2951,8 +2953,12 @@ CONTAINS
                  IF (q >= SIZE(Basis)) EXIT edges_tetrahedron
                  q = q + 1
 
-                 Basis(q) = TetraEdgePBasis(i,k+1,u,v,w, Element % PDefs % TetraType)
-                 dLBasisdx(q,1:3) = dTetraEdgePBasis(i,k+1,u,v,w, Element % PDefs % TetraType)
+                 Basis(q) = TetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                 dLBasisdx(q,1:3) = dTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+
+                 IF(Compute2ndDerivatives) THEN
+                    ddLBasisddx(q,1:3,1:3) = ddTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                 END IF
 
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
@@ -2980,8 +2986,11 @@ CONTAINS
                     IF (q >= SIZE(Basis)) EXIT faces_tetrahedron
                     q = q + 1 
                     
-                    Basis(q) = TetraFacePBasis(F,i,j,u,v,w, Element % PDefs % TetraType)
-                    dLBasisdx(q,1:3) = dTetraFacePBasis(F,i,j,u,v,w, Element % PDefs % TetraType)
+                    Basis(q) = TetraFacePBasis(F,i,j,u,v,w, tetraType )
+                    dLBasisdx(q,1:3) = dTetraFacePBasis(F,i,j,u,v,w, tetraType )
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:3,1:3) = ddTetraFacePBasis(F,i,j,u,v,w,tetraType)
+                    END IF
 
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 3+i+j
@@ -3013,6 +3022,7 @@ CONTAINS
 
                     Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,1:3) = dTetraBubblePBasis(i,j,k,u,v,w)
+stop 'b'
 
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 4+i+j+k
