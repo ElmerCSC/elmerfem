@@ -2813,7 +2813,7 @@ CONTAINS
                     dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
 
                     IF(Compute2ndDerivatives) THEN
-                      CALL Fatal('ElementInfo: ', 'Out of luck for triangle edge 2nd derivatives, sorry ?' )
+                      ddLBasisdx(q,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
                     END IF
                  ELSE
                  ! 2d element bubbles have no direction
@@ -3022,8 +3022,10 @@ CONTAINS
 
                     Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,1:3) = dTetraBubblePBasis(i,j,k,u,v,w)
-stop 'b'
 
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:3,1:3) = ddTetraBubblePBasis(i,j,k,u,v,w)
+                    END IF
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 4+i+j+k
                  END DO

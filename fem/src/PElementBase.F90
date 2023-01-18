@@ -1537,7 +1537,8 @@ MODULE PElementBase
       ! Return value
       REAL (KIND=dp), DIMENSION(2,2) :: grad
       ! Variables
-      REAL (KIND=dp) :: LA,LB,dLAu,dLAv,dLBu,dLBv,swap,dL1u,dL2u,dL3u,dL1v,dL2v,dL3v
+      REAL (KIND=dp) :: LA,LB,dLAu,dLAv,dLBu,dLBv,swap,dL1u,dL2u,dL3u,dL1v,dL2v,dL3v,s
+      REAL (KIND=dp) :: dd,dv,vp,varArg
       LOGICAL :: invert
       REAL(KIND=dp), PARAMETER :: half=1.0_dp/2, c3=1.0_dp/SQRT(3.0_dp)
 
@@ -1582,27 +1583,27 @@ MODULE PElementBase
          CALL Fatal('PElementBase::dTriangleEdgePBasis', 'Unknown edge for triangle')
       END SELECT 
 
+      s = 1; varArg = LB-LA
       IF(Invert) THEN
-        swap = LA; LA=LB; LB = swap
-        swap = dLAu; dLAu=dLBu; dLBu = swap
-        swap = dLAv; dLAv=dLBv; dLBv = swap
+        s = -1; varArg = -varArg
       END IF
 
-      grad(1,1) = LA*LB*(dLBu-dLAu)**2*ddVarPhi(i,LB-LA) + &
-        2*(dLAu*LB+LA*dLBu)*(dLBu-dLAu)*dVarPhi(i,LB-LA) + &
-            (dLAu*dLBu+dLAu*dLBu)*VarPhi(i,LB-LA)
+      dd = ddVarPhi(i,varArg)
+      vp = VarPhi(i,varArg)
+      dv = s*dVarPhi(i,varArg)
 
+      grad(1,1) = LA*LB*(dLBu-dLAu)**2*dd + &
+        2*(dLAu*LB+LA*dLBu)*(dLBu-dLAu)*dv + (dLAu*dLBu+dLAu*dLBu)*vp
 
-      grad(1,2) = LA*LB*(dLBu-dLAu)*(dLBv-dLAv)*ddVarPhi(i,LB-LA) + &
-                  (dLAv*LB+LA*dLBv)*(dLBu-dLAu)*dVarPhi(i,LB-LA)  + &
-                  (dLAu*LB+LA*dLBu)*(dLBv-dLAv)*dVarPhi(i,LB-LA)  + &
-                     (dLAu*dLBv+dLAv*dLBu)*VarPhi(i,LB-LA)
+      grad(1,2) = LA*LB*(dLBu-dLAu)*(dLBv-dLAv)*dd + &
+                  (dLAv*LB+LA*dLBv)*(dLBu-dLAu)*dv + &
+                  (dLAu*LB+LA*dLBu)*(dLBv-dLAv)*dv + &
+                     (dLAu*dLBv+dLAv*dLBu)*vp
+
+      grad(2,2) = LA*LB*(dLBv-dLAv)**2*dd + &
+        2*(dLAv*LB+LA*dLBv)*(dLBv-dLAv)*dv + (dLAv*dLBv+dLAv*dLBv)*vp
 
       grad(2,1) = grad(1,2)
-
-      grad(2,2) = LA*LB*(dLBv-dLAv)**2*ddVarPhi(i,LB-LA) + & 
-        2*(dLAv*LB+LA*dLBv)*(dLBv-dLAv)*dVarPhi(i,LB-LA) + &
-            (dLAv*dLBv+dLAv*dLBv)*VarPhi(i,LB-LA)
     END FUNCTION ddTriangleEdgePBasis
       
 
@@ -1811,7 +1812,6 @@ MODULE PElementBase
 
 !     value = La*Lb*Lc*((Lb-La)**j)*((2*Lc-1)**n)
 
-
       grad(1,1) = &
          dLa(1)*(dLb(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(1)*(Lb*Lc*Lc_1n)+dLc_1n(1)*(Lb*Lc*Lb_Laj)) + &
          dLb(1)*(dLa(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lc*Lc_1n)+dLc_1n(1)*(La*Lc*Lb_Laj)) + &
@@ -1828,8 +1828,6 @@ MODULE PElementBase
         dLc_1n(1)*(dLa(2)*(Lb*Lc*Lb_Laj)+dLb(2)*(La*Lc*Lb_Laj)+dLc(2)*(La*Lb*Lb_Laj)+dLb_Laj(2)*(La*Lb*Lc)) + &
         ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2)) + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(1)*dLc(2)
 
-      grad(2,1) = grad(1,2)
-
       grad(2,2) = &
         dLa(2)*(dLb(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(2)*(Lb*Lc*Lc_1n)+dLc_1n(2)*(Lb*Lc*Lb_Laj)) + &
         dLb(2)*(dLa(2)*(Lc*Lb_Laj*Lc_1n)+dLc(2)*(La*Lb_Laj*Lc_1n)+dLb_Laj(2)*(La*Lc*Lc_1n)+dLc_1n(2)*(La*Lc*Lb_Laj)) + &
@@ -1837,6 +1835,8 @@ MODULE PElementBase
         dLb_Laj(2)*(dLa(2)*(Lb*Lc*Lc_1n)+dLb(2)*(La*Lc*Lc_1n)+dLc(2)*(La*Lb*Lc_1n)+dLc_1n(2)*(La*Lb*Lc)) + &
         dLc_1n(2)*(dLa(2)*(Lb*Lc*Lb_Laj)+dLb(2)*(La*Lc*Lb_Laj)+dLc(2)*(La*Lb*Lb_Laj)+dLb_Laj(2)*(La*Lb*Lc)) + &
         ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(2)-dLa(2))**2 + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(2)**2
+
+      grad(2,1) = grad(1,2)
     END FUNCTION ddTriangleBubblePBasis
 
 
@@ -1875,6 +1875,93 @@ MODULE PElementBase
            La*Lb*dLc*Legi*Legj + La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb-dLa)*Legj + &
            La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*(2*dLc)
     END FUNCTION dTriangleEBubblePBasis
+
+
+    FUNCTION ddTriangleEBubblePBasis(i,j,u,v,localNumbers) RESULT(grad)
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: i, j
+      REAL (KIND=dp), INTENT(IN) :: u,v
+      INTEGER, OPTIONAL :: localNumbers(3)
+      ! Variables
+      REAL (KIND=dp), DIMENSION(2) :: dLa, dLb, dLc
+      REAL (KIND=dp) :: La, Lb, Lc, Lc_1, Legi, Legj, grad(2,2)
+      INTEGER :: local(3)
+
+      REAL(KIND=dp) :: r,s,t
+      REAL(KIND=dp) :: Lab,dLab(2),ddLab(2,2)
+      REAL(KIND=dp) :: Labc,dLabc(2),ddLabc(2,2)
+      REAL(KIND=dp) :: G1,dG1(2), ddG1(2,2)
+      REAL(KIND=dp) :: G2,dG2(2), ddG2(2,2)
+      REAL(KIND=dp) :: G12,dG12(2), ddG12(2,2)
+      REAL(KIND=dp) :: LabcG12, dLabcG12(2), ddLabcG12(2,2)
+      INTEGER :: p,q
+
+      ! If local numbering present, use it
+      IF (PRESENT(localNumbers)) THEN
+         local(1:3) = localNumbers(1:3)
+      ELSE
+         ! Local numbering not present. Use default numbering
+         local(1:3) = [ 1,2,3 ]
+      END IF
+
+      La = TriangleNodalPBasis(local(1),u,v)
+      Lb = TriangleNodalPBasis(local(2),u,v)
+      Lc = TriangleNodalPBasis(local(3),u,v)
+
+      dLa = dTriangleNodalPBasis(local(1),u,v)
+      dLb = dTriangleNodalPBasis(local(2),u,v)
+      dLc = dTriangleNodalPBasis(local(3),u,v)
+
+      Lab = La*Lb
+      dLab = dLa*Lb + La*dLb
+      DO p=1,2
+        DO q=p,2
+          ddLab(p,q) = dLa(p)*dLb(q) + dLa(q)*dLb(p)
+        END DO        
+      END DO        
+ 
+      Labc = Lab*Lc
+      dLabc = dLab*Lc + Lab*dLc
+      DO p=1,2
+        DO q=p,2
+          ddLabc(p,q) = ddLab(p,q)*Lc + dLab(p)*dLc(q) + dLab(q)*dLc(p)
+        END DO        
+      END DO        
+
+      G1 = LegendreP(i,Lb-La)
+      G2 = LegendreP(j,2*Lc-1)
+
+      dG1 = dLegendreP(i,Lb-La)*(dLb-dLa)
+      dG2 = dLegendreP(j,2*Lc-1)*2*dLc
+
+      r = ddLegendreP(i,Lb-La)
+      s = ddLegendreP(j,2*Lc-1)
+      DO p=1,2
+        DO q=p,2
+          ddG1(p,q) = r * (dLb(p)-dLa(p))*(dLb(q)-dLa(q))
+          ddG2(p,q) = s * 4*dLc(p)*dLc(q)
+        END DO
+      END DO
+
+      G12 = G1*G2
+      dG12 = dG1*G2 + G1*dG2
+      DO p=1,2
+        DO q=p,2
+          ddG12(p,q) = ddG1(p,q)*G2 + dG1(p)*dG2(q) + dG1(q)*dG2(p) + G1*ddG2(p,q)
+        END DO
+      END DO
+
+      ! dd(La*Lb*Lc*G1*G2)
+      DO p=1,2
+        DO q=p,2
+          grad(p,q)=ddLabc(p,q)*G12+dLabc(p)*dG12(q)+dLabc(q)*dG12(p)+Labc*ddG12(p,q)
+        END DO
+      END DO
+
+      grad(2,1)=grad(1,2)
+    END FUNCTION ddTriangleEBubblePBasis
 
 
     ! 3D ELEMENTS
@@ -4267,13 +4354,101 @@ MODULE PElementBase
       REAL (KIND=dp), INTENT(IN) :: u,v,w
       ! Variables
       REAL (KIND=dp) :: L1, L2, L3, L4, L2_L1, L3_1, L4_1, a, b, c 
-      REAL (KIND=dp), DIMENSION(3) :: grad
+      REAL (KIND=dp), DIMENSION(3,3) :: grad
+
+      REAL(KIND=dp) :: dL1(3),dL2(3),dL3(3),dL4(3), r,s,t
+      REAL(KIND=dp) :: L12,dL12(3),ddL12(3,3)
+      REAL(KIND=dp) :: L34,dL34(3),ddL34(3,3)
+      REAL(KIND=dp) :: L1234,dL1234(3),ddL1234(3,3)
+      REAL(KIND=dp) :: G1,dG1(3), ddG1(3,3)
+      REAL(KIND=dp) :: G2,dG2(3), ddG2(3,3)
+      REAL(KIND=dp) :: G3,dG3(3), ddG3(3,3)
+      REAL(KIND=dp) :: G12,dG12(3), ddG12(3,3)
+      REAL(KIND=dp) :: G123, dG123(3), ddG123(3,3)
+      REAL(KIND=dp) :: L1234G123, dL1234G123(3), ddL1234G123(3,3)
+      INTEGER :: p,q
+
+!     value = L1*L2*L3*L4*LegendreP(i,L2-L1)*LegendreP(j,2*L3-1)*LegendreP(k,2*L4-1)
 
       L1 = TetraNodalPBasis(1,u,v,w)
       L2 = TetraNodalPBasis(2,u,v,w)
       L3 = TetraNodalPBasis(3,u,v,w)
       L4 = TetraNodalPBasis(4,u,v,w)
 
+      dL1 = dTetraNodalPBasis(1,u,v,w)
+      dL2 = dTetraNodalPBasis(2,u,v,w)
+      dL3 = dTetraNodalPBasis(3,u,v,w)
+      dL4 = dTetraNodalPBasis(4,u,v,w)
+
+      L12 = L1*L2
+      dL12 = dL1*L2 + L1*dL2
+      DO p=1,3
+        DO q=p,3
+          ddL12(p,q) = dL1(p)*dL2(q) + dL1(q)*dL2(p)
+        END DO        
+      END DO        
+ 
+      L34 = L3*L4
+      dL34 = dL3*L4 + L3*dL4
+      DO p=1,3
+        DO q=p,3
+          ddL34(p,q) = dL3(p)*dL4(q) + dL3(q)*dL4(p)
+        END DO        
+      END DO        
+
+      L1234 = L12*L34
+      dL1234 = dL12*L34 + L12*dL34
+      DO p=1,3
+        DO q=p,3
+          ddL1234(p,q) = ddL12(p,q)*L34 + dL12(p)*dL34(q) + dL12(q)*dL34(p) + L12*ddL34(p,q)
+        END DO        
+      END DO        
+
+      G1 = LegendreP(i,L2-L1)
+      G2 = LegendreP(j,2*L3-1)
+      G3 = LegendreP(k,2*L4-1)
+
+      dG1 = dLegendreP(i,L2-L1)*(dL2-dL1)
+      dG2 = dLegendreP(j,2*L3-1)*2*dL3
+      dG3 = dLegendreP(k,2*L4-1)*2*dL4
+
+      r = ddLegendreP(i,L2-L1)
+      s = ddLegendreP(j,2*L3-1)
+      t = ddLegendreP(k,2*L4-1)
+      DO p=1,3
+        DO q=p,3
+          ddG1(p,q) = r * (dL2(p)-dL1(p))*(dL2(q)-dL1(q))
+          ddG2(p,q) = s * 4*dL3(p)*dL3(q)
+          ddG3(p,q) = t * 4*dL4(p)*dL4(q)
+        END DO
+      END DO
+
+      G12 = G1*G2
+      dG12 = dG1*G2 + G1*dG2
+      DO p=1,3
+        DO q=p,3
+          ddG12(p,q) = ddG1(p,q)*G2 + dG1(p)*dG2(q) +dG1(q)*dG2(p) + G1*ddG2(p,q)
+        END DO
+      END DO
+
+      G123 = G12 * G3
+      dG123 = dG12*G3 + G12*dG3
+      DO p=1,3
+        DO q=p,3
+         ddG123(p,q) = ddG12(p,q)*G3 + dG12(p)*dG3(q) + dG12(q)*dG3(p) + G12*ddG3(p,q)
+        END DO
+      END DO
+
+      ! dd(L1*L2*L3*L4*G1*G2*G3)
+      DO p=1,3
+        DO q=p,3
+          grad(p,q)=ddL1234(p,q)*G123+dL1234(p)*dG123(q)+dL1234(q)*dG123(p)+L1234*ddG123(p,q)
+        END DO
+      END DO
+
+      grad(2,1)=grad(1,2)
+      grad(3,1)=grad(1,3)
+      grad(3,2)=grad(2,3)
     END FUNCTION ddTetraBubblePBasis
 
 
@@ -5912,7 +6087,7 @@ MODULE PElementBase
          value = sqrt(0.42D2) * dble(10*46189*x**9 - 8*109395*x**7 + 6*90090 &
               *x**5 - 4*30030*x**3 + 2*3465*x) / 0.512D3
       CASE (12)
-         value = sqrt(0.46D2) * (11*88179*x**11 - 9*230945*x**8 + &
+         value = sqrt(0.46D2) * (11*88179*x**10 - 9*230945*x**8 + &
               7*218790*x**6 - 5*90090*x**4 + 3*15015*x**2 - 693) / 0.512D3
       CASE (13)
          value = 0.5D1 / 0.2048D4 * sqrt(0.2D1) * (12*676039*x**11 - 10*1939938 * &
@@ -6634,7 +6809,7 @@ MODULE PElementBase
       CASE (0)
          value = 0
       CASE (1)
-         value = 1
+         value = 0
       CASE (2)
          value = 3
       CASE (3)
