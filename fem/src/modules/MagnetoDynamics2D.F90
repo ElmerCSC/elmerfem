@@ -3951,7 +3951,7 @@ CONTAINS
       imag_value = imag_value / im / Volume / Omega / (ABS(Bav(1))**2._dp+ABS(Bav(2))**2._dp)
 
       ProxNu(1) = REAL(imag_value) 
-      ProxNu(2) = AIMAG(imag_value) 
+      ProxNu(2) = AIMAG(-imag_value) 
     ELSE
       ProxNu(1) = HUGE(Omega)
       ProxNu(2) = HUGE(Omega)
