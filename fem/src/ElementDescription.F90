@@ -2813,7 +2813,7 @@ CONTAINS
                     dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
 
                     IF(Compute2ndDerivatives) THEN
-                      ddLBasisdx(q,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
                     END IF
                  ELSE
                  ! 2d element bubbles have no direction
