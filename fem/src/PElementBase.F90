@@ -2834,6 +2834,7 @@ MODULE PElementBase
            Lh*phiI*dPhi(j,Lc-La)*(dLc-dLa))
     END FUNCTION dBrickFacePBasis
 
+
 !------------------------------------------------------------------------------
 !>     2nd derivatives of brick face basis at point (u,v,w)
 !------------------------------------------------------------------------------
@@ -2872,7 +2873,7 @@ MODULE PElementBase
       INTEGER, DIMENSION(4) :: local
       REAL (KIND=dp) :: La, Lb, Lc, Lh, phiI, phiJ, grad(3,3)
       REAL (KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dLh
-      
+
       ! If local numbering not present use default numbering
       IF (.NOT. PRESENT(localNumbers)) THEN
          local(1:4) = getBrickFaceMap(face)
@@ -2884,6 +2885,7 @@ MODULE PElementBase
       La = BrickL(local(1),u,v,w)
       Lb = BrickL(local(2),u,v,w)
       Lc = BrickL(local(4),u,v,w)
+
       dLa = dBrickL(local(1),u,v,w)
       dLb = dBrickL(local(2),u,v,w)
       dLc = dBrickL(local(4),u,v,w)
@@ -2923,7 +2925,7 @@ MODULE PElementBase
       grad(1,1) = grad(1,1) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + dLh(1)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,1) = grad(1,1) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))**2*Phi(j,Lc-La)
-      grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLC(1)-dLa(1))
+      grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,1) = grad(1,1) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))**2
@@ -2932,7 +2934,7 @@ MODULE PElementBase
       grad(1,2) = grad(1,2) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(1,2) = grad(1,2) + dLh(2)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,2) = grad(1,2) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(2)-dLa(2))*Phi(j,Lc-La)
-      grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*ddPhi(j,Lc-La)*(dLC(2)-dLa(2))
+      grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(1,2) = grad(1,2) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,2) = grad(1,2) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,2) = grad(1,2) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(2)-dLa(2))
@@ -2941,7 +2943,7 @@ MODULE PElementBase
       grad(1,3) = grad(1,3) + dLh(1)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
       grad(1,3) = grad(1,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*Phi(j,Lc-La)
       grad(1,3) = grad(1,3) + Lh*ddPhi(i,Lb-La)*(dLb(1)-dLa(1))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
-      grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*ddPhi(j,Lc-La)*(dLC(3)-dLa(3))
+      grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(1)-dLa(1))*dPhi(j,Lc-La)*(dLC(3)-dLa(3))
       grad(1,3) = grad(1,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,3) = grad(1,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(1)-dLa(1))
       grad(1,3) = grad(1,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(1)-dLa(1))*(dLc(3)-dLa(3))
@@ -2959,7 +2961,7 @@ MODULE PElementBase
       grad(2,3) = grad(2,3) + dLh(2)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(3)-dLa(3))
       grad(2,3) = grad(2,3) + dLh(3)*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*Phi(j,Lc-La)
       grad(2,3) = grad(2,3) + Lh*ddPhi(i,Lb-La)*(dLb(2)-dLa(2))*(dLb(3)-dLa(3))*Phi(j,Lc-La)
-      grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*ddPhi(j,Lc-La)*(dLC(3)-dLa(3))
+      grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(2)-dLa(2))*dPhi(j,Lc-La)*(dLC(3)-dLa(3))
       grad(2,3) = grad(2,3) + dLh(3)*Phi(i,Lb-La)*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,3) = grad(2,3) + Lh*dPhi(i,Lb-La)*(dLb(3)-dLa(3))*dPhi(j,Lc-La)*(dLc(2)-dLa(2))
       grad(2,3) = grad(2,3) + Lh*Phi(i,Lb-La)*ddPhi(j,Lc-La)*(dLc(2)-dLa(2))*(dLc(3)-dLa(3))
@@ -3077,6 +3079,9 @@ MODULE PElementBase
       REAL (KIND=dp), DIMENSION(3,3) :: grad
 
       grad = 0
+      phiU = Phi(i,u) 
+      phiV = Phi(j,v)
+      phiW = Phi(k,w)
 
       grad(1,1) = ddPhi(i,u)*PhiV*phiW
       grad(1,2) = dPhi(i,u)*dPhi(j,v)*phiW
