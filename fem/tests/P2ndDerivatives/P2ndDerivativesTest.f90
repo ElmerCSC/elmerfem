@@ -2,7 +2,7 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-!  Solve the Poisson equation!
+!  Test for p-element 2nd derivatives.
 !
 !  ARGUMENTS:
 !
@@ -34,17 +34,14 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
-  INTEGER :: n, nb, nd, t, istat, active, family, qp
+  INTEGER :: n, nb, nd, t, istat, active, qp
 !------------------------------------------------------------------------------
 
-  !Allocate some permanent storage, this is done first time only:
-  !--------------------------------------------------------------
   Mesh => GetMesh()
 
-   !System assembly:
-   !----------------
    Active = GetNofActive()
    qp = MAXVAL(Solver % Def_Dofs(:,1,6))
+
    PRINT*,'Testing 2nd derivatives with p(',i2s(qp), ')...'
    DO t=1,Active
       Element => GetActiveElement(t)
@@ -211,9 +208,9 @@ CONTAINS
 !     print*,sum(ddbasisddx(1:nd,2,3)*f), ddiff(2,3), sum(ddxFromNodaldx(1:nd,2,3)*f)
 !     print*,'-'
 
-      IF(ABS( diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx 1'
-      IF(ABS( diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dx 2'
-      IF(ABS( diff(3) - SUM(dBasisdx(1:nd,3)*f) )>1.d-7) STOP 'dx 3'
+      IF(ABS(diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx 1'
+      IF(ABS(diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dx 2'
+      IF(ABS(diff(3) - SUM(dBasisdx(1:nd,3)*f) )>1.d-7) STOP 'dx 3'
 
       IF(ABS(ddiff(1,1)-SUM(ddBasisddx(1:nd,1,1)*f))>1.d-6) STOP 'ddx 1'
       IF(ABS(ddiff(1,2)-SUM(ddBasisddx(1:nd,1,2)*f))>1.d-6) STOP 'ddx 2'
