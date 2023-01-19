@@ -3468,9 +3468,6 @@ MODULE PElementBase
          Lb = TetraNodalPBasis(2,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(2,u,v,w) 
-         dLb_La(1) = 1
-         dLb_La(2) = 0
-         dLb_La(3) = 0
       CASE(2)
          ! Choose correct edge function by type
          SELECT CASE(t)
@@ -3480,18 +3477,12 @@ MODULE PElementBase
             Lb = TetraNodalPBasis(3,u,v,w)
             dLa = dTetraNodalPBasis(2,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w) 
-            dLb_La(1) = -1d0/2
-            dLb_La(2) = SQRT(3d0)/2
-            dLb_La(3) = 0 
          ! Type 2 tetrahedron, edge 4:(3->2)
          CASE (2) 
             La = TetraNodalPBasis(3,u,v,w)
             Lb = TetraNodalPBasis(2,u,v,w)
             dLa = dTetraNodalPBasis(3,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w) 
-            dLb_La(1) = 1d0/2
-            dLb_La(2) = -SQRT(3d0)/2
-            dLb_La(3) = 0
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown type for tetrahedron')
          END SELECT
@@ -3500,33 +3491,21 @@ MODULE PElementBase
          Lb = TetraNodalPBasis(3,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(3,u,v,w) 
-         dLb_La(1) = 1d0/2
-         dLb_La(2) = SQRT(3d0)/2 
-         dLb_La(3) = 0
       CASE(4)
          La = TetraNodalPBasis(1,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = 1d0/2
-         dLb_La(2) = SQRT(3d0)/6
-         dLb_La(3) = SQRT(6d0)/3
       CASE(5)
          La = TetraNodalPBasis(2,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(2,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = -1d0/2
-         dLb_La(2) = SQRT(3d0)/6
-         dLb_La(3) = SQRT(6d0)/3
       CASE(6)
          La = TetraNodalPBasis(3,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(3,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = 0
-         dLb_La(2) = -SQRT(3d0)/3
-         dLb_La(3) = SQRT(6d0)/3
       CASE DEFAULT 
          CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown edge for tetrahedron')
       END SELECT
@@ -3537,9 +3516,10 @@ MODULE PElementBase
       ! Grad(Le) = 
       ! Grad(La)*Lb*varPhi(i,Lb-La) + La*Grad(Lb)*varPhi(i,Lb-La) + 
       ! La*Lb*dVarPhi(i,Lb-La)*Grad(Lb-La) 
+      dLb_La = dLb-dLa
 
       vPhi = varPhi(i, Lb-La)
-      grad = dLa*Lb*vPhi+La*dLb*vPhi+La*Lb*dVarPhi(i,Lb-La)*dLb_La
+      grad = dLa*Lb*vPhi + La*dLb*vPhi + La*Lb*dVarPhi(i,Lb-La)*dLb_La
     END FUNCTION dTetraEdgePBasis
       
 
@@ -3593,9 +3573,6 @@ MODULE PElementBase
          Lb  = TetraNodalPBasis(2,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(2,u,v,w) 
-         dLb_La(1) = 1
-         dLb_La(2) = 0
-         dLb_La(3) = 0
       CASE(2)
          ! Choose correct edge function by type
          SELECT CASE(t)
@@ -3605,18 +3582,12 @@ MODULE PElementBase
             Lb  = TetraNodalPBasis(3,u,v,w)
             dLa = dTetraNodalPBasis(2,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w) 
-            dLb_La(1) = -1d0/2
-            dLb_La(2) = SQRT(3d0)/2
-            dLb_La(3) = 0 
          ! Type 2 tetrahedron, edge 4:(3->2)
          CASE (2) 
             La  = TetraNodalPBasis(3,u,v,w)
             Lb  = TetraNodalPBasis(2,u,v,w)
             dLa = dTetraNodalPBasis(3,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w) 
-            dLb_La(1) = 1d0/2
-            dLb_La(2) = -SQRT(3d0)/2
-            dLb_La(3) = 0
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown type for tetrahedron')
          END SELECT
@@ -3625,33 +3596,21 @@ MODULE PElementBase
          Lb  = TetraNodalPBasis(3,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(3,u,v,w) 
-         dLb_La(1) = 1d0/2
-         dLb_La(2) = SQRT(3d0)/2 
-         dLb_La(3) = 0
       CASE(4)
          La = TetraNodalPBasis(1,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = 1d0/2
-         dLb_La(2) = SQRT(3d0)/6
-         dLb_La(3) = SQRT(6d0)/3
       CASE(5)
          La = TetraNodalPBasis(2,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(2,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = -1d0/2
-         dLb_La(2) = SQRT(3d0)/6
-         dLb_La(3) = SQRT(6d0)/3
       CASE(6)
          La = TetraNodalPBasis(3,u,v,w)
          Lb = TetraNodalPBasis(4,u,v,w)
          dLa = dTetraNodalPBasis(3,u,v,w)
          dLb = dTetraNodalPBasis(4,u,v,w) 
-         dLb_La(1) = 0
-         dLb_La(2) = -SQRT(3d0)/3
-         dLb_La(3) = SQRT(6d0)/3
       CASE DEFAULT 
          CALL Fatal('PElementBase::dTetraEdgePBasis','Unknown edge for tetrahedron')
       END SELECT
@@ -3663,45 +3622,46 @@ MODULE PElementBase
       ! Grad(La)*Lb*varPhi(i,Lb-La) + La*Grad(Lb)*varPhi(i,Lb-La) + 
       ! La*Lb*dVarPhi(i,Lb-La)*Grad(Lb-La) 
 
+      dLb_La = dLb-dLa
       vPhi = varPhi(i, Lb-La)
 !     grad = dLa*Lb*vPhi + La*dLb*vPhi + La*Lb*dVarPhi(i,Lb-La)*dLb_La
 
       grad = 0
-      grad(1,1) = grad(1,1) + dLa(1)*(dLb(1)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(1)-dLa(1)))
-      grad(1,1) = grad(1,1) + dLb(1)*(dLa(1)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(1)-dLa(1)))
+      grad(1,1) = grad(1,1) + dLa(1)*(dLb(1)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(1))
+      grad(1,1) = grad(1,1) + dLb(1)*(dLa(1)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(1))
       grad(1,1) = grad(1,1) + dLa(1)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
       grad(1,1) = grad(1,1) + La*dLb(1)*dVarPhi(i,Lb-La)*dLb_La(1)
-      grad(1,1) = grad(1,1) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(1)-dLa(1))*dLb_La(1)
+      grad(1,1) = grad(1,1) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(1)**2
 
-      grad(1,2) = grad(1,2) + dLa(1)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
-      grad(1,2) = grad(1,2) + dLb(1)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(1,2) = grad(1,2) + dLa(1)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(2))
+      grad(1,2) = grad(1,2) + dLb(1)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(2))
       grad(1,2) = grad(1,2) + dLa(2)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
       grad(1,2) = grad(1,2) + La*dLb(2)*dVarPhi(i,Lb-La)*dLb_La(1)
-      grad(1,2) = grad(1,2) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(2)-dLa(2))*dLb_La(1)
+      grad(1,2) = grad(1,2) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(2)*dLb_La(1)
 
-      grad(1,3) = grad(1,3) + dLa(1)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
-      grad(1,3) = grad(1,3) + dLb(1)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(1,3) = grad(1,3) + dLa(1)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(3))
+      grad(1,3) = grad(1,3) + dLb(1)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(3))
       grad(1,3) = grad(1,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(1)
       grad(1,3) = grad(1,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(1)
-      grad(1,3) = grad(1,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(1)
+      grad(1,3) = grad(1,3) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(3)*dLb_La(1)
 
-      grad(2,2) = grad(2,2) + dLa(2)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
-      grad(2,2) = grad(2,2) + dLb(2)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(2)-dLa(2)))
+      grad(2,2) = grad(2,2) + dLa(2)*(dLb(2)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(2))
+      grad(2,2) = grad(2,2) + dLb(2)*(dLa(2)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(2))
       grad(2,2) = grad(2,2) + dLa(2)*Lb*dVarPhi(i,Lb-La)*dLb_La(2)
       grad(2,2) = grad(2,2) + La*dLb(2)*dVarPhi(i,Lb-La)*dLb_La(2)
-      grad(2,2) = grad(2,2) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(2)-dLa(2))*dLb_La(2)
+      grad(2,2) = grad(2,2) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(2)**2
 
-      grad(2,3) = grad(2,3) + dLa(2)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
-      grad(2,3) = grad(2,3) + dLb(2)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(2,3) = grad(2,3) + dLa(2)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(3))
+      grad(2,3) = grad(2,3) + dLb(2)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(3))
       grad(2,3) = grad(2,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(2)
       grad(2,3) = grad(2,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(2)
-      grad(2,3) = grad(2,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(2)
+      grad(2,3) = grad(2,3) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(3)*dLb_La(2)
 
-      grad(3,3) = grad(3,3) + dLa(3)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
-      grad(3,3) = grad(3,3) + dLb(3)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*(dLb(3)-dLa(3)))
+      grad(3,3) = grad(3,3) + dLa(3)*(dLb(3)*vPhi + Lb*dVarPhi(i,Lb-La)*dLb_La(3))
+      grad(3,3) = grad(3,3) + dLb(3)*(dLa(3)*vPhi + La*dVarPhi(i,Lb-La)*dLb_La(3))
       grad(3,3) = grad(3,3) + dLa(3)*Lb*dVarPhi(i,Lb-La)*dLb_La(3)
       grad(3,3) = grad(3,3) + La*dLb(3)*dVarPhi(i,Lb-La)*dLb_La(3)
-      grad(3,3) = grad(3,3) + La*Lb*ddVarPhi(i,Lb-La)*(dLb(3)-dLa(3))*dLb_La(3)
+      grad(3,3) = grad(3,3) + La*Lb*ddVarPhi(i,Lb-La)*dLb_La(3)**2
 
       grad(2,1) = grad(1,2)
       grad(3,1) = grad(1,3)
@@ -3753,9 +3713,9 @@ MODULE PElementBase
       value = 0
       SELECT CASE(face)
       CASE (1)
-         L1=TetraNodalPBasis(1,u,v,w)
-         L2=TetraNodalPBasis(2,u,v,w)
-         L3=TetraNodalPBasis(3,u,v,w)
+         L1 = TetraNodalPBasis(1,u,v,w)
+         L2 = TetraNodalPBasis(2,u,v,w)
+         L3 = TetraNodalPBasis(3,u,v,w)
             
          SELECT CASE(t)   
          CASE (1)
@@ -3837,110 +3797,81 @@ MODULE PElementBase
       t = 1 
       IF (PRESENT(tetratype)) t = tetratype
 
-      grad = 0
       SELECT CASE(face)
       CASE (1)
          SELECT CASE (t)
          CASE (1)
-            La=TetraNodalPBasis(1,u,v,w)
-            Lb=TetraNodalPBasis(2,u,v,w)
-            Lc=TetraNodalPBasis(3,u,v,w)
+            La = TetraNodalPBasis(1,u,v,w)
+            Lb = TetraNodalPBasis(2,u,v,w)
+            Lc = TetraNodalPBasis(3,u,v,w)
+
             dLa = dTetraNodalPbasis(1,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w)
             dLc = dTetraNodalPBasis(3,u,v,w)
-            ! Set up derivative of first inner function
-            dLb_La(1) =  1d0 
-            dLb_La(2) =  0d0
-            dLb_La(3) =  0d0
-            ! Derivative of second inner function
-            dLc_1(1) =  0d0
-            dLc_1(2) =  2d0*SQRT(3d0)/3
-            dLc_1(3) =  -SQRT(6d0)/6
          CASE (2)
-            La=TetraNodalPBasis(1,u,v,w)
-            Lb=TetraNodalPBasis(3,u,v,w)
-            Lc=TetraNodalPBasis(2,u,v,w)
+            La = TetraNodalPBasis(1,u,v,w)
+            Lb = TetraNodalPBasis(3,u,v,w)
+            Lc = TetraNodalPBasis(2,u,v,w)
+
             dLa = dTetraNodalPbasis(1,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w)
             dLc = dTetraNodalPBasis(2,u,v,w)
-            ! Set up derivative of first inner function
-            dLb_La(1) = 1d0/2 
-            dLb_La(2) = SQRT(3d0)/2 
-            dLb_La(3) = 0 
-            ! Derivative of second inner function
-            dLc_1(1) = 1d0 
-            dLc_1(2) = -SQRT(3d0)/3 
-            dLc_1(3) = -SQRT(6d0)/6 
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')       
          END SELECT
       CASE (2)
-         La=TetraNodalPBasis(1,u,v,w)
-         Lb=TetraNodalPBasis(2,u,v,w)
-         Lc=TetraNodalPBasis(4,u,v,w)
+         La =TetraNodalPBasis(1,u,v,w)
+         Lb = TetraNodalPBasis(2,u,v,w)
+         Lc = TetraNodalPBasis(4,u,v,w)
+
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(2,u,v,w)
          dLc = dTetraNodalPBasis(4,u,v,w)
-         dLb_La(1) =  1d0 
-         dLb_La(2) =  0d0
-         dLb_La(3) =  0d0
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE (3)
          SELECT CASE(t)
          ! Type 1 tetrahedron: Face 4:(2,3,4)
          CASE (1)
-            La=TetraNodalPBasis(2,u,v,w)
-            Lb=TetraNodalPBasis(3,u,v,w)
-            Lc=TetraNodalPBasis(4,u,v,w)
+            La = TetraNodalPBasis(2,u,v,w)
+            Lb = TetraNodalPBasis(3,u,v,w)
+            Lc = TetraNodalPBasis(4,u,v,w)
+
             dLa = dTetraNodalPBasis(2,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w)
             dLc = dTetraNodalPBasis(4,u,v,w)
-            dLb_La(1) =  -1d0/2 
-            dLb_La(2) =  SQRT(3d0)/2
-            dLb_La(3) =  0d0
          ! Type 2 tetrahedron: Face 4:(3,2,4)
          CASE (2)
-            La=TetraNodalPBasis(3,u,v,w)
-            Lb=TetraNodalPBasis(2,u,v,w)
-            Lc=TetraNodalPBasis(4,u,v,w)
+            La = TetraNodalPBasis(3,u,v,w)
+            Lb = TetraNodalPBasis(2,u,v,w)
+            Lc = TetraNodalPBasis(4,u,v,w)
+
             dLa = dTetraNodalPBasis(3,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w)
             dLc = dTetraNodalPBasis(4,u,v,w)
-            dLb_La(1) =  1d0/2 
-            dLb_La(2) =  -SQRT(3d0)/2
-            dLb_La(3) =  0d0
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')
          END SELECT
          ! Derivative of second inner function is equal for both types
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE (4)
-         La=TetraNodalPBasis(1,u,v,w)
-         Lb=TetraNodalPBasis(3,u,v,w)
-         Lc=TetraNodalPBasis(4,u,v,w)
+         La = TetraNodalPBasis(1,u,v,w)
+         Lb = TetraNodalPBasis(3,u,v,w)
+         Lc = TetraNodalPBasis(4,u,v,w)
+
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(3,u,v,w)
          dLc = dTetraNodalPBasis(4,u,v,w)
-         dLb_La(1) =  1d0/2 
-         dLb_La(2) =  SQRT(3d0)/2
-         dLb_La(3) =  0d0
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE DEFAULT 
          CALL Fatal('PElementBase::dTetraFacePBasis','Unknown face for tetrahedron')
       END SELECT
+
+      dLb_La = dLb - dLa
+      dLc_1 = 2*dLc
       
       Legi = LegendreP(i, Lb-La)
       Legj = LegendreP(j, 2*Lc-1)
 
       ! Calculate gradient from given parameters 
       grad = dLa*Lb*Lc*Legi*Legj + La*dLb*Lc*Legi*Legj + La*Lb*dLc*Legi*Legj + &
-           La*Lb*Lc*dLegendreP(i,Lb-La)*dLb_La*Legj + La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1) * dLc_1
+           La*Lb*Lc*dLegendreP(i,Lb-La)*dLb_La*Legj + La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*dLc_1
     
     END FUNCTION dTetraFacePBasis
 
@@ -3996,14 +3927,6 @@ MODULE PElementBase
             dLa = dTetraNodalPbasis(1,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w)
             dLc = dTetraNodalPBasis(3,u,v,w)
-            ! Set up derivative of first inner function
-            dLb_La(1) =  1d0 
-            dLb_La(2) =  0d0
-            dLb_La(3) =  0d0
-            ! Derivative of second inner function
-            dLc_1(1) =  0d0
-            dLc_1(2) =  2d0*SQRT(3d0)/3
-            dLc_1(3) =  -SQRT(6d0)/6
          CASE (2)
             La=TetraNodalPBasis(1,u,v,w)
             Lb=TetraNodalPBasis(3,u,v,w)
@@ -4011,14 +3934,6 @@ MODULE PElementBase
             dLa = dTetraNodalPbasis(1,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w)
             dLc = dTetraNodalPBasis(2,u,v,w)
-            ! Set up derivative of first inner function
-            dLb_La(1) = 1d0/2 
-            dLb_La(2) = SQRT(3d0)/2 
-            dLb_La(3) = 0 
-            ! Derivative of second inner function
-            dLc_1(1) = 1d0 
-            dLc_1(2) = -SQRT(3d0)/3 
-            dLc_1(3) = -SQRT(6d0)/6 
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')       
          END SELECT
@@ -4029,12 +3944,6 @@ MODULE PElementBase
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(2,u,v,w)
          dLc = dTetraNodalPBasis(4,u,v,w)
-         dLb_La(1) =  1d0 
-         dLb_La(2) =  0d0
-         dLb_La(3) =  0d0
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE (3)
          SELECT CASE(t)
          ! Type 1 tetrahedron: Face 4:(2,3,4)
@@ -4045,9 +3954,6 @@ MODULE PElementBase
             dLa = dTetraNodalPBasis(2,u,v,w)
             dLb = dTetraNodalPBasis(3,u,v,w)
             dLc = dTetraNodalPBasis(4,u,v,w)
-            dLb_La(1) =  -1d0/2 
-            dLb_La(2) =  SQRT(3d0)/2
-            dLb_La(3) =  0d0
          ! Type 2 tetrahedron: Face 4:(3,2,4)
          CASE (2)
             La=TetraNodalPBasis(3,u,v,w)
@@ -4056,16 +3962,9 @@ MODULE PElementBase
             dLa = dTetraNodalPBasis(3,u,v,w)
             dLb = dTetraNodalPBasis(2,u,v,w)
             dLc = dTetraNodalPBasis(4,u,v,w)
-            dLb_La(1) =  1d0/2 
-            dLb_La(2) =  -SQRT(3d0)/2
-            dLb_La(3) =  0d0
          CASE DEFAULT
             CALL Fatal('PElementBase::dTetraFacePBasis','Unknown type for tetrahedron')
          END SELECT
-         ! Derivative of second inner function is equal for both types
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE (4)
          La=TetraNodalPBasis(1,u,v,w)
          Lb=TetraNodalPBasis(3,u,v,w)
@@ -4073,22 +3972,20 @@ MODULE PElementBase
          dLa = dTetraNodalPBasis(1,u,v,w)
          dLb = dTetraNodalPBasis(3,u,v,w)
          dLc = dTetraNodalPBasis(4,u,v,w)
-         dLb_La(1) =  1d0/2 
-         dLb_La(2) =  SQRT(3d0)/2
-         dLb_La(3) =  0d0
-         dLc_1(1) =  0d0
-         dLc_1(2) =  0d0
-         dLc_1(3) =  SQRT(6d0)/2
       CASE DEFAULT 
          CALL Fatal('PElementBase::dTetraFacePBasis','Unknown face for tetrahedron')
       END SELECT
+
       
       Legi = LegendreP(i, Lb-La)
       Legj = LegendreP(j, 2*Lc-1)
 
       ! Calculate gradient from given parameters 
+!     dLb_La = dLb-dLa
+!     dLc_1 = 2*dLc
+
 !     grad = dLa*Lb*Lc*Legi*Legj + La*dLb*Lc*Legi*Legj + La*Lb*dLc*Legi*Legj + &
-!          La*Lb*Lc*dLegendreP(i,Lb-La)*dLb_La*Legj + La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1) * dLc_1
+!          La*Lb*Lc*dLegendreP(i,Lb-La)*dLb_La*Legj + La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*dLc_1
 
       grad = 0
       grad(1,1) = grad(1,1) + dLa(1)*(dLb(1)*Lc*Legi*Legj + Lb*dLc(1)*Legi*Legj + &
@@ -4273,7 +4170,6 @@ MODULE PElementBase
       ! Variables
       REAL (KIND=dp) :: L1, L2, L3, L4, value
 
-      value = 0
       L1 = TetraNodalPBasis(1,u,v,w)
       L2 = TetraNodalPBasis(2,u,v,w)
       L3 = TetraNodalPBasis(3,u,v,w)
@@ -4308,28 +4204,43 @@ MODULE PElementBase
       INTEGER, INTENT(IN) :: i, j, k
       REAL (KIND=dp), INTENT(IN) :: u,v,w
       ! Variables
-      REAL (KIND=dp) :: L1, L2, L3, L4, L2_L1, L3_1, L4_1, a, b, c 
-      REAL (KIND=dp), DIMENSION(3) :: grad
+      REAL (KIND=dp) :: L1, L2, L3, L4, a, b, c
+      REAL (KIND=dp), DIMENSION(3) :: grad, grad1, dL1, dL2, dL3, dL4, da, db, dc
 
       grad = 0
       L1 = TetraNodalPBasis(1,u,v,w)
       L2 = TetraNodalPBasis(2,u,v,w)
       L3 = TetraNodalPBasis(3,u,v,w)
       L4 = TetraNodalPBasis(4,u,v,w)
-      L2_L1 = L2 - L1
-      L3_1 = 2*L3 - 1
-      L4_1 = 2*L4 - 1
-      a = LegendreP(i,L2_L1)
-      b = LegendreP(j,L3_1)
-      c = LegendreP(k,L4_1)
+
+      dL1 = dTetraNodalPBasis(1,u,v,w)
+      dL2 = dTetraNodalPBasis(2,u,v,w)
+      dL3 = dTetraNodalPBasis(3,u,v,w)
+      dL4 = dTetraNodalPBasis(4,u,v,w)
+
+      a = LegendreP(i,L2-L1)
+      b = LegendreP(j,2*L3-1)
+      c = LegendreP(k,2*L4-1)
+
+      da = dLegendreP(i,L2-L1)*(dL2-dL1)
+      db = dLegendreP(j,2*L3-1)*2*dL3
+      dc = dLegendreP(k,2*L4-1)*2*dL4
+
+!      value = L1*L2*L3*L4*LegendreP(i,L2-L1)*LegendreP(j,2*L3-1)*LegendreP(k,2*L4-1)
+
+      grad = (dL1*L2*L3*L4 + L1*dL2*L3*L4 + L1*L2*dL3*L4 + L1*L2*L3*dL4)*a*b*c + &
+                   L1*L2*L3*L4*(da*b*c + a*db*c + a*b*dc)
 
       ! Gradients of tetrahedral bubble basis functions 
-      grad(1) = -1d0/2*L2*L3*L4*a*b*c + 1d0/2*L1*L3*L4*a*b*c + L1*L2*L3*L4*dLegendreP(i,L2_L1)*b*c
-      grad(2) = -SQRT(3d0)/6*L2*L3*L4*a*b*c - SQRT(3d0)/6*L1*L3*L4*a*b*c + SQRT(3d0)/3*L1*L2*L4*a*b*c &
-           + 2*SQRT(3d0)/3*L1*L2*L3*L4*a*dLegendreP(j,L3_1)*c
-      grad(3) = -SQRT(6d0)/12*L2*L3*L4*a*b*c - SQRT(6d0)/12*L1*L3*L4*a*b*c - SQRT(6d0)/12*L1*L2*L4*a*b*c &
-           + SQRT(6d0)/4*L1*L2*L3*a*b*c - SQRT(6d0)/6*L1*L2*L3*L4*a*dLegendreP(j,L3_1)*c &
-           + SQRT(6d0)/2*L1*L2*L3*L4*a*b*dLegendreP(k,L4_1)
+#if 0
+      grad1(1) = -1d0/2*L2*L3*L4*a*b*c + 1d0/2*L1*L3*L4*a*b*c + L1*L2*L3*L4*dLegendreP(i,L2-L1)*b*c
+      grad1(2) = -SQRT(3d0)/6*L2*L3*L4*a*b*c - SQRT(3d0)/6*L1*L3*L4*a*b*c + SQRT(3d0)/3*L1*L2*L4*a*b*c &
+           + 2*SQRT(3d0)/3*L1*L2*L3*L4*a*dLegendreP(j,2*L3-1)*c
+      grad1(3) = -SQRT(6d0)/12*L2*L3*L4*a*b*c - SQRT(6d0)/12*L1*L3*L4*a*b*c - SQRT(6d0)/12*L1*L2*L4*a*b*c &
+           + SQRT(6d0)/4*L1*L2*L3*a*b*c - SQRT(6d0)/6*L1*L2*L3*L4*a*dLegendreP(j,2*L3-1)*c &
+           + SQRT(6d0)/2*L1*L2*L3*L4*a*b*dLegendreP(k,2*L4-1)
+if ( maxval(abs(grad-grad1))>1d-16) stop 'grad'
+#endif
     END FUNCTION dTetraBubblePBasis
 
 
@@ -6514,7 +6425,7 @@ MODULE PElementBase
       ! Internal variables
       REAL (KIND=dp) :: P_l_1, P_l, PT
       INTEGER :: k 
-      
+
       ! First 20 Legendre polynomials are precalculated. These are 
       ! all generated with Maple
       SELECT CASE (l)

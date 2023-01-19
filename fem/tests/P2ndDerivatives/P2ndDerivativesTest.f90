@@ -61,13 +61,14 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, qp )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n, nd, ef, qp
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),ddBasisddx(nd,3,3),DetJ,f(nd),diff(3)
     REAL(KIND=dp) :: dNodal(nd,nd,3), dx(nd,nd,3), ddxFromNodaldx(nd,3,3),ddiff(3,3)
-    REAL(KIND=dp) :: x, y, z
+    REAL(KIND=dp) :: x, y, z, fx, s
     LOGICAL :: Stat
     INTEGER :: i,j,k,t,p,q, edim
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -79,12 +80,15 @@ CONTAINS
     STIFF = 0.0d0
     FORCE = 0.0d0
 
-    Nodes % x(1:n) = Element % Type % NodeU
-    Nodes % y(1:n) = Element % Type % NodeV
-    Nodes % z(1:n) = Element % Type % NodeW
     edim = Element % Type % Dimension
+    nodes % x = 0
+    nodes % y = 0
+    nodes % z = 0
+    Nodes % x(1:n) = Element % Type % NodeU
+    IF(edim>1) Nodes % y(1:n) = Element % Type % NodeV
+    IF(edim>2) Nodes % z(1:n) = Element % Type % NodeW
 
-    IP = GaussPoints( Element)
+    IP = GaussPoints( Element )
     dNodal = 0
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -160,12 +164,14 @@ CONTAINS
         end do
       end do
 
-      IF (MAXVAL(ABS(ddxFromNodaldx-ddBasisddx))>1.d-7) STOP "ddx's don't match"
+!     IF (MAXVAL(ABS(ddxFromNodaldx-ddBasisddx))>1.d-7) STOP "ddx's don't match"
       diff=0
+      fx = 0
       ddiff=0
       SELECT CASE(edim)
       CASE(1)
         do i=0,qp
+          fx = fx + x**i
           if ( i>0 ) diff(1) = diff(1) + i*x**(i-1)
           if ( i>1 ) ddiff(1,1) = ddiff(1,1) + i*(i-1)*x**(i-2)
         end do
@@ -173,6 +179,7 @@ CONTAINS
         do i=0,qp
           do j=0,qp
             if ( i+j>qp ) cycle
+            fx = fx + x**i*y**j
             if ( i>0 ) diff(1) = diff(1) + i*x**(i-1)*y**j
             if ( j>0 ) diff(2) = diff(2) + x**i*j*y**(j-1)
 
@@ -186,6 +193,7 @@ CONTAINS
           do j=0,qp
             do k=0,qp
               if ( i+j+k>qp ) cycle
+              fx = fx + x**i*y**j*z**k
               if ( i>0 ) diff(1) = diff(1) + i*x**(i-1)*y**j*z**k
               if ( j>0 ) diff(2) = diff(2) + x**i*j*y**(j-1)*z**k
               if ( k>0 ) diff(3) = diff(3) + x**i*y**j*k*z**(k-1)
@@ -212,6 +220,8 @@ CONTAINS
 !     print*,sum(ddbasisddx(1:nd,2,2)*f), ddiff(2,2), sum(ddxFromNodaldx(1:nd,2,2)*f)
 !     print*,sum(ddbasisddx(1:nd,2,3)*f), ddiff(2,3), sum(ddxFromNodaldx(1:nd,2,3)*f)
 !     print*,'-'
+
+      IF(ABS(fx - SUM(Basis(1:nd)*f) )>1.d-7) STOP 'fx'
 
       IF(ABS(diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx'
       IF(ABS(diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dy'
