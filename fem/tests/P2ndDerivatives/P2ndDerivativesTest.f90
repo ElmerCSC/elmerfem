@@ -48,8 +48,9 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
+      WRITE(*,'(A)',ADVANCE='NO') '('//i2s(Element % Type % ElementCode)//')...'
       CALL LocalMatrix(  Element, n, nd+nb, qp )
-      WRITE(*,'(A)',ADVANCE='NO') '('//i2s(Element % Type % ElementCode)//') PASSED...'
+      WRITE(*,'(A)',ADVANCE='NO') 'PASSED '
    END DO
    WRITE(*,*) ''
    WRITE(*,*) ''
