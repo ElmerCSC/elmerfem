@@ -1810,6 +1810,7 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
+
      BLOCK
        LOGICAL :: EdgesDone, FacesDone
        INTEGER :: Ind, i,j, p, nb, EDOFs, FDOFs, BDOFs
@@ -1841,10 +1842,8 @@ CONTAINS
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
-           IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( .NOT. Solver % GlobalBubbles ) THEN
-               CYCLE
-             END IF
+           IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
+             IF ( .NOT. Solver % GlobalBubbles ) CYCLE
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
@@ -2066,7 +2065,7 @@ CONTAINS
       p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
-        IF (p > 1) n = GetBubbleDOFs(Element, p)
+        IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
         n = MAX(k,n)
       ELSE 
         n = CurrElement % BDOFs
@@ -2086,7 +2085,7 @@ CONTAINS
         p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
         IF (k >= 0 .OR. p >= 1) THEN
-          IF (p > 1) n = GetBubbleDOFs(Element, p)
+          IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
           n = MAX(k,n)
           IF ( n>=0 ) CurrElement % BDOFs = n
         END IF

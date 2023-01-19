@@ -3720,7 +3720,7 @@ CONTAINS
 
                IF (ASSOCIATED(Edge % BoundaryInfo % Left) ) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Left, Mesh)
-               ELSE
+               ELSE IF(ASSOCIATED(Edge % BoundaryInfo % Right)) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Right, Mesh)
                END IF
              
@@ -3743,6 +3743,8 @@ CONTAINS
 
        DO j=1,Element % TYPE % NumberOfFaces
           Face => Mesh % Faces( Element % FaceIndexes(j) )
+
+          IF(ANY(Face % EdgeIndexes==0)) CYCLE
 
           ! Set attributes of p element faces
           IF ( ASSOCIATED(Element % PDefs) ) THEN
@@ -18186,7 +18188,9 @@ CONTAINS
       ! For P elements mappings are different
       IF ( ASSOCIATED(Element % PDefs) ) THEN
         CALL GetElementEdgeMap( Element, EdgeMap )
-        CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+        IF(Element % Type % ElementCode > 500) &
+          CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+
         n = Element % TYPE % NumberOfEdges
       ELSE 
         SELECT CASE( Element % TYPE % ElementCode / 100 )
@@ -18386,8 +18390,10 @@ CONTAINS
 
       DO i=1,Mesh % NumberOfFaces
         Face => Mesh % Faces(i)
+        IF(.NOT.ASSOCIATED(Face % EdgeIndexes)) CYCLE
         n = Face % TYPE % NumberOfEdges
         Edgeind(1:n) = Face % EdgeIndexes(1:n)
+        IF(ANY(EdgeInd(1:n)==0)) CYCLE
         DO j=1,n
           i1 = Mesh % Edges(Edgeind(j)) % NodeIndexes(1:2)
           IF ( i1(1)>i1(2) ) THEN
