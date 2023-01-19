@@ -79,9 +79,12 @@ CONTAINS
     STIFF = 0.0d0
     FORCE = 0.0d0
 
+    Nodes % x(1:n) = Element % Type % NodeU
+    Nodes % y(1:n) = Element % Type % NodeV
+    Nodes % z(1:n) = Element % Type % NodeW
     edim = Element % Type % Dimension
 
-    IP = GaussPoints( Element )
+    IP = GaussPoints( Element)
     dNodal = 0
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -192,6 +195,7 @@ CONTAINS
               if ( i>0 .and. k>0 ) ddiff(1,3) = ddiff(1,3) + i*x**(i-1)*y**j*k*z**(k-1)
               if ( j>1 ) ddiff(2,2) = ddiff(2,2) + x**i*j*(j-1)*y**(j-2)*z**k
               if ( j>0 .and. k>0 ) ddiff(2,3) = ddiff(2,3) + x**i*j*y**(j-1)*k*z**(k-1)
+              if ( k>1 ) ddiff(3,3) = ddiff(3,3) + x**i*y**j*k*(k-1)*z**(k-2)
             end do
           end do
         end do
@@ -209,21 +213,23 @@ CONTAINS
 !     print*,sum(ddbasisddx(1:nd,2,3)*f), ddiff(2,3), sum(ddxFromNodaldx(1:nd,2,3)*f)
 !     print*,'-'
 
-      IF(ABS(diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx 1'
-      IF(ABS(diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dx 2'
-      IF(ABS(diff(3) - SUM(dBasisdx(1:nd,3)*f) )>1.d-7) STOP 'dx 3'
+      IF(ABS(diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx'
+      IF(ABS(diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dy'
+      IF(ABS(diff(3) - SUM(dBasisdx(1:nd,3)*f) )>1.d-7) STOP 'dz'
 
-      IF(ABS(ddiff(1,1)-SUM(ddBasisddx(1:nd,1,1)*f))>1.d-6) STOP 'ddx 1'
-      IF(ABS(ddiff(1,2)-SUM(ddBasisddx(1:nd,1,2)*f))>1.d-6) STOP 'ddx 2'
-      IF(ABS(ddiff(1,3)-SUM(ddBasisddx(1:nd,1,3)*f))>1.d-6) STOP 'ddx 3'
-      IF(ABS(ddiff(2,2)-SUM(ddBasisddx(1:nd,2,2)*f))>1.d-6) STOP 'ddx 4'
-      IF(ABS(ddiff(2,3)-SUM(ddBasisddx(1:nd,2,3)*f))>1.d-6) STOP 'ddx 5'
+      IF(ABS(ddiff(1,1)-SUM(ddBasisddx(1:nd,1,1)*f))>1.d-6) STOP 'dxx'
+      IF(ABS(ddiff(1,2)-SUM(ddBasisddx(1:nd,1,2)*f))>1.d-6) STOP 'dxy'
+      IF(ABS(ddiff(1,3)-SUM(ddBasisddx(1:nd,1,3)*f))>1.d-6) STOP 'dxz'
+      IF(ABS(ddiff(2,2)-SUM(ddBasisddx(1:nd,2,2)*f))>1.d-6) STOP 'dyy'
+      IF(ABS(ddiff(2,3)-SUM(ddBasisddx(1:nd,2,3)*f))>1.d-6) STOP 'dzz'
+      IF(ABS(ddiff(3,3)-SUM(ddBasisddx(1:nd,3,3)*f))>1.d-6) STOP 'dzz'
 
-      IF(ABS(ddiff(1,1)-SUM(ddxFromNodaldx(1:nd,1,1)*f))>1.d-6) STOP 'dfx 1'
-      IF(ABS(ddiff(1,2)-SUM(ddxFromNodaldx(1:nd,1,2)*f))>1.d-6) STOP 'dfx 2'
-      IF(ABS(ddiff(1,3)-SUM(ddxFromNodaldx(1:nd,1,3)*f))>1.d-6) STOP 'dfx 3'
-      IF(ABS(ddiff(2,2)-SUM(ddxFromNodaldx(1:nd,2,2)*f))>1.d-6) STOP 'dfx 4'
-      IF(ABS(ddiff(2,3)-SUM(ddxFromNodaldx(1:nd,2,3)*f))>1.d-6) STOP 'dfx 5'
+      IF(ABS(ddiff(1,1)-SUM(ddxFromNodaldx(1:nd,1,1)*f))>1.d-6) STOP 'dfxx'
+      IF(ABS(ddiff(1,2)-SUM(ddxFromNodaldx(1:nd,1,2)*f))>1.d-6) STOP 'dfxy'
+      IF(ABS(ddiff(1,3)-SUM(ddxFromNodaldx(1:nd,1,3)*f))>1.d-6) STOP 'dfxz'
+      IF(ABS(ddiff(2,2)-SUM(ddxFromNodaldx(1:nd,2,2)*f))>1.d-6) STOP 'dfyy'
+      IF(ABS(ddiff(2,3)-SUM(ddxFromNodaldx(1:nd,2,3)*f))>1.d-6) STOP 'dfyz'
+      IF(ABS(ddiff(3,3)-SUM(ddxFromNodaldx(1:nd,3,3)*f))>1.d-6) STOP 'dfzz'
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
