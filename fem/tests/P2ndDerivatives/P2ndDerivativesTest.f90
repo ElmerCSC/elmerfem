@@ -164,7 +164,7 @@ CONTAINS
         end do
       end do
 
-!     IF (MAXVAL(ABS(ddxFromNodaldx-ddBasisddx))>1.d-7) STOP "ddx's don't match"
+      IF (MAXVAL(ABS(ddxFromNodaldx-ddBasisddx))>1.d-8) STOP "ddx's don't match"
       diff=0
       fx = 0
       ddiff=0
@@ -221,28 +221,47 @@ CONTAINS
 !     print*,sum(ddbasisddx(1:nd,2,3)*f), ddiff(2,3), sum(ddxFromNodaldx(1:nd,2,3)*f)
 !     print*,'-'
 
-      IF(ABS(fx - SUM(Basis(1:nd)*f) )>1.d-7) STOP 'fx'
+!print*,fx,sum(basis(1:nd)*f)
+      CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.d-8, 'fx')
 
-      IF(ABS(diff(1) - SUM(dBasisdx(1:nd,1)*f) )>1.d-7) STOP 'dx'
-      IF(ABS(diff(2) - SUM(dBasisdx(1:nd,2)*f) )>1.d-7) STOP 'dy'
-      IF(ABS(diff(3) - SUM(dBasisdx(1:nd,3)*f) )>1.d-7) STOP 'dz'
+      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 1.d-7, 'dx')
+      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 1.d-7, 'dy')
+      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 1.d-7, 'dz')
 
-      IF(ABS(ddiff(1,1)-SUM(ddBasisddx(1:nd,1,1)*f))>1.d-6) STOP 'dxx'
-      IF(ABS(ddiff(1,2)-SUM(ddBasisddx(1:nd,1,2)*f))>1.d-6) STOP 'dxy'
-      IF(ABS(ddiff(1,3)-SUM(ddBasisddx(1:nd,1,3)*f))>1.d-6) STOP 'dxz'
-      IF(ABS(ddiff(2,2)-SUM(ddBasisddx(1:nd,2,2)*f))>1.d-6) STOP 'dyy'
-      IF(ABS(ddiff(2,3)-SUM(ddBasisddx(1:nd,2,3)*f))>1.d-6) STOP 'dzz'
-      IF(ABS(ddiff(3,3)-SUM(ddBasisddx(1:nd,3,3)*f))>1.d-6) STOP 'dzz'
+!print*,ddiff(1,1),sum(ddbasisddx(1:nd,1,1)*f), sum(ddxFromNodaldx(1:nd,1,1)*f)
+      CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 1.d-6, 'dxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 1.d-6, 'dxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddBasisddx(1:nd,1,3)*f), 1.d-6, 'dxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 1.d-6, 'dyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 1.d-6, 'dyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 1.d-6, 'dzz')
 
-      IF(ABS(ddiff(1,1)-SUM(ddxFromNodaldx(1:nd,1,1)*f))>1.d-6) STOP 'dfxx'
-      IF(ABS(ddiff(1,2)-SUM(ddxFromNodaldx(1:nd,1,2)*f))>1.d-6) STOP 'dfxy'
-      IF(ABS(ddiff(1,3)-SUM(ddxFromNodaldx(1:nd,1,3)*f))>1.d-6) STOP 'dfxz'
-      IF(ABS(ddiff(2,2)-SUM(ddxFromNodaldx(1:nd,2,2)*f))>1.d-6) STOP 'dfyy'
-      IF(ABS(ddiff(2,3)-SUM(ddxFromNodaldx(1:nd,2,3)*f))>1.d-6) STOP 'dfyz'
-      IF(ABS(ddiff(3,3)-SUM(ddxFromNodaldx(1:nd,3,3)*f))>1.d-6) STOP 'dfzz'
+      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 1.d-6, 'dfxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 1.d-6, 'dfxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 1.d-6, 'dfxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 1.d-6, 'dfyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 1.d-6, 'dfyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 1.d-6, 'dfzz')
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CheckValue(f1,f2,eps,str)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp)  :: f1,f2,eps
+     REAL :: scal
+     CHARACTER(*) :: str
+
+     IF( ABS(f1-f2) < 1.d-12 ) RETURN
+     scal = MAX(ABS(f1),ABS(f2))
+     IF(ABS(f1-f2)>scal*eps) THEN
+       PRINT*,f1,f2,ABS(f1-f2), '>', scal*eps
+       STOP str 
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE CheckValue
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
