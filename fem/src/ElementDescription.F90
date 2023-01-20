@@ -1899,7 +1899,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 ! This is a test version where all nodes are obtained at once. 
-#define ALLNODES 0
+#define ALLNODES 1
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
 !>  p-element, the values of the lowest-order basis functions corresponding 
