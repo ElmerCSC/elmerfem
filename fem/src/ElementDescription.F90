@@ -1899,7 +1899,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 ! This is a test version where all nodes are obtained at once. 
-#define ALLNODES 1
+#define ALLNODES 0
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
 !>  p-element, the values of the lowest-order basis functions corresponding 
@@ -2659,21 +2659,28 @@ CONTAINS
          CASE(2)
            ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
          CASE(3)
-           ddLBasisddx(i,1:3,1:3) = SecondDerivatives3D(element,basis,u,v,w)
-!          ddLBasisddx(i,1:3,1:3) = ddBrickNodalPBasis(i,u,v,w)
+           IF(Element % Type % ElementCode  == 706 ) THEN
+             ddLBasisddx(i,1:3,1:3) = ddWedgeNodalPBasis(i,u,v,w)
+           ELSE
+             ddLBasisddx(i,1:3,1:3) = SecondDerivatives3D(element,basis,u,v,w)
+           END IF
          END SELECT
          Basis(i) = 0
        END DO
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
-
      dLbasisdx = 0.0d0
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
      CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
 
      q = n
+
+!dbasisdx(1:n,:) = dlbasisdx(1:n,:)
+!if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
+!!detj = 1
+!return
 
      ! P ELEMENT CODE:
      ! ---------------
@@ -3197,6 +3204,10 @@ CONTAINS
                  Basis(q) = WedgeEdgePBasis(i,k+1,u,v,w,invert)
                  dLBasisdx(q,1:3) = dWedgeEdgePBasis(i,k+1,u,v,w,invert)
 
+                 IF(Compute2ndDerivatives) THEN
+                   ddLBasisddx(q,1:3,1:3) = ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                 END IF
+
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
@@ -3231,6 +3242,9 @@ CONTAINS
 
                        Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
                        dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                       IF(Compute2ndDerivatives) THEN
+                          ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                       END IF
 
                        ! Polynomial degree of basis function to vector
                        IF (degrees) BasisDegree(q) = 3+i+j
@@ -3261,9 +3275,15 @@ CONTAINS
                        IF (.NOT. invert) THEN
                           Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
                           dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          IF(Compute2ndDerivatives) THEN
+                             ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                          END IF
                        ELSE
                           Basis(q) = WedgeFacePBasis(F,j,i,u,v,w,direction)
                           dLBasisdx(q,:) = dWedgeFacePBasis(F,j,i,u,v,w,direction)
+                          IF(Compute2ndDerivatives) THEN
+                             ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,j,i,u,v,w,direction)
+                          END IF
                        END IF
 
                        ! Polynomial degree of basis function to vector
@@ -3297,6 +3317,9 @@ CONTAINS
 
                     Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,:) = dWedgeBubblePBasis(i,j,k,u,v,w)
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddWedgeBubblePBasis(i,j,k,u,v,w)
+                    END IF
 
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 3+i+j+k
@@ -10714,7 +10737,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps
+     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps=0
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
      INTEGER :: GeomId     
      INTEGER :: cdim,dim,i,j,k,n,imin,jmin

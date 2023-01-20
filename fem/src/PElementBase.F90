@@ -1779,6 +1779,9 @@ MODULE PElementBase
       REAL (KIND=dp) :: La, Lb, Lc, Lc_1, Lb_Laj, Lc_1n, ddLb_Laj, ddLc_1n
       INTEGER :: local(3)
 
+REAL(KIND=dp),save :: cumt1, cumt2, at0
+integer :: i
+
       ! If local numbering present, use it
       IF (PRESENT(localNumbers)) THEN
          local(1:3) = localNumbers(1:3)
@@ -1804,6 +1807,38 @@ MODULE PElementBase
       ddLb_Laj = j*(j-1)*toExp(Lb-La,j-2)
       ddLc_1n = n*(n-1)*toExp(2*Lc-1,n-2)
 
+#if 0
+BLOCK
+      real(kind=dp) :: f(5), df(5,2), ddf(5,2,2)
+      integer :: p,q
+
+at0 = cputime()
+do i=1,1000
+      f(1) = La
+      f(2) = Lb
+      f(3) = Lc
+      f(4) = Lb_Laj
+      f(5) = Lc_1n
+      df(1,:) = dLa
+      df(2,:) = dLb
+      df(3,:) = dLc
+      df(4,:) = dLb_Laj
+      df(5,:) = dLc_1n
+      ddf = 0
+      DO p=1,2
+        DO q=p,2
+          ddf(4,p,q) = ddLb_Laj*(dLb(p)-dLa(p))*(dLb(q)-dLa(q))
+          ddf(5,p,q) = ddLc_1n*4*dLc(p)*dLc(q)
+        END DO
+      END DO
+
+      grad = Product2ndDerivatives(5,f,df,ddf,2,0)
+      grad(2,1) = grad(1,2)
+end do
+cumt1 = cumt1 +  cputime()-at0
+!     return
+END BLOCK
+#endif
 
       ! Calculate value of function from general form
 !     grad = dLa*Lb*Lc*Lb_Laj*Lc_1n + La*dLb*Lc*Lb_Laj*Lc_1n + &
@@ -1812,6 +1847,8 @@ MODULE PElementBase
 
 !     value = La*Lb*Lc*((Lb-La)**j)*((2*Lc-1)**n)
 
+!do i=1,1000
+!at0 = cputime() 
       grad(1,1) = &
          dLa(1)*(dLb(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(Lb*Lb_Laj*Lc_1n)+dLb_Laj(1)*(Lb*Lc*Lc_1n)+dLc_1n(1)*(Lb*Lc*Lb_Laj)) + &
          dLb(1)*(dLa(1)*(Lc*Lb_Laj*Lc_1n)+dLc(1)*(La*Lb_Laj*Lc_1n)+dLb_Laj(1)*(La*Lc*Lc_1n)+dLc_1n(1)*(La*Lc*Lb_Laj)) + &
@@ -1837,6 +1874,9 @@ MODULE PElementBase
         ddLb_Laj*(La*Lb*Lc*Lc_1n)*(dLb(2)-dLa(2))**2 + ddLc_1n*(La*Lb*Lc*Lb_Laj)*4*dLc(2)**2
 
       grad(2,1) = grad(1,2)
+!cumt2 = cumt2 + cputime()-at0
+!end do
+!print*,cumt1,cumt2
     END FUNCTION ddTriangleBubblePBasis
 
 
@@ -4501,6 +4541,59 @@ if ( maxval(abs(grad-grad1))>1d-16) stop 'grad'
     END FUNCTION dWedgeNodalPBasis
 
 
+!------------------------------------------------------------------------------
+!>     2nd derivatives of wedges nodal basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddWedgeNodalPBasis(node, u,v,w) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: node
+!      INPUT: number of wedge nodal function to calculate
+!        node = {1,2,..,6}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3,3)
+!       gradient of wedges nodal function at point (u,v,w), i.e.
+!       grad = dN_i(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+      
+      ! Parameters
+      INTEGER, INTENT(IN) :: node
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      ! Variables
+      REAL(KIND=dp) :: signW, dL(3), L, grad(3,3)
+
+      grad = 0
+      SELECT CASE(node)
+      CASE (1,2,3)
+         signW = -1
+      CASE (4,5,6)
+         signW = 1
+      CASE DEFAULT
+         CALL Fatal('PElementBase::dWedgeNodalPBasis','Unknown node for wedge')
+      END SELECT
+
+      ! Calculate gradient from the general form
+      dL(1:3) = dWedgeL(node,u,v)
+      L = WedgeL(node,u,v)
+!     grad(1) = 1d0/2*dL(1)*(1+signW*W)
+!     grad(2) = 1d0/2*dL(2)*(1+signW*W)
+!     grad(3) = signW*1d0/2*L
+
+      grad = 0
+      grad(1,3) = dL(1)*signW/2
+      grad(2,3) = dL(2)*signW/2
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+    END FUNCTION ddWedgeNodalPBasis
+
+
     SUBROUTINE dWedgeNodalPBasisAll(u, v, w, gradphi) 
       IMPLICIT NONE
       REAL(KIND=dp), INTENT(IN) :: u,v,w
@@ -4760,9 +4853,232 @@ if ( maxval(abs(grad-grad1))>1d-16) stop 'grad'
       phiI = varPhi(i,Lb-La)
 
       ! Calculate value of function from general form
-      grad = 1d0/2*dLa*Lb*phiI*(1d0+parW) + 1d0/2*La*dLb*phiI*(1d0+parW) + &
-           1d0/2*La*Lb*dVarPhi(i,Lb-La)*(dLb-dLa)*(1+parW) + 1d0/2*La*Lb*phiI*dW
+      grad = (dLa*Lb*phiI*(1+parW) + La*dLb*phiI*(1+parW) + &
+           La*Lb*dVarPhi(i,Lb-La)*(dLb-dLa)*(1+parW) + La*Lb*phiI*dW)/2
     END FUNCTION dWedgeEdgePBasis
+
+!------------------------------------------------------------------------------
+!>     2nd derivatives of wedge edge basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddWedgeEdgePBasis(edge, i, u, v, w, invertEdge) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: edge
+!      INPUT: number of wedges edge function to calculate
+!        edge = {1,2,..,9}
+!
+!    INTEGER :: i
+!      INPUT: index of edge function, i = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    LOGICAL, OPTIONAL :: invertEdge
+!      INPUT: whether to invert edge or not. If this flag is set to true
+!        edge changing parameter of edge function is varied from [1,-1] in
+!        stead of usual [-1,1].
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of wedges edge function i at point (u,v,w), i.e.
+!       grad = dN_i^{edge}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: edge, i
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      LOGICAL, OPTIONAL :: invertEdge
+      ! Variables
+      REAL(KIND=dp) :: parW, La, Lb, phiI, tmp, &
+           grad(3,3), dLa(3), dLb(3), dW(3), dtmp(3) 
+      LOGICAL :: invert 
+      
+      INTEGER :: p,q
+      REAL(KIND=dp) :: f(4), df(4,3), ddf(4,3,3), ddPhiI
+
+      ! Edge is not inverted by default
+      invert = .FALSE.
+      IF (PRESENT(invertEdge)) invert = invertEdge
+
+      grad = 0
+      ! Set sign of w and derivative of w
+      dW = 0
+      SELECT CASE(edge)
+      CASE (1,2,3)
+         parW = -w
+         dW(3) = -1
+      CASE (4,5,6)
+         parW = w
+         dW(3) = 1
+      END SELECT
+
+      SELECT CASE(edge)
+      CASE (1,4)
+         La = WedgeL(1,u,v)
+         Lb = WedgeL(2,u,v)
+         dLa(1:3) = dWedgeL(1,u,v)
+         dLb(1:3) = dWedgeL(2,u,v)
+      CASE (2,5)
+         La = WedgeL(2,u,v)
+         Lb = WedgeL(3,u,v)
+         dLa(1:3) = dWedgeL(2,u,v)
+         dLb(1:3) = dWedgeL(3,u,v)
+      CASE (3,6)
+         La = WedgeL(3,u,v)
+         Lb = WedgeL(1,u,v)
+         dLa(1:3) = dWedgeL(3,u,v)
+         dLb(1:3) = dWedgeL(1,u,v)
+      CASE (7,8,9)
+         ! Invert edge if needed
+         IF (invert) THEN
+            parW = -w
+            dW(3) = -1
+         ELSE 
+            parW = w
+            dW(3) = 1
+         END IF
+
+         phiI = Phi(i,parW)
+         dLa(1:3) = dWedgeL(edge-6,u,v)
+         
+         ! Calculate value of edge function and return
+!        grad(1) = dLa(1)*phiI
+!        grad(2) = dLa(2)*phiI
+!        grad(3) = WedgeL(edge-6,u,v)*dPhi(i,parW)*dW(3)
+
+         grad=0
+         grad(1,3) = dLa(1)*dPhi(i,parW)*dW(3)
+         grad(3,1) = grad(1,3)
+         grad(2,3) = dLa(2)*dPhi(i,parW)*dW(3)
+         grad(3,2) = grad(2,3)
+         grad(3,3) = WedgeL(edge-6,u,v)*ddPhi(i,parW)
+
+         RETURN
+      CASE DEFAULT
+         CALL Fatal('PElementBase::dWedgeEdgePBasis','Unknown edge for wedge')
+      END SELECT
+
+      ! Swap parameters for inverted edges
+      IF (invert) THEN
+         tmp = La
+         La = Lb
+         Lb = tmp
+         dtmp(1:3) = dLa
+         dLa(1:3) = dLb
+         dLb(1:3) = dtmp
+      END IF      
+      
+      phiI = varPhi(i,Lb-La)
+
+      ! Calculate value of function from general form
+!     grad = (dLa*Lb*phiI*(1+parW) + La*dLb*phiI*(1+parW) + &
+!              La*Lb*dVarPhi(i,Lb-La)*(dLb-dLa)*(1+parW) + La*Lb*phiI*dW)/2
+
+
+      f(1)=La; f(2)=Lb; f(3)=PhiI; f(4)=1+parW
+      df(1,:) = dLa
+      df(2,:) = dLb
+      df(3,:) = dVarPhi(i,Lb-La)*(dLb-dLa)
+      df(4,:) = dW
+
+      ddPhiI = ddVarPhi(i,Lb-La)
+      ddf = 0
+      DO p=1,3
+        DO q=p,3
+          ddf(3,p,q) = ddPhiI*(dLb(p)-dLa(p))*(dLb(q)-dLa(q))
+        END DO
+      END DO
+
+      grad = Product2ndDerivatives(4,f,df,ddf,3,0)/2
+
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+
+    END FUNCTION ddWedgeEdgePBasis
+
+
+    RECURSIVE FUNCTION Product2ndDerivatives(n,g,dg,ddg,dim,level) RESULT(grad)
+      INTEGER :: n,dim,level
+      REAL(KIND=dp) :: g(:), dg(:,:), ddg(:,:,:), grad(dim,dim)
+
+!     REAL(KIND=dp) :: f(:), df(:,:), ddf(:,:,:), grad(dim,dim)
+!     REAL(KIND=dp),ALLOCATABLE, SAVE :: g(:),dg(:,:),ddg(:,:,:)
+      INTEGER :: i,j,p,q
+      REAL(KIND=dp) :: h,dh(dim),ddh(dim,dim),l,dl(dim),ddl(dim,dim)
+
+#if 0
+      IF(level==0) THEN
+        IF(ALLOCATED(g)) THEN
+          IF(SIZE(g)<n .OR. SIZE(dg,2)<dim) THEN 
+            DEALLOCATE(g,dg,ddg)
+            ALLOCATE( g(n),dg(n,dim),ddg(n,dim,dim) )
+          END IF
+        ELSE
+          ALLOCATE( g(n),dg(n,dim),ddg(n,dim,dim) )
+        END IF
+        ddg(1:n,1:dim,1:dim)=ddf(1:n,1:dim,1:dim)
+        g(1:n)=f(1:n); dg(1:n,1:dim)=df(1:n,1:dim)
+      END IF
+#endif
+
+!     df1*f2 + f1*df2
+!     ddf1(p,q)*f2 + df1(i)*df2(j) + df1(j)*df2(i) + f1*ddf2(p,q)
+
+      j = 0
+      DO i=1,n-1,2
+        h  = g(i)
+        l  = g(i+1)
+        dh = dg(i,:)
+        dl = dg(i+1,:)
+        ddh = ddg(i,:,:)
+        ddl = ddg(i+1,:,:)
+        j = j + 1
+        g(j) = h*l
+        dg(j,:) = dh*l + h*dl
+
+        ddg(j,1,1) = ddh(1,1)*l + 2*dh(1)*dl(1) + h*ddl(1,1)
+        ddg(j,1,2) = ddh(1,2)*l + dh(1)*dl(2) + dh(2)*dl(1) + h*ddl(1,2)
+        ddg(j,2,2) = ddh(2,2)*l + 2*dh(2)*dl(2) + h*ddl(2,2)
+        IF(dim>2) THEN
+          ddg(j,1,3) = ddh(1,3)*l + dh(1)*dl(3) + dh(3)*dl(1) + h*ddl(1,3)
+          ddg(j,2,3) = ddh(2,3)*l + dh(2)*dl(3) + dh(3)*dl(2) + h*ddl(2,3)
+          ddg(j,3,3) = ddh(3,3)*l + 2*dh(3)*dl(3) + h*ddl(3,3)
+        END IF
+      END DO
+      IF(mod(n,2) /= 0) THEN
+        h  = g(j)
+        l  = g(n)
+        dh = dg(j,:)
+        dl = dg(n,:)
+        ddh = ddg(j,:,:)
+        ddl = ddg(n,:,:)
+        g(j) = h*l
+        dg(j,:) = dh*l + h*dl
+
+        ddg(j,1,1) = ddh(1,1)*l + 2*dh(1)*dl(1) + h*ddl(1,1)
+        ddg(j,1,2) = ddh(1,2)*l + dh(1)*dl(2) + dh(2)*dl(1) + h*ddl(1,2)
+        ddg(j,2,2) = ddh(2,2)*l + 2*dh(2)*dl(2) + h*ddl(2,2)
+        IF(dim>2) THEN
+          ddg(j,1,3) = ddh(1,3)*l + dh(1)*dl(3) + dh(3)*dl(1) + h*ddl(1,3)
+          ddg(j,2,3) = ddh(2,3)*l + dh(2)*dl(3) + dh(3)*dl(2) + h*ddl(2,3)
+          ddg(j,3,3) = ddh(3,3)*l + 2*dh(3)*dl(3) + h*ddl(3,3)
+        END IF
+      END IF
+
+      IF(n/2>1) ddh=Product2ndDerivatives(n/2,g,dg,ddg,dim,level+1)
+      IF(Level==0) THEN
+        DO p=1,dim
+          DO q=p,dim
+            grad(p,q) = ddg(1,p,q)
+          END DO
+        END DO
+      END IF
+
+    END FUNCTION Product2ndDerivatives
 
 
 !------------------------------------------------------------------------------
@@ -4946,6 +5262,158 @@ if ( maxval(abs(grad-grad1))>1d-16) stop 'grad'
 !------------------------------------------------------------------------------
 !>    Wedge bubble basis at point (u,v,w)
 !------------------------------------------------------------------------------
+!>     2nd derivatives of wedge face basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddWedgeFacePBasis(face, i, j, u, v, w, localNumbers) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: face
+!      INPUT: number of wedges face function to calculate
+!        edge = {1,2,..,5}
+!
+!    INTEGER :: i,j
+!      INPUT: index of face function, i,j = {2,3,...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!    INTEGER, OPTIONAL :: localNumber(4)
+!      INPUT: local numbering of square or triangle face to define direction 
+!        of face basis function. Default numbering is that defined for face in 
+!        PElementMaps
+! 
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of wedges face function m(i,j) at point (u,v,w), i.e.
+!       grad = N_{m(i,j)}^{face}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: face, i, j
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      INTEGER, DIMENSION(4), OPTIONAL :: localNumbers
+      ! Variables
+      REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dLha, dLhc, dW
+      REAL(KIND=dp) :: La, Lb, Lc, Lha, Lhc, Legi, Legj, parW, grad(3,3)
+      INTEGER :: p,q,local(4)
+      REAL(KIND=dp) :: f(6), df(6,3), ddf(6,3,3), ddPi, ddPj
+
+      ! If local numbering not present, use default numbers
+      IF (.NOT. PRESENT(localNumbers)) THEN
+         local(1:4) = getWedgeFaceMap(face)
+      ! Numbering was present, use it
+      ELSE
+         local(1:4) = localNumbers(1:4)
+      END IF
+      
+      ! Set sign of w and its derivative for faces 1 and 2
+      dW = 0
+      SELECT CASE (face)
+      CASE (1)
+         parW = -w
+         dW(3) = -1
+      CASE (2)
+         parW = w
+         dW(3) = 1
+      END SELECT
+
+      ! Get value of face function
+      grad = 0
+      SELECT CASE(face)
+         CASE (1,2)
+            La = WedgeL(local(1),u,v)
+            Lb = WedgeL(local(2),u,v)
+            Lc = WedgeL(local(3),u,v)
+
+            dLa = dWedgeL(local(1),u,v)
+            dLb = dWedgeL(local(2),u,v)
+            dLc = dWedgeL(local(3),u,v)
+            
+            ! Precalculate values of legenre functions
+            Legi = LegendreP(i,Lb-La)
+            Legj = LegendreP(j,2d0*Lc-1)
+
+            ! Get value of gradient
+!           grad = 1d0/2*dLa*Lb*Lc*Legi*Legj*(1+parW)+&
+!                1d0/2*La*dLb*Lc*Legi*Legj*(1+parW) +&
+!                1d0/2*La*Lb*dLc*Legi*Legj*(1+parW) +&
+!                1d0/2*La*Lb*Lc*dLegendreP(i,Lb-La)*(dLb-dLa)*Legj*(1+parW) +&
+!                1d0/2*La*Lb*Lc*Legi*dLegendreP(j,2*Lc-1)*(2*dLc)*(1+parW) +&
+!                1d0/2*La*Lb*Lc*Legi*Legj*dW
+
+
+            f(1) = La; f(2)=Lb; f(3)=Lc; f(4)=Legi; f(5)=Legj; f(6)=1+parW
+            df(1,:) = dLa
+            df(2,:) = dLb
+            df(3,:) = dLc
+            df(4,:) = dLegendreP(i,Lb-La)*(dLb-dLa)
+            df(5,:) = dLegendreP(j,2*Lc-1)*2*dLc
+            df(6,:) = dW
+
+            ddf = 0
+            ddPi = ddLegendreP(i,Lb-La)
+            ddPj = ddLegendreP(j,2*Lc-1)
+            DO p=1,3
+              DO q=p,3
+                ddf(4,p,q) = ddPi*(dLb(p)-dLa(p))*(dLb(q)-dLa(q))
+                ddf(5,p,q) = ddPj*4*dLc(p)*dLc(q)
+              END DO
+            END DO
+
+            grad = Product2ndDerivatives(6,f,df,ddf,3,0)/2
+            grad(2,1) = grad(1,2)
+            grad(3,1) = grad(1,3)
+            grad(3,2) = grad(2,3)
+         CASE (3,4,5)
+            La = WedgeL(local(1),u,v)
+            Lb = WedgeL(local(2),u,v)
+            dLa = dWedgeL(local(1),u,v)
+            dLb = dWedgeL(local(2),u,v)
+            
+            Lha = WedgeH(local(1),w)
+            Lhc = WedgeH(local(4),w)
+            dLha = dWedgeH(local(1),w)
+            dLhc = dWedgeH(local(4),w)
+
+            Legi = varPhi(i,Lb-La)
+            Legj = Phi(j,Lhc-Lha)
+
+!           grad = dLa*Lb*Legi*Legj + La*dLb*Legi*Legj + &
+!                La*Lb*dVarPhi(i,Lb-La)*(dLb-dLa)*Legj + &
+!                La*Lb*Legi*dPhi(j,Lhc-Lha)*(dLhc-dLha)
+
+           f(1) = La; f(2)=Lb; f(3)=Legi; f(4)=Legj
+           df(1,:) = dLa
+           df(2,:) = dLb
+           df(3,:) = dVarPhi(i,Lb-La)*(dLb-dLa)
+           df(4,:) = dPhi(j,Lhc-Lha)*(dLhc-dLha)
+           ddPi = ddVarPhi(i,Lb-La)
+           ddPj = ddPhi(j,Lhc-Lha)
+           ddf = 0
+           DO p=1,3
+             DO q=p,3
+               ddf(3,p,q) = ddPi*(dLb(p)-dLa(p))*(dLb(q)-dLa(q))
+               ddf(4,p,q) = ddPj*(dLhc(p)-dLha(p))*(dLhc(q)-dLha(q))
+             END DO
+           END DO
+
+           grad = Product2ndDerivatives(4,f,df,ddf,3,0)
+           grad(2,1) = grad(1,2)
+           grad(3,1) = grad(1,3)
+           grad(3,2) = grad(2,3)
+
+         CASE DEFAULT
+            CALL Fatal('PElementBase::dWedgeFacePBasis','Unknown face for wedge')
+      END SELECT
+    END FUNCTION ddWedgeFacePBasis
+
+
+!------------------------------------------------------------------------------
+!>    Wedge bubble basis at point (u,v,w)
+!------------------------------------------------------------------------------
     FUNCTION WedgeBubblePBasis(i,j,k,u,v,w) RESULT(value)
 !------------------------------------------------------------------------------
 !
@@ -5027,6 +5495,85 @@ if ( maxval(abs(grad-grad1))>1d-16) stop 'grad'
            L1*L2*L3*Legi*dLegendreP(j,2d0*L3-1)*(2d0*dL3)*phiW +&
            L1*L2*L3*Legi*Legj*dPhi(k,w)*dW
     END FUNCTION dWedgeBubblePBasis
+
+!------------------------------------------------------------------------------
+!>    2nd derivatives of wedge bubble basis at point (u,v,w)
+!------------------------------------------------------------------------------
+    FUNCTION ddWedgeBubblePBasis(i,j,k,u,v,w) RESULT(grad)
+!------------------------------------------------------------------------------
+!
+!  ARGUMENTS:
+!    INTEGER :: i,j,k
+!      INPUT: index of bubble function, (i,j,k) = {(0,0,2),(0,0,3),...}
+!
+!    REAL(KIND=dp) :: u,v,w
+!      INPUT: point at which to evaluate function
+!
+!  FUNCTION VALUE:
+!    REAL(KIND=dp) :: grad(3)
+!       gradient of wedges bubble function (i,j,k) at point (u,v,w), 
+!       i.e. grad = dN_{m(i,j,k)}^{0}(u,v,w)
+!    
+!------------------------------------------------------------------------------
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: i,j,k
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
+      ! Variables
+      REAL(KIND=dp), DIMENSION(3) :: dL1, dL2, dL3, dW
+      REAL(KIND=dp) :: L1,L2,L3,Legi,Legj,phiW,grad(3,3)
+
+      INTEGER :: p,q
+      REAL(KIND=dp) :: f(6), df(6,3), ddf(6,3,3), ddPi, ddPj, ddPk
+      
+      ! Initialize derivative of w
+      dW = [ 0,0,1 ]
+      ! Values of function L
+      L1 = WedgeL(1,u,v)
+      L2 = WedgeL(2,u,v)
+      L3 = WedgeL(3,u,v)
+
+      dL1 = dWedgeL(1,u,v)
+      dL2 = dWedgeL(2,u,v)
+      dL3 = dWedgeL(3,u,v)
+
+      Legi = LegendreP(i,L2-L1)
+      Legj = LegendreP(j,2d0*L3-1)
+      phiW = Phi(k,w)
+
+!     grad = dL1*L2*L3*Legi*Legj*phiW + L1*dL2*L3*Legi*Legj*phiW +&
+!          L1*L2*dL3*Legi*Legj*phiW + L1*L2*L3*dLegendreP(i,L2-L1)*(dL2-dL1)*Legj*phiW +&
+!          L1*L2*L3*Legi*dLegendreP(j,2d0*L3-1)*(2d0*dL3)*phiW +&
+!          L1*L2*L3*Legi*Legj*dPhi(k,w)*dW
+
+      f(1)=L1; f(2)=L2; f(3)=L3; f(4)=Legi; f(5)=Legj; f(6)=phiW
+      df(1,:) = dL1
+      df(2,:) = dL2
+      df(3,:) = dL3
+      df(4,:) = dLegendreP(i,L2-L1)*(dL2-dL1)
+      df(5,:) = dLegendreP(j,2*L3-1)*2*dL3
+      df(6,:) = dPhi(k,w)*dW
+
+      ddPi = ddLegendreP(i,L2-L1)
+      ddPj = ddLegendreP(j,2*L3-1)
+      ddPk = ddPhi(k,w)
+      ddf = 0
+      DO p=1,3
+        DO q=p,3
+          ddf(4,p,q) = ddPi*(dL2(p)-dL1(p))*(dL2(q)-dL1(q))
+          ddf(5,p,q) = ddPj*4*dL3(p)*dL3(q)
+          ddf(6,p,q) = ddPk*dW(p)*dW(q)
+        END DO
+      END DO
+
+      grad = Product2ndDerivatives(6,f,df,ddf,3,0)
+      grad(2,1) = grad(1,2)
+      grad(3,1) = grad(1,3)
+      grad(3,2) = grad(2,3)
+
+    END FUNCTION ddWedgeBubblePBasis
+
 
     FUNCTION WedgeL(which, u, v) RESULT(value)
       IMPLICIT NONE
