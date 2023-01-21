@@ -1125,13 +1125,6 @@ void VtkPost::getPostLineStream(QTextStream* postStream)
 //----------------------------------------------------------------------
 bool VtkPost::ReadPostFile(QString postFileName)
 {
-  if(drawSurfaceAct->isChecked()) hideSurfaceSlot();
-  if(drawVectorAct->isChecked()) hideVectorSlot();
-  if(drawIsoContourAct->isChecked()) hideIsoContourSlot();
-  if(drawIsoSurfaceAct->isChecked()) hideIsoSurfaceSlot();
-  if(drawColorBarAct->isChecked()) hideColorBarSlot();
-  if(drawStreamLineAct->isChecked()) hideStreamLineSlot();
-
   if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
 
@@ -1520,12 +1513,8 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
-  // Set the null field active:
+  // Update ReadEpFile window:
   //---------------------------
-  drawSurfaceAct->setChecked(true);
-
-  renderer->ResetCamera();
-  
   readEpFile->ui.fileName->setText(postFileName);
   readEpFile->readHeader();
   readEpFile->ui.applyButton->setEnabled(true);
@@ -1534,7 +1523,21 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   readEpFile->setWindowTitle("Read input file");
   readEpFile->repaint();
 
-  redrawSlot();
+  // Draw:
+  //--------------------------- 
+  if(postFileName != lastPostFileName){
+	drawSurfaceAct->setChecked(true);
+    drawVectorAct->setChecked(false);
+    drawIsoContourAct->setChecked(false);
+    drawIsoSurfaceAct->setChecked(false);
+    drawColorBarAct->setChecked(false);
+    drawStreamLineAct->setChecked(false);
+    lastPostFileName = postFileName;
+    viewXYpPlaneSlot();
+  }else{
+    redrawSlot();
+  }
+  
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1543,6 +1546,8 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+  
+  setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
 }
@@ -1884,12 +1889,8 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
-  // Set the null field active:
+  // Update ReadEpFile window:
   //---------------------------
-  drawSurfaceAct->setChecked(true);
-
-  renderer->ResetCamera();
-  
   readEpFile->ui.fileName->setText(postFileName);
   readEpFile->readHeader();
   readEpFile->ui.applyButton->setEnabled(true);
@@ -1898,7 +1899,21 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->setWindowTitle("Read input file");
   readEpFile->repaint();
 
-  redrawSlot();
+  // Draw:
+  //--------------------------- 
+  if(postFileName != lastPostFileName){
+	drawSurfaceAct->setChecked(true);
+    drawVectorAct->setChecked(false);
+    drawIsoContourAct->setChecked(false);
+    drawIsoSurfaceAct->setChecked(false);
+    drawColorBarAct->setChecked(false);
+    drawStreamLineAct->setChecked(false);
+    lastPostFileName = postFileName;
+    viewXYpPlaneSlot();
+  }else{
+    redrawSlot();
+  }
+  
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1907,6 +1922,8 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+  
+  setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
 }
@@ -2680,9 +2697,7 @@ void VtkPost::fitToWindowSlot()
 //----------------------------------------------------------------------
 void VtkPost::resetModelViewSlot()
 {
-  if(!postFileRead) return;
-  SetInitialCameraPosition();
-  redrawSlot();
+  viewXYpPlaneSlot();
 }
 
 // Clip all -action toggled:
@@ -3705,4 +3720,30 @@ QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetSurfaceGridHash(){
 }
 QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetVolumeGridHash(){
 	return &volumeGridHash;
+}
+
+void VtkPost::hideAll(){
+  surface->hide();
+  vector->hide();
+  isoContour->hide();
+  isoSurface->hide();
+  colorBar->hide();
+  streamLine->hide();
+  preferences->hide();
+  timeStep->hide();
+  readEpFile->hide();
+  axes->hide();
+  text->hide();
+
+#ifdef EG_MATC  
+  matc->hide();
+#endif
+
+#ifdef EG_PYTHONQT
+  console->hide();
+#endif
+
+  ecmaConsole->hide();
+ 
+  hide();
 }

@@ -180,6 +180,7 @@ public:
   void SetCurrentStreamLineName(QString);
   void SetCurrentStreamLineColorName(QString);
   int NofNodes();
+  void hideAll();
 
 signals:
   void canProceedWithNextSignal(vtkRenderWindow*);
@@ -403,6 +404,7 @@ private:
 
   EpMesh* epMesh;
   QString postFileName;
+  QString lastPostFileName;
   bool postFileRead;
   int scalarFields;
   ScalarField* scalarField;

@@ -1364,11 +1364,7 @@ void MainWindow::newProjectSlot() {
 #endif
 
 #ifdef EG_VTK
-    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-    delete vtkPost;
-    vtkPost = new VtkPost(this);
-    vtkPostMeshUnifierRunning = false;
-    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+    vtkPost->hideAll();    
 #endif
 
 #ifdef EG_OCC
@@ -2623,6 +2619,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
   progressBar->hide();
   progressLabel->hide();
+  
+  
+  // delete and new vtkPost to reset 
+  vtkPost->hideAll();
 }
 
 // Helper function for load project
@@ -5042,6 +5042,12 @@ void MainWindow::showTwodViewSlot() { twodView->show(); }
 //-----------------------------------------------------------------------------
 void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
+
+  if (glWidget->getMesh() == NULL) {
+    vtkPost->show();
+	return;
+  }
+  
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
   // Parallel solution:
