@@ -1364,11 +1364,7 @@ void MainWindow::newProjectSlot() {
 #endif
 
 #ifdef EG_VTK
-    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-    delete vtkPost;
-    vtkPost = new VtkPost(this);
-    vtkPostMeshUnifierRunning = false;
-    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+    vtkPost->hideAll();    
 #endif
 
 #ifdef EG_OCC
@@ -2623,6 +2619,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
   progressBar->hide();
   progressLabel->hide();
+
+#ifdef EG_VTK
+  vtkPost->hideAll();
+#endif
 }
 
 // Helper function for load project
@@ -5042,6 +5042,12 @@ void MainWindow::showTwodViewSlot() { twodView->show(); }
 //-----------------------------------------------------------------------------
 void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
+
+  if (glWidget->getMesh() == NULL) {
+    vtkPost->show();
+	return;
+  }
+  
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
   // Parallel solution:
@@ -8074,7 +8080,7 @@ void MainWindow::checkAndLoadExtraSolvers(QFile *file) {
 }
 
 QVariant MainWindow::settings_value(const QString &key,
-                                    const QVariant &defaultValue) const {
+                                    const QVariant &defaultValue) {
   QString oldElmerGuiIniFilePath =
       QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";

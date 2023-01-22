@@ -45,7 +45,7 @@
          <widget class="QComboBox" name="surfaceCombo">
           <property name="minimumSize">
            <size>
-            <width>280</width>
+            <width>180</width>
             <height>0</height>
            </size>
           </property>
@@ -57,6 +57,20 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QLabel" name="nullColorLabel">
+          <property name="text">
+           <string>■</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="nullColorButton">
+          <property name="text">
+           <string>Select color</string>
+          </property>
+         </widget>
+        </item>	   
        </layout>
       </item>
       <item>

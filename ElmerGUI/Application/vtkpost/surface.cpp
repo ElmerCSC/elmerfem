@@ -39,6 +39,7 @@
  *****************************************************************************/
 
 #include <QtGui>
+#include <QColorDialog>
 #include <iostream>
 #include "epmesh.h"
 #include "vtkpost.h"
@@ -53,7 +54,6 @@
 #include <vtkPlane.h>
 #include <vtkPolyDataNormals.h>
 #include <vtkDataSetMapper.h>
-#include <vtkLookupTable.h>
 #include <vtkProperty.h>
 #include <vtkActor.h>
 
@@ -75,6 +75,9 @@ Surface::Surface(QWidget *parent)
   ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
   ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
   ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  
+  setNullColor(Qt::blue);
+  connect(ui.nullColorButton, SIGNAL(clicked()), this, SLOT(nullColorButtonClicked()));
 }
 
 Surface::~Surface()
@@ -124,6 +127,24 @@ void Surface::surfaceSelectionChanged(int newIndex)
   if(!ui.keepLimits->isChecked()) {
     ui.minEdit->setText(QString::number(sf->minVal));
     ui.maxEdit->setText(QString::number(sf->maxVal));
+  }
+  
+  if(ui.surfaceCombo->currentIndex() == 0 ){ // i.e. Null field
+    ui.nullColorLabel->show();
+    ui.nullColorButton->show();
+	ui.minEdit->setEnabled(false);
+	ui.maxEdit->setEnabled(false);
+	ui.minLabel->setEnabled(false);
+	ui.maxLabel->setEnabled(false);
+	ui.keepLimits->setEnabled(false);
+  }else{
+    ui.nullColorLabel->hide();
+    ui.nullColorButton->hide();
+	ui.minEdit->setEnabled(true);
+	ui.maxEdit->setEnabled(true);
+	ui.minLabel->setEnabled(true);
+	ui.maxLabel->setEnabled(true);	
+	ui.keepLimits->setEnabled(true);
   }
 }
 
@@ -225,9 +246,24 @@ void Surface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->ScalarVisibilityOn();
   mapper->SetScalarRange(minVal, maxVal);
   mapper->SetResolveCoincidentTopologyToPolygonOffset();
+  mapper->InterpolateScalarsBeforeMappingOn();
   //mapper->SetLookupTable(vtkPost->GetCurrentLut());
   mapper->SetLookupTable(vtkPost->GetLut("Surface"));
   // mapper->ImmediateModeRenderingOn();
+  if(ui.surfaceCombo->currentIndex() == 0 ){ // i.e. Null field
+  	mapper->SetScalarRange(0, 1);
+    qreal h,s,v;
+    nullColor.getHsvF(&h, &s, &v);
+    int nColor =128;
+    vtkLookupTable* nullLut = vtkLookupTable::New();
+    nullLut->SetHueRange(h, h);
+    nullLut->SetSaturationRange(s, s);
+    nullLut->SetValueRange(v, v);
+    nullLut->SetNumberOfColors(nColor);
+    nullLut->Build();
+    mapper->SetLookupTable(nullLut); 	 
+	nullLut->Delete();
+  }
 
   // Actor:
   //--------
@@ -295,4 +331,19 @@ void Surface::SetOpacity(int n)
 void Surface::SetClipPlane(bool b)
 {
   ui.clipPlane->setChecked(b);
+}
+
+void Surface::nullColorButtonClicked()
+{
+  setNullColor(QColorDialog::getColor(nullColor));
+}
+
+void Surface::setNullColor(QColor color){
+  if(!color.isValid()) return;
+	  
+  nullColor = color;
+
+  QPalette plt(ui.nullColorLabel->palette());
+  plt.setColor(QPalette::WindowText, nullColor);
+  ui.nullColorLabel->setPalette(plt);
 }
