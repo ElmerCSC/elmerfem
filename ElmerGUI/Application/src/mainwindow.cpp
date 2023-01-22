@@ -2619,10 +2619,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
   progressBar->hide();
   progressLabel->hide();
-  
-  
-  // delete and new vtkPost to reset 
+
+#ifdef EG_VTK
   vtkPost->hideAll();
+#endif
 }
 
 // Helper function for load project
