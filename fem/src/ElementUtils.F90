@@ -1371,7 +1371,7 @@ CONTAINS
                              + NDOFs * Mesh % NumberOfNodes
                      END DO
                   END DO
-                  IF ( GB ) THEN
+                  IF ( GB .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
                     Edge1 => Mesh % Edges(Element % EdgeIndexes(1))
                     IF(Element % Type % ElementCode==Edge1 % Type % ElementCode) THEN
                       DO i=1, Element % BDOFs
@@ -1395,7 +1395,7 @@ CONTAINS
                   END DO
                END IF
 
-               IF ( GB ) THEN
+               IF ( GB.AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
                  Face1 => Mesh % Faces(Element % FaceIndexes(1))
                  IF(Element % Type % ElementCode==Face1 % Type % ElementCode) THEN
                    DO i=1, Element % BDOFs
