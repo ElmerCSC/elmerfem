@@ -273,7 +273,7 @@ VtkPost::VtkPost(QWidget *parent)
   // Default color map (from blue to red):
   //--------------------------------------
   double hueRange[2] = {0.6667, 0};
-  int nColor =128;
+  int nColor =512;
   currentLut = vtkLookupTable::New();
   currentLut->SetHueRange(hueRange);
   currentLut->SetNumberOfColors(nColor);
@@ -547,27 +547,6 @@ void VtkPost::createActions()
 
   // View menu:
   //------------
-  drawMeshPointAct = new QAction(QIcon(""), tr("Mesh points"), this);
-  drawMeshPointAct->setStatusTip("Draw mesh points");
-  drawMeshPointAct->setCheckable(true);
-  drawMeshPointAct->setChecked(false);
-  connect(drawMeshPointAct, SIGNAL(triggered()), this, SLOT(drawMeshPointSlot()));
-  connect(drawMeshPointAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
-  drawMeshEdgeAct = new QAction(QIcon(""), tr("Mesh edges"), this);
-  drawMeshEdgeAct->setStatusTip("Draw mesh edges");
-  drawMeshEdgeAct->setCheckable(true);
-  drawMeshEdgeAct->setChecked(false);
-  connect(drawMeshEdgeAct, SIGNAL(triggered()), this, SLOT(drawMeshEdgeSlot()));
-  connect(drawMeshEdgeAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
-  drawFeatureEdgesAct = new QAction(QIcon(""), tr("Feature edges"), this);
-  drawFeatureEdgesAct->setStatusTip("Draw feature edges");
-  drawFeatureEdgesAct->setCheckable(true);
-  drawFeatureEdgesAct->setChecked(true);
-  connect(drawFeatureEdgesAct, SIGNAL(triggered()), this, SLOT(drawFeatureEdgesSlot()));
-  connect(drawFeatureEdgesAct, SIGNAL(toggled(bool)), this, SLOT(maybeRedrawSlot(bool)));
-
   drawAxesAct = new QAction(QIcon(""), tr("Coordinate axes"), this);
   drawAxesAct->setStatusTip("Draw cordinate axes");
   drawAxesAct->setCheckable(true);
@@ -760,9 +739,6 @@ void VtkPost::createMenus()
   // View menu:
   //-----------
   viewMenu = menuBar()->addMenu(tr("&View"));
-  viewMenu->addAction(drawMeshPointAct);
-  viewMenu->addAction(drawMeshEdgeAct);
-  viewMenu->addAction(drawFeatureEdgesAct);
   viewMenu->addAction(drawAxesAct);
   viewMenu->addSeparator();
   viewMenu->addAction(drawTextAct);
@@ -1149,13 +1125,6 @@ void VtkPost::getPostLineStream(QTextStream* postStream)
 //----------------------------------------------------------------------
 bool VtkPost::ReadPostFile(QString postFileName)
 {
-  if(drawSurfaceAct->isChecked()) hideSurfaceSlot();
-  if(drawVectorAct->isChecked()) hideVectorSlot();
-  if(drawIsoContourAct->isChecked()) hideIsoContourSlot();
-  if(drawIsoSurfaceAct->isChecked()) hideIsoSurfaceSlot();
-  if(drawColorBarAct->isChecked()) hideColorBarSlot();
-  if(drawStreamLineAct->isChecked()) hideStreamLineSlot();
-
   if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
 
@@ -1544,12 +1513,8 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
-  // Set the null field active:
+  // Update ReadEpFile window:
   //---------------------------
-  drawSurfaceAct->setChecked(true);
-
-  renderer->ResetCamera();
-  
   readEpFile->ui.fileName->setText(postFileName);
   readEpFile->readHeader();
   readEpFile->ui.applyButton->setEnabled(true);
@@ -1558,7 +1523,21 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   readEpFile->setWindowTitle("Read input file");
   readEpFile->repaint();
 
-  redrawSlot();
+  // Draw:
+  //--------------------------- 
+  if(postFileName != lastPostFileName){
+	drawSurfaceAct->setChecked(true);
+    drawVectorAct->setChecked(false);
+    drawIsoContourAct->setChecked(false);
+    drawIsoSurfaceAct->setChecked(false);
+    drawColorBarAct->setChecked(false);
+    drawStreamLineAct->setChecked(false);
+    lastPostFileName = postFileName;
+    viewXYpPlaneSlot();
+  }else{
+    redrawSlot();
+  }
+  
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1567,6 +1546,8 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+  
+  setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
 }
@@ -1908,12 +1889,8 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   editGroupsMenu->addSeparator();
   editGroupsMenu->addAction(regenerateGridsAct);
 
-  // Set the null field active:
+  // Update ReadEpFile window:
   //---------------------------
-  drawSurfaceAct->setChecked(true);
-
-  renderer->ResetCamera();
-  
   readEpFile->ui.fileName->setText(postFileName);
   readEpFile->readHeader();
   readEpFile->ui.applyButton->setEnabled(true);
@@ -1922,7 +1899,21 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->setWindowTitle("Read input file");
   readEpFile->repaint();
 
-  redrawSlot();
+  // Draw:
+  //--------------------------- 
+  if(postFileName != lastPostFileName){
+	drawSurfaceAct->setChecked(true);
+    drawVectorAct->setChecked(false);
+    drawIsoContourAct->setChecked(false);
+    drawIsoSurfaceAct->setChecked(false);
+    drawColorBarAct->setChecked(false);
+    drawStreamLineAct->setChecked(false);
+    lastPostFileName = postFileName;
+    viewXYpPlaneSlot();
+  }else{
+    redrawSlot();
+  }
+  
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepSlider->setRange(1,timesteps);
@@ -1931,6 +1922,8 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+  
+  setWindowTitle("ElmerVTK postprocessor - " + postFileName);
 
   return true;
 }
@@ -2029,6 +2022,17 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   surfaceGrid = vtkUnstructuredGrid::New();
   lineGrid = vtkUnstructuredGrid::New();
 
+  // Release unstructured grids for drawing feature edges
+  QHashIterator<QString, vtkUnstructuredGrid*> i_vgh(volumeGridHash);
+  while (i_vgh.hasNext()) { i_vgh.next(); i_vgh.value()->Delete();}
+  volumeGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_sgh(surfaceGridHash);
+  while (i_sgh.hasNext()) { i_sgh.next(); i_sgh.value()->Delete();}
+  surfaceGridHash.clear();
+  QHashIterator<QString, vtkUnstructuredGrid*> i_lgh(lineGridHash);
+  while (i_lgh.hasNext()) { i_lgh.next(); i_lgh.value()->Delete();} 
+  lineGridHash.clear();
+  
   // Points:
   //---------
   int index = -1;
@@ -2083,7 +2087,21 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   volumeGrid->SetPoints(points);
   surfaceGrid->SetPoints(points);
   lineGrid->SetPoints(points);
-  points->Delete();
+
+  // Generate unstructured grids for drawing feature edges
+  QHashIterator<QString, QAction*> i_gah(groupActionHash);
+  while (i_gah.hasNext()) {
+    i_gah.next();
+	vtkUnstructuredGrid* g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);
+    volumeGridHash.insert(i_gah.key(), g);
+	g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);	
+    surfaceGridHash.insert(i_gah.key(), g);
+	g = vtkUnstructuredGrid::New();
+	g->SetPoints(points);		
+    lineGridHash.insert(i_gah.key(), g);
+  }
 
   /// Elements:
   ///-----------
@@ -2101,22 +2119,24 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   vtkQuadraticEdge* qedge = vtkQuadraticEdge::New();
   vtkUnstructuredGrid* grid = NULL;
 
+  QHash<QString, vtkUnstructuredGrid*>* gridHash = NULL;
+  
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
 	switch(epe->code){
-		case 504: cell = tetra; grid = volumeGrid; break;
-		case 510: cell = qtetra; grid = volumeGrid; break;
-		case 808: cell = hexa; grid = volumeGrid; break;
-		case 820: cell = qhexa;  grid = volumeGrid; break;
-		case 827: cell = tqhexa;  grid = volumeGrid; break;
-		case 303: cell = tria; grid = surfaceGrid; break;
-		case 306: cell = qtria; grid = surfaceGrid; break;
-		case 404: cell = quad; grid = surfaceGrid; break;
-		case 408: cell = qquad; grid = surfaceGrid; break;
-		case 202: cell = line; grid = lineGrid; break;
-		case 203: cell = qedge; grid = lineGrid; break;
-		default: cell = NULL; grid = NULL; break;
+		case 504: cell = tetra; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 510: cell = qtetra; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 808: cell = hexa; grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 820: cell = qhexa;  grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 827: cell = tqhexa;  grid = volumeGrid; gridHash = &volumeGridHash; break;
+		case 303: cell = tria; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 306: cell = qtria; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 404: cell = quad; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 408: cell = qquad; grid = surfaceGrid; gridHash = &surfaceGridHash; break;
+		case 202: cell = line; grid = lineGrid; gridHash = &lineGridHash; break;
+		case 203: cell = qedge; grid = lineGrid; gridHash = &lineGridHash; break;
+		default: cell = NULL; grid = NULL; gridHash = NULL; break;
 	}
 
 	if(cell != NULL){
@@ -2129,11 +2149,14 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 		for(int j = 0; j < epe->code % 100; j++)
 		cell->GetPointIds()->SetId(j, epe->index[j]);
 	      
-		if(groupAction->isChecked())
-		grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		if(groupAction->isChecked()){
+		  grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		  gridHash->value(groupName)->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+		}
 	}
   }
 
+  points->Delete();
   tetra->Delete();
   qtetra->Delete();
   hexa->Delete();
@@ -2282,7 +2305,7 @@ void VtkPost::drawMeshPointSlot()
 {
   if(!postFileRead) return;
   renderer->RemoveActor(meshPointActor);
-  if(!drawMeshPointAct->isChecked()) return;
+  if(!preferences->ui.meshPointsGroup->isChecked()) return;
   meshPoint->draw(this, preferences);
   renderer->AddActor(meshPointActor);
 #if VTK_MAJOR_VERSION >= 9
@@ -2292,13 +2315,14 @@ void VtkPost::drawMeshPointSlot()
 #endif
 }
 
+
 // Draw mesh edges:
 //----------------------------------------------------------------------
 void VtkPost::drawMeshEdgeSlot()
 {
   if(!postFileRead) return;
   renderer->RemoveActor(meshEdgeActor);
-  if(!drawMeshEdgeAct->isChecked()) return;
+  if(!preferences->ui.meshEdgesGroup->isChecked()) return;
   meshEdge->draw(this, preferences);
   renderer->AddActor(meshEdgeActor);
 #if VTK_MAJOR_VERSION >= 9
@@ -2308,21 +2332,82 @@ void VtkPost::drawMeshEdgeSlot()
 #endif
 }
 
+
+// The new drawFeatureEdgesSlot()which draws one group by one FeatureEdge instance
+// using the specified vtkUnstructuredGrid to darw bondary of two groups.
+//
+// Draw feature edges:
+//----------------------------------------------------------------------
+void VtkPost::drawFeatureEdgesSlot()
+{
+  FeatureEdge* featureEdge = NULL;
+  
+  if(!postFileRead) return;
+  for(int i=0; i < featureEdgeVector.size(); i++){
+	featureEdge = featureEdgeVector.at(i);
+	featureEdge->removeActorFrom(renderer);
+	delete featureEdge;
+  }
+  featureEdgeVector.clear();
+
+  if(!preferences->ui.featureGroup->isChecked()) return;
+    
+  vtkUnstructuredGrid* grid = NULL;
+  QHash<QString, vtkUnstructuredGrid*> *gridHash = NULL;
+
+  bool useSurfaceGrid = preferences->ui.surfaceRButton->isChecked();  
+  if(useSurfaceGrid){
+	gridHash = GetSurfaceGridHash();
+  } else {
+	gridHash = GetVolumeGridHash();
+  }
+  if(!gridHash) return;  
+  if(gridHash->count() == 0 ) return;
+  
+  QHashIterator<QString, vtkUnstructuredGrid*> i_gh(*gridHash);
+  int port_count = 0;
+  while (i_gh.hasNext())
+  {
+    i_gh.next();
+	grid = i_gh.value();
+	
+	if(grid->GetNumberOfCells() >= 1){
+	  featureEdge = new FeatureEdge();
+	  featureEdgeVector.append(featureEdge);
+	  featureEdge->draw(this, preferences, grid);
+	  
+      featureEdge->addActorTo(renderer);
+
+	}
+  }
+  #if VTK_MAJOR_VERSION >= 9
+	  qvtkWidget->renderWindow()->Render();
+#else
+	  qvtkWidget->GetRenderWindow()->Render();
+#endif
+}
+
+
+/*
+// The original drawFeatureEdgesSlot() which draws all the groups by one FeatureEdge instance
+// using one vtkUstructuredGrid. This ends up with boundary of two groups not drawn. 
+//
 // Draw feature edges:
 //----------------------------------------------------------------------
 void VtkPost::drawFeatureEdgesSlot()
 {
   if(!postFileRead) return;
-  renderer->RemoveActor(featureEdgeActor);
+  featureEdge->removeActorFrom(renderer);//renderer->RemoveActor(featureEdgeActor);
   if(!drawFeatureEdgesAct->isChecked()) return;
   featureEdge->draw(this, preferences);
-  renderer->AddActor(featureEdgeActor);
+  featureEdge->addActorTo(renderer);//renderer->AddActor(featureEdgeActor);
 #if VTK_MAJOR_VERSION >= 9
   qvtkWidget->renderWindow()->Render();
 #else
   qvtkWidget->GetRenderWindow()->Render();
 #endif
 }
+*/
 
 // Draw stream lines:
 //----------------------------------------------------------------------
@@ -2612,9 +2697,7 @@ void VtkPost::fitToWindowSlot()
 //----------------------------------------------------------------------
 void VtkPost::resetModelViewSlot()
 {
-  if(!postFileRead) return;
-  SetInitialCameraPosition();
-  redrawSlot();
+  viewXYpPlaneSlot();
 }
 
 // Clip all -action toggled:
@@ -3016,19 +3099,19 @@ void VtkPost::SetColorBar(bool b)
 
 void VtkPost::SetMeshPoints(bool b)
 {
-  drawMeshPointAct->setChecked(b);
+  preferences->ui.featureGroup->setChecked(b);
   drawMeshPointSlot();
 }
 
 void VtkPost::SetMeshEdges(bool b)
 {
-  drawMeshEdgeAct->setChecked(b);
+  preferences->ui.meshEdgesGroup->setChecked(b);
   drawMeshEdgeSlot();
 }
 
 void VtkPost::SetFeatureEdges(bool b)
 {
-  drawFeatureEdgesAct->setChecked(b);
+  preferences->ui.featureGroup->setChecked(b);
   drawFeatureEdgesSlot();
 }
 
@@ -3627,4 +3710,40 @@ void VtkPost::viewZXmPlaneSlot(){
   renderer->GetActiveCamera()->SetViewUp(1,0,0);
   renderer->ResetCamera();
   redrawSlot();
+}
+
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetLineGridHash(){
+	return &lineGridHash;
+}
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetSurfaceGridHash(){
+	return &surfaceGridHash;
+}
+QHash<QString, vtkUnstructuredGrid*>* VtkPost::GetVolumeGridHash(){
+	return &volumeGridHash;
+}
+
+void VtkPost::hideAll(){
+  surface->hide();
+  vector->hide();
+  isoContour->hide();
+  isoSurface->hide();
+  colorBar->hide();
+  streamLine->hide();
+  preferences->hide();
+  timeStep->hide();
+  readEpFile->hide();
+  axes->hide();
+  text->hide();
+
+#ifdef EG_MATC  
+  matc->hide();
+#endif
+
+#ifdef EG_PYTHONQT
+  console->hide();
+#endif
+
+  ecmaConsole->hide();
+ 
+  hide();
 }
