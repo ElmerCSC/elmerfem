@@ -6759,7 +6759,7 @@ CONTAINS
     INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
-    INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
+    INTEGER :: i,t,t1,t2,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
     LOGICAL :: Found, SetP, Passive, Parallel
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
@@ -6783,10 +6783,9 @@ CONTAINS
     ! Initially this is -1 and and hence the 2nd call is fast if no modes are present
     IF( Solver % NumberOfConstraintModes == 0 ) RETURN
 
-
     BCMode = ListCheckPrefixAnyBC( Model,'Constraint Mode')
     BFMode = ListCheckPrefixAnyBodyForce( Model,'Constraint Mode')
-        
+    
     IF( .NOT. (BCMode .OR. BFMode ) ) THEN
       Solver % NumberOfConstraintModes = 0
       RETURN
@@ -6843,7 +6842,7 @@ CONTAINS
     ALLOCATE( BCPerm( NoEntities ) )
     BCPerm = 0    
     j = 0
-        
+    
     DO bc_id = 1,NoEntities
       IF( BCMode ) THEN
         BC => Model % BCs(bc_id) % Values
@@ -6863,7 +6862,7 @@ CONTAINS
       END IF
     END DO    
     j = MAXVAL( BCPerm )
-    
+
     CALL Info(Caller,'Number of active constraint modes boundaries: '&
         //I2S(j),Level=7)
     IF( j == 0 ) THEN
@@ -6881,8 +6880,15 @@ CONTAINS
 
     NoModes = NDOFS * j  / Ncomplex
     
-    DO t = Mesh % NumberOfBulkElements+1, &
-        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    IF( BcMode ) THEN
+      t1 = Mesh % NumberOfBulkElements+1
+      t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    ELSE
+      t1 = 1
+      t2 = Mesh % NumberOfBulkElements
+    END IF
+
+    DO t = t1, t2
       Element => Mesh % Elements(t)
       
       IF( BCMode ) THEN
@@ -6894,7 +6900,8 @@ CONTAINS
         bc_id = ListGetInteger( Model % Bodies( Element % BodyId ) % Values,'Body Force',Found)
         IF( bc_id == 0) CYCLE
       END IF
-        
+
+      ! Look-up table for quick determiation
       IF( BCPerm(bc_id) == 0 ) CYCLE
 
       n = Element % Type % NumberOfNodes
