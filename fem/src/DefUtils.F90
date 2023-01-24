@@ -1822,9 +1822,7 @@ CONTAINS
          DO j=1,Element % Type % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF (.NOT. Solver % GlobalBubbles) THEN
-               CYCLE
-             END IF
+             IF (.NOT. Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
            END IF
 
            EDOFs = 0 
@@ -1843,7 +1841,7 @@ CONTAINS
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
            IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
-             IF ( .NOT. Solver % GlobalBubbles ) CYCLE
+             IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))

@@ -2659,11 +2659,14 @@ CONTAINS
          CASE(2)
            ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
          CASE(3)
-           IF(Element % Type % ElementCode  == 706 ) THEN
-             ddLBasisddx(i,1:3,1:3) = ddWedgeNodalPBasis(i,u,v,w)
-           ELSE
-             ddLBasisddx(i,1:3,1:3) = SecondDerivatives3D(element,basis,u,v,w)
-           END IF
+           SELECT CASE(Element % Type % ElementCode)
+           CASE(605)
+             CALL Fatal('ElementInfo', 'Second derivatives for "pyramid"-elements unimplemented.')
+           CASE(706)
+             ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
+           CASE DEFAULT
+             ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+           END SELECT
          END SELECT
          Basis(i) = 0
        END DO
@@ -2679,7 +2682,7 @@ CONTAINS
 
 !dbasisdx(1:n,:) = dlbasisdx(1:n,:)
 !if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
-!!detj = 1
+!detj = 1
 !return
 
      ! P ELEMENT CODE:
