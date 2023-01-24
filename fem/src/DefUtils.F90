@@ -3403,13 +3403,27 @@ CONTAINS
      END IF
 
      IF( Solver % NumberOfConstraintModes > 0 ) THEN
+
+       ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
+       ! and we perform the linearized constraint modes analysis at the end. 
+       IF( ListGetLogical(Solver % Values,'Constraint Modes Analysis Frozen',Found ) ) THEN
+         BLOCK 
+           INTEGER :: n
+           REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
+           n = SIZE(Solver % Matrix % rhs)
+           ALLOCATE(xtmp(n),btmp(n))
+           xtmp = 0.0_dp; btmp = 0.0_dp
+           CALL SolveConstraintModesSystem( Solver % Matrix, xtmp, btmp , Solver )
+         END BLOCK
+       END IF
+         
        IF( ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) ) THEN
          CALL FinalizeLumpedMatrix( Solver )            
        END IF
      END IF
      
      CALL Info('DefaultFinish','Finished solver: '//&         
-                GetString(Solver % Values,'Equation'),Level=8)
+         GetString(Solver % Values,'Equation'),Level=8)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish

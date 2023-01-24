@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(StressConstraintModes2)
-ADD_ELMER_LABEL(StressConstraintModes2 quick)
+ADD_ELMER_TEST(StressConstraintModes2 LABELS quick cmodes)
