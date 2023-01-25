@@ -2485,7 +2485,7 @@
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
          AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
-     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
+     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found, DoIt
      INTEGER :: AllocStat
      REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease     
      TYPE(Solver_t), POINTER :: Solver    
@@ -2508,7 +2508,13 @@
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
-        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
+        DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
+        IF(.NOT. DoIt) THEN
+          DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
+              ListGetLogical( Solver % Values,'Before Simulation',Found )
+        END IF
+        
+        IF( DoIt ) THEN
           ! solver to be called prior to time looping can never be transient
           dt = 1.0_dp
           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
