@@ -2661,7 +2661,9 @@ CONTAINS
          CASE(3)
            SELECT CASE(Element % Type % ElementCode)
            CASE(605)
-             CALL Fatal('ElementInfo', 'Second derivatives for "pyramid"-elements unimplemented.')
+             IF(isPElement(Element)) THEN
+               CALL Fatal('ElementInfo', 'Second derivatives for "pyramid"-elements unimplemented.')
+             END IF
            CASE(706)
              ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
            CASE DEFAULT
