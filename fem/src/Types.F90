@@ -590,6 +590,7 @@ MODULE Types
           EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
      INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
+     REAL(KIND=dp), POINTER :: ConstraintModesWeights(:) => NULL()
      INTEGER :: NumberOfConstraintModes = -1
      REAL(KIND=dp), POINTER :: Values(:) => NULL() ,&
           PrevValues(:,:) => NULL(), &

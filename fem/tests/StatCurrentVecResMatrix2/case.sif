@@ -1,8 +1,10 @@
 ! Test for the vectorized StatCurrent solver
-!
 ! Includes conductivity matrix computation using constrained modes.
 !
-! P.R. 14.11.2018
+! Variation of the primary in that the BCs are applied on body force
+! section instead of BC. 
+!
+! P.R. 24.1.2023
 
 Check Keywords Warn
 
@@ -28,6 +30,36 @@ Body 1
   Material = 1
 End
 
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1 
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 4
+  Equation = 1
+  Material = 1
+  Body Force = 3 
+End
+
+Body 5
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+Body 6
+  Equation = 1
+  Material = 1
+  Body Force = 5
+End
+
 Equation 1
   Active Solvers(1) = 1 
 End
@@ -37,16 +69,15 @@ Solver 1
   Variable = Potential
   Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
 
-  Calculate Conductivity Matrix = Logical True
+!  Calculate Conductivity Matrix = Logical True
 
-! The above makes all these keywords obsolete:
-!  Constraint Modes Analysis = Logical True
-!  Constraint Modes Lumped = Logical True
-!  Constraint Modes Fluxes = Logical True
-!  Constraint Modes Fluxes Symmetric = Logical True
-!  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
+! These are needed for the bulk system still 
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+  Constraint Modes Fluxes = Logical True
+  Constraint Modes Fluxes Symmetric = Logical True
+  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
   Constraint Modes Fluxes Norm = Logical True
-
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -72,37 +103,37 @@ Material 1
   Electric Conductivity = 1.0
 End
 
+Body Force 1
+  Name = "BF1"
+  Constraint Mode Potential = Integer 1
+End
+
+Body Force 2
+  Name = "BF2"
+  Constraint Mode Potential = Integer 2
+End
+
+Body Force 3
+  Name = "BF3"
+  Constraint Mode Potential = Integer 3
+End
+
+Body Force 4
+  Name = "BF4"
+  Constraint Mode Potential = Integer 4 
+End
+
+Body Force 5
+  Name = "BF5"
+  Constraint Mode Potential = Integer 5
+End
+
 Boundary Condition 1
   Target Boundaries = 1
-  Conductivity Body = Integer 0  ! the ground
+  Potential = 0.0
 End
 
-Boundary Condition 2
-  Target Boundaries = 2
-  Conductivity Body = Integer 1
-End
-
-Boundary Condition 3
-  Target Boundaries = 3
-  Conductivity Body = Integer 2
-End
-
-Boundary Condition 4
-  Target Boundaries = 4
-  Conductivity Body = Integer 3
-End
-
-Boundary Condition 5
-  Target Boundaries = 5
-  Conductivity Body = Integer 4 
-End
-
-Boundary Condition 6
-  Target Boundaries = 6
-  Conductivity Body = Integer 5
-End
-
-Solver 1 :: Reference Norm = 0.27012653
+Solver 1 :: Reference Norm = 3.19769145E-01
 Solver 2 :: Reference Norm = 5.08829854E+01
 
 
