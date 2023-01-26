@@ -6795,8 +6795,6 @@ CONTAINS
         ListGetLogical( Solver % Values,'Steady State Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) 
 
-    !ListGetLogical( Solver % Values,'External Constraint Mode Loop',Found )
-
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
     
     SetP = ListGetLogical( Solver % Values,'Fix Constraint Modes p',Found )  
@@ -15038,7 +15036,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     END SUBROUTINE ConstraintModesFluxes
 
 
-    SUBROUTINE ConstraintModesLinkage
+    SUBROUTINE ConstraintModesLinkage()
       TYPE(Element_t), POINTER :: Element
       TYPE(Mesh_t), POINTER :: Mesh
       INTEGER, POINTER :: Indexes(:), Perm(:)
@@ -15053,18 +15051,17 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         CALL Fatal('ConstraintModesLinkage','Currently only available in 2D!')
       END IF
 
-      
+      FluxesRow = 0.0_dp
       Perm => Solver % Variable % Perm
       
       DO elem=Mesh % NumberOfBulkElements + 1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
 
-        Element => Mesh % Edges(elem)
+        Element => Mesh % Elements(elem)
         n = Element % Type % NumberOfNodes
-        
-        Indexes => Element % NodeIndexes
-               
+        Indexes => Element % NodeIndexes        
         k = Var % ConstraintModesIndeces(Perm(Indexes(1)))
+
         IF(k==0) CYCLE
         
         IF(ANY(Var % ConstraintModesIndeces(Perm(Indexes(1:n))) /= k)) CYCLE        
@@ -15084,26 +15081,17 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           IF( IsComplex ) THEN
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
-              IF( Nmode /= Mmode ) THEN
-                FluxesRow(Mmode) = FluxesRow(Mmode) - flux
-              END IF
-              FluxesRow(Nmode) = FluxesRow(Nmode) + flux
+              FluxesRow(Mmode) = FluxesRow(Mmode) + flux
             ELSE
-              IF( Nmode /= Mmode ) THEN
-                FluxesRowIm(Mmode) = FluxesRowIm(Mmode) - flux
-              END IF
-              FluxesRowIm(Nmode) = FluxesRowIm(Nmode) + flux
+              FluxesRowIm(Mmode) = FluxesRowIm(Mmode) + flux
             END IF
           ELSE
             Mmode = k 
-            IF( Nmode /= Mmode ) THEN                
-              FluxesRow(Mmode) = FluxesRow(Mmode) - flux
-            END IF
-            FluxesRow(Nmode) = FluxesRow(Nmode) + flux
+            FluxesRow(Mmode) = FluxesRow(Mmode) + flux
           END IF
         END DO        
       END DO
-            
+
     END SUBROUTINE ConstraintModesLinkage
       
 
