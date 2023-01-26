@@ -2,7 +2,7 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-!  Test for elemental 2nd derivatives.
+!  Test for p-element 2nd derivatives.
 !
 !  ARGUMENTS:
 !
@@ -34,7 +34,7 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
-  INTEGER :: n, nb, nd, t, istat, active, qp
+  INTEGER :: n, nb, nd, t, istat, active, qp, prevFamily=-1
 !------------------------------------------------------------------------------
 
   Mesh => GetMesh()
@@ -46,10 +46,31 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
+      IF(GetElementFamily() /= prevFamily ) THEN
+        PRINT*,''
+        PRINT*,''
+        prevFamily = GetElementFamily()
+        SELECT CASE(prevFamily)
+        CASE(2)
+           PRINT*,'Line elements:'
+        CASE(3)
+           PRINT*,'Triangular elements:'
+        CASE(4)
+           PRINT*,'Quadrilateral elements:'
+        CASE(5)
+           PRINT*,'Tetrahedral elements:'
+        CASE(6)
+           PRINT*,'Pyramidal elements:'
+        CASE(7)
+           PRINT*,'Wedge elements:'
+        CASE(8)
+           PRINT*,'Hexahedral elements:'
+        END SELECT
+      END IF
       qp = Element % Type % BasisFunctionDegree
       WRITE(*,'(A)',ADVANCE='NO') '('//i2s(Element % Type % ElementCode)//')...'
       CALL LocalMatrix(  Element, n, nd )
-      WRITE(*,'(A)') 'PASSED '
+      WRITE(*,'(A)', ADVANCE='NO') 'PASSED '
    END DO
    WRITE(*,*) ''
    WRITE(*,*) ''
