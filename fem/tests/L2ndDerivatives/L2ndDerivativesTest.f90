@@ -2,7 +2,7 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-!  Test for p-element 2nd derivatives.
+!  Test for elemental 2nd derivatives.
 !
 !  ARGUMENTS:
 !
