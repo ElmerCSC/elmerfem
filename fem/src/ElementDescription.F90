@@ -1240,7 +1240,6 @@ CONTAINS
       BasisFunctions => elt % BasisFunctions
 
       ddx = 0.0d0
-
       DO n = 1,k
         IF ( x(n) /= 0.0d0 ) THEN
           p => BasisFunctions(n) % p
@@ -1333,19 +1332,37 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * (-u-v-1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
-        y = y + x(2)  * ( u-v-1) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
-        y = y + x(3)  * ( u+v-1) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
-        y = y + x(4)  * (-u+v-1) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
-        y = y + x(5)  * w*(2*w-1)
-        y = y + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * s / 2
-        y = y + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * s / 2
-        y = y + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * s / 2
-        y = y + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * s / 2
-        y = y + x(10) * w * (1-u-w) * (1-v-w) * s
-        y = y + x(11) * w * (1+u-w) * (1-v-w) * s
-        y = y + x(12) * w * (1+u-w) * (1+v-w) * s
-        y = y + x(13) * w * (1-u-w) * (1+v-w) * s
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * (-u-v-1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
+          CASE(2)
+            y = y + x(2)  * ( u-v-1) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
+          CASE(3)
+            y = y + x(3)  * ( u+v-1) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
+          CASE(4)
+            y = y + x(4)  * (-u+v-1) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
+          CASE(5)
+            y = y + x(5)  * w*(2*w-1)
+          CASE(6)
+            y = y + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * s / 2
+          CASE(7)
+            y = y + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * s / 2
+          CASE(8)
+            y = y + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * s / 2
+          CASE(9)
+            y = y + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * s / 2
+          CASE(10)
+            y = y + x(10) * w * (1-u-w) * (1-v-w) * s
+          CASE(11)
+            y = y + x(11) * w * (1+u-w) * (1-v-w) * s
+          CASE(12)
+            y = y + x(12) * w * (1+u-w) * (1+v-w) * s
+          CASE(13)
+            y = y + x(13) * w * (1-u-w) * (1+v-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1465,30 +1482,37 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) + &
-            (-u-v-1) * ( -(1-v) + v*w * s ) ) / 4
-
-        y = y + x(2)  * (  ( (1+u) * (1-v) - w - u*v*w * s ) + &
-            ( u-v-1) * (  (1-v) - v*w * s ) ) / 4
-
-        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-            ( u+v-1) * (  (1+v) + v*w * s ) ) / 4
-
-        y = y + x(4)  * ( -( (1-u) * (1+v) - w - u*v*w * s ) + &
-            (-u+v-1) * ( -(1+v) - v*w * s ) ) / 4
-
-        y = y + x(5)  * 0.0d0
-
-        y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
-        y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
-        y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
-        y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
-
-        y = y - x(10) * w * (1-v-w) * s
-        y = y + x(11) * w * (1-v-w) * s
-        y = y + x(12) * w * (1+v-w) * s
-        y = y - x(13) * w * (1+v-w) * s
-
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+             y = y + x(1)  * (-((1-u)*(1-v)-w+u*v*w*s)+(-u-v-1) * (-(1-v)+v*w*s))/4
+          CASE(2)
+             y = y + x(2)  * ( ((1+u)*(1-v)-w-u*v*w*s)+( u-v-1) * ( (1-v)-v*w*s))/4
+          CASE(3)
+             y = y + x(3)  * ( ((1+u)*(1+v)-w+u*v*w*s)+( u+v-1) * ( (1+v)+v*w*s))/4
+          CASE(4)
+             y = y + x(4)  * (-((1-u)*(1+v)-w-u*v*w*s)+(-u+v-1) * (-(1+v)-v*w*s))/4
+          CASE(5)
+             CONTINUE
+          CASE(6)
+             y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
+          CASE(7)
+             y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
+          CASE(8)
+             y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
+          CASE(9)
+             y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
+          CASE(10)
+             y = y - x(10) * w * (1-v-w) * s
+          CASE(11)
+             y = y + x(11) * w * (1-v-w) * s
+          CASE(12)
+             y = y + x(12) * w * (1+v-w) * s
+          CASE(13)
+             y = y - x(13) * w * (1+v-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1557,29 +1581,41 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
-            (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
-
-        y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
-            ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
-
-        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-            ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
-
-        y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
-            (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
-
-        y = y + x(5)  * 0.0d0
-
-        y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
-        y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
-        y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
-        y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
-
-        y = y - x(10) *  w * (1-u-w) * s
-        y = y - x(11) *  w * (1+u-w) * s
-        y = y + x(12) *  w * (1+u-w) * s
-        y = y + x(13) *  w * (1-u-w) * s
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
+                (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
+          CASE(2)
+            y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
+                ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
+          CASE(3)
+            y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
+                ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
+          CASE(4)
+            y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
+                (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
+          CASE(7)
+            y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
+          CASE(8)
+            y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
+          CASE(9)
+            y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
+          CASE(10)
+            y = y - x(10) *  w * (1-u-w) * s
+          CASE(11)
+            y = y - x(11) *  w * (1+u-w) * s
+          CASE(12)
+            y = y + x(12) *  w * (1+u-w) * s
+          CASE(13)
+            y = y + x(13) *  w * (1-u-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1647,36 +1683,45 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
-
-        y = y + x(5)  * (4*w-1)
-
-        y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
-            ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
-
-        y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
-            ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
-
-        y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
-            ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
-
-        y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
-            ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
-
-        y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
-            w * (1-u-w) * (1-v-w) * s**2 )
-
-        y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
-            w * (1+u-w) * (1-v-w) * s**2 )
-
-        y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
-            w * (1+u-w) * (1+v-w) * s**2 )
-
-        y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
-            w * (1-u-w) * (1+v-w) * s**2 )
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
+          CASE(2)
+            y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
+          CASE(3)
+            y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
+          CASE(4)
+            y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
+          CASE(5)
+            y = y + x(5)  * (4*w-1)
+          CASE(6)
+            y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
+                ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
+          CASE(7)
+            y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
+                ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
+          CASE(8)
+            y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
+                ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
+          CASE(9)
+            y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
+                ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
+          CASE(10)
+            y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
+                w * (1-u-w) * (1-v-w) * s**2 )
+          CASE(11)
+            y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
+                w * (1+u-w) * (1-v-w) * s**2 )
+          CASE(12)
+            y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
+                w * (1+u-w) * (1+v-w) * s**2 )
+          CASE(13)
+            y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
+                w * (1-u-w) * (1+v-w) * s**2 )
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1806,7 +1851,7 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:), q(:), r(:)
 
-      REAL(KIND=dp) :: s
+      REAL(KIND=dp) :: s,t
       INTEGER :: i,j,k,l,n,m
 
 !------------------------------------------------------------------------------
@@ -1815,6 +1860,322 @@ CONTAINS
       BasisFunctions => elt % BasisFunctions
 
       ddx = 0.0d0
+      IF ( Elt % ElementCode == 605 ) THEN
+        s = 0.0d0
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
+
+        ddx(1,2) = (x(1)-x(2)+x(3)-x(4))*(1+w*s)
+        ddx(2,1) = ddx(1,2)
+
+        ddx(1,3) = (x(1)-x(2)+x(3)-x(4))*v*s**2
+        ddx(3,1) = ddx(1,3)
+         
+        ddx(2,3) = (x(1)-x(2)+x(3)-x(4))*u*s**2
+        ddx(3,2) = ddx(2,3)
+        ddx = ddx/4
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        s = 0.0d0
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
+
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-(1-v) + v*w*s)/2
+          CASE(2)
+            t = t + x(2)  * ( (1-v) - v*w*s)/2
+          CASE(3)
+            t = t + x(3)  * ( (1+v) + v*w*s)/2
+          CASE(4)
+            t = t - x(4)  * (-(1+v) - v*w*s)/2
+          CASE(6)
+            t = t - x(6)  *  (1-v-w) * s
+          CASE(8)
+            t = t - x(8)  *  (1+v-w) * s
+          END SELECT
+          ddx(1,1) = ddx(1,1) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t + x(1)  * -(-(1-u) + u*w*s)/4
+            t = t + x(1)  * -(-(1-v) + v*w*s)/4
+            t = t + x(1)  *  (-u-v-1)*(1+w*s)/4
+          CASE(2)
+            t = t + x(2)  *  (-(1+u) - u*w*s)/4
+            t = t + x(2)  * -( (1-v) - v*w*s)/4
+            t = t + x(2)  *  ( u-v-1)*(-1-w*s)/4
+          CASE(3)
+            t = t + x(3)  *  ( (1+u) + u*w*s)/4
+            t = t + x(3)  *  ( (1+v) + v*w*s)/4
+            t = t + x(3)  *  ( u+v-1)*(1+w*s)/4
+          CASE(4)
+            t = t + x(4)  * -( (1-u) - u*w*s)/4
+            t = t + x(4)  *  (-(1+v) - v*w*s)/4
+            t = t + x(4)  *  (-u+v-1)*(-1-w*s)/4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t - x(6)  * (1-u-w)*s/2
+            t = t + x(6)  * (1+u-w)*s/2
+          CASE(7)
+            t = t + x(7)  * (1-v-w)*s/2
+            t = t - x(7)  * (1+v-w)*s/2
+          CASE(8)
+            t = t + x(8)  * (1-u-w)*s/2
+            t = t - x(8)  * (1+u-w)*s/2
+          CASE(9)
+            t = t - x(9)  * (1-v-w)*s/2
+            t = t + x(9)  * (1+v-w)*s/2
+          CASE(10)
+            t = t + x(10) *  w*s
+          CASE(11)
+            t = t - x(11) *  w*s
+          CASE(12)
+            t = t + x(12) *  w*s
+          CASE(13)
+            t = t - x(13) *  w*s
+          END SELECT
+          ddx(1,2) = ddx(1,2) + t
+
+          t = 0
+          SELECT CASE(n) 
+          CASE(1)
+            t = t - x(1)  * (-1 + u*v*s**2) / 4
+            t = t + x(1)  * (-u-v-1) * (v*s**2) / 4
+          CASE(2)
+            t = t + x(2)  * (-1 - u*v*s**2) / 4
+            t = t + x(2)  * ( u-v-1) * (-v*s**2) / 4
+          CASE(3)
+            t = t + x(3)  * (-1 + u*v*s**2) / 4
+            t = t + x(3)  * ( u+v-1) * (v*s**2) / 4
+          CASE(4)
+            t = t - x(4)  * (-1 - u*v*s**2) / 4
+            t = t + x(4)  * (-u+v-1) * (-v*s**2) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t - x(6)  * (1-v-w) * s / 2
+            t = t - x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+          CASE(7)
+            t = t - x(7)  * (1-v-w) * s / 2
+            t = t - x(7)  * (1+v-w) * s / 2
+            t = t + x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+          CASE(8)
+            t = t - x(8)  * (1+v-w) * s / 2
+            t = t - x(8)  * (1-u-w) * s / 2
+            t = t + x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+          CASE(9)
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-v-w) * s**2
+          CASE(11)
+            t = t - x(11) * w * s
+            t = t + x(11) * (1-v-w) * s**2
+          CASE(12)
+            t = t - x(12) * w * s
+            t = t + x(12) * (1+v-w) * s**2
+          CASE(13)
+            t = t + x(13) * w * s
+            t = t - x(13) * (1+v-w) * s**2
+          END SELECT
+          ddx(1,3) = ddx(1,3) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-(1-u) + u*w*s)/2
+          CASE(2)
+            t = t - x(2)  * (-(1+u) - u*w*s)/2
+          CASE(3)
+            t = t + x(3)  * ( (1+u) + u*w*s)/2
+          CASE(4)
+            t = t + x(4)  * ( (1-u) - u*w*s)/2
+          CASE(7)
+            t = t - x(7)  * (1+u-w)*s
+          CASE(9)
+            t = t - x(9)  * (1-u-w)*s
+          CASE(6,8,10,11,12,13)
+          END SELECT
+          ddx(2,2) = ddx(2,2) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-1 + u*v*s**2) / 4
+            t = t + x(1)  * (-u-v-1) * (u*s**2) / 4
+          CASE(2)
+            t = t - x(2)  * (-1 - u*v*s**2) / 4
+            t = t + x(2)  * ( u-v-1) * (-u*s**2) / 4
+          CASE(3)
+            t = t + x(3)  * (-1 + u*v*s**2) / 4
+            t = t + x(3)  * ( u+v-1) * (u*s**2) / 4
+          CASE(4)
+            t = t + x(4)  * (-1 - u*v*s**2) / 4
+            t = t + x(4)  * (-u+v-1) * (-u*s**2) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+          CASE(7)
+            t = t - x(7)  * (1+u-w) * s / 2
+            t = t - x(7)  * (1-v-w) * s / 2
+            t = t + x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+          CASE(8)
+            t = t - x(8)  * (1-u-w) * s / 2
+            t = t - x(8)  * (1+u-w) * s / 2
+            t = t + x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+          CASE(9)
+            t = t - x(9)  * (1-u-w) * s / 2
+            t = t - x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-u-w) * s**2
+          CASE(11)
+            t = t + x(11) * w * s
+            t = t - x(11) * (1+u-w) * s**2
+          CASE(12)
+            t = t - x(12) * w * s
+            t = t + x(12) * (1+u-w) * s**2
+          CASE(13)
+            t = t - x(13) * w * s
+            t = t + x(13) * (1-u-w) * s**2
+          END SELECT
+          ddx(2,3) = ddx(2,3) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t + x(1)  * (-u-v-1) * ( u*v*2*s**3) / 4
+          CASE(2)
+            t = t + x(2)  * ( u-v-1) * (-u*v*2*s**3) / 4
+          CASE(3)
+            t = t + x(3)  * ( u+v-1) * ( u*v*2*s**3) / 4
+          CASE(4)
+            t = t + x(4)  * (-u+v-1) * (-u*v*2*s**3) / 4
+          CASE(5)
+            t = t + x(5) * 4
+          CASE(6)
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t - x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t - x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * 2*s**3 / 2
+          CASE(7)
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1-v-w) * s / 2
+            t = t - x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1-v-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t - x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+            t = t - x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * 2*s**3 / 2
+          CASE(8)
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1-u-w) * s / 2
+            t = t - x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1-u-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t - x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+            t = t - x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * 2*s**3 / 2
+          CASE(9)
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t - x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t - x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * 2*s**3 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-v-w) * s**2
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-u-w) * s**2
+            t = t - x(10) * (1-v-w) * s**2
+            t = t - x(10) * (1-u-w) * s**2
+            t = t + x(10) * (1-u-w) * (1-v-w) * 2*s**3
+          CASE(11)
+            t = t + x(11) * w * s
+            t = t - x(11) * (1-v-w) * s**2
+            t = t + x(11) * w * s
+            t = t - x(11) * (1+u-w) * s**2
+            t = t - x(11) * (1-v-w) * s**2
+            t = t - x(11) * (1+u-w) * s**2
+            t = t + x(11) * (1+u-w) * (1-v-w) * 2*s**3
+          CASE(12)
+            t = t + x(12) * w * s
+            t = t - x(12) * (1+v-w) * s**2
+            t = t + x(12) * w * s
+            t = t - x(12) * (1+u-w) * s**2
+            t = t - x(12) * (1+v-w) * s**2
+            t = t - x(12) * (1+u-w) * s**2
+            t = t + x(12) * (1+u-w) * (1+v-w) * 2*s**3
+          CASE(13)
+            t = t + x(13) * w*s
+            t = t - x(13) * (1+v-w) * s**2
+            t = t + x(13) * w*s
+            t = t - x(13) * (1-u-w) * s**2
+            t = t - x(13) * (1+v-w) * s**2
+            t = t - x(13) * (1-u-w) * s**2
+            t = t + x(13) * (1-u-w) * (1+v-w) * 2*s**3
+          END SELECT
+          ddx(3,3) = ddx(3,3) + t
+        END DO
+        ddx(2,1) = ddx(1,2)
+        ddx(3,1) = ddx(1,3)
+        ddx(3,2) = ddx(2,3)
+        RETURN
+
+      END IF
 
       DO n = 1,k
         IF ( x(n) /= 0.0d0 ) THEN
@@ -2663,6 +3024,8 @@ CONTAINS
            CASE(605)
              IF(isPElement(Element)) THEN
                CALL Fatal('ElementInfo', 'Second derivatives for "pyramid"-elements unimplemented.')
+             ELSE
+               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
              END IF
            CASE(706)
              ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
@@ -2682,10 +3045,10 @@ CONTAINS
 
      q = n
 
-!dbasisdx(1:n,:) = dlbasisdx(1:n,:)
-!if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
-!detj = 1
-!return
+!	dbasisdx(1:n,:) = dlbasisdx(1:n,:)
+!	if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
+!	detj = 1
+!	return
 
      ! P ELEMENT CODE:
      ! ---------------
