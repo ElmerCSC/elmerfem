@@ -3028,7 +3028,11 @@ CONTAINS
                ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
              END IF
            CASE(706)
-             ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
+             IF(isPElement(element)) THEN
+               ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
+             ELSE
+               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+             END IF
            CASE DEFAULT
              ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
            END SELECT
