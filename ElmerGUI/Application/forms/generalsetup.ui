@@ -137,6 +137,9 @@
               <height>16777215</height>
              </size>
             </property>
+            <property name="WhatsThis">
+             <string>Free text is copied into the Header Block of the SIF as such. </string>
+            </property>
            </widget>
           </item>
          </layout>
@@ -512,6 +515,9 @@
               <height>16777215</height>
              </size>
             </property>
+            <property name="WhatsThis">
+             <string>Free text is copied into the Simulation Block of the SIF as such. </string>
+            </property>
            </widget>
           </item>
          </layout>
@@ -639,6 +645,9 @@
               <width>16777215</width>
               <height>16777215</height>
              </size>
+            </property>
+            <property name="WhatsThis">
+             <string>Free text is copied into the Constants Block of the SIF as such. </string>
             </property>
            </widget>
           </item>
