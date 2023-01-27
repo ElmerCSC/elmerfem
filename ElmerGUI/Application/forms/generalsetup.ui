@@ -395,6 +395,9 @@
             <property name="text">
              <string/>
             </property>
+            <property name="WhatsThis">
+             <string>Defines the number of time steps. It may be array-valued so that different time-step lengths may be used for different time intervals of the entire simulation.</string>
+            </property>
            </widget>
           </item>
           <item row="4" column="0">
@@ -409,6 +412,9 @@
             <property name="text">
              <string>1</string>
             </property>
+            <property name="WhatsThis">
+             <string>Defines the time-step interval for writing the results on disk. As in Timestep Sizes, the size of this keyword must match that of the Timestep Intervals keyword.  Enter zero to save only the last result.</string>
+            </property>
            </widget>
           </item>
           <item row="4" column="2">
@@ -419,7 +425,11 @@
            </widget>
           </item>
           <item row="4" column="3">
-           <widget class="QLineEdit" name="timestepSizesEdit"/>
+           <widget class="QLineEdit" name="timestepSizesEdit">
+            <property name="WhatsThis">
+             <string>Defines the length of time step. If the value of the Timestep Intervals keyword is array-valued, the value of this keyword must also be an array of the same size.</string>
+            </property>
+           </widget>
           </item>
           <item row="5" column="0">
            <widget class="QLabel" name="coordinateScalingLabel">
@@ -432,6 +442,9 @@
            <widget class="QLineEdit" name="coordinateScalingEdit">
             <property name="text">
              <string/>
+            </property>
+            <property name="WhatsThis">
+             <string>Enter up to three Real values to scale the geometry.  Enter a single number to scale all dimensions equally.  To scale from millimeters to meters, enter 0.001</string>
             </property>
            </widget>
           </item>
@@ -471,12 +484,18 @@
             <property name="text">
              <string>case.vtu</string>
             </property>
+            <property name="WhatsThis">
+             <string>Enter desired result output filename, ending in vtu.  Entering the filename here will automatically add the ResultOutputSolver, with default settings.</string>
+            </property>
            </widget>
           </item>
           <item row="7" column="0">
            <widget class="QCheckBox" name="calculateMeshPiecesCheck">
             <property name="text">
              <string>Calculate Mesh Pieces</string>
+            </property>
+            <property name="WhatsThis">
+             <string>Check this box to calculate how many mesh pieces exist in the geometry.  Results will appear in the Solver Log Window.</string>
             </property>
            </widget>
           </item>
@@ -491,6 +510,9 @@
            <widget class="QLineEdit" name="desiredMeshPiecesEdit">
             <property name="text">
              <string></string>
+            </property>
+            <property name="WhatsThis">
+             <string>Enter how many mesh pieces are expected to appear in the geometry.  If the desired number doesn't equal the actual number, call Fatal and exit.'</string>
             </property>
            </widget>
           </item>
