@@ -267,7 +267,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), &
        MASS(:,:), Velo(:,:), Flux(:,:), &
        StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:),&
-       LocalMaxDisp(:)
+       LocalMaxDisp(:), artdiff(:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, FlowSolName,ConvectionFlag, StabilizeFlag
 
@@ -281,7 +281,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !----------------------------------------------------------------------------- 
   SAVE STIFF, MASS, SourceFunc, FORCE, &
        ElementNodes, AllocationsDone, ReAllocate, Velo, TimeForce, &
-       ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
+       ElemFreeSurf, Flux, artdiff, SubstantialSurface, NormalFlux,&
        UseBodyForce, StiffVector, MeshVelocity, &
        ComputeLocalMaxDisp, LocalMaxDisp, VariableName, PrevSize
 
@@ -435,6 +435,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            MeshVelocity, &
            Flux, &
            ElemFreeSurf,&
+           artdiff, &
            SourceFunc )
       IF (ComputeLocalMaxDisp) THEN
          DEALLOCATE( LocalMaxDisp )
@@ -459,6 +460,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
          MeshVelocity( 3,NMAX ), &
          Flux( 3, NMAX), &
          ElemFreeSurf( NMAX ),&
+         artdiff(NMAX), &
          SourceFunc( NMAX ), &
          STAT=istat )
     IF ( istat /= 0 ) THEN
@@ -557,6 +559,9 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
             ComputeLocalMaxDisp = .FALSE.
           END IF
         END IF
+
+        ! get artificial viscosity
+        artdiff(1:N) =  GetReal( Material, 'Artificial Diffusivity', Found )
         
         ! get flow soulution and velocity field from it
         !----------------------------------------------
@@ -710,7 +715,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         CALL LocalMatrix( STIFF, MASS, FORCE,&
              SourceFunc, ElemFreeSurf, Velo, MeshVelocity, CurrentElement,&
              n, ElementNodes, NodeIndexes, TransientSimulation,&
-             Flux, NormalFlux, SubstantialSurface, ALEFormulation)
+             Flux, artdiff, NormalFlux, SubstantialSurface, ALEFormulation)
 
         !------------------------------------------------------------------------------
         !      If time dependent simulation add mass matrix to stiff matrix
@@ -852,7 +857,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      SUBROUTINE LocalMatrix( STIFF, MASS, FORCE,&
           SourceFunc, OldFreeSurf, Velo, MeshVelo, &
           Element, nCoord, Nodes, NodeIndexes, TransientSimulation,&
-          Flux, NormalFlux, SubstantialSurface, ALEFormulation)
+          Flux, artdiff, NormalFlux, SubstantialSurface, ALEFormulation)
        !------------------------------------------------------------------------------
        !    INPUT:  SourceFunc(:)   nodal values of the accumulation/ablation function
        !            
@@ -866,9 +871,10 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        !------------------------------------------------------------------------------
        !      external variables:
        !      ------------------------------------------------------------------------
+       IMPLICIT NONE
        REAL(KIND=dp) ::&
             STIFF(:,:), MASS(:,:), FORCE(:), SourceFunc(:), &
-            Velo(:,:), MeshVelo(:,:), OldFreeSurf(:), Flux(:,:)
+            Velo(:,:), MeshVelo(:,:), OldFreeSurf(:), Flux(:,:), artdiff(:)
 
        INTEGER :: nCoord, NodeIndexes(:)
        TYPE(Nodes_t) :: Nodes
@@ -879,7 +885,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        !      ------------------------------------------------------------------------
        REAL(KIND=dp) ::&
             Basis(2*nCoord),dBasisdx(2*nCoord,3), &
-            Vgauss(3), VMeshGauss(3), Source, gradFreeSurf(3), normGradFreeSurf,&
+            Vgauss(3), VMeshGauss(3), Source, gradFreeSurf(3), normGradFreeSurf, artdiffIP, &
             FluxGauss(3),X,Y,Z,U,V,W,S,SqrtElementMetric, SU(2*nCoord),SW(2*nCoord),Tau,hK,UNorm
 
        TYPE(ElementType_t), POINTER :: SaveElementType
@@ -959,6 +965,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
           END DO
 
           gradFreeSurf(DIM) = 1.0_dp
+
+          artdiffIP = SUM(Basis(1:nCoord)*artdiff(1:nCoord))
           
           IF (.NOT.ALEFormulation) THEN
              DO i=1,DIM
@@ -1021,7 +1029,18 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
                         S * Basis(q) * (Basis(p) + Tau*SW(p))
                 END DO
              END DO
-          END IF
+           END IF
+
+          ! artifical diffusion term
+           DO p=1,n
+             DO q=1,n
+               DO i=1,dim
+                 !DO j=1,dim
+                   STIFF(p,q) = STIFF(p,q) + s * artdiffIP * dBasisdx(q,i) * dBasisdx(p,i)
+                 !END DO
+               END DO
+             END DO
+           END DO
 
           !        Get accumulation/ablation function if flux input is given
           !        (i.e., calculate vector product between flux and normal)
