@@ -26,18 +26,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="variableLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>55</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Variable:</string>
           </property>
@@ -45,18 +33,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="contoursCombo" >
-          <property name="minimumSize" >
-           <size>
-            <width>280</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
        </layout>
@@ -72,12 +54,6 @@
         </item>
         <item row="0" column="1" >
          <widget class="QLineEdit" name="contoursMinEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -92,12 +68,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QLineEdit" name="contoursMaxEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>1.0</string>
           </property>
@@ -105,18 +75,6 @@
         </item>
         <item row="1" column="0" >
          <widget class="QLabel" name="contoursLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>55</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Contours:</string>
           </property>
@@ -124,12 +82,6 @@
         </item>
         <item row="1" column="1" >
          <widget class="QSpinBox" name="contoursSpin" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -154,12 +106,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="listLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>55</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>List:</string>
           </property>
@@ -167,12 +113,6 @@
         </item>
         <item>
          <widget class="QLineEdit" name="contourList" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
        </layout>
@@ -190,18 +130,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="colorLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>55</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Color:</string>
           </property>
@@ -209,18 +137,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="colorCombo" >
-          <property name="minimumSize" >
-           <size>
-            <width>180</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
 		<item>
@@ -243,12 +165,6 @@
        <layout class="QGridLayout" >
         <item row="0" column="0" >
          <widget class="QLabel" name="colorMinLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>55</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Min:</string>
           </property>
@@ -256,12 +172,6 @@
         </item>
         <item row="0" column="1" >
          <widget class="QLineEdit" name="colorMinEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -276,12 +186,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QLineEdit" name="colorMaxEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>1.0</string>
           </property>
@@ -326,12 +230,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QSpinBox" name="featureAngle" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="maximum" >
            <number>90</number>
           </property>
@@ -349,12 +247,6 @@
         </item>
         <item row="1" column="3" >
          <widget class="QSpinBox" name="opacitySpin" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="maximum" >
            <number>100</number>
           </property>

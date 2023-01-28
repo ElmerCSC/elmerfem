@@ -24,18 +24,6 @@
        <layout class="QHBoxLayout">
         <item>
          <widget class="QLabel" name="surfaceLabel">
-          <property name="minimumSize">
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text">
            <string>Surface:</string>
           </property>
@@ -43,18 +31,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="surfaceCombo">
-          <property name="minimumSize">
-           <size>
-            <width>180</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
         <item>
@@ -77,12 +59,6 @@
        <layout class="QGridLayout">
         <item row="0" column="0">
          <widget class="QLabel" name="minLabel">
-          <property name="minimumSize">
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text">
            <string>Min:</string>
           </property>
@@ -90,12 +66,6 @@
         </item>
         <item row="0" column="1">
          <widget class="QLineEdit" name="minEdit">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="0" column="2">
@@ -107,12 +77,6 @@
         </item>
         <item row="0" column="3">
          <widget class="QLineEdit" name="maxEdit">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="1" column="3">

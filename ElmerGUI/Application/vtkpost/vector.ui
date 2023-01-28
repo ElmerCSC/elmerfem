@@ -26,18 +26,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="vectorLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Vector:</string>
           </property>
@@ -45,18 +33,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="vectorCombo" >
-          <property name="minimumSize" >
-           <size>
-            <width>280</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
        </layout>
@@ -65,18 +47,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="scaleLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Length:</string>
           </property>
@@ -84,18 +54,6 @@
         </item>
         <item>
          <widget class="QSpinBox" name="scaleSpin" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -119,12 +77,6 @@
         </item>
         <item>
          <widget class="QSpinBox" name="qualitySpin" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>2</number>
           </property>
@@ -155,18 +107,6 @@
         </item>
         <item>
          <widget class="QSpinBox" name="everyNth" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -264,18 +204,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="lengthLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Color:</string>
           </property>
@@ -283,18 +211,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="colorCombo" >
-          <property name="minimumSize" >
-           <size>
-            <width>180</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
 		<item>
@@ -317,12 +239,6 @@
        <layout class="QGridLayout" >
         <item row="0" column="0" >
          <widget class="QLabel" name="minLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Min:</string>
           </property>
@@ -330,22 +246,10 @@
         </item>
         <item row="0" column="1" >
          <widget class="QLineEdit" name="minVal" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="0" column="2" >
          <widget class="QLabel" name="maxLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Max:</string>
           </property>
@@ -353,12 +257,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QLineEdit" name="maxVal" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="1" column="3" >
@@ -383,18 +281,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="thresholdVariableLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Variable:</string>
           </property>
@@ -402,12 +288,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="thresholdCombo" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
          </widget>
         </item>
        </layout>
@@ -416,12 +302,6 @@
        <layout class="QGridLayout" >
         <item row="0" column="0" >
          <widget class="QLabel" name="thresholdMinLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Min:</string>
           </property>
@@ -429,22 +309,10 @@
         </item>
         <item row="0" column="1" >
          <widget class="QLineEdit" name="thresholdMin" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="0" column="2" >
          <widget class="QLabel" name="thresholdMaxlabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Max:</string>
           </property>
@@ -452,12 +320,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QLineEdit" name="thresholdMax" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
          </widget>
         </item>
         <item row="1" column="0" colspan="2" >
