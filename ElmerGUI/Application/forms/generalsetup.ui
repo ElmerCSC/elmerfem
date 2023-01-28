@@ -646,7 +646,7 @@
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout">
+        <layout class="QHBoxLayout" name="buttonLayout">
          <item>
           <spacer>
            <property name="orientation">

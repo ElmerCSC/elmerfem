@@ -63,9 +63,12 @@ signals:
 
 private slots:
   void acceptButtonClicked();
+  void whatsThisButtonClicked();
 
 private:
   ProjectIO projectIO;
+  
+  QPushButton *whatsThisButton;
 };
 
 #endif // GENERALSETUP_H
