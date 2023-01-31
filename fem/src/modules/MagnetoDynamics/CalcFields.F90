@@ -1155,7 +1155,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ELSE IF (SecondOrder) THEN
        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef, EdgeBasisDegree=EdgeBasisDegree)
      ELSE
-       IP = GaussPoints(Element, 8**2, EdgeBasis=dim==3, PReferenceElement=pRef)
+       IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=pRef)
      END IF
 
      MASS  = 0._dp
