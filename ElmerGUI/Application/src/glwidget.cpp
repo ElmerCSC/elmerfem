@@ -338,6 +338,9 @@ void GLWidget::initializeGL()
 //-----------------------------------------------------------------------------
 void GLWidget::paintGL()
 {
+#if WITH_QT6
+  glClearColor( backgroundColor.redF(), backgroundColor.greenF(), backgroundColor.blueF(), backgroundColor.alphaF());
+#endif
   float xabs[3], xrel[3];
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

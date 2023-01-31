@@ -186,7 +186,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
           } 
           combo->setCurrentIndex(active);
           // connect(combo, SIGNAL(activated(QString)), this, SLOT(comboSlot(QString)));
-	  connect(combo, SIGNAL(currentIndexChanged(QString)), this, SLOT(comboSlot(QString)));
+	  connect(combo, SIGNAL(currentTextChanged(const QString)), this, SLOT(comboSlot(QString)));
 
         } else if ( widget_type == "CheckBox" ) {
           QCheckBox *l = new QCheckBox;
