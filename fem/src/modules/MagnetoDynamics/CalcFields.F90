@@ -873,7 +873,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
    
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
+   ALLOCATE( MASS(2*n,2*n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
 
 !------------------------------------------------------------------------------
    ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3), lBasis(n) )
