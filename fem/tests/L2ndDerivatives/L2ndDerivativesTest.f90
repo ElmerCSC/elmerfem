@@ -69,7 +69,7 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
       END IF
       qp = Element % Type % BasisFunctionDegree
       WRITE(*,'(A)',ADVANCE='NO') '('//i2s(Element % Type % ElementCode)//')...'
-      CALL LocalMatrix(  Element, n, nd )
+      CALL LocalMatrix(  Element, n, nd, qp )
       WRITE(*,'(A)', ADVANCE='NO') 'PASSED '
    END DO
    WRITE(*,*) ''
@@ -79,10 +79,10 @@ SUBROUTINE TestSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( Element, n, nd )
+  SUBROUTINE LocalMatrix( Element, n, nd, qp )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: n, nd, ef, qp
+    INTEGER :: n, nd, qp
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
@@ -255,7 +255,7 @@ CONTAINS
 !     print*,'-'
 
 !print*,fx,sum(basis(1:nd)*f)
-!     CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-12, 'fx')
+      CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-12, 'fx')
 
       CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 1.0d-12, 'dx')
       CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 1.0d-12, 'dy')

@@ -1286,7 +1286,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
 !------------------------------------------------------------------------------
 !>   Given element structure return value of a quantity x given at element nodes
 !>   at local coordinate point (u,v,w) inside the element. Element basis functions
@@ -1321,11 +1320,21 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
-        y = y + x(2) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
-        y = y + x(3) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
-        y = y + x(4) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
-        y = y + x(5) * w
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)*((1-u)*(1-v) - w + u*v*w * s) / 4
+          CASE(2)
+            y = y + x(2)*((1+u)*(1-v) - w - u*v*w * s) / 4
+          CASE(3)
+            y = y + x(3)*((1+u)*(1+v) - w + u*v*w * s) / 4
+          CASE(4)
+            y = y + x(4)*((1-u)*(1+v) - w - u*v*w * s) / 4
+          CASE(5)
+            y = y + x(5)*w
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
@@ -1472,11 +1481,23 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -(1-v) + v*w * s ) / 4
-        y = y + x(2) * (  (1-v) - v*w * s ) / 4
-        y = y + x(3) * (  (1+v) + v*w * s ) / 4
-        y = y + x(4) * ( -(1+v) - v*w * s ) / 4
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -(1-v) + v*w * s ) / 4
+          CASE(2)
+            y = y + x(2) * (  (1-v) - v*w * s ) / 4
+          CASE(3)
+            y = y + x(3) * (  (1+v) + v*w * s ) / 4
+          CASE(4)
+            y = y + x(4) * ( -(1+v) - v*w * s ) / 4
+          CASE(5)
+            CONTINUE
+          END SELECT
+        END DO
         RETURN
+
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
         s = 1.0d0 / (1-w)
@@ -1486,7 +1507,7 @@ CONTAINS
           IF(x(n)==0) CYCLE
           SELECT CASE(n)
           CASE(1)
-             y = y + x(1)  * (-((1-u)*(1-v)-w+u*v*w*s)+(-u-v-1) * (-(1-v)+v*w*s))/4
+             y = y + x(1) * (-((1-u)*(1-v)-w+u*v*w*s)+(-u-v-1) * (-(1-v)+v*w*s))/4
           CASE(2)
              y = y + x(2)  * ( ((1+u)*(1-v)-w-u*v*w*s)+( u-v-1) * ( (1-v)-v*w*s))/4
           CASE(3)
@@ -1570,11 +1591,21 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -(1-u) + u*w * s ) / 4
-        y = y + x(2) * ( -(1+u) - u*w * s ) / 4
-        y = y + x(3) * (  (1+u) + u*w * s ) / 4
-        y = y + x(4) * (  (1-u) - u*w * s ) / 4
-
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -(1-u) + u*w * s ) / 4
+          CASE(2)
+            y = y + x(2) * ( -(1+u) - u*w * s ) / 4
+          CASE(3)
+            y = y + x(3) * (  (1+u) + u*w * s ) / 4
+          CASE(4)
+            y = y + x(4) * (  (1-u) - u*w * s ) / 4
+          CASE(5)
+            CONTINUE
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
@@ -1672,11 +1703,21 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(2) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(3) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(4) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(5)
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -1 + u*v*s**2 ) / 4
+          CASE(2)
+            y = y + x(2) * ( -1 - u*v*s**2 ) / 4
+          CASE(3)
+            y = y + x(3) * ( -1 + u*v*s**2 ) / 4
+          CASE(4)
+            y = y + x(4) * ( -1 - u*v*s**2 ) / 4
+          CASE(5)
+            y = y + x(5)
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
@@ -1870,10 +1911,11 @@ CONTAINS
 
         ddx(1,3) = (x(1)-x(2)+x(3)-x(4))*v*s**2
         ddx(3,1) = ddx(1,3)
-         
+
         ddx(2,3) = (x(1)-x(2)+x(3)-x(4))*u*s**2
         ddx(3,2) = ddx(2,3)
         ddx = ddx/4
+
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         s = 0.0d0
