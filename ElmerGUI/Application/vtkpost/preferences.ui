@@ -42,12 +42,6 @@
         </item>
         <item row="0" column="2" >
          <widget class="QLabel" name="sizeLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>80</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Size:</string>
           </property>
@@ -55,12 +49,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QSpinBox" name="pointSize" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -91,12 +79,6 @@
         </item>
         <item row="1" column="2" >
          <widget class="QLabel" name="qualityLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>80</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Quality:</string>
           </property>
@@ -104,12 +86,6 @@
         </item>
         <item row="1" column="3" >
          <widget class="QSpinBox" name="pointQuality" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>2</number>
           </property>
@@ -204,18 +180,6 @@
         </item>
         <item row="0" column="2" >
          <widget class="QLabel" name="meshLineWidthLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>80</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>90</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Line width:</string>
           </property>
@@ -223,18 +187,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QSpinBox" name="meshLineWidth" >
-          <property name="minimumSize" >
-           <size>
-            <width>0</width>
-            <height>24</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>70</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -256,12 +208,6 @@
         </item>
         <item row="1" column="3" >
          <widget class="QSpinBox" name="meshEdgeTubeQuality" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>3</number>
           </property>
@@ -279,12 +225,6 @@
         </item>
         <item row="2" column="3" >
          <widget class="QSpinBox" name="meshEdgeTubeRadius" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -328,18 +268,6 @@
         </item>
         <item row="0" column="2" >
          <widget class="QLabel" name="angleLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>80</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>90</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Feature angle:</string>
           </property>
@@ -347,18 +275,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QSpinBox" name="angleSpin" >
-          <property name="minimumSize" >
-           <size>
-            <width>0</width>
-            <height>24</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>70</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>0</number>
           </property>
@@ -379,18 +295,6 @@
         </item>
         <item row="1" column="2" >
          <widget class="QLabel" name="lineWidthLabel_2" >
-          <property name="minimumSize" >
-           <size>
-            <width>80</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>90</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Line width:</string>
           </property>
@@ -398,18 +302,6 @@
         </item>
         <item row="1" column="3" >
          <widget class="QSpinBox" name="lineWidthSpin" >
-          <property name="minimumSize" >
-           <size>
-            <width>0</width>
-            <height>24</height>
-           </size>
-          </property>
-          <property name="maximumSize" >
-           <size>
-            <width>70</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -431,12 +323,6 @@
         </item>
         <item row="2" column="3" >
          <widget class="QSpinBox" name="featureEdgeTubeQuality" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>3</number>
           </property>
@@ -461,12 +347,6 @@
         </item>
         <item row="3" column="3" >
          <widget class="QSpinBox" name="featureEdgeTubeRadius" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>
@@ -531,12 +411,6 @@
         </item>
         <item row="0" column="1" >
          <widget class="QLineEdit" name="clipPointX" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -551,12 +425,6 @@
         </item>
         <item row="0" column="3" >
          <widget class="QLineEdit" name="clipNormalX" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>1.0</string>
           </property>
@@ -571,12 +439,6 @@
         </item>
         <item row="1" column="1" >
          <widget class="QLineEdit" name="clipPointY" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -591,12 +453,6 @@
         </item>
         <item row="1" column="3" >
          <widget class="QLineEdit" name="clipNormalY" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -611,12 +467,6 @@
         </item>
         <item row="2" column="1" >
          <widget class="QLineEdit" name="clipPointZ" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>
@@ -631,12 +481,6 @@
         </item>
         <item row="2" column="3" >
          <widget class="QLineEdit" name="clipNormalZ" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>0.0</string>
           </property>

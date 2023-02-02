@@ -4957,6 +4957,7 @@ void MainWindow::colorizeBodySlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::backgroundColorSlot() {
   QColor newColor = QColorDialog::getColor(glWidget->backgroundColor, this);
+  if(!newColor.isValid()) return;
   glWidget->qglClearColor(newColor);
   glWidget->backgroundColor = newColor;
 }
@@ -4970,6 +4971,7 @@ void MainWindow::surfaceColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4983,6 +4985,7 @@ void MainWindow::edgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->edgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->edgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4996,6 +4999,7 @@ void MainWindow::surfaceMeshColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceMeshColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceMeshColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5009,6 +5013,7 @@ void MainWindow::sharpEdgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->sharpEdgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->sharpEdgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5022,6 +5027,7 @@ void MainWindow::selectionColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  if(!newColor.isValid()) return;
   glWidget->selectionColor = newColor;
   glWidget->rebuildLists();
 }
