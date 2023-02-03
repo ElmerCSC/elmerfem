@@ -6398,7 +6398,7 @@ RETURN
     REAL(KIND=dp) :: time
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Status(:)
-    INTEGER :: i,j,n,dofs,Vari,Rank,dim, NoParticles, MinSaveStatus, MaxSaveStatus
+    INTEGER :: i,j,n,dofs,Vari,Rank,dim, NoParticles, MinSaveStatus, MaxSaveStatus, WritePE
     INTEGER :: VisitedTimes = 0
     INTEGER, POINTER :: Indexes(:),Perm(:)
     LOGICAL :: GotTimeVar, GotDistVar
@@ -6434,12 +6434,18 @@ RETURN
       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
     END IF
 
-
+    WritePE = ParEnv % MyPe
+    IF( ParEnv % PEs > 1 ) THEN
+      WritePE = ParallelReduction( WritePE, 1 )
+    END IF
+    
     IF( VisitedTimes == 1 ) THEN
       Params => ListGetSolverParams()
       FilePrefix = ListGetString(Params,'Filename Prefix')
-      CALL WriteParticleFileNames(FilePrefix, dim)
-      
+      IF( ParEnv % MyPe == WritePE ) THEN
+        CALL WriteParticleFileNames(FilePrefix, dim)
+      END IF
+        
       NumberFilesByParticles = ListGetLogical( Params,'Filename Particle Numbering',Found) 
       NumberFilesBySteps = ListGetLogical( Params,'Filename Timestep Numbering',Found) 
       IF( NumberFilesByParticles .AND. NumberFilesBySteps ) THEN
