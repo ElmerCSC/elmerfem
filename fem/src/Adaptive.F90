@@ -499,46 +499,6 @@ CONTAINS
     NULLIFY( NewMesh % Variables )
 
     CALL TransferCoordAndTime( RefMesh, NewMesh ) 
-
-#if 0
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-         'Coordinate 1', 1, NewMesh % Nodes % x )
-
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-         'Coordinate 2', 1, NewMesh % Nodes % y )
-
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-         'Coordinate 3', 1, NewMesh % Nodes % z )
-
-!   Time must always be there:
-!   --------------------------
-    Var => VariableGet( RefMesh % Variables,'Time',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                     'Time', 1, Var % Values )
-
-    Var => VariableGet( RefMesh % Variables,'Timestep',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                     'Timestep', 1, Var % Values )
-
-    Var => VariableGet( RefMesh % Variables,'Timestep size',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                     'Timestep size', 1, Var % Values )
-
-    NewVar => VariableGet( NewMesh % Variables,'Timestep size',ThisOnly=.TRUE. )
-    NewVar % PrevValues => Var % PrevValues
-
-    Var => VariableGet( RefMesh % Variables,'Timestep interval',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                 'Timestep interval', 1, Var % Values )
-
-    Var => VariableGet( RefMesh % Variables,'Coupled iter',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                 'Coupled iter', 1, Var % Values )
-
-    Var => VariableGet( RefMesh % Variables,'Nonlin iter',ThisOnly=.TRUE. )
-    CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, &
-                 'Nonlin iter', 1, Var % Values )
-#endif
     
     ! Initialize the field variables for the new mesh. These are
     ! interpolated from the old meshes variables. Vector variables

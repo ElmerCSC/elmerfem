@@ -4891,7 +4891,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
 end:
   printf("Read commands from a file\n");
-
+  fclose(in);
   return(0);
 }
 

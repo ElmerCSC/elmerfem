@@ -26,12 +26,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="textLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Text:</string>
           </property>
@@ -39,12 +33,6 @@
         </item>
         <item>
          <widget class="QLineEdit" name="textEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Message</string>
           </property>
@@ -56,12 +44,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="posXLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>PosX:</string>
           </property>
@@ -69,12 +51,6 @@
         </item>
         <item>
          <widget class="QLineEdit" name="posxEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>10</string>
           </property>
@@ -82,12 +58,6 @@
         </item>
         <item>
          <widget class="QLabel" name="posYLabel" >
-          <property name="minimumSize" >
-           <size>
-            <width>50</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="text" >
            <string>PosY:</string>
           </property>
@@ -95,12 +65,6 @@
         </item>
         <item>
          <widget class="QLineEdit" name="posyEdit" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="text" >
            <string>10</string>
           </property>
@@ -149,12 +113,6 @@
        <layout class="QHBoxLayout" >
         <item>
          <widget class="QLabel" name="fontLabel" >
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Type:</string>
           </property>
@@ -162,12 +120,12 @@
         </item>
         <item>
          <widget class="QComboBox" name="comboBox" >
-          <property name="maximumSize" >
-           <size>
-            <width>16777215</width>
-            <height>24</height>
-           </size>
-          </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
           <item>
            <property name="text" >
             <string>Arial</string>
@@ -177,12 +135,6 @@
         </item>
         <item>
          <widget class="QLabel" name="label" >
-          <property name="maximumSize" >
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
           <property name="text" >
            <string>Size:</string>
           </property>
@@ -190,12 +142,6 @@
         </item>
         <item>
          <widget class="QSpinBox" name="size" >
-          <property name="maximumSize" >
-           <size>
-            <width>75</width>
-            <height>24</height>
-           </size>
-          </property>
           <property name="minimum" >
            <number>1</number>
           </property>

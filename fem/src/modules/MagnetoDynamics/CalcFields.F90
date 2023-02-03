@@ -561,16 +561,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
 !  a background element of type 827):
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
-   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), C(27)
-   REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
-   REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
-   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27)
-   COMPLEX(KIND=dp) :: R_Z(27)
+   REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:), Basis(:), lBasis(:), &
+                dBasisdx(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: SOL(:,:), PSOL(:), ElPotSol(:,:), C(:)
+   REAL(KIND=dp), ALLOCATABLE :: Wbase(:), alpha(:), NF_ip(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: PR(:), omega_velo(:,:), lorentz_velo(:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: Magnetization(:,:), BodyForceCurrDens(:,:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:)
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
-   REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
+   REAL(KIND=dp) :: ldetJ,detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
@@ -872,8 +873,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
    
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
+   ALLOCATE( MASS(2*n,2*n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
 
+!------------------------------------------------------------------------------
+   ALLOCATE( WBasis(n,3), RotWBasis(n,3), Basis(n), dBasisdx(n,3), lBasis(n) )
+   ALLOCATE( SOL(2,n), PSOL(n), ElPotSol(1,n), C(n) )
+   ALLOCATE( Wbase(n), alpha(n), NF_ip(n,3) )
+   ALLOCATE( PR(n), omega_velo(3,n), lorentz_velo(3,n) )
+   ALLOCATE( Magnetization(3,n), BodyForceCurrDens(3,n), R_Z(n) )
+!------------------------------------------------------------------------------
    SOL = 0._dp; PSOL=0._dp
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
@@ -1169,7 +1177,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
                BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
-          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+          stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx,USolver=pSolver)
           IF( dim == 3 ) THEN
             CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
           END IF
@@ -1192,8 +1200,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
             ! -------------------------------------------------------------------------
             IF ( CSymmetry ) THEN
               B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
-              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
-                       + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,2) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                         + SUM( SOL(k,1:nd) * Basis(1:nd) ) / xcoord
               B(k,3) = 0._dp
             ELSE
               B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
@@ -1492,7 +1500,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
          Babs = MAX(Babs, 1.d-8)
          
-         R_ip = ListGetFun( Material,'h-b curve', x=babs) / Babs
+         R_ip = ListGetFun(Material,'h-b curve', x=babs) / Babs
 
          BLOCK
            TYPE(ValueListEntry_t), POINTER :: ptr
@@ -1500,6 +1508,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            w_dens = IntegrateCurve(ptr % TValues,ptr % FValues(1,1,:),ptr % CubicCoeff,0._dp,Babs,Found=Found)
            IF(.NOT. Found ) HbIntegProblem = .TRUE.
          END BLOCK
+
          DO k=1,3
            Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
          END DO

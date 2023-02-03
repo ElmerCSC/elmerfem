@@ -3352,17 +3352,17 @@ CONTAINS
 
      V => VariableGet( M1 % Variables, 'nonlin iter' )
      CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'nonlin iter', 1, V % Values )
-
+         'nonlin iter', 1, V % Values )
+     
      V => VariableGet( M1 % Variables, 'coupled iter' )
      CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'coupled iter', 1, V % Values )
-
+         'coupled iter', 1, V % Values )
+     
      V => VariableGet( M1 % Variables, 'partition' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
      END IF
-       
+     
      V => VariableGet( M1 % Variables, 'scan' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
@@ -3374,6 +3374,10 @@ CONTAINS
      V => VariableGet( M1 % Variables, 'produce' )
      IF( ASSOCIATED( V ) ) THEN
        CALL VariableAdd( M2 % Variables, M2, Solver, 'produce', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'run' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'run', 1, V % Values)
      END IF
      
 !------------------------------------------------------------------------------
@@ -3716,7 +3720,7 @@ CONTAINS
 
                IF (ASSOCIATED(Edge % BoundaryInfo % Left) ) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Left, Mesh)
-               ELSE
+               ELSE IF(ASSOCIATED(Edge % BoundaryInfo % Right)) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Right, Mesh)
                END IF
              
@@ -3739,6 +3743,8 @@ CONTAINS
 
        DO j=1,Element % TYPE % NumberOfFaces
           Face => Mesh % Faces( Element % FaceIndexes(j) )
+
+          IF(ANY(Face % EdgeIndexes==0)) CYCLE
 
           ! Set attributes of p element faces
           IF ( ASSOCIATED(Element % PDefs) ) THEN
@@ -18182,7 +18188,9 @@ CONTAINS
       ! For P elements mappings are different
       IF ( ASSOCIATED(Element % PDefs) ) THEN
         CALL GetElementEdgeMap( Element, EdgeMap )
-        CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+        IF(Element % Type % ElementCode > 500) &
+          CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+
         n = Element % TYPE % NumberOfEdges
       ELSE 
         SELECT CASE( Element % TYPE % ElementCode / 100 )
@@ -18382,8 +18390,10 @@ CONTAINS
 
       DO i=1,Mesh % NumberOfFaces
         Face => Mesh % Faces(i)
+        IF(.NOT.ASSOCIATED(Face % EdgeIndexes)) CYCLE
         n = Face % TYPE % NumberOfEdges
         Edgeind(1:n) = Face % EdgeIndexes(1:n)
+        IF(ANY(EdgeInd(1:n)==0)) CYCLE
         DO j=1,n
           i1 = Mesh % Edges(Edgeind(j)) % NodeIndexes(1:2)
           IF ( i1(1)>i1(2) ) THEN
@@ -18551,6 +18561,8 @@ END SUBROUTINE FindNeighbourNodes
        DoInterp = .NOT. NoInterp
      END IF
 
+     Solver % Mesh => Mesh
+     CALL SetCurrentMesh( CurrentModel, Mesh )
 
      IF  (DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
@@ -18564,8 +18576,6 @@ END SUBROUTINE FindNeighbourNodes
     END IF
     Permutation = 0
 
-     Solver % Mesh => Mesh
-     CALL SetCurrentMesh( CurrentModel, Mesh )
      
      GlobalBubbles = ListGetLogical( Solver % Values, &
          'Bubbles in Global System', Found )
@@ -20895,17 +20905,23 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t),  POINTER :: Mesh
 !------------------------------------------------------------------------------
+
+    IF(.NOT. ASSOCIATED(Mesh) ) THEN
+      CALL Fatal('SetCurrentMesh','Target mesh is not associated!')
+    END IF
+
     Model % Variables => Mesh % Variables
 
     Model % Mesh  => Mesh
     Model % Nodes => Mesh % Nodes
     Model % NumberOfNodes = Mesh % NumberOfNodes
     Model % Nodes % NumberOfNodes = Mesh % NumberOfNodes
-
+    
     Model % Elements => Mesh % Elements
     Model % MaxElementNodes = Mesh % MaxElementNodes
     Model % NumberOfBulkElements = Mesh % NumberOfBulkElements
     Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SetCurrentMesh
 !------------------------------------------------------------------------------

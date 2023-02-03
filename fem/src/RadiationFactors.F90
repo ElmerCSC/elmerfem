@@ -40,12 +40,12 @@
 !---------------------------------------------------------------
 !> Subroutine for solving either gebhardt factors or radiosities
 !---------------------------------------------------------------
-   SUBROUTINE RadiationFactors( TSolver, FirstTime, Newton )
+   SUBROUTINE RadiationFactors( TSolver, TopoCall, Newton )
 
      USE DefUtils
      IMPLICIT NONE
 
-     LOGICAL :: FirstTime
+     LOGICAL :: TopoCall
      LOGICAL :: Newton
      TYPE(Solver_t) :: TSolver
 
@@ -78,15 +78,16 @@
          IterSolveFactors, ConstantEmissivity, Found,  UpdateRadiatorFactors, &
          ComputeRadiatorFactors, RadiatorsFound, DiffuseGrayRadiationFound,   &
          UpdateGeometry, Radiosity, Spectral
+     LOGICAL :: FirstTime = .TRUE.
 
      INTEGER, PARAMETER :: VFUnit = 10
      LOGICAL, ALLOCATABLE :: ActiveNodes(:)
      TYPE(ValueList_t), POINTER :: Params, BC
      
-     SAVE TimesVisited 
+     SAVE TimesVisited, FirstTime     
 
 !-------------------------------------------------------------------------------------------
-
+     
      Model  => CurrentModel
      IF (.NOT. ASSOCIATED(Model)) THEN
        CALL Fatal('RadiationFactors','No pointer to model')
@@ -115,7 +116,7 @@
      Spectral = GetLogical( Params, 'Spectral Model' ,Found )
      IF( Spectral ) Radiosity = .TRUE.
 
-     IF(.NOT. FirstTime) TimesVisited = TimesVisited + 1
+     IF(.NOT. TopoCall) TimesVisited = TimesVisited + 1
 
      UpdateViewFactors = GetLogical( Params, 'Update View Factors', Found )
 
@@ -148,9 +149,10 @@
      CALL Info('RadiationFactors','Computing radiation factors for heat transfer',       Level=5)
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
 
-     ConstantEmissivity = FirstTime .AND. &
-            ( UpdateGebhartFactors .OR. UpdateViewFactors .OR. UpdateRadiatorFactors )
-     
+     ! If we call before "temperature" exists cannot have temperature-depedent emissivity
+     !ConstantEmissivity = TopoCall .AND. &
+     !       ( UpdateGebhartFactors .OR. UpdateViewFactors .OR. UpdateRadiatorFactors )
+
      FullMatrix = GetLogical( Params, 'Radiation Factors Solver Full',Found) 
      IF(.NOT.Found) &
        FullMatrix = GetLogical( Params, 'Gebhart Factors Solver Full',Found) 
@@ -219,7 +221,10 @@
 
      ! If the geometry has not changed and Gebhart factors are fine return
      IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhartFactors .OR. &
-              UpdateRadiatorFactors .OR. Radiosity)) RETURN
+         UpdateRadiatorFactors .OR. Radiosity)) THEN
+       CALL Info('RadiationFactors','Not first time and no updates needed!',Level=12)
+       RETURN
+     END IF
 
 !-----------------------------------------------------------------------------------
 !    Check that the needed files exist if os assumed, if not, recompute
@@ -236,14 +241,17 @@
      UpdateGeometry = ListGetLogical(Params,'Update Factors Geometry',Found )  
      IF(.NOT. Found ) THEN 
        UpdateGeometry = ComputeViewFactors .OR. (ComputeRadiatorFactors.AND.RadiatorsFound) .OR. &
-           (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))
+           (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))       
      END IF
      CALL ComputeViewFactorsAndRadiators()
 
      IF(RadiatorsFound) THEN
        IF (FirstTime .OR. UpdateRadiatorFactors) CALL ReadRadiatorFactorsFromFile()
      END IF
-     IF( .NOT. DiffuseGrayRadiationFound ) RETURN
+     IF( .NOT. DiffuseGrayRadiationFound ) THEN
+       CALL Info('RadiationFactors','No diffuse grey radiation found!',Level=12)
+       RETURN       
+     END IF
 !------------------------------------------------------------------------------
 
      TopologyFixed = GetLogical( Params, 'Matrix Topology Fixed',Found)
@@ -251,7 +259,7 @@
      IF(.NOT. Found) &
        SaveFactors = ListGetLogical( Params, 'Save Gebhardt Factors',Found )
    
-     TopologyTest = .NOT. FirstTime
+     TopologyTest = .NOT. TopoCall
 
 !------------------------------------------------------------------------------
 
@@ -262,6 +270,7 @@
      DO RadiationBody = 1,MaxRadiationBody
        bt = CPUTime()
 
+       CALL Info('RadiationFactors','Computing are info for set '//I2S(RadiationBody),Level=12)
        CALL GetBodyRadiationSurfaceInfo(RadiationBody)
        IF(RadiationSurfaces == 0)  CYCLE
 
@@ -272,8 +281,11 @@
        ! and finally, compute the Gebhart factor or radiosities:
        ! -------------------------------------------------------
        ViewFactors => TSolver % Mesh % VFStore(RadiationBody) % VF
-       IF(.NOT.CheckForQuickFactors()) CALL CalculateRadiation()
-
+       IF(.NOT.CheckForQuickFactors()) THEN
+         CALL Info('RadiationFactors','Computing radiation for set '//I2S(RadiationBody),Level=12)
+         CALL CalculateRadiation()
+       END IF
+         
        bt = CPUTime()-bt
        IF( Radiosity ) THEN
          WRITE (Message,'(A,T35,ES15.4)') 'Radiosity vector determined (s)',bt
@@ -285,10 +297,12 @@
 
 !------------------------------------------------------------------------------
      
-     IF(.NOT. (FirstTime .OR. TopologyTest .OR. TopologyFixed) ) THEN
+     IF(.NOT. (FirstTime .OR. TopologyTest .OR. TopologyFixed .OR. Radiosity) ) THEN
        CALL UpdateMatrixTopologyWithFactors()
-     END IF
- 
+     END IF     
+
+     FirstTime = .FALSE.
+     
      WRITE (Message,'(A,T35,ES15.4)') 'All done time (s)',CPUTime()-at
      CALL Info('RadiationFactors',Message)
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
@@ -966,17 +980,36 @@
 
      SUBROUTINE TabulateEmissivity()
        REAL(KIND=dp) :: Transmittivity
-       LOGICAL ::Found
+       LOGICAL :: Found, ThisConstant, UseConstantEmissivity
        INTEGER :: i,n
        TYPE(ValueList_t), POINTER :: BC
        TYPE(Element_t), POINTER :: Element
+       
+       
+       CALL Info('TabulateEmissivity','Setting emissivities for faster radiation computation',Level=25)
 
-       Emissivity = GetConstReal( Params,'Constant Emissivity',Found )
-       IF(.NOT. Found) Emissivity = 0.5_dp
-
-       Reflectivity = 1-Emissivity
-
-       IF(.NOT. (ConstantEmissivity .OR. Spectral .OR. Radiosity .AND. FirstTime ) ) THEN
+       UseConstantEmissivity = .FALSE.
+       IF( TopoCall ) THEN
+         DO i=1,CurrentModel % NumberOfBCs
+           ThisConstant = ListCheckIsConstant(CurrentModel % BCs(i) % Values,'Emissivity',Found)
+           IF(Found .AND. .NOT. ThisConstant ) UseConstantEmissivity = .TRUE.
+         END DO
+         DO i=1,CurrentModel % NumberOfMaterials
+           ThisConstant = ListCheckIsConstant(CurrentModel % Materials(i) % Values,'Emissivity',Found)
+           IF(Found .AND. .NOT. ThisConstant ) UseConstantEmissivity = .TRUE.
+         END DO
+       END IF
+       
+       IF(UseConstantEmissivity) THEN
+         CALL Info('TabulateEmissivity','We use constant emissivity for the 1st call!',Level=6)
+         Emissivity = GetConstReal( Params,'Constant Emissivity',Found )
+         IF(.NOT. Found) Emissivity = 0.5_dp
+         Absorptivity = Emissivity
+         Reflectivity = 1 - Absorptivity
+         IF(.NOT. UpdateGebhartFactors ) THEN
+           CALL Warn('TabulateEmissivity','Gebhart factors should be updated for non-constant emissivities!')
+         END IF
+       ELSE
          DO i=1,RadiationSurfaces
            Element => Mesh % Elements(ElementNumbers(i))
            n = GetElementNOFNodes(Element)
@@ -1016,6 +1049,7 @@
        TYPE(Element_t), POINTER :: Element, Parent
        INTEGER :: i,k,bc_id,mat_id
 
+       CALL Info('TabulateSpectralEmissivity','Setting emissivities for faster radiation computation',Level=25)
        
        DO i=1,RadiationSurfaces         
          Element => Mesh % Elements(ElementNumbers(i))
@@ -1051,7 +1085,7 @@
            Absorptivity(i) = ListGetFun( VList,'Radiator Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
          END IF
          IF(.NOT. Found ) Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)         
-         IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)         
+         IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
        END DO
        
      END SUBROUTINE TabulateSpectralEmissivity
@@ -1061,7 +1095,7 @@
 
        INTEGER :: istat
 
-       IF(Radiosity .AND. FirstTime) RETURN
+       !IF(Radiosity .AND. FirstTime) RETURN
 
        CALL Info('RadiationFactors','Computing factors...',Level=5)
 
@@ -1492,7 +1526,13 @@
 
        ALLOCATE(SurfaceTemperature(RadiationSurfaces))
        CALL TabulateSurfaceTemperatures(SurfaceTemperature,Temperature,TempPerm)
-       
+
+       IF( InfoActive(30) ) THEN
+         PRINT *,'Temp range:',MINVAL(SurfaceTemperature),MAXVAL(SurfaceTemperature)
+         PRINT *,'Emis range:',MINVAL(Emissivity),MAXVAL(Emissivity)
+         PRINT *,'Abs range:',MINVAL(Absorptivity),MAXVAL(Absorptivity)
+       END IF
+         
        IF( Spectral ) THEN
          CALL SpectralRadiosity(SurfaceTemperature)
        ELSE
@@ -1514,6 +1554,7 @@
 
        ALLOCATE(RHS(RadiationSurfaces),SOL(RadiationSurfaces),Diag(RadiationSurfaces))
        RHS = 0.0_dp
+
        IF (Newton) THEN
          ALLOCATE( RHS_d(RadiationSurfaces), SOL_d(RadiationSurfaces) )
          RHS_d = 0.0_dp
@@ -1544,10 +1585,11 @@
            IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
              e = Emissivity(i)
              a = Absorptivity(i)
+             !r = Reflectivity(i)
              r = 1-a  ! e
              c = RelAreas(i) * (r/a) !(r/e)
              RHS(i) = RHS(i) - c*r* & 
-                      SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
+                 SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
          END DO
        END IF
@@ -1785,7 +1827,7 @@
            EffTemp = EffTemp + Trad * tmpSOL
            EffAbs = EffAbs + Emissivity * tmpSOL 
          END DO
-       END IF
+       END IF       
        
        ! Normalize with weight i.e. incoming heat flux
        EffAbs = EffAbs / SOL
@@ -1990,11 +2032,17 @@
      SUBROUTINE UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
        REAL(KIND=dp) :: SOL(:), SOL_d(:)
        REAL(KIND=dp), OPTIONAL :: EffAbs(:), EffTemp(:)
-
+       REAL(KIND=dp) :: cmult
+       
        TYPE(Element_t), POINTER :: Element
        INTEGER :: i
        TYPE(Factors_t), POINTER :: RadiosityFactors
 
+       IF( Newton ) THEN
+         cmult = ListGetCReal( TSolver % Values,'Radiosity Newton Multiplier',Found )
+         IF( Found ) SOL_d = cmult * SOL_d
+       END IF
+                
        DO i=1,RadiationSurfaces
          Element => Mesh % Elements(ElementNumbers(i))
 
@@ -2017,6 +2065,12 @@
          IF(PRESENT(EffAbs))  RadiosityFactors % Factors(3) = EffAbs(i)
          IF(PRESENT(EffTemp)) RadiosityFactors % Factors(4) = EffTemp(i)
        END DO
+
+       IF(InfoActive(30)) THEN
+         PRINT *,'SOL_0 range:',MINVAL(SOL),MAXVAL(SOL),SUM(SOL)/SIZE(SOL)       
+         IF(Newton) PRINT *,'SOL_d range:',MINVAL(SOL_d),MAXVAL(SOL_d),SUM(SOL_d)/SIZE(SOL_d)
+       END IF
+       
      END SUBROUTINE UpdateRadiosityFactors
 
 

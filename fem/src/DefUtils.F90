@@ -1810,6 +1810,7 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
+
      BLOCK
        LOGICAL :: EdgesDone, FacesDone
        INTEGER :: Ind, i,j, p, nb, EDOFs, FDOFs, BDOFs
@@ -1821,9 +1822,7 @@ CONTAINS
          DO j=1,Element % Type % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF (.NOT. Solver % GlobalBubbles) THEN
-               CYCLE
-             END IF
+             IF (.NOT. Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
            END IF
 
            EDOFs = 0 
@@ -1841,10 +1840,8 @@ CONTAINS
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
-           IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( .NOT. Solver % GlobalBubbles ) THEN
-               CYCLE
-             END IF
+           IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
+             IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
@@ -2066,7 +2063,7 @@ CONTAINS
       p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
       IF (k >= 0 .OR. p >= 1) THEN
-        IF (p > 1) n = GetBubbleDOFs(Element, p)
+        IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
         n = MAX(k,n)
       ELSE 
         n = CurrElement % BDOFs
@@ -2086,7 +2083,7 @@ CONTAINS
         p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
 
         IF (k >= 0 .OR. p >= 1) THEN
-          IF (p > 1) n = GetBubbleDOFs(Element, p)
+          IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
           n = MAX(k,n)
           IF ( n>=0 ) CurrElement % BDOFs = n
         END IF
@@ -3404,9 +3401,29 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Apply Explicit Control', Found )) THEN
        CALL ApplyExplicitControl( Solver )
      END IF
+
+     IF( Solver % NumberOfConstraintModes > 0 ) THEN
+
+       ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
+       ! and we perform the linearized constraint modes analysis at the end. 
+       IF( ListGetLogical(Solver % Values,'Constraint Modes Analysis Frozen',Found ) ) THEN
+         BLOCK 
+           INTEGER :: n
+           REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
+           n = SIZE(Solver % Matrix % rhs)
+           ALLOCATE(xtmp(n),btmp(n))
+           xtmp = 0.0_dp; btmp = 0.0_dp
+           CALL SolveConstraintModesSystem( Solver % Matrix, xtmp, btmp , Solver )
+         END BLOCK
+       END IF
+         
+       IF( ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) ) THEN
+         CALL FinalizeLumpedMatrix( Solver )            
+       END IF
+     END IF
      
      CALL Info('DefaultFinish','Finished solver: '//&         
-                GetString(Solver % Values,'Equation'),Level=8)
+         GetString(Solver % Values,'Equation'),Level=8)
      
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
@@ -5847,7 +5864,7 @@ CONTAINS
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
-       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
+       CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
       
      

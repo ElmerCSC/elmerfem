@@ -1531,7 +1531,12 @@ CONTAINS
         END IF
 
         IF( ListGetLogical( SolverParams,'Radiation Solver',Found ) ) THEN
-          CALL RadiationFactors( Solver, .TRUE., .FALSE.)
+          ! We need to precompute view factors if they are included in CRS matrix
+          ! Benefit of doing it at later stage is that we may modify the geometry, for example. 
+          IF( .NOT. (ListGetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
+              ListGetLogical( SolverParams,'Spectral Model',Found ) ) ) THEN            
+            CALL RadiationFactors( Solver, .TRUE., .FALSE.)
+          END IF
         END IF
         
         BandwidthOptimize = ListGetLogical( SolverParams, &

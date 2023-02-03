@@ -103,7 +103,7 @@
      INTEGER, POINTER :: TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,MDOFs, &
-         SmartHeaterBC, SmartHeaterNode, DoneTime=0, NOFactive
+         SmartHeaterBC, SmartHeaterNode, DoneTime=0, bc_elem, nb, NOFactive
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
@@ -124,21 +124,21 @@
        FORCE(:), U(:), V(:), W(:), MU(:,:),TimeForce(:), &
        Density(:), LatentHeat(:), HeatTransferCoeff(:), &
        HeatCapacity(:), Enthalpy(:), EnthalpyFraction(:), Viscosity(:), LocalTemperature(:), &
-       NodalEmissivity(:), ElectricConductivity(:), Permeability(:), Work(:), C0(:), &
+       NodalVal(:), ElectricConductivity(:), Permeability(:), Work(:), C0(:), &
        Pressure(:), dPressuredt(:), GasConstant(:),AText(:), HeaterArea(:), &
        HeaterTarget(:), HeaterScaling(:), HeaterDensity(:), HeaterSource(:), &
        HeatExpansionCoeff(:), ReferenceTemperature(:), PressureCoeff(:), &
        PhaseVelocity(:,:), HeatConductivityIso(:), &
        PerfusionRate(:), PerfusionDensity(:), PerfusionHeatCapacity(:), PerfusionRefTemperature(:)
 
-     REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:)
+     REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:), Reflect(:)
      LOGICAL :: Spectral, Radiosity
      
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
        Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
        LocalNodes, LocalTemperature, Work, ElectricConductivity, &
-       NodalEmissivity, Permeability, C0, dPressuredt, Pressure, &
+       NodalVal, Permeability, C0, dPressuredt, Pressure, &
        GasConstant,AText,Hwrk, XX, YY, ForceHeater, Power, HeaterArea, HeaterTarget, &
        HeaterScaling, HeaterDensity, HeaterSource, SmartHeaters, IntegralHeaters, SmartTolReached,    &
        ReferenceTemperature, HeatExpansionCoeff, PrevPowerScaling, PowerScaling, &
@@ -183,17 +183,6 @@
      CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
      
 !------------------------------------------------------------------------------
-!    The View and Gebhart factors may change. If this is necessary, this is 
-!    done within this subroutine. The routine is called in the
-!    start as it may affect the matrix topology.
-!    Newton lineariarization option is needed only when there is radiation.
-!------------------------------------------------------------------------------
-     IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
-     IF( IsRadiation ) THEN
-       CALL RadiationFactors( Solver, .FALSE., .FALSE.)
-     END IF
-
-!------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
 
@@ -223,7 +212,19 @@
          CALL Fatal('HeatSolve','For radiative point sources use HeatSolveVec instead!')
        END IF
      END IF
-       
+
+!------------------------------------------------------------------------------
+!    The View and Gebhart factors may change. If this is necessary, this is 
+!    done within this subroutine. The routine is called in the
+!    start as it may affect the matrix topology.
+!    Newton lineariarization option is needed only when there is radiation.
+!------------------------------------------------------------------------------
+     IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
+     
+     IF( IsRadiation .AND. .NOT. Radiosity ) THEN
+       CALL RadiationFactors( Solver, .FALSE., .FALSE.)
+     END IF
+     
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
        ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
@@ -285,7 +286,7 @@
                  LocalTemperature,      &
                  HeatCapacity,Enthalpy, &
                  EnthalpyFraction,      &
-                 NodalEmissivity,       &
+                 NodalVal,       &
                  GasConstant, AText,    &
                  HeatConductivity,      &
                  STIFF,LOAD,            &
@@ -321,7 +322,7 @@
                  LocalTemperature( N ),                &
                  HeatCapacity( N ),Enthalpy( N ),      &
                  EnthalpyFraction( N ),                &
-                 NodalEmissivity( N ),                 &
+                 NodalVal( N ),                 &
                  GasConstant( N ),AText( N ),          &
                  HeatConductivity( 3,3,N ),            &
                  HeatConductivityIso( N ),             &
@@ -417,8 +418,7 @@
      END IF
      IF ( NewtonIter == 0) NewtonLinearization = .TRUE.
 
-     Relax = GetCReal( SolverParams, &
-               'Nonlinear System Relaxation Factor',Found )
+     Relax = GetCReal( SolverParams,'Nonlinear System Relaxation Factor',Found )
      IF ( .NOT.Found ) Relax = 1
 
      TransientAssembly = TransientSimulation
@@ -588,32 +588,9 @@
      HeaterControlLocal = .FALSE.
 
      IF(isRadiation) THEN
-       BLOCK
-         TYPE(ValueList_t), POINTER :: BC
-         INTEGER :: bindex, nb
-
-         nb = Solver % Mesh % NumberOfBoundaryElements
-         ALLOCATE(Areas(nb), Emiss(nb))
-         Areas=0; Emiss=0
-
-         DO j=1,nb
-           bindex = j + Solver % Mesh % NumberOfBulkElements
-           Element => Solver % Mesh % Elements(bindex)
-
-           BC => GetBC(Element)
-           IF (ASSOCIATED(BC)) THEN
-             IF (ListCheckPresent(BC, 'Radiation')) THEN
-               n = GetElementNOFNodes(Element)
-               Areas(j) = ElementArea( Solver % Mesh, Element, n )
-
-               NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
-               IF (.NOT. Found) &
-                   NodalEmissivity(1:n) = GetParentMatProp('Emissivity',Element)
-               Emiss(j) = SUM(NodalEmissivity(1:n)) / n
-             END IF
-           END IF
-         END DO
-       END BLOCK
+       nb = Solver % Mesh % NumberOfBoundaryElements
+       ALLOCATE(Areas(nb), Emiss(nb), Reflect(nb) )
+       Areas=0; Emiss=0; Reflect=0
      END IF
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
@@ -662,9 +639,14 @@
          Solver % Matrix % RHS = Solver % Matrix % BulkRHS
          GOTO 1000
        END IF
-
-       IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)
-       
+            
+       IF(Radiosity) THEN
+         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)
+         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect) 
+       ELSE
+         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss) 
+       END IF
+         
 !------------------------------------------------------------------------------
        CALL DefaultInitialize()
 !------------------------------------------------------------------------------
@@ -1081,8 +1063,9 @@
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
 !------------------------------------------------------------------------------
-      DO t=1, Solver % Mesh % NumberOfBoundaryElements
-        Element => GetBoundaryElement(t)
+      DO bc_elem = 1, Solver % Mesh % NumberOfBoundaryElements
+        
+        Element => GetBoundaryElement(bc_elem)
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         n = GetElementNOFNodes()
@@ -1103,7 +1086,6 @@
 
         HeatFluxBC = GetLogical( BC, 'Heat Flux BC', Found )
         IF ( Found .AND. .NOT. HeatFluxBC ) CYCLE
-
 
         HeatGapBC = ListGetLogical( BC, 'Heat Gap', Found )
         CALL AddHeatFluxBC()
@@ -1222,9 +1204,6 @@
 
 
       IF( SmartHeaterControl .OR. IntegralHeaterControl) THEN
-         
-         CALL ListAddConstReal(Model % Simulation,'res: Heater Power Scaling',PowerScaling)
-         
          CALL Info( 'HeatSolve', 'Heater Control Information', Level=4 )
          DO i=1,Model % NumberOfBodyForces
             IF( .NOT. (SmartHeaters(i) .OR. IntegralHeaters(i))) CYCLE
@@ -1246,8 +1225,9 @@
             CALL Info( 'HeatSolve', Message, Level=4 )
             WRITE( Message, '(A,T35,ES15.4)' ) 'Heater Power Density (W/kg): ', s/(HeaterDensity(i) * HeaterArea(i))
             CALL Info( 'HeatSolve', Message, Level=4 )
-            
-            IF( SmartHeaters(i)) CALL ListAddConstReal(Model % Simulation,'res: Heater Power Density',&
+
+            CALL ListAddConstReal(Model % Simulation,'res: Heater Power Scaling '//I2S(i),HeaterScaling(i))
+            CALL ListAddConstReal(Model % Simulation,'res: Heater Power Density '//I2S(i),&
                  s/(HeaterDensity(i) * HeaterArea(i)))
          END DO
       END IF
@@ -1354,6 +1334,83 @@
 CONTAINS
 
 
+!------------------------------------------------------------------------------
+! To save some time tabulate data needed for the diffuse gray radiation. 
+!------------------------------------------------------------------------------
+  SUBROUTINE TabulateBoundaryAverages( Mesh, Emiss, Reflect )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), ALLOCATABLE :: Emiss(:)
+    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: Reflect(:)
+ !------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    INTEGER :: bindex, nb, n, j, noactive
+    INTEGER :: ElemInds(12)
+    REAL(KIND=dp) :: NodalVal(12), Absorp
+    
+     nb = Mesh % NumberOfBoundaryElements
+     NoActive = 0
+     
+     DO j=1,nb
+       bindex = j + Mesh % NumberOfBulkElements
+       Element => Mesh % Elements(bindex)
+
+       BC => GetBC(Element)
+       IF(.NOT. ASSOCIATED( BC ) ) CYCLE
+
+       IF( .NOT. ListCheckPresent( BC,'Radiation' ) ) CYCLE
+
+       IF(.NOT. ALLOCATED( Emiss ) ) THEN
+         ALLOCATE( Emiss(nb) )
+         Emiss = 0.0_dp
+         IF( PRESENT( Reflect ) ) THEN
+           ALLOCATE( Reflect(nb) )
+           Reflect = 0.0_dp
+         END IF
+       END IF
+
+       n = GetElementNOFNodes(Element)
+
+       NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
+       IF (Found) THEN
+         Emiss(j) = SUM(NodalVal(1:n)) / n
+         IF( PRESENT(Reflect)) THEN
+           NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
+           IF(Found) THEN
+             Absorp = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp
+           END IF
+         END IF
+       ELSE
+         NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
+         Emiss(j) = SUM(NodalVal(1:n)) / n
+         IF( PRESENT( Reflect ) ) THEN
+           NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
+           IF(Found) THEN
+             Absorp = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp
+           END IF
+         END IF
+       END IF
+     END DO
+
+   END SUBROUTINE TabulateBoundaryAverages
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
    SUBROUTINE AddHeatFluxBC()
@@ -1368,12 +1425,7 @@ CONTAINS
       RadiationFlag = GetString( BC, 'Radiation', Found )
 
       IF ( Found .AND. RadiationFlag /= 'none' ) THEN
-
-        NodalEmissivity(1:n) = GetReal(BC, 'Emissivity', Found)
-        IF(.NOT. Found) THEN
-           NodalEmissivity(1:n) = GetParentMatProp( 'Emissivity' )
-        END IF
-        Emissivity = SUM( NodalEmissivity(1:n) ) / n
+        Emissivity = Emiss(bc_elem)
 
 !------------------------------------------------------------------------------
         IsRadiosity = .FALSE.
@@ -1681,20 +1733,24 @@ CONTAINS
       INTEGER :: TempPerm(:)
       REAL(KIND=dp) :: Temperature(:), ForceVector(:)      
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Emis1, RadCoeffAtIp, RadLoadAtIp, TempAtIp
-      REAL(KIND=dp) :: Base(12)
+      REAL(KIND=dp) :: Emis1, Refl1, RadCoeffAtIp, RadLoadAtIp, TempAtIp, s, x, y, z, DetJ
+      REAL(KIND=dp) :: Basis(27)
       REAL(KIND=dp), POINTER :: Fact(:)
-      INTEGER :: p,q,k1,k2
+      INTEGER :: t,p,q,k1,k2
       INTEGER, POINTER :: pIndexes(:)
+      TYPE(GaussIntegrationPoints_t), TARGET :: IP
+      LOGICAL :: stat
 !------------------------------------------------------------------------------
 !     If linear iteration compute radiation load
 !------------------------------------------------------------------------------
       
-      CALL GetBase( Base, Element, n, ElementNodes )
-      pIndexes => Element % NodeIndexes
+      pIndexes => Element % NodeIndexes     
       
       Emis1 = Emissivity            
-      IF(.NOT.Spectral ) Emis1 = Emis1 / (1-Emis1)
+      IF(.NOT.Spectral ) THEN
+        Refl1 = Reflect(bc_elem)
+        Emis1 = Emis1 / Refl1
+      END IF
       Fact => Element % BoundaryInfo % RadiationFactors % Factors
       
       TempAtIp = SUM(Temperature(TempPerm(pIndexes(1:n))))/n
@@ -1707,14 +1763,26 @@ CONTAINS
         RadCoeffAtIp = Emis1 * StefanBoltzmann * TempAtIp**3
         RadLoadAtIp = Fact(1)
       END IF
+
+      IP = GaussPoints( Element )
       
-      DO p=1,n
-        k1 = TempPerm( pIndexes(p) )
-        DO q=1,n
-          k2 = TempPerm( pIndexes(q) )
-          CALL AddToMatrixElement( Solver % Matrix,k1,k2,Base(p)*RadCoeffAtIp*(1.0_dp/n))
+      DO t=1,IP % n
+        stat = ElementInfo( Element,ElementNodes,IP % u(t),IP % v(t),IP % w(t),detJ,Basis )
+        s = detJ * IP % s(t)
+        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+          x = SUM( ElementNodes % x(1:n)*Basis )
+          y = SUM( ElementNodes % y(1:n)*Basis )
+          z = SUM( ElementNodes % z(1:n)*Basis )
+          s = s * CoordinateSqrtMetric( x,y,z )
+        END IF
+        DO p=1,n
+          k1 = TempPerm( pIndexes(p) )
+          DO q=1,n
+            k2 = TempPerm( pIndexes(q) )
+            CALL AddToMatrixElement( Solver % Matrix,k1,k2,s*Basis(p)*Basis(q)*RadCoeffAtIP)
+          END DO
+          ForceVector(k1) = ForceVector(k1) + s *Basis(p) * RadLoadAtIp
         END DO
-        ForceVector(k1) = ForceVector(k1) + Base(p) * RadLoadAtIp
       END DO
       
     END SUBROUTINE RadiosityRadiation
@@ -2189,7 +2257,7 @@ CONTAINS
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,n,l,t,DIM,Pn,En,nd
+     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
 
@@ -2259,17 +2327,19 @@ CONTAINS
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     ALLOCATE(Nodes % x(pn), Nodes % y(pn), Nodes % z(pn) )
+     nd = GetElementNOFDOFs(Element)
+     ALLOCATE( Temperature(nd), Basis(nd), ExtTemperature(nd), &
+        TransferCoeff(en), x(en), y(en), z(en), EdgeBasis(nd), &
+        dBasisdx(nd,3), NodalConductivity(nd), Flux(nd), &
+        NodalEmissivity(nd), Indexes(nd) ) 
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
 
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( Temperature(n), Basis(n), ExtTemperature(n), &
-        TransferCoeff(En), x(En), y(En), z(n), EdgeBasis(n), &
-        dBasisdx(n,3), NodalConductivity(n), Flux(n), &
-        NodalEmissivity(n), Indexes(n) ) 
+     ALLOCATE(Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
+     Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
+
 
      DO l = 1,en
        DO k = 1,pn
@@ -2298,9 +2368,8 @@ CONTAINS
 !
 !       Check if dirichlet BC given:
 !       ----------------------------
-        s = ListGetConstReal( Model % BCs(j) % Values,'Temperature',Dirichlet )
-
-
+        Dirichlet = ListCheckPresent( Model % BCs(j) % Values,'Temperature')       
+        
 !       Get various flux bc options:
 !       ----------------------------
 
@@ -2314,7 +2383,7 @@ CONTAINS
         TransferCoeff(1:en) =  ListGetReal( Model % BCs(j) % Values, &
           'Heat Transfer Coefficient', en, Edge % NodeIndexes, Found )
 
-        ExtTemperature(1:En) = ListGetReal( Model % BCs(j) % Values, &
+        ExtTemperature(1:en) = ListGetReal( Model % BCs(j) % Values, &
           'External Temperature', en, Edge % NodeIndexes, Found )
 
 !       ...black body radiation:
@@ -2362,8 +2431,7 @@ CONTAINS
 
         CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Heat Conductivity', Hwrk, en, Edge % NodeIndexes )
-
-        NodalConductivity( 1:en ) = Hwrk(1,1,1:en)
+        NodalConductivity(1:en) = Hwrk(1,1,1:en)
 
 !       elementwise nodal solution:
 !       ---------------------------
@@ -2389,11 +2457,12 @@ CONTAINS
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               s = IntegStuff % s(t) * detJ
            ELSE
-              gx = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:en) )
-              gy = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:en) )
-              gz = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:en) )
+              gx = SUM( EdgeBasis(1:en) * EdgeNodes % x(1:en) )
+              gy = SUM( EdgeBasis(1:en) * EdgeNodes % y(1:en) )
+              gz = SUM( EdgeBasis(1:en) * EdgeNodes % z(1:en) )
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, gx, gy, gz )
+
               s = IntegStuff % s(t) * detJ * SqrtMetric
            END IF
 
@@ -2406,6 +2475,8 @@ CONTAINS
            w = SUM( EdgeBasis(1:en) * z(1:en) )
            stat = ElementInfo(Element,Nodes, u, v, w, detJ,Basis,dBasisdx )
 
+           stat = ElementInfo( Element, Nodes, u, v, w, detJ, &
+                 Basis, dBasisdx )
 !
 !          Heat conductivity at the integration point:
 !          --------------------------------------------
@@ -2485,7 +2556,7 @@ CONTAINS
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,l,n,t,DIM,En,Pn,nd
+     INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
      LOGICAL :: stat, Found
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2525,16 +2596,12 @@ CONTAINS
      DO i = 1,3
         Metric(i,i) = 1.0d0
      END DO
+
      Grad = 0.0d0
 !
 !    ---------------------------------------------
 
-     Element => Edge % BoundaryInfo % Left
-     n = Element % TYPE % NumberOfNodes
-
-     Element => Edge % BoundaryInfo % Right
-     n = MAX( n, Element % TYPE % NumberOfNodes )
-
+     n = Mesh % MaxElementDOFs
      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
      en = Edge % TYPE % NumberOfNodes
@@ -2544,7 +2611,6 @@ CONTAINS
      EdgeNodes % y = Mesh % Nodes % y(Edge % NodeIndexes)
      EdgeNodes % z = Mesh % Nodes % z(Edge % NodeIndexes)
 
-     n = Mesh % MaxElementDOFs
      ALLOCATE( NodalConductivity(en), EdgeBasis(en), Basis(n), &
         dBasisdx(n,3), x(en), y(en), z(en), Temperature(n), Indexes(n) )
 
@@ -2598,7 +2664,7 @@ CONTAINS
 !          Next, get the integration point in parent
 !          local coordinates:
 !          -----------------------------------------
-           Pn = Element % TYPE % NumberOfNodes
+           pn = Element % TYPE % NumberOfNodes
 
            DO j = 1,en
               DO k = 1,pn
@@ -2611,19 +2677,18 @@ CONTAINS
               END DO
            END DO
 
-           u = SUM( EdgeBasis(1:en) * x(1:en) )
-           v = SUM( EdgeBasis(1:en) * y(1:en) )
-           w = SUM( EdgeBasis(1:en) * z(1:en) )
+           u = SUM(EdgeBasis(1:en) * x(1:en))
+           v = SUM(EdgeBasis(1:en) * y(1:en))
+           w = SUM(EdgeBasis(1:en) * z(1:en))
 !
 !          Get parent element basis & derivatives at the integration point:
 !          -----------------------------------------------------------------
            nd = GetElementDOFs(Indexes,Element)
+           Nodes % x(1:nd) = Mesh % Nodes % x(Indexes(1:nd))
+           Nodes % y(1:nd) = Mesh % Nodes % y(Indexes(1:nd))
+           Nodes % z(1:nd) = Mesh % Nodes % z(Indexes(1:nd))
 
-           Nodes % x(1:pn) = Mesh % Nodes % x(Element % NodeIndexes)
-           Nodes % y(1:pn) = Mesh % Nodes % y(Element % NodeIndexes)
-           Nodes % z(1:pn) = Mesh % Nodes % z(Element % NodeIndexes)
-
-           stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+           stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
 !
 !          Material parameters:
 !          --------------------
@@ -2656,7 +2721,7 @@ CONTAINS
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
            ELSE
-              DO l=1,DIM
+              DO l=1,dim
                  Jump = Jump + &
                        Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
               END DO
@@ -2667,6 +2732,7 @@ CONTAINS
 
      IF (dim==3) EdgeLength = SQRT(EdgeLength)
      Indicator = EdgeLength * ResidualNorm
+
 !------------------------------------------------------------------------------
   END FUNCTION HeatEdgeResidual
 !------------------------------------------------------------------------------
@@ -2741,31 +2807,30 @@ CONTAINS
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 
 !    Alllocate local arrays
 !    ----------------------
-     n = Mesh % MaxElementDOFs
-     ALLOCATE( NodalDensity(n), NodalCapacity(n), NodalConductivity(n),       &
-         Velo(3,n), Pressure(n), NodalSource(n), Temperature(n), PrevTemp(n), &
-         Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), Indexes(n) )
+     nd = GetElementNOFDOFs(Element)
+     n = GetElementNOFNodes(Element)
+     ALLOCATE( NodalDensity(nd), NodalCapacity(nd), NodalConductivity(nd),      &
+         Velo(3,nd), Pressure(nd), NodalSource(nd), Temperature(nd), PrevTemp(nd), &
+         Basis(nd), dBasisdx(nd,3), ddBasisddx(nd,3,3), Indexes(nd) )
 !
 !    Element nodal points:
 !    ---------------------
-     n = GetElementNOFNOdes()
-     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+     ALLOCATE( Nodes % x(nd), Nodes % y(nd), Nodes % z(nd) )
 
-     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+     nd = GetElementDOFs(Indexes,Element)
+     Nodes % x = Mesh % Nodes % x(Indexes(1:nd))
+     Nodes % y = Mesh % Nodes % y(Indexes(1:nd))
+     Nodes % z = Mesh % Nodes % z(Indexes(1:nd))
 !
 !    Elementwise nodal solution:
 !    ---------------------------
-     nd = GetElementNOFDOFs(Element)
-     nd = GetElementDOFs(Indexes,Element)
      Temperature(1:nd) = Quant(Perm(Indexes(1:nd)))
 !
 !    Check for time dep.
@@ -2843,6 +2908,7 @@ CONTAINS
                     Velo(3,1:n) = Var % Values(Var % Perm(Indexes(1:n)))
               END IF
            END IF
+
      END SELECT
 
 !
@@ -2871,6 +2937,7 @@ CONTAINS
      Area = 0.0d0
 
      IntegStuff = GaussPoints( Element )
+     ddBasisddx = 0
 
      DO t=1,IntegStuff % n
         u = IntegStuff % u(t)
@@ -2883,9 +2950,9 @@ CONTAINS
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            s = IntegStuff % s(t) * detJ
         ELSE
-           u = SUM(Basis(1:n) * Nodes % x(1:n))
-           v = SUM(Basis(1:n) * Nodes % y(1:n))
-           w = SUM(Basis(1:n) * Nodes % z(1:n))
+           u = SUM(Basis(1:nd) * Nodes % x(1:nd))
+           v = SUM(Basis(1:nd) * Nodes % y(1:nd))
+           w = SUM(Basis(1:nd) * Nodes % z(1:nd))
 
            CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                        Symb, dSymb, u, v, w )
@@ -2932,8 +2999,8 @@ CONTAINS
                  SUM( Temperature(1:nd) * ddBasisddx(1:nd,j,j) )
            END DO
         ELSE
-           DO j=1,DIM
-              DO k=1,DIM
+           DO j=1,dim
+              DO k=1,dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
@@ -2951,7 +3018,7 @@ CONTAINS
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,DIM
+                 DO l=1,dim
                     Residual = Residual + Metric(j,k) * Conductivity * &
                       Symb(j,k,l) * SUM( Temperature(1:nd) * dBasisdx(1:nd,l) )
                  END DO
@@ -2976,13 +3043,13 @@ CONTAINS
 !          + p div(u) or p u^j_{,j}:
 !          -------------------------
 !
-           DO j=1,DIM
+           DO j=1,dim
               Residual = Residual + &
                  SUM( Pressure(1:n) * Basis(1:n) ) * &
                       SUM( Velo(j,1:n) * dBasisdx(1:n,j) )
 
               IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-                 DO k=1,DIM
+                 DO k=1,dim
                     Residual = Residual + &
                        SUM( Pressure(1:n) * Basis(1:n) ) * &
                            Symb(j,k,j) * SUM( Velo(k,1:n) * Basis(1:n) )
@@ -2997,6 +3064,7 @@ CONTAINS
         DO i=1,dim
            Fnorm = Fnorm + s * (Density *SUM(NodalSource(1:n)*Basis(1:n)))**2
         END DO
+
         Area = Area + s
         ResidualNorm = ResidualNorm + s *  Residual ** 2
      END DO

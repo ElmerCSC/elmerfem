@@ -114,7 +114,6 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('material','Phase Change Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('material','Heat Transfer Multiplier',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
-!  CALL ListWarnUnsupportedKeyword('solver','Adaptive Mesh Refinement',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
@@ -268,11 +267,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     ! for diffuse gray radiation.
     !-----------------------------------------------------------------------------
     IF( HaveFactors ) THEN
-      IF( iter == 1 ) THEN
-        CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
-      ELSE
-        CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect)
-      END IF
+      CALL TabulateBoundaryAverages(Mesh, Temps4, Emiss, Absorp, Reflect) 
     END IF
     
     totelem = 0
@@ -1132,29 +1127,36 @@ CONTAINS
 
        IF( PRESENT( Emiss ) ) THEN
          NodalVal(1:n) = GetReal(BC,'Emissivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
-         Emiss(j) = SUM(NodalVal(1:n)) / n
-
-         NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
-         IF(Found) THEN
-           Absorp(j) = SUM(NodalVal(1:n)) / n
+         IF (Found) THEN
+           Emiss(j) = SUM(NodalVal(1:n)) / n
+           NodalVal(1:n) = GetReal(BC,'Absorptivity',Found)
+           IF(Found) THEN
+             Absorp(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp(j) = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp(j)
+           END IF
          ELSE
-           Absorp(j) = Emiss(j)
+           NodalVal(1:n) = GetParentMatProp('Emissivity',Element)
+           Emiss(j) = SUM(NodalVal(1:n)) / n
+           NodalVal(1:n) = GetParentMatProp('Absorptivity',Element, Found)
+           IF(Found) THEN
+             Absorp(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Absorp(j) = Emiss(j)
+           END IF
+           NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
+           IF(Found) THEN
+             Reflect(j) = SUM(NodalVal(1:n)) / n
+           ELSE
+             Reflect(j) = 1-Absorp(j)
+           END IF
          END IF
-
-         NodalVal(1:n) = GetReal(BC,'Reflectivity',Found)
-         IF (.NOT. Found) &
-             NodalVal(1:n) = GetParentMatProp('Reflectivity',Element, Found)
-         IF(Found) THEN
-           Reflect(j) = SUM(NodalVal(1:n)) / n
-         ELSE
-           Reflect(j) = 1-Emiss(j)
-         END IF
-
- 
        END IF
      END DO
      
@@ -1262,12 +1264,12 @@ CONTAINS
       END IF
 
       Base = 0.0_dp
-      IF(.NOT.Spectral ) Emis1 = Emis1 / Refl1     
+      IF(.NOT. Spectral) Emis1 = Emis1 / Refl1     
       TempAtIp = SUM(NodalTemp(1:n))/n
 
       IF(Newton) THEN
-        RadLoadAtIp =  3 * Emis1 * TempAtIp**4 * StefBoltz + &
-             (Fact(1) - Fact(2)*TempAtIp)
+        RadLoadAtIp =  (3 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)) * TempAtIp &
+             + Fact(1) 
         RadCoeffAtIp = 4 * Emis1 * TempAtIp**3 * StefBoltz - Fact(2)
       ELSE
         RadCoeffAtIp = Emis1 * StefBoltz * TempAtIp**3
@@ -1287,7 +1289,6 @@ CONTAINS
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
-        Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
         
     ELSE ! .NOT. Radiosity ) 
@@ -1963,7 +1964,7 @@ END SUBROUTINE HeatSolver
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,n,l,t,DIM,Pn,En,nd
+     INTEGER :: i,j,k,n,l,t,dim,Pn,En,nd
      LOGICAL :: stat, Found
      INTEGER, ALLOCATABLE :: Indexes(:)
 
@@ -2138,8 +2139,7 @@ END SUBROUTINE HeatSolver
 
         CALL ListGetRealArray( Model % Materials(k) % Values, &
                'Heat Conductivity', Hwrk, en, Edge % NodeIndexes )
-
-        NodalConductivity( 1:en ) = Hwrk(1,1,1:en)
+        NodalConductivity(1:en) = Hwrk(1,1,1:en)
 
 !       elementwise nodal solution:
 !       ---------------------------
@@ -2261,7 +2261,7 @@ END SUBROUTINE HeatSolver
      TYPE(Nodes_t) :: Nodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Bndry
 
-     INTEGER :: i,j,k,l,n,t,DIM,En,Pn,nd
+     INTEGER :: i,j,k,l,n,t,dim,En,Pn,nd
      INTEGER, ALLOCATABLE :: Indexes(:)
      LOGICAL :: stat, Found
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2425,7 +2425,7 @@ END SUBROUTINE HeatSolver
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
               Jump = Jump + (Grad(k,1) - Grad(k,2)) * Normal(k)
            ELSE
-              DO l=1,DIM
+              DO l=1,dim
                  Jump = Jump + &
                        Metric(k,l) * (Grad(k,1) - Grad(k,2)) * Normal(l)
               END DO
@@ -2510,9 +2510,9 @@ END SUBROUTINE HeatSolver
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
-           DIM = 3
+           dim = 3
         CASE DEFAULT
-           DIM = CoordinateSystemDimension()
+           dim = CoordinateSystemDimension()
      END SELECT
 
 !    Alllocate local arrays
@@ -2701,8 +2701,8 @@ END SUBROUTINE HeatSolver
                  SUM( Temperature(1:nd) * ddBasisddx(1:nd,j,j) )
            END DO
         ELSE
-           DO j=1,DIM
-              DO k=1,DIM
+           DO j=1,dim
+              DO k=1,dim
 !
 !                - g^{jk} C_{,k}T_{j}:
 !                ---------------------
@@ -2720,7 +2720,7 @@ END SUBROUTINE HeatSolver
 !
 !                + g^{jk} C {_jk^l} T_{,l}:
 !                ---------------------------
-                 DO l=1,DIM
+                 DO l=1,dim
                     Residual = Residual + Metric(j,k) * Conductivity * &
                       Symb(j,k,l) * SUM( Temperature(1:nd) * dBasisdx(1:nd,l) )
                  END DO
@@ -2745,13 +2745,13 @@ END SUBROUTINE HeatSolver
 !          + p div(u) or p u^j_{,j}:
 !          -------------------------
 !
-           DO j=1,DIM
+           DO j=1,dim
               Residual = Residual + &
                  SUM( Pressure(1:n) * Basis(1:n) ) * &
                       SUM( Velo(j,1:n) * dBasisdx(1:n,j) )
 
               IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-                 DO k=1,DIM
+                 DO k=1,dim
                     Residual = Residual + &
                        SUM( Pressure(1:n) * Basis(1:n) ) * &
                            Symb(j,k,j) * SUM( Velo(k,1:n) * Basis(1:n) )
@@ -2763,9 +2763,9 @@ END SUBROUTINE HeatSolver
 !
 !       Compute also force norm for scaling the residual:
 !       -------------------------------------------------
-        DO i=1,dim
-           Fnorm = Fnorm + s * (Density *SUM(NodalSource(1:n)*Basis(1:n)))**2
-        END DO
+!       DO i=1,dim
+!          Fnorm = Fnorm + s * (Density *SUM(NodalSource(1:n)*Basis(1:n)))**2
+!       END DO
         Area = Area + s
         ResidualNorm = ResidualNorm + s *  Residual ** 2
      END DO
