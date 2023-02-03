@@ -438,12 +438,8 @@ CONTAINS
           y = SUM(Mesh % Nodes % y(Element % NodeIndexes))/n
           z = SUM(Mesh % Nodes % z(Element % NodeIndexes))/n
 !          WRITE( str, * ) 'cx= ',i2s(Element % ElementIndex),x,y,z
-          WRITE( str, * ) 'cx= ',i2s(Element % BodyId),x,y,z
-          str = TRIM(str) // '; ' // TRIM(ElementDef(j+3:))//'(cx)'
-          slen = LEN_TRIM(str)
-          CALL matc(str,RESULT,slen)
-          READ(RESULT(1:slen),*) x
-
+          str = TRIM(ElementDef(j+3:))//'(cx)'
+          x = GetMatcReal(str,4,[1._dp*Element % BodyId,x,y,z],'cx')
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
           Family = Element % TYPE % ElementCode / 100
           Body_Dofs(Family, 6) = &
@@ -3310,23 +3306,102 @@ CONTAINS
  END SUBROUTINE PrepareMesh
 
 
+!------------------------------------------------------------------------------
+!> Transfer coordinate and time from one mesh toanother when swapping meshes
+!> for some reason.
+!------------------------------------------------------------------------------  
+  SUBROUTINE TransferCoordAndTime(M1,M2)
+    TYPE(Solver_t), POINTER :: Solver => Null()
+    TYPE(Mesh_t) :: M1,M2
+    TYPE(Variable_t), POINTER :: DtVar, V
+
+     CALL VariableAdd( M2 % Variables, M2,Solver, &
+           'Coordinate 1',1, M2 % Nodes % x )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+           'Coordinate 2',1, M2 % Nodes % y )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+          'Coordinate 3',1,M2 % Nodes % z )
+
+     V => VariableGet( M1 % Variables, 'Time' )     
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Periodic Time' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
+     END IF
+       
+     V => VariableGet( M1 % Variables, 'Timestep' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep interval' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
+
+     ! Save some previous timesteps for variable timestep multistep methods
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
+     DtVar % PrevValues => V % PrevValues
+
+     V => VariableGet( M1 % Variables, 'nonlin iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+         'nonlin iter', 1, V % Values )
+     
+     V => VariableGet( M1 % Variables, 'coupled iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+         'coupled iter', 1, V % Values )
+     
+     V => VariableGet( M1 % Variables, 'partition' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+     END IF
+     
+     V => VariableGet( M1 % Variables, 'scan' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'finish' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'finish', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'produce' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'produce', 1, V % Values)
+     END IF
+     V => VariableGet( M1 % Variables, 'run' )
+     IF( ASSOCIATED( V ) ) THEN
+       CALL VariableAdd( M2 % Variables, M2, Solver, 'run', 1, V % Values)
+     END IF
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE TransferCoordAndTime
+!------------------------------------------------------------------------------
+
 
   !-------------------------------------------------------------------------------
   !> Communicate logical tag related to mesh or linear system.
   !> This could related to setting Neumann BCs to zero, for example.
   !-------------------------------------------------------------------------------
-  SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,CommVal)
+  SUBROUTINE CommunicateParallelSystemTag(ParallelInfo,Ltag,Itag,ParOper)
   !-------------------------------------------------------------------------------
      TYPE (ParallelInfo_t), POINTER :: ParallelInfo
      LOGICAL, POINTER, OPTIONAL :: LTag(:)   !< Logical tag, if used
      INTEGER, POINTER, OPTIONAL :: ITag(:)   !< Integer tag, if used
-     LOGICAL, OPTIONAL :: CommVal            !< If integer tag is used, should we consider also the value
+     INTEGER, OPTIONAL :: ParOper            !< If integer tag is used, we can also have an operator
 
      LOGICAL, POINTER :: IsNeighbour(:)
      INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:), s_i(:,:), r_i(:)
      INTEGER :: i,j,k,l,n,nn,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
      INTEGER :: NewZeros, nsize
-     LOGICAL :: UseL, GotIt, CommI
+     LOGICAL :: UseL, GotIt
+     INTEGER :: CommI
      
      IF( ParEnv % PEs<=1 ) RETURN
    
@@ -3334,9 +3409,9 @@ CONTAINS
      IF(.NOT. XOR(UseL,PRESENT(Itag)) ) THEN
        CALL Fatal('CommunicateParallelSystemTag','Give either logical or integer tag!')
      END IF
-     CommI = .FALSE.
+     CommI = -1
      IF(.NOT. UseL) THEN
-       IF(PRESENT(CommVal)) CommI = CommVal
+       IF(PRESENT(ParOper)) CommI = ParOper
      END IF
      
      nsize = SIZE( ParallelInfo % NodeInterface)
@@ -3390,12 +3465,12 @@ CONTAINS
      ! Allocate for the data to sent (s_e) and receive (r_e)
      ALLOCATE( s_e(n, nn ), r_e(n) )
      s_e = 0
-     IF( CommI ) THEN
+     IF( CommI >= 0 ) THEN
        ALLOCATE( s_i(n, nn), r_i(n) )
        s_i = 0
      END IF
 
-     IF( CommI ) THEN
+     IF( CommI >= 0) THEN
        CALL CheckBuffer( nn*6*n )
      ELSE
        CALL CheckBuffer( nn*3*n )
@@ -3418,7 +3493,7 @@ CONTAINS
          IF ( k> 0) THEN
            ii(k) = ii(k) + 1
            s_e(ii(k),k) = ParallelInfo % GlobalDOFs(i)
-           IF( CommI ) THEN
+           IF( CommI >= 0 ) THEN
              s_i(ii(k),k) = Itag(i)
            END IF
          END IF
@@ -3432,7 +3507,7 @@ CONTAINS
        IF( ii(i) > 0 ) THEN
          ! Sent the global index 
          CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
-         IF( CommI ) THEN
+         IF( CommI >= 0 ) THEN
            ! Sent the value of the integer tag, if requested
            CALL MPI_BSEND( s_i(1:ii(i),i),ii(i),MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,ierr )
          END IF
@@ -3449,7 +3524,7 @@ CONTAINS
          IF( n>SIZE(r_e)) THEN
            DEALLOCATE(r_e)
            ALLOCATE(r_e(n))
-           IF(CommI) THEN
+           IF(CommI >= 0) THEN
              DEALLOCATE(r_i)
              ALLOCATE(r_i(n))
            END IF
@@ -3457,7 +3532,7 @@ CONTAINS
 
          ! Receive the global index
          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
-         IF( CommI ) THEN
+         IF( CommI >= 0) THEN
            ! Receive the value of the integer tag, if requested
            CALL MPI_RECV( r_i,n,MPI_INTEGER,j-1,112,ELMER_COMM_WORLD,status,ierr )
          END IF
@@ -3471,21 +3546,23 @@ CONTAINS
                  NewZeros = NewZeros + 1
                END IF
              ELSE
-               IF(ITag(k) == 0) THEN
-                 IF( CommI ) THEN
-                   ITag(k) = r_i(j)
-                 ELSE
-                   ITag(k) = 1
-                 END IF
-                 NewZeros = NewZeros + 1
+               IF( CommI == 0 ) THEN
+                 Itag(i) = Itag(k) + r_i(j)
+               ELSE IF( CommI == 1 ) THEN
+                 ITag(k) = MIN(r_i(j),Itag(k))
+               ELSE IF( CommI == 2 ) THEN
+                 ITag(k) = MAX(r_i(j),Itag(k))
+               ELSE IF( Itag(k) == 0 ) THEN
+                 ITag(k) = 1
                END IF
+               NewZeros = NewZeros + 1
              END IF
            END IF
          END DO
        END IF
      END DO
      DEALLOCATE(s_e, r_e )
-     IF(CommI) DEALLOCATE(s_i, r_i)
+     IF(CommI >= 0) DEALLOCATE(s_i, r_i)
 
      !PRINT *,'New Zeros:',ParEnv % MyPe, NewZeros
      
@@ -3643,7 +3720,7 @@ CONTAINS
 
                IF (ASSOCIATED(Edge % BoundaryInfo % Left) ) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Left, Mesh)
-               ELSE
+               ELSE IF(ASSOCIATED(Edge % BoundaryInfo % Right)) THEN
                  CALL AssignLocalNumber(Edge, Edge % BoundaryInfo % Right, Mesh)
                END IF
              
@@ -3666,6 +3743,8 @@ CONTAINS
 
        DO j=1,Element % TYPE % NumberOfFaces
           Face => Mesh % Faces( Element % FaceIndexes(j) )
+
+          IF(ANY(Face % EdgeIndexes==0)) CYCLE
 
           ! Set attributes of p element faces
           IF ( ASSOCIATED(Element % PDefs) ) THEN
@@ -3911,10 +3990,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
 !------------------------------------------------------------------------------
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
 
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     DO WHILE( ReadAndTrim(FileUnit,str) )
       READ( str(9:),*) i
       IF ( i < 0 .OR. i > Mesh % NumberOFBulkElements ) THEN
@@ -18110,7 +18188,9 @@ CONTAINS
       ! For P elements mappings are different
       IF ( ASSOCIATED(Element % PDefs) ) THEN
         CALL GetElementEdgeMap( Element, EdgeMap )
-        CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+        IF(Element % Type % ElementCode > 500) &
+          CALL GetElementFaceEdgeMap( Element, FaceEdgeMap ) 
+
         n = Element % TYPE % NumberOfEdges
       ELSE 
         SELECT CASE( Element % TYPE % ElementCode / 100 )
@@ -18310,8 +18390,10 @@ CONTAINS
 
       DO i=1,Mesh % NumberOfFaces
         Face => Mesh % Faces(i)
+        IF(.NOT.ASSOCIATED(Face % EdgeIndexes)) CYCLE
         n = Face % TYPE % NumberOfEdges
         Edgeind(1:n) = Face % EdgeIndexes(1:n)
+        IF(ANY(EdgeInd(1:n)==0)) CYCLE
         DO j=1,n
           i1 = Mesh % Edges(Edgeind(j)) % NodeIndexes(1:2)
           IF ( i1(1)>i1(2) ) THEN
@@ -18451,76 +18533,117 @@ END SUBROUTINE FindNeighbourNodes
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE UpdateSolverMesh( Solver, Mesh )
+  SUBROUTINE UpdateSolverMesh( Solver, Mesh, NoInterp )
 !------------------------------------------------------------------------------
      TYPE( Mesh_t ), POINTER :: Mesh
      TYPE( Solver_t ), TARGET :: Solver
+     LOGICAL, OPTIONAL :: NoInterp 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
-     LOGICAL :: Found, OptimizeBandwidth
+     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
      TYPE(Variable_t), POINTER :: TimeVar, SaveVar, Var
      CHARACTER(:), ALLOCATABLE :: str
+     LOGICAL :: DoInterp 
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
-
-     Solver % Mesh => Mesh
-     CALL SetCurrentMesh( CurrentModel, Mesh )
 !
 !    Create matrix and variable structures for
 !    current equation on the new mesh:
 !    -----------------------------------------
-     Solver % Variable => VariableGet( Mesh % Variables, &
-        Solver % Variable % Name, ThisOnly = .FALSE. )
 
-     CALL AllocateVector( Permutation, SIZE(Solver % Variable % Perm) )
+     ! Backward compatibility
+     DoInterp = .TRUE.
+     IF(PRESENT(NoInterp)) THEN
+       DoInterp = .NOT. NoInterp
+     END IF
 
+     Solver % Mesh => Mesh
+     CALL SetCurrentMesh( CurrentModel, Mesh )
+
+     IF  (DoInterp) THEN
+       Solver % Variable => VariableGet( Mesh % Variables, &
+          SaveVar % Name, ThisOnly = .FALSE. )
+       CALL AllocateVector(Permutation, SIZE(Solver % Variable % Perm))
+     ELSE
+       ALLOCATE(Permutation(Mesh % NumberOfNodes + &
+          Solver % Mesh % MaxEdgeDofs*Mesh % NumberOfEdges + &
+            Solver % Mesh % MaxFaceDofs*Mesh % NumberOfFaces + &
+              Solver % Mesh % MaxBDofs*Mesh % NumberOfBulkElements))
+    END IF
+    Permutation = 0
+
+     
+     GlobalBubbles = ListGetLogical( Solver % Values, &
+         'Bubbles in Global System', Found )
+     IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+     
      OptimizeBandwidth = ListGetLogical( Solver % Values, 'Optimize Bandwidth', Found )
      IF ( .NOT. Found ) OptimizeBandwidth = .TRUE.
-
+     
      Matrix => CreateMatrix( CurrentModel, Solver, &
-        Mesh, Permutation, DOFs, MATRIX_CRS, OptimizeBandwidth, &
-        ListGetString( Solver % Values, 'Equation' ) )
+         Mesh, Permutation, DOFs, MATRIX_CRS, OptimizeBandwidth, &
+         ListGetString( Solver % Values, 'Equation' ), &
+         GlobalBubbles=GlobalBubbles)
 
-     Matrix % Symmetric = ListGetLogical( Solver % Values, &
-             'Linear System Symmetric', Found )
+     IF( ASSOCIATED( Matrix ) ) THEN
+       Matrix % Symmetric = ListGetLogical( Solver % Values, &
+           'Linear System Symmetric', Found )
+       
+       Matrix % Lumped = ListGetLogical( Solver % Values, &
+           'Lumped Mass Matrix', Found )    
+     END IF
+       
+     IF(.NOT. DoInterp) THEN
+       Solver % Variable => VariableGet( Mesh % Variables, &
+           SaveVar % Name, ThisOnly = .TRUE. )                     
 
-     Matrix % Lumped = ListGetLogical( Solver % Values, &
-             'Lumped Mass Matrix', Found )
+       CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
+           SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
+       Solver % Variable => VariableGet( Mesh % Variables, &
+           SaveVar % Name, ThisOnly = .TRUE. )                     
 
-     ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
-     Work = Solver % Variable % Values
-     DO k=0,DOFs-1
-        DO i=1,SIZE(Permutation)
+       Solver % Variable % Perm => Permutation
+       IF(.NOT. ASSOCIATED( Solver % Variable % perm) ) THEN
+         CALL Fatal('UpdateSolverMesh','No Perm associated?!')
+       END IF
+       NULLIFY(Permutation)
+     ELSE
+       ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
+       Work = Solver % Variable % Values
+       DO k=0,DOFs-1
+         DO i=1,SIZE(Permutation)
            IF ( Permutation(i) > 0 ) THEN
-              Solver % Variable % Values( DOFs*Permutation(i)-k ) = &
+             Solver % Variable % Values( DOFs*Permutation(i)-k ) = &
                  Work( DOFs*Solver % Variable % Perm(i)-k )
            END IF
-        END DO
-     END DO
-
-     IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-        DO j=1,SIZE(Solver % Variable % PrevValues,2)
+         END DO
+       END DO
+       
+       IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+         DO j=1,SIZE(Solver % Variable % PrevValues,2)
            Work = Solver % Variable % PrevValues(:,j)
            DO k=0,DOFs-1
-              DO i=1,SIZE(Permutation)
-                 IF ( Permutation(i) > 0 ) THEN
-                    Solver % Variable % PrevValues( DOFs*Permutation(i) - k,j ) =  &
-                        Work( DOFs * Solver % Variable % Perm(i) - k )
-                  END IF
-              END DO
+             DO i=1,SIZE(Permutation)
+               IF ( Permutation(i) > 0 ) THEN
+                 Solver % Variable % PrevValues( DOFs*Permutation(i) - k,j ) =  &
+                     Work( DOFs * Solver % Variable % Perm(i) - k )
+               END IF
+             END DO
            END DO
-        END DO
+         END DO
+       END IF
+       DEALLOCATE( Work )
+       Solver % Variable % Perm = Permutation
+       DEALLOCATE( Permutation )
      END IF
-     DEALLOCATE( Work )
-
-     Solver % Variable % Perm = Permutation
+       
      Solver % Variable % Solver => Solver
 
-     DEALLOCATE( Permutation )
+
      CALL AllocateVector( Matrix % RHS, Matrix % NumberOfRows )
 
      IF ( ASSOCIATED(SaveVar % EigenValues) ) THEN
@@ -18566,6 +18689,7 @@ END SUBROUTINE FindNeighbourNodes
   END SUBROUTINE UpdateSolverMesh
 !------------------------------------------------------------------------------
 
+  
 !------------------------------------------------------------------------------
 !> Split a mesh equally to smaller pieces by performing a uniform split.
 !> Also known as mesh multiplication. A 2D element splits into 4 elements of
@@ -20781,17 +20905,23 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t),  POINTER :: Mesh
 !------------------------------------------------------------------------------
+
+    IF(.NOT. ASSOCIATED(Mesh) ) THEN
+      CALL Fatal('SetCurrentMesh','Target mesh is not associated!')
+    END IF
+
     Model % Variables => Mesh % Variables
 
     Model % Mesh  => Mesh
     Model % Nodes => Mesh % Nodes
     Model % NumberOfNodes = Mesh % NumberOfNodes
     Model % Nodes % NumberOfNodes = Mesh % NumberOfNodes
-
+    
     Model % Elements => Mesh % Elements
     Model % MaxElementNodes = Mesh % MaxElementNodes
     Model % NumberOfBulkElements = Mesh % NumberOfBulkElements
     Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SetCurrentMesh
 !------------------------------------------------------------------------------
@@ -21165,7 +21295,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(PRESENT(ParallelComm)) THEN
-      Parallel = ParallelComm
+      Parallel = ParallelComm .AND. ( ParEnv % PEs > 1 )
     ELSE
       Parallel = ParEnv % PEs > 1
     END IF
@@ -23432,7 +23562,7 @@ CONTAINS
     MeshName = ListGetString( Params,'1D Mesh Name',Found)
     IF(.NOT. Found) MeshName = '1d_mesh'
     
-    Mesh % Name = MeshName
+    Mesh % Name = TRIM(MeshName)
     Mesh % OutputActive = .FALSE.
 
 !   Compute the resulting mesh parameters

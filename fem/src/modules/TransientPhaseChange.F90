@@ -49,14 +49,14 @@
 !>  Solve the free surface in the phase change problem using a transient algorithm. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
+SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
   TYPE(Solver_t), TARGET :: Solver
-  LOGICAL ::  TransientSimulation
+  LOGICAL ::  Transient
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
 !    Local variables
@@ -98,7 +98,9 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   LOGICAL, POINTER :: IsBoundaryNode(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, TemperatureName, str
   TYPE(ValueList_t), POINTER :: ValueList
-
+  TYPE(Variable_t), POINTER :: Var
+  TYPE(Mesh_t), POINTER :: Mesh
+  
   SAVE FirstTime, Trip_node, Axis_node,SubroutineVisited, prevpos0, &
       PrevSurfaceVelo, NormalDirection, ForceVector, PullControl, &
       Visited, Nodes, NodalTemp, Conductivity, LatentHeat, Density, &
@@ -115,7 +117,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   CALL Info('TransientPhaseChange','Using transient algorithm for surface update')          
   CALL Info('TransientPhaseChange','--------------------------------------------')
 
-  IF(.NOT. TransientSimulation ) THEN
+  IF(.NOT. Transient ) THEN
     CALL Fatal('TransientPhaseChange','This only makes sense in a transient setting')
   END IF
 
@@ -129,6 +131,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
 
   PSolver => Solver
+  Mesh => Solver % Mesh
   SurfSol  => Solver % Variable
   Surface  => SurfSol % Values
   PrevSurface => SurfSol % PrevValues(:,1)
@@ -140,7 +143,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   TemperatureName = ListGetString( Params, 'Phase Change Variable', Stat )
   IF(.NOT. Stat) TemperatureName = 'Temperature'
 
-  TempSol => VariableGet( Solver % Mesh % Variables, TRIM(TemperatureName) )
+  TempSol => VariableGet( Mesh % Variables, TRIM(TemperatureName) )
   TempPerm    => TempSol % Perm
   Temperature => TempSol % Values
   IF(.NOT. ASSOCIATED (Temperature) .OR. ALL(TempPerm <= 0) ) THEN
@@ -169,10 +172,10 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     CALL Info('TransientPhaseChange','Fixing triple point position',Level=7)
   END IF
 
-  HelpSol => VariableGet( Solver % Mesh % Variables, 'coupled iter')
+  HelpSol => VariableGet( Mesh % Variables, 'coupled iter')
   CoupledIter = HelpSol % Values(1)
 
-  HelpSol => VariableGet( Solver % Mesh % Variables, 'timestep')
+  HelpSol => VariableGet( Mesh % Variables, 'timestep')
   TimeStep = HelpSol % Values(1)
 
 !---------------------------------------------------------------------------------
@@ -232,7 +235,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     END IF
 
     ! Otherwise select the points on edge using a flag
-    DO t = 1, Solver % Mesh % NumberOfBoundaryElements      
+    DO t = 1, Mesh % NumberOfBoundaryElements      
       CurrentElement => GetBoundaryElement(t) 
       n  = GetElementNOFNodes()
       NodeIndexes => CurrentElement % NodeIndexes
@@ -251,7 +254,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     n = COUNT( IsBoundaryNode )
     CALL Info('TransientPhaseChange','Number of boundary nodes: '//I2S(n),Level=7)
 
-    n = Solver % Mesh % MaxElementNodes  
+    n = Mesh % MaxElementNodes  
     ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
         x(n), y(n), z(n), Basis(n), dBasisdx(n,3), NodalTemp(n), &
         Conductivity(n), LatentHeat(n), Density(n), &
@@ -264,9 +267,9 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------------------------
     VariableName = ListGetString( Params, 'Normal Variable', Stat )
     IF(Stat) THEN
-      HelpSol => VariableGet( Solver % Mesh % Variables, TRIM(VariableName), ThisOnly=.TRUE. )
+      HelpSol => VariableGet( Mesh % Variables, TRIM(VariableName), ThisOnly=.TRUE. )
     ELSE
-      HelpSol => VariableGet( Solver % Mesh % Variables, 'Normals',ThisOnly=.TRUE. )
+      HelpSol => VariableGet( Mesh % Variables, 'Normals',ThisOnly=.TRUE. )
     END IF
     IF(ASSOCIATED(HelpSol)) THEN
       Normals => HelpSol % Values
@@ -282,7 +285,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     ! The field is computed in two stages, 1st the velocity and then the displacement
     ! Ensure that also the velocity is allocated for
     !--------------------------------------------------------------------------------
-    HelpSol => VariableGet( Solver % Mesh % Variables, &
+    HelpSol => VariableGet( Mesh % Variables, &
          TRIM(ComponentName(Solver % Variable))//' Velo')
     IF(.NOT. ASSOCIATED(HelpSol)) THEN
       CALL Fatal('TransientPhaseChange','Surface Velo field should exist!')
@@ -318,7 +321,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   UseLoads = ListGetLogical( Params,'Use Nodal Loads',Stat) 
 
   IF(UseLoads) THEN
-    LoadsSol => VariableGet( Solver % Mesh % Variables,TRIM(TemperatureName)//' Loads')
+    LoadsSol => VariableGet( Mesh % Variables,TRIM(TemperatureName)//' Loads')
     IF(.NOT. ASSOCIATED(LoadsSol)) THEN
       CALL Fatal('TransientPhaseChange','Loads are requested to be used but missing!')
     ELSE
@@ -343,7 +346,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    DO t=1,Solver % Mesh % NumberOfNodes
+    DO t=1,Mesh % NumberOfNodes
       i = SurfPerm(t)
       IF( i == 0) CYCLE
       j = LoadsSol % Perm(t)
@@ -385,7 +388,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     CALL DefaultInitialize()
     
     IF(UseLoads) THEN
-      DO t=1,Solver % Mesh % NumberOfNodes
+      DO t=1,Mesh % NumberOfNodes
         i = SurfPerm(t)
         IF( i <= 0) CYCLE
 
@@ -525,6 +528,12 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   IF(PullControl .OR. TriplePointFixed) THEN
     CALL ListAddConstReal(Model % Simulation,'res: Pull Position',pos0)       
     CALL ListAddConstReal( Model % Simulation,'res: Pull Velocity',UPull)
+    IF( PullControl ) THEN
+      Var => VariableGet( Mesh % Variables,'pull velocity')
+      Var % Values(1) = UPull
+      Var => VariableGet( Mesh % Variables,'pull position')
+      Var % Values(1) = pos0
+    END IF
   END IF
 
   FirstTime = .FALSE.
@@ -665,9 +674,9 @@ CONTAINS
           pv = SUM( Basis(1:n) * yy(1:n) )
           pw = SUM( Basis(1:n) * zz(1:n) )
           
-          PNodes % x(1:pn) = Solver % Mesh % Nodes % x(Parent % NodeIndexes)
-          PNodes % y(1:pn) = Solver % Mesh % Nodes % y(Parent % NodeIndexes)
-          PNodes % z(1:pn) = Solver % Mesh % Nodes % z(Parent % NodeIndexes)
+          PNodes % x(1:pn) = Mesh % Nodes % x(Parent % NodeIndexes)
+          PNodes % y(1:pn) = Mesh % Nodes % y(Parent % NodeIndexes)
+          PNodes % z(1:pn) = Mesh % Nodes % z(Parent % NodeIndexes)
           
           stat = ElementInfo( Parent, PNodes, pu, pv, pw, detJ, Basis, dBasisdx )
           
@@ -799,15 +808,15 @@ CONTAINS
           'FindPullBoundary implemented only for lateral boundaries!')
 
       PullBoundary = .FALSE.
-      Ybot = Solver % Mesh % Nodes % y(Trip_node)
-      Ymax = MAXVAL(Solver % Mesh % Nodes % y)
+      Ybot = Mesh % Nodes % y(Trip_node)
+      Ymax = MAXVAL(Mesh % Nodes % y)
       Ytop = Ymax
-      Xtrip = Solver % Mesh % Nodes % x(Trip_node)
+      Xtrip = Mesh % Nodes % x(Trip_node)
       
-      DO t = Solver % Mesh % NumberOfBulkElements + 1, &
-          Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements        
+      DO t = Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
         
-        CurrentElement => Solver % Mesh % Elements(t)
+        CurrentElement => Mesh % Elements(t)
         Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
@@ -817,8 +826,8 @@ CONTAINS
           IF( ListGetLogical(Model % BCs(k) % Values,'Pull Boundary',stat ) ) THEN
             PullBoundary = .TRUE.
             DO i = 1,n
-              x = Solver % Mesh % Nodes % x(NodeIndexes(i))
-              y = Solver % Mesh % Nodes % y(NodeIndexes(i))
+              x = Mesh % Nodes % x(NodeIndexes(i))
+              y = Mesh % Nodes % y(NodeIndexes(i))
               IF(y > Ybot .AND. ABS(x-Xtrip) > 1.0e-6 * (Ymax-Ybot)) Ytop = y
             END DO
           END IF
@@ -841,14 +850,14 @@ CONTAINS
 !> Initialization for the primary solver: TransientPhaseChange.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
-SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,TransientSimulation)
+SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Solver_t), TARGET :: Solver
-    LOGICAL ::  TransientSimulation
+    LOGICAL ::  Transient
     REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
     LOGICAL :: Found
@@ -859,11 +868,17 @@ SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,TransientSimulation)
 
     VariableName = GetString(Params,'Variable')
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-nooutput '//TRIM(ComponentName(VariableName))//' Velo' )
+        '-nooutput '//TRIM(ComponentName(VariableName))//' Velo' )
 
     IF(.NOT. ListCheckPresent( Params,'Time Derivative Order') ) &
         CALL ListAddInteger( Params,'Time Derivative Order',1)
-
+    
+    IF( ListGetLogical( Params,'Pull Rate Control',Found) ) THEN
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global pull velocity' )      
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global pull position' )      
+    END IF    
 
 !------------------------------------------------------------------------------
 END SUBROUTINE TransientPhaseChange_Init

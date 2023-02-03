@@ -132,7 +132,8 @@
      LOGICAL :: CylindricSymmetry,GotIt, Found, Radiation, LeftEmis, RightEmis
 
      CHARACTER(:), ALLOCATABLE :: eq, RadiationFlag, ViewFactorsFile, OutputName, &
-                 ModelName, LMessage, TempString
+                  LMessage, TempString
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
 
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
@@ -171,7 +172,8 @@
        READ(1,'(a)') ModelName
        CLOSE(1)
      END IF
-
+     CALL Info(Caller,'Computing view factors as defined in file: '//TRIM(ModelName),Level=5)
+     
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
      CurrentModel => Model

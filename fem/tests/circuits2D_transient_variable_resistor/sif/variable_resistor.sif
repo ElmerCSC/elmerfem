@@ -140,7 +140,7 @@ Component 2
    Name = String test inductor 2
    Component Type = String Resistor
    Resistance = Variable time
-     Real MATC "if(tx<2*stepsize) 1e6; 0"
+     Real MATC "if(tx<2*stepsize) {1e6} else {0}"
 End
 Component 3
    Name = String test inductor 2

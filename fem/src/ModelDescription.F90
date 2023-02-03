@@ -2406,7 +2406,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs,ModuloMesh,iostat
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2504,7 +2504,10 @@ CONTAINS
 #endif
 
     INQUIRE( Unit=InFileUnit, OPENED=OpenFile )
-    IF ( .NOT. OpenFile ) OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD' )
+    IF ( .NOT. OpenFile ) THEN
+      OPEN( Unit=InFileUnit, File=Modelname, STATUS='OLD',IOSTAT=iostat)
+      IF(iostat /= 0) CALL Fatal('LoadModel','Failed to open Model file: '//TRIM(Modelname))
+    END IF
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .TRUE. )
     REWIND( InFileUnit )
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
@@ -3845,11 +3848,13 @@ CONTAINS
          ELSE
 
            SameAsPrev = .FALSE.
-           IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
-             SameAsPrev = .TRUE.
-           ELSE IF ( ASSOCIATED( PrevPerm ) ) THEN
-             IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
-               IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+           IF( ASSOCIATED(PrevPerm) ) THEN
+             IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
+               SameAsPrev = .TRUE.
+             ELSE
+               IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
+                 IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+               END IF
              END IF
            END IF
 
@@ -6252,13 +6257,11 @@ END SUBROUTINE GetNodalElementSize
 
    DO i=1,NoParam
      WRITE( cmd, * ) 'rpar('//i2s(i-1)//')=', Param(i)
-     j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 
@@ -6302,13 +6305,11 @@ END SUBROUTINE GetNodalElementSize
 
    DO i=1,NoParam
      WRITE( cmd, * ) 'ipar('//i2s(i-1)//')=', Param(i)
-     j = LEN_TRIM(cmd)
      !$OMP PARALLEL DEFAULT(NONE) &
      !$OMP SHARED(cmd, tmp_str, j ) &
      !$OMP PRIVATE(tcmd, ttmp_str, tj)
-     tj = j
      tcmd = cmd               
-     CALL matc( tcmd, ttmp_str, tj )
+     tj = matc(tcmd, ttmp_str)
      !$OMP END PARALLEL
    END DO
 

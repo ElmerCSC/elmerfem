@@ -1153,7 +1153,6 @@ CONTAINS
                IF ( copystr(j:j) == '$' ) EXIT
              END DO
              ninlen = j - i
-
              ! Initialize variables for each copy of MATC separately
 
              !$OMP PARALLEL DEFAULT(NONE) &
@@ -1162,7 +1161,7 @@ CONTAINS
 
              tninlen = ninlen
              tcmdstr = copystr(i+1:inlen)
-             CALL MATC( tcmdstr, tmatcstr, tninlen )
+             tninlen = MATC(tcmdstr, tmatcstr, tninlen)
              !$OMP BARRIER
 
              !$OMP SINGLE

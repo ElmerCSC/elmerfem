@@ -1,5 +1,5 @@
 
-# Quick hack to test if the GNU Fortran version is >= 4.8
+# Quick hack to test if the GNU Fortran version is >= 7
 
 IF (NOT(CMAKE_CROSSCOMPILING))
 FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testGFortranVersion.F90
@@ -26,11 +26,11 @@ TRY_RUN(GFORTRAN_VERSIONTEST_RUN_RESULT
 
 IF(GFORTRAN_VERSIONTEST_COMPILE_RESULT AND
    GFORTRAN_VERSIONTEST_RUN_RESULT EQUAL 0)
-  IF(GFORTRAN_VERSION VERSION_GREATER 4.7)
-    MESSAGE(STATUS "Checking whether GFortran version >= 4.8 -- yes")
+  IF(GFORTRAN_VERSION VERSION_GREATER 7)
+    MESSAGE(STATUS "Checking whether GFortran version >= 7 -- yes")
     SET(CMAKE_Fortran_COMPILER_GNU_VERSION_OK 1 CACHE BOOL "")
   ELSE()
-    MESSAGE(STATUS "Checking whether GFortran version >= 4.8 -- no")
+    MESSAGE(STATUS "Checking whether GFortran version >= 7 -- no")
     SET(CMAKE_Fortran_COMPILER_GNU_VERSION_OK 0 CACHE BOOL "")
   ENDIF()
 ELSE()
@@ -44,9 +44,9 @@ ELSE()
 "
 program versiontest
 #if defined(__GFORTRAN__) && defined(__GNUC__) && defined(__GNUC_MINOR__)
-#if __GNUC__<5
-#if __GNUC_MINOR__<8
-! Gfortran versions <4.8 are known not to fully work with Elmer
+#if __GNUC__<7
+#if __GNUC_MINOR__<0
+! Gfortran versions <7 are known not to fully work with Elmer
 #error 
 #endif
 #endif
@@ -59,10 +59,10 @@ end program versiontest
     OUTPUT_VARIABLE OUTPUT)
 
   IF(GFORTRAN_VERSIONTEST_COMPILE_RESULT)
-    MESSAGE(STATUS "Checking whether GFortran version >= 4.8 -- yes")
+    MESSAGE(STATUS "Checking whether GFortran version >= 7 -- yes")
     SET(CMAKE_Fortran_COMPILER_GNU_VERSION_OK 1 CACHE BOOL "")
   ELSE()
-    MESSAGE(STATUS "Checking whether GFortran version >= 4.8 -- no")
+    MESSAGE(STATUS "Checking whether GFortran version >= 7 -- no")
     SET(CMAKE_Fortran_COMPILER_GNU_VERSION_OK 0 CACHE BOOL "")
   ENDIF()
 ENDIF()

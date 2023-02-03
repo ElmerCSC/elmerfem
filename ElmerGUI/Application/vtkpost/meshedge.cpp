@@ -77,6 +77,7 @@ void MeshEdge::draw(VtkPost* vtkPost, Preferences* preferences)
   int radius = preferences->ui.meshEdgeTubeRadius->value();
   bool useClip = preferences->ui.meshEdgesClip->isChecked();
   useClip |= vtkPost->GetClipAll();
+  QColor color = preferences->getMeshEdgeColor();
 
   vtkUnstructuredGrid* grid = NULL;
 
@@ -131,7 +132,7 @@ void MeshEdge::draw(VtkPost* vtkPost, Preferences* preferences)
   // mapper->ImmediateModeRenderingOn();
 
   vtkPost->GetMeshEdgeActor()->GetProperty()->SetLineWidth(lineWidth);
-  vtkPost->GetMeshEdgeActor()->GetProperty()->SetColor(0, 0, 0);
+  vtkPost->GetMeshEdgeActor()->GetProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
   vtkPost->GetMeshEdgeActor()->SetMapper(mapper);
 
   mapper->Delete();

@@ -762,7 +762,7 @@ CONTAINS
   END SUBROUTINE GenerateSavePermutation
 
 
-  SUBROUTINE EvaluteVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
+  SUBROUTINE EvaluateVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
       LocalBasis,LocalNode,LocalDGNode,DoGrad,DoDiv,GotEigen,GotEdge)
 
     INTEGER :: No
@@ -1170,7 +1170,7 @@ CONTAINS
       END IF
     END FUNCTION PickDgIndexes
     
-  END SUBROUTINE EvaluteVariableAtGivenPoint
+  END SUBROUTINE EvaluateVariableAtGivenPoint
     
 END MODULE SaveUtils
   

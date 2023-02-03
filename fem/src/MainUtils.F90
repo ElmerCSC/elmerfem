@@ -408,7 +408,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
+ 
 !------------------------------------------------------------------------------
    SUBROUTINE SwapMesh(Model,Mesh,Name,ExtMesh)
 !------------------------------------------------------------------------------
@@ -473,7 +473,7 @@ CONTAINS
        END DO
      END IF
 
-     CALL AddCoordAndTime(Mesh,NewMesh)
+     CALL TransferCoordAndTime(Mesh,NewMesh)
 
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
@@ -514,80 +514,7 @@ CONTAINS
 
      CALL MeshStabParams( Newmesh )
      NewMesh % Changed = .TRUE.
-
-CONTAINS
-
-
-   SUBROUTINE AddCoordAndTime(M1,M2)
-    TYPE(Solver_t), POINTER :: Solver => Null()
-    TYPE(Mesh_t) :: M1,M2
-    TYPE(Variable_t), POINTER :: DtVar, V
-
-     CALL VariableAdd( M2 % Variables, M2,Solver, &
-           'Coordinate 1',1, M2 % Nodes % x )
-
-     CALL VariableAdd(M2 % Variables,M2,Solver, &
-           'Coordinate 2',1, M2 % Nodes % y )
-
-     CALL VariableAdd(M2 % Variables,M2,Solver, &
-          'Coordinate 3',1,M2 % Nodes % z )
-
-     V => VariableGet( M1 % Variables, 'Time' )     
-     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
-
-     V => VariableGet( M1 % Variables, 'Periodic Time' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
-     END IF
-     V => VariableGet( M1 % Variables, 'Periodic Cycle' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Cycle', 1, V % Values)
-     END IF
-       
-     V => VariableGet( M1 % Variables, 'Timestep' )
-     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
-
-     V => VariableGet( M1 % Variables, 'Timestep size' )
-     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
-
-     V => VariableGet( M1 % Variables, 'Timestep interval' )
-     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
-
-     ! Save some previous timesteps for variable timestep multistep methods
-     V => VariableGet( M1 % Variables, 'Timestep size' )
-     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
-     DtVar % PrevValues => V % PrevValues
-
-     V => VariableGet( M1 % Variables, 'nonlin iter' )
-     CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'nonlin iter', 1, V % Values )
-
-     V => VariableGet( M1 % Variables, 'coupled iter' )
-     CALL VariableAdd( M2 % Variables, M2, Solver, &
-             'coupled iter', 1, V % Values )
-
-     V => VariableGet( M1 % Variables, 'partition' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
-     END IF
-       
-     V => VariableGet( M1 % Variables, 'scan' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'scan', 1, V % Values)
-     END IF
-     V => VariableGet( M1 % Variables, 'finish' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'finish', 1, V % Values)
-     END IF
-     V => VariableGet( M1 % Variables, 'produce' )
-     IF( ASSOCIATED( V ) ) THEN
-       CALL VariableAdd( M2 % Variables, M2, Solver, 'produce', 1, V % Values)
-     END IF
-     
-!------------------------------------------------------------------------------
-    END SUBROUTINE AddCoordAndTime
-!------------------------------------------------------------------------------
-
+    
 !------------------------------------------------------------------------------
    END SUBROUTINE SwapMesh
 !------------------------------------------------------------------------------
@@ -1405,6 +1332,7 @@ CONTAINS
     NULLIFY( Solver % Matrix )    
     var_name = ListGetString( SolverParams, 'Variable', Found )
 
+    NoPerm = .FALSE.
     
     IF(.NOT. Found ) THEN
       ! Variable does not exist
@@ -1440,7 +1368,6 @@ CONTAINS
       VariableIp = ListGetLogical( SolverParams, 'Variable IP', Found )
       VariableElem = ListGetLogical( SolverParams, 'Variable Elemental', Found )                 
 
-      NoPerm = .FALSE.
       
       DOFs = ListGetInteger( SolverParams, 'Variable DOFs', Found, minv=1 )
       IF ( .NOT. Found ) THEN
@@ -1604,7 +1531,12 @@ CONTAINS
         END IF
 
         IF( ListGetLogical( SolverParams,'Radiation Solver',Found ) ) THEN
-          CALL RadiationFactors( Solver, .TRUE., .FALSE.)
+          ! We need to precompute view factors if they are included in CRS matrix
+          ! Benefit of doing it at later stage is that we may modify the geometry, for example. 
+          IF( .NOT. (ListGetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
+              ListGetLogical( SolverParams,'Spectral Model',Found ) ) ) THEN            
+            CALL RadiationFactors( Solver, .TRUE., .FALSE.)
+          END IF
         END IF
         
         BandwidthOptimize = ListGetLogical( SolverParams, &
@@ -1670,6 +1602,8 @@ CONTAINS
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), DG, &
             GlobalBubbles=GlobalBubbles, ThreadedStartup=ThreadedStartup )
+        Solver % GlobalBubbles = GlobalBubbles
+
         Nrows = DOFs * Ndeg
         IF (ASSOCIATED(Solver % Matrix)) THEN
           Nrows = Solver % Matrix % NumberOfRows
@@ -2606,6 +2540,7 @@ CONTAINS
                  OldMesh % Child  => NewMesh
                  NewMesh % Name = OldMesh % Name
                END IF
+
                Newmesh % OutputActive = .TRUE.
                OldMesh % OutputActive = .FALSE.
                
@@ -3170,8 +3105,8 @@ CONTAINS
 !      ----------------------------------------------------------
        Mesh => Model % Meshes
        DO WHILE( ASSOCIATED( Mesh ) )
-          Mesh % OutputActive = .FALSE.
-          Mesh => Mesh % Next
+         Mesh % OutputActive = .FALSE.
+         Mesh => Mesh % Next
        END DO
 
 !------------------------------------------------------------------------------
@@ -5425,12 +5360,29 @@ END BLOCK
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
-        
+     TYPE(Mesh_t), POINTER :: Mesh
+
      SAVE TimeVar
 !------------------------------------------------------------------------------
      sOutputPE = OutputPE
 
+
+     Mesh => Solver % Mesh 
+
+     IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
+       i = 0
+       DO WHILE( ASSOCIATED( Mesh % Child ) )
+         Mesh => Mesh % Child 
+         i = i+1 
+         IF(Mesh % OutputActive) EXIT 
+       END DO
+       CALL Info('SolverActivate','Changing Solver mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
+           //TRIM(Mesh % Name),Level=7)
+       Solver % Mesh => Mesh
+     END IF
+
      CALL SetCurrentMesh( Model, Solver % Mesh )
+
      Model % Solver => Solver
      Params => ListGetSolverParams(Solver)
 

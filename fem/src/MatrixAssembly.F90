@@ -721,7 +721,8 @@ BLOCK
          DO j=1,Element % TYPE % NumberOfEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( .NOT. (Solver % GlobalBubbles .AND. Element % BodyId>0) ) THEN
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0.AND.ASSOCIATED(Element % BoundaryInfo)) ) THEN
                EdgesDone = .FALSE.
                CYCLE
              END IF
@@ -749,7 +750,8 @@ BLOCK
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF ( .NOT. (Solver % GlobalBubbles .AND. Element % BodyId>0) ) THEN
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                 Element % BodyId>0.AND.ASSOCIATED(Element % BoundaryInfo)) ) THEN
                FacesDone = .FALSE.
                CYCLE
              END IF

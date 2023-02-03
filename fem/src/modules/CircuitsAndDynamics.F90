@@ -558,8 +558,8 @@ CONTAINS
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
+    REAL(KIND=dp) :: Basis(nd), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
+    REAL(KIND=dp) :: dBasisdx(nd,3), wBase(nn), w(3)
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, localR !, localL
     INTEGER :: j,t
     LOGICAL :: stat
@@ -758,8 +758,8 @@ CONTAINS
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
-    REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
-    REAL(KIND=dp) :: dBasisdx(nn,3)
+    REAL(KIND=dp) :: Basis(nd), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
+    REAL(KIND=dp) :: dBasisdx(nd,3)
     REAL(KIND=dp) :: LondonLambda(nn)
     REAL(KIND=dp) :: LondonLambda_ip
     REAL(KIND=dp) :: localC, val, circ_eq_coeff, grads_coeff, localConductance !, localL
@@ -885,8 +885,6 @@ CONTAINS
         IF ( TransientSimulation ) THEN 
           IF(dim==2) val = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
           IF(dim==3) val = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
-  !        localL = val
-  !        Comp % Inductance = Comp % Inductance + localL
           CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * val)
           CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * val
         END IF
@@ -915,9 +913,9 @@ CONTAINS
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
-    REAL(KIND=dp) :: Basis(nn), DetJ, localAlpha, localV, localVtest, &
+    REAL(KIND=dp) :: Basis(nd), DetJ, localAlpha, localV, localVtest, &
                      x, circ_eq_coeff, grads_coeff,POT(nd),pPOT(nd),ppPOT(nd),tscl
-    REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
+    REAL(KIND=dp) :: dBasisdx(nd,3),alpha(nn)
     REAL(KIND=dp) :: localR !, localL
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
@@ -1683,8 +1681,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Omega
     TYPE(Nodes_t), SAVE :: Nodes
-    REAL(KIND=dp) :: Basis(nn), DetJ, x, circ_eq_coeff
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
+    REAL(KIND=dp) :: Basis(nd), DetJ, x, circ_eq_coeff
+    REAL(KIND=dp) :: dBasisdx(nd,3), wBase(nn), w(3)
     COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_val
     REAL(KIND=dp) :: localR !, localL
     INTEGER :: j,t
@@ -1874,8 +1872,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Omega, grads_coeff, circ_eq_coeff
-    REAL(KIND=dp) :: Basis(nn), DetJ, x
-    REAL(KIND=dp) :: dBasisdx(nn,3)
+    REAL(KIND=dp) :: Basis(nd), DetJ, x
+    REAL(KIND=dp) :: dBasisdx(nd,3)
     REAL(KIND=dp) :: LondonLambda(nn)
     REAL(KIND=dp) :: LondonLambda_ip, val
     COMPLEX(KIND=dp) :: localC, cmplx_val
@@ -2029,9 +2027,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
-    REAL(KIND=dp) :: Basis(nn), DetJ, Omega, localAlpha, localV, localVtest, &
+    REAL(KIND=dp) :: Basis(nd), DetJ, Omega, localAlpha, localV, localVtest, &
                      x, circ_eq_coeff, grads_coeff
-    REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
+    REAL(KIND=dp) :: dBasisdx(nd,3),alpha(nn)
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim

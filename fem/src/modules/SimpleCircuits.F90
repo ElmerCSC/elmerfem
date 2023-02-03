@@ -212,9 +212,7 @@ CONTAINS
 
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    slen =  Matc("Circuits", name)
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -230,9 +228,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//i2s(p)//'.variables'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      slen = Matc('C.'//i2s(p)//'.variables', name)
 
       READ(name(1:slen), *) Circuits(p) % n
 
@@ -245,9 +241,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('C.'//i2s(p)//'.name.'//i2s(i),name)
 
         Circuits(p) % names(i) = name(1:slen)
 
@@ -284,9 +278,7 @@ CONTAINS
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('nc:C.'//i2s(p)//'.source.'//i2s(i),name)
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -851,9 +843,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    slen = Matc("Circuits", name)
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -869,10 +859,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//i2s(p)//'.variables'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
-
+      slen = Matc('C.'//i2s(p)//'.variables',name)
       READ(name(1:slen), *) Circuits(p) % n
 
       n = Circuits(p) % n
@@ -884,10 +871,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//i2s(p)//'.name.'//i2s(i)
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-
+        slen = Matc('C.'//i2s(p)//'.name.'//i2s(i),name)
         Circuits(p) % names(i) = name(1:slen)
 
         IF(name(1:6) == 'u_emf(') THEN
@@ -923,9 +907,7 @@ CONTAINS
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//i2s(p)//'.source.'//i2s(i)
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('nc:C.'//i2s(p)//'.source.'//i2s(i),name)
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -934,9 +916,7 @@ CONTAINS
     ! circuit defs, or from the sif-file defs:
     ! -----------------------------------------------
     DO p=1,n_Circuits
-      cmd = 'nc:C.'//i2s(p)//'.omega'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      slen = Matc('nc:C.'//i2s(p)//'.omega',name)
       Circuits(p) % FoundOmega = slen >= 1
       IF(Circuits(p) % FoundOmega) &
           READ( name(1:slen), *) Circuits(p) % Omega

@@ -307,7 +307,7 @@
      IF( .NOT. GotModelName ) THEN
        OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )       
        IF( iostat /= 0 ) THEN
-         CALL Fatal( 'ElmerSolver', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
+         CALL Fatal( 'MAIN', 'Unable to find ELMERSOLVER_STARTINFO, can not execute.' )
        END IF
        READ(1,'(a)') ModelName
        CLOSE(1)
@@ -319,7 +319,7 @@
      IF( FirstTime ) THEN
        OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
        IF( iostat /= 0 ) THEN
-         CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
+         CALL Fatal( 'MAIN', 'Unable to find input file [' // &
              TRIM(Modelname) // '], can not execute.' )
        END IF
        ALLOCATE( Control )          
@@ -328,10 +328,10 @@
            .FALSE., .TRUE., ControlOnly = .TRUE.)
        DoControl =  ASSOCIATED( Control % Control )
        IF( DoControl ) THEN
-         CALL Info('ElmerSolver','Run Control section active!')
+         CALL Info('MAIN','Run Control section active!')
          OptimIters = ListGetInteger( Control % Control,'Run Control Iterations', Found )
          IF(.NOT. Found) OptimIters = 1              
-
+         
          ! If there are no parameters this does nothing
          CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
        ELSE
@@ -376,7 +376,7 @@
          !---------------------------------------------------------------------------------
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)
          IF( iostat /= 0 ) THEN
-           CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
+           CALL Fatal( 'MAIN', 'Unable to find input file [' // &
                TRIM(Modelname) // '], can not execute.' )
          END IF
          
@@ -425,7 +425,7 @@
            OPEN( Unit=InFileUnit, Action='Read', & 
                File=ModelName,Status='OLD',IOSTAT=iostat)
            IF( iostat /= 0 ) THEN
-             CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
+             CALL Fatal( 'MAIN', 'Unable to find input file [' // &
                  TRIM(Modelname) // '], can not execute.' )
            END IF                               
          END IF
@@ -563,7 +563,7 @@
            CALL ExternalOptimization_bobyqa(ExecSimulationFunCost)                    
          END SELECT
 #else
-         CALL Fatal('ElmerSolver','Compile WITH_EXTOPTIM to activate method: '//TRIM(str))
+         CALL Fatal('MAIN','Compile WITH_EXTOPTIM to activate method: '//TRIM(str))
 #endif
            
        ELSE IF( DoControl ) THEN
@@ -572,6 +572,10 @@
          ! over a parameter space / optimization. 
          !-----------------------------------------------------------------
          DO iSweep = 1, OptimIters
+           CALL Info('MAIN','========================================================',Level=5)
+           CALL Info('MAIN','Control Loop '//I2S(iSweep))
+           CALL Info('MAIN','========================================================',Level=5)
+           
            sSweep = 1.0_dp * iSweep
            ! If there are no parameters this does nothing                  
            CALL ControlResetMesh(CurrentModel % Control, iSweep )            
@@ -589,6 +593,73 @@
                GotParams,FinishEarly,SetCoeffs=.TRUE.)
            
            IF( iSweep > 1 ) THEN
+             IF( ListGetLogical( CurrentModel % Control,'Reset Adaptive Mesh',Found ) ) THEN
+               BLOCK
+                 TYPE(Mesh_t), POINTER :: pMesh, pMesh0
+                 TYPE(Solver_t), POINTER :: iSolver
+                 LOGICAL :: GB, BO
+                 
+                 ! Find the 1st mesh
+                 pMesh0 => CurrentModel % Mesh 
+                 DO WHILE( ASSOCIATED(pMesh0 % Parent) )
+                   pMesh0 => pMesh0 % Parent
+                 END DO
+                 !PRINT *,'First mesh:',pMesh0 % AdaptiveDepth, TRIM(pMesh0 % Name)
+
+                 ! Find the last mesh
+                 pMesh => CurrentModel % Mesh 
+                 DO WHILE( ASSOCIATED(pMesh % Child) )
+                   pMesh => pMesh % Child
+                 END DO
+                 !PRINT *,'Last mesh:',pMesh % AdaptiveDepth, TRIM(pMesh % Name)
+
+                 ! Move point to the 1st mesh and related fields
+                 CALL SetCurrentMesh( CurrentModel, pMesh0 )
+                 DO i=1,CurrentModel % NumberOfSolvers 
+                   iSolver => CurrentModel % Solvers(i)
+
+                   ! Set Solver mesh 
+                   IF(ASSOCIATED(iSolver % Mesh)) iSolver % Mesh => pMesh0
+
+                   ! Set Solver variable point to the field in the original mesh
+                   IF(ASSOCIATED(iSolver % Variable)) THEN
+                     iSolver % Variable => VariableGet(pMesh0 % Variables, &
+                         iSolver % Variable % Name, ThisOnly = .TRUE.)  
+                   END IF
+
+                   ! Reset active element table
+                   iSolver % NumberOfActiveElements = 0
+                   CALL SetActiveElementsTable( CurrentModel, iSolver )                   
+
+                   ! Create the matrix related to the original mesh 
+                   IF( ASSOCIATED( iSolver % Matrix ) ) THEN
+                     CALL FreeMatrix( iSolver % Matrix)
+                                         
+                     GB = ListGetLogical( iSolver % Values,'Bubbles in Global System', Found )
+                     IF ( .NOT. Found ) GB = .TRUE.
+
+                     BO = ListGetLogical( iSolver % Values,'Optimize Bandwidth', Found )
+                     IF ( .NOT. Found ) BO = .TRUE.
+
+                     iSolver % Matrix => CreateMatrix( CurrentModel, iSolver, iSolver % Mesh,  &
+                         iSolver % Variable % Perm, iSolver % Variable % DOFs, MATRIX_CRS, &
+                         BO, ListGetString( iSolver % Values, 'Equation' ), GlobalBubbles=GB )
+                     ALLOCATE( iSolver % Matrix % rhs(iSolver % Matrix % NumberOfRows ) )
+                     iSolver % Matrix % rhs = 0.0_dp
+                   END IF
+                 END DO                 
+                 
+                 ! Release the old adaptive meshes
+                 DO WHILE( ASSOCIATED(pMesh % Parent))
+                   pMesh => pMesh % Parent             
+                   PRINT *,'Freeing Mesh:',pMesh % Child % AdaptiveDepth, TRIM(pMesh % Child % Name)
+                   CALL ReleaseMesh( pMesh % Child ) 
+                 END DO
+                 pMesh % Child => NULL()
+                 
+               END BLOCK
+             END IF
+
              IF( ListGetLogical( CurrentModel % Control,'Reset Initial Conditions',Found ) ) THEN
                CALL SetInitialConditions()
              END IF
@@ -601,7 +672,18 @@
            CALL ControlParameters(CurrentModel % Control, &
                iSweep,GotParams,FinishEarly,.TRUE.)
          END DO
-         
+
+         BLOCK
+           TYPE(Solver_t), POINTER :: iSolver
+           DO i=1,CurrentModel % NumberOfSolvers 
+             iSolver => CurrentModel % Solvers(i)
+             IF( iSolver % NumberOfConstraintModes > 0 ) THEN
+               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) ) THEN
+                 CALL FinalizeLumpedMatrix( iSolver )            
+               END IF
+             END IF
+           END DO           
+         END BLOCK
        ELSE
          CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
              CoupledMaxIter, OutputIntervals, Transient, Scanning) 
@@ -619,8 +701,8 @@
 
 
 #ifdef DEVEL_LISTCOUNTER
-     CALL Info('ElmerSolver','Reporting list counters for code optimization purposes only!')
-     CALL Info('ElmerSolver','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
+     CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
+     CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
      CALL ReportListCounters( CurrentModel )
 #endif
      
@@ -629,11 +711,11 @@
 !------------------------------------------------------------------------------
 !    THIS IS THE END (...,at last, the end, my friend,...)
 !------------------------------------------------------------------------------
-     IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
+     IF ( Initialize /= 1 ) CALL Info( 'MAIN', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
      ! This may be used to study problems at the finish
      IF( ListGetLogical( CurrentModel % Simulation,'Dirty Finish', GotIt ) ) THEN
-       CALL Info('ElmerSolver','Skipping freeing of the Model structure',Level=4)
+       CALL Info('MAIN','Skipping freeing of the Model structure',Level=4)
        RETURN
      END IF
      
@@ -646,7 +728,7 @@
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
 
-     CALL Info('ElmerSolver','The end',Level=3)
+     CALL Info('MAIN','The end',Level=3)
 
      RETURN
 
@@ -672,7 +754,7 @@
        !WRITE(*,*) seeds            ! writes 314159265
        DEALLOCATE(seeds)           
        
-       CALL Info('ElmerSolver','Random seed initialized to: '//I2S(i),Level=10)
+       CALL Info('MAIN','Random seed initialized to: '//I2S(i),Level=10)
      END SUBROUTINE InitializeRandomSeed
 
      
@@ -692,7 +774,7 @@
        IF(.NOT. Found ) RETURN
        
        IF(ExtrudeLayers < 2) THEN
-         CALL Fatal('ElmerSolver','There must be at least two "Extruded Mesh Layers"!')
+         CALL Fatal('MAIN','There must be at least two "Extruded Mesh Layers"!')
        END IF
 
        SliceVersion = GetLogical(CurrentModel % Simulation,'Extruded Mesh Slices',Found )              
@@ -743,7 +825,7 @@
        IF(Visited) RETURN
        Visited = .TRUE.
 
-       CALL Info('ElmerSolver','Creating geometric timestepping strategy',Level=6)
+       CALL Info('MAIN','Creating geometric timestepping strategy',Level=6)
        
        DO i=1,m
          ! Some users may give zero ratio, assume that they mean one.
@@ -775,7 +857,7 @@
              'Timestep Intervals', GotIt )
 
          IF ( .NOT.GotIt ) THEN
-           CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
+           CALL Fatal('MAIN', 'Keyword > Timestep Intervals < MUST be ' //  &
                'defined for transient and scanning simulations' )
          END IF
          
@@ -786,7 +868,7 @@
              ALLOCATE(TimestepSizes(SIZE(Timesteps),1))
              TimestepSizes = 1.0_dp
            ELSE
-             CALL Fatal( 'ElmerSolver', 'Keyword [Timestep Sizes] MUST be ' //  &
+             CALL Fatal( 'MAIN', 'Keyword [Timestep Sizes] MUST be ' //  &
                  'defined for time dependent simulations' )
            END IF
          END IF
@@ -831,7 +913,7 @@
            'Output Intervals', GotIt )
        IF( GotIt ) THEN
          IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
-           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+           CALL Fatal('MAIN','> Output Intervals < should have the same size as > Timestep Intervals < !')
          END IF
        ELSE 
          IF( .NOT. ASSOCIATED( OutputIntervals ) ) THEN
@@ -911,7 +993,7 @@
        IF ( .NOT.LastSaved ) TotalTimesteps = TotalTimesteps + 1
        IF( TotalTimesteps == 0 ) TotalTimesteps = 1
        
-       CALL Info('ElmerSolver','Number of timesteps to be saved: '//I2S(TotalTimesteps))
+       CALL Info('MAIN','Number of timesteps to be saved: '//I2S(TotalTimesteps))
        
      END SUBROUTINE CountSavedTimesteps
      
@@ -1446,7 +1528,7 @@
 
 
 
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 !> Adds coordinate and time variables to the current mesh structure. 
 !------------------------------------------------------------------------------
   SUBROUTINE AddTimeEtc()
@@ -1472,7 +1554,6 @@
                Name='nonlin iter', DOFs=1, Values=nonlinIt )
        CALL VariableAdd( Mesh % Variables, Mesh, &
                Name='coupled iter', DOFs=1, Values=steadyIt )
-
 
        IF( ListCheckPrefix( CurrentModel % Simulation,'Periodic Time') .OR. &
            ListCheckPresent( CurrentModel % Simulation,'Time Period') ) THEN
@@ -2404,7 +2485,7 @@
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
          AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
-     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found
+     LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found, DoIt
      INTEGER :: AllocStat
      REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease     
      TYPE(Solver_t), POINTER :: Solver    
@@ -2427,7 +2508,13 @@
      DO i=1,nSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
-        IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
+        DoIt = ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL )
+        IF(.NOT. DoIt) THEN
+          DoIt = ListGetLogical( Solver % Values,'Before All',Found ) .OR. &
+              ListGetLogical( Solver % Values,'Before Simulation',Found )
+        END IF
+        
+        IF( DoIt ) THEN
           ! solver to be called prior to time looping can never be transient
           dt = 1.0_dp
           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
@@ -2677,7 +2764,7 @@
            AdaptiveLimit = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Time Error', GotIt )       
            IF ( .NOT. GotIt ) THEN 
-             CALL Fatal('ElmerSolver','Adaptive Time Error must be given for ' // &
+             CALL Fatal('MAIN','Adaptive Time Error must be given for ' // &
                  'adaptive stepping scheme.')
            END IF
            AdaptiveKeepSmallest = ListGetInteger( CurrentModel % Simulation, &
@@ -3125,18 +3212,18 @@
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
-            CALL Info('ElmerSolver','Reached allowed maximum real time, exiting...',Level=3)
+            CALL Info('MAIN','Reached allowed maximum real time, exiting...',Level=3)
             GOTO 100
          END IF
 
 	 exitcond = ListGetCReal( CurrentModel % Simulation,'Exit Condition',GotIt)
 	 IF( GotIt .AND. exitcond > 0.0_dp ) THEN
-            CALL Info('ElmerSolver','Found a positive exit condition, exiting...',Level=3)
+            CALL Info('MAIN','Found a positive exit condition, exiting...',Level=3)
             GOTO 100
          END IF
 
          IF( sFinish(1) > 0.0_dp ) THEN
-           CALL Info('ElmerSolver','Finishing condition "finish" found to be positive, exiting...',Level=3)
+           CALL Info('MAIN','Finishing condition "finish" found to be positive, exiting...',Level=3)
            GOTO 100
          END IF
            
@@ -3154,6 +3241,19 @@
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
+     BLOCK
+       TYPE(Solver_t), POINTER :: iSolver
+       DO i=1,CurrentModel % NumberOfSolvers 
+         iSolver => CurrentModel % Solvers(i)
+         IF( iSolver % NumberOfConstraintModes > 0 ) THEN
+           IF( ListGetLogical( iSolver % Values,'Steady State Constraint Modes', Found ) ) THEN
+             CALL FinalizeLumpedMatrix( iSolver )            
+           END IF
+         END IF
+       END DO
+     END BLOCK
+     
+     
 100  CONTINUE
 
      CALL ListPopNamespace()

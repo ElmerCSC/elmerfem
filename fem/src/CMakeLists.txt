@@ -37,7 +37,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90
   RadiationFactors.F90 f_stubs.c
   ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
-  SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
+  SolveTrilinos.cxx SolveSuperLU.c
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
@@ -61,6 +61,8 @@ IF(WITH_LUA)
     PATTERN lua-scripts/*.lua)
   FILE(GLOB DEFAULT_LUA_SCRIPTS "lua-scripts/*.lua")
   FILE(COPY ${DEFAULT_LUA_SCRIPTS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/elmersolver/lua-scripts/)
+ELSE()
+  LIST(APPEND solverlib_SOURCES Lua.F90)
 ENDIF()
 
 IF(HAVE_FETI4I)

@@ -595,9 +595,9 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
   This routine will call matc and return matc result
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL matc( char *cmd, char *Value, int *len )
+void STDCALLBULL matc_c( char *cmd, int *len, char *result, int *reslen )
 #else
-void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
+void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*reslen)
 #endif
 {
 #define MAXLEN 8192
@@ -625,25 +625,33 @@ void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
   start = 0;
   if (strncmp(ccmd,"nc:",3)==0) start=3;
 
-  ptr = (char *)mtc_domath(&ccmd[start]);
-  if ( ptr )
-  {
-    strcpy( Value, (char *)ptr );
-    *len = strlen(Value)-1; /* ignore linefeed! */
+  ptr  = (char *)mtc_domath(&ccmd[start]);
+  if (ptr) {
+    slen = strlen(ptr)-1; /* ignore linfeed! */
+  } else {
+    slen =  0;
+  }
 
-    if ( strncmp(Value, "MATC ERROR:",11)==0 || strncmp(Value,"WARNING:",8)==0 ) {
+  if(slen >= *reslen) {
+    fprintf( stderr, "MATC result too long %d %d\n", *len, *reslen );
+    exit(0);
+  } else if (slen>0) {
+    *reslen = slen;
+    strncpy(result, (const char*)ptr, slen);
+
+    if ( strncmp(result, "MATC ERROR:",11)==0 || strncmp(result,"WARNING:",8)==0 ) {
       if (start==0) {
-          fprintf( stderr, "Solver input file error: %s\n", Value );
+          fprintf( stderr, "Solver input file error: %s\n", result );
           fprintf( stderr, "...offending input line: %s\n", ccmd );
           exit(0);
       } else {
-        Value[0]=' ';
-        *len = 0;
+        result[0]=' ';
+        *reslen = 0;
         }
     }
   } else {
-    *len = 0;
-    *Value = ' ';
+    *reslen = 0;
+    *result = ' ';
   }
   free(ccmd);
 }

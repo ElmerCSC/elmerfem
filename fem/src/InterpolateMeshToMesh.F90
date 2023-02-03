@@ -178,6 +178,7 @@
       END IF
 
       ALLOCATE(BB(6,ParEnv % PEs))
+      CALL CheckBuffer(ParEnv % PEs*(6+MPI_BSEND_OVERHEAD))
       DO i=1,ParEnv % PEs
         IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
         proc = i-1

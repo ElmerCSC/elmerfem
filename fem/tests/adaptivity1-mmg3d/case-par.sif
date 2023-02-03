@@ -1,0 +1,153 @@
+! This is adaptivity test case using MMG3D library using API.
+!
+! P.R. 12.9.2022
+
+
+Header
+  Mesh DB "." "winkel"
+  Results Directory "results"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 5
+  Steady State Min Iterations = 5
+
+  Output Intervals = 1
+
+  Post File = "koe-d.vtu"
+  vtu: Output Directory = File "results"
+
+!  Max OUtput Partition = 32
+!  Output To File = True
+End
+
+Body 1
+  Material = 1
+  Equation = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Heat Conductivity = 1.0
+  Density = 7800.0
+End
+
+Body Force 1
+  Heat Source = 1.0
+End
+
+Boundary Condition 2
+  Name = "Natural"
+  Target Boundaries = 1
+End
+Boundary Condition 2
+  Name = "Natural"
+  Target Boundaries = 2 
+End
+Boundary Condition 3
+  Name = "Natural"
+  Target Boundaries = 3 
+End
+Boundary Condition 4
+  Name = "Dir"
+  Target Boundaries = 4 
+  Temperature = 0
+End
+Boundary Condition 5
+  Name = "Natural"
+  Target Boundaries = 5 
+End
+Boundary Condition 6
+  Name = "Natural"
+  Target Boundaries = 6
+End
+Boundary Condition 7 
+  Name = "Natural"
+  Target Boundaries = 7
+End
+Boundary Condition 8 
+  Name = "Dir"
+  Target Boundaries = 8
+  Temperature = 0
+End
+Boundary Condition 9
+  Name = "Natural"
+  Target Boundaries = 9
+End
+Boundary Condition 10
+  Name = "Natural"
+  Target Boundaries = 10
+End
+
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = MUMPS
+!  Linear System Scaling = false
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Bicgstabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+  Steady State Convergence Tolerance = 1.0e-8
+  Optimize Bandwidth = False
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.001
+
+  Adaptive Remesh Use MMG = Logical True
+  Adaptive Mesh Numbering = Logical False
+
+  Adaptive Max Depth = Integer 5
+  Adaptive Min Depth = Integer 10
+  Adaptive Output = Logical False
+
+  MMG Niter = Integer 5
+  MMG hgradreq = Real 4.0
+
+
+!  mmg debug mode = Logical True
+!  Adaptive Save Mesh = True
+  Adaptive Cut At Levelset = Logical False
+  Adaptive Rebalance = Logical True
+End
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+!  Parallel Reduce = True
+  Variable 1 = Temperature
+  Operator 1 = max
+  Operator 2 = int
+
+  Partition Numbering = Logical True
+  filename = f.dat
+End
+
+
+Solver 1 :: Reference Norm = 1.14880661E+04
+Solver 1 :: Reference Norm Tolerance = Real 0.01
+

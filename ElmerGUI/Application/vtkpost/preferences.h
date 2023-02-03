@@ -91,9 +91,24 @@ private slots:
   void okButtonClicked();
   void cancelButtonClicked();
   void applyButtonClicked();
-
+  void meshPointColorButtonClicked();
+  void meshEdgeColorButtonClicked();
+  void featureEdgeColorButtonClicked();
+  void meshPointToggled(bool);
+  void meshEdgeToggled(bool);
+  void featureEdgeToggled(bool);
 private:
+  QColor meshPointColor;
+  QColor meshEdgeColor;
+  QColor featureEdgeColor;
+  void setMeshPointColor(QColor);
+  void setMeshEdgeColor(QColor);
+  void setFeatureEdgeColor(QColor);
 
+public:
+  QColor getMeshPointColor();
+  QColor getMeshEdgeColor();
+  QColor getFeatureEdgeColor();
 };
 
 #endif // PREFERENCES_H

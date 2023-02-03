@@ -374,8 +374,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
-  CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
-
+  IF( Transient ) THEN
+    CALL Info('WhitneyAVSolver','Solving transient AV equations with edge elements',Level=5 )
+  ELSE
+    CALL Info('WhitneyAVSolver','Solving steady-state AV equations with edge elements',Level=5 )
+  END IF
+    
   SolverParams => GetSolverParams()
   pSolver => Solver
   

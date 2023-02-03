@@ -42,6 +42,7 @@
 #define SURFACE_H
 
 #include <QWidget>
+#include <vtkLookupTable.h>
 #include "ui_surface.h"
 
 class ScalarField;
@@ -82,11 +83,13 @@ private slots:
   void applyButtonClicked();
   void surfaceSelectionChanged(int);
   void keepLimitsSlot(int);
+  void nullColorButtonClicked();
 
 private:
   ScalarField *scalarField;
   int scalarFields;
-
+  QColor nullColor;
+  void setNullColor(QColor);
 };
 
 #endif // SURFACE_H

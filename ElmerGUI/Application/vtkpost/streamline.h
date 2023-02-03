@@ -107,11 +107,13 @@ private slots:
   void applyButtonClicked();
   void colorSelectionChanged(int);
   void keepLimitsSlot(int);
+  void nullColorButtonClicked();
 
 private:
   ScalarField *scalarField;
   int scalarFields;
-
+  QColor nullColor;
+  void setNullColor(QColor);
 };
 
 #endif // STREAMLINE_H

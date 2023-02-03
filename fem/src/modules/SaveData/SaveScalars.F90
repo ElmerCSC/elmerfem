@@ -140,6 +140,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t) :: ElementNodes
+
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, SaveCVS, &
@@ -1125,7 +1126,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           INTEGER :: NoVals
           LOGICAL :: GotEigen, GotEdge
           NoVals = 0
-          CALL EvaluteVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
+          CALL EvaluateVariableAtGivenPoint(NoVals,Vals,Mesh,Var,Element=Element,&
               LocalCoord=LocalCoords, GotEigen=GotEigen, GotEdge=GotEdge)
 
           DO i = 1, NoVals
@@ -1995,7 +1996,13 @@ CONTAINS
 
       IF(j > 0) THEN
         IF( IsParallel .AND. ASSOCIATED(nlist) ) THEN
-          IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          IF( ASSOCIATED( nlist(j) % Neighbours ) ) THEN
+            IF( SIZE( nlist ) >= j ) THEN
+              IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+            ELSE
+              PRINT *,'Nlist too small:',SIZE(nlist), j
+            END IF
+          END IF
         END IF
 
         IF(NoDofs <= 1) THEN
@@ -2230,7 +2237,7 @@ CONTAINS
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     LOGICAL :: Stat
-    TYPE(ValueList_t), POINTER :: MaskList
+    TYPE(ValueList_t), POINTER :: MaskList, Material
 
     INTEGER :: i,j,k,p,q,DIM,NoDofs,No
     
@@ -2300,25 +2307,12 @@ CONTAINS
         IF( .NOT. ListGetLogical( MaskList, MaskName, GotIt ) ) CYCLE
       END IF
 
-      !IF( NoDOFs == 1 ) THEN      
-      !  ElemVals(1:n) = Var % Values(Var % Perm(PermIndexes) )
-      !ELSE
-      !  ElemVals(1:n) = 0.0_dp
-      !  DO i=1,NoDOFs
-      !    ElemVals(1:n) = ElemVals(1:n) + Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+i )**2
-      !  END DO
-      !  ElemVals(1:) = SQRT(ElemVals(1:n))
-      !END IF
-        
-      
-      k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
-          'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
+      IF( GotCoeff ) Material => GetMaterial( Element, GotIt ) 
 
       IF( DiffEnergy ) THEN
         EnergyTensor = 0.0d0
         IF(GotCoeff) THEN
-          CALL ListGetRealArray( Model % Materials(k) % Values, &
-              TRIM(CoeffName), Pwrk, n, NodeIndexes )
+          CALL ListGetRealArray( Material, TRIM(CoeffName), Pwrk, n, NodeIndexes )
 
           IF ( SIZE(Pwrk,1) == 1 ) THEN
             DO i=1,3
@@ -2341,11 +2335,8 @@ CONTAINS
           END DO
         END IF
       ELSE
-        k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
-            'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
         IF(GotCoeff) THEN
-          EnergyCoeff = ListGetReal( Model % Materials(k) % Values, &
-              TRIM(CoeffName), n, NodeIndexes(1:n) )
+          EnergyCoeff = ListGetReal( Material, TRIM(CoeffName), n, NodeIndexes(1:n) )
         ELSE
           EnergyCoeff(1:n) = 1.0d0
         END IF
@@ -2387,11 +2378,11 @@ CONTAINS
 
         No = 0
         IF( DiffEnergy ) THEN
-          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw,&
+          CALL EvaluateVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw,&
               DoGrad=.TRUE.)
           Grad(1:dim) = Vals(1:dim)
         ELSE
-          CALL EvaluteVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw)
+          CALL EvaluateVariableAtGivenPoint(No,Vals,Mesh,Var,Element=Element,LocalCoord=uvw)
         END IF
 
         IF(No > 1) THEN

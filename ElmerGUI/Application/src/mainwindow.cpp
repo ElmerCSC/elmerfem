@@ -1364,11 +1364,7 @@ void MainWindow::newProjectSlot() {
 #endif
 
 #ifdef EG_VTK
-    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-    delete vtkPost;
-    vtkPost = new VtkPost(this);
-    vtkPostMeshUnifierRunning = false;
-    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+    vtkPost->hideAll();    
 #endif
 
 #ifdef EG_OCC
@@ -2623,6 +2619,10 @@ void MainWindow::loadProject(QString projectDirName) {
 
   progressBar->hide();
   progressLabel->hide();
+
+#ifdef EG_VTK
+  vtkPost->hideAll();
+#endif
 }
 
 // Helper function for load project
@@ -4957,6 +4957,7 @@ void MainWindow::colorizeBodySlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::backgroundColorSlot() {
   QColor newColor = QColorDialog::getColor(glWidget->backgroundColor, this);
+  if(!newColor.isValid()) return;
   glWidget->qglClearColor(newColor);
   glWidget->backgroundColor = newColor;
 }
@@ -4970,6 +4971,7 @@ void MainWindow::surfaceColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4983,6 +4985,7 @@ void MainWindow::edgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->edgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->edgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -4996,6 +4999,7 @@ void MainWindow::surfaceMeshColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->surfaceMeshColor, this);
+  if(!newColor.isValid()) return;
   glWidget->surfaceMeshColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5009,6 +5013,7 @@ void MainWindow::sharpEdgeColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->sharpEdgeColor, this);
+  if(!newColor.isValid()) return;
   glWidget->sharpEdgeColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5022,6 +5027,7 @@ void MainWindow::selectionColorSlot() {
   }
 
   QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  if(!newColor.isValid()) return;
   glWidget->selectionColor = newColor;
   glWidget->rebuildLists();
 }
@@ -5042,6 +5048,12 @@ void MainWindow::showTwodViewSlot() { twodView->show(); }
 //-----------------------------------------------------------------------------
 void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
+
+  if (glWidget->getMesh() == NULL) {
+    vtkPost->show();
+	return;
+  }
+  
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
   // Parallel solution:
@@ -7287,7 +7299,7 @@ void MainWindow::showaboutSlot() {
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Saeki Takayuki, Juha Ruokolainen, "
-         "Peter Råback and Sampo Sillanpaa 2008-2020</P>"
+         "Peter Råback and Sampo Sillanpaa 2008-2023</P>"
          "<P>Compiled on " __DATE__ "</P>"));
   msgBox.exec();
 }
@@ -7299,11 +7311,44 @@ void MainWindow::getStartedSlot() {
   msgBox.setIconPixmap( icon.pixmap(32));
   msgBox.setWindowTitle(tr("Get started with Elmer"));
   msgBox.setText(tr(
-	"<ls>"
-	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf>GetStartedElmer.pdf</a>"
-	"<li><a href=https://www.youtube.com/watch?v=XfHqaq2bbgU>Elmer FEM Webinar - Introduction to Elmer</a>"
-	"<li><a href=https://www.nic.funet.fi/index/elmer/doc/ElmerTutorials.pdf>ElmerGUI Tutorials</a>"
-	"</ls>"
+	"<P>"
+	"GetStartedElmer.pdf contains instructions for Windows users, "
+	"along with useful information for Linux users."
+	"</P>"
+	"<A HREF='//www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
+	"<P>"
+	"Download the full set of Elmer documentation from:"
+	"</P>"
+	"<A HREF='//www.nic.funet.fi/index/elmer/doc/'>//www.nic.funet.fi/index/elmer/doc/</A>"
+	"<P>"
+	"Be sure to review ElmerSolverManual.pdf and ElmerModelsManual.pdf<BR><BR>"
+	"Youtube has videos about Elmer and Elmer Webinars"
+	"</P>"
+	"<A HREF='//www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
+	"<P>"
+	"The Elmer users forum can be found at:"
+	"</P>"
+	"<A HREF='//http://www.elmerfem.org/forum/'>//http://www.elmerfem.org/forum/</A>"
+	"<P>"
+	"After having reviewed some of the above documents, and "
+	"trying out a few of the tutorials, feel free to post questions on "
+	"the forum.  To help get answers in a timely fashion, be sure to "
+	"post a minimal working example, including a sif file and "
+	"geometry file.  ElmerGUI project folders can be archived into zip "
+	"files or gz files.  The forum allows up to 3 attachments per "
+	"post and up to 1 Megabyte per post.<BR><BR>"
+	"Context Sensitive Help<BR><BR>"
+	"Some of the ElmerGUI menu items have context sensitive help text.  "
+	"Look for the button labeled 'Whatis'.  Clicking on the 'Whatis' button "
+	"will turn the cursor into either a red 'not' symbol or a small "
+	"question mark.  Move the cursor around the window and if context "
+	"help text is available for a data entry box, then the cursor will "
+	"change from a red 'not' symbol into the small question mark.  Single "
+	"click the left mouse button inside the data entry box to display the help text.<BR>"
+	"If the 'Whatis' button is not present in a menu window, then Qt also "
+	"offers an alternate method, where after clicking into a data "
+	"entry box, press 'shift F1'.  If help text is available, then it will be displayed."
+	"</P>"
   ));
   msgBox.exec();
 }
@@ -8074,7 +8119,7 @@ void MainWindow::checkAndLoadExtraSolvers(QFile *file) {
 }
 
 QVariant MainWindow::settings_value(const QString &key,
-                                    const QVariant &defaultValue) const {
+                                    const QVariant &defaultValue) {
   QString oldElmerGuiIniFilePath =
       QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
