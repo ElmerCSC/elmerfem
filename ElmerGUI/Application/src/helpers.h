@@ -45,7 +45,9 @@
 #include <QMatrix4x4>
 
 #if WITH_QT5 || WITH_QT6
-#define qreal float
+#define QREAL_OR_FLOAT float
+#else
+#define QREAL_OR_FLOAT qreal
 #endif
 
 class Helpers
@@ -54,10 +56,10 @@ class Helpers
   Helpers();
   ~Helpers();
 
-  void invertMatrix(const qreal *a, qreal *b);
-  void crossProduct(qreal *a, qreal *b, qreal *c);
-  qreal vlen(qreal *a);
-  void normalize(qreal *a);
+  void invertMatrix(const QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *b);
+  void crossProduct(QREAL_OR_FLOAT *a, QREAL_OR_FLOAT *b, QREAL_OR_FLOAT *c);
+  QREAL_OR_FLOAT vlen(QREAL_OR_FLOAT *a);
+  void normalize(QREAL_OR_FLOAT *a);
 
  private:
 

@@ -227,8 +227,8 @@ private:
 
   GLuint makeLists();
   
-  qreal matrix[16];
-  qreal invmatrix[16];
+  QREAL_OR_FLOAT matrix[16];
+  QREAL_OR_FLOAT invmatrix[16];
   void getMatrix();
   
   QPoint lastPos;
