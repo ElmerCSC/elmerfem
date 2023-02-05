@@ -41,6 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "generalsetup.h"
+#include <QWhatsThis>
 
 using namespace std;
 
@@ -64,7 +65,14 @@ GeneralSetup::GeneralSetup(QWidget *parent)
   ui.simulationFreeTextEdit->setMinimumHeight(3*fontHeight);
   ui.constantsFreeTextEdit->setMinimumHeight(3*fontHeight);  
 
-  ui.acceptButton->setIcon(QIcon::fromTheme("dialog-accept"));}
+  ui.acceptButton->setIcon(QIcon::fromTheme("dialog-accept"));
+
+  whatsThisButton = new QPushButton(tr("Whatis"));
+  whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
+  connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
+  whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  ui.buttonLayout->addWidget(whatsThisButton);   
+}
 
 GeneralSetup::~GeneralSetup()
 {
@@ -85,4 +93,9 @@ void GeneralSetup::readFromProject(QDomDocument *projectDoc, QDomElement *item)
 {
   projectIO.parentWidget = this;
   projectIO.readFromProject(projectDoc, item);
+}
+
+void GeneralSetup::whatsThisButtonClicked()
+{
+  QWhatsThis::enterWhatsThisMode();
 }
