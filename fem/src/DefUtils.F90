@@ -3397,6 +3397,11 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
+     ! Do one additional loop for the end
+     IF( ListGetLogical( Solver % Values,'Apply Limiter Finish',Found ) ) THEN
+       CALL DetermineSoftLimiter( Solver, After = .TRUE. )
+     END IF
+     
      ! One can run postprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
@@ -3577,7 +3582,7 @@ CONTAINS
 
     ! This could be somewhere else too. Now it is here for debugging.
     CALL SaveParallelInfo( Solver )
-    
+
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
 !------------------------------------------------------------------------------

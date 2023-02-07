@@ -1063,9 +1063,10 @@ CONTAINS
 !> Determine soft limiters set. This is called after the solution.
 !> and can therefore be active only on the 2nd nonlinear iteration round.
 !------------------------------------------------------------------------------
-   SUBROUTINE DetermineSoftLimiter( Solver )
+   SUBROUTINE DetermineSoftLimiter( Solver, After )
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver
+     LOGICAL, OPTIONAL :: After
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterV, LimitVar
@@ -1084,7 +1085,7 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter, DownStreamDirection
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove
+         DoAdd, DoRemove, DirectionActive, FirstTime, DownStreamRemove, AfterSmooth
      TYPE(Mesh_t), POINTER :: Mesh
      CHARACTER(*), PARAMETER :: Caller = 'DetermineSoftLimiter'
      
@@ -1108,23 +1109,36 @@ CONTAINS
        CoupledIter = NINT( iterV % Values(1) )
        IF( CoupledIter > 1 ) FirstTime = .FALSE.
      END IF
-          
+
+     AfterSmooth = .FALSE.
+     IF( PRESENT(After) ) AfterSmooth = After
+     
      ! Determine variable for computing the contact load used to determine the 
      ! soft limit set.
      !------------------------------------------------------------------------
-     CALL Info(Caller,'Determining soft limiter problems',Level=8)
-     LoadVar => VariableGet( Model % Variables, &
-         GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
-     CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
-
-     IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
-       CALL Fatal(Caller, &
-           'No Loads associated with variable '//GetVarName(Var) )
-       RETURN
-     END IF
-     LoadValues => LoadVar % Values
-
-
+     IF( AfterSmooth ) THEN
+       CALL Info(Caller,'Performing just a posteriori fixing',Level=8)
+       IF( Solver % Variable % NonlinConverged < 1) THEN
+         IF( ASSOCIATED( Solver % Variable % NonlinValues ) ) THEN
+           CALL Info(Caller,'Mean taken before aftersmoothing since system did not convergen') 
+           Solver % Variable % Values = &
+               0.5_dp * Solver % Variable % Values + &
+               0.5_dp * Solver % Variable % NonlinValues
+         END IF
+       END IF
+     ELSE
+       CALL Info(Caller,'Determining soft limiter problems',Level=8)
+       LoadVar => VariableGet( Model % Variables, &
+           GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
+       CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
+       
+       IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
+         CALL Fatal(Caller, &
+             'No Loads associated with variable '//GetVarName(Var) )
+       END IF
+       LoadValues => LoadVar % Values
+     END IF       
+    
      ! The variable to be constrained by the soft limiters
      FieldValues => Var % Values
      FieldPerm => Var % Perm
@@ -1514,7 +1528,11 @@ CONTAINS
                  LimitActive(ind) = .TRUE. 
                END IF
              ELSE IF( LimitActive( ind ) ) THEN
-               DoRemove = ( LimitSign * LoadValues(ind) > LimitSign * LoadEps ) 
+               IF(AfterSmooth) THEN
+                 DoRemove = .FALSE.
+               ELSE
+                 DoRemove = ( LimitSign * LoadValues(ind) > LimitSign * LoadEps ) 
+               END IF
                IF( DoRemove ) THEN
                  ! In the conservative mode only release nodes from contact set 
                  ! when they are adjacent to dofs that previously was not in the set.

@@ -535,7 +535,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         ElementNodes % z(1:n) = 0.0_dp
         IF (DIM == 2) THEN
            ElementNodes % y(1:n) = 0.0
-        ELSE IF(DIM .NE. 3) THEN
+        ELSE IF(DIM /= 3) THEN
            WRITE(Message,'(a,i0,a)')&
                 'It is not possible to compute free-surface problems in DIM=',&
                 DIM, ' dimensions. Aborting'
@@ -682,16 +682,13 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            !----------------------------------------------------------
            IF (.NOT.NormalFlux) THEN
               Flux(1,1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Accumulation Flux 1',Found)
-              IF (.NOT.Found) Flux(1,1:n) = 0.0_dp
               IF (DIM >= 2) THEN
                  Flux(2,1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Accumulation Flux 2',Found )
-                 IF (.NOT.Found) Flux(2,1:n) = 0.0_dp
               ELSE
                  Flux(2,1:n) = 0.0_dp
               END IF
               IF (DIM == 3) THEN
                  Flux(3,1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Accumulation Flux 3',Found )
-                 IF (.NOT.Found) Flux(3,1:n) = 0.0_dp
               ELSE
                  Flux(3,1:n) = 0.0_dp
               END IF
@@ -768,20 +765,21 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      at = CPUTime() - at
      st = CPUTime() 
      
-     PrevNorm = Solver % Variable % Norm
+     !PrevNorm = Solver % Variable % Norm
      
      Norm = DefaultSolve()
+
+     ! We no longer compute the relative change here locally. 
+     !IF ( PrevNorm + Norm /= 0.0_dp ) THEN
+     !  RelativeChange = 2.0_dp * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
+     !ELSE
+     !  RelativeChange = 0.0_dp
+     !END IF
      
-     IF ( PrevNorm + Norm /= 0.0_dp ) THEN
-       RelativeChange = 2.0_dp * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
-     ELSE
-       RelativeChange = 0.0_dp
-     END IF
-     
-     WRITE( Message, * ) 'Result Norm   : ',Norm
-     CALL Info( SolverName, Message, Level=4 )
-     WRITE( Message, * ) 'Relative Change : ',RelativeChange
-     CALL Info( SolverName, Message, Level=4 )
+     !WRITE( Message, * ) 'Result Norm   : ',Norm
+     !CALL Info( SolverName, Message, Level=4 )
+     !WRITE( Message, * ) 'Relative Change : ',RelativeChange
+     !CALL Info( SolverName, Message, Level=4 )
      
      !------------------------------------------
      ! special treatment for periodic boundaries
@@ -839,16 +837,21 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
          'Max/min values surface:', MAXVAL(FreeSurf(:)),'/',MINVAL( FreeSurf(:))
      CALL Info(SolverName,Message,Level=4)
 
-
-     !----------------------
+     !---------------------------------------------------
      ! check for convergence
-     !----------------------
-     IF ( RelativeChange < NonlinearTol ) THEN
+     ! We use library routine which is much more versatile. 
+     !-----------------------------------------------------
+     IF ( DefaultConverged() ) THEN
        WRITE(Message,'(a,i0,a)') 'Converged after', iter, ' iterations'
        CALL Info(SolverName,Message,Level=4)
        EXIT
      END IF
    END DO ! End loop non-linear iterations
+
+   ! This can include post smoother for limiters
+   CALL DefaultFinish()
+
+   
      !------------------------------------------------------------------------------
    CONTAINS
 
@@ -1035,9 +1038,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            DO p=1,n
              DO q=1,n
                DO i=1,dim
-                 !DO j=1,dim
-                   STIFF(p,q) = STIFF(p,q) + s * artdiffIP * dBasisdx(q,i) * dBasisdx(p,i)
-                 !END DO
+                 STIFF(p,q) = STIFF(p,q) + s * artdiffIP * dBasisdx(q,i) * dBasisdx(p,i)
                END DO
              END DO
            END DO
