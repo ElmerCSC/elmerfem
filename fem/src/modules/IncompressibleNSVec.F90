@@ -544,9 +544,9 @@ END BLOCK
           ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
           ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
           ViscTemp_h
-      REAL(KIND=dp), SAVE :: R
+      REAL(KIND=dp), SAVE :: R, NewtonRelax
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
+      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
       
@@ -599,6 +599,9 @@ END BLOCK
             END IF
             R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
             IF (.NOT.Found) R = 8.314_dp
+
+            NewtonRelax = ListGetCReal( CurrentModel % Solver % Values,&
+                'Viscosity Newton Relaxation Factor',GotRelax )
           END IF
         END IF
 
@@ -833,6 +836,10 @@ END BLOCK
 
       END SELECT
 
+      IF( ViscNewton ) THEN
+        IF(GotRelax) ViscDerVec(1:ngp) = NewtonRelax * ViscDerVec(1:ngp)
+      END IF
+      
 
     END FUNCTION EffectiveViscosityVec
       
