@@ -109,7 +109,7 @@ Boundary Condition 5
   Constraint Mode Potential = Integer 4
 End
 
-Solver 1 :: Reference Norm = 6.41331197E-01
+Solver 1 :: Reference Norm = 6.12662109E-01 !6.41331197E-01
 
 
 !End Of File
