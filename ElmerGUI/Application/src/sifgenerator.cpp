@@ -905,7 +905,7 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
       if( entry.elem.attribute("Widget", "") != "Edit") continue;
 
       QLineEdit *l = static_cast<QLineEdit*>(entry.widget);
-      QString varName = l->text().trimmed();
+      QString varName = l->text().simplified();
 
       if ( varName == "" ) continue;
 
@@ -929,8 +929,12 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
           if (i>1) varName = varName + " ";
           varName = varName + subVarName + ":" + QString::number(dofs);
 
-          if ( subDofSplit.count() > 1 )
+          if ( subDofSplit.count() > 1 ) {
             subVarName = subDofSplit.at(1).trimmed();
+            if ( subDofSplit.count() > 2 ) {
+               subVarName = subVarName + " " + subDofSplit.at(2);
+            }
+          }
         }
         varName = varName + "]";
         addSifLine( "  " + labelName + " = ", varName );
