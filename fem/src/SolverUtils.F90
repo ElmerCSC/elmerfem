@@ -14818,7 +14818,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     
     Var => Solver % Variable
     IF( SIZE(x) /= n ) THEN
-      CALL Fatal(Caller,'Conflicting sizes for matrix and variable!')
+      CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
     END IF
        
     NoModes = Solver % NumberOfConstraintModes 

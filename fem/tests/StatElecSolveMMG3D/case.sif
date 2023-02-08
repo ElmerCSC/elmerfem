@@ -1,13 +1,13 @@
 ! This is a test case for adaptivity + capacitance matrix computation.
 ! The generic "constraint modes" keywords are used so this is not very
-! user friendly yet. Remeshing is done with MMG2D library using API.
+! user friendly yet. Remeshing is done with MMG3D library using API.
 !
-! P.R. 12.1.2023
+! P.R. 8.2.2023
 
 Check Keywords Warn
 
 Header
-  Mesh DB "." "squares_inside_square"
+  Mesh DB "." "cubes_inside_cube"
   Results Directory "results"
 End
 
@@ -21,7 +21,7 @@ End
 
 Simulation
   Max Output Level = 7
-  Coordinate System = Cartesian 2D 
+  Coordinate System = Cartesian 3D 
   Simulation Type = Steady State
   Steady State Min Iterations = 3
   Steady State Max Iterations = 20
@@ -71,7 +71,7 @@ Solver 1
 
   Adaptive Mesh Refinement = True
   Adaptive Remesh = True
-  Adaptive Error Limit = 0.005
+  Adaptive Error Limit = 0.01
   Adaptive Remesh Use MMG = Logical True
   Adaptive Mesh Numbering = Logical False
 
@@ -83,33 +83,33 @@ Material 1
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
+  Target Boundaries(4) = 2 3 4 5 
 !  Constraint Mode Potential = Integer 0
   Potential = 0
 End
 
 Boundary Condition 2
-  Target Boundaries(4) = 5 6 7 8 
+  Target Boundaries(4) = 6 7 8 9
   Constraint Mode Potential = Integer 1
 End
 
 Boundary Condition 3
-  Target Boundaries(4) = 9 10 11 12
+  Target Boundaries(4) = 10 11 12 13
   Constraint Mode Potential = Integer 2
   Potential = 1 
 End
 
 Boundary Condition 4
-  Target Boundaries(4) = 13 14 15 16
+  Target Boundaries(4) = 14 15 16 17 
   Constraint Mode Potential = Integer 3
 End
 
 Boundary Condition 5
-  Target Boundaries(4) = 17 18 19 20
+  Target Boundaries(4) = 18 19 20 21 
   Constraint Mode Potential = Integer 4
 End
 
-Solver 1 :: Reference Norm = 5.20132525E-01
+Solver 1 :: Reference Norm = 6.41331197E-01
 
 
 !End Of File
