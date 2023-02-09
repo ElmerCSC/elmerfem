@@ -373,7 +373,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
-  CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
+  CALL Info('WhitneyAVSolver','',Level=6 )
+  CALL Info('WhitneyAVSolver','-------------------------------------------------',Level=6 )
   IF( Transient ) THEN
     CALL Info('WhitneyAVSolver','Solving transient AV equations with edge elements',Level=5 )
   ELSE
@@ -405,7 +406,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CoilCurrentName = 'CoilCurrent'
     ELSE
       UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
-      IF(Found) CoilCurrentName = 'CoilCurrent e'
+      IF(UseCoilCurrent) CoilCurrentName = 'CoilCurrent e'
     END IF
   END IF
   ElemCurrent = .FALSE.
@@ -422,7 +423,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CALL Fatal('WhitneyAVSolver','Elemental current requested but not found:'//TRIM(CoilCurrentName))
     END IF
   END IF
-
   
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")

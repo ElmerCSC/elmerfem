@@ -261,6 +261,10 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+  CALL Info('WhitneyAVHarmonicSolver','',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','------------------------------------------------',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','Solving harmonic AV equations with edge elements',Level=5 )
+   
   SolverParams => GetSolverParams()
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
@@ -284,10 +288,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
       CoilCurrentName = 'CoilCurrent'
     ELSE
       UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
-      IF(Found) CoilCurrentName = 'CoilCurrent e'
+      IF(UseCoilCurrent) CoilCurrentName = 'CoilCurrent e'
     END IF
   END IF
   ElemCurrent = .FALSE.
+
   IF( UseCoilCurrent ) THEN
     CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
     IF( ASSOCIATED( CoilCurrentVar ) ) THEN
