@@ -16,7 +16,7 @@ Simulation
 
   Timestep Intervals(1) = 9
   Output Intervals(1) = 1
-  Timestep Sizes(1) = Real $1.0/365.0 !day step
+  Timestep Sizes(1) = Real $1.0/365.0
 
   Initialize Dirichlet Conditions = Logical False !<- important, FrontExtent...
 
@@ -66,13 +66,13 @@ Solver 3
   Equation = "Remesh"
   Procedure = "ParallelRemesh" "ParallelRemesh"
 
-  RemeshMMG3D Hmin = Real 0.01
-  RemeshMMG3D Hausd = Real 0.05
-  RemeshMMG3D Hgrad = Real 2.0
-  RemeshMMG3D Hmax = Real 0.2
+  mmg Hmin = Real 0.01
+  mmg Hausd = Real 0.05
+  mmg Hgrad = Real 2.0
+  mmg Hmax = Real 0.2
 
-  RemeshMMG3D Anisotropic = Logical True
-  RemeshMMG3D Target Length(3) = Variable Coordinate 1
+  mmg Anisotropic = Logical True
+  mmg Target Length(3) = Variable Coordinate 1
     Real Procedure "ParallelRemesh" "MeshMetricAniso"
 
   MeshMetric Max Distance = Real 0.3

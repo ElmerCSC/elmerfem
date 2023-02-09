@@ -16985,9 +16985,17 @@ CONTAINS
           IF(parent2 /= 0) parent2 = NewMesh % Elements(parent2) % GElementIndex
        END IF
 
+       IF(.NOT. ASSOCIATED(NewMesh % Elements(k) % BoundaryInfo ) ) THEN
+         CALL Fatal('WriteMeshToDisk2','BoundaryInfo not associated for element: '//I2S(k))
+       END IF
+       
        Constraint = NewMesh % Elements(k) % BoundaryInfo % Constraint
-       BList => ListGetIntegerArray( Model % BCs(Constraint) % Values, &
-            'Target Boundaries', Found )
+
+       Found = .FALSE.
+       IF(Constraint > 0 .AND. Constraint <= Model % NumberOfBCs ) THEN
+         BList => ListGetIntegerArray( Model % BCs(Constraint) % Values, &
+             'Target Boundaries', Found )
+       END IF
        IF(Found) THEN
           IF(SIZE(BList) > 1) THEN
              CALL WARN("WriteMeshToDisk2",&
