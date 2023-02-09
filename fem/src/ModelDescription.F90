@@ -1635,7 +1635,7 @@ CONTAINS
 
       INTEGER(KIND=AddrInt) :: Proc
 
-      INTEGER :: i,j,j0,k,k2,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
+      INTEGER :: i,j,j0,k,k2,l,n,slen,str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, partag, iostat
       LOGICAL :: disttag
       
@@ -1836,6 +1836,7 @@ CONTAINS
                        END IF
                        Stat = ReadAndTrim( InFileUnit,str,Echo) 
                        IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
+
                        k = 1
                        slen = LEN_TRIM(str)
                      END IF
@@ -1861,9 +1862,19 @@ CONTAINS
                      END IF
                    END DO
                  END DO
-                 
+                
                  IF(k2 < slen ) THEN
-                   CALL Fatal(Caller,'There is trailing stuff for keyword "'//TRIM(Name)//'": '//str(k2+1:slen))
+                   ! Determine the 1st trailing non-white character
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                     END IF
+                   END IF
                  END IF
                   
 11               IF ( .NOT. ScanOnly ) THEN
@@ -1966,7 +1977,16 @@ CONTAINS
                    END DO
                    
                    IF(k2 < slen ) THEN
-                     CALL Fatal(Caller,'There is trailing stuff for keyword "'//TRIM(Name)//'": '//str(k2+1:slen))
+                     k2 = k2+1
+                     DO WHILE( k2 < slen )
+                       IF ( str(k2:k2) /= ' ') EXIT
+                       k2 = k2 + 1
+                     END DO
+                     IF( k2 < slen ) THEN
+                       IF(str(k2:slen) /= 'end') THEN
+                         CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       END IF
+                     END IF
                    END IF
                    
                  END DO
@@ -2064,6 +2084,7 @@ CONTAINS
                      END IF
                      Stat = ReadAndTrim(InFileUnit,str,Echo)
                      IF ( .NOT. Stat) CALL SyntaxError( Section,Name,str )
+
                      k = 1
                      slen = LEN_TRIM(str)
                    END IF
@@ -2088,10 +2109,19 @@ CONTAINS
                      END IF
                    END IF
                  END DO
-
+                 
                  IF(k2 < slen ) THEN
-                   CALL Fatal(Caller,'There is trailing stuff for keyword "'//TRIM(Name)//'": '//str(k2+1:slen))
-                 END IF
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                     END IF
+                   END IF
+                 END IF                 
 
                  IF ( .NOT. ScanOnly ) CALL ListAddIntegerArray( List,Name,N1,IValues )
                ELSE
@@ -2110,9 +2140,16 @@ CONTAINS
                      CALL Fatal(Caller,'Non-numeric characters for integer for keyword "'&
                          //TRIM(Name)//'": '//str(k:k2))
                    END IF
-                   IF(k2 < slen ) THEN
-                     CALL Fatal(Caller,'There is trailing stuff for keyword "'//TRIM(Name)//'": '//str(k2+1:slen))
-                   END IF                   
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                     END IF
+                   END IF
                  ELSE
                    READ( str(k:k2),*,iostat=iostat ) i 
                    IF( iostat /= 0 ) THEN
