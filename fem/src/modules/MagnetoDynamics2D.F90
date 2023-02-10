@@ -152,8 +152,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
   TYPE(TabulatedBasisAtIp_t), POINTER, SAVE :: BasisFunctionsAtIp(:)=>NULL()
   LOGICAL, SAVE :: BasisFunctionsInUse = .FALSE.
-  LOGICAL :: UseTorqueTol
-  REAL(KIND=dp) :: TorqueTol, TorqueErr, PrevTorque, Torque 
+  LOGICAL :: UseTorqueTol, UseNewtonRelax
+  REAL(KIND=dp) :: TorqueTol, TorqueErr, PrevTorque, Torque, NewtonRelax
   
 !------------------------------------------------------------------------------
 
@@ -189,7 +189,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
-
+  NewtonRelax = GetCReal(SolverParams,'Nonlinear System Newton Relaxation',UseNewtonRelax)
+    
   TorqueTol = GetCReal(SolverParams,'Nonlinear System Torque Tolerance',UseTorqueTol)
   IF(UseTorqueTol) CALL Info(Caller,'Using additional nonlinear tolerance for torque',Level=10)
   Torque = 0.0_dp
@@ -1010,6 +1011,7 @@ CONTAINS
     END DO
 
     IF (HBcurve .AND. NewtonRaphson) THEN
+      IF(UseNewtonRelax) JAC = JAC * NewtonRelax
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POT)
     END IF
