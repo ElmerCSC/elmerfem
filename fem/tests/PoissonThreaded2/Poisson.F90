@@ -70,7 +70,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
   DO col=1,nColours
     !$OMP SINGLE
-    CALL Info('PoissonSolve','Assembly of colour: '//TRIM(I2S(col)),Level=10)
+    CALL Info('PoissonSolve','Assembly of colour: '//I2S(col),Level=10)
     nactive = GetNOFActive(Solver) ! Pick the next available colour
     !$OMP END SINGLE
 

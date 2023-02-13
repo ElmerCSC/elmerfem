@@ -63,10 +63,12 @@ MODULE SParIterComm
   INTEGER :: PMMGPARAM_hmax = PMMG_DPARAM_hmax
   INTEGER :: PMMGPARAM_iso = PMMG_IPARAM_iso
   INTEGER :: PMMGPARAM_hgrad = PMMG_DPARAM_hgrad
+  INTEGER :: PMMGPARAM_hgradreq = PMMG_DPARAM_hgradreq
   INTEGER :: PMMGPARAM_angle = PMMG_IPARAM_angle
   INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
   INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
   INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
+  INTEGER :: PMMGPARAM_niter = PMMG_IPARAM_niter
   INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
   INTEGER :: PMMGPARAM_APImode = PMMG_IPARAM_APImode
   INTEGER :: PMMGPARAM_globalnum = PMMG_IPARAM_globalNum
@@ -169,7 +171,7 @@ CONTAINS
 #else
 
 ! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
-! caused problems. However, likelyhood of this having to be used under
+! caused problems. However, likelihood of this having to be used under
 ! Windows is close to zero. 
 #ifndef WIN32
     CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)

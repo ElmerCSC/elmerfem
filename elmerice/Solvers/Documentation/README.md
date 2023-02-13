@@ -38,7 +38,7 @@ where *[Name_Of_Model]* can be Stokes, SSA, Thickness (to come...).
 
 A table showing the old solvers and their replacement can be found 
 [here](https://cloud.univ-grenoble-alpes.fr/index.php/s/AHCwsgKgjWimqdG).
-A fatal message is now called in *old* solvers to advertise for the replacements and theses solvers will be removed in future releases.
+A fatal message is now called in *old* solvers to advertise for the replacements and these solvers will be removed in future releases.
 
 Here is the list of supported and documented solvers:
  

@@ -1,5 +1,5 @@
 # Test XIOS
-#  => Generate a netcdf output file using XIOS then check that we can read the file and that the conectivity is correct 
+#  => Generate a netcdf output file using XIOS then check that we can read the file and that the connectivity is correct 
 #  => XIOS configiurations files: iodef.xml and context_elmerice.xml
 # 
 To run the test:
@@ -7,7 +7,7 @@ To run the test:
 2. Generate the mesh for N partitions:
 	ElmerGrid 1 2 rectangle -metis N
 3. Run the test:
-	- XIOS atached mode:
+	- XIOS attached mode:
 		mpirun -np N ElmerSolver_mpi Case.sif
 	- XIOS detached mode
 		mpirun -np N ElmerSolver_mpi Case.sif : -np N2 xios_server

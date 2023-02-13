@@ -74,7 +74,7 @@ Solver 1
 
   Linear System Complex = True
 
-! The above makes all these keywords obsolite:
+! The above makes all these keywords obsolete:
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True

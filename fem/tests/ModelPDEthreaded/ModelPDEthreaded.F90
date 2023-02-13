@@ -55,7 +55,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     DO col=1,nColours
 
        !$OMP SINGLE
-       CALL Info('ModelPDEthreaded','Assembly of colour: '//TRIM(I2S(col)),Level=10)
+       CALL Info('ModelPDEthreaded','Assembly of colour: '//I2S(col),Level=10)
        Active = GetNOFActive(Solver)
        !$OMP END SINGLE
 
@@ -88,7 +88,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
        !$OMP SINGLE
-       CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+       CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//I2S(col),Level=10)
        Active = GetNOFBoundaryActive(Solver)
        !$OMP END SINGLE
 
@@ -224,8 +224,8 @@ CONTAINS
     
     Velo = 0._dp
     DO i=1,dim
-      ! Velo(1:n,i)=GetReal(Material,'convection velocity '//TRIM(I2S(i)),Found)
-      CALL GetRealValues(Material, 'convection velocity '//TRIM(I2S(i)), Coeffs(1:n,VELO_IND+i-1), &
+      ! Velo(1:n,i)=GetReal(Material,'convection velocity '//I2S(i),Found)
+      CALL GetRealValues(Material, 'convection velocity '//I2S(i), Coeffs(1:n,VELO_IND+i-1), &
            Found, UElement=Element)
       IF (.NOT. Found) Coeffs(1:n,VELO_IND+i-1) = 0._dp
     END DO

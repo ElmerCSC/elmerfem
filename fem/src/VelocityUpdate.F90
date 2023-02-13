@@ -63,8 +63,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
        BlockPreconditioning, ConstantBulkMatrix, ConstantBulkMatrixInUse
   TYPE(Element_t), POINTER :: Element
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: NonlinearIterationMethod, ConvectionForm, str
-
+  CHARACTER(:), ALLOCATABLE :: NonlinearIterationMethod, ConvectionForm, str
 
   INTEGER :: i, j, k, n, nb, nd, t, istat, dim, active, NonlinearIter, iter, &
        CurrentDoneTime = 0

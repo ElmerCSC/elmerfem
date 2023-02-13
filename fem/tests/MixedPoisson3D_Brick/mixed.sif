@@ -54,7 +54,7 @@ Solver 1
   ! constructing the piecewise constant approximation of the
   ! variable of the Poisson equation in the standard form.
   !-------------------------------------------------------
-  Element = "n:1 b:25 f:4"
+  Element = "n:1 b:25 -quad_face b:4"
   Optimize Bandwidth = True
   Bubbles in Global System = Logical True
   Linear System Solver = Iterative

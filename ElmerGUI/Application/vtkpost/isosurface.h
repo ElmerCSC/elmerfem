@@ -91,11 +91,13 @@ private slots:
   void colorSelectionChanged(int);
   void keepContourLimitsSlot(int);
   void keepColorLimitsSlot(int);
+  void nullColorButtonClicked();
 
 private:
   ScalarField *scalarField;
   int scalarFields;
-
+  QColor nullColor;
+  void setNullColor(QColor);
 };
 
 #endif // ISOSURFACE_H

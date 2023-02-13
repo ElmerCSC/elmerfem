@@ -4891,7 +4891,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
 end:
   printf("Read commands from a file\n");
-
+  fclose(in);
   return(0);
 }
 
@@ -5494,7 +5494,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
    in Elmer calculations. 
    */
 {
-  int noknots,noelements,material,sumsides,elemtype,fail,cdstat;
+  int noknots,noelements,material,sumsides,elemtype,fail,cdstat,bcdim;
   int sideelemtype,conelemtype,nodesd1,nodesd2,newtype;
   int i,j,k,l,bulktypes[MAXELEMENTTYPE+1],sidetypes[MAXELEMENTTYPE+1];
   int alltypes[MAXELEMENTTYPE+1],tottypes;
@@ -5613,9 +5613,13 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
       fprintf(out,"%d %d %d %d ",
 	      sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i]);
       fprintf(out,"%d",sideelemtype);
-      
-      if(bound[j].types[i] < MAXBCS) usedbc[bound[j].types[i]] += 1;
 
+      k = bound[j].types[i];
+      if(k < MAXBCS) {	
+	bcdim = GetElementDimension(sideelemtype);
+	usedbc[k] = MAX(usedbc[k],bcdim+1);
+      }
+	
       sidetypes[sideelemtype] += 1;
       nodesd1 = sideelemtype%100;
       for(l=0;l<nodesd1;l++)
@@ -5676,12 +5680,20 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     }     
     if(data->boundarynamesexist) {
       fprintf(out,"! ----- names for boundaries -----\n");
-      for(i=1;i<MAXBCS;i++) 
+      for(i=1;i<MAXBCS;i++) 	
 	if(usedbc[i]) {
-	  if(data->boundaryname[i])
+	  bcdim = usedbc[i]-1;
+	  if(data->boundaryname[i]) 
 	    fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
-	  else
-	    fprintf(out,"$ bc%d = %d\n",i,i);	    	    
+	  else if(bcdim == 2) { 
+	    fprintf(out,"$ surf_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 1) {
+	    fprintf(out,"$ line_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 0) {
+	    fprintf(out,"$ node_bc%d = %d\n",i,i);
+	  }
 	}
     }
     fclose(out);

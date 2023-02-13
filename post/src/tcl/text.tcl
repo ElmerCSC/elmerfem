@@ -56,7 +56,7 @@ set txt_fontname ""
 #
 # Create a text editor toplevel window for a user to use.
 # There can be several editors running at any time provided 
-# a different name for editor is given at each invokation.
+# a different name for editor is given at each invocation.
 #
 # 12 Sep 1995
 #

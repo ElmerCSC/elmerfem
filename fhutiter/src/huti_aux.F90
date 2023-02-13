@@ -85,7 +85,7 @@ contains
   !*************************************************************************
   !*************************************************************************
   !
-  ! Construct LU decompostion of the given matrix and solve LUu = v
+  ! Construct LU decomposition of the given matrix and solve LUu = v
   !
 
   subroutine  huti_slusolve  ( n, lumat, u, v )
@@ -215,7 +215,7 @@ contains
   !*************************************************************************
   !*************************************************************************
   !
-  ! Construct LU decompostion of the given matrix and solve LUu = v
+  ! Construct LU decomposition of the given matrix and solve LUu = v
   !
 
   subroutine  huti_dlusolve  ( n, lumat, u, v )
@@ -346,7 +346,7 @@ contains
   !*************************************************************************
   !*************************************************************************
   !
-  ! Construct LU decompostion of the given matrix and solve LUu = v
+  ! Construct LU decomposition of the given matrix and solve LUu = v
   !
 
   subroutine  huti_clusolve  ( n, lumat, u, v )
@@ -477,7 +477,7 @@ contains
   !*************************************************************************
   !*************************************************************************
   !
-  ! Construct LU decompostion of the given matrix and solve LUu = v
+  ! Construct LU decomposition of the given matrix and solve LUu = v
   !
 
   subroutine  huti_zlusolve  ( n, lumat, u, v )

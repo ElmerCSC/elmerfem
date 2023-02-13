@@ -118,7 +118,7 @@ SUBROUTINE IPVariableInit(Model, Solver, Timestep, TransientSimulation )
       IP = GaussPointsAdapt( Element )
       IF( Element % ElementIndex == 1 ) THEN
         CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
-            //TRIM(I2S(IP % n)),Level=7)
+            //I2S(IP % n),Level=7)
       END IF
       
       CALL GetElementNodes( Nodes )
@@ -484,7 +484,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
     END IF
-    CALL INFO(SolverName,'Exporting '//TRIM(I2S(NumberOfExportedValues))//' values',Level=4)
+    CALL INFO(SolverName,'Exporting '//I2S(NumberOfExportedValues)//' values',Level=4)
   END IF
   
   Active = GetNOFActive()
@@ -1032,7 +1032,7 @@ CONTAINS
       
       ! unfrozen pore-water content at IP
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson') ! classic simpified Anderson model
+      CASE('anderson') ! classic simplified Anderson model
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
@@ -1360,7 +1360,7 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)      
+          //I2S(IP % n),Level=7)      
     END IF
 
     DO t=1,IP % n

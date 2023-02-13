@@ -91,7 +91,7 @@ Material 1
 End
 
 Boundary Condition 1
-  Target Boundaries(1) = 1 2
+  Target Boundaries(1) = 1 
   Test Flux = Real -1.0
   consa = Logical True
 End

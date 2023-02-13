@@ -19,6 +19,8 @@ Simulation
   Post File = mortar.vtu
 
   Simulation Timing = Logical True
+  Calculate Mesh Pieces = Logical True
+  Desired Mesh Pieces = Integer 3
 End 
 
 Constants

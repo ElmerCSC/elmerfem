@@ -5,7 +5,7 @@
 
     <field_definition enabled=".TRUE." >
   
-     <!-- id corespond to var names and should be lower case!! -->
+     <!-- id correspond to var names and should be lower case!! -->
       <field id="varelem"  name="MyElemVar"   standard_name="elem_var"   unit="m" grid_ref="GridCells" operation="average" />
       <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" operation="instant"> this/2 </field> 
       <field id="varnode velocity"  name="MyVelocity"  standard_name="nodal_var_velocity"   unit="m" grid_ref="GridNodes" operation="average" />
@@ -21,14 +21,14 @@
     <file_definition type="one_file" par_access="collective" output_freq="1y" enabled=".TRUE.">
 
 	 <!-- Rq sync_freq is here to force writing for the test; and should not be set in general -->
-	 <!-- Rq variables have their own time variable (instant or centered); but might be usefull to set the default time_counter to time -->
+	 <!-- Rq variables have their own time variable (instant or centered); but might be useful to set the default time_counter to time -->
          <file id="file" name="output_ugrid" convention="UGRID" time_counter_name="time" time_counter="instant" sync_freq="1ts" time_units="days" >
 	        <!-- Rq. mesh info group is defined by default internally -->	    
 		<field_group group_ref="mesh_info" />		    
 		<field field_ref="varnode" />
 		<field field_ref="varnode velocity" />
 		<field field_ref="varelem" />
-                <!-- global attribute definition ... All varaibles with this id will be updated to contain both rev. and vers. numbers -->
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
 		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
 	</file>
 
@@ -36,14 +36,14 @@
 	    ncatted -a topology_dimension,mesh2D,o,i,1 output_edge.nc -->
        <file id="output_edge" name="output_edge" convention="UGRID"  type="one_file" output_freq="1y" time_counter_name="time" time_counter="instant"   time_units="days">
                <field field_ref="boundary_condition" />
-                <!-- global attribute definition ... All varaibles with this id will be updated to contain both rev. and vers. numbers -->
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
                <variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
        </file>
 
        <file id="output_Scalar" name="output_Scalar" type="one_file" output_freq="1y" time_units="days" >
 	       <field field_ref="time" />
 	       <field field_ref="area"/>
-                <!-- global attribute definition ... All varaibles with this id will be updated to contain both rev. and vers. numbers -->
+                <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
 		<variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
        </file>
 

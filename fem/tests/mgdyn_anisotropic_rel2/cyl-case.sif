@@ -20,7 +20,7 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = steady state
 
-  Timestep Sizes = 0.00101/8
+  Timestep Sizes = 0.00101
   Timestep Intervals = 50
   !Timestep Intervals = 1
 

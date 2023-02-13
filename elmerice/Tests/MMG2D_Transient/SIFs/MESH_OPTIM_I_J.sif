@@ -56,7 +56,7 @@ Initial Condition 1
 ! h0 will be: 
 !  - latest value of h if last step of the initialisation loop
  h0 = Equals h
-!  - overwrited if "ReloadSolution" solver is executed
+!  - overwritten if "ReloadSolution" solver is executed
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

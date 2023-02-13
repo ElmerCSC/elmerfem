@@ -1,6 +1,41 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Authors: Juha Ruokolainen, Peter Råback, Joe Todd, Mika Malinen
+! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *
+! ******************************************************************************/
+
 
 !------------------------------------------------------------------------------
-!> Map results from mesh to mesh. The from-Mesh is stored in an octree from 
+!> Map results from mesh to mesh. The from-mesh is stored in an octree from 
 !> which it is relatively fast to find the to-nodes. When the node is found
 !> interpolation is performed. Optionally there may be an existing projector
 !> that speeds up the interpolation.
@@ -77,7 +112,7 @@
 
          IF( InfoActive(20) ) THEN
            n = COUNT(.NOT. FoundNodes )
-           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//TRIM(I2S(n)))
+           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
                     
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
@@ -106,7 +141,7 @@
       n = COUNT(.NOT.FoundNodes); dn = n
 
       IF( InfoActive(20) ) THEN
-        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//TRIM(I2S(n)))
+        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
       
       AL = .FALSE.
@@ -121,7 +156,7 @@
 
       ! No use to continue even in parallel, since the OldMeshes are all the same!
       IF( OldMesh % SingleMesh ) THEN
-        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//TRIM(I2S(NINT(dn))))
+        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//I2S(NINT(dn)))
         RETURN
       END IF
 
@@ -143,6 +178,7 @@
       END IF
 
       ALLOCATE(BB(6,ParEnv % PEs))
+      CALL CheckBuffer(ParEnv % PEs*(6+MPI_BSEND_OVERHEAD))
       DO i=1,ParEnv % PEs
         IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
         proc = i-1
@@ -470,7 +506,7 @@
 
       n = COUNT(.NOT. FoundNodes )           
       CALL Info('InterpolateMeshToMesh',&
-	'Number of unfound nodes in all partitions: '//TRIM(I2S(n)),Level=6)
+	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
       
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
       DEALLOCATE( FoundNodes ) 
@@ -1187,7 +1223,7 @@ CONTAINS
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
   ! for the reduced basis DG. Even there it works only at intersections
-  ! if there is an additinal mask that is used to pick the correct element.
+  ! if there is an additional mask that is used to pick the correct element.
   ! For generic cases we would need a table to all DG indexes. 
   !------------------------------------------------------------------------
   SUBROUTINE CreateOneDGIndex()
@@ -1697,6 +1733,12 @@ CONTAINS
       AllocationsDone = .TRUE.
     END IF
 
+    IF(nip == 0) THEN
+      CALL Warn(Caller,'No IP variables given')
+      fdg(1:ndg) = 0.0_dp
+      RETURN
+    END IF
+    
     n = Element % TYPE % NumberOfNodes 
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 

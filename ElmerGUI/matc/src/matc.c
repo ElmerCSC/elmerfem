@@ -55,7 +55,7 @@
 |FUNCTION NAME(...) params ...
 |
 $  usage of the function and type of the parameters
-?  explane the effects of the function
+?  explain the effects of the function
 =  return value and the type of value if not of type int
 @  globals effected directly by this routine
 !  current known bugs or limitations
@@ -843,7 +843,7 @@ VARIABLE *com_apply(ptr) VARIABLE *ptr;
 
 void mem_free(void *mem)
 /*======================================================================
-?  Free memory given by argument, and unlink it from alloction list.
+?  Free memory given by argument, and unlink it from allocation list.
 |  Currently FREEMEM(ptr) is defined to be mem_free(ptr).
 |
 &  free()

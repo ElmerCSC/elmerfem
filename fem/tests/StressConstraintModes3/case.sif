@@ -5,7 +5,7 @@
 !
 ! This is quite simuilar to "StressConstraintModes" except
 ! the geometry is a cube and here also Craig-Bampton model 
-! reduction is applied afterwords.
+! reduction is applied afterwards.
 !
 ! P.R. 16.3.2016
 !-------------------------------------------------

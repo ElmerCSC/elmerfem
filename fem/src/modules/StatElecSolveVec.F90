@@ -56,17 +56,19 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_init'
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found, CalculateElemental, CalculateNodal
+  LOGICAL :: Found, CalculateElemental, CalculateNodal, PostActive
   INTEGER :: dim
    
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
   CALL ListAddNewString( Params,'Variable','Potential')
+
+  PostActive = .FALSE.
   
   CalculateElemental = ListGetLogical( Params,'Calculate Elemental Fields',Found )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
-  
+
   IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
     CalculateNodal = .TRUE.
   END IF
@@ -78,58 +80,72 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
         'Electric Energy Density' )
+    PostActive = .TRUE.
   END IF
-  
+
   IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Elecric Flux e[Elecric Flux e:'//TRIM(I2S(dim))//']' )
+        '-dg Elecric Flux e[Elecric Flux e:'//I2S(dim)//']' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Elecric Flux[Elecric Flux:'//TRIM(I2S(dim))//']' )       
+        'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
+    PostActive = .TRUE.
   END IF
-  
+
   IF( ListGetLogical(Params,'Calculate Electric Field',Found) ) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Electric Field e[Electric Field e:'//TRIM(I2S(dim))//']' )
+        '-dg Electric Field e[Electric Field e:'//I2S(dim)//']' )
     IF( CalculateNodal ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Field[Electric Field:'//TRIM(I2S(dim))//']' )
+        'Electric Field[Electric Field:'//I2S(dim)//']' )
+    PostActive = .TRUE.
   END IF
 
   ! Nodal fields that may directly be associated as nodal loads
   IF (ListGetLogical(Params,'Calculate Nodal Energy',Found))  THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
         'Nodal Energy Density' )
+    PostActive = .TRUE.
   END IF
   IF( ListGetLogical(Params,'Calculate Nodal Flux',Found) ) THEN
     CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Nodal Electric Flux[Nodal Electric Flux:'//TRIM(I2S(dim))//']' )
+        'Nodal Electric Flux[Nodal Electric Flux:'//I2S(dim)//']' )
+    PostActive = .TRUE.
   END IF
 
   ! These use one flag to call library features to compute automatically
   ! a capacitance matrix.
   IF( ListGetLogical(Params,'Calculate Capacitance Matrix',Found ) ) THEN
+    CALL Info('StatElecSolver_init','Using Constraint Modes functionality for Capacitance Matrix')
     CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
-    CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
-        'CapacitanceMatrix.dat',.FALSE.)
+    IF( ListCheckPresent( Params,'Capacitance Matrix Filename') ) THEN
+      CALL ListRename( Params,'Capacitance Matrix Filename',&
+          'Constraint Modes Fluxes Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+          'CapacitanceMatrix.dat',.FALSE.)
+    END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')
+    CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    CALL Info('StatElecSolver_init','Suppressing bandwidth optimization in Capacitance Matrix computation!')
   END IF
+
+  CALL ListAddInteger( Params,'Time Derivative Order', 0 )
   
-   CALL ListAddInteger( Params,'Time Derivative Order', 0 )
-
-   CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
-   CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
-
-
-   
- END SUBROUTINE StatElecSolver_Init
+  CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
+  
+  ! If no fields need to be computed do not even call the _post solver!
+  CALL ListAddLogical(Params,'PostSolver Active',PostActive)
+  
+END SUBROUTINE StatElecSolver_Init
 
 
 !-----------------------------------------------------------------------------
@@ -161,11 +177,15 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   CALL Info(Caller,'------------------------------------------------')
   CALL Info(Caller,'Solving static electric field for insulators')
 
-  CALL DefaultStart()
-
   Mesh => GetMesh()
   Params => GetSolverParams()
   
+  IF( ListGetLogical( Params,'Follow P Curvature', Found )  ) THEN
+    CALL FollowCurvedBoundary( Model, Mesh, .TRUE. ) 
+  END IF
+      
+  CALL DefaultStart()
+
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian ) 
   dim = CoordinateSystemDimension() 
 
@@ -216,7 +236,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     DO col=1,nColours
       
       !$OMP SINGLE
-      CALL Info( Caller,'Assembly of colour: '//TRIM(I2S(col)),Level=15)
+      CALL Info( Caller,'Assembly of colour: '//I2S(col),Level=15)
       Active = GetNOFActive(Solver)
       !$OMP END SINGLE
 
@@ -254,7 +274,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
       !$OMP SINGLE
-      CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !$OMP END SINGLE
 
@@ -537,6 +557,7 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
+    
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -680,7 +701,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   CalcField = ANY( PostVars(7:8) % HaveVar ) 
 
   n = COUNT( PostVars(1:8) % HaveVar )
-  CALL Info(Caller,'Number of '//TRIM(I2S(n))//' postprocessing fields',Level=8)
+  CALL Info(Caller,'Number of '//I2S(n)//' postprocessing fields',Level=8)
     
   ! Only create the nodal weights if we need to scale some nodal field
   NeedScaling = .FALSE.
@@ -688,7 +709,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     IF( .NOT. PostVars(i) % HaveVar ) CYCLE
     IF( PostVars(i) % NodalField ) CYCLE
     IF( PostVars(i) % Var % TYPE == Variable_on_nodes ) THEN
-      CALL Info(Caller,'Creating a weighting for scaling purposes from '//TRIM(I2S(i)),Level=10)
+      CALL Info(Caller,'Creating a weighting for scaling purposes from '//I2S(i),Level=10)
       NeedScaling = .TRUE.
       WeightPerm => PostVars(i) % Var % Perm 
       ALLOCATE( WeightVector( MAXVAL( WeightPerm ) ) )
@@ -737,10 +758,10 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
       DO i = 1, n
         IF( PotVol(i) < EPSILON( PotVol(i) ) ) CYCLE
         PotAve = PotInteg(i) / PotVol(i)
-        WRITE( Message,'(A,ES12.5)') 'Average body'//TRIM(I2S(i))//' potential: ',PotAve
+        WRITE( Message,'(A,ES12.5)') 'Average body'//I2S(i)//' potential: ',PotAve
         CALL Info(Caller,Message,Level=7)
         CALL ListAddConstReal( Model % Simulation,&
-            'res: Average body'//TRIM(I2S(i))//' potential',PotAve)
+            'res: Average body'//I2S(i)//' potential',PotAve)
       END DO
     END BLOCK
   END IF
@@ -889,10 +910,11 @@ CONTAINS
     INTEGER :: pivot(n),ind(n),i,j,m,dofs,dofcount,FieldType,Vari
     REAL(KIND=dp) :: x(n)
     TYPE(Variable_t), POINTER :: pVar
-    LOGICAL :: LocalSolved
+    LOGICAL :: LocalSolved, Erroneous
 !------------------------------------------------------------------------------
     
-    CALL LUdecomp(A,n,pivot)
+    CALL LUdecomp(A,n,pivot,Erroneous)
+    IF (Erroneous) CALL Fatal('LocalPostSolve', 'LU-decomposition fails')
 
     ! Weight is the 1st column
     dofcount = 1
@@ -922,7 +944,7 @@ CONTAINS
           IF( PostVars(Vari) % NodalField ) THEN
             CONTINUE
           ELSE IF(.NOT. LocalSolved ) THEN
-            CALL LUSolve(n,MASS,x,pivot)
+            CALL LUSolve(n,A,x,pivot)
             LocalSolved = .TRUE.
           END IF
 
@@ -942,7 +964,7 @@ CONTAINS
             j = pVar % dofs * ( pVar % Perm( Element % ElementIndex )-1)+m
             pVar % Values(j) = SUM( x(1:n) ) / n
           ELSE
-            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//TRIM(I2S(pVar % TYPE)))
+            CALL Warn('LocalPostSolve','Do not know what to do with variable type: '//I2S(pVar % TYPE))
           END IF
         END DO
       END DO

@@ -150,7 +150,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> The routine that decides which linear system solver to call, and calls it.
 !> There are two main sources of iterations within Elmer.
-!> 1) The old HUTiter C++ library that includes the most classic iterative Krylov
+!> 1) The old HUTiter library that includes the most classic iterative Krylov
 !>    methods.
 !> 2) The internal MODULE IterativeMethods that includes some classic iterative
 !>    methods and also some more recent Krylov methods. 
@@ -179,20 +179,20 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal
+    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal, LeftOriented
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
     TYPE(ValueList_t), POINTER :: Params
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondrProc, mvProc, iterProc, StopcProc
+        pconddProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
@@ -230,7 +230,7 @@ CONTAINS
     
     ipar = 0
     dpar = 0.0D0
-    pcondrProc = 0
+    pconddProc = 0
 !------------------------------------------------------------------------------
     Params => Solver % Values
     str = ListGetString( Params,'Linear System Iterative Method',Found )
@@ -241,13 +241,13 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
     
-    ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
-    IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
-    
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
+    ELSE
+      ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
+      IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
     END IF
     
     PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 
@@ -263,7 +263,17 @@ CONTAINS
     
     SELECT CASE(str)
     CASE('bicgstab2')
-      IterType = ITER_BiCGStab2
+      ! NOTE:
+      ! BiCGStab2 should be nearly the same as BiCGStabl with the parameter l=2, but
+      ! the implementation of BiCGStabl uses the right-oriented preconditioning, while
+      ! BiCGStab2 works as expected only with the left-oriented preconditioning. Due to
+      ! the difference in the preconditioning the convergence histories may be quite different.
+      ! The complex BiCGStab2 does not convince, use BiCGStabl instead:
+      IF (ComplexSystem ) THEN
+        IterType = ITER_BICGstabl
+      ELSE
+        IterType = ITER_BiCGStab2
+      END IF
     CASE('bicgstabl')
       IterType = ITER_BICGstabl
     CASE('bicgstab')
@@ -342,8 +352,14 @@ CONTAINS
       HUTI_WRKDIM = 1
       HUTI_GCR_RESTART = ListGetInteger( Params, &
           'Linear System GCR Restart',  GotIt ) 
-      IF ( .NOT. GotIT ) HUTI_GCR_RESTART = ListGetInteger( Params, &
-          'Linear System Max Iterations', minv=1 )
+      IF ( .NOT. GotIt ) THEN
+        i = ListGetInteger( Params,'Linear System Max Iterations', minv=1 )
+        IF( i > 200 ) THEN
+          i = 200
+          CALL Info('IterSolver','"Linear System GCR Restart" not given, setting it to '//I2S(i),Level=4)
+        END IF
+        HUTI_GCR_RESTART = i
+      END IF
       Internal = .TRUE.
       
     CASE (ITER_BICGSTABL)
@@ -462,14 +478,25 @@ CONTAINS
     
 !------------------------------------------------------------------------------
 
+    ! By default the right-oriented preconditioning is applied, but BiCGStab2,
+    ! GMRES and TFQMR are called with the left-oriented preconditining since 
+    ! the right-oriented preconditioning does not work as expected. The methods
+    ! from the module IterativeMethods use always the right-oriented preconditioning:
+    !
+    SELECT CASE ( IterType )
+    CASE (ITER_BiCGStab2, ITER_GMRES, ITER_TFQMR)
+      LeftOriented = .TRUE.
+    CASE DEFAULT
+      LeftOriented = ListGetLogical(Params, 'Linear System Left Preconditioning', GotIt)
+      IF (Internal) LeftOriented = .FALSE.
+    END SELECT
+
     
     IF ( .NOT. PRESENT(PrecF) ) THEN
-      str = ListGetString( Params, &
-          'Linear System Preconditioning',gotit )
+      str = ListGetString( Params, 'Linear System Preconditioning',gotit )
       IF ( .NOT.gotit ) str = 'none'
       
-      A % Cholesky = ListGetLogical( Params, &
-          'Linear System Symmetric ILU', Gotit )
+      A % Cholesky = ListGetLogical( Params,'Linear System Symmetric ILU', Gotit )
       
       ILUn = -1
       IF ( str == 'none' ) THEN
@@ -486,13 +513,15 @@ CONTAINS
       ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
-        IF ( .NOT.gotit ) &
-            ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        IF ( .NOT.gotit ) THEN
+          IF(LEN(str)>=4) ILUn = ICHAR(str(4:4)) - ICHAR('0')
+        END IF
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
 
       ELSE IF ( SEQL(str, 'bilu') ) THEN
-        ILUn = ICHAR(str(5:5)) - ICHAR('0')
+        ILUn = 0
+        IF(LEN(str)>=5) ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
           CALL Warn('IterSolver','BILU for one dofs is equal to ILU!')
@@ -889,7 +918,7 @@ CONTAINS
 
     stack_pos = stack_pos+1
     IF(stack_pos>stack_max) THEN
-      CALL Fatal('IterSolver', 'Recursion too deep ('//TRIM(I2S(stack_pos))//' vs '//TRIM(I2S(stack_max))//')')
+      CALL Fatal('IterSolver', 'Recursion too deep ('//I2S(stack_pos)//' vs '//I2S(stack_max)//')')
     ELSE IF(stack_pos<=0) THEN
       CALL Fatal('IterSolver', 'eh')
     END IF
@@ -913,8 +942,14 @@ CONTAINS
       END DO
 
       CALL Info('IterSolver','Calling complex iterative solver',Level=32)
-      CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+
+      IF (LeftOriented) THEN
+        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )
+      ELSE
+        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
+      END IF
 
       ! Copy result back
       DO i=1,HUTI_NDIM
@@ -923,10 +958,15 @@ CONTAINS
       END DO
       DEALLOCATE(bC,xC)
     ELSE
-      CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+      CALL Info('IterSolver','Calling real-valued iterative solver',Level=32)
 
-      CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-          mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+      IF (LeftOriented) THEN
+        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+            mvProc, pcondProc, pconddProc, dotProc, normProc, stopcProc )          
+      ELSE
+        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+            mvProc, pconddProc, pcondProc, dotProc, normProc, stopcProc )
+      END IF
     ENDIF
 
     GlobalMatrix => SaveGlobalM
@@ -941,7 +981,7 @@ CONTAINS
         Solver % Variable % LinConverged = 1
       END IF
     ELSE
-      CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
+      CALL Info('IterSolve','Returned return code: '//I2S(HUTI_INFO),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                

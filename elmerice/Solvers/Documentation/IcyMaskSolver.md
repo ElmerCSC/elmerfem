@@ -18,8 +18,8 @@
 
  - 'Toler' [Real] tolerance for testing (Thickness - Toler > Hmin) [set in Solver]
  - 'Ice Free Thickness' (Real) - Hmin [set in Solver]
- - 'Remove Isolated Points' (Logical) - to impose a Mask < 0 to isolated nodes surounded by nodes with all Mask <0 [set in Solver]
- - 'Remove Isolated Edges' (Logical) - to impose a Mask < 0 to isolated edges surounded by nodes with all Mask <0 [set in Solver]
+ - 'Remove Isolated Points' (Logical) - to impose a Mask < 0 to isolated nodes surrounded by nodes with all Mask <0 [set in Solver]
+ - 'Remove Isolated Edges' (Logical) - to impose a Mask < 0 to isolated edges surrounded by nodes with all Mask <0 [set in Solver]
 
 ### Introduction
 
@@ -31,7 +31,7 @@ The Mask value is
  - -1 for Ice free nodes (H <= Hmin)
  - <-1 for isolated nodes 
 
-Isolated nodes (and edges) are defined by nodes (edges) surounded by only ice free nodes. They are tagued with a mask value < -1.  
+Isolated nodes (and edges) are defined by nodes (edges) surrounded by only ice free nodes. They are tagged with a mask value < -1.  
 
 #### SIF 
 

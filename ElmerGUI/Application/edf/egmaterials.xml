@@ -281,5 +281,21 @@
     <parameter name="Relative Permittivity" >3.75</parameter>
     <parameter name="Melting Point" >1956.0</parameter>
   </material>
- 
+
+ <material name="CO2 (liquid)">
+    <parameter name="Liquid" >Logical True</parameter>
+    <parameter name="Density" >Variable Temperature; Real MATC "44.01*2.768/(0.26212^(1+ (1-tx/304.21)^0.2908))"</parameter>
+    <parameter name="Viscosity" >Variable Temperature; Real MATC "1.E-3*exp(-3.097 + 48.86/tx + 0.02381*tx -0.0000784*tx^2)"</parameter>
+    <parameter name="Heat conductivity" >Variable Temperature; Real MATC "0.407 - 0.0008438*tx -9.626E-07*tx^2"</parameter>
+    <parameter name="Heat capacity" >Variable Temperature; Real MATC "1E3*(-3553.844 + 46.88128*tx - 0.2017221*tx^2 + 2.897028E-04*tx^3)/44"</parameter>
+  </material>
+
+  <material name="CO2 (gas, low P)">
+    <parameter name="Liquid" >Logical False</parameter>
+    <parameter name="Density" >1.98</parameter>
+    <parameter name="Viscosity" >Variable Temperature; Real MATC "1.E-3*(0.002545 + 4.549E-05*tx - 8.649E-09*tx^2)"</parameter>
+    <parameter name="Heat conductivity" >Variable Temperature; Real MATC "-0.007215 + 8.015001E-05*tx + 5.477E-09*tx^2 - 1.053E-11*tx^3"</parameter>
+    <parameter name="Heat capacity" >Variable Temperature; Real MATC "1E3*(2.926801E+01 - 2.236208E-02*tx + 2.652535E-04*tx^2 - 4.153087E-07*tx^3 + 2.005667E-10*tx^4)/44"</parameter>
+  </material>	
+	
 </materiallibrary>

@@ -76,6 +76,7 @@ void MeshPoint::draw(VtkPost* vtkPost, Preferences* preferences)
   bool useSurfaceGrid = preferences->ui.meshPointsSurface->isChecked();
   bool useClip = preferences->ui.meshPointsClip->isChecked();
   useClip |= vtkPost->GetClipAll();
+  QColor color = preferences->getMeshPointColor();
 
   vtkSphereSource* sphere = vtkSphereSource::New();
   sphere->SetRadius((double)pointSize * length / 2000.0);
@@ -118,7 +119,7 @@ void MeshPoint::draw(VtkPost* vtkPost, Preferences* preferences)
   mapper->ScalarVisibilityOff();
 
   vtkPost->GetMeshPointActor()->SetMapper(mapper);
-  vtkPost->GetMeshPointActor()->GetProperty()->SetColor(0.5, 0.5, 0.5);
+  vtkPost->GetMeshPointActor()->GetProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
 
   mapper->Delete();
   clipper->Delete();

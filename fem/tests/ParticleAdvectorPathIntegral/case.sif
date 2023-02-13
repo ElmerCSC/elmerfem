@@ -23,10 +23,9 @@ $n=20
   Steady State Max Iterations = Integer 1
   Output Intervals(1) = Integer 1
 
-  Output Level = 4
+  Output Level = 6
 
 !  Output File = File "case.dat"
-!  Post File = File "case.ep"
 End
 
 Constants
@@ -52,6 +51,10 @@ Initial Condition 1
 
   Velo 2 = Variable Coordinate 1
     Real MATC "omega*tx"
+
+! Initial conditions for the integrals
+  Particle Time Integral = Real 1.0
+  Particle Distance Integral = Real 2.0
 End
 
 
@@ -123,6 +126,8 @@ Solver 1
 ! in the FE mesh
   Variable = Surface
   Exported Variable 1 = -dofs 2 Velo
+
+!  Advect Elemental = Logical True
 End 
 
 
@@ -173,5 +178,5 @@ Boundary Condition 1
 End 
 
 
-Solver 2 :: Reference Norm = Real 0.31289829
-RUN
+Solver 1 :: Reference Norm = 5.15783733E-01
+Solver 2 :: Reference Norm = 1.31289829E+00

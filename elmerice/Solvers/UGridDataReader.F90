@@ -121,7 +121,7 @@
 ! get mesh
       ThisMesh => GetMesh(Solver)
 
-! check if this is a paralell run
+! check if this is a parallel run
       Parallel=(ParEnv % PEs > 1) .AND. ( .NOT. ThisMesh % SingleMesh ) 
 
 ! check if a mesh ha been defined for this solver; in this case will
@@ -137,9 +137,9 @@
          ! Target mesh solver is explicitly given
          TargetMesh => CurrentModel % Solvers(i) % Mesh
          IF( ASSOCIATED( TargetMesh ) ) THEN
-           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)
+           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//I2S(i),Level=8)
          ELSE
-          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//TRIM(I2S(i)))
+          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//I2S(i))
          END IF
         ELSE
           ! Otherwise use the 1st mesh that is not this old data mesh
@@ -271,7 +271,7 @@
         Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
         VarType=Var % TYPE
 
-        ! special cases.... time do not seems to be a gloabl variable by
+        ! special cases.... time do not seems to be a global variable by
         ! default
         IF ( Var % Name  == 'time') VarType=Variable_global
 
@@ -363,9 +363,9 @@
           nf = COUNT(UnfoundNodes)
           IF (nf.GT.0) THEN
             IF (UnFoundNodesFatal) THEN
-              CALL FATAL(SolverName,"There is unfound nodes : "//TRIM(I2S(nf)))
+              CALL FATAL(SolverName,"There is unfound nodes : "//I2S(nf))
             ELSE
-              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//TRIM(I2S(nf))//" unfound nodes; get closest node in input mesh")
+              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//I2S(nf)//" unfound nodes; get closest node in input mesh")
               IF (Parallel) &
                 CALL FATAL(SolverName,"dealing with unfound nodes only for serial meshes; add -single ")
 

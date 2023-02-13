@@ -54,9 +54,10 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: ListElemTypes(MaxElemCode)
 
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, OutputDirectory, ResFile, MshFile, Txt, Family, &
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, ResFile, MshFile, Txt, Family, &
        ScalarFieldName, VectorFieldName, TensorFieldName, CompName
   CHARACTER(LEN=1024) :: Txt2, Txt3
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
 
   INTEGER :: PyramidMap613(14,4), PyramidMap605(2,4)
   INTEGER :: WedgeMap706(3,4), WedgeMap715(21,4)

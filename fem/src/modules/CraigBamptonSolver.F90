@@ -141,14 +141,14 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
     CALL Fatal('CraigBamptonSolver','Number of eigenmodes is zero!')
   END IF
   CALL Info('CraigBamptonSolver','Number of eigen modes: '&
-      //TRIM(I2S(NoEigenModes)),Level=7)
+      //I2S(NoEigenModes),Level=7)
 
   NoConstraintModes = EVar % NumberOfConstraintModes
   IF( SolverId == 0 ) THEN
     CALL Fatal('CraigBamptonSolver','Number of constraint modes is zero!')
   END IF
   CALL Info('CraigBamptonSolver','Number of constraint modes: '&
-      //TRIM(I2S(NoConstraintModes)),Level=7)
+      //I2S(NoConstraintModes),Level=7)
   NoComponentModes = NoEigenModes + NoConstraintModes
   
 

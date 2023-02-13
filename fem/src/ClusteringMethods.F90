@@ -537,11 +537,11 @@ CONTAINS
     IF( MaskExists ) THEN
       nsize = SIZE( MaskActive ) 
       nmask = COUNT( MaskActive ) 
-      CALL Info(Caller,'Applying division to masked element: '//TRIM(I2S(nmask)),Level=8)
+      CALL Info(Caller,'Applying division to masked element: '//I2S(nmask),Level=8)
     ELSE
       nsize = Mesh % NumberOfBulkElements 
       nmask = nsize
-      CALL Info(Caller,'Applying division to all bulk elements: '//TRIM(I2S(nsize)),Level=8)
+      CALL Info(Caller,'Applying division to all bulk elements: '//I2S(nsize),Level=8)
     END IF
      
     IF( .NOT. ASSOCIATED( Params ) ) THEN
@@ -568,7 +568,7 @@ CONTAINS
       END DO
 
       i = COUNT( NodeMask ) 
-      CALL Info(Caller,'Masked elements include nodes: '//TRIM(I2S(i)),Level=8)
+      CALL Info(Caller,'Masked elements include nodes: '//I2S(i),Level=8)
       
       ! Define the masked bounding box
       BoundingBox(1) = MINVAL( Mesh % Nodes % x, NodeMask )
@@ -676,9 +676,9 @@ CONTAINS
     END DO
     devpart = devpart / n
 
-    CALL Info(Caller,'Number of partitions: '//TRIM(I2S(n)),Level=8)
-    CALL Info(Caller,'Min elements in cluster: '//TRIM(I2S(minpart)),Level=8)
-    CALL Info(Caller,'Max elements in cluster: '//TRIM(I2S(maxpart)),Level=8)
+    CALL Info(Caller,'Number of partitions: '//I2S(n),Level=8)
+    CALL Info(Caller,'Min elements in cluster: '//I2S(minpart),Level=8)
+    CALL Info(Caller,'Max elements in cluster: '//I2S(maxpart),Level=8)
 
     WRITE(Message,'(A,F10.2)') 'Average elements in cluster:',avepart
     CALL Info(Caller,Message,Level=8)    
@@ -748,7 +748,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MaskPerm(:)
     LOGICAL, POINTER :: MaskActive(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: ClusterMethod 
+    CHARACTER(:), ALLOCATABLE :: ClusterMethod 
 
     ClusterMethod = ListGetString( Solver % Values,'MG Cluster Method',GotIt)
     IF(.NOT. GotIt ) ClusterMethod = 'default'
@@ -857,7 +857,7 @@ CONTAINS
       CALL CMGClusterForm(Amat, Bonds, Passive, Fixed, Components, Component1, CF)
 
       IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('ChooseClusterNodes','Implement paralle stuff')
+        CALL Fatal('ChooseClusterNodes','Implement parallel stuff')
         ! Things to implement here:
         ! 1) Global numbering for CF
         ! 2) ParallelInfo for algebraic systems
@@ -880,7 +880,7 @@ CONTAINS
     SUBROUTINE SetParallelPassive()
       INTEGER :: i,j
 
-      ! If not paralle then return
+      ! If not parallel then return
       IF( ParEnv % PEs <= 1 ) RETURN
 
       ! Note that the ParallelInfo for matrices equals the size of the matrix
@@ -1103,7 +1103,7 @@ CONTAINS
         END IF
       END DO
       CALL Info('ClusterExtrudedEdges',&
-          'Number of reduced dofs: '//TRIM(I2S(k))//' vs. '//TRIM(I2S(nsize)),Level=9)
+          'Number of reduced dofs: '//I2S(k)//' vs. '//I2S(nsize),Level=9)
 
       WRITE(Message,'(A,F10.3)') 'Coarse dofs reduction factor',1.0_dp *  nsize / k 
       CALL Info('ClusterExtrudedEdges', Message, Level=7)
@@ -1289,7 +1289,7 @@ CONTAINS
       HalfSize = ListGetInteger(Solver % Values,'MG Cluster Half Size',GotIt)
       IF(.NOT. GotIt) HalfSize = (ClusterSize-1)/2 
       
-      ! Paricularly for small clusters the orphan control seems to be important
+      ! Particularly for small clusters the orphan control seems to be important
       ClusterOrphans = ListGetLogical(Solver % Values,'MG Cluster Orphans',GotIt)
       IF(.NOT. GotIt) ClusterOrphans = .TRUE.
       OrphansBest = ListGetLogical(Solver % Values,'MG Cluster Orphans Best',GotIt)

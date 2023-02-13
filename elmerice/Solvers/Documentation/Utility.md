@@ -4,8 +4,8 @@
 ## Change of Variable
 
 The Elmer/Ice User Function [USF_CoV.F90](../../UserFunctions/USF_CoV.F90)
-provides a collection of user function for standard change of varaibles used
-with the optimisation, *e.g.* to guarantee that a varaible stay positive.
+provides a collection of user function for standard change of variables used
+with the optimisation, *e.g.* to guarantee that a variable stay positive.
 
 Below are the available functions:
 

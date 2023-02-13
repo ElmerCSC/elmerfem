@@ -155,9 +155,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
 
-  RefResults => ListGetConstRealArray( Params,'Reference Sums',CalcNrm )
+  RefResults => ListGetConstRealArray( Params,'Reference Values',CalcNrm )
   CALL AscBinInitNorm(CalcNrm) 
-  
+
   ! Loop over the meshes and save them using the selected format(s).
   ! First iteration just count the meshes. 
   !----------------------------------------------------------------------------------  
@@ -167,7 +167,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   DO WHILE( ASSOCIATED(iMesh) )
     
     IF(NowSave) CALL Info(Caller,'Working on mesh: '//TRIM(iMesh % Name), Level=7 )
-    
+
     IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping inactive mesh: '//TRIM(iMesh % Name), Level=7 )
       iMesh => iMesh % next
@@ -189,7 +189,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
         
-    IF(NowSave) CALL Info(Caller,'Dimension of mesh is: '//TRIM(I2S(iMesh % MeshDim)),Level=7)
+    IF(NowSave) CALL Info(Caller,'Dimension of mesh is: '//I2S(iMesh % MeshDim),Level=7)
 
     IF( MinMeshDim /= 0 .AND. iMesh % MeshDim < MinMeshDim ) THEN
       IF(NowSave) CALL Info(Caller,'Skipping lower dimensional mesh: '//TRIM(iMesh % Name), Level=7 )
@@ -246,15 +246,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     MeshDim = Model % Mesh % MeshDim
     nlen = StringToLowerCase( ListMeshName, iMesh % Name)
 
+    Mesh => iMesh
+
     ! In case there are multiple mesh levels one may also save coarser ones
     !----------------------------------------------------------------------
-    Mesh => iMesh
     DO i=1,MeshLevel
+      IF (.NOT.ASSOCIATED(Mesh % Parent)) EXIT
       Mesh => Mesh % Parent
-      IF (.NOT.ASSOCIATED(Mesh)) EXIT
     END DO
-    IF ( ASSOCIATED(Mesh)) THEN
 
+    IF ( ASSOCIATED(Mesh)) THEN
       CALL SetCurrentMesh( Model, Mesh )
       Model % Variables => Mesh % variables 
       SomeMeshSaved = .TRUE.
@@ -298,7 +299,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( .NOT. NowSave ) THEN
     CALL ListAddInteger( Params,'Number of Output Meshes',NoMeshes)
-    CALL Info(Caller,'Number of output meshes: '//TRIM(I2S(NoMeshes)),Level=12)
+    CALL Info(Caller,'Number of output meshes: '//I2S(NoMeshes),Level=12)
     NowSave = .TRUE.
     GOTO 1
   END IF

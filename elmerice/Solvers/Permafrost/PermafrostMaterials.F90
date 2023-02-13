@@ -7,7 +7,7 @@
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) asny later version.
+! *  of the License, or (at your option) any later version.
 ! * 
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -684,7 +684,7 @@ CONTAINS
       ELSE        
         !------------------------------------------------------------------------------
         ! Read in the number of records in file (first line integer)
-        ! MIND: all receiving array numbers are shifted by -1 in index with resepect
+        ! MIND: all receiving array numbers are shifted by -1 in index with respect
         !       to J. Hartikainen's instructions in input_data_forsmark_2d_example.pdf!
         !------------------------------------------------------------------------------
         WRITE (Message,*) "Attempting to read ",mmaxglobalelementnumber,&
@@ -961,7 +961,7 @@ CONTAINS
     IF ((.NOT.VariableTimeDerExists) .OR. (Model % Mesh % Changed)) THEN
       MaxNodes = MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
       IF (VariableTimeDerExists) THEN
-        CALL INFO(SolverName,"Deallocation of nodal time derivtive")
+        CALL INFO(SolverName,"Deallocation of nodal time derivative")
         DEALLOCATE(NodalVariableTimeDer)
       END IF
 

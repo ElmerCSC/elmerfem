@@ -318,8 +318,9 @@ if ( .not. add ) zz=zz+1
       END DO
    END IF
 
-  WRITE( Message, * ) 'Eliminated ', TRIM(I2S(A % NumberOfRows - &
-        Bmatrix % NumberOFrows)), ' unknowns out of ', TRIM(i2S(A % NumberOfRows))
+  WRITE( Message, * ) 'Eliminated ', &
+        I2S(A % NumberOfRows-Bmatrix % NumberOFrows), &
+           ' unknowns out of ', I2S(A % NumberOfRows)
   CALL Info('Dirichlet',Message,Level=5)
 !------------------------------------------------------------------------------
 !   Solve the system

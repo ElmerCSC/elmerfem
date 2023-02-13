@@ -55,7 +55,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: x1(:), x2(:)
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
-  CHARACTER(MAX_NAME_LEN) :: InputFile, InputDirectory, VarName
+  CHARACTER(MAX_NAME_LEN) :: InputFile, VarName
+  CHARACTER(:), ALLOCATABLE :: InputDirectory
   INTEGER :: FileUnit=1
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var
@@ -123,7 +124,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF(.NOT. AllocationsDone ) THEN
         READ( str,*) NoNodes
-        CALL Info(Caller,'Number of nodes in mesh: '//TRIM(I2S(NoNodes)),Level=7)
+        CALL Info(Caller,'Number of nodes in mesh: '//I2S(NoNodes),Level=7)
       END IF
       DO i=1,NoNodes 
         READ( FileUnit,'(A)',END=20,ERR=20 ) str     
@@ -146,7 +147,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF(.NOT. AllocationsDone ) THEN
         READ( str,*) NoElems
-        CALL Info(Caller,'Number of elements in mesh: '//TRIM(I2S(NoElems)),Level=7)
+        CALL Info(Caller,'Number of elements in mesh: '//I2S(NoElems),Level=7)
       END IF
         
       DO i=1,NoElems
@@ -241,12 +242,12 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 20 CONTINUE
   
   IF(AllocationsDone ) THEN
-    CALL Info(Caller,'Last bulk element index: '//TRIM(I2S(NoBulkElems)),Level=7)
+    CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
     FromMesh % NumberOfBulkElements = NoBulkElems
     FromMesh % NumberOfBoundaryElements = NoElems - NoBulkElems
   ELSE
-    CALL Info(Caller,'Maximum element dimension: '//TRIM(I2S(MaxElemDim)),Level=7)
-    CALL Info(Caller,'Maximum element nodes: '//TRIM(I2S(MaxElemNodes)),Level=7)
+    CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
+    CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)
     
     FromMesh => AllocateMesh(NoElems,0,NoNodes)    
     FromMesh % MeshDim = MaxElemDim
@@ -278,7 +279,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       x1 => FromMesh % Nodes % z
       x2 => ToMesh % Nodes % z
     ELSE
-      CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//TRIM(I2S(AlignCoord)))
+      CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//I2S(AlignCoord))
     END IF
       
     n1 = FromMesh % NumberOfNodes
@@ -294,7 +295,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       dx = minx - maxx
     END IF
     
-    WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//TRIM(I2S(k))//' with: ',dx
+    WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//I2S(k)//' with: ',dx
     CALL Info(Caller,Message)
     
     x1 = x1 + dx
@@ -309,7 +310,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     IF( n == 0 ) THEN
       CALL Fatal(Caller,'Zero masked nodes')
     ELSE
-      CALL Info(Caller,'Number of masked nodes: '//TRIM(I2S(n)))
+      CALL Info(Caller,'Number of masked nodes: '//I2S(n))
     END IF
 
     CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &

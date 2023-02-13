@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -1957,7 +1957,7 @@ void Meshutils::increaseElementOrder(mesh_t *mesh)
     delete [] hash;
   }
 
-  // Then redifine the mesh using the additional nodes
+  // Then redefine the mesh using the additional nodes
   int quadnodes = mesh->getNodes() + noedges;  
   node_t *quadnode = new node_t[quadnodes];
   

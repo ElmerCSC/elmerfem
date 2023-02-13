@@ -42,8 +42,8 @@ CONTAINS
     LOGICAL :: GotCost
 
     REAL(KIND=dp) :: CostTarget
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
     LOGICAL :: GotIt
+    CHARACTER(:), ALLOCATABLE :: Name
 
     Cost = ListGetCReal(OptList,'Cost Function',GotCost)
 
@@ -86,7 +86,7 @@ CONTAINS
     LOGICAL :: Found
 
     INTEGER :: i,n
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
+    CHARACTER(:), ALLOCATABLE :: Name
     LOGICAL :: fileis, GotIt, OptimalStart
     INTEGER :: IOUnit
 
@@ -117,7 +117,7 @@ CONTAINS
 
     Found = .TRUE.
     
-    CALL Info('GetSavedOptimum','Number of parameters initialized from file: '//TRIM(I2S(n)),Level=6)
+    CALL Info('GetSavedOptimum','Number of parameters initialized from file: '//I2S(n),Level=6)
 
   END SUBROUTINE GetSavedOptimum
 
@@ -134,8 +134,8 @@ CONTAINS
     INTEGER, OPTIONAL :: Improvements
 
     INTEGER :: IOUnit
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
     LOGICAL :: GotIt
+    CHARACTER(:), ALLOCATABLE :: Name
     
     Name = ListGetString(OptList,'Parameter Best File',GotIt )
     IF(.NOT. GotIt) RETURN
@@ -166,7 +166,7 @@ CONTAINS
     INTEGER :: i,npar,niter,iflag 
     REAL(KIND=dp), ALLOCATABLE :: rpar(:), fvec(:)
     REAL(KIND=dp) :: xtol, epsfcn
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found
 
@@ -190,7 +190,7 @@ PRINT *,'niter minpack:',niter
     CALL GetSavedOptimum(OptList,rpar,Found)
     IF(.NOT. Found ) THEN    
       DO i=1,npar
-        str = 'Initial Parameter '//TRIM(I2S(i))
+        str = 'Initial Parameter '//I2S(i)
         rpar(i) = ListGetConstReal(OptList,str,Found) 
       END DO
     END IF
@@ -267,7 +267,7 @@ PRINT *,'niter minpack:',niter
     
     REAL(KIND=dp), ALLOCATABLE :: rpar(:)
     REAL(KIND=dp) :: xtol, rhobeg, rhoend, minv, maxv
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found, Found2
 
@@ -293,12 +293,12 @@ PRINT *,'niter minpack:',niter
 
     IF(.NOT. Found ) THEN
       DO i=1,npar
-        str = 'Initial Parameter '//TRIM(I2S(i))
+        str = 'Initial Parameter '//I2S(i)
         rpar(i) = ListGetConstReal(OptList,str,Found)
         IF(.NOT. Found ) THEN
-          str = 'Min Parameter '//TRIM(I2S(i))
+          str = 'Min Parameter '//I2S(i)
           minv = ListGetCReal(OptList,str,Found)
-          str = 'Max Parameter '//TRIM(I2S(i))
+          str = 'Max Parameter '//I2S(i)
           maxv = ListGetCReal(OptList,str,Found2) 
           IF(Found .AND. Found2 ) THEN
             rpar(i) = (minv+maxv) / 2
@@ -330,7 +330,7 @@ PRINT *,'niter minpack:',niter
     
     REAL(KIND=dp), ALLOCATABLE :: rpar(:),xl(:),xu(:)
     REAL(KIND=dp) :: xtol, rhobeg, rhoend
-    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    CHARACTER(:), ALLOCATABLE :: str
     TYPE(ValueList_t), POINTER :: OptList
     LOGICAL :: Found
 
@@ -353,11 +353,11 @@ PRINT *,'niter minpack:',niter
     rpar = 1.0_dp
     
     DO i=1,npar
-      str = 'Min Parameter '//TRIM(I2S(i))
+      str = 'Min Parameter '//I2S(i)
       xl(i) = ListGetCReal(OptList,str,UnfoundFatal=.TRUE.)
-      str = 'Max Parameter '//TRIM(I2S(i))
+      str = 'Max Parameter '//I2S(i)
       xu(i) = ListGetCReal(OptList,str,UnfoundFatal=.TRUE.)
-      str = 'Initial Parameter '//TRIM(I2S(i))
+      str = 'Initial Parameter '//I2S(i)
     END DO
     
     CALL GetSavedOptimum(OptList,rpar,Found)
@@ -415,12 +415,12 @@ PRINT *,'niter minpack:',niter
    FinishEarly = .FALSE.
 
    ! The MATC parameters must be present before reading the sif file
-   ! The coeffcients must be set after reading the sif file.
+   ! The coefficients must be set after reading the sif file.
    ! Hence we need a second, later, slot for the coefficient setup. 
    IF( PRESENT(SetCoeffs)) THEN
      IF( SetCoeffs ) THEN       
        CALL SetRealParametersKeywordCoeff(NoParam,Param,cnt)
-       CALL Info(Caller,'Set '//TRIM(I2S(cnt))//&
+       CALL Info(Caller,'Set '//I2S(cnt)//&
            ' coefficients with parameter tags!',Level=12)
        RETURN
      END IF
@@ -495,8 +495,8 @@ PRINT *,'niter minpack:',niter
      
      REAL(KIND=dp) :: MinCost = HUGE(MinCost)
      INTEGER :: NoBetter = 0, i, IOUnit
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: GotIt
+     CHARACTER(:), ALLOCATABLE :: Name
      
      SAVE MinCost , NoBetter
      
@@ -521,10 +521,10 @@ PRINT *,'niter minpack:',niter
    !-----------------------------------------------------------------------------
    SUBROUTINE SaveParameterHistory()
      
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name
      LOGICAL :: DoAppend
      INTEGER :: IOunit
      LOGICAL :: GotIt
+     CHARACTER(:), ALLOCATABLE :: Name
      
      ! Save the results to a file
      !---------------------------
@@ -564,12 +564,12 @@ PRINT *,'niter minpack:',niter
     INTEGER :: NoParam
     REAL(KIND=dp), ALLOCATABLE :: Param(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: FileName
     LOGICAL :: Found, HaveFile, HaveArray
     REAL(KIND=dp), POINTER :: PArray(:,:)
     TYPE(Variable_t), POINTER :: PVar
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: LineCounter = 0
+    CHARACTER(:), ALLOCATABLE :: FileName
     CHARACTER(*), PARAMETER :: Caller = 'SetTabulatedParameters'
 
         
@@ -603,7 +603,7 @@ PRINT *,'niter minpack:',niter
     END IF
     
     IF( FinishEarly ) THEN
-      CALL Warn(Caller,'Parameters exhausted already: '//TRIM(I2S(piter)))  
+      CALL Warn(Caller,'Parameters exhausted already: '//I2S(piter))  
       RETURN
     END IF
         
@@ -615,8 +615,9 @@ PRINT *,'niter minpack:',niter
     SUBROUTINE ReadTabulatedParameters()
 
       INTEGER :: FileUnit, Line, NOffset, FileTypeInd, FileRow, iostat, i, j, k
-      CHARACTER(LEN=MAX_NAME_LEN) :: FileType, readstr 
       REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
+      CHARACTER(:), ALLOCATABLE :: FileType
+      CHARACTER(LEN=MAX_NAME_LEN) :: readstr 
           
       FileType = ListGetString( Params,'Parameter Filetype',Found )
       FileTypeInd = 0
@@ -644,7 +645,7 @@ PRINT *,'niter minpack:',niter
         DO WHILE(.TRUE.) 
           READ( FileUnit,'(A)',IOSTAT=iostat) readstr
           IF( iostat /= 0 ) THEN
-            CALL Fatal(Caller,'Could not read dummy line: '//TRIM(I2S(Line)))
+            CALL Fatal(Caller,'Could not read dummy line: '//I2S(Line))
           END IF
           i = INDEX( readstr,'RUN NO.') 
           IF( i > 0 ) THEN
@@ -659,7 +660,7 @@ PRINT *,'niter minpack:',niter
               CALL Fatal(Caller,'Could not read parameters from line: '//TRIM(readstr))
             END IF
             CALL Info(Caller,'Number of parameters in DAKOTA file: '&
-                //TRIM(I2S(k)),Level=6)
+                //I2S(k),Level=6)
             IF( k < NoParam ) THEN
               CALL Fatal(Caller,'Dakota file has too few parameters!')
             END IF
@@ -674,13 +675,13 @@ PRINT *,'niter minpack:',niter
         Line = Line + 1
         READ( FileUnit,'(A)',IOSTAT=iostat) readstr
         IF( iostat /= 0 ) THEN
-          CALL Warn(Caller,'Could not read parameter line: '//TRIM(I2S(Line)))
+          CALL Warn(Caller,'Could not read parameter line: '//I2S(Line))
           CLOSE(FileUnit)
           FinishEarly = .TRUE.
           RETURN
         END IF
         IF( Line == FileRow ) THEN
-          CALL Info(Caller,'Read parameter line: '//TRIM(I2S(Line)),Level=7)
+          CALL Info(Caller,'Read parameter line: '//I2S(Line),Level=7)
           EXIT
         END IF
       END DO
@@ -729,10 +730,9 @@ PRINT *,'niter minpack:',niter
     REAL(KIND=dp), ALLOCATABLE :: MinParam(:), MaxParam(:), dParam(:), PrevParam(:,:), &
         PrevCost(:), BestParam(:), InitParam(:)
     REAL(KIND=dp) :: Cost, MinCost, x(10), c(10), minv, maxv, OptTol
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name, ParamStr, Method
-    CHARACTER(LEN=MAX_NAME_LEN) :: BestFile
     TYPE(Variable_t),POINTER :: Var
     INTEGER :: IOUnit
+    CHARACTER(:), ALLOCATABLE :: Name, ParamStr, Method
     CHARACTER(*), PARAMETER :: Caller = 'SetOptimizationParameters'
 
     
@@ -766,7 +766,7 @@ PRINT *,'niter minpack:',niter
 
       NoFreeParam = 0
       DO i=1,NoParam
-        WRITE( ParamStr,'(A,I0)') 'Parameter ',i
+        ParamStr = 'Parameter '//I2S(i)
 
         FixedParam(i) = ListGetLogical(OptList,'Fixed '//TRIM(ParamStr),GotIt)
         InitParam(i) = ListGetConstReal(OptList,'Initial '//TRIM(ParamStr),GotInit)
@@ -1003,7 +1003,7 @@ PRINT *,'niter minpack:',niter
         DO i=1,NoParam
           IF(.NOT. FixedParam(i)) EXIT
         END DO
-        CALL Info(Caller,'Applying scanning to parameter '//TRIM(I2S(i)),Level=5)
+        CALL Info(Caller,'Applying scanning to parameter '//I2S(i),Level=5)
         maxno = NoValues 
       END IF
 
@@ -1030,7 +1030,7 @@ PRINT *,'niter minpack:',niter
         DO j=1,NoParam
           IF(.NOT. FixedParam(j)) EXIT
         END DO
-        CALL Info(Caller,'Applying bisection search to parameter '//TRIM(I2S(j)),Level=7)
+        CALL Info(Caller,'Applying bisection search to parameter '//I2S(j),Level=7)
       END IF
 
       no = no + 1
@@ -1112,7 +1112,7 @@ PRINT *,'niter minpack:',niter
         DO j=1,NoParam
           IF(.NOT. FixedParam(j)) EXIT
         END DO
-        CALL Info(Caller,'Applying secant search to parameter '//TRIM(I2S(j)),Level=7)
+        CALL Info(Caller,'Applying secant search to parameter '//I2S(j),Level=7)
       END IF
 
       no = no + 1

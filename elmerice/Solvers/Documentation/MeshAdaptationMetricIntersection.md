@@ -45,4 +45,4 @@ End
 ```
 
 ## Example
-An example for anisotropic mesh adaptation using 2 varaibles can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2.
+An example for anisotropic mesh adaptation using 2 variables can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2.

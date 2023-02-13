@@ -2799,7 +2799,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 			&ncon,         /* number of balancing constraints */
 			xadj, adjncy,  /* the adjacency structure of the graph */
 			vwgt,          /* weights of the vertices */
-			&wgtflag,      /* size of the vectices for computing communication */
+			&wgtflag,      /* size of the vertices for computing communication */
 			adjwgt,        /* weight of the edges */     
 			&nparts,       /* number of partitions */
 			NULL,          /* weights for each partition and constraint */
@@ -3489,7 +3489,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 			 int partbw, int info)
 /* Optimize partitioning of elements so that each partition has as closely as possible the 
    desired amount of elements. Also, ir requested, check that there are no odd couplings within 
-   elelements that are not directly present at the given partition. It is a bit unclear 
+   elements that are not directly present at the given partition. It is a bit unclear 
    to which extent these checks are needed in the current Elmer version. */
 {
   int i,j,k,l,n,m,noelements,partitions,ind,hit;

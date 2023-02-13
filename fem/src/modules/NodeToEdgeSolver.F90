@@ -103,7 +103,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     ! Target mesh solver is explicitly given
     TargetMesh => CurrentModel % Solvers(SolverInd) % Mesh
     IF( .NOT. ASSOCIATED( TargetMesh ) ) THEN
-      CALL Fatal(Caller,'No mesh associated to Solver: '//TRIM(I2S(SolverInd)))
+      CALL Fatal(Caller,'No mesh associated to Solver: '//I2S(SolverInd))
     END IF
   ELSE  
     ! Otherwise use the 1st mesh that is not this old data mesh
@@ -119,7 +119,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     END IF
   END IF
 
-  CALL Info(Caller,'Using target mesh from Solver index: '//TRIM(I2S(SolverInd)),Level=8)
+  CALL Info(Caller,'Using target mesh from Solver index: '//I2S(SolverInd),Level=8)
   CALL Info(Caller,'Target mesh name is: '//TRIM(TargetMesh % Name),Level=8)   
 
   pSolver => Model % Solvers(SolverInd)
@@ -130,7 +130,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
     IF( .NOT. ListCheckPresent( Params, Name ) ) EXIT
     NoVar = i
   END DO
-  CALL Info(Caller,'Number of variables to be mapped: '//TRIM(I2S(NoVar)),Level=8)   
+  CALL Info(Caller,'Number of variables to be mapped: '//I2S(NoVar),Level=8)   
  
   m = TargetMesh % NumberOfNodes
   IF( ASSOCIATED( pSolver % Variable ) ) THEN
@@ -138,7 +138,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
   END IF
 
   layers = TargetMesh % NumberOfNodes / ThisMesh % NumberOfNodes
-  CALL Info(Caller,'Number of layers to be mapped: '//TRIM(I2S(layers)),Level=8)
+  CALL Info(Caller,'Number of layers to be mapped: '//I2S(layers),Level=8)
   
   
   DO i = 1,NoVar
@@ -236,7 +236,7 @@ SUBROUTINE ExtrudedRestart( Model,Solver,dt,Transient)
 
   END DO
     
-  CALL Info(Caller,'Transferred '//TRIM(I2S(NoVar))//' variables from 2d to 3d mesh!',Level=7)
+  CALL Info(Caller,'Transferred '//I2S(NoVar)//' variables from 2d to 3d mesh!',Level=7)
 
 END SUBROUTINE ExtrudedRestart
 
@@ -365,7 +365,7 @@ SUBROUTINE NodeToEdgeField(Model, Solver, dt, Transient)
     ActiveComp = ListGetInteger( Params,'Active Coordinate',Found )
     IF(.NOT. Found) THEN      
       ActiveComp = dim
-      CALL Info(Caller,'Assuming active coordinate to be: '//TRIM(I2S(ActiveComp)),Level=10)
+      CALL Info(Caller,'Assuming active coordinate to be: '//I2S(ActiveComp),Level=10)
     END IF
   ELSE
     ActiveComp = 0

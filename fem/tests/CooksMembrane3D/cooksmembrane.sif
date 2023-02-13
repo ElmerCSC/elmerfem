@@ -50,7 +50,7 @@ Solver 1
   ! With "Mixed Formulation = True" & "Neo-Hookean Material = True"
   ! the following three keyword commands are used automatically in
   ! 3-D simulations (thus, use the components of "Disp" to specify
-  ! the diplacement on a boundary):
+  ! the displacement on a boundary):
   ! ----------------------------------------------------------------
   !  Variable = MixedSol[Disp:3 Pres:1]
   !  Variable DOFs = 4

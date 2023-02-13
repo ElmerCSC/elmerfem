@@ -55,7 +55,7 @@ Solver
 
 !!  Bounding Box
  ! If this parameter is set only the data points that are 
- ! within Max/Min mesh corrdinates + the real Value
+ ! within Max/Min mesh coordinates + the real Value
  ! are used. It an be useful in parallel if all the data are stored in one file
   Bounding Box dx = Real 1.0e3  
  

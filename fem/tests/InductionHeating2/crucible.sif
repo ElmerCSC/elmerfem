@@ -128,7 +128,7 @@ Solver 2
   Linear System Residual Output = 10
   Linear System Precondition Recompute = 1
 
-  Minimum Gebhardt Factor = Real 1.0e-10
+  Minimum Gebhart Factor = Real 1.0e-10
 End 
 
 Solver 3

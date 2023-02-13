@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! .sif file for the inverse method
 !   Optimize the friction coefficient to reduce mismatch with obs. surface velocities
-!   with contrains on the flux divergence and assume smoothness of the friction field
+!   with constraints on the flux divergence and assume smoothness of the friction field
 !  
 ! Author: F. Gillet-Chaulet (IGE-Grenoble-FR)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -88,7 +88,7 @@ Material 1
   SSA Mean Density = Real $rhoi
 
   SSA Friction Law = String "linear"
-  ! The friction parameter is 10^the optimised variable to insure > 0
+  ! The friction parameter is 10^the optimised variable to ensure > 0
   SSA Friction Parameter = Variable alpha
       REAL procedure "ElmerIceUSF" "TenPowerA"
   SSA Friction Parameter Derivative = Variable alpha

@@ -62,10 +62,10 @@ DynLineEdit::~DynLineEdit()
 DynamicEditor::DynamicEditor(QWidget *parent)
   : QWidget(parent)
 {
-  newIcon = QIcon(":/icons/document-new.png");
-  addIcon = QIcon(":/icons/list-add.png");
-  okIcon = QIcon(":/icons/dialog-ok-apply.png");
-  removeIcon = QIcon(":/icons/list-remove.png");
+  newIcon = QIcon::fromTheme("document-new");
+  addIcon = QIcon::fromTheme("list-add");
+  okIcon = QIcon::fromTheme("dialog-accept");
+  removeIcon = QIcon::fromTheme("dialog-error-round");
   setWindowFlags(Qt::Window);
 
   menuAction = NULL;
@@ -209,13 +209,15 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
         if ( h.widget ) {
           h.widget->setWhatsThis(whatis);
+//          h.widget->setToolTip(whatis); // This is to show whatis just by hovering mouse cursor
           h.widget->setStatusTip(statusTip);
           h.widget->setProperty( "dom address",fullName);
           h.elem = param;
 
           if ( widget_enabled == "False" ) h.widget->setEnabled(false);
 
-	  if(widget_type != "TextEdit") h.widget->setFixedHeight(18);
+      // The next line was commented out for display scaling. ST
+	  //if(widget_type != "TextEdit") h.widget->setFixedHeight(18);  
 
 	  if(widget_type == "TextEdit") {
             QLabel *textEditLabel = new QLabel;
@@ -278,15 +280,20 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
 
   nameEdit  = new QLineEdit;
   nameEdit->setText(Section + " " + QString::number(ID+1));
-
   applyButton = new QPushButton(tr("&Add"));
   applyButton->setIcon(addIcon);
   connect(applyButton, SIGNAL(clicked()), this, SLOT(applyButtonClicked()));
+  nameEdit->setWhatsThis("Name of this " + Section);
   
   discardButton = new QPushButton(tr("&Remove"));
   discardButton->setIcon(removeIcon);
   connect(discardButton, SIGNAL(clicked()), this, SLOT(discardButtonClicked()));
 
+  whatsThisButton = new QPushButton(tr("Whatis"));
+  whatsThisButton->setIcon(QIcon::fromTheme("text-questionmark"));
+  connect(whatsThisButton, SIGNAL(clicked()), this, SLOT(whatsThisButtonClicked()));
+  whatsThisButton->setWhatsThis("Press this button, then click the widget to be explained.");
+  
   okButton = new QPushButton(tr("&OK"));
   okButton->setIcon(okIcon);
   connect(okButton, SIGNAL(clicked()), this, SLOT(okButtonClicked()));
@@ -304,6 +311,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
   buttonLayout->addWidget(applyButton);
   buttonLayout->addWidget(okButton);
   buttonLayout->addWidget(discardButton);
+  buttonLayout->addWidget(whatsThisButton);
 
   QHBoxLayout *spareButtonLayout = new QHBoxLayout;
   spareButton = new QPushButton(tr("SpareButton"));;
@@ -537,6 +545,7 @@ void DynamicEditor::applyButtonClicked()
   touched = true;
 
   emit(dynamicEditorReady(MAT_APPLY, ID));
+  
 }
 
 
@@ -573,6 +582,12 @@ void DynamicEditor::newButtonClicked()
   touched = false;
 
   emit(dynamicEditorReady(MAT_NEW, ID));
+}
+
+//----------------------------------------------------------------------------
+void DynamicEditor::whatsThisButtonClicked()
+{
+  QWhatsThis::enterWhatsThisMode();
 }
 
 //----------------------------------------------------------------------------

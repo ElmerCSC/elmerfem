@@ -55,7 +55,7 @@ Solver 1
   Variable DOFs = 1
   Procedure = "EdgeElementTest" "EdgeElementSolver"
 
-  Element = "n:0 e:2 f:2"
+  Element = "n:0 e:2 -tri_face b:2"
 
   Optimize Bandwidth = True
   Bubbles in Global System = Logical True

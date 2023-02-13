@@ -9,7 +9,7 @@
   - GroundedMask (assumed to be called this - defined on the hydrology mesh)
   - Channel Flux (assumed to be called this)
   - Sheet Discharge (assumed to be called this)
-  - Sheet Thickness (assumed to be called tihs)
+  - Sheet Thickness (assumed to be called this)
 - **Optional Output Variable(s):**
   - Toe Calving (Exported Variable 1 = String 'Toe Calving')
 - **Optional Input Variable(s):** 

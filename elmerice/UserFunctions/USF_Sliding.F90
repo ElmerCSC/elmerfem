@@ -848,7 +848,7 @@ END FUNCTION Sliding_Budd
 !> USF_Sliding.f90, function FreeSlipShelves
 !> 
 !> Sets the basal drag to zero according to a grounded mask.  Intended for use 
-!> when aplying inverse methods in the presence of floating ice shelves.
+!> when applying inverse methods in the presence of floating ice shelves.
 !> 
 !> For the .sif (bottom boundary):
 !>  Slip Coefficient 2  = Variable beta

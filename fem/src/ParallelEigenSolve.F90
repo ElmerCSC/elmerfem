@@ -133,7 +133,7 @@ INCLUDE "mpif.h"
 !
       REAL(KIND=dp), POINTER CONTIG ::  SaveRhs(:)
       REAL(KIND=dp), POINTER :: SaveValues(:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: str, Method
+      CHARACTER(:), ALLOCATABLE :: str, Method
 
       INTEGER :: me
       TYPE(NeighbourList_t), POINTER :: OwnerList(:)
@@ -274,8 +274,7 @@ INCLUDE "mpif.h"
       CALL ListAddLogical( Solver % Values,  &
                      'Linear System Free Factorization',.FALSE. )
 
-      Method = ListGetString( Solver % Values, &
-           'Linear System Solver', stat )
+      Method = ListGetString( Solver % Values, 'Linear System Solver', stat )
 
       Direct = Method == 'direct'
 
@@ -306,13 +305,14 @@ INCLUDE "mpif.h"
 !        --------------
         str = ListGetString( Solver % Values, 'Linear System Preconditioning', stat )
 
+        k = 0
         IF ( str == 'ilut' )  THEN
           ILUTOL = ListGetConstReal( Solver % Values, &
                'Linear System ILUT Tolerance' )
 
           stat = CRS_ILUT( PMatrix, ILUTOL )
         ELSE IF ( SEQL(str, 'ilu') ) THEN
-           k = ICHAR(str(4:4)) - ICHAR('0')
+           IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k<0 .OR. k>9 ) k = 0
            PMatrix % Cholesky = ListGetLogical( Solver % Values, &
                 'Linear System Symmetric ILU', stat )
@@ -705,7 +705,7 @@ INCLUDE "mpif.h"
               ForceVector(2*n), LinConv, ILUTOL
 !
       REAL(KIND=dp), POINTER :: SaveValues(:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
+      CHARACTER(:), ALLOCATABLE :: str
 
       INTEGER :: me
       TYPE(NeighbourList_t), POINTER :: OwnerList(:)
@@ -896,13 +896,14 @@ INCLUDE "mpif.h"
 !        --------------
         str = ListGetString( Solver % Values, 'Linear System Preconditioning', stat )
 
+        k = 0
         IF ( str == 'ilut' )  THEN
           ILUTOL = ListGetConstReal( Solver % Values, &
                'Linear System ILUT Tolerance' )
 
           stat = CRS_ComplexILUT( PMatrix, ILUTOL )
         ELSE IF ( SEQL(str, 'ilu') ) THEN
-           k = ICHAR(str(4:4)) - ICHAR('0')
+           IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k<0 .OR. k>9 ) k = 0
            stat = CRS_ComplexIncompleteLU( PMatrix, k )
         END IF

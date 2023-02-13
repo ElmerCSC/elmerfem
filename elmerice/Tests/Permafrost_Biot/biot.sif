@@ -111,7 +111,7 @@ Solver 2
   Initialize Steady State = Logical True
 End
 
-! groundwater flow (Darcy) yeilding pressure as solution
+! groundwater flow (Darcy) yielding pressure as solution
 Solver 3
   Equation = "Darcy"
   Element = $elmnttype 

@@ -178,7 +178,7 @@
 #endif
 
 !------------------------------------------------------------------------------
-!    The View and Gebhardt factors may change. If this is necessary, this is 
+!    The View and Gebhart factors may change. If this is necessary, this is 
 !    done within this subroutine. The routine is called in the
 !    start as it may affect the matrix topology.
 !    Newton lineariarization option is needed only when there is radiation.
@@ -1651,29 +1651,29 @@ CONTAINS
                  Enthalpy_h, EnthalpyPerm, Emissivity, AngleFraction)
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
-!       Go trough surfaces (j) this surface (i) is getting
+!       Go through surfaces (j) this surface (i) is getting
 !       radiated from.
 !------------------------------------------------------------------------------
 
         Area  = ElementArea( Solver % Mesh, Element, n )
-        ElementList => Element % BoundaryInfo % GebhardtFactors % Elements
+        ElementList => Element % BoundaryInfo % RadiationFactors % Elements
 
-        DO j=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+        DO j=1,Element % BoundaryInfo % RadiationFactors % NumberOfFactors
 
           RadiationElement => Solver % Mesh % Elements( ElementList(j) )
 
           Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
           Asum = Asum + Text
 !------------------------------------------------------------------------------
-!         Gebhardt factors are given elementwise at the center
+!         Gebhart factors are given elementwise at the center
 !         of the element, so take average of nodal Enthalpy_hs
 !         (or integrate over surface j)
 !------------------------------------------------------------------------------
 
           k = RadiationElement % TYPE % NumberOfNodes
-          ImplicitFactors = Element % BoundaryInfo % GebhardtFactors % NumberOfImplicitFactors
+          ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors
           IF(ImplicitFactors == 0) &
-              ImplicitFactors = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+              ImplicitFactors = Element % BoundaryInfo % RadiationFactors % NumberOfFactors
 
           IF(j <= ImplicitFactors) THEN
             

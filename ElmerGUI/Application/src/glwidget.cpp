@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter RÃ¥back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -876,7 +876,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     if(l->getType() == SHARPEDGELIST) {
 
 	  /* 
-	  Restoration of view settings. These were adjusted at the begining of this function.
+	  Restoration of view settings. These were adjusted at the beginning of this function.
 	  */
 	  stateDrawCoordinates = prevStateDrawCoordinates;
 	  stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;
@@ -1070,7 +1070,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   }
 
   /* 
-  Restoration of view settings. These were adjusted at the begining of this function.
+  Restoration of view settings. These were adjusted at the beginning of this function.
   */
   stateDrawCoordinates = prevStateDrawCoordinates;
   stateDrawSurfaceNumbers = prevStateDrawSurfaceNumbers;

@@ -38,7 +38,7 @@
 !> \{
 
 !------------------------------------------------------------------------------
-!> Linear Algebra: LU-Decomposition & matrix inverse & nonsymmetric full 
+!> Linear Algebra: LU-decomposition & matrix inverse & nonsymmetric full 
 !>  matrix eigenvalues  (don't use this for anything big, use for example 
 !>  LAPACK routines instead...)
 !------------------------------------------------------------------------------
@@ -57,12 +57,14 @@ MODULE LinearAlgebra
     REAL(KIND=dp) :: s
     INTEGER :: i,j,k
     INTEGER :: pivot(n)
+    LOGICAL :: erroneous
 
    ! /*
    !  *  AP = LU
    !  */
-   CALL LUDecomp( a,n,pivot )
+   CALL LUDecomp( a,n,pivot,erroneous  )
 
+   IF (erroneous) CALL Fatal('InvertMatrix', 'inversion needs successfull LU-decomposition')
 
    ! /*  
    !  *  INV(U)
@@ -132,6 +134,7 @@ MODULE LinearAlgebra
    REAL(KIND=dp) :: s
    INTEGER :: i,j
    INTEGER :: pivot(n)
+   LOGICAL :: erroneous
 
    ! /*
    !  *  AP = LU
@@ -139,7 +142,8 @@ MODULE LinearAlgebra
    IF(PRESENT(pivot_in)) THEN
      Pivot(1:n) = Pivot_in(1:n)
    ELSE
-     CALL LUDecomp( A,n,pivot )
+     CALL LUDecomp( A,n,pivot,erroneous )
+     IF (erroneous) CALL Fatal('LUSolve', 'LU-decomposition fails')
    END IF
 
    ! Forward substitute
@@ -180,14 +184,17 @@ MODULE LinearAlgebra
 ! 
 !> Result is stored in place of original matrix.
 !----------------------------------------------------------------------
-  SUBROUTINE LUDecomp( a,n,pivot )
+  SUBROUTINE LUDecomp( a,n,pivot,erroneous )
 
     REAL(KIND=dp), DIMENSION (:,:) :: a
     INTEGER :: n
     INTEGER, DIMENSION (:) :: pivot
+    LOGICAL, OPTIONAL :: erroneous
 
     INTEGER :: i,j,k,l
     REAL(KIND=dp) :: swap
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
 
     DO i=1,n
       j = i
@@ -196,7 +203,8 @@ MODULE LinearAlgebra
       END DO
 
       IF ( ABS(A(i,j)) == 0.0d0) THEN
-        CALL Error( 'LUDecomp', 'Matrix is singluar.' )
+        CALL Error( 'LUDecomp', 'Matrix is singular.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
         RETURN
       END IF
 
@@ -235,6 +243,7 @@ MODULE LinearAlgebra
     DO i=1,n
       IF ( ABS(A(i,i)) == 0.0d0 ) THEN
         CALL Error( 'LUSolve', 'Matrix is singular.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
         RETURN       
       END IF
       A(i,i) = 1.0_dp / A(i,i)
@@ -252,11 +261,14 @@ MODULE LinearAlgebra
     COMPLEX(KIND=dp) :: s
     INTEGER :: i,j,k
     INTEGER :: pivot(n)
+    LOGICAL :: erroneous
 
    ! /*
    !  *  AP = LU
    !  */
-   CALL ComplexLUDecomp( a,n,pivot )
+   CALL ComplexLUDecomp( a,n,pivot,erroneous )
+
+   IF (erroneous) CALL Fatal('ComplexInvertMatrix', 'inversion needs successfull LU-decomposition')
 
    DO i=1,n
      IF ( ABS(A(i,i))==0.0d0 ) THEN
@@ -334,14 +346,17 @@ MODULE LinearAlgebra
 !> Result is stored in place of original matrix.
 !-------------------------------------------------------------------------
 
-  SUBROUTINE ComplexLUDecomp( a,n,pivot )
+  SUBROUTINE ComplexLUDecomp( a,n,pivot,erroneous )
 
     COMPLEX(KIND=dp), DIMENSION (:,:) :: a
     INTEGER :: n
     INTEGER, DIMENSION (:) :: pivot
+    LOGICAL, OPTIONAL :: erroneous
 
     INTEGER :: i,j,k,l
     COMPLEX(KIND=dp) :: swap
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
 
     DO i=1,n
       j = i
@@ -350,7 +365,8 @@ MODULE LinearAlgebra
       END DO
 
       IF ( ABS(A(i,j))==0.0d0 ) THEN
-        CALL Error( 'ComplexLUDecomp', 'Matrix is singluar.' )
+        CALL Error( 'ComplexLUDecomp', 'Matrix is singular.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.        
         RETURN
       END IF
 

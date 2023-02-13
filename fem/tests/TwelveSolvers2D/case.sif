@@ -293,7 +293,7 @@ Material 1
 End
 
 Body Force 1
-  Name = Bouyancy
+  Name = Buoyancy
 
 ! We can use either built-in or explicit formula for Boussinesq approximation.
 ! The explicit formula is here used for educational purposes.

@@ -74,7 +74,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
     IF( ParEnv % PEs > 1 ) THEN
-      CALL Info('ParallelFinalize','Final syncronization of the MPI system!',Level=12)
+      CALL Info('ParallelFinalize','Final synchronization of the MPI system!',Level=12)
       CALL ParEnvFinalize()
     END IF
 #endif
@@ -667,7 +667,7 @@ CONTAINS
        ! This is used for a rare condition:
        !
        ! o Linear system solved using Hypre
-       ! o Some paritions have no degrees of freedom assinged, but have matrix entries
+       ! o Some partitions have no degrees of freedom assigned, but have matrix entries
        ! to contribute to the global system (for example from halo elements).
        BLOCK
          INTEGER :: NameSpaceI
@@ -677,7 +677,7 @@ CONTAINS
                          Solver % Values,'Linear System Namespace Number', Found ) ))
 
            IF( ListGetLogical( Solver % Values, 'linsys' // &
-                 TRIM(I2S(NameSpaceI))//': Linear System Use Hypre', Found) ) &
+                 I2S(NameSpaceI)//': Linear System Use Hypre', Found) ) &
 
              CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
          ELSE
@@ -976,11 +976,13 @@ CONTAINS
       IF ( UseMassValsL ) THEN
         DO i=1,ParEnv % PEs
           IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-              ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
+            IF( ALLOCATED( SP % IfMatrix(i) % Values ) ) DEALLOCATE( SP % IfMatrix(i) % Values )
+            ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
               SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
            END IF
 
            IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+             IF( ALLOCATED( SP % NbsIfMatrix(i) % Values ) ) DEALLOCATE( SP % NbsIfMatrix(i) % Values )
               ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
               SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
            END IF
@@ -1462,7 +1464,7 @@ CONTAINS
         Pi => Ai % ParallelInfo
         IF(.NOT. ASSOCIATED(Pi) ) THEN
           CALL Fatal('ParallelMergeMatrix',&
-              'Submatrix '//TRIM(I2S(i))//' does not have parallel info!')
+              'Submatrix '//I2S(i)//' does not have parallel info!')
         END IF
         
         n = n + ni         

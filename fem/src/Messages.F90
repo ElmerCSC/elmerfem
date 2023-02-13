@@ -49,13 +49,8 @@ MODULE Messages
 #else
 #define stdout 6
 #endif
-
-
-#ifdef HAVE_XIOS
-  USE XIOS
-#endif
-
    IMPLICIT NONE
+   
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
@@ -78,6 +73,17 @@ CONTAINS
 !-----------------------------------------------------------------------
    SUBROUTINE Info( Caller, String, noAdvance, Level )
 !-----------------------------------------------------------------------
+#define MEMDEBUG 0     
+#if MEMDEBUG
+     INTERFACE
+       FUNCTION cpumemory() RESULT(dbl) BIND(C,name='cpumemory')
+         USE, INTRINSIC :: ISO_C_BINDING
+         REAL(C_DOUBLE) :: dbl
+       END FUNCTION cpumemory
+     END INTERFACE
+     INTEGER(KIND=8) :: CurrUse
+#endif
+     
      CHARACTER(LEN=*) :: Caller, String
      INTEGER, OPTIONAL :: Level
      LOGICAL, OPTIONAL :: noAdvance
@@ -86,6 +92,7 @@ CONTAINS
      INTEGER :: n
      INTEGER, PARAMETER :: DefLevel = 4
      LOGICAL :: StdoutSet = .FALSE.
+    
      SAVE nadv1
 
 !-----------------------------------------------------------------------          
@@ -126,15 +133,27 @@ CONTAINS
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
        END IF
      ELSE
+#if MEMDEBUG
+       CurrUse = NINT( CPUMemory() ) 
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
+         WRITE( InfoOutUnit,'(A,I0,A,A,T50,A,I0)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String), &
+             'MEM: ',CurrUse
+       ELSE
+         WRITE( InfoOutUnit,'(A,T50,A,I0)', ADVANCE = 'YES' ) TRIM(String),'MEM: ',CurrUse
+       END IF
+#else
        IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
          WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE
          WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
        END IF
+#endif
      END IF
      nadv1 = nadv
 
      CALL FLUSH(InfoOutUnit)
+
+          
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -159,7 +178,6 @@ CONTAINS
 !-----------------------------------------------------------------------
    END FUNCTION InfoActive
 !-----------------------------------------------------------------------
-
 
 
 !-----------------------------------------------------------------------
@@ -288,6 +306,41 @@ CONTAINS
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
+
+     STOP EXIT_ERROR
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
+
+   
 END MODULE Messages
 
 !> \}

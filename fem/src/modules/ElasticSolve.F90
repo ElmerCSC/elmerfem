@@ -236,15 +236,15 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     END IF
   END DO
   
-  CALL Info(Caller,'Maximum number of state variables in UMAT: '//TRIM(I2S(Nstate)),Level=7)
+  CALL Info(Caller,'Maximum number of state variables in UMAT: '//I2S(Nstate),Level=7)
   
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
   IF( NState > 0 ) THEN
     IF (OutputStateVars) THEN
-      str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-dofs '//I2S(NState)//' -ip UmatState'
     ELSE
-      str = '-nooutput -dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-nooutput -dofs '//I2S(NState)//' -ip UmatState'
     END IF
     CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
@@ -574,7 +574,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        IF( ASSOCIATED( UmatStateVar ) ) THEN
          MaxStateV = UmatStateVar % Dofs
          CALL Info(Caller,'Maximum number of state variables in UMAT: '&
-             //TRIM(I2S(MaxStateV)),Level=7)
+             //I2S(MaxStateV),Level=7)
          UmatState => UmatStateVar % Values         
          ALLOCATE( UmatState0( SIZE( UmatState ) ) )          
          UmatState = 0.0_dp         
@@ -736,7 +736,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller,'-------------------------------------', Level=5 )
-     CALL Info( Caller,'ELASTICITY ITERATION '//TRIM(I2S(iter)),Level=4)
+     CALL Info( Caller,'ELASTICITY ITERATION '//I2S(iter),Level=4)
      CALL Info( Caller,'-------------------------------------', Level=5 )
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller, 'Starting assembly...', Level=7 )
@@ -1044,8 +1044,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                END DO
                DO i=1,dim
                  DO j=1,dim
-                   IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), GotIt)
+                   IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), GotIt)
                  END DO
                END DO
              END IF
@@ -1189,6 +1189,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
@@ -1270,7 +1276,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
        END IF
        WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
-           //TRIM(I2S(Iter-1))//': ',NonLinRes
+           //I2S(Iter-1)//': ',NonLinRes
        CALL Info('ElasticitySolver', Message, Level=5)        
 
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN

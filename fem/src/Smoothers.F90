@@ -65,7 +65,7 @@ CONTAINS
       LOGICAL, OPTIONAL :: PreSmooth, LowestSmooth
       INTEGER, POINTER, OPTIONAL :: CF(:)
 !------------------------------------------------------------------------------
-      CHARACTER(LEN=MAX_NAME_LEN) :: IterMethod, im
+      CHARACTER(:), ALLOCATABLE :: IterMethod
       LOGICAL :: Parallel, Found, Lowest, Pre
       TYPE(Matrix_t), POINTER :: M
       INTEGER :: i, j, k, n, Rounds, InvLevel, me

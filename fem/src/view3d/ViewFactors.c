@@ -202,8 +202,7 @@ static void FreeChilds( Geometry_t *Geom )
 
 /*******************************************************************************
 
-Compute viewfactors for elements of the model, and solve for Gebhardt factors,
-or radiosity, if requested.
+Compute viewfactors for elements of the model
 
 24 Aug 1995
 

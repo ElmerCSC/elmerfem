@@ -1196,6 +1196,9 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
    
    st  = realtime_();
+  /* which process number am I? */
+   MPI_Comm_rank(comm, &myid);
+
    /* How many rows do I have? */
    local_size = *nrows;
    local_nodes = *nnodes;
@@ -1210,7 +1213,6 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
    }
 
-
    nlower=1000000000;
    nupper=0;
    for( i=0; i<local_nodes; i++ )
@@ -1221,21 +1223,16 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
    }
 
-  /* which process number am I? */
-   MPI_Comm_rank(comm, &myid);
    /* Create the matrix.
       Note that this is a square matrix, so we indicate the row partition
       size twice (since number of rows = number of cols) */
    HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &A);
-   HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
 
    /* Choose a parallel csr format storage (see the User's Manual) */
    HYPRE_IJMatrixSetObjectType(A, HYPRE_PARCSR);
-   HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
 
    /* Initialize before setting coefficients */
    HYPRE_IJMatrixInitialize(A);
-   HYPRE_IJMatrixInitialize(G);
 
    /* Now go through my local rows and set the matrix entries.
       Note that here we are setting one row at a time, though
@@ -1261,19 +1258,27 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       }
         free( rcols );
    }
+   /* Assemble after setting the coefficients */
+   HYPRE_IJMatrixAssemble(A);
+   /* Get the parcsr matrix object to use */
+   HYPRE_IJMatrixGetObject(A, (void**) &parcsr_A);
 
+   HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
+   HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
+   HYPRE_IJMatrixInitialize(G);
    {
       int nnz,irow,i,j,k,*rcols,csize=32;
 
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++)
       {
-         nnz = grows[i+1]-grows[i];
+         if( !owner[i] ) continue;
+         nnz = grows[i+1] - grows[i];
          if ( nnz>csize ) {
            rcols = (int *)realloc( rcols, nnz*sizeof(int) );
            csize = nnz;
          }
-         irow=globaldofs[i];
+         irow = globaldofs[i];
          for( k=0,j=grows[i]; j<grows[i+1]; j++,k++)
          {
            rcols[k] = globalnodes[gcols[j-1]-1];
@@ -1283,12 +1288,7 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
       free( rcols );
    }
 
-   /* Assemble after setting the coefficients */
-   HYPRE_IJMatrixAssemble(A);
    HYPRE_IJMatrixAssemble(G);
-
-   /* Get the parcsr matrix object to use */
-   HYPRE_IJMatrixGetObject(A, (void**) &parcsr_A);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
 
    /* Create the rhs and solution */
@@ -1366,8 +1366,8 @@ void STDCALLBULL FC_FUNC(solvehypreams,SOLVEHYPREAMS)
    HYPRE_AMSCreate(&precond); 
    HYPRE_AMSSetMaxIter(precond,1);
    HYPRE_AMSSetDiscreteGradient(precond,parcsr_G);
-// HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
    HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
+// HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
 
    HYPRE_AMSSetCycleType(precond, hypre_intpara[6]);// 1-8
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[5], hypre_intpara[2], 1.0, 1.0);

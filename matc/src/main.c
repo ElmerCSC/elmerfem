@@ -41,6 +41,7 @@
 
 /* prototype */
 char *mtc_domath(char *);
+void mtc_init( FILE *, FILE *, FILE *);
 
 int main( int argc, char **argv )
 {

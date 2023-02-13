@@ -1,7 +1,7 @@
 !/******************************************************************************
 ! *
 ! *  Module for defining circuits and dynamic equations.
-! *  This is the original versin of circuit simulator still used by some. 
+! *  This is the original version of circuit simulator still used by some.
 ! *
 ! *  Authors: Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
@@ -125,10 +125,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
-    CALL Info('Circuits2D','Associated circuit with solver index: '//TRIM(I2S(i)),Level=10)
+    CALL Info('Circuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
     
     AngVar => DefaultVariableGet( 'Rotor Angle' )
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     IF(.NOT. ASSOCIATED( AngVar ) ) THEN
       CALL Fatal('CurrentSource','Variable > Rotor Angle < does not exist!')
     END IF
@@ -150,7 +150,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Tstep = GetTimestep()
 
     AngVar => DefaultVariableGet( 'Rotor Angle' )
-    ! Variable should alreadt exist as it was introduced in the _init section.
+    ! Variable should already exist as it was introduced in the _init section.
     IF(.NOT. ASSOCIATED( AngVar ) ) THEN
       CALL Fatal('CurrentSource','Variable > Rotor Angle < does not exist!')
     END IF
@@ -210,11 +210,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     real(kind=dp) :: xxx
 
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    slen =  Matc("Circuits", name)
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -230,9 +228,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//TRIM(i2s(p))//'.variables'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      slen = Matc('C.'//i2s(p)//'.variables', name)
 
       READ(name(1:slen), *) Circuits(p) % n
 
@@ -245,9 +241,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//TRIM(i2s(p))//'.name.'//TRIM(i2s(i))
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('C.'//i2s(p)//'.name.'//i2s(i),name)
 
         Circuits(p) % names(i) = name(1:slen)
 
@@ -276,17 +270,15 @@ CONTAINS
       m = Circuits(p) % m
       ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n) )
 
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.A'//CHAR(0),Circuits(p) % A,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.B'//CHAR(0),Circuits(p) % B,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.A'//CHAR(0),Circuits(p) % A,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.B'//CHAR(0),Circuits(p) % B,n,n)
 
       DO i=1,n
         ! Names of the source functions, these functions should be found
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('nc:C.'//i2s(p)//'.source.'//i2s(i),name)
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -323,7 +315,7 @@ CONTAINS
      END DO ! i
   END DO ! p
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
 
@@ -367,7 +359,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,p,q,n
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -540,7 +532,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Apply()
 !------------------------------------------------------------------------------
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -804,7 +796,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END DO
     END IF
 
-    CALL Info('HarmonicCircuits2D','Associated circuit with solver index: '//TRIM(I2S(i)),Level=10)
+    CALL Info('HarmonicCircuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
     
     PiolaVersion = GetLogical(Asolver % Values, 'Use Piola Transform',Found)
 
@@ -849,11 +841,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Init()
 !------------------------------------------------------------------------------
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
+    slen = Matc("Circuits", name)
     READ(name(1:slen), *) n_Circuits
 
     ALLOCATE( Circuits(n_Circuits) )
@@ -869,10 +859,7 @@ CONTAINS
     DO p=1,n_Circuits
       ! #variables for circuit "p":
       ! ---------------------------
-      cmd = 'C.'//TRIM(i2s(p))//'.variables'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
-
+      slen = Matc('C.'//i2s(p)//'.variables',name)
       READ(name(1:slen), *) Circuits(p) % n
 
       n = Circuits(p) % n
@@ -884,10 +871,7 @@ CONTAINS
       ! names of the variables:
      ! -----------------------
       DO i=1,Circuits(p) % n
-        cmd = 'C.'//TRIM(i2s(p))//'.name.'//TRIM(i2s(i))
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-
+        slen = Matc('C.'//i2s(p)//'.name.'//i2s(i),name)
         Circuits(p) % names(i) = name(1:slen)
 
         IF(name(1:6) == 'u_emf(') THEN
@@ -915,17 +899,15 @@ CONTAINS
       m = Circuits(p) % m
       ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n) )
 
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.A'//CHAR(0),Circuits(p) % A,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.B'//CHAR(0),Circuits(p) % B,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.A'//CHAR(0),Circuits(p) % A,n,n)
+      CALL matc_get_array('C.'//i2s(p)//'.B'//CHAR(0),Circuits(p) % B,n,n)
 
       DO i=1,n
         ! Names of the source functions, these functions should be found
         ! in the "Body Force 1" block of the .sif file.
         ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
         ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
+        slen = Matc('nc:C.'//i2s(p)//'.source.'//i2s(i),name)
         Circuits(p) % Source(i) = name(1:slen)
       END DO
     END DO
@@ -934,9 +916,7 @@ CONTAINS
     ! circuit defs, or from the sif-file defs:
     ! -----------------------------------------------
     DO p=1,n_Circuits
-      cmd = 'nc:C.'//TRIM(i2s(p))//'.omega'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
+      slen = Matc('nc:C.'//i2s(p)//'.omega',name)
       Circuits(p) % FoundOmega = slen >= 1
       IF(Circuits(p) % FoundOmega) &
           READ( name(1:slen), *) Circuits(p) % Omega
@@ -987,7 +967,7 @@ CONTAINS
       END DO
     END DO
 
-    ! Create CRS matrix strucures for the circuit equations:
+    ! Create CRS matrix structures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
 
@@ -1031,7 +1011,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,p,q,n
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -1204,7 +1184,7 @@ return
 !------------------------------------------------------------------------------
     integer :: row, col
 
-    ! Initialialize Circuit matrix:
+    ! Initialilize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -1224,7 +1204,7 @@ return
       BF => Model % BodyForces(1) % Values
       DO p = 1,n_Circuits
         IF(Circuits(p) % FoundOmega) omega = Circuits(p) % omega
-        WRITE(Message, * ) 'Circuit(' // TRIM(I2S(p)) // ') Angular Frequency', Omega
+        WRITE(Message, * ) 'Circuit(' // I2S(p) // ') Angular Frequency', Omega
         CALL Info( 'ApplyCircuits', Message, Level = 8 )
         DO i=1,Circuits(p) % m
           vphi_re = 0._dp

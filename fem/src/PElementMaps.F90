@@ -46,7 +46,7 @@
 !-------------------------------------------------------------------------------
 
 MODULE PElementMaps
-  USE Types
+  Use GeneralUtils
 
   IMPLICIT NONE
 
@@ -192,7 +192,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
-      CHARACTER(LEN=MAX_NAME_LEN) :: msg
+      CHARACTER(:), ALLOCATABLE :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -204,8 +204,8 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
-         CALL Fatal('getBrickFaceEdgeMap', msg)
+         msg = 'Unknown combination node for (face,node)'//I2S(face)//I2S(localNode)
+         CALL Fatal('PElementMaps::getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
 
@@ -795,6 +795,12 @@ CONTAINS
 
     faceDOFs = 0
     SELECT CASE(Element % TYPE % ElementCode / 100)
+    ! Quad
+    CASE (3)
+       IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
+    ! Tetrahedron
+    CASE (4)
+       IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
     ! Tetrahedron
     CASE (5)
        IF (p >= 3) faceDOFs = (p-1)*(p-2)/2
@@ -818,8 +824,9 @@ CONTAINS
     CASE (8)
        IF (p >= 4) faceDOFs = (p-2)*(p-3)/2
     CASE DEFAULT
-       CALL Warn('MeshUtils::getFaceDOFs','Unsupported p element type')
-       faceDOFs = p
+      WRITE(Message,'(A,I0)') 'Unsupported p element type: ',Element % TYPE % ElementCode
+      CALL Warn('PElementMaps::getFaceDOFs',Message)
+      faceDOFs = p
     END SELECT
 
     faceDOFs = MAX(0, faceDOFs)
@@ -885,7 +892,7 @@ CONTAINS
     CASE (8)
        IF (p >= 6) bubbleDOFs = (p-3)*(p-4)*(p-5)/6
     CASE DEFAULT
-       CALL Warn('MeshUtils::getBubbleDOFs','Unsupported p element type')
+       CALL Warn('PElementMaps::getBubbleDOFs','Unsupported p element type')
        bubbleDOFs = p
     END SELECT
 
@@ -896,7 +903,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks if given element is a p-element active in a particular solver.   
 !------------------------------------------------------------------------------
   FUNCTION isActivePElement(Element,USolver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -904,9 +911,9 @@ CONTAINS
 
     TYPE(Element_t), INTENT(IN) :: Element
     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
+    LOGICAL :: retVal
 
     INTEGER :: m
-    LOGICAL :: retVal
     TYPE(Solver_t), POINTER :: pSolver
         
     retVal = isPelement(Element)
@@ -917,7 +924,7 @@ CONTAINS
     IF( PRESENT( USolver ) ) THEN
       pSolver => USolver
     ELSE
-      pSOlver => CurrentModel % Solver
+      pSolver => CurrentModel % Solver
     END IF
     
     IF(ASSOCIATED(pSolver))THEN
@@ -933,7 +940,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element active in a particular solver.   
+!> Checks whether given solver has active p-element definitions (for some
+!> element type and for some body)
 !------------------------------------------------------------------------------
   FUNCTION isActivePSolver(Solver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -956,7 +964,7 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
-!> Checks if given element is a p element.   
+!> Checks whether given element has p-element information associated  
 !------------------------------------------------------------------------------
     FUNCTION isPElement( Element ) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -1150,7 +1158,7 @@ CONTAINS
       INTEGER :: edgeP, faceP, bubbleP, TrueBubbleP, nb, maxp
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getNumberOfGaussPoints','Element not p element')
+         CALL Warn('PElementMaps::getNumberOfGaussPoints','Element not p element')
          ngp = 0
          RETURN
       END IF
@@ -1227,11 +1235,11 @@ CONTAINS
             CASE(4)
               ngp = 20
             CASE(5)
-              ngp = 25
-            CASE(6)
               ngp = 36
-            CASE(7)
+            CASE(6)
               ngp = 45
+            CASE(7)
+              ngp = 60
             CASE(8)
               ngp = 60
             END SELECT
@@ -1262,7 +1270,7 @@ CONTAINS
       INTEGER :: edgeP, i
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getEdgeP','Element not p element')
+         CALL Warn('PElementMaps::getEdgeP','Element not p element')
          edgeP = 0
          RETURN
       END IF
@@ -1292,7 +1300,7 @@ CONTAINS
       TYPE(Mesh_t) :: Mesh
       
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementBase::getFaceP','Element not p element')
+         CALL Warn('PElementMaps::getFaceP','Element not p element')
          faceP = 0
          RETURN
       END IF
