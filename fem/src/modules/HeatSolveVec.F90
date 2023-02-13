@@ -1289,6 +1289,7 @@ CONTAINS
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
+        Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
         
     ELSE ! .NOT. Radiosity ) 

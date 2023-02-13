@@ -73,7 +73,7 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
 
   Vierfactor Binary Output = Logical True
-
+ 
   Viewfactor raytrace tolerance = 0.001
   Viewfactor area tolerance = 0.01
   Viewfactor factor tolerance = 0.001
@@ -90,8 +90,10 @@ Solver 1
   Calculate Loads = True
   Calculate Boundary Fluxes = True
   Calculate Boundary Weights = True
+ 
+  Calculate Radiosity Fields = Logical True
 
-  Calculate Radiation Fluxes = True
+!  Radiosity Simple Temperature Dependence = Logical True
 
 ! Costs more but not much better...
 !  Accurate Spectral Newton = Logical True

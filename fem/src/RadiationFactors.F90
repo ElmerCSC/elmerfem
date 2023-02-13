@@ -1039,18 +1039,30 @@
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
      !------------------------------------------------------------------------------
-     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,IsRadiator)
+     SUBROUTINE TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,IsRadiator,SimpleTDep)
        REAL(KIND=dp) :: Trad
        REAL(KIND=dp) :: Emissivity(:)
        REAL(KIND=dp) :: Absorptivity(:)
-       LOGICAL :: IsRadiator
+       LOGICAL :: IsRadiator, SimpleTdep
               
+       REAL(KIND=dp), ALLOCATABLE :: SaveValues(:)
+       TYPE(Variable_t), POINTER :: TVar
        TYPE(ValueList_t), POINTER :: Vlist
        TYPE(Element_t), POINTER :: Element, Parent
-       INTEGER :: i,k,bc_id,mat_id
+       INTEGER :: i,k,bc_id,mat_id, n
 
-       CALL Info('TabulateSpectralEmissivity','Setting emissivities for faster radiation computation',Level=25)
-       
+       CALL Info('TabulateSpectralEmissivity','Setting emissivities for faster radiation computation',Level=25)       
+
+       ! If we have simple dependence only (dependence just on temperature) we can call it through
+       ! a simplefied function call. Otherwise we overwrite the current temperature and use the generic
+       ! ListGetReal function, and then rewert back to original temperature.
+       IF(.NOT. SimpleTdep ) THEN       
+         TVar => VariableGet(Mesh % Variables,'Temperature')
+         ALLOCATE( SaveValues(SIZE(TVar % Values) ) )
+         SaveValues = TVar % Values
+         TVar % Values = Trad
+       END IF
+                
        DO i=1,RadiationSurfaces         
          Element => Mesh % Elements(ElementNumbers(i))
 
@@ -1079,15 +1091,31 @@
            END DO
          END IF
 
-         Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
-         Found = .FALSE.
-         IF(IsRadiator) THEN
-           Absorptivity(i) = ListGetFun( VList,'Radiator Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
-         END IF
-         IF(.NOT. Found ) Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)         
-         IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+         IF( SimpleTdep ) THEN
+           Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
+           Found = .FALSE.
+           IF(IsRadiator) THEN
+             Absorptivity(i) = ListGetFun( VList,'Radiator Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)
+           END IF
+           IF(.NOT. Found ) Absorptivity(i) = ListGetFun( VList,'Absorptivity',Trad,Found,minv=0.0_dp,maxv=1.0_dp)         
+           IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+         ELSE          
+           n = Element % TYPE % NumberOfNodes          
+           Emissivity(i) = SUM( ListGetReal( Vlist,'Emissivity',n,Element % NodeIndexes) ) / n
+           Found = .FALSE.
+           IF(IsRadiator) THEN
+             Absorptivity(i) = SUM( ListGetReal( Vlist,'Radiator Absorptivity',n,Element % NodeIndexes, Found) ) / n
+           END IF
+           IF(.NOT. Found ) Absorptivity(i) = SUM( ListGetReal( Vlist,'Absorptivity',n,Element % NodeIndexes, Found) ) / n
+           IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+         END IF                            
        END DO
-       
+
+       IF(.NOT. SimpleTdep ) THEN
+         TVar % Values = SaveValues
+         DEALLOCATE(SaveValues)
+       END IF
+                
      END SUBROUTINE TabulateSpectralEmissivity
             
 
@@ -1619,7 +1647,7 @@
        INTEGER :: i,j,k,kmin,kmax
        REAL(KIND=dp) :: q, qsum, totsum, c, r, e, a, s, Temp, Black
 
-       LOGICAL :: RBC, ApproxNewton, AccurateNewton, UsedEdT
+       LOGICAL :: RBC, ApproxNewton, AccurateNewton, UsedEdT, SimpleTdep
        INTEGER, ALLOCATABLE :: RadiatorSet(:)
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), RadiatorTemps(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
@@ -1638,7 +1666,9 @@
          AccurateNewton = ListGetLogical( TSolver % Values,'Accurate Spectral Newton',Found ) 
          ApproxNewton = .NOT. AccurateNewton
        END IF
-         
+
+       SimpleTdep = ListGetLogical( TSolver % Values,'Radiosity Simple Temperature Dependence',Found)
+       
        Tmin = MINVAL(SurfaceTemperature)
        Tmax = MAXVAL(SurfaceTemperature)
        
@@ -1703,7 +1733,7 @@
          
          ! This is the temperature under study for which we will get the emissivities for. 
          Trad = k*dT         
-         CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.FALSE.)
+         CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.FALSE.,SimpleTdep)
          CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
          DO i=1,RadiationSurfaces
            ! The portion of the emissivity to consider for this radiating element
@@ -1802,7 +1832,7 @@
            RHS = 0.0_dp         
            G % Values = 0.0_dp
            
-           CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.)
+           CALL TabulateSpectralEmissivity(Emissivity,Absorptivity,Trad,.TRUE.,SimpleTdep)
            CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
            DO i=1,RadiationSurfaces
              Element => Mesh % Elements(ElementNumbers(i))
