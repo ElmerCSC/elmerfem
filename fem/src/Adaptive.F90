@@ -110,15 +110,19 @@ CONTAINS
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
-      LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s
+        LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef
 
-    LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, MeshNumbering
+    LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
+        MeshNumbering, DoFinalRef
     INTEGER :: MaxDepth, MinDepth, NLen
     CHARACTER(:), ALLOCATABLE :: Path, VarName
     REAL(KIND=dp), POINTER  :: Time(:), NodalError(:), PrevValues(:), &
          Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput
+
+    SAVE DoFinalRef
+    
 !---------------------------------------------------------------------------------
 !
 !   Initialize:
@@ -135,12 +139,22 @@ CONTAINS
       CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinuous mesh!')
     END IF
 
+    MinDepth = ListGetInteger( Solver % Values, 'Adaptive Min Depth', Found )
+
     MaxDepth = ListGetInteger( Solver % Values, 'Adaptive Max Depth', Found )
+    IF( Found .AND. MinDepth > MaxDepth ) THEN
+      CALL Warn('RefineMesh','"Adaptive Min Depth" greater than Max!' )
+    END IF
+
+    IF( RefMesh % AdaptiveDepth == 0 ) THEN
+      CALL Info('RefineMesh','Initializing stuff on coarsest level!')
+      DoFinalRef = .FALSE.
+    END IF
+        
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
        CALL Info( 'RefineMesh','Max adaptive depth reached!', Level = 6 )
        GOTO 20
     END IF
-    MinDepth = ListGetInteger( Solver % Values, 'Adaptive Min Depth', Found )
     
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
@@ -359,16 +373,25 @@ CONTAINS
 
 !   Check for convergence:
 !   ----------------------
-    ErrorLimit = ListGetConstReal( Solver % Values, &
-        'Adaptive Error Limit', Found )
-
+    ErrorLimit = ListGetConstReal( Solver % Values,'Adaptive Error Limit', Found )
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
-    IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
-      CALL Info( 'RefineMesh', 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+    IF( DoFinalRef ) THEN
+      CALL Info( 'RefineMesh', 'Final rerinement done. Nothing to do!', Level=6 )
       RefMesh % OUtputActive = .TRUE.      
       RefMesh % Parent % OutputActive = .FALSE.      
-      GOTO 10
+      GOTO 10             
+    ELSE IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
+      FinalRef = ListGetConstReal( Solver % Values,'Adaptive Final Refinement', DoFinalRef ) 
+      IF(DoFinalRef ) THEN      
+        CALL Info( 'RefineMesh', 'Performing one final refinement',Level=6)
+        ErrorLimit = FinalRef * ErrorLimit 
+      ELSE
+        CALL Info( 'RefineMesh', 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+        RefMesh % OUtputActive = .TRUE.      
+        RefMesh % Parent % OutputActive = .FALSE.      
+        GOTO 10
+      END IF
     END IF
 
 !
