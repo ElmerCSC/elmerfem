@@ -46,7 +46,11 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90
     BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90 
-    GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90)
+    GMValid.F90 Scalar_OUTPUT_Glacier.F90 IcyMaskSolver.F90
+    Weertman2Coulomb.F90)
+
+SET(ElmerIce_SRC ${ElmerIce_SRC} ./Covarianceutils/CovarianceUtils.F90 ./Covarianceutils/BackgroundErrorCostSolver.F90 ./Covarianceutils/CovarianceVectorMultiplySolver.F90 ./Covarianceutils/GaussianSimulationSolver.F90)
+
 IF(HAVE_ODEPack)
   SET(ElmerIce_SRC ${ElmerIce_SRC} PlumeSolver.F90 )
 ENDIF()
@@ -105,6 +109,13 @@ ENDIF()
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ElmerIce_MeshAdapt3D)
 # ENDIF()
+
+IF(HAVE_PROJ)
+  INCLUDE_DIRECTORIES(${PROJ_INCLUDE_DIR})
+  INCLUDE_DIRECTORIES(${FORTRANGIS_INCLUDE_DIR})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PROJ_LIBRARY})
+  TARGET_LINK_LIBRARIES(ElmerIceSolvers ${FORTRANGIS_LIBRARY})
+ENDIF()
 
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")
