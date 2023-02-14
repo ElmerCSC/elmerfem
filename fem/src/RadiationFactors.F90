@@ -1091,6 +1091,8 @@
            END DO
          END IF
 
+         IF(.NOT. ASSOCIATED(Vlist) ) CALL Fatal('TabulateSpectralEmissivity','Emissivity list not associated!')
+
          IF( SimpleTdep ) THEN
            Emissivity(i) = ListGetFun( Vlist,'Emissivity',Trad,minv=0.0_dp,maxv=1.0_dp)
            Found = .FALSE.
@@ -1101,6 +1103,7 @@
            IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
          ELSE          
            n = Element % TYPE % NumberOfNodes          
+           CurrentModel % CurrentElement => Element
            Emissivity(i) = SUM( ListGetReal( Vlist,'Emissivity',n,Element % NodeIndexes) ) / n
            Found = .FALSE.
            IF(IsRadiator) THEN
