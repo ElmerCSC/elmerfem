@@ -395,7 +395,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL, OPTIONAL :: ReTrial
   
-#ifdef HAVE_MMG
+#ifdef HAVE_PARMMG
   REAL(KIND=dp) :: Pval
   LOGICAL :: AngleDetect
   INTEGER :: verbosity,MeMIncrease,Bucket,GMshOption,ierr,niter
@@ -549,7 +549,7 @@ SUBROUTINE Set_PMMG_Parameters(SolverParams, ReTrial )
 
 !!!
 #else
-  CALL Fatal('Set_MMG3D_Parameters',&
+  CALL Fatal('Set_PMMG_Parameters',&
       'Remeshing utility MMG3D has not been installed')
 #endif
 END SUBROUTINE Set_PMMG_Parameters

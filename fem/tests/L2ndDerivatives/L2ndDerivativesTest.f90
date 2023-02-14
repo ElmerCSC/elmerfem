@@ -288,8 +288,8 @@ CONTAINS
 
      IF( ABS(f1-f2) < 1.d-12 ) RETURN
      IF(ABS(f1-f2)>scal*eps) THEN
-       PRINT*,f1,f2,ABS(f1-f2), '>', scal*eps
-       STOP str 
+       PRINT*,str,":",f1,f2,ABS(f1-f2), '>', scal*eps
+       STOP 
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE CheckValue
