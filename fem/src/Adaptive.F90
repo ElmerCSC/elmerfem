@@ -120,15 +120,17 @@ CONTAINS
          Hvalue(:),PrevNodalError(:), PrevHValue(:), hConvergence(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: ErrorIndicator(:), eRef(:), hRef(:), Work(:)
     LOGICAL :: NoInterp, Parallel, AdaptiveOutput
+    CHARACTER(*), PARAMETER :: Caller = 'RefineMesh'
 
+    
     SAVE DoFinalRef
     
 !---------------------------------------------------------------------------------
 !
 !   Initialize:
 !   -----------
-    CALL Info( 'RefineMesh', ' ', Level=5 )
-    CALL Info( 'RefineMesh', &
+    CALL Info( Caller, ' ', Level=5 )
+    CALL Info( Caller, &
         '----------- M E S H   R E F I N E M E N T --------------', Level=5 )
     TotalTime = CPUTime()
     RemeshTime = 0.0d0
@@ -136,23 +138,23 @@ CONTAINS
     RefMesh => Solver % Mesh
 
     IF( RefMesh % DiscontMesh ) THEN
-      CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinuous mesh!')
+      CALL Fatal(Caller,'Adaptive refinement not possible for discontinuous mesh!')
     END IF
 
     MinDepth = ListGetInteger( Solver % Values, 'Adaptive Min Depth', Found )
 
     MaxDepth = ListGetInteger( Solver % Values, 'Adaptive Max Depth', Found )
     IF( Found .AND. MinDepth > MaxDepth ) THEN
-      CALL Warn('RefineMesh','"Adaptive Min Depth" greater than Max!' )
+      CALL Warn(Caller,'"Adaptive Min Depth" greater than Max!' )
     END IF
 
     IF( RefMesh % AdaptiveDepth == 0 ) THEN
-      CALL Info('RefineMesh','Initializing stuff on coarsest level!')
+      CALL Info(Caller,'Initializing stuff on coarsest level!')
       DoFinalRef = .FALSE.
     END IF
         
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
-       CALL Info( 'RefineMesh','Max adaptive depth reached!', Level = 6 )
+       CALL Info( Caller,'Max adaptive depth reached!', Level = 6 )
        GOTO 20
     END IF
     
@@ -175,16 +177,16 @@ CONTAINS
     MaxError = ComputeError( Model, ErrorIndicator, RefMesh, &
       Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual )
     WRITE( Message, * ) 'Error computation time (cpu-secs):               ',CPUTime()-t
-    CALL Info( 'RefineMesh', Message, Level = 6 )
+    CALL Info( Caller, Message, Level = 6 )
 
 !   Global error estimate:
 !   ----------------------
     ErrorEstimate =  SQRT( SUM( ErrorIndicator**2  ) )
     
     WRITE( Message, * ) 'Max error      =                                 ',MaxError
-    CALL Info( 'RefineMesh', Message, Level = 6 )
+    CALL Info( Caller, Message, Level = 6 )
     WRITE( Message, * ) 'Error estimate =                                 ',ErrorEstimate
-    CALL Info( 'RefineMesh', Message, Level = 6 )
+    CALL Info( Caller, Message, Level = 6 )
     WRITE(12,*) RefMesh % NumberOfBulkElements,ErrorEstimate,MaxError
 
 !
@@ -204,7 +206,7 @@ CONTAINS
                 'Hvalue', 1, Hvalue, Output = AdaptiveOutput )       
        Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
        IF(.NOT. ASSOCIATED(Var) ) THEN
-         CALL Fatal('RefineMesh','Could not add variable Var?')
+         CALL Fatal(Caller,'Could not add variable Var?')
        END IF
        Hvalue = 0.0d0
     END IF
@@ -377,17 +379,17 @@ CONTAINS
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
     IF( DoFinalRef ) THEN
-      CALL Info( 'RefineMesh', 'Final rerinement done. Nothing to do!', Level=6 )
+      CALL Info( Caller, 'Final refinement done. Nothing to do!', Level=6 )
       RefMesh % OUtputActive = .TRUE.      
       RefMesh % Parent % OutputActive = .FALSE.      
       GOTO 10             
     ELSE IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
       FinalRef = ListGetConstReal( Solver % Values,'Adaptive Final Refinement', DoFinalRef ) 
       IF(DoFinalRef ) THEN      
-        CALL Info( 'RefineMesh', 'Performing one final refinement',Level=6)
+        CALL Info( Caller, 'Performing one final refinement',Level=6)
         ErrorLimit = FinalRef * ErrorLimit 
       ELSE
-        CALL Info( 'RefineMesh', 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+        CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
         RefMesh % OUtputActive = .TRUE.      
         RefMesh % Parent % OutputActive = .FALSE.      
         GOTO 10
@@ -431,20 +433,20 @@ CONTAINS
        t = RealTime()
        IF( ListGetLogical( Solver % Values,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-         CALL Info('RefineMesh','Using MMG libary for mesh refinement',Level=5)
+         CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
          NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
              NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
-         CALL Fatal('Remesh','Remeshing requested with MMG but not compiled with!')
+         CALL Fatal( Caller,'Remeshing requested with MMG but not compiled with!')
 #endif          
        ELSE       
-         CALL Info('RefineMesh','Using file I/O for mesh refinement',Level=5)
+         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
          NewMesh => ReMesh( RefMesh, ErrorLimit/3, HValue, &
              NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
        END IF
        RemeshTime = RealTime() - t
        WRITE( Message, * ) 'Remeshing time (real-secs):                      ',RemeshTime
-       CALL Info( 'RefineMesh', Message, Level=6 )
+       CALL Info( Caller, Message, Level=6 )
     ELSE
        NewMesh => SplitMesh( RefMesh, ErrorIndicator, ErrorLimit, &
             NodalError, hValue, hConvergence, minH, maxH, MaxChangeFactor )
@@ -454,7 +456,7 @@ CONTAINS
 !   NodalError = PrevNodalError
 
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
-      CALL Info( 'RefineMesh','Current mesh seems fine. I will do nothing.', Level=6 )
+      CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
       RefMesh % OUtputActive = .TRUE.
       RefMesh % Parent % OutputActive = .FALSE.
       GOTO 10
@@ -462,12 +464,12 @@ CONTAINS
       CALL SetMeshMaxDofs(NewMesh)
     END IF
 
-    CALL Info( 'RefineMesh','The new mesh consists of: ', Level=5 )
-    CALL Info( 'RefineMesh','Nodal points: '&
+    CALL Info( Caller,'The new mesh consists of: ', Level=5 )
+    CALL Info( Caller,'Nodal points: '&
         //TRIM(I2S(NewMesh % NumberOfNodes)),Level=5)
-    CALL Info( 'RefineMesh','Bulk elements: '&
+    CALL Info( Caller,'Bulk elements: '&
         //TRIM(I2S(NewMesh % NumberOfBulkElements)),Level=5)
-    CALL Info( 'RefineMesh','Boundary elements: '&
+    CALL Info( Caller,'Boundary elements: '&
         //TRIM(I2S(NewMesh % NumberOfBoundaryElements)),Level=5)
 
 !-------------------------------------------------------------------
@@ -531,7 +533,7 @@ CONTAINS
     ! -----------------------------------------------------------
     CALL SetCurrentMesh( Model, NewMesh )
 
-    CALL Info('RefineMesh','Interpolate vectors from old mesh to new mesh!',Level=7)    
+    CALL Info(Caller,'Interpolate vectors from old mesh to new mesh!',Level=7)    
     Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
       ! This cycles global variable such as time etc. 
@@ -561,12 +563,12 @@ CONTAINS
        END IF
        Var => Var % Next
     END DO
-    CALL Info('RefineMesh','Interpolation to new mesh done!',Level=20)    
+    CALL Info(Caller,'Interpolation to new mesh done!',Level=20)    
 
 !   Second time around, update scalar variables and
 !   vector components:
 !   -----------------------------------------------
-    CALL Info('RefineMesh','Interpolate scalars from old mesh to new mesh!',Level=7)    
+    CALL Info(Caller,'Interpolate scalars from old mesh to new mesh!',Level=7)    
     Var => RefMesh % Variables
     DO WHILE( ASSOCIATED( Var ) )
 
@@ -624,7 +626,7 @@ CONTAINS
 
 !-------------------------------------------------------------------    
     WRITE( Message, * ) 'Mesh variable update time (cpu-secs):            ',CPUTime()-t
-    CALL Info( 'RefineMesh', Message, Level = 6 )
+    CALL Info( Caller, Message, Level = 6 )
 !-------------------------------------------------------------------    
 
 !
@@ -647,123 +649,13 @@ CONTAINS
 !   Try to account for the reordering of DOFs
 !   due to bandwidth optimization:
     !   -----------------------------------------
-#if 1
+
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
-#else
-!
-!   Update the solvers variable pointer:
-!   ------------------------------------    
-    Solver % Mesh => NewMesh
-
-    Solver % Variable => VariableGet( Solver % Mesh % Variables, &
-            Solver % Variable % Name, ThisOnly=.TRUE. )
-    Solver % Variable % PrimaryMesh => NewMesh
-
-    GlobalBubbles = ListGetLogical( Solver % Values, &
-          'Bubbles in Global System', Found )
-    IF ( .NOT. Found ) GlobalBubbles = .TRUE.
-
-    BandwidthOptimize = ListGetLogical( Solver % Values, &
-         'Optimize Bandwidth', Found )
-    IF ( .NOT. Found ) BandwidthOptimize = .TRUE.
-
-    IF ( BandwidthOptimize ) THEN
-       n = NewMesh % NumberOfNodes
-       IF ( GlobalBubbles ) &
-          n = n + NewMesh % MaxBDOFs*NewMesh % NumberOFBulkElements
-       CALL AllocateVector( Permutation,  n )
-    ELSE
-       Permutation => Solver % Variable % Perm
-    END IF
-
-    ! Create the CRS format matrix tables for solving the
-    ! current equation on the new mesh. Also do bandwidth
-    ! optimization, if requested:
-    ! ----------------------------------------------------
-    NewMatrix => CreateMatrix( Model, Solver, Solver % Mesh,  &
-         Permutation, Solver % Variable % DOFs, MATRIX_CRS, &
-         BandwidthOptimize, ListGetString( Solver % Values, 'Equation' ), &
-         GlobalBubbles=GlobalBubbles )
-
-    IF ( ASSOCIATED( Solver % Matrix ) ) THEN
-       CALL FreeMatrix( Solver % Matrix )
-       NULLIFY( Solver % Matrix )
-     END IF
-
-!   Solver % Matrix % Child  => NewMatrix
-    NewMatrix % Parent => Solver % Matrix
-    NULLIFY( NewMatrix % Child )
-    Solver % Matrix => NewMatrix
-
-! WONT WORK FOR NOW
-!   IF ( Solver % MultiGridSolver ) THEN
-!      Solver % MultiGridLevel = Solver % MultiGridLevel + 1
-!      Solver % MultiGridTotal = Solver % MultiGridTotal + 1
-!   END IF
-
-!
-!   Reorder the primary variable for bandwidth optimization:
-!   --------------------------------------------------------
-    IF ( BandwidthOptimize ) THEN
-       n = Solver % Variable % DOFs
-       ALLOCATE( Work(SIZE(Permutation)) )
-       DO i=0,n-1
-          Work = Solver % Variable % Values(i+1::n)
-          DO j=1,SIZE(Permutation)
-             IF ( Permutation(j) > 0 ) THEN
-                Solver % Variable % Values(n*Permutation(j)-i) = &
-                    Work(Solver % Variable % Perm(j))
-             END IF
-          END DO
-          IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-             DO j=1,SIZE( Solver % Variable % PrevValues,2)
-               Work = Solver % Variable % PrevValues(i+1::n,j)
-               DO k=1,SIZE(Permutation)
-                  IF ( Permutation(k) > 0 ) THEN
-                     Solver % Variable % PrevValues(n*Permutation(k)-i,j) = &
-                         Work(Solver % Variable % Perm(k))
-                  END IF
-               END DO
-             END DO
-          END IF
-       END DO
-       k = SIZE(Permutation)
-       Solver % Variable % Perm(1:k) = Permutation
-       DEALLOCATE( Permutation, Work )
-    END IF
-
-    IF( ASSOCIATED( Solver % Matrix ) ) THEN
-      IF(.NOT. ASSOCIATED( Solver % Matrix % Rhs ) ) THEN
-        CALL AllocateVector( Solver % Matrix % RHS, SIZE(Solver % Variable % Values) )
-        Solver % Matrix % RHS = 0.0d0
-      END IF
-    END IF
-      
-    
-!   Transient case additional allocations:
-!   --------------------------------------
-    IF (ListGetString(Model % Simulation,'Simulation Type')=='transient') THEN
-       n = SIZE( Solver % Variable % Values )
-
-       CALL AllocateArray( Solver % Matrix % Force, n, Solver % TimeOrder+1 )
-       Solver % Matrix % Force = 0.0d0
-    END IF
-
-!   Eigen analysis case additional allocations:
-!   --------------------------------------------
-    IF ( ListGetLogical(Solver % Values, 'Eigen Analysis', Found ) ) THEN
-       n = SIZE( Solver % Variable % Values )
-       CALL AllocateArray( Solver % Variable % EigenVectors, &
-                 Solver % NOFEigenValues, n )
-       CALL AllocateVector( Solver % Variable % EigenValues, &
-                 Solver % NOFEigenValues )
-    END IF
-#endif
           
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
     WRITE( Message, * ) 'Matrix structures update time (cpu-secs):        ',CPUTime()-t
-    CALL Info( 'RefineMesh', Message, Level=6 )
+    CALL Info( Caller, Message, Level=6 )
 
 !
 !   Release previous meshes. Keep only the original mesh, and
@@ -785,7 +677,7 @@ CONTAINS
             Mesh % Child % Next => Mesh % Next 
           END IF
 
-          CALL Info('RefineMesh','Releasing mesh: '//TRIM(Mesh % Name),Level=8)
+          CALL Info(Caller,'Releasing mesh: '//TRIM(Mesh % Name),Level=8)
           CALL ReleaseMesh( Mesh )
                                
           !Some solvers should be able to go from Mesh to its child!
@@ -816,13 +708,13 @@ CONTAINS
 
     WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
          CPUTIme() - TotalTime 
-    CALL Info( 'RefineMesh', Message, Level=6 )
+    CALL Info( Caller, Message, Level=6 )
     IF ( RemeshTime > 0 ) THEN
        WRITE( Message, * ) 'Remeshing took in total (real-secs):            ', &
             RemeshTime
-       CALL Info( 'RefineMesh', Message, Level=6 )
+       CALL Info( Caller, Message, Level=6 )
     END IF
-    CALL Info( 'RefineMesh', &
+    CALL Info( Caller, &
          '----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
 
 
