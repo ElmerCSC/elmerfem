@@ -63,9 +63,7 @@ MODULE Messages
    
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
-   LOGICAL :: USE_XIOS = .FALSE. 
-
-CONTAINS
+ CONTAINS
 
 !-----------------------------------------------------------------------
 !> Prints information on the standard output if the requested or 
@@ -277,12 +275,6 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
-#ifdef HAVE_XIOS
-     IF (USE_XIOS) THEN
-       CALL xios_context_finalize()
-       CALL xios_finalize()
-     ENDIF
-#endif 
      IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.

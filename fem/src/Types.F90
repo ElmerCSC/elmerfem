@@ -1077,6 +1077,7 @@ MODULE Types
 
     INTEGER :: ELMER_COMM_WORLD = -1
 
+    LOGICAL :: USE_XIOS=.FALSE.
     CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
 !------------------------------------------------------------------------------
 END MODULE Types
