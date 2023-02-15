@@ -1049,9 +1049,9 @@
        TYPE(Variable_t), POINTER :: TVar
        TYPE(ValueList_t), POINTER :: Vlist
        TYPE(Element_t), POINTER :: Element, Parent
-       INTEGER :: i,k,bc_id,mat_id, n
+       INTEGER :: i,k,bc_id,mat_id, n,i2,j2
 
-       CALL Info('TabulateSpectralEmissivity','Setting emissivities for faster radiation computation',Level=25)       
+       CALL Info('TabulateSpectralEmissivity','Precomputing emissivities for faster radiosity computation',Level=5)       
 
        ! If we have simple dependence only (dependence just on temperature) we can call it through
        ! a simplefied function call. Otherwise we overwrite the current temperature and use the generic
@@ -1084,7 +1084,24 @@
                  mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',Found)
                  IF(Found) THEN
                    Vlist => CurrentModel % Materials(mat_id) % Values
-                   IF(ListCheckPresent(Vlist,'Emissivity') ) EXIT
+
+                   IF(ListCheckPresent(Vlist,'Emissivity') ) THEN
+                     IF( ASSOCIATED(Parent % DGIndexes) ) THEN
+                       IF(.NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+                         ALLOCATE( Element % DGIndexes(Element % TYPE % NumberOfNodes))
+                         Element % DGIndexes = 0
+                       END IF
+                       DO i2 = 1, Element % TYPE % NumberOfNodes
+                         DO j2 = 1, Parent % TYPE % NumberOfNodes
+                           IF( Element % NodeIndexes(i2) == Parent % NodeIndexes(j2) ) THEN
+                             Element % DGIndexes(i2) = Parent % DGIndexes(j2)
+                             EXIT
+                           END IF
+                         END DO
+                       END DO
+                     END IF
+                     EXIT
+                   END IF
                  END IF
                END IF
              END IF
