@@ -3277,7 +3277,6 @@
         IF ( GotIt ) THEN
            IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              PRINT *,'a1'
               !IF( ASSOCIATED(Solver % Variable) ) THEN
               ! This construct seems to be for cases when we solve something "after all"
               ! that affects results elsewhere. Hence we set "LastSaved" to false even
@@ -3288,7 +3287,6 @@
         ELSE
            IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_ALL ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              PRINT *,'a2'
               !IF( ASSOCIATED(Solver % Variable) ) THEN
               !  IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
               !END IF
