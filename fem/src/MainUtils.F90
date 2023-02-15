@@ -961,8 +961,10 @@ CONTAINS
          Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
        CASE( 'when created' )
          Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       CASE( 'after control' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_CONTROL
        CASE DEFAULT
-         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+         CALL Fatal('AddExecWhenFlag','Unknown "exec solver" flag: '//TRIM(str))
        END SELECT
      ELSE      
        IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
@@ -985,6 +987,8 @@ CONTAINS
          Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
        ELSE IF ( ListGetLogical( SolverParams, 'When Created', Found ) ) THEN
          Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       ELSE IF ( ListGetLogical( SolverParams, 'After Control', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_CONTROL
        END IF
      END IF
 

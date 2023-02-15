@@ -1357,8 +1357,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
       CALL Info( Caller, Message, Level=4 )
       
-      IF( Solver % TimesVisited > 0 ) THEN
-        WRITE ( Message,'(A,I0,A,I0)') 'Number of scalar values differ from previous time:',&
+      IF( Solver % TimesVisited > 0 .AND. NoValues /= PrevNoValues ) THEN
+        WRITE ( Message,'(A,I0,A,I0)') 'Number of scalar values differ from previous time: ',&
             NoValues,' vs. ',PrevNoValues
         CALL Warn(Caller,Message)
       END IF

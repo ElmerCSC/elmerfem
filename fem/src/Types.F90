@@ -85,7 +85,9 @@ MODULE Types
                         SOLVER_EXEC_AHEAD_SAVE =  5, &
                         SOLVER_EXEC_AFTER_SAVE =  6, &
                         SOLVER_EXEC_PREDCORR = 7,    &
-                        SOLVER_EXEC_WHENCREATED = 8
+                        SOLVER_EXEC_WHENCREATED = 8, &
+                        SOLVER_EXEC_AFTER_CONTROL = 9
+                        
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
 	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)

@@ -23,8 +23,7 @@ Simulation
   Max Output Level = 7
   Coordinate System = Cartesian 2D 
   Simulation Type = Steady State
-  Steady State Min Iterations = 3
-  Steady State Max Iterations = 20
+  Steady State Max Iterations = 50
   Post File = "case.vtu"
 End
 
@@ -65,6 +64,8 @@ Solver 1
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True
   Constraint Modes Fluxes Symmetric = Logical True
+  Constraint Modes Fluxes Results = Logical True
+  Constraint Modes Fluxes Norm = Logical True
   Run Control Constraint Modes = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5
@@ -73,10 +74,27 @@ Solver 1
   Adaptive Remesh = True
   Adaptive Error Limit = 0.005
   Adaptive Remesh Use MMG = Logical True
-  Adaptive Mesh Numbering = Logical False
+  Adaptive Mesh Numbering = False
 
+! Perform minimum amount of adaptive rounds + one more fine one
+!  Adaptive Min Depth = 5
+!  Adaptive Final Refinement = 0.2
+
+! Just for debugging
 !  Adaptive Save Mesh = True
 End
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = "after control"
+  Parallel Reduce = True
+  Filename = f.dat
+
+  Show Norm Name = "res: potential constraint norm"
+End
+
 
 Material 1
   Relative Permittivity = 1
@@ -109,7 +127,8 @@ Boundary Condition 5
   Constraint Mode Potential = Integer 4
 End
 
-Solver 1 :: Reference Norm = 5.20132525E-01
+Solver 1 :: Reference Norm = 5.63202191E-01
+Solver 2 :: Reference Norm = 2.44656190E+01
 
 
 !End Of File
