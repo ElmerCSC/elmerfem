@@ -2728,7 +2728,7 @@ CONTAINS
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: i, j, k, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
+     INTEGER :: i, j, k, k2, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
          mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
@@ -3030,7 +3030,8 @@ CONTAINS
      END IF
      
      ! non-nodal elements in boundary elements
-     !------------------------------------------------------------    
+     !------------------------------------------------------------
+     k2 = 0
      DO i = Mesh % NumberOfBulkElements + 1, &
          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
 
@@ -3058,11 +3059,19 @@ CONTAINS
            Element % NDOFs = 0
          END IF
 
+         j = Element % BoundaryInfo % Left % ElementIndex
          IF ( Element % TYPE % DIMENSION == 1 ) THEN
-           Element % BDOFs = &
-               EdgeDOFs(Element % BoundaryInfo % Left % ElementIndex)
+           IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
+             k2 = k2 + 1
+           ELSE
+             Element % BDOFs = EdgeDOFs(j)
+           END IF
          ELSE
-           Element % BDOFs = FaceDOFs(Element % BoundaryInfo % Left % ElementIndex)
+           IF(j<1 .OR. j>SIZE(FaceDofs)) THEN
+             k2 = k2 + 1
+           ELSE
+             Element % BDOFs = FaceDOFs(j)
+           END IF
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
@@ -3072,15 +3081,24 @@ CONTAINS
            Element % NDOFs = 0
          END IF
 
+         j = Element % BoundaryInfo % Right % ElementIndex
+
          IF ( Element % TYPE % DIMENSION == 1 ) THEN
-           Element % BDOFs = &
-               EdgeDOFs(Element % BoundaryInfo % Right % ElementIndex)
+           IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
+             k2 = k2 + 1
+           ELSE
+             Element % BDOFs = EdgeDOFs(j)
+           END IF
          ELSE
-           Element % BDOFs = FaceDOFs(Element % BoundaryInfo % Right % ElementIndex)
+           IF(j<1 .OR. j>SIZE(FaceDofs)) THEN
+             k2 = k2 + 1
+           ELSE
+             Element % BDOFs = FaceDOFs(j)
+           END IF
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
-
+       
        ! Optionally also set DG indexes for BCs
        ! It is easy for outside boundaries, but for internal boundaries
        ! we need a flag "DG Parent Material".
@@ -3133,6 +3151,11 @@ CONTAINS
        
      END DO
 
+     IF( k2 > 0 ) THEN
+       CALL Warn('NonnodalElements','Element indexes beyond face or edge table: '//I2S(k2))
+     END IF
+     
+     
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
 
      ! Override automated "NeedEdges" if requested by the user.
