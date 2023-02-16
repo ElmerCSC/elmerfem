@@ -141,7 +141,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: Found, HasPrecDampCoeff, MassProportional
-  REAL(KIND=dp) :: Omega, mu0inv, eps0
+  REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
   INTEGER :: i, NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
@@ -193,6 +193,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   END IF
   IF(.NOT. Found ) eps0 = 8.854187817d-12
 
+  rob0 = Omega * SQRT( eps0 / mu0inv )
+  
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
   LorentzCondition = GetLogical(SolverParams, 'Lorentz Condition', Found)
   
@@ -618,8 +620,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TemPot(:)
-    COMPLEX(KIND=dp) :: B, L(3), muinv
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithGauge
@@ -628,20 +630,23 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
        
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, TemPot
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
-          FORCE(m),STIFF(m,m),MASS(m,m),TemPot(m))      
+          FORCE(m),STIFF(m,m),MASS(m,m))      
       AllocationsDone = .TRUE.
     END IF
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
+      CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
+      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
       InitHandles = .FALSE.
     END IF
@@ -654,9 +659,6 @@ CONTAINS
     MASS = 0.0_dp
     FORCE = 0.0_dp
 
-    TemPot(1:n) = GetReal( BC, 'TEM Potential', Found ) + &
-        im * GetReal(BC, 'TEM Potential im', Found)
-          
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
@@ -678,12 +680,17 @@ CONTAINS
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
       END IF
-
-      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+      
+      IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+        B = CMPLX(0.0_dp, rob0 ) 
+      ELSE
+        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+      END IF
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
-      ! The ListGetElement function does not yet work for taking derivatives
-      L = L + MATMUL(TemPot(1:n), dBasisdx(1:n,1:3))
+      TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+      L = L + TemGrad
 
       IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       UpdateStiff = .TRUE.
