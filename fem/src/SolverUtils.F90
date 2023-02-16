@@ -6750,17 +6750,18 @@ CONTAINS
   SUBROUTINE SetConstraintModesBoundaries( Model, Solver, A, b, &
       Name, NDOFs, Perm )
     !------------------------------------------------------------------------------
-    TYPE(Model_t) :: Model        !< current model structure
-    TYPE(Solver_t) :: Solver      !< current solver structure 
-    TYPE(Matrix_t), POINTER :: A  !< global matrix
-    REAL(KIND=dp) :: b(:)         !< global RHS vector
-    CHARACTER(LEN=*) :: Name      !< name of the dof to be set
-    INTEGER :: NDOFs              !< the total number of DOFs for this equation
-    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
-                                  !< beginning of the simulation for bandwidth optimization
+    TYPE(Model_t) :: Model              !< current model structure
+    TYPE(Solver_t), TARGET :: Solver    !< current solver structure 
+    TYPE(Matrix_t), POINTER :: A        !< global matrix
+    REAL(KIND=dp) :: b(:)               !< global RHS vector
+    CHARACTER(LEN=*) :: Name            !< name of the dof to be set
+    INTEGER :: NDOFs                    !< the total number of DOFs for this equation
+    INTEGER, TARGET :: Perm(:)          !< The node reordering info, this has been generated at the
+                                        !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
     INTEGER :: i,t,t1,t2,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
-    LOGICAL :: Found, SetP, Passive, Parallel
+    LOGICAL :: Found, IgnoreP, HaveP, Passive, Parallel, DoIt
+    TYPE(Solver_t), POINTER :: pSolver
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element
@@ -6769,7 +6770,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, ALLOCATABLE :: BCPerm(:)
     INTEGER :: NoModes, NoEntities
-    LOGICAL :: ExternalLoop, BFMode, BCMode, RhsMode, ComplexMode, Stat
+    LOGICAL :: ExternalLoop, BFMode, BCMode, RhsMode, HcurlMode, ComplexMode, Stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     CHARACTER(*), PARAMETER :: Caller = 'SetConstraintModesBoundaries'
@@ -6796,9 +6797,17 @@ CONTAINS
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) 
 
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
+    HcurlMode = ListGetLogical(Solver % Values,'Constraint Modes Hcurl',Found)
     
-    SetP = ListGetLogical( Solver % Values,'Fix Constraint Modes p',Found )  
-    IF(.NOT. Found) SetP = .TRUE.
+    
+    Element => Mesh % Elements(1)
+    pSolver => Solver
+    HaveP = isActivePElement(Element,pSolver)
+
+    IgnoreP = .FALSE.
+    IF( HaveP ) THEN
+      IgnoreP = ListGetLogical( Solver % Values,'Ignore Constraint Modes p',Found )  
+    END IF      
     
     CALL Info(Caller,'Setting constraint modes boundaries for variable: '&
         //TRIM(Name),Level=7)
@@ -6848,15 +6857,23 @@ CONTAINS
         BC => Model % BodyForces(bc_id) % Values
       END IF
         
-      k = ListGetInteger( BC,&
-          'Constraint Mode '// Name(1:nlen), Found )
+      k = ListGetInteger( BC,'Constraint Mode', Found )
+      IF(.NOT. Found ) THEN
+        k = ListGetInteger( BC,&
+            'Constraint Mode '// Name(1:nlen), Found )
+      END IF
       IF( Found ) THEN
         IF( k == 0 ) k = -1  ! Ground gets negative value
         BCPerm(bc_id) = k        
-      ELSE IF( ListGetLogical( BC,& 
-          'Constraint Modes ' // Name(1:nlen), Found ) ) THEN
-        j = j + 1
-        BCPerm(bc_id) = j
+      ELSE
+        DoIt = ListGetLogical( BC,'Constraint Modes', Found )
+        IF(.NOT. Found ) THEN
+          DoIt = ListGetLogical( BC,'Constraint Modes ' // Name(1:nlen), Found ) 
+        END IF
+        IF(DoIt) THEN
+          j = j + 1
+          BCPerm(bc_id) = j
+        END IF
       END IF
     END DO    
     j = MAXVAL( BCPerm )
@@ -6872,8 +6889,10 @@ CONTAINS
     ComplexMode = LIstGetLogical( Solver % Values,'Linear System Complex',Found)
     IF( ComplexMode ) THEN
       Ncomplex = 2
+      CALL Info(Caller,'Assuming complex valued system for constraint modes',Level=12)
     ELSE
       Ncomplex = 1
+      CALL Info(Caller,'Assuming real valued system for constraint modes',Level=12)
     END IF
 
     NoModes = NDOFS * j  / Ncomplex
@@ -6887,7 +6906,7 @@ CONTAINS
     END IF
 
     DO t = t1, t2
-      Element => Mesh % Elements(t)
+      Element => Mesh % Elements(t)      
       
       IF( BCMode ) THEN
         DO bc_id = 1,Model % NumberOfBCs
@@ -6923,7 +6942,7 @@ CONTAINS
       END IF
             
       ! If for some reason we do not want to set the P dofs to zero
-      IF(.NOT. SetP) nb = n
+      IF(IgnoreP) nb = n
 
       ! For vector valued problems treat each component as separate dof
       DO k=1,NDOFs       
@@ -6948,7 +6967,7 @@ CONTAINS
     ! Set the p dofs to negative since we don't ever want to set them to one!
     ! Note that there are some dofs related to ground that are already negative.
     ! Hence ground and p-pubbles are treated alike. 
-    IF(SetP) THEN
+    IF(HaveP .AND. .NOT. IgnoreP) THEN
       poffset = 2*(NoModes + 1)
       DO l=Mesh % NumberOfNodes+1, SIZE(Perm)
         j = Perm(l)
@@ -6975,7 +6994,7 @@ CONTAINS
         IF(k>0) THEN
           CALL Info('SetConstaintModesBoundaries',&
               'Mode '//I2S(i)//' has '//I2S(k)//' dofs')
-          IF( SetP ) THEN
+          IF(.NOT. IgnoreP .AND. HaveP ) THEN
             j = j - poffset
             k = COUNT( Var % ConstraintModesIndeces == j )
             IF(k>0) THEN
@@ -14661,7 +14680,7 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
   FluxesMatrix => Solver % Lumped % CMatrix
   IF( Solver % Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
 
-  !PRINT *,'iMode:',iMode,FluxesRow(1:NoModes)
+  !PRINT *,'iMode:',iMode,FluxesRow(1:NoModes), Solver % Lumped % IsComplex
 
   FluxesMatrix(iMode,1:NoModes) = FluxesRow(1:NoModes)
   IF(PRESENT(FluxesRowIm) ) THEN
@@ -14690,7 +14709,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 
   NoModes = Solver % Lumped % NoModes
   IsComplex = Solver % Lumped % IsComplex
-    
+
   FluxesMatrix => Solver % Lumped % CMatrix
   IF( IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
     
@@ -14865,10 +14884,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         TempRhs = 0.0_dp
       END IF
       
-      IF( IsComplex .AND. .NOT. RhsMode ) THEN
+      IF( IsComplex ) THEN
         ALLOCATE( A0(SIZE(A % Values)), b0(n), ConstrainedDOF0(n) )
         A0 = A % Values
-        b0 = 0
+        b0 = A % Rhs
         ConstrainedDOF0 = A % ConstrainedDOF
       END IF
     END IF
@@ -14884,12 +14903,19 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       CALL Info(Caller,'Solving for constrained mode: '//I2S(NMode),Level=6)
       i = Nmode
-        
+
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
       IF( RhsMode ) THEN
         IF( IsComplex ) THEN       
-          CALL Fatal(Caller,'Rhs mode not done for complex!')
+          A % Values = A0
+          WHERE( Var % ConstraintModesIndeces > 0 )
+            b = 0.0_dp
+          END WHERE
+          WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 .OR. &
+              Var % ConstraintModesIndeces == 2*Nmode )
+            b = b0
+          END WHERE
         ELSE       
           IF( Nmode > 1 .AND. ThisMode == 0 ) THEN
             WHERE( Var % ConstraintModesIndeces == Nmode-1 ) 
@@ -14949,9 +14975,9 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         CALL CommunicateConstraintModesFluxes()
 
         IF( IsComplex ) THEN
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow  ) 
+          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm  ) 
         ELSE
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm ) 
+          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
       END IF
 
@@ -15031,7 +15057,6 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END IF
         END IF
       END DO
-
 
     END SUBROUTINE ConstraintModesFluxes
 
