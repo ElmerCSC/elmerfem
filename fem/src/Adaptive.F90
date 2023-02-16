@@ -157,6 +157,17 @@ CONTAINS
       CALL Info(Caller,'Initializing stuff on coarsest level!')
       DoFinalRef = .FALSE.
     END IF
+
+    IF( DoFinalRef ) THEN
+      CALL Info( Caller, 'Final refinement done. Nothing to do!', Level=6 )
+      RefMesh % OUtputActive = .TRUE.      
+      RefMesh % Parent % OutputActive = .FALSE.      
+      CALL Info(Caller,'Setting adaptive restart to True!',Level=12)
+      RefMesh % AdaptiveFinished = .TRUE.
+      RETURN
+    ELSE
+      RefMesh % AdaptiveFinished = .FALSE.
+    END IF
         
     IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
        CALL Info( Caller,'Max adaptive depth reached!', Level = 6 )
@@ -385,12 +396,7 @@ CONTAINS
     ErrorLimit = ListGetConstReal( Params,'Adaptive Error Limit', Found )
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
-    IF( DoFinalRef ) THEN
-      CALL Info( Caller, 'Final refinement done. Nothing to do!', Level=6 )
-      RefMesh % OUtputActive = .TRUE.      
-      RefMesh % Parent % OutputActive = .FALSE.      
-      GOTO 10             
-    ELSE IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
+    IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
       FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
       IF(DoFinalRef ) THEN      
         CALL Info( Caller, 'Performing one final refinement',Level=6)
@@ -399,6 +405,7 @@ CONTAINS
         CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
         RefMesh % OUtputActive = .TRUE.      
         RefMesh % Parent % OutputActive = .FALSE.      
+        RefMesh % AdaptiveFinished = .TRUE.
         GOTO 10
       END IF
     END IF

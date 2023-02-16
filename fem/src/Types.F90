@@ -780,6 +780,7 @@ MODULE Types
 
      LOGICAL :: Changed, OutputActive, Stabilize
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
+     LOGICAL :: AdaptiveFinished = .FALSE.
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
      TYPE(FactorsStore_t), ALLOCATABLE :: VFStore(:)
