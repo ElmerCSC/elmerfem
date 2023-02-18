@@ -118,7 +118,7 @@ CONTAINS
      CHARACTER(*), OPTIONAL :: resul
 
      INTEGER :: i,l
-     CHARACTER(LEN=MAX_NAME_LEN) :: pcmd,res
+     CHARACTER(LEN=1024) :: pcmd,res
  
      IF(nparams==0) THEN
        pcmd = "tx=0"
