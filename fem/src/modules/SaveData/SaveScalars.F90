@@ -833,7 +833,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         BoundaryHits = 0
         BoundaryFluxes = 0.0_dp
 
-        PRINT *,'Doing:',TRIM(Oper),'on',TRIM(Var % Name)
         CALL BoundaryStatistics(Var, Oper, GotCoeff, &
             CoefficientName, BoundaryFluxes, BoundaryHits)
         
@@ -3023,8 +3022,6 @@ CONTAINS
       
     END SELECT
 
-    PRINT *,'init:',fluxes
-    
 
     DO t = Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
         + Mesh % NumberOfBoundaryElements
