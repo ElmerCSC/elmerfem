@@ -148,7 +148,13 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
+  CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
 !------------------------------------------------------------------------------
+
+  CALL Info(Caller,'',Level=6 )
+  CALL Info(Caller,'-------------------------------------------------',Level=6 )
+  CALL Info(Caller,'Solving harmonic electromagnetic wave equation!',Level=5 )
+
   SolverParams => GetSolverParams()  
 
   IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
@@ -159,7 +165,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IF (CoordinateSystemDimension() == 2) THEN
     IF (.NOT. PiolaVersion) &
-        CALL Fatal('VectorHelmholtzSolver', 'A 2D model needs Use Piola Transform = True')
+        CALL Fatal(Caller, 'A 2D model needs Use Piola Transform = True')
   END IF
     
   ! Allocate some permanent storage, this is done first time only:
@@ -168,7 +174,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   pSolver => Solver
 
   IF( Solver % Variable % dofs /= 2) THEN
-    CALL Fatal ('VectorHelmholtzSolver', &
+    CALL Fatal (Caller, &
         'Variable is not of size two ('//I2S(Solver % Variable % dofs)//'), &
         Use: Variable = E[E re:1 E im:1]')
   ENDIF
@@ -217,7 +223,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   CALL DefaultFinish()
 
-  CALL Info('VectorHelmholtzSolver','All done',Level=12)
+  CALL Info(Caller,'All done',Level=12)
   
 CONTAINS
 
@@ -235,7 +241,7 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
-    CALL Info('VectorHelmholtzSolver','Starting bulk assembly',Level=12)
+    CALL Info(Caller,'Starting bulk assembly',Level=12)
 
     CALL DefaultInitialize()
     Active = GetNOFActive()
@@ -255,7 +261,7 @@ CONTAINS
     
     ! Robin type of BC in terms of E:
     !--------------------------------
-    CALL Info('VectorHelmholtzSolver','Starting boundary assembly',Level=12)
+    CALL Info(Caller,'Starting boundary assembly',Level=12)
   
     Active = GetNOFBoundaryElements()
     InitHandles = .TRUE. 
@@ -286,7 +292,7 @@ CONTAINS
        CALL LocalMatrixBC(BC,Element,n,nd,InitHandles )
      END DO
 
-    CALL Info('VectorHelmholtzSolver','Local assembly done',Level=12)
+    CALL Info(Caller,'Local assembly done',Level=12)
     
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -771,7 +777,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER :: mysolver,i,j,n,m,soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-
+  
   SolverParams => GetSolverParams()
 
   ! Find the solver index of the primary solver by the known procedure name.
@@ -1042,6 +1048,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
 
 !-------------------------------------------------------------------------------------------
+
+   CALL Info(Caller,'',Level=6 )
+   CALL Info(Caller,'----------------------------------------------------------',Level=6 )
+   CALL Info(Caller,'Computing derived fields for electromagnetic wave equation!',Level=4 )
+   
    SolverParams => GetSolverParams()
 
    soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
@@ -1230,7 +1241,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ELSE
          PR_ip = Eps0 
        END IF
-                     
+
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
        IF (WithGauge) THEN
          DO k=1,3
@@ -1377,7 +1388,7 @@ CONTAINS
      IF(ASSOCIATED(El_Var)) THEN
        El_Var % DgAveraged = .FALSE.
        IF( DoAve ) THEN
-         CALL Info('VectorHelmholtz','Averaging for field: '//TRIM(El_Var % Name),Level=10)
+         CALL Info(Caller,'Averaging for field: '//TRIM(El_Var % Name),Level=10)
          CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
        END IF
        IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
