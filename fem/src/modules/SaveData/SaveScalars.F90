@@ -832,6 +832,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         ! So if you want split the results use different mask names.
         BoundaryHits = 0
         BoundaryFluxes = 0.0_dp
+
+        PRINT *,'Doing:',TRIM(Oper),'on',TRIM(Var % Name)
         CALL BoundaryStatistics(Var, Oper, GotCoeff, &
             CoefficientName, BoundaryFluxes, BoundaryHits)
         
@@ -3021,6 +3023,8 @@ CONTAINS
       
     END SELECT
 
+    PRINT *,'init:',fluxes
+    
 
     DO t = Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
         + Mesh % NumberOfBoundaryElements
@@ -3085,16 +3089,16 @@ CONTAINS
             SELECT CASE(OperName)              
 
             CASE('boundary min')
-              fluxes(bc) = MIN( val, fluxes(bc) )
+              fluxes(1) = MIN( val, fluxes(1) )
 
             CASE('boundary max')
-              fluxes(bc) = MAX( val, fluxes(bc) )
+              fluxes(1) = MAX( val, fluxes(1) )
 
             CASE('boundary min abs')
-              IF(ABS(fluxes(bc)) < ABS( val )) fluxes(bc) = val
+              IF(ABS(fluxes(1)) < ABS( val )) fluxes(1) = val
 
             CASE('boundary max abs')
-              IF(ABS(fluxes(bc)) > ABS( val )) fluxes(bc) = val
+              IF(ABS(fluxes(1)) > ABS( val )) fluxes(1) = val
 
             END SELECT
           ELSE
