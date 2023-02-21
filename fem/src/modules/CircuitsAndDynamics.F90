@@ -1566,7 +1566,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       DO q=GetNOFActive(),1,-1
         Element => GetActiveElement(q)
         CALL AddComponentElementContributions(Element, Comp, Tcoef, &
-                                              sigma_33, sigmaim_33)
+                                              sigma_33, sigmaim_33, .False.)
+      END DO
+
+      DO q=GetNOFBoundaryElements(),1,-1
+        Element => GetBoundaryElement(q)
+        CALL AddComponentElementContributions(Element, Comp, Tcoef, &
+                                              sigma_33, sigmaim_33, .True.)
       END DO
     END DO
 
@@ -1587,7 +1593,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentElementContributions(Element, Comp, Tcoef, & 
-                                               sigma_33, sigmaim_33)
+                                               sigma_33, sigmaim_33, boundary)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     !------------------------------------
@@ -1602,7 +1608,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     INTEGER :: nn_elem, nd_elem
     INTEGER :: astat
-    LOGICAL :: Found, FoundIm
+    LOGICAL :: Found, FoundIm, boundary
 
     IF (ElAssocToComp(Element, Comp)) THEN
       ASolver => CurrentModel % Asolver
@@ -1869,6 +1875,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Component_t) :: Comp
 
     TYPE(Solver_t), POINTER :: ASolver
+    TYPE(ValueList_t), POINTER :: BC
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Omega, grads_coeff, circ_eq_coeff
@@ -1876,7 +1883,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: dBasisdx(nd,3)
     REAL(KIND=dp) :: LondonLambda(nn)
     REAL(KIND=dp) :: LondonLambda_ip, val
-    COMPLEX(KIND=dp) :: localC, cmplx_val
+    REAL(KIND=dp) :: SkinCond(nn), SkinMu(nn)
+    REAL(KIND=dp) :: cond, mu, muVacuum, delta
+    COMPLEX(KIND=dp) :: imu, invZs
+    COMPLEX(KIND=dp) :: localC, cmplx_val=0._dp
     REAL(KIND=dp) :: localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
@@ -1885,7 +1895,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     LOGICAL :: CSymmetry, First=.TRUE.
-    LOGICAL :: LondonEquations
+    LOGICAL :: LondonEquations, SkinBc=.False.
     TYPE(ValueList_t), POINTER :: Material
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
@@ -1909,6 +1919,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
     Omega = GetAngularFrequency()
 
+    SkinCond = 0._dp
+    SkinMu = 0._dp
+
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
 
@@ -1921,6 +1934,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     Material => GetMaterial( Element )
     LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
 
+    BC => GetBC( Element )
+    IF ( ASSOCIATED(BC) ) THEN
+      SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', SkinBc)
+      IF ( SkinBc ) THEN
+        muVacuum = 4 * PI * 1d-7
+        imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
+        SkinMu = GetConstReal( BC, 'Layer Relative Permeability', Found)
+      END IF
+    END IF
+  
     vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
@@ -1956,7 +1979,23 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! ------------------------------------------------
       IF(dim==2) cmplx_val = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
 
-      IF(dim==3) cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
+      IF(dim==3) THEN
+        ! if SkinBC is activated:
+        !   Boundary Condition: Layer Electric Conductivity
+        !   Boundary Condition: Layer Relative Permeability
+        !
+        ! The term Vi cond*skin_depth ( grad v0, grad_v0 )
+        !
+        IF (SkinBc) THEN
+          cond = SUM(Basis(1:nn) * SkinCond(1:nn))
+          mu  = muVacuum * SUM(Basis(1:nn) * SkinMu(1:nn))
+          delta = SQRT( 2.0_dp/(cond*omega*mu))      
+          invZs = (cond*delta)/(1.0_dp+imu)
+          cmplx_val = IP % s(t)*detJ*delta*cond*SUM(gradv*gradv) * Comp % VoltageFactor
+        ELSE
+          cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
+        END IF
+      END IF
 
       localConductance = ABS(cmplx_val)
       Comp % Conductance = Comp % Conductance + localConductance
@@ -1994,7 +2033,19 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! ---------------------------------------------------------
         IF(dim==2) cmplx_val = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
 
-        IF(dim==3) cmplx_val = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+        ! if SkinBC is activated:
+        !   Boundary Condition: Layer Electric Conductivity
+        !   Boundary Condition: Layer Relative Permeability
+        ! Then activate
+        !  1/Z (a, grad v0)
+        !
+        IF(dim==3) THEN
+          IF (SkinBc) THEN
+            cmplx_val = IP % s(t)*detJ*invZs*SUM(Wbasis(j,:)*gradv)
+          ELSE
+            cmplx_val = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+          END IF
+        END IF
 
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                REAL(cmplx_val), AIMAG(cmplx_val))
@@ -2003,7 +2054,19 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !        Comp % Inductance = Comp % Inductance + localL
         
         IF(dim==2) cmplx_val = IP % s(t)*detJ*localC*basis(j)*grads_coeff * Comp % VoltageFactor
-        IF(dim==3) cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+        ! if SkinBC is activated:
+        !   Layer Electric Conductivity = Real 58e6
+        !   Layer Relative Permeability = Real 1
+        !
+        !  Vi * delta * cont (gradv a, grad v0)
+        !
+        IF(dim==3) THEN
+          IF (SkinBc) THEN
+            cmplx_val = IP % s(t)*detJ*delta*cond*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+          ELSE
+            cmplx_val = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+          END IF
+        END IF
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
                 REAL(cmplx_val), AIMAG(cmplx_val))
       END DO

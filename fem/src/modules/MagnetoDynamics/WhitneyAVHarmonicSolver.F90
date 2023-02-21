@@ -423,9 +423,9 @@ CONTAINS
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
-    INTEGER :: i,j,k,n,nd,t
+    INTEGER :: i,j,k,n,nd,t,ComponentId
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil, CircuitDrivenBC
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -657,8 +657,9 @@ CONTAINS
          SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
            MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
+           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
          ELSE         
            GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
            IF (Found) THEN
@@ -1977,12 +1978,14 @@ END BLOCK
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
+  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, &
+                                Element, CircuitDrivenBC, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
     TYPE(Element_t), POINTER :: Element
+    LOGICAL :: CircuitDrivenBC
     INTEGER :: n, nd
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
@@ -2047,15 +2050,18 @@ END BLOCK
               SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
         END DO
 
-        DO q = 1,np
-          !
-          ! The term 1/Z < grad V x n, v x n> : 
-          ! Some tensor calculation shows that the component form of this term is analogous to 
-          ! the case < A x n, v x n>. 
-          !
-          STIFF(p,q) = STIFF(p,q) + invZs * &
-              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO q = 1,np
+            !
+            ! The term 1/Z < grad V x n, v x n> : 
+            ! Some tensor calculation shows that the component form of this term is analogous to 
+            ! the case < A x n, v x n>. 
+            !
+            STIFF(p,q) = STIFF(p,q) + invZs * &
+                        SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+        END IF
+
       END DO
 
       !
@@ -2065,18 +2071,20 @@ END BLOCK
       ! surface via giving a current BC (the conducting skin must be either insulated over its
       ! boundary or constrained by a Dirichlet condition for the scalar potential).
       !
-      DO p = 1,np
-        DO q = 1,np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * &
-              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO p = 1,np
+            DO q = 1,np
+              STIFF(p,q) = STIFF(p,q) + delta * cond * &
+                  SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+            END DO
 
-        DO j = 1,nd-np
-          q = j+np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
-              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
-        END DO
-      END DO
+            DO j = 1,nd-np
+              q = j+np
+              STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+            END DO
+          END DO
+        END IF
 
     END DO
 !------------------------------------------------------------------------------
