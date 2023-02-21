@@ -204,6 +204,8 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     N = Solver % Mesh % MaxElementNodes 
     ALLOCATE( FORCE(N), STIFF(N,N), STAT=istat )
 
+    CALL Info('RigidMeshMapper','Solving mesh relaxation field: '//TRIM(Solver % Variable % Name),Level=5)
+    
     ! Implement moving and fixed BCs
     ! ------------------------------
     DO i=1,Model % NumberOFBCs
@@ -226,7 +228,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     
     DO NonlinIter = 1, MaxNonlinIter
       CALL DefaultInitialize()
-      
+
       DO t=1, GetNOFActive()
         Element => GetActiveElement(t)
         n = GetElementNOFNodes()
