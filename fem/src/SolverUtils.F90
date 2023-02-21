@@ -6770,7 +6770,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER, ALLOCATABLE :: BCPerm(:)
     INTEGER :: NoModes, NoEntities
-    LOGICAL :: ExternalLoop, BFMode, BCMode, RhsMode, HcurlMode, ComplexMode, Stat
+    LOGICAL :: ExternalLoop, BFMode, BCMode, RhsMode, ComplexMode, Stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     CHARACTER(*), PARAMETER :: Caller = 'SetConstraintModesBoundaries'
@@ -6795,11 +6795,10 @@ CONTAINS
     ExternalLoop = ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Steady State Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) 
-
-    RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
-    HcurlMode = ListGetLogical(Solver % Values,'Constraint Modes Hcurl',Found)
-    
-    
+       
+    RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) .OR. &
+        ListGetLogical( Solver % Values,'Constraint Modes EM Wave')
+        
     Element => Mesh % Elements(1)
     pSolver => Solver
     HaveP = isActivePElement(Element,pSolver)
@@ -14821,7 +14820,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Nmode,Mmode,ierr
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, ComputeLinkage, Symmetric, &
-        IsComplex, Parallel, ConsiderP, RhsMode
+        IsComplex, Parallel, ConsiderP, RhsMode, EnergyMode
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
@@ -14872,6 +14871,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     ComputeFluxes = ListGetLogical( Params,'Constraint Modes Fluxes',Found) 
     ComputeLinkage = ListGetLogical( Params,'Constraint Modes Linkage',Found )
     RhsMode = ListGetLogical( Params,'Constraint Modes rhs',Found )
+    EnergyMode = ListGetLogical( Params,'Constraint Modes EM Wave', Found ) 
+    IF( EnergyMode ) THEN
+      ComputeFluxes = .TRUE.; RhsMode = .TRUE.
+    END IF
     
     IF( ComputeFluxes .OR. ComputeLinkage ) THEN
       ALLOCATE( FluxesRow(NoModes) )
@@ -14968,7 +14971,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
 
         IF( ComputeFluxes ) THEN
-          CALL ConstraintModesFluxes()        
+          CALL ConstraintModesFluxes(EnergyMode)
         ELSE
           CALL ConstraintModesLinkage()
         END IF          
@@ -14997,11 +15000,14 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
   CONTAINS
 
-    SUBROUTINE ConstraintModesFluxes()
+    SUBROUTINE ConstraintModesFluxes(EnergyMode)
+      LOGICAL :: EnergyMode
 
       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
       INTEGER :: poffset
-
+      REAL(KIND=dp) :: flux, w
+      COMPLEX(KIND=dp) :: cflux, cx, cmult
+      
       ! Use the initial bulk values that do not include Dirichlet conditions
       PValues => A % Values
       IF( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
@@ -15025,6 +15031,12 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       FluxesRow = 0.0_dp
       IF(IsComplex) FluxesRowIm = 0.0_dp
 
+      IF( EnergyMode ) THEN
+        w = ListGetAngularFrequency( Found = Found )
+        IF(.NOT. Found) CALL Fatal(Caller,'Energy mode requires "Angular Frequency"!')
+        cmult = 1.0/(2*w*CMPLX(0.0_dp,1.0_dp)) 
+      END IF
+      
       DO j=1,n
         k = Var % ConstraintModesIndeces(j)
 
@@ -15034,21 +15046,25 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         END IF
 
         IF( k > 0 ) THEN
-          flux = Fluxes(j)
           IF( IsComplex ) THEN
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
+              cflux = CMPLX(Fluxes(j),Fluxes(j+1))                            
+              IF( EnergyMode ) THEN
+                cx = CMPLX(x(j),x(j+1))
+                cflux = cmult * cx * CONJG(cflux)
+              END IF                
               IF( Nmode /= Mmode ) THEN
-                FluxesRow(Mmode) = FluxesRow(Mmode) - flux
+                FluxesRow(Mmode) = FluxesRow(Mmode) - REAL(cflux)
+                FluxesRowIm(Mmode) = FluxesRowIm(Mmode) - AIMAG(cflux)
+              ELSE
+                FluxesRow(Nmode) = FluxesRow(Nmode) + REAL(cflux)
+                FluxesRowIm(Nmode) = FluxesRowIm(Nmode) + AIMAG(cflux)
               END IF
-              FluxesRow(Nmode) = FluxesRow(Nmode) + flux
-            ELSE
-              IF( Nmode /= Mmode ) THEN
-                FluxesRowIm(Mmode) = FluxesRowIm(Mmode) - flux
-              END IF
-              FluxesRowIm(Nmode) = FluxesRowIm(Nmode) + flux
             END IF
           ELSE
+            flux = Fluxes(j)
+            IF( EnergyMode ) flux = x(j) * flux
             Mmode = k 
             IF( Nmode /= Mmode ) THEN                
               FluxesRow(Mmode) = FluxesRow(Mmode) - flux
