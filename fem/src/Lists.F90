@@ -4796,8 +4796,9 @@ CONTAINS
          n = Var % Perm(i+1) - Var % Perm(i)
 
          IF( n > 0 ) THEN           
-           CALL Fatal('VarsToValuesOnIPs','Ip field '//TRIM(Var % Name)//' given but no ip point given as parameter!')
-           IF( n < ind ) THEN
+           IF(.NOT. PRESENT(ind) ) THEN
+             CALL Fatal('VarsToValuesOnIPs','Ip field '//TRIM(Var % Name)//' given but no ip point given as parameter!')
+           ELSE IF( n < ind ) THEN
              CALL Warn('VarsToValuesOnIPs','Too few integration points ('&
                  //I2S(n)//' vs. '//I2S(ind)//') tabulated!')
            ELSE
