@@ -2984,8 +2984,9 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: nodescomputed(:)    
     TYPE(Element_t), POINTER :: Element, Parent    
     TYPE(ValueList_t), POINTER :: Material
-    LOGICAL :: Stat, Permutated    
-    INTEGER :: i,j,k,p,q,t,DIM,bc,n,hits,istat
+    LOGICAL :: Stat, Permutated, NodalVar    
+    INTEGER :: i,j,j2,k,p,q,t,DIM,bc,n,nd,hits,istat
+    INTEGER, TARGET :: Indexes(100)
 
     IF( ASSOCIATED( Var % Perm ) ) THEN
       n = SIZE( Var % Perm )
@@ -3028,8 +3029,21 @@ CONTAINS
       Model % CurrentElement => Mesh % Elements(t)
 
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes
-
+      IF( Var % TYPE == variable_on_nodes_on_elements )  THEN
+        NodeIndexes => Element % NodeIndexes
+        nd = n
+        NodalVar = .TRUE.
+      ELSE
+        ! Do we have p-elements
+        IF( ASSOCIATED( Var % Solver ) ) THEN
+          nd = mGetElementDOFs( Indexes, Element, Var % Solver)
+        ELSE
+          nd = mGetElementDOFs( Indexes, Element )
+        END IF
+        NodeIndexes => Indexes
+        NodalVar = .FALSE.
+      END IF
+        
       DO bc=1, Model % NumberOfBCs
 
         IF ( Model % BCs(bc) % Tag /= Element % BoundaryInfo % Constraint ) CYCLE
@@ -3037,24 +3051,31 @@ CONTAINS
 
         hits = hits + 1
         
-        DO i=1,n
+        DO i=1,nd
           j = NodeIndexes(i)
 
-          IF( IsParallel ) THEN
-            IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          j2 = j
+          IF( Permutated ) j2 = Var % Perm(j)
+          IF( j2 == 0) CYCLE            
+          IF( nodescomputed(j2) ) CYCLE
+          
+
+          IF( .NOT. FindMinMax .AND. IsParallel ) THEN
+            IF(ASSOCIATED( Var % Solver) ) THEN
+              IF( ASSOCIATED( Var % SOlver % Matrix ) ) THEN
+                IF( Var % Solver % Matrix % ParallelInfo % NeighbourList(NoDofs*(j2-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+              END IF
+            END IF
           END IF
 
-          IF( Permutated ) j = Var % Perm(j)
-          
-          IF( j == 0) CYCLE            
-          IF( nodescomputed(j) ) CYCLE
-          
+
+
           IF( NoDofs == 1 ) THEN
-            val = Var % Values(j)
+            val = Var % Values(j2)
           ELSE
             val = 0.0_dp
             DO k=1,NoDofs
-              val = val + Var % Values(NoDofs*(j-1)+k)
+              val = val + Var % Values(NoDofs*(j2-1)+k)
             END DO
             val = SQRT( val )
           END IF
@@ -3080,7 +3101,7 @@ CONTAINS
             fluxes(1) = fluxes(1) + val
           END IF
 
-          nodescomputed(j) = .TRUE.         
+          nodescomputed(j2) = .TRUE.         
           fluxescomputed(1) = fluxescomputed(1) + 1          
         END DO        
       END DO
@@ -3172,7 +3193,7 @@ CONTAINS
       CASE ('area','boundary int','boundary int mean')
 
     CASE DEFAULT 
-      CALL Warn(Caller,'Unknown physical OPERATOR')
+      CALL Warn(Caller,'Unknown physical operator')
 
     END SELECT
 
