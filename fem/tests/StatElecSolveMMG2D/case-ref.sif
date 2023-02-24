@@ -2,7 +2,9 @@
 ! The generic "constraint modes" keywords are used so this is not very
 ! user friendly yet. Remeshing is done with MMG2D library using API.
 !
-! P.R. 12.1.2023
+! This one with final refinement round. 
+!
+! P.R. 16.2.2023
 
 Check Keywords Warn
 
@@ -24,7 +26,7 @@ Simulation
   Coordinate System = Cartesian 2D 
   Simulation Type = Steady State
   Steady State Max Iterations = 50
-  Post File = "case.vtu"
+  Post File = "case-ref.vtu"
 End
 
 Constants
@@ -77,8 +79,8 @@ Solver 1
   Adaptive Mesh Numbering = False
 
 ! Perform minimum amount of adaptive rounds + one more fine one
-!  Adaptive Min Depth = 5
-!  Adaptive Final Refinement = 0.2
+  Adaptive Min Depth = 5
+  Adaptive Final Refinement = 0.2
 
 ! Just for debugging
 !  Adaptive Save Mesh = True

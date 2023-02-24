@@ -141,14 +141,20 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: Found, HasPrecDampCoeff, MassProportional
-  REAL(KIND=dp) :: Omega, mu0inv, eps0
+  REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
   INTEGER :: i, NoIterationsMax
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
+  CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
 !------------------------------------------------------------------------------
+
+  CALL Info(Caller,'',Level=6 )
+  CALL Info(Caller,'-------------------------------------------------',Level=6 )
+  CALL Info(Caller,'Solving harmonic electromagnetic wave equation!',Level=5 )
+
   SolverParams => GetSolverParams()  
 
   IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
@@ -159,7 +165,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IF (CoordinateSystemDimension() == 2) THEN
     IF (.NOT. PiolaVersion) &
-        CALL Fatal('VectorHelmholtzSolver', 'A 2D model needs Use Piola Transform = True')
+        CALL Fatal(Caller, 'A 2D model needs Use Piola Transform = True')
   END IF
     
   ! Allocate some permanent storage, this is done first time only:
@@ -168,7 +174,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   pSolver => Solver
 
   IF( Solver % Variable % dofs /= 2) THEN
-    CALL Fatal ('VectorHelmholtzSolver', &
+    CALL Fatal (Caller, &
         'Variable is not of size two ('//I2S(Solver % Variable % dofs)//'), &
         Use: Variable = E[E re:1 E im:1]')
   ENDIF
@@ -193,6 +199,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   END IF
   IF(.NOT. Found ) eps0 = 8.854187817d-12
 
+  rob0 = Omega * SQRT( eps0 / mu0inv )
+  
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
   LorentzCondition = GetLogical(SolverParams, 'Lorentz Condition', Found)
   
@@ -215,7 +223,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   CALL DefaultFinish()
 
-  CALL Info('VectorHelmholtzSolver','All done',Level=12)
+  CALL Info(Caller,'All done',Level=12)
   
 CONTAINS
 
@@ -233,7 +241,7 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
-    CALL Info('VectorHelmholtzSolver','Starting bulk assembly',Level=12)
+    CALL Info(Caller,'Starting bulk assembly',Level=12)
 
     CALL DefaultInitialize()
     Active = GetNOFActive()
@@ -253,7 +261,7 @@ CONTAINS
     
     ! Robin type of BC in terms of E:
     !--------------------------------
-    CALL Info('VectorHelmholtzSolver','Starting boundary assembly',Level=12)
+    CALL Info(Caller,'Starting boundary assembly',Level=12)
   
     Active = GetNOFBoundaryElements()
     InitHandles = .TRUE. 
@@ -284,7 +292,7 @@ CONTAINS
        CALL LocalMatrixBC(BC,Element,n,nd,InitHandles )
      END DO
 
-    CALL Info('VectorHelmholtzSolver','Local assembly done',Level=12)
+    CALL Info(Caller,'Local assembly done',Level=12)
     
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -618,8 +626,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TemPot(:)
-    COMPLEX(KIND=dp) :: B, L(3), muinv
+    COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithGauge
@@ -628,20 +636,23 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
-    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
        
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, TemPot
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
-          FORCE(m),STIFF(m,m),MASS(m,m),TemPot(m))      
+          FORCE(m),STIFF(m,m),MASS(m,m))      
       AllocationsDone = .TRUE.
     END IF
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
+      CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
+      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
       InitHandles = .FALSE.
     END IF
@@ -654,9 +665,6 @@ CONTAINS
     MASS = 0.0_dp
     FORCE = 0.0_dp
 
-    TemPot(1:n) = GetReal( BC, 'TEM Potential', Found ) + &
-        im * GetReal(BC, 'TEM Potential im', Found)
-          
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
@@ -678,12 +686,17 @@ CONTAINS
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
       END IF
-
-      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+      
+      IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+        B = CMPLX(0.0_dp, rob0 ) 
+      ELSE
+        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+      END IF
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
-      ! The ListGetElement function does not yet work for taking derivatives
-      L = L + MATMUL(TemPot(1:n), dBasisdx(1:n,1:3))
+      TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
+          ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
+      L = L + TemGrad
 
       IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       UpdateStiff = .TRUE.
@@ -764,7 +777,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER :: mysolver,i,j,n,m,soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-
+  
   SolverParams => GetSolverParams()
 
   ! Find the solver index of the primary solver by the known procedure name.
@@ -1035,6 +1048,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
 
 !-------------------------------------------------------------------------------------------
+
+   CALL Info(Caller,'',Level=6 )
+   CALL Info(Caller,'----------------------------------------------------------',Level=6 )
+   CALL Info(Caller,'Computing derived fields for electromagnetic wave equation!',Level=4 )
+   
    SolverParams => GetSolverParams()
 
    soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
@@ -1223,7 +1241,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ELSE
          PR_ip = Eps0 
        END IF
-                     
+
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
        IF (WithGauge) THEN
          DO k=1,3
@@ -1370,7 +1388,7 @@ CONTAINS
      IF(ASSOCIATED(El_Var)) THEN
        El_Var % DgAveraged = .FALSE.
        IF( DoAve ) THEN
-         CALL Info('VectorHelmholtz','Averaging for field: '//TRIM(El_Var % Name),Level=10)
+         CALL Info(Caller,'Averaging for field: '//TRIM(El_Var % Name),Level=10)
          CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
        END IF
        IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN

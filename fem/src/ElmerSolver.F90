@@ -652,7 +652,6 @@
                  ! Release the old adaptive meshes
                  DO WHILE( ASSOCIATED(pMesh % Parent))
                    pMesh => pMesh % Parent             
-                   PRINT *,'Freeing Mesh:',pMesh % Child % AdaptiveDepth, TRIM(pMesh % Child % Name)
                    CALL ReleaseMesh( pMesh % Child ) 
                  END DO
                  pMesh % Child => NULL()
@@ -675,6 +674,7 @@
 
          BLOCK
            TYPE(Solver_t), POINTER :: iSolver
+           LOGICAL :: DoIt
            DO i=1,CurrentModel % NumberOfSolvers 
              iSolver => CurrentModel % Solvers(i)
              IF( iSolver % NumberOfConstraintModes > 0 ) THEN
@@ -682,7 +682,19 @@
                  CALL FinalizeLumpedMatrix( iSolver )            
                END IF
              END IF
-           END DO           
+           END DO
+
+           DO i=1,CurrentModel % NumberOfSolvers 
+             iSolver => CurrentModel % Solvers(i)
+             IF ( iSolver % PROCEDURE == 0 ) CYCLE
+             When = ListGetString( iSolver % Values, 'Exec Solver', Found )
+             IF ( Found ) THEN
+               DoIt = ( When == 'after control' ) 
+             ELSE
+               DoIt = ( iSolver % SolverExecWhen == SOLVER_EXEC_AFTER_CONTROL )
+             END IF
+             IF(DoIt) CALL SolverActivate( CurrentModel,iSolver,dt,Transient )
+           END DO
          END BLOCK
        ELSE
          CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
@@ -3265,12 +3277,19 @@
         IF ( GotIt ) THEN
            IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !IF( ASSOCIATED(Solver % Variable) ) THEN
+              ! This construct seems to be for cases when we solve something "after all"
+              ! that affects results elsewhere. Hence we set "LastSaved" to false even
+              ! if it would be true before.                 
+              !IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !END IF
            END IF
         ELSE
            IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_ALL ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !IF( ASSOCIATED(Solver % Variable) ) THEN
+              !  IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !END IF
            END IF
         END IF
      END DO

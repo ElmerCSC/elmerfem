@@ -1399,7 +1399,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
  
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
+  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
   LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
@@ -1489,6 +1489,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL Info(Caller, Message, Level=4)
     CALL Info(Caller,'--------------------------------------------------------', Level=4)
 
+100 CONTINUE
+    
     Active = GetNOFActive()
     CALL DefaultInitialize()
     IF (ASSOCIATED(SchurSolver)) THEN
@@ -1562,6 +1564,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
     
     Norm = DefaultSolve()
 

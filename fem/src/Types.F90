@@ -85,7 +85,9 @@ MODULE Types
                         SOLVER_EXEC_AHEAD_SAVE =  5, &
                         SOLVER_EXEC_AFTER_SAVE =  6, &
                         SOLVER_EXEC_PREDCORR = 7,    &
-                        SOLVER_EXEC_WHENCREATED = 8
+                        SOLVER_EXEC_WHENCREATED = 8, &
+                        SOLVER_EXEC_AFTER_CONTROL = 9
+                        
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
 	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
@@ -778,6 +780,7 @@ MODULE Types
 
      LOGICAL :: Changed, OutputActive, Stabilize
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
+     LOGICAL :: AdaptiveFinished = .FALSE.
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
      TYPE(FactorsStore_t), ALLOCATABLE :: VFStore(:)
@@ -1077,6 +1080,7 @@ MODULE Types
 
     INTEGER :: ELMER_COMM_WORLD = -1
 
+    LOGICAL :: USE_XIOS=.FALSE.
     CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
 !------------------------------------------------------------------------------
 END MODULE Types

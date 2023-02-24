@@ -76,7 +76,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
       UseVelocity, Bubbles, ApplyLimiter, LinearModel, ManningModel, GotMinGap, &
-      OpenSide,GotExt,GotFlux, GotVelo, AnyBC, GotPseudoPressure, SurfAC
+      OpenSide,GotExt,GotFlux, GotVelo, AnyBC, GotPseudoPressure, SurfAC, Converged
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens, ManningCoeff, GravityCoeff, MinGap, MinGradPres, &
@@ -220,6 +220,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
     CALL Info(Caller,Message,Level=5)
 
+
+100 CONTINUE
     CALL DefaultInitialize()
 
 !    Do the bulk assembly:
@@ -237,6 +239,12 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
+    
 !    Solve the system and we are done:
 !    ---------------------------------
     Norm = DefaultSolve()

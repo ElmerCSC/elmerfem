@@ -961,8 +961,10 @@ CONTAINS
          Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
        CASE( 'when created' )
          Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       CASE( 'after control' )
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_CONTROL
        CASE DEFAULT
-         Solver % SolverExecWhen = SOLVER_EXEC_ALWAYS
+         CALL Fatal('AddExecWhenFlag','Unknown "exec solver" flag: '//TRIM(str))
        END SELECT
      ELSE      
        IF ( ListGetLogical( SolverParams, 'Before All', Found ) ) THEN
@@ -985,6 +987,8 @@ CONTAINS
          Solver % SolverExecWhen = SOLVER_EXEC_PREDCORR
        ELSE IF ( ListGetLogical( SolverParams, 'When Created', Found ) ) THEN
          Solver % SolverExecWhen = SOLVER_EXEC_WHENCREATED
+       ELSE IF ( ListGetLogical( SolverParams, 'After Control', Found ) ) THEN
+         Solver % SolverExecWhen = SOLVER_EXEC_AFTER_CONTROL
        END IF
      END IF
 
@@ -3237,13 +3241,18 @@ CONTAINS
                CALL ComputeChange(Solver,.TRUE.)
              END IF
            END IF
-           
+
            ! The ComputeChange subroutine sets a flag to zero if not yet
            ! converged (otherwise -1/1)
            !------------------------------------------------------------
            IF( TestConvergence ) THEN
              DoneThis(k) = ( Solver % Variable % SteadyConverged /= 0 ) 
            END IF
+
+           IF( Solver % Mesh % AdaptiveFinished .AND. .NOT. DoneThis(k)) THEN
+             CALL Info('SolveEquations','Overriding convergence due to Adaptive Meshing Finished!')
+             DoneThis(k) = .TRUE.
+           END IF                    
            
            CALL ParallelAllReduceAnd( DoneThis(k) )
            IF( ALL(DoneThis) ) EXIT
