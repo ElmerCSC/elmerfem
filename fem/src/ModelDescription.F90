@@ -1864,7 +1864,7 @@ CONTAINS
                  END DO
                 
                  IF(k2 < slen ) THEN
-                   ! Determine the 1st trailing non-white character
+                   ! Determine the 1st trailing non-white space character
                    k2 = k2+1
                    DO WHILE( k2 < slen )
                      IF ( str(k2:k2) /= ' ') EXIT
@@ -1872,7 +1872,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  END IF
@@ -1984,7 +1985,8 @@ CONTAINS
                      END DO
                      IF( k2 < slen ) THEN
                        IF(str(k2:slen) /= 'end') THEN
-                         CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                         CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                              //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                        END IF
                      END IF
                    END IF
@@ -2118,7 +2120,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  END IF                 
@@ -2147,7 +2150,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  ELSE
