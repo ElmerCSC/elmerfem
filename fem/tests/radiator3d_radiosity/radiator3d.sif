@@ -76,7 +76,7 @@ Solver 1
   radiation: Linear System Convergence Tolerance = 1.0e-8
 
 ! Update View Factors = True
-! Update Gebhardt Factors = True
+! Update Gebhart Factors = True
 
   Radiosity Model = Logical True
 !  Spectral Model = True

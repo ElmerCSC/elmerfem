@@ -62,6 +62,10 @@ Text::Text(QWidget *parent)
   red = 0.0;
   green = 0.0;
   blue = 0.0;
+
+  ui.cancelButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  ui.applyButton->setIcon(QIcon::fromTheme("view-refresh"));  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Text::~Text()

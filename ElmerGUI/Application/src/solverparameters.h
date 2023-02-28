@@ -69,10 +69,12 @@ private slots:
   void hypreStateChanged(int);
   void parasailsStateChanged(int);
   void boomerAMGStateChanged(int);
+  void whatsThisButtonClicked();
 
 private:
    ProjectIO projectIO; 
 
+  QPushButton *whatsThisButton;
 };
 
 #endif // SOLVERPARAMETERS_H

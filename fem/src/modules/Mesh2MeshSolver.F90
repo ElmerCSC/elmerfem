@@ -124,9 +124,9 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,Transient )
     ! Target mesh solver is explicitly given
     TargetMesh => CurrentModel % Solvers(i) % Mesh
     IF( ASSOCIATED( TargetMesh ) ) THEN
-      CALL Info('Mesh2MeshSolver','Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)
+      CALL Info('Mesh2MeshSolver','Using target mesh as the mesh of Solver '//I2S(i),Level=8)
     ELSE
-      CALL Fatal('Mesh2MeshSolver','Target Mesh for Solver not associated: '//TRIM(I2S(i)))
+      CALL Fatal('Mesh2MeshSolver','Target Mesh for Solver not associated: '//I2S(i))
     END IF
   ELSE  
     ! Otherwise use the 1st mesh that is not this old data mesh
@@ -161,7 +161,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,Transient )
   END DO
    
   IF( NoVar > 0 ) THEN      
-    CALL Info('Mesh2MeshSolver','Mapping '//TRIM(I2S(NoVar))//' fields as requested',Level=7)
+    CALL Info('Mesh2MeshSolver','Mapping '//I2S(NoVar)//' fields as requested',Level=7)
         
     ALLOCATE( FromVars )
     pVar => FromVars
@@ -263,13 +263,13 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,Transient )
 
       IF( ASSOCIATED( Var ) ) THEN
         IF( InfoActive(20) ) &
-          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+          PRINT *,'FromRange'//I2S(ParEnv % Mype)//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
       END IF
       IF( ASSOCIATED( pVar ) ) THEN
         pVar % Valid = .TRUE.
         pVar % ValuesChanged = .TRUE.
         IF( InfoActive(20) ) &
-            PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
+            PRINT *,'ToRange'//I2S(ParEnv % Mype)//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
       END IF
    END DO
   ELSE  
@@ -290,8 +290,8 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,Transient )
         pVar % ValuesChanged = .TRUE.
         
         IF( InfoActive(20) ) THEN
-          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
-          PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
+          PRINT *,'FromRange'//I2S(ParEnv % Mype)//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+          PRINT *,'ToRange'//I2S(ParEnv % Mype)//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
         END IF
       END IF
       

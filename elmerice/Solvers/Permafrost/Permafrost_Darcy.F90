@@ -240,13 +240,13 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   !--------------------------------------------------------------
   IF (FirstTime) THEN
     DO I=1,DIM
-      DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//TRIM(I2S(i)))
+      DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//I2S(i))
       FluxOutput = ASSOCIATED(DummyGWfluxVar)
       IF (.NOT.FluxOutput) EXIT
     END DO
     IF (FluxOutput) THEN
       CALL INFO(SolverName,'Groundwater flow will be written to: Groundwater Flux {1..'&
-          //TRIM(I2S(DIM))//'}',Level=4)
+          //I2S(DIM)//'}',Level=4)
     END IF
   END IF
   
@@ -371,7 +371,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       CALL MakePermUsingMask( Model, Solver, Solver % Mesh,'Salinity',.FALSE.,&
           BCFluxPerm, BCFluxNodes )
       CALL Info(SolverName,'Creating variable for boundary flux of size: '&
-          //TRIM(I2S(BCFluxNodes)),Level=12)
+          //I2S(BCFluxNodes),Level=12)
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver,&
           'BC Flux', DummyGWFluxVar % DOFs, Perm = BCFluxPerm )
     END IF
@@ -529,9 +529,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )   
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=31)
-      CALL Info(SolverName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=31)
+          //I2S(IP % n),Level=31)
+      CALL Info(SolverName,'Elemental n:'//I2S(n)//' nd:'&
+          //I2S(nd)//' nd:'//I2S(nb),Level=31)
     END IF
 
     

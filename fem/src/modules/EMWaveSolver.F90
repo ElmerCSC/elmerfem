@@ -188,7 +188,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   pSolver => Solver
   
   IF ( .NOT. AllocationsDone ) THEN
-    IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//TRIM(I2S(dofs)) )
+    IF( dofs /= 1 ) CALL Fatal ('EMWaveSolver', 'Invalid variable size:'//I2S(dofs) )
     n = Mesh % MaxElementDOFs  
     ALLOCATE( FORCE(n), STIFF(n,n), MASS(n,n), DAMP(n,n), STAT=istat )
     IF ( istat /= 0 ) CALL Fatal( 'EMWaveSolver', 'Memory allocation error.' )
@@ -553,9 +553,9 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   END DO
      
   IF( soln == 0 ) THEN
-    CALL Fatal('EMWaveCalcFields_Init0','Cannot locate the primary solver: '//TRIM(I2S(soln)))      
+    CALL Fatal('EMWaveCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))      
   ELSE
-    CALL Info('EMWaveCalcFields_Init0','The primary solver index is: '//TRIM(I2S(soln)),Level=12)
+    CALL Info('EMWaveCalcFields_Init0','The primary solver index is: '//I2S(soln),Level=12)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
@@ -741,7 +741,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    ! Inherit the solution basis from the primary solver
    vDOFs = pVar % DOFs
    IF( vDofs /= 1 ) THEN
-     CALL Fatal('EMWaveCalcFields','Primary variable should have 1 dofs: '//TRIM(I2S(vDofs)))
+     CALL Fatal('EMWaveCalcFields','Primary variable should have 1 dofs: '//I2S(vDofs))
    END IF
    dofs = 3
    

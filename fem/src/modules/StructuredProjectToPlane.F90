@@ -174,7 +174,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       ALLOCATE( TopField( TopNodes ) ) 
       TopField = 0.0_dp
     END IF
-    CALL Info(Caller,'Number of top nodes: '//TRIM(I2S(TopNodes)),Level=10)
+    CALL Info(Caller,'Number of top nodes: '//I2S(TopNodes),Level=10)
 
     BotNodes = 0
     ALLOCATE( BotPerm( Mesh % NumberOfNodes ) )
@@ -190,7 +190,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         BotPerm(i) = BotNodes
       END IF
     END DO
-    CALL Info(Caller,'Number of bot nodes: '//TRIM(I2S(BotNodes)),Level=10)
+    CALL Info(Caller,'Number of bot nodes: '//I2S(BotNodes),Level=10)
 
     IF( MidLayerExists ) THEN
       MidNodes = 0
@@ -207,7 +207,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           MidPerm(i) = MidNodes
         END IF
       END DO
-      CALL Info(Caller,'Number of mid nodes: '//TRIM(I2S(MidNodes)),Level=10)
+      CALL Info(Caller,'Number of mid nodes: '//I2S(MidNodes),Level=10)
     END IF
   END IF
   at0 = CPUTime()

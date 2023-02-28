@@ -98,8 +98,9 @@ PROGRAM ResultToResult
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: OldModelName, NewModelName, eq, OutputName
-     CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, OldOutputFile, PostFile, RestartFile
+     CHARACTER(LEN=MAX_NAME_LEN) :: OldModelName
+     CHARACTER(:), ALLOCATABLE :: NewModelName, eq, OutputName, OutputFile, &
+            OldOutputFile, PostFile, RestartFile
 
 
      TYPE(Model_t), POINTER :: OldModel, NewModel
@@ -540,8 +541,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Var
      INTEGER :: i
-     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, OutputName
      LOGICAL :: BinaryOutput, SaveAll
+     CHARACTER(:), ALLOCATABLE :: Simul, OutputName
  
      Simul = ListGetString( CurrentModel % Simulation, &
                      'Simulation Type' )
@@ -591,7 +592,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Var
      INTEGER :: i, TotalTimeSteps = 1
-     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, PostFile,PostName,OutputName
+     CHARACTER(:), ALLOCATABLE :: Simul, PostFile, PostName, OutputName
  
      Simul = ListGetString( CurrentModel % Simulation, &
                      'Simulation Type' )
@@ -599,11 +600,7 @@ CONTAINS
      PostFile = ListGetString( CurrentModel % Simulation,'Post File',GotIt )
      IF ( GotIt ) THEN
        IF ( ParEnv % PEs > 1 ) THEN
-         DO i=1,MAX_NAME_LEN
-           IF ( PostFile(i:i) == ' ' ) EXIT
-         END DO
-         PostFile(i:i) = '.'
-         WRITE( PostFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+         PostFile = PostFile // '.' // i2s(ParEnv % MyPE)
        END IF
        Mesh => CurrentModel % Meshes
        DO WHILE( ASSOCIATED( Mesh ) )

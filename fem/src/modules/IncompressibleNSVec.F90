@@ -955,14 +955,14 @@ END BLOCK
 ! Assemble local finite element matrix for a single boundary element and glue
 ! it to the global matrix.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, dt, SpecificLoad, InitHandles)
+  SUBROUTINE LocalBoundaryMatrix( Element, n, nd, dim, dt, SpecificLoad, InitHandles, Newton)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, dim
     REAL(KIND=dp), INTENT(IN) :: dt
-    LOGICAL, INTENT(INOUT) :: SpecificLoad, InitHandles 
+    LOGICAL, INTENT(INOUT) :: SpecificLoad, InitHandles, Newton 
 !------------------------------------------------------------------------------    
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp), TARGET :: STIFF(nd*(dim+1),nd*(dim+1)), FORCE(nd*(dim+1))
@@ -981,6 +981,7 @@ END BLOCK
         FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
     TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
     TYPE(ValueList_t), POINTER :: BC    
+    REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     
     SAVE Basis, HaveNormal
     
@@ -1038,6 +1039,7 @@ END BLOCK
     
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
+    JAC = 0.0d0
     FORCE = 0.0d0
     c = dim + 1
 
@@ -1053,10 +1055,10 @@ END BLOCK
 
     FrictionNewton = .FALSE.
     FrictionNormal = .FALSE.
+    norm_comp = 0
 
     ! There is no elemental routine for this.
     ! So whereas this breaks the beuty it does not cost too much.
-    BC => GetBC()
     FSSAFlag = GetString(BC, 'FSSA Flag', Found)
     IF (.NOT.Found) THEN
       WRITE (FSSAFlag,*) "none"
@@ -1169,6 +1171,10 @@ END BLOCK
           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
           TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+          ! dTanFrictionCoeff/dut for Newton
+          TanFder=0._dp
+          IF ((ut.GT.wut0).AND.(TanFrictionCoeff.LT.1.0e20)) &
+             TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp) 
         ELSE
           ! Else, user defined friction law
           DummyVals(1) = ut          
@@ -1232,6 +1238,13 @@ END BLOCK
                     STIFF( (p-1)*c+j,(q-1)*c+k ) = &
                         STIFF( (p-1)*c+j,(q-1)*c+k ) + &
                         s * SlipCoeff(i) * Basis(q) * Basis(p) * Vect(j) * Vect(k)
+
+                    IF(HaveFrictionW.AND.Newton) THEN
+                      JAC((p-1)*c+j,(q-1)*c+k ) = &
+                         JAC((p-1)*c+j,(q-1)*c+k ) + &
+                         s * TanFder * Basis(q) * Basis(p) * Vect(j) * velo(k) * SUM(velo(1:dim)*Vect(1:dim))/ut
+                    END IF
+
                   END DO
                 END DO
               END DO
@@ -1245,6 +1258,16 @@ END BLOCK
                 STIFF( (p-1)*c+i,(q-1)*c+i ) = &
                     STIFF( (p-1)*c+i,(q-1)*c+i ) + &
                     s * SlipCoeff(i) * Basis(q) * Basis(p)
+
+               IF(HaveFrictionW.AND.Newton) THEN
+                 DO j=1,dim
+                  IF(j == norm_comp) CYCLE
+                  JAC((p-1)*c+i,(q-1)*c+j ) = &
+                     JAC((p-1)*c+i,(q-1)*c+j ) + &
+                        s * TanFder * Basis(q) * Basis(p) * velo(i) * velo(j) / ut
+                 END DO
+               END IF
+
               END DO
             END DO
           END DO
@@ -1331,10 +1354,23 @@ END BLOCK
 
       END IF
     END DO
+
+
+    IF(HaveFrictionW.AND.Newton) THEN
+       CALL GetLocalSolution( NodalSol )
+       SOL=0._dp
+       DO i = 1, c
+         SOL(i::c) = NodalSol(i,1:nd)
+       END DO
+
+       STIFF=STIFF+JAC
+       FORCE=FORCE + MATMUL(JAC,SOL)
+
+    END IF
       
      
     CALL DefaultUpdateEquations( STIFF, FORCE )
-
+        
   END SUBROUTINE LocalBoundaryMatrix
 
   
@@ -1459,7 +1495,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
  
   REAL(KIND=dp) :: Norm
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
+  LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec, Converged
   LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitBCHandles
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
@@ -1512,7 +1548,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
   IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
   CALL Info('IncompressibleNSSolver', &
-      'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
+      'Number of 1st integration points: '//I2S(IP % n), Level=5)
   
   !-----------------------------------------------------------------------------
   ! Set the flags/parameters which define how the system is assembled: 
@@ -1549,6 +1585,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL Info(Caller, Message, Level=4)
     CALL Info(Caller,'--------------------------------------------------------', Level=4)
 
+100 CONTINUE
+    
     Active = GetNOFActive()
     CALL DefaultInitialize()
     IF (ASSOCIATED(SchurSolver)) THEN
@@ -1608,7 +1646,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
-        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles )
+        CALL LocalBoundaryMatrix(Element, n, nd, dim, dt, SpecificLoad, InitBCHandles, Newton)
         InitBCHandles = .FALSE.
       END IF
     END DO
@@ -1622,6 +1660,12 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
+
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
     
     Norm = DefaultSolve()
 

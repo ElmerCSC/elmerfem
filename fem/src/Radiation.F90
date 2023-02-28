@@ -72,19 +72,19 @@ CONTAINS
      LOGICAL :: Found
 !------------------------------------------------------------------------------
 
-     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
-       CALL Fatal('ComputeRadiationLoad','Gebhardt factors not calculated for boundary!')
+     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % RadiationFactors ) ) THEN
+       CALL Fatal('ComputeRadiationLoad','Gebhart factors not calculated for boundary!')
      END IF
      
-     nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors          
+     nf = Element % BoundaryInfo % RadiationFactors % NumberOfFactors          
      
      IF(PRESENT(Areas) .AND. PRESENT(Emiss)) THEN
 
        bindex = Element % ElementIndex - Mesh % NumberOfBulkElements
        A1  = Emiss(bIndex)
 
-       Cols => Element % BoundaryInfo % GebhardtFactors % Elements
-       Vals => Element % BoundaryInfo % GebhardtFactors % Factors
+       Cols => Element % BoundaryInfo % RadiationFactors % Elements
+       Vals => Element % BoundaryInfo % RadiationFactors % Factors
 
        T = 0._dp
        Asum = 0._dp
@@ -97,8 +97,8 @@ CONTAINS
      ELSE
        A1 = Emissivity
 
-       Cols => Element % BoundaryInfo % GebhardtFactors % Elements
-       Vals => Element % BoundaryInfo % GebhardtFactors % Factors
+       Cols => Element % BoundaryInfo % RadiationFactors % Elements
+       Vals => Element % BoundaryInfo % RadiationFactors % Factors
 
        T = 0.0_dp
        Asum = 0.0_dp
@@ -140,7 +140,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      CurrentElement => Model % Elements( &
-             Element % BoundaryInfo % GebhardtFactors % Elements(k) )
+             Element % BoundaryInfo % RadiationFactors % Elements(k) )
      n = CurrentElement % TYPE % NumberOfNodes
 
      Emissivity = SUM(ListGetReal(Model % BCs(CurrentElement % &
@@ -152,7 +152,7 @@ CONTAINS
 
      Area = Emissivity * ElementArea( Mesh,CurrentElement, n)
 
-     T =  ABS(Element % BoundaryInfo % GebhardtFactors % Factors(k)) * Area
+     T =  ABS(Element % BoundaryInfo % RadiationFactors % Factors(k)) * Area
 
    END FUNCTION ComputeRadiationCoeff
 !------------------------------------------------------------------------------

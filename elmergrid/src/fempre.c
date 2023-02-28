@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
   showmem = TRUE;
 
-  printf("\nStarting program Elmergrid\n");
+  printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
 
   InitParameters(&eg);
 

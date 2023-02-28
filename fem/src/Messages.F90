@@ -49,7 +49,6 @@ MODULE Messages
 #else
 #define stdout 6
 #endif
-   
    IMPLICIT NONE
    
    CHARACTER(LEN=512) :: Message = ' '
@@ -64,7 +63,7 @@ MODULE Messages
    
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
-CONTAINS
+ CONTAINS
 
 !-----------------------------------------------------------------------
 !> Prints information on the standard output if the requested or 
@@ -275,6 +274,7 @@ CONTAINS
      SAVE nadv1
 
 !-----------------------------------------------------------------------
+
      IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
@@ -298,6 +298,41 @@ CONTAINS
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
+
+     STOP EXIT_ERROR
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
+
+   
 END MODULE Messages
 
 !> \}

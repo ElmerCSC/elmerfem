@@ -67,7 +67,7 @@ CONTAINS
               ListMatrixArray % Pool(nthr), STAT=istat )
     IF( istat /= 0 ) THEN
       CALL Fatal('ListMatrixArray_AllocateMatrix',&
-                 'Allocation error for ListMatrix of size: '//TRIM(I2S(n)))
+                 'Allocation error for ListMatrix of size: '//I2S(n))
     END IF
     IF (InitLocks) CALL ListMatrixArray_InitializeAtomic(ListMatrixArray)
     
@@ -129,7 +129,7 @@ CONTAINS
     ALLOCATE( ListMatrixArray % RowLocks(n), STAT=istat )
     IF( istat /= 0 ) THEN
       CALL Fatal('ListMatrixArray_InitializeAtomic',&
-            'Allocation error for ListMatrix row locks of size: '//TRIM(I2S(n)))
+            'Allocation error for ListMatrix row locks of size: '//I2S(n))
     END IF
       
     !$OMP PARALLEL DO &

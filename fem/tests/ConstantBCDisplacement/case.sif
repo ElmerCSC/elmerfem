@@ -97,8 +97,8 @@ End
 Boundary Condition 2
   Target Boundaries(1) = 2 
 
-  Force 2 = -10.0
-  Force 2 Normalize By Area = Logical True
+  Force 2 = -distribute -10.0
+!  Force 2 Normalize By Area = Logical True
   Displacement 2 Constant = Logical True
 
   Save Scalars = True

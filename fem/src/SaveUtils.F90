@@ -43,9 +43,11 @@ MODULE SaveUtils
 
   USE Types
   USE SParIterGlobals
+  USE MatrixAssembly
   USE Lists
   USE Messages
-  USE MeshUtils, ONLY: GetLagrangeIndexes
+  USE MeshUtils, ONLY: GetLagrangeIndexes, CopyElementNodesFromMesh
+  USE ElementDescription
   
   IMPLICIT NONE
 
@@ -113,8 +115,6 @@ CONTAINS
       CALL Fatal('Elmer2VtkElement',Message)
 
     END SELECT
-
-    !PRINT *,'Code:',ElmerCode, VtkCode   
 
     ! If requested, return the 1st order element corresponding to the higher order elements
     IF( SaveLinear ) THEN
@@ -328,7 +328,7 @@ CONTAINS
     LOGICAL GotIt, SkipHalo, SaveOnlyHalo, GotMaskName, GotMaskCond, MaskExists, &
         SaveBulkOnly, SaveBoundariesOnly, GroupCollection, IsBoundaryElement, &
         IsHalo, Hit
-    CHARACTER(MAX_NAME_LEN) :: Str, MaskName
+    CHARACTER(:), ALLOCATABLE :: Str, MaskName
     REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
     INTEGER :: LeftIndex, RightIndex, ElemFirst, ElemLast, n, m, i, k, l
     TYPE(Variable_t), POINTER :: MaskVar
@@ -343,14 +343,14 @@ CONTAINS
     
     IF(.NOT. ALLOCATED( NodePerm ) ) THEN
       n = Mesh % NumberOfNodes
-      CALL Info(Caller,'Allocating NodePerm of size: '//TRIM(I2S(n)),Level=15)
+      CALL Info(Caller,'Allocating NodePerm of size: '//I2S(n),Level=15)
       ALLOCATE(NodePerm(n))
     END IF
     NodePerm = 0
     
     IF(.NOT. ALLOCATED(ActiveElem) ) THEN
       n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-      CALL Info(Caller,'Allocating ActiveElem of size: '//TRIM(I2S(n)),Level=15)
+      CALL Info(Caller,'Allocating ActiveElem of size: '//I2S(n),Level=15)
       ALLOCATE(ActiveElem(n) )
     END IF
     ActiveElem = .FALSE.
@@ -405,7 +405,7 @@ CONTAINS
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-      CALL Info(Caller,'Mask is positive for nodes: '//TRIM(I2S(NumberOfGeomNodes)),Level=15)
+      CALL Info(Caller,'Mask is positive for nodes: '//I2S(NumberOfGeomNodes),Level=15)
       IF( NumberOfGeomNodes == 0 ) THEN
         CALL Info(Caller,'Leaving early since mask is negative everywhere')
         RETURN
@@ -568,10 +568,10 @@ CONTAINS
     IF( NumberOfElements == 0 ) THEN
       CALL Info(Caller,'No active elements forthis mask',Level=12)
     ELSE
-      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)      
-      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
+      CALL Info(Caller,'Number of active elements '//I2S(NumberOfElements)//&
+          ' out of '//I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements),Level=10)      
+      CALL Info(Caller,'Number of geometry nodes '//I2S(NumberOfGeomNodes)//&
+          ' out of '//I2S(Mesh % NumberOfNodes),Level=10)
     END IF
       
   END SUBROUTINE GenerateSaveMask
@@ -623,7 +623,7 @@ CONTAINS
           Element => Mesh % Elements(i)
           k = k + Element % TYPE % NumberOfNodes
         END DO
-        CALL Info(Caller,'Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+        CALL Info(Caller,'Maximum number of dofs in DG: '//I2S(k),Level=12)
         ALLOCATE( DgPerm(k) )
       END IF
       DgPerm = 0
@@ -688,7 +688,7 @@ CONTAINS
         END IF
 
         IF( Sweep == 1 ) THEN
-          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//TRIM(I2S(l)),Level=10)
+          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//I2S(l),Level=10)
           NumberOfDofNodes = l
           IF(ALLOCATED(InvNodePerm)) DEALLOCATE( InvNodePerm )
           IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm ) 
@@ -701,7 +701,7 @@ CONTAINS
       IF( DN ) DEALLOCATE( BodyVisited ) 
 
     ELSE IF( LagN > 0 ) THEN
-      CALL Info(Caller,'Creating permutation for order '//TRIM(I2S(LagN))//' Lagrange nodes!', Level=12)
+      CALL Info(Caller,'Creating permutation for order '//I2S(LagN)//' Lagrange nodes!', Level=12)
 
       ! Calling without Element as argument returns the max. index value
       n = GetLagrangeIndexes( Mesh, LagN )
@@ -733,7 +733,7 @@ CONTAINS
       NumberOfGeomNodes = m
       NoPermutation = .TRUE.
       
-      CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//TRIM(I2S(m)),Level=12)
+      CALL Info(Caller,'Number of dofs for higher order Lagrange elements: '//I2S(m),Level=12)
     ELSE
       NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
       IF( NoPermutation ) THEN
@@ -743,7 +743,7 @@ CONTAINS
         IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm ) 
         
         ALLOCATE( InvNodePerm( NumberOfGeomNodes ) ) 
-        CALL Info(Caller,'Allocating InvNodePerm of size: '//TRIM(I2S(NumberOfGeomNodes)),Level=15)
+        CALL Info(Caller,'Allocating InvNodePerm of size: '//I2S(NumberOfGeomNodes),Level=15)
         
         InvNodePerm = 0
         j = 0
@@ -762,6 +762,415 @@ CONTAINS
   END SUBROUTINE GenerateSavePermutation
 
 
-  
+  SUBROUTINE EvaluateVariableAtGivenPoint(No,Values,Mesh,Var,Var2,Var3,Element,LocalCoord,&
+      LocalBasis,LocalNode,LocalDGNode,DoGrad,DoDiv,GotEigen,GotEdge)
+
+    INTEGER :: No
+    REAL(KIND=dp) :: Values(:)
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t), POINTER, OPTIONAL :: Var2, Var3
+    TYPE(Element_t), POINTER, OPTIONAL :: Element
+    REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
+    INTEGER, OPTIONAL :: LocalNode
+    INTEGER, OpTIONAL :: LocalDGNode
+    REAL(KIND=dp), OPTIONAL, TARGET :: LocalBasis(:)
+    LOGICAL, OPTIONAL :: DoGrad, DoDiv
+    LOGICAL, OPTIONAL :: GotEigen, GotEdge
+    
+    LOGICAL :: Found, EdgeBasis, AVBasis, DgVar, IpVar, ElemVar, DoEigen, &
+        PiolaVersion, PElem, NeedDerBasis, Stat, UseGivenNode, IsGrad, IsDiv, &
+        IsEigen
+    INTEGER :: i1,i2,ii,i,j,k,l,comps, n, nd, np, NoEigenValues, iMode
+    INTEGER, TARGET :: DGIndexes(27), Indexes(100), DofIndexes(100), NodeIndex(1)
+    INTEGER, POINTER :: pToIndexes(:)
+    REAL(KIND=dp) :: u,v,w,detJ
+    TYPE(Nodes_t), SAVE :: Nodes
+    INTEGER :: lr
+    REAL(KIND=dp), TARGET :: Basis(100),dBasisdx(100,3),NodeBasis(1)
+    REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3)
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: fdg(:), fip(:)
+    REAL(KIND=dp), POINTER :: pToBasis(:)
+    TYPE(Variable_t), POINTER :: pVar
+    COMPLEX(KIND=dp), POINTER :: cValues(:)
+
+    INTERFACE 
+      SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+        USE Types
+        TYPE(Mesh_t), POINTER :: Mesh
+        TYPE(Element_t), POINTER :: Parent
+        INTEGER :: nip, np
+        REAL(KIND=dp) :: fip(:), fdg(:)
+      END SUBROUTINE Ip2DgFieldInElement
+    END INTERFACE
+
+    IF(PRESENT(GotEdge)) GotEdge = .FALSE.
+    IF(PRESENT(GotEigen)) GotEIgen = .FALSE.
+    
+
+    IF(.NOT. ASSOCIATED(Var)) RETURN
+    IF(.NOT. ASSOCIATED(Var % Values)) RETURN
+
+    ! Check that a vector field was not given by components 
+    comps = 1
+    IF(PRESENT(Var2)) THEN
+      IF(ASSOCIATED(Var2)) THEN
+        comps = 2
+        IF( PRESENT(Var3)) THEN
+          IF(ASSOCIATED(Var3)) THEN
+            comps = 3
+          END IF
+        END IF
+      END IF
+    END IF
+
+    IF(.NOT. PRESENT(Element) ) THEN
+      CALL Fatal('EvaluteVariableAtGivenPoint','This routine most often really likes to have Element provided!')
+    END IF
+    
+    EdgeBasis = ( Var % TYPE == variable_on_edges )
+
+    DGVar = ( Var % TYPE == variable_on_nodes_on_elements ) 
+    IpVar = ( Var % TYPE == variable_on_gauss_points )
+    ElemVar = ( Var % TYPE == Variable_on_elements )       
+    PiolaVersion = .FALSE.
+    pElem = .FALSE.
+    n = Element % TYPE % NumberOfNodes                  
+
+    ! Do we have p-elements
+    IF( ASSOCIATED( Var % Solver ) ) THEN
+      nd = mGetElementDOFs( Indexes, Element, Var % Solver)
+    ELSE
+      nd = mGetElementDOFs( Indexes, Element )
+    END IF
+    IF(nd > n) pElem = isActivePElement(Element,Var % Solver)                              
+
+    ! Elemental variable is a special case which is constant on the element
+    ! This does not depend on any other things. 
+    IF( ElemVar ) THEN
+      l = Element % ElementIndex 
+      IF( SIZE( Var % Perm ) >= l ) THEN
+        l = Var % Perm(l)
+      END IF
+      IF( l > 0 ) THEN
+        IF( Var % Dofs > 1 ) THEN
+          DO ii=1,Var % Dofs
+            Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
+          END DO
+        ELSE
+          Values(No+1) = Var % Values(l)              
+          IF( comps >= 2 ) Values(No+2) = Var % Values(l)
+          IF( comps >= 3 ) Values(No+3) = Var % Values(l)
+        END IF
+      END IF
+      No = No + MAX( Var % Dofs, comps )       
+      RETURN
+    END IF
+    
+    ! We may need to compute dBasisdx if we want derivative or divergence at the point. 
+    NeedDerBasis = .FALSE.
+    IsGrad = .FALSE.
+    IsDiv = .FALSE.
+    IF(PRESENT(DoGrad)) IsGrad = DoGrad
+    IF(PRESENT(DoDiv)) IsDiv = DoDiv
+    NeedDerBasis = IsGrad .OR. IsDiv
+    
+    pToBasis => NULL()
+    pToIndexes => NULL()
+    
+    IsEigen = .FALSE.
+    IF( PRESENT( GotEigen ) ) THEN
+      IsEigen = ASSOCIATED( Var % EigenValues )
+      IF(IsEigen) NoEigenValues = SIZE( Var % EigenValues )
+      GotEigen = IsEigen
+      IF( comps > 1 ) THEN
+        CALL Warn('EvaluetVariableAtGivenPoint','Eigenmode cannot be given in components!')
+        IsEigen = .FALSE.
+      END IF
+    END IF
+    
+    ! Given node is the quickest way to estimate the values at nodes.
+    ! However, it only applies to nodal fields. 
+    NodeIndex(1) = 0
+    IF(.NOT. (EdgeBasis .OR. IpVar .OR. ElemVar .OR. NeedDerBasis .OR. pElem) ) THEN
+      
+      IF( DgVar ) THEN
+        IF(PRESENT(LocalDGNode)) THEN
+          NodeIndex(1) = LocalDGNode
+        ELSE IF( PRESENT(LocalNode)) THEN
+          PToIndexes => PickDGIndexes(Element)
+          DO i=1, n
+            IF( Element % NodeIndexes(i) == LocalNode ) THEN
+              NodeIndex(1) = pToIndexes(i)
+              EXIT
+            END IF
+          END DO
+        END IF
+      ELSE IF( PRESENT(LocalNode) ) THEN
+        NodeIndex(1) = LocalNode
+      END IF
+
+      IF( NodeIndex(1) > 0 ) THEN
+        pToIndexes => NodeIndex        
+        NodeBasis(1) = 1.0_dp
+        pToBasis => NodeBasis
+        n = 1
+        nd = 1        
+      ELSE IF( PRESENT( LocalBasis ) ) THEN
+        ! The 2nd quickest is to use existing local nodal basis functions
+        PtoBasis => LocalBasis
+        nd = n        
+        IF( DgVar ) THEN
+          PtoIndexes => PickDGIndexes(Element)
+        ELSE
+          PtoIndexes => Element % NodeIndexes 
+        END IF
+      END IF
+    END IF
+    
+
+    IF(.NOT. ASSOCIATED(PtoIndexes) ) THEN
+      IF(.NOT. PRESENT(LocalCoord) ) THEN
+        CALL Fatal('EvaluteVariableAtGivenPoint','No recipe to evaluate variable without local coordinates!')
+      END IF
+
+      IF( EdgeBasis ) THEN
+        IF( ListGetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
+          PiolaVersion = .TRUE.
+        ELSE
+          PiolaVersion = ListGetLogical(Var % Solver % Values,'Use Piola Transform', Found )   
+        END IF
+        np = n * Var % Solver % Def_Dofs(Element % type % ElementCode/100,Element % BodyId,1)
+        AVBasis = (np > 0 )
+        IF( PRESENT( GotEdge ) ) GotEdge = .TRUE.
+      END IF
+            
+      u = LocalCoord(1)
+      v = LocalCoord(2)
+      w = LocalCoord(3)
+
+      IF( EdgeBasis ) THEN
+        CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes)
+        stat = ElementInfo( Element, Nodes, u, v, w, &
+            detJ, Basis, dBasisdx,  EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, USolver = Var % Solver)
+      ELSE          
+        IF( pElem ) THEN
+          ! The standard element of SaveLine, SaveScalars etc. is most likely standard nodal element.
+          ! If the user gives something else we may be trouble...
+          CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes)
+          CALL ConvertToPReference(Element % TYPE % ElementCode,u,v,w)            
+          IF( NeedDerBasis ) THEN
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx, &
+                USolver = Var % Solver )
+          ELSE
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, &
+                USolver = Var % Solver )
+          END IF
+        ELSE
+          IF( NeedDerBasis ) THEN
+            CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes)
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+          ELSE
+            CALL CopyElementNodesFromMesh(Nodes,Mesh,n,Element % NodeIndexes)          
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+          END IF
+        END IF
+
+        IF( DgVar ) THEN
+          PtoIndexes => PickDGIndexes(Element)
+        END IF
+      END IF
+      IF(.NOT. ASSOCIATED(pToIndexes)) PtoIndexes => Indexes
+      IF(.NOT. ASSOCIATED(pToBasis)) PtoBasis => Basis
+    END IF
+    
+    IF( EdgeBasis ) THEN
+      DofIndexes(1:nd) = Var % Perm(PToIndexes(1:nd))
+      IF( IsEigen ) THEN
+        DO iMode = 1, NoEigenValues
+          DO j=1,3          
+            No = No + 1
+            IF( ALL(DofIndexes(np+1:nd) > 0 ) ) THEN            
+              cValues => Var % EigenVectors(iMode,:)
+              Values(No) = SUM( WBasis(1:nd-np,j) * cValues(DofIndexes(np+1:nd)))
+            ELSE
+              Values(No) = 0.0_dp
+            END IF
+          END DO
+        END DO
+      ELSE
+        DO j=1,3
+          No = No + 1
+          IF( ALL(DofIndexes(np+1:nd) > 0 ) ) THEN
+            Values(No) = SUM( WBasis(1:nd-np,j) * Var % Values(DofIndexes(np+1:nd)))
+          ELSE
+            Values(No) = 0.0_dp
+          END IF
+        END DO
+      END IF
+      IF( AVBasis ) THEN
+        No = No + 1
+        Values(No) = 0.0_dp
+        IF( ALL(DofIndexes(1:np) > 0 ) ) THEN
+          Values(No) = SUM( Basis(1:np) * Var % Values(DofIndexes(1:np)))
+        END IF
+      END IF
+
+    ELSE IF ( IpVar ) THEN
+      l = 0 
+      IF( SIZE( Var % Perm ) > Element % ElementIndex ) THEN 
+        i1 = Var % Perm(Element % ElementIndex)
+        i2 = Var % Perm(Element % ElementIndex+1)
+        l = i2-i1
+      END IF
+
+      IF(l>0) THEN
+        IF( .NOT. ALLOCATED(fip) .OR. SIZE(fip) < l ) THEN
+          IF( ALLOCATED( fip ) ) DEALLOCATE( fip )
+          ALLOCATE( fip(l) )
+        END IF
+
+        IF( .NOT. ALLOCATED(fdg) .OR. SIZE(fdg) < n ) THEN
+          IF( ALLOCATED( fdg ) ) DEALLOCATE( fdg )
+          ALLOCATE( fdg(n) )
+        END IF
+
+        DO ii=1,MAX(Var % Dofs,comps)
+          IF( Var % Dofs > 1 ) THEN
+            CONTINUE
+          ELSE          
+            IF( ii == 1 ) THEN
+              pVar => Var
+            ELSE IF( ii == 2 ) THEN
+              pVar => Var2
+            ELSE IF( ii == 3 ) THEN
+              pVar => Var3
+            END IF
+            fip(1:l) = pVar % Values(i1+1:i2)
+          END IF
+
+          CALL Ip2DgFieldInElement( Mesh, Element, l, fip, n, fdg )              
+          Values(No+ii) = SUM( PtoBasis(1:n) * fdg(1:n) )
+        END DO
+      END IF
+      
+      No = No + MAX(Var % Dofs, Comps )      
+    ELSE
+      IF(.NOT. ASSOCIATED(pToBasis)) THEN
+        CALL Fatal('EvaluteVariableAtGivenPoint','pToBasis not associated!')
+      END IF
+      IF(.NOT. ASSOCIATED(pToIndexes)) THEN
+        CALL Fatal('EvaluteVariableAtGivenPoint','pToIndexes not associated!')
+      END IF
+      
+      IF( ASSOCIATED(Var % Perm) ) THEN
+        DofIndexes(1:nd) = Var % Perm(PToIndexes(1:nd))
+      ELSE
+        DofIndexes(1:nd) = PtoIndexes(1:nd)
+      END IF
+      
+      IF( ALL(Dofindexes(1:nd) > 0 ) ) THEN
+        IF( IsGrad ) THEN
+          IF( Var % Dofs /= 1 ) THEN
+            CALL Fatal('EvaluteVariableAtGivenPoint','Gradient only possible for one dof!')
+          END IF
+          DO ii=1,3
+            Values(No+ii) = SUM( dBasisdx(1:nd,ii) * Var % Values(DofIndexes(1:nd)))
+          END DO
+          No = No + 3
+        ELSE IF( IsEigen ) THEN          
+          DO iMode = 1, NoEigenValues
+            cValues => Var % EIgenVectors(iMode,:)            
+            DO ii=1,Var % DOfs              
+              Values(No+ii) = Values(No+ii) + SUM( PtoBasis(1:nd) * &
+                  cValues(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
+            END DO
+          END DO
+          No = No + Var % Dofs
+        ELSE
+          IF( Var % Dofs > 1 ) THEN
+            DO ii=1,Var % Dofs
+              Values(No+ii) = SUM( PtoBasis(1:nd) * &
+                  Var % Values(Var%Dofs*(DofIndexes(1:nd)-1)+ii))
+            END DO
+          ELSE
+            Values(No+1) = SUM(PToBasis(1:nd) * Var % Values(DofIndexes(1:nd)))            
+            IF( comps >= 2 ) Values(No+2) = SUM(PToBasis(1:nd) * Var2 % Values(DofIndexes(1:nd)))
+            IF( comps >= 3 ) Values(No+3) = SUM(PToBasis(1:nd) * Var3 % Values(DofIndexes(1:nd)))            
+          END IF
+          No = No + MAX( Var % Dofs, comps )
+        END IF
+      END IF
+    END IF
+
+#if 0
+    ! Debugging code
+    IF( .NOT. EdgeBasis .AND. ASSOCIATED(Var % Perm) .AND. No > 0 .AND. ASSOCIATED( PToIndexes ) ) THEN
+      BLOCK
+        REAL(KIND=dp) :: vmin, vmax
+        INTEGER :: kmax
+        PRINT *,'VarInfo:',TRIM(Var % Name), nd, n, pToIndexes(1:nd)
+
+        kmax = 1
+        DO i=1,nd
+          IF( PtoBasis(i) > pToBasis(kmax)) kmax = i
+        END DO
+
+        IF( ASSOCIATED(pToIndexes) ) THEN
+          DofIndexes(1:nd) = Var % Perm(PToIndexes(1:nd))
+        ELSE
+          DofIndexes(1:nd) = PtoIndexes(1:nd)
+        END IF
+          
+        vmin = MINVAL(Var % Values(DofIndexes(1:nd)),DofIndexes(1:nd)>0)
+        vmax = MAXVAL(Var % Values(DofIndexes(1:nd)),DofIndexes(1:nd)>0)
+
+        PRINT *,'PtoIndexes:',PtoIndexes(1:nd)
+        PRINT *,'PtoBasis',SUM(PToBasis(1:nd)),PToBasis(1:nd)
+        PRINT *,'ElemRange:',vmin< Values(1) .AND. vmax > Values(1), &
+            vmin, vmax, Var % Values(Var % Perm(PToIndexes(kmax))), Values(1:No)
+      END BLOCK
+    END IF
+#endif
+      
+  CONTAINS
+
+    FUNCTION PickDgIndexes(Element) RESULT ( PToInds) 
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: PtoInds(:)
+
+      TYPE(Element_t), POINTER :: Parent
+      INTEGER :: i,j,lr
+            
+      IF( ASSOCIATED( Element % DgIndexes ) ) THEN
+        PToInds => Element % DGIndexes
+      ELSE IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+        DO lr=1,2
+          IF(lr==1) THEN
+            Parent => Element % BoundaryInfo % Left
+          ELSE
+            Parent => Element % BoundaryInfo % Right
+          END IF
+          IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+          IF(.NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+          IF( ALL( Var % Perm( Parent % DGIndexes ) /= 0) ) THEN                  
+            DO i=1,Element % TYPE % NumberOfNodes
+              DO j=1,Parent % TYPE % NumberOfNodes
+                IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                  DGIndexes(i) = Parent % DGIndexes(j)
+                  EXIT
+                END IF
+              END DO
+            END DO
+            EXIT
+          END IF
+        END DO
+        PtoInds => DGIndexes
+      END IF
+    END FUNCTION PickDgIndexes
+    
+  END SUBROUTINE EvaluateVariableAtGivenPoint
+    
 END MODULE SaveUtils
   

@@ -46,7 +46,7 @@
 !-------------------------------------------------------------------------------
 
 MODULE PElementMaps
-  USE Types
+  Use GeneralUtils
 
   IMPLICIT NONE
 
@@ -192,7 +192,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
-      CHARACTER(LEN=MAX_NAME_LEN) :: msg
+      CHARACTER(:), ALLOCATABLE :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -204,7 +204,7 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
+         msg = 'Unknown combination node for (face,node)'//I2S(face)//I2S(localNode)
          CALL Fatal('PElementMaps::getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
@@ -1235,11 +1235,11 @@ CONTAINS
             CASE(4)
               ngp = 20
             CASE(5)
-              ngp = 25
-            CASE(6)
               ngp = 36
-            CASE(7)
+            CASE(6)
               ngp = 45
+            CASE(7)
+              ngp = 60
             CASE(8)
               ngp = 60
             END SELECT

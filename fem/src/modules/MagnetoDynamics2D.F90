@@ -152,8 +152,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
   TYPE(TabulatedBasisAtIp_t), POINTER, SAVE :: BasisFunctionsAtIp(:)=>NULL()
   LOGICAL, SAVE :: BasisFunctionsInUse = .FALSE.
-  LOGICAL :: UseTorqueTol
-  REAL(KIND=dp) :: TorqueTol, TorqueErr, PrevTorque, Torque 
+  LOGICAL :: UseTorqueTol, UseNewtonRelax
+  REAL(KIND=dp) :: TorqueTol, TorqueErr, PrevTorque, Torque, NewtonRelax
   
 !------------------------------------------------------------------------------
 
@@ -189,7 +189,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   NewtonRaphson = GetLogical(SolverParams, 'Newton-Raphson Iteration', Found)
   IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
-
+  NewtonRelax = GetCReal(SolverParams,'Nonlinear System Newton Relaxation',UseNewtonRelax)
+    
   TorqueTol = GetCReal(SolverParams,'Nonlinear System Torque Tolerance',UseTorqueTol)
   IF(UseTorqueTol) CALL Info(Caller,'Using additional nonlinear tolerance for torque',Level=10)
   Torque = 0.0_dp
@@ -203,6 +204,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   CALL InitHysteresis(Model, Solver)
 
   DO iter = 1,NonlinIter
+    CALL Info(Caller,'Performing nonlinear iteration: '//I2S(iter),Level=12)
+
     IF(Iter > 1) NewtonRaphson=.TRUE.
     ! System assembly:
     ! ----------------
@@ -223,7 +226,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
        nd = GetElementNOFDOFs(Element)
        nb = GetElementNOFBDOFs(Element)
        IF( SkipDegenerate .AND. DegenerateElement( Element ) ) THEN
-         CALL Info(Caller,'Skipping degenerate element:'//TRIM(I2S(t)),Level=12)
+         CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
          CYCLE
        END IF
        IF( HandleAsm ) THEN
@@ -280,17 +283,20 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
       ELSE
         TorqueErr = 2 * ABS(PrevTorque-Torque) / (ABS(PrevTorque)+ABS(Torque))
         IF( TorqueErr > TorqueTol ) THEN
-          WRITE(Message,'(A,ES12.3)') 'Torque error at iteration '//TRIM(I2S(iter))//':',TorqueErr
+          WRITE(Message,'(A,ES12.3)') 'Torque error at iteration '//I2S(iter)//':',TorqueErr
           CALL Info(Caller,Message,Level=6)
         END IF
       END IF
     END IF
+
     
+    CALL Info(Caller,'Convergence status: '//I2S(Solver % Variable % NonlinConverged),Level=12)
     IF( DefaultConverged() ) THEN
+      CALL Info(Caller,'System has converged to tolerances after '//I2S(iter)//' iterations!',Level=12)
       IF( UseTorqueTol ) THEN
         IF( TorqueErr > TorqueTol ) THEN
           CALL Info(Caller,'Nonlinear system tolerance ok after '&
-              //TRIM(I2S(iter))//' but torque still wobbly!',Level=7)
+              //I2S(iter)//' but torque still wobbly!',Level=7)
           CYCLE
         END IF
       END IF
@@ -384,7 +390,7 @@ CONTAINS
 
     BasisFunctionsInUse = .TRUE.
         
-    CALL Info(Caller,'Number of tabulated basis functions:'//TRIM(I2S(tind)),Level=5)
+    CALL Info(Caller,'Number of tabulated basis functions:'//I2S(tind),Level=5)
     
   END SUBROUTINE TabulateBasisFunctions
   
@@ -518,7 +524,7 @@ CONTAINS
      END DO
               
      i = COUNT( TorqueElem )
-     CALL Info(Caller,'Number of elements to compute torque: '//TRIM(I2S(i)))
+     CALL Info(Caller,'Number of elements to compute torque: '//I2S(i))
    END IF
 
    
@@ -646,9 +652,9 @@ CONTAINS
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential / bodyforce ' &
-             //TRIM(i2s(i)),u(i)/a(i))
+             //i2s(i),u(i)/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
-             //TRIM(i2s(i)),a(i))
+             //i2s(i),a(i))
        END IF
      END DO
    END IF
@@ -675,8 +681,8 @@ CONTAINS
          ! The correction factor also corrects for the number of periods.
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
-         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = ParallelReduction( i, 2 ) 
+         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )         
+         IF( Parallel ) i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)
@@ -696,7 +702,7 @@ CONTAINS
      IF( SliceAverage ) THEN
        ! Save slice torque even for one slice since then the output for scalars is the same
        ! for any number of slices.       
-       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//TRIM(I2S(ParEnv % MyPe))//':', Torq
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//I2S(ParEnv % MyPe)//':', Torq
        CALL Info(Caller,Message,Level=5)
        CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
 
@@ -1005,6 +1011,7 @@ CONTAINS
     END DO
 
     IF (HBcurve .AND. NewtonRaphson) THEN
+      IF(UseNewtonRelax) JAC = JAC * NewtonRelax
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POT)
     END IF
@@ -1167,7 +1174,7 @@ CONTAINS
           IF(.NOT. Found ) THEN
             PRINT *,'Element:',Element % ElementIndex, t
             CALL Fatal(Caller,'Could not define reluctivity in any way in Body: '&
-                //TRIM(I2S(Element % BodyId)))
+                //I2S(Element % BodyId))
           END IF
         END IF
       END IF
@@ -1605,7 +1612,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   END DO
     
   IF( TransientSolverInd > 0 ) THEN
-    CALL Info(Caller,'Transient solver index found: '//TRIM(I2S(i)),Level=8)
+    CALL Info(Caller,'Transient solver index found: '//I2S(i),Level=8)
     CALL ListPushNameSpace('harmonic:')
   ELSE IF( DoRestart ) THEN
     CALL Fatal(Caller,'Could not find transient solver for restart!')
@@ -1656,8 +1663,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     CALL SetMagneticFluxDensityBC()
     CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
-        
-    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+    IF( DefaultConverged() ) EXIT
   END DO
   
   IF(.NOT. CSymmetry ) THEN
@@ -1692,7 +1699,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
     IF ( ASSOCIATED(Lvar) ) THEN
       CALL Info(Caller,&
-          'Size of Lagrange Multiplier: '//TRIM(I2S(SIZE(LVar % Values))),Level=8)
+          'Size of Lagrange Multiplier: '//I2S(SIZE(LVar % Values)),Level=8)
       DO i=1,SIZE( LVar % Values ) / 2
         Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
       END DO
@@ -1771,9 +1778,9 @@ CONTAINS
    DO i=1,nbf
      IF(a(i)>0) THEN
        CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
-                     //TRIM(i2s(i)),REAL(u(i))/a(i))
+                     //i2s(i),REAL(u(i))/a(i))
        CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
-                     //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+                     //i2s(i),AIMAG(u(i))/a(i))
      END IF
    END DO
    CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
@@ -2048,7 +2055,7 @@ CONTAINS
      END DO
               
      i = COUNT( TorqueElem )
-     CALL Info(Caller,'Number of elements to compute torque: '//TRIM(I2S(i)))
+     CALL Info(Caller,'Number of elements to compute torque: '//I2S(i))
    END IF
 
    
@@ -2169,11 +2176,11 @@ CONTAINS
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
-             //TRIM(i2s(i)),REAL(u(i))/a(i))
+             //i2s(i),REAL(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
-             //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+             //i2s(i),AIMAG(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
-             //TRIM(i2s(i)),a(i)) 
+             //i2s(i),a(i)) 
        END IF
      END DO
    END IF
@@ -2200,7 +2207,7 @@ CONTAINS
          ! We don't want that - so let us take back that and the torque
          ! can be compared to inertial moment of the sector still. 
          i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
-         i = ParallelReduction( i, 2 ) 
+         IF( Parallel ) i = ParallelReduction( i, 2 ) 
          IF( i > 1 ) THEN
            WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
            CALL Info(Caller,Message,Level=4)
@@ -2220,7 +2227,7 @@ CONTAINS
      IF( SliceAverage ) THEN
        ! Save slice torque even for one slice since then the output for scalars is the same
        ! for any number of slices.       
-       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//TRIM(I2S(ParEnv % MyPe))//':', Torq
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//I2S(ParEnv % MyPe)//':', Torq
        CALL Info(Caller,Message,Level=5)
        CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
 
@@ -3681,16 +3688,16 @@ CONTAINS
            END DO
   
            CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 re & 
-                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(1,j) )
+                 in Component '//i2s(j), ComponentLorenzForcesRe(1,j) )
                          
            CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 re & 
-                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesRe(2,j) )
+                 in Component '//i2s(j), ComponentLorenzForcesRe(2,j) )
 
            CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 1 im & 
-                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(1,j) )
+                 in Component '//i2s(j), ComponentLorenzForcesIm(1,j) )
                          
            CALL ListAddConstReal( Model % Simulation,'res: Lorentz Force 2 im & 
-                 in Component '//TRIM(i2s(j)), ComponentLorenzForcesIm(2,j) )
+                 in Component '//i2s(j), ComponentLorenzForcesIm(2,j) )
 
          END IF
        END DO
@@ -3726,10 +3733,10 @@ CONTAINS
            END DO
   
            CALL ListAddConstReal( Model % Simulation,'res: Power re & 
-                 in Component '//TRIM(i2s(j)), CirCompComplexPower(1,j) )
+                 in Component '//i2s(j), CirCompComplexPower(1,j) )
                          
            CALL ListAddConstReal( Model % Simulation,'res: Power im & 
-                 in Component '//TRIM(i2s(j)), CirCompComplexPower(2,j) )
+                 in Component '//i2s(j), CirCompComplexPower(2,j) )
          END IF
        END DO
     END IF
@@ -3946,7 +3953,7 @@ CONTAINS
       imag_value = imag_value / im / Volume / Omega / (ABS(Bav(1))**2._dp+ABS(Bav(2))**2._dp)
 
       ProxNu(1) = REAL(imag_value) 
-      ProxNu(2) = AIMAG(imag_value) 
+      ProxNu(2) = AIMAG(-imag_value) 
     ELSE
       ProxNu(1) = HUGE(Omega)
       ProxNu(2) = HUGE(Omega)

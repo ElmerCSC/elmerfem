@@ -145,9 +145,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       END IF
     END DO
     IF( i /= j ) THEN
-      CALL Info(Caller,'There are at least elements of type: '//TRIM(I2S(i))//' and '//TRIM(I2S(j)))
+      CALL Info(Caller,'There are at least elements of type: '//I2S(i)//' and '//I2S(j))
     ELSE
-      CALL Info(Caller,'All elements are of type: '//TRIM(I2S(i)),Level=12)
+      CALL Info(Caller,'All elements are of type: '//I2S(i),Level=12)
     END IF
 
   
@@ -158,11 +158,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         BotNodePointer = BotPointer, UpNodePointer = UpPointer, &
         NumberOfLayers = NumberOfLayers, MaskVar = Var3D )
         
-    CALL Info(Caller,'Number of element layers: '//TRIM(I2S(NumberOfLayers)),Level=7)
+    CALL Info(Caller,'Number of element layers: '//I2S(NumberOfLayers),Level=7)
 
     MaskExist = ASSOCIATED( ExtVar % Perm ) 
     IF( MaskExist ) THEN
-      CALL Info(Caller,'We have a mask of size:'//TRIM(I2S(MAXVAL(ExtVar % Perm))),Level=7)
+      CALL Info(Caller,'We have a mask of size:'//I2S(MAXVAL(ExtVar % Perm)),Level=7)
     ELSE
       CALL Info(Caller,'No mask associated to solver',Level=20)
     END IF
@@ -217,7 +217,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     IF( RequireBC ) THEN
       CALL MarkBCNodes( Mesh,BCNode,NoBCNodes)
       IF(NoBCNodes == 0 ) RequireBC = .FALSE.
-      CALL Info(Caller,'Number of BC nodes: '//TRIM(I2S(NoBCNodes)),Level=7)
+      CALL Info(Caller,'Number of BC nodes: '//I2S(NoBCNodes),Level=7)
     END IF
     
     ! Create the permutation using the bottom layer
@@ -258,7 +258,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     n = BotNodes
     ALLOCATE( InvPerm(n), PrevInvPerm(n), SingleIndex(1) )
 
-    CALL Info(Caller,'Number of bottom nodes: '//TRIM(I2S(n)),Level=7)
+    CALL Info(Caller,'Number of bottom nodes: '//I2S(n),Level=7)
     
     ! Allocate some vectors to study convergence 
     ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
@@ -336,7 +336,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         PRINT *,'Suggested timesteps:',dt,dth
         CALL Fatal(Caller,'Timesteps are not matching')        
       ELSE
-        CALL Info(Caller,'Number of marching steps for each timestep: '//TRIM(I2S(dtn)),Level=5)
+        CALL Info(Caller,'Number of marching steps for each timestep: '//I2S(dtn),Level=5)
       END IF
     END IF
   END IF
@@ -350,7 +350,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   
   DO layer=0,NumberOfLayers
 
-    CALL Info(Caller,'Solving for layer: '//TRIM(I2S(layer)),Level=8)
+    CALL Info(Caller,'Solving for layer: '//I2S(layer),Level=8)
     
     ! First layer is determined by the initial conditions (=boundary conditions)
     IF( layer == 0 ) THEN
@@ -362,7 +362,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       END DO
 
       IF( ANY(InvPerm == 0 ) ) THEN
-        CALL Fatal(Caller,'Number of nodes has InvPerm undefined: '//TRIM(I2S(COUNT(InvPerm==0))))
+        CALL Fatal(Caller,'Number of nodes has InvPerm undefined: '//I2S(COUNT(InvPerm==0)))
       END IF
       
       IF( ParabolicModel ) THEN
@@ -389,7 +389,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     END IF
 
     IF( InvPerm(1) == PrevInvPerm(1) ) THEN
-      CALL Fatal(Caller,'InvPerm is the same on different layers: '//TRIM(I2S(InvPerm(1))))
+      CALL Fatal(Caller,'InvPerm is the same on different layers: '//I2S(InvPerm(1)))
     END IF
     
     ! xi is the value of x at the previous iterate of this layer
@@ -420,7 +420,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     DO iter = 1, MaxIter 
 
       IF( MaxIter > 1 ) THEN
-        CALL Info(Caller,'Nonlinear iteration: '//TRIM(I2S(iter)),Level=20)
+        CALL Info(Caller,'Nonlinear iteration: '//I2S(iter),Level=20)
         xivec = xvec
       END IF
             
@@ -486,7 +486,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 
   IF( dti < dtn ) THEN
     dti = dti + 1
-    CALL Info(Caller,'Taking marching step: '//TRIM(I2S(dti)))
+    CALL Info(Caller,'Taking marching step: '//I2S(dti))
     GOTO 1
   END IF
   

@@ -153,7 +153,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   
   
   IF( .NOT. Visited ) THEN
-    CALL Info(Caller,'Local mesh has '//TRIM(I2S(dofs))//' nodes and '//TRIM(I2S(elems))//' elements')
+    CALL Info(Caller,'Local mesh has '//I2S(dofs)//' nodes and '//I2S(elems)//' elements')
 
     IF( SIZE( Var % Values ) /= dofs ) THEN
       CALL Fatal(Caller,'Size of variable "'//TRIM(Var % Name)//&
@@ -235,7 +235,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   ! If we are on a new timestep advance concentration forward in time.
   IF( timestep /= prevtimestep ) THEN  
     IF( timestep > 1 ) THEN
-      CALL Info(Caller,'Moving concentration forward in time: '//TRIM(I2S(timestep)))
+      CALL Info(Caller,'Moving concentration forward in time: '//I2S(timestep))
       n = SIZE( CsFullVar % PrevValues,2 )
       DO i=n,2,-1
         CsFullVar % PrevValues(:,i) = CsFullVar % PrevValues(:,i-1)
@@ -262,7 +262,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
 #endif
   
   DO iter = 1, maxiter
-    IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//TRIM(I2S(iter)),Level=5)
+    IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//I2S(iter),Level=5)
     NoLimited = 0
 
 #if 0
@@ -462,8 +462,8 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     END DO
     
     IF( LimitDxLoc ) THEN
-      CALL Info(Caller,'Limiter applied '//TRIM(I2S(NoLimited))//&
-          ' times on iteration '//TRIM(I2S(iter)))
+      CALL Info(Caller,'Limiter applied '//I2S(NoLimited)//&
+          ' times on iteration '//I2S(iter))
     END IF
     
     ! For testing purposes add the summed average norm as the target norm 
@@ -476,7 +476,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     ! output as usual (using "grep", for example). 
     str = ListGetString( Params,'Equation')
     WRITE( Message, '(a,g15.8,g15.8,a)') &
-        'NS (ITER='//TRIM(i2s(iter))//') (NRM,RELC): (',Norm, Change,&
+        'NS (ITER='//i2s(iter)//') (NRM,RELC): (',Norm, Change,&
         ' ) :: '// TRIM(str)
     CALL Info( Caller, Message )        
 
@@ -503,7 +503,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     
   n = COUNT( CsVar % Values < 0 )
   IF( n > 0 ) THEN
-    CALL Fatal(Caller,'We got '//TRIM(I2S(n))//' negative concentration!')       
+    CALL Fatal(Caller,'We got '//I2S(n)//' negative concentration!')       
   END IF
 
   ! We want to visualize a given node with the 1D solution then we may

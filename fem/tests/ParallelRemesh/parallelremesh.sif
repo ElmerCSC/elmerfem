@@ -16,7 +16,7 @@ Simulation
 
   Timestep Intervals(1) = 9
   Output Intervals(1) = 1
-  Timestep Sizes(1) = Real $1.0/365.0 !day step
+  Timestep Sizes(1) = Real $1.0/365.0
 
   Initialize Dirichlet Conditions = Logical False !<- important, FrontExtent...
 
@@ -24,9 +24,9 @@ Simulation
   Steady State Min Iterations = 1
   Set Dirichlet BCs By BC Numbering = Logical True
   max output level = 10
-  Output Intervals = 1
-  Output File = "$namerun".result" !"
-  Output Coordinates = Logical True
+!  Output Intervals = 1
+!  Output File = "$namerun".result" !"
+!  Output Coordinates = Logical True
 
   Stabilization Use Longest Element Edge = Logical True
 
@@ -66,13 +66,13 @@ Solver 3
   Equation = "Remesh"
   Procedure = "ParallelRemesh" "ParallelRemesh"
 
-  RemeshMMG3D Hmin = Real 0.01
-  RemeshMMG3D Hausd = Real 0.05
-  RemeshMMG3D Hgrad = Real 2.0
-  RemeshMMG3D Hmax = Real 0.2
+  mmg Hmin = Real 0.01
+  mmg Hausd = Real 0.05
+  mmg Hgrad = Real 2.0
+  mmg Hmax = Real 0.2
 
-  RemeshMMG3D Anisotropic = Logical True
-  RemeshMMG3D Target Length(3) = Variable Coordinate 1
+  mmg Anisotropic = Logical True
+  mmg Target Length(3) = Variable Coordinate 1
     Real Procedure "ParallelRemesh" "MeshMetricAniso"
 
   MeshMetric Max Distance = Real 0.3
@@ -87,12 +87,12 @@ Solver 3
 
   Save Mesh Name = File "cube"
 
-  Save RemeshMMG3D Meshes = Logical False
-  Pre RemeshMMG3D Mesh Name = String "elmermesh_pre.mesh"
-  RemeshMMG3D Output Mesh Name = String "elmermesh_post.mesh"
-  Save RemeshMMG3D Sols = Logical False
-  Pre RemeshMMG3D Sol Name = String "elmersol_pre.sol"
-  RemeshMMG3D Output Sol Name = String "elmersol_post.sol"
+  Save MMG Meshes = Logical False
+  Pre MMG Mesh Name = String "elmermesh_pre.mesh"
+  MMG Output Mesh Name = String "elmermesh_post.mesh"
+  Save MMG Sols = Logical False
+  Pre MMG Sol Name = String "elmersol_pre.sol"
+  MMG Output Sol Name = String "elmersol_post.sol"
 End
 
 Solver 4
@@ -109,16 +109,16 @@ Solver 4
 End
 
 
-Solver 5
-  Equation = "ResultOutputPostRemesh"
-  Procedure = File "ResultOutputSolve1" "ResultOutputSolver"
+!Solver 5
+!  Equation = "ResultOutputPostRemesh"
+!  Procedure = File "ResultOutputSolve1" "ResultOutputSolver"
 
-  Output File Name  = "$namerun"_postremesh" !"
-  Vtu Format = logical true
-  Binary Output = True
-  Single Precision = True
-  Save Geometry IDs = True
-End
+!  Output File Name  = "$namerun"_postremesh" !"
+!  Vtu Format = logical true
+!  Binary Output = True
+!  Single Precision = True
+!  Save Geometry IDs = True
+!End
 
 !!!!! EQUATION
 

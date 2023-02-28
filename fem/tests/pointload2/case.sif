@@ -62,13 +62,13 @@ End
 
 Boundary Condition 1
   Name = "Walls_x"
-  Target Boundaries(1) = 1 3
+  Target Boundaries(2) = 1 3
 !  Velocity 2 = 0
 End 
 
 Boundary Condition 2
   Name = "Walls_y"
-  Target Boundaries(1) = 2 4
+  Target Boundaries(2) = 2 4
 !  Velocity 1 = 0
 End
 

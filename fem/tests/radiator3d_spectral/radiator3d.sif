@@ -23,7 +23,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.vtu
+  Post File = case-b.vtu
 End
 
 Body 1
@@ -73,7 +73,7 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
 
   Vierfactor Binary Output = Logical True
-
+ 
   Viewfactor raytrace tolerance = 0.001
   Viewfactor area tolerance = 0.01
   Viewfactor factor tolerance = 0.001
@@ -88,8 +88,12 @@ Solver 1
   Spectral dT = 10.0
 
   Calculate Loads = True
+  Calculate Boundary Fluxes = True
+  Calculate Boundary Weights = True
+ 
+  Calculate Radiosity Fields = Logical True
 
-  Calculate Radiation Fluxes = Logical True
+!  Radiosity Simple Temperature Dependence = Logical True
 
 ! Costs more but not much better...
 !  Accurate Spectral Newton = Logical True
@@ -181,5 +185,5 @@ Body Force 1
 End
 
 
-Solver 1 :: Reference Norm = 3.10647641E+02
-Solver 2 :: Reference Norm = 1.00067131E+03
+Solver 1 :: Reference Norm = 3.10640900E+02
+Solver 2 :: Reference Norm = 1000

@@ -52,6 +52,8 @@ SummaryEditor::SummaryEditor(QWidget *parent)
   connect(ui.closeButton, SIGNAL(clicked()), this, SLOT(close()));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-error-round"));
 }
 
 SummaryEditor::~SummaryEditor()

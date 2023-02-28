@@ -46,7 +46,7 @@ CONTAINS
 
     ALLOCATE( Matrix(n), STAT=istat )
     IF( istat /= 0 ) THEN
-      CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//TRIM(I2S(n)))
+      CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//I2S(n))
     END IF
 
     !$OMP PARALLEL
@@ -147,7 +147,7 @@ CONTAINS
     END DO
 
     CALL Info('List_ToCRS',&
-        'Number of entries in CRS matrix: '//TRIM(I2S(Rows(n+1)-1)),Level=7)
+        'Number of entries in CRS matrix: '//I2S(Rows(n+1)-1),Level=8)
 
     A => AllocateMatrix()
     A % NumberOfRows = n
@@ -201,7 +201,7 @@ CONTAINS
     END DO
 
     CALL Info('List_ToCRSMatrix',&
-        'Number of entries in CRS matrix: '//TRIM(I2S(Rows(n+1)-1)),Level=7)
+        'Changing matrix type with number of non-zeros: '//I2S(Rows(n+1)-1),Level=8)
 
     ALLOCATE( Cols(Rows(n+1)-1)) 
     ALLOCATE( Values(Rows(n+1)-1) )
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=7)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=12)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -399,7 +399,7 @@ CONTAINS
      INTEGER :: i,k2,k2i,j, k,prevind
 
      IF (k1>SIZE(List)) THEN
-       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
+       CALL Fatal('List_AddMatrixIndexes','Row index out of bounds: '//TRIM(I2S(k1)))
      END IF
      
      ! Add each element in Ind to the row list

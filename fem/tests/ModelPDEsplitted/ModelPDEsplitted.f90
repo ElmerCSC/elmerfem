@@ -68,7 +68,7 @@ CONTAINS
     Velo = 0._dp
     DO i=1,dim
       Velo(i,1:n)=GetReal(Material,&
-          'convection velocity '//TRIM(I2S(i)),Found)
+          'convection velocity '//I2S(i),Found)
     END DO
 
     ! Numerical integration:

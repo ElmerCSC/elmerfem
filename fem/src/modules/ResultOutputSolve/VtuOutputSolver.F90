@@ -132,7 +132,7 @@ CONTAINS
       Var => Var % Next
     END DO
 
-    CALL Info('AverageBodyFields','Reduced '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
+    CALL Info('AverageBodyFields','Reduced '//I2S(NoAve)//' elemental fields',Level=7)
 
   END SUBROUTINE AverageBodyFields
 
@@ -173,10 +173,12 @@ CONTAINS
         ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
-            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name", Found)
+            IF(.NOT. Found) GroupName = 'Body'//I2S(GroupId)
           ELSE
             i = GroupId - CurrentModel % NumberOfBodies
-            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name",Found)
+            IF(.NOT. Found) GroupName = 'BC'//I2S(i)
           END IF
           VtuFile = TRIM(VtuFile)//"_"//TRIM(GroupName)
         END IF
@@ -268,7 +270,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
-  CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   LOGICAL :: Visited = .FALSE.
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
@@ -401,7 +403,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   IF ( nTime == 1 ) THEN
     CALL Info(Caller,'Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
-    CALL Info(Caller, 'Saving number of partitions: '//TRIM(I2S(Partitions)))
+    CALL Info(Caller, 'Saving number of partitions: '//I2S(Partitions))
   END IF
 
   BaseFile = FilePrefix
@@ -431,7 +433,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 200 CONTINUE
   IF( GroupCollection ) THEN
     GroupId = GroupId + 1
-    CALL Info(Caller,'Saving group '//TRIM(I2S(GroupId)),Level=8)
+    CALL Info(Caller,'Saving group '//I2S(GroupId),Level=8)
   END IF
 
   !------------------------------------------------------------------------------
@@ -459,15 +461,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller, 'Nothing to save for this selection: ',Level=8)
     ELSE
       CALL Info(Caller, 'Total number of elements to save: '&
-          //TRIM(I2S(ParallelElements)),Level=8)
+          //I2S(ParallelElements),Level=8)
       
       ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
       CALL Info(Caller, 'Total number of geometry nodes to save: '&
-          //TRIM(I2S(ParallelNodes)),Level=8)
+          //I2S(ParallelNodes),Level=8)
       
       ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
       CALL Info(Caller, 'Total number of dof nodes to save: '&
-          //TRIM(I2S(ParallelNodes)),Level=8)
+          //I2S(ParallelNodes),Level=8)
     END IF
   END IF
 
@@ -495,7 +497,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
-    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
+    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
     IF( GotIt ) THEN
       IF( Str == 're') THEN
@@ -509,7 +511,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ELSE
         CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
-      CALL Info(Caller,'Using eigen vector mode: '//TRIM(I2S(EigenVectorMode)),Level=7)
+      CALL Info(Caller,'Using eigen vector mode: '//I2S(EigenVectorMode),Level=7)
     END IF
   END IF
 
@@ -525,7 +527,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
-    CALL Info(Caller,'Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
+    CALL Info(Caller,'Maximum number of constraint modes: '//I2S(MaxModes2),Level=7)
   END IF
 
   ! This activates the solution of the modes one for each file
@@ -575,7 +577,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
             BCOffset = 10 * BCOffset
           END DO
           CALL Info(Caller,'Setting offset for boundary entities: '&
-              //TRIM(I2S(BCOffset)),Level=6)
+              //I2S(BCOffset),Level=6)
         END IF
       END IF
       DO i=1,CurrentModel % NumberOfBCs
@@ -802,7 +804,7 @@ CONTAINS
       END DO
     ELSE
       DO i=1,3
-        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//TRIM(I2S(i)),Found )
+        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//I2S(i),Found )
       END DO
     END IF
     
@@ -1225,7 +1227,7 @@ CONTAINS
     END IF ! IF( SaveNodal )
 
     IF( WriteXML ) THEN
-      CALL Info(Caller,'Number of nodal fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+      CALL Info(Caller,'Number of nodal fields written: '//I2S(NoFieldsWritten),Level=10)
       WRITE( OutStr,'(A)') '      </PointData>'//lf
       CALL AscBinStrWrite( OutStr ) 
     END IF
@@ -1454,7 +1456,7 @@ CONTAINS
                     END IF
 
                     IF( j == 0 ) THEN
-                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//TRIM(I2S(m)))
+                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//I2S(m))
                     END IF
                     m = j
                   END IF
@@ -1497,7 +1499,7 @@ CONTAINS
         END DO
       END DO
       IF( WriteXML ) THEN
-        CALL Info(Caller,'Number of elemental fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+        CALL Info(Caller,'Number of elemental fields written: '//I2S(NoFieldsWritten),Level=10)
       END IF
     END IF  ! IF( SaveElemental )
 

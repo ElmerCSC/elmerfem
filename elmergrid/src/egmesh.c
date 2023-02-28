@@ -7290,14 +7290,16 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
 	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
-	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
-	      if(data->bodyname[material]) {
-		strcpy(data->boundaryname[material],data->bodyname[material]);
-		free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
-		data->bodyname[material] = NULL;
+	      if(!data->boundaryname[material]) {
+		data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
+		if(data->bodyname[material]) {
+		  strcpy(data->boundaryname[material],data->bodyname[material]);
+		  free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
+		  data->bodyname[material] = NULL;
+		}
+		else
+		  sprintf(data->boundaryname[material],"body%d",material);
 	      }
-	      else
-		sprintf(data->boundaryname[material],"body%d",material);
 	    }
 	    if(!strncmp(data->boundaryname[material],"body",4)) {
 	      strncpy(data->boundaryname[material],"bnry",4);

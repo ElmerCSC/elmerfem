@@ -1354,7 +1354,7 @@
         END IF
 
         IF(ElementNumber == 1)THEN					
-          CALL Info('ShellSolve','Number of Integration Points = '//TRIM(I2S(IntPt)),Level=10)
+          CALL Info('ShellSolve','Number of Integration Points = '//I2S(IntPt),Level=10)
         ENDIF														
 
       CASE( 4 )

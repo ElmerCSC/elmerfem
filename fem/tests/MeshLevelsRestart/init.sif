@@ -97,7 +97,7 @@ Body Force 1
 End
 
 Boundary Condition 1
-  Target Boundaries(1) = 1 2 3 4
+  Target Boundaries(1) = 1 !2 3 4
   Name = "Sides"
   Temperature = 0.0
 End

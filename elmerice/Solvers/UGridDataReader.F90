@@ -90,7 +90,7 @@
       INTEGER :: dimids(2) 
       REAL(KIND=dp), ALLOCATABLE :: Values(:)
       REAL(KIND=dp) :: Time
-      INTEGER :: TimeIndex,TimePoint
+      INTEGER :: TimeIndex,TimePoint,TimeOffset
       INTEGER :: EIndex,NIndex,VarIndex
       LOGICAL :: Parallel,Found,VarExist
       INTEGER, SAVE :: VisitedTimes=0
@@ -137,9 +137,9 @@
          ! Target mesh solver is explicitly given
          TargetMesh => CurrentModel % Solvers(i) % Mesh
          IF( ASSOCIATED( TargetMesh ) ) THEN
-           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//TRIM(I2S(i)),Level=8)
+           CALL Info(SolverName,'Using target mesh as the mesh of Solver '//I2S(i),Level=8)
          ELSE
-          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//TRIM(I2S(i)))
+          CALL Fatal(SolverName,'Target Mesh for Solver not associated: '//I2S(i))
          END IF
         ELSE
           ! Otherwise use the 1st mesh that is not this old data mesh
@@ -166,7 +166,12 @@
       ! get time index
       VisitedTimes = VisitedTimes + 1
       IF( ListGetLogical( SolverParams, "Is Time Counter", Found ) ) THEN
-        TimePoint = VisitedTimes
+        TimeOffset=ListGetInteger( SolverParams, "Time Counter start", Found )
+        IF (Found) THEN
+          TimePoint = VisitedTimes + TimeOffset - 1
+        ELSE
+          TimePoint = VisitedTimes
+        ENDIF
       ELSE
         TimePoint = ListGetInteger( SolverParams, "Time Index", Found )
         IF (.NOT.Found) THEN
@@ -314,8 +319,15 @@
                k=i
              ENDIF
              IF (k==0) CYCLE
-             IF (i.GT.nvals) &
-                CALL FATAL(SolverName,"Too many nodes "//TRIM(VarName))
+             !IF NIndex>nvals assume the mesh is structured
+             ! and nodenumbering is  by layers
+             IF (NIndex.GT.nvals) THEN
+                     NIndex=MOD(NIndex,nvals)
+                     IF (NIndex.EQ.0) NIndex=nvals
+             ENDIF
+             IF ((NIndex.GT.nvals).OR.(NIndex.LT.1)) &
+                CALL FATAL(SolverName,"Wrong NIndex for "//TRIM(VarName)//" "//I2S(NIndex))
+
              Var%Values(k)=Values(NIndex)
            END DO
 
@@ -351,9 +363,9 @@
           nf = COUNT(UnfoundNodes)
           IF (nf.GT.0) THEN
             IF (UnFoundNodesFatal) THEN
-              CALL FATAL(SolverName,"There is unfound nodes : "//TRIM(I2S(nf)))
+              CALL FATAL(SolverName,"There is unfound nodes : "//I2S(nf))
             ELSE
-              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//TRIM(I2S(nf))//" unfound nodes; get closest node in input mesh")
+              CALL WARN(SolverName,TRIM(TVarName)//"; there is "//I2S(nf)//" unfound nodes; get closest node in input mesh")
               IF (Parallel) &
                 CALL FATAL(SolverName,"dealing with unfound nodes only for serial meshes; add -single ")
 
