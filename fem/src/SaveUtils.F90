@@ -806,8 +806,7 @@ CONTAINS
 
     IF(PRESENT(GotEdge)) GotEdge = .FALSE.
     IF(PRESENT(GotEigen)) GotEIgen = .FALSE.
-    
-
+        
     IF(.NOT. ASSOCIATED(Var)) RETURN
     IF(.NOT. ASSOCIATED(Var % Values)) RETURN
 
@@ -894,17 +893,19 @@ CONTAINS
     NodeIndex(1) = 0
     IF(.NOT. (EdgeBasis .OR. IpVar .OR. ElemVar .OR. NeedDerBasis .OR. pElem) ) THEN
       
-      IF( DgVar ) THEN
-        IF(PRESENT(LocalDGNode)) THEN
-          NodeIndex(1) = LocalDGNode
-        ELSE IF( PRESENT(LocalNode)) THEN
-          PToIndexes => PickDGIndexes(Element)
-          DO i=1, n
-            IF( Element % NodeIndexes(i) == LocalNode ) THEN
-              NodeIndex(1) = pToIndexes(i)
-              EXIT
-            END IF
-          END DO
+      IF( DgVar ) THEN        
+        IF(PRESENT(LocalDGNode)) NodeIndex(1) = LocalDGNode
+        IF(NodeIndex(1) == 0 ) THEN
+          PRINT *,'Find from base',PRESENT(Element), LocalNode
+          IF( PRESENT(LocalNode)) THEN
+            PToIndexes => PickDGIndexes(Element)
+            DO i=1, n
+              IF( Element % NodeIndexes(i) == LocalNode ) THEN
+                NodeIndex(1) = pToIndexes(i)
+                EXIT
+              END IF
+            END DO
+          END IF
         END IF
       ELSE IF( PRESENT(LocalNode) ) THEN
         NodeIndex(1) = LocalNode
@@ -931,7 +932,8 @@ CONTAINS
 
     IF(.NOT. ASSOCIATED(PtoIndexes) ) THEN
       IF(.NOT. PRESENT(LocalCoord) ) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','No recipe to evaluate variable without local coordinates!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'No recipe to evaluate variable without local coordinates: '//TRIM(Var % Name))
       END IF
 
       IF( EdgeBasis ) THEN
@@ -1058,10 +1060,12 @@ CONTAINS
       No = No + MAX(Var % Dofs, Comps )      
     ELSE
       IF(.NOT. ASSOCIATED(pToBasis)) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','pToBasis not associated!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'pToBasis not associated for variable: '//TRIM(Var % Name))
       END IF
       IF(.NOT. ASSOCIATED(pToIndexes)) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','pToIndexes not associated!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'pToIndexes not associated for variable: '//TRIM(Var % Name))
       END IF
       
       IF( ASSOCIATED(Var % Perm) ) THEN
