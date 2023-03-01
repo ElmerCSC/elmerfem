@@ -6797,7 +6797,7 @@ CONTAINS
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) 
        
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) .OR. &
-        ListGetLogical( Solver % Values,'Constraint Modes EM Wave')
+        ListGetLogical( Solver % Values,'Constraint Modes EM Wave',Found )
         
     Element => Mesh % Elements(1)
     pSolver => Solver
