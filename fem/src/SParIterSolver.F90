@@ -208,6 +208,19 @@ st = realtime()
     ALLOCATE( NbsOldCols(ParEnv % PEs) )
     OwnIfMRows(:) = 0; OwnIfMCols(:) = 0; NbsIfMRows(:) = 0; NbsIfMCols(:) = 0
 
+    j = 0
+    k = SIZE(ParallelInfo % NeighbourList) 
+    DO i=1,k
+      IF(.NOT. ASSOCIATED( ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+        ALLOCATE(ParallelInfo % NeighbourList(i) % Neighbours(1))
+        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe        
+        j = j+1
+      END IF
+    END DO
+    IF( j > 0 ) THEN
+      CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
+    END IF
+    
   !----------------------------------------------------------------------
   !
   ! Compute the memory allocations for split matrix blocks
@@ -226,8 +239,7 @@ st = realtime()
 !         --------------------------------------
           DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
-             ColInd = SourceMatrix % Cols(j)
-
+             ColInd = SourceMatrix % Cols(j)                          
              IF ( ParallelInfo % NeighbourList(ColInd) % Neighbours(1) == &
                                 ParEnv % MyPE ) THEN
 
