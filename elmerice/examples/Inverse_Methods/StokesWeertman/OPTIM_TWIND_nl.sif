@@ -8,7 +8,7 @@
 !! Name of the RUN 
 $name="TWIND_nl"
 !! Regularisation parameter
-$Lambda=1.0e04
+$Lambda=0.0
 !! max. number of iterations
 $niter=50
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -95,9 +95,9 @@ End
 !!  Body Forces
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body Force 1
-  Flow BodyForce 1 = Real $-gravity*sin(Slope)
+  Flow BodyForce 1 = Real 0.0
   Flow BodyForce 2 = Real 0.0
-  Flow BodyForce 3 = Real $gravity*cos(Slope)
+  Flow BodyForce 3 = Real $gravity
 End
 
 Body Force 2
@@ -377,6 +377,6 @@ End
 
 
 !### REFERENCE SOLUTION
-Solver 3 :: Reference Norm = 1220585.3
+Solver 3 :: Reference Norm = 2.49042560E+04
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-5
 
