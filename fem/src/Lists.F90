@@ -2061,9 +2061,7 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr0, ptr1    
      TYPE(String_stack_t), POINTER :: stack
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
-     LOGICAL :: CheckNamespace
-     LOGICAL :: GotIt, Debug
-!------------------------------------------------------------------------------
+     LOGICAL :: CheckNamespace, Debug
      INTEGER :: k, k1, n, m, m1
      
      IF(PRESENT(Found)) Found = .FALSE.
@@ -2100,7 +2098,7 @@ CONTAINS
          IF ( n==k ) THEN
            ! If we have namespace we give it higher priority and hence continue search
            ! even after we have found a fitting candidate but keep it in mind! 
-           IF ( ptr % Name(1:n) == str(1:n) ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) THEN
              ptr0 => ptr
            END IF
          ELSE IF( ptr % ColonLoc > 0 ) THEN         
@@ -2168,7 +2166,7 @@ CONTAINS
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          IF( n==k) THEN
-           IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+           IF ( ptr % Name(1:k) == str(1:k) ) EXIT
          END IF
          ptr => ptr % Next
        END DO
@@ -2293,13 +2291,95 @@ CONTAINS
      TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn,stra
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
-!------------------------------------------------------------------------------
-     INTEGER :: k, k1, n, m
+     TYPE(ValueListEntry_t), POINTER :: ptr0, ptr1    
+     LOGICAL :: CheckNamespace
+     INTEGER :: k, k1, n, m, m1
 
+     
+     IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
+
+#if 1
+     ! Follow the logic of ListFind except there can be trailing stuff
+     ! in the keywords for it to be considered a hit.
+     CheckNamespace = .FALSE.
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       IF( ptr % ColonLoc > 0 ) THEN
+         CheckNamespace = .TRUE.
+         EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+     IF( CheckNamespace ) CheckNamespace = ALLOCATED(NameSpace)
+
+     IF(CheckNamespace ) THEN
+       m1 = 0
+       Ptr => List % Head
+       ptr0 => NULL()
+       ptr1 => NULL()
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n>=k ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) THEN
+             ptr0 => ptr
+           END IF
+         ELSE IF( ptr % ColonLoc > 0 ) THEN         
+           IF( n >= ptr % ColonLoc + 1 + k ) THEN
+             IF( ptr % Name(ptr % ColonLoc+2:ptr % ColonLoc+1+k) == str(1:k) ) THEN
+               IF( NameSpaceLen == ptr % ColonLoc ) THEN
+                 IF( Namespace(1:NamespaceLen) == ptr % name(1:NamespaceLen) ) THEN
+                   EXIT
+                 END IF
+               END IF
+               IF(DoNamespaceCheck ) THEN                 
+                 m = 1
+                 stack => Namespace_stack
+                 DO WHILE(ASSOCIATED(stack))               
+                   m = m + 1
+                   IF( stack % namelen == 0 ) EXIT
+                   IF( stack % namelen == ptr % ColonLoc ) THEN
+                     IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
+                       IF(m1 == 0 .OR. m < m1) THEN
+                         m1 = m
+                         ptr1 => ptr
+                       END IF
+                       EXIT
+                     END IF
+                   END IF
+                   stack => stack % next
+                 END DO
+               END IF
+             END IF
+           END IF
+         END IF
+         ptr => ptr % Next
+       END DO
+
+       IF(.NOT. ASSOCIATED(ptr) ) THEN
+         IF(ASSOCIATED(ptr1)) THEN
+           ptr => ptr1
+         ELSE
+           ptr => ptr0
+         END IF
+       END IF
+
+     ELSE  ! .NOT. CheckNamespace
+
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF( n>=k) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) EXIT
+         END IF
+         ptr => ptr % Next
+       END DO
+
+     END IF
+#else
      IF ( ListGetNamespace(strn) ) THEN
        stack => Namespace_stack
        DO WHILE(.TRUE.)
@@ -2334,7 +2414,8 @@ CONTAINS
          ptr => ptr % Next
        END DO
      END IF
-
+#endif
+     
      IF ( PRESENT(Found) ) THEN
        Found = ASSOCIATED(ptr)
      ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
