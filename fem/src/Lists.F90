@@ -84,6 +84,7 @@ MODULE Lists
 
     TYPE String_stack_t
       CHARACTER(:), ALLOCATABLE :: Name
+      INTEGER :: Namelen
       TYPE(String_stack_t), POINTER :: Next => Null()
    END TYPE String_stack_t
 
@@ -1814,13 +1815,13 @@ CONTAINS
      IF(.NOT.ASSOCIATED(List)) List => ListAllocate()
      New => ListEntryAllocate()
 
+     k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ASSOCIATED(List % Head) ) THEN
-       k = StringToLowerCase( str,Name,.TRUE. )
        ptr  => List % Head
        NULLIFY( prev )
        DO WHILE( ASSOCIATED(ptr) )
-         Found = ptr % NameLen == k
-         IF(Found) Found = ptr % Name(1:k)  == str(1:k)
+         Found = ( ptr % NameLen == k )
+         IF(Found) Found = ( ptr % Name(1:k) == str(1:k) )
          IF(Found) EXIT
 
          Prev => Ptr
@@ -1837,16 +1838,30 @@ CONTAINS
          CALL ListDelete( Ptr )
        ELSE
          IF ( ASSOCIATED(prev) ) THEN
-           prev % next => NEW
+           prev % next => New
          ELSE
-           NEW % Next => List % Head % Next
-           List % Head % Next => NEW
+           New % Next => List % Head % Next
+           List % Head % Next => New
          END IF
        END IF
      ELSE
-       List % Head => NEW
+       List % Head => New
      END IF
 
+     ! Add the location of the 1st colon unless this also has
+     ! bracket and then we know it is special variable definition.
+     ! The colon location can be used to efficiently go through the namespace.
+     IF(k>=3 .AND. ASSOCIATED(New) ) THEN
+       IF( INDEX(str(1:k),'[') == 0 ) THEN
+         New % ColonLoc = INDEX(str(1:k),':')
+
+         !IF( NEW % ColonLoc > 0 ) THEN
+         !  PRINT *,'ColonLoc:',str(1:k),k,New % ColonLoc
+         !END IF
+       END IF
+     END IF
+       
+     
 #ifdef DEVEL_LISTCOUNTER
 !     IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
 #endif
@@ -1915,6 +1930,7 @@ CONTAINS
      ELSE
        stack % name = ''
      END IF
+     stack % namelen = LEN_TRIM(stack % name)
      stack % next => Namespace_stack
      Namespace_stack => stack
      CALL ListSetNamespace(str)
@@ -1966,6 +1982,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      ALLOCATE(stack)
      stack % name = ListGetActiveName()
+     stack % namelen = LEN_TRIM(stack % name)
      stack % next => Activename_stack
      Activename_stack => stack
      ActiveListName = str
@@ -2032,55 +2049,72 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr0    
      TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: stra
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     LOGICAL :: FoundNamespace, CheckNamespace
 !------------------------------------------------------------------------------
-     INTEGER :: k, k1, n
-
+     INTEGER :: k, k1, n, m
+     
      IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
+     ptr0 => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
+
+     CheckNamespace = ListGetnamespace(strn)
+     FoundNamespace = .FALSE.
      
-     IF( ListGetnamespace(strn) ) THEN
-       stack => Namespace_stack
-       DO WHILE(.TRUE.)
-
-         stra = trim(strn)
-         strn = stra //' '//str(1:k)
-
-         k1 = LEN(strn)
-         ptr => List % Head
-         DO WHILE( ASSOCIATED(ptr) )
-            n = ptr % NameLen
-            IF ( n==k1 ) THEN
-              IF ( ptr % Name(1:n) == strn ) EXIT
-            END IF
-            ptr => ptr % Next
-         END DO
-         IF(.NOT.DoNamespaceCheck) EXIT
-
-         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
-         IF(stack % name=='') EXIT
-         strn = stack % name
-         stack => stack % next
-       END DO
-     END IF
-
-     IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-         n = ptr % NameLen         
-         IF ( n==k ) THEN
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen         
+       IF(.NOT. CheckNamespace ) THEN
+         ! If we don't check namespace then we are good to go if we find a hit
+         IF( n==k) THEN
            IF ( ptr % Name(1:n) == str(1:n) ) EXIT
          END IF
-         ptr => ptr % Next
-       END DO
-     END IF
+       ELSE IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) THEN
+           ptr0 => ptr
+         END IF           
+       ELSE IF( ptr % ColonLoc > 0 ) THEN         
+         ! Check if the length of the keyword in list could be the keyword we are looking for
+         ! just looking at the part after semicolon. This way we do not need to check the
+         ! namespaces in wain. 
+         IF( n == ptr % ColonLoc + 1 + k ) THEN           
+           IF( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+             !PRINT *,'str:',TRIM(ptr % name)
+             stack => Namespace_stack
+             m = 0             
+             DO WHILE(.TRUE.)               
+               m = m+1
+               !PRINT *,'Stack:',m,stack % namelen, ptr % ColonLoc, stack % name               
+               IF( stack % namelen == 0 ) EXIT
+               IF( stack % namelen == ptr % ColonLoc ) THEN
+                 IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
+                   FoundNamespace = .TRUE.
+                   PRINT *,'Found keyword: '//TRIM(str)//' with namespace: '//TRIM(stack % name)
+                   EXIT
+                 END IF
+               END IF
+               
+               stack => stack % next
+               IF(.NOT. ASSOCIATED(stack)) EXIT
+             END DO
+           END IF
+         END IF
+         IF(FoundNamespace) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
 
+     IF(.NOT. ASSOCIATED(ptr) ) THEN
+       IF(ASSOCIATED(ptr0)) ptr => ptr0 
+     END IF
+         
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1

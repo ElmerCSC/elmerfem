@@ -403,6 +403,7 @@ MODULE Types
      CHARACTER(:), ALLOCATABLE :: CValue
 
      INTEGER :: NameLen,DepNameLen = 0
+     INTEGER :: ColonLoc = 0
      CHARACTER(:), ALLOCATABLE :: Name,DependName
 
 #ifdef DEVEL_LISTCOUNTER 
