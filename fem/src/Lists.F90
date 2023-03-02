@@ -2068,93 +2068,113 @@ CONTAINS
      
      IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
-     ptr0 => NULL()
-     ptr1 => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
 
      !Debug = (str(1:20) == 'linear system solver' ) !3*6+2
      !IF( Debug ) PRINT *,'Debug keyword: '//TRIM(str)
-     
-     CheckNamespace = ALLOCATED(NameSpace)
-     m1 = 0
-     
+
+     ! The is really no point of checking the namespace if there is no
+     ! entry with a colon! 
+     CheckNamespace = .FALSE.
      Ptr => List % Head
      DO WHILE( ASSOCIATED(ptr) )
-       n = ptr % NameLen
-       
-       !IF(Debug) PRINT *,'Test keyword: '//TRIM(ptr % Name)
-       IF(.NOT. CheckNamespace ) THEN
-         ! If we don't check namespace then we are good to go if we find a hit
-         IF( n==k) THEN
-           IF ( ptr % Name(1:n) == str(1:n) ) EXIT
-         END IF
-       ELSE IF ( n==k ) THEN
-         ! If we have namespace we give it higher priority and hence continue search
-         ! even after we have found a fitting candidate. 
-         IF ( ptr % Name(1:n) == str(1:n) ) THEN
-           ptr0 => ptr
-         END IF           
-       ELSE IF( ptr % ColonLoc > 0 ) THEN         
-         ! Check if the length of the keyword in list could be the keyword we are looking for
-         ! just looking at the part after semicolon. This way we do not need to check the
-         ! namespaces in wain. 
-         IF( n == ptr % ColonLoc + 1 + k ) THEN
-           !IF( Debug ) THEN
-           !  PRINT *,'Looking with namespace ('//I2S(ptr % ColonLoc)//'): '//TRIM(str)
-           !  PRINT *,'First namespace: '//TRIM(NameSpace)
-           !END IF
-           
-           IF( ptr % Name(n-k+1:n) == str(1:k) ) THEN
-             ! This is the historical one-level namespace. 
-             IF( NameSpaceLen == ptr % ColonLoc ) THEN
-               IF( Namespace(1:NamespaceLen) == ptr % name(1:NamespaceLen) ) THEN
-                 ! If we find keyword from stack we cannot hope to find better than
-                 ! from to top of the stack.
-                 !IF(Debug) PRINT *,'Found keyword with top namespace: '//TRIM(Namespace)
-                 EXIT
-               END IF
-             END IF
-             ! If we didn't find the value at active namespace, then go through the stack
-             ! if we have "Additive Namespaces" activated!
-             IF(DoNamespaceCheck ) THEN                 
-               m = 1
-               stack => Namespace_stack
-               DO WHILE(ASSOCIATED(stack))               
-                 m = m + 1
-                 !IF(Debug) PRINT *,'Test namespace: '//TRIM(stack % name)
-
-                 IF( stack % namelen == 0 ) EXIT
-                 IF( stack % namelen == ptr % ColonLoc ) THEN
-                   IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
-                     ! We go the namespace through in several sequences.
-                     ! Accept the 1st fitting namespace that is in top of the stack.
-                     IF(m1 == 0 .OR. m < m1) THEN
-                       m1 = m
-                       ptr1 => ptr
-                     END IF
-                     !IF(Debug) PRINT *,'Found keyword with stack namespace: '//TRIM(stack % name)
-                     EXIT
-                   END IF
-                 END IF
-                 stack => stack % next
-               END DO
-             END IF
-           END IF
-         END IF
+       IF( ptr % ColonLoc > 0 ) THEN
+         CheckNamespace = .TRUE.
+         EXIT
        END IF
        ptr => ptr % Next
      END DO
 
-     IF(.NOT. ASSOCIATED(ptr) ) THEN
-       IF(ASSOCIATED(ptr1)) THEN
-         ptr => ptr1
-       ELSE
-         ptr => ptr0
+     ! There is neither no point of checking namespace if there is none!
+     IF( CheckNamespace ) CheckNamespace = ALLOCATED(NameSpace)
+
+     IF(CheckNamespace ) THEN
+       m1 = 0
+       Ptr => List % Head
+       ptr0 => NULL()
+       ptr1 => NULL()
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n==k ) THEN
+           ! If we have namespace we give it higher priority and hence continue search
+           ! even after we have found a fitting candidate but keep it in mind! 
+           IF ( ptr % Name(1:n) == str(1:n) ) THEN
+             ptr0 => ptr
+           END IF
+         ELSE IF( ptr % ColonLoc > 0 ) THEN         
+           ! Check if the length of the keyword in list could be the keyword we are looking for
+           ! just looking at the part after semicolon. This way we do not need to check the
+           ! namespaces in wain. 
+           IF( n == ptr % ColonLoc + 1 + k ) THEN
+             !IF( Debug ) THEN
+             !  PRINT *,'Looking with namespace ('//I2S(ptr % ColonLoc)//'): '//TRIM(str)
+             !  PRINT *,'First namespace: '//TRIM(NameSpace)
+             !END IF
+             
+             IF( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+               ! This is the historical one-level namespace. 
+               IF( NameSpaceLen == ptr % ColonLoc ) THEN
+                 IF( Namespace(1:NamespaceLen) == ptr % name(1:NamespaceLen) ) THEN
+                   ! If we find keyword from stack we cannot hope to find better than
+                   ! from to top of the stack.
+                   !IF(Debug) PRINT *,'Found keyword with top namespace: '//TRIM(Namespace)
+                   EXIT
+                 END IF
+               END IF
+               ! If we didn't find the value at active namespace, then go through the stack
+               ! if we have "Additive Namespaces" activated!
+               IF(DoNamespaceCheck ) THEN                 
+                 m = 1
+                 stack => Namespace_stack
+                 DO WHILE(ASSOCIATED(stack))               
+                   m = m + 1
+                   !IF(Debug) PRINT *,'Test namespace: '//TRIM(stack % name)
+                   
+                   IF( stack % namelen == 0 ) EXIT
+                   IF( stack % namelen == ptr % ColonLoc ) THEN
+                     IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
+                       ! We go the namespace through in several sequences.
+                       ! Accept the 1st fitting namespace that is in top of the stack.
+                       IF(m1 == 0 .OR. m < m1) THEN
+                         m1 = m
+                         ptr1 => ptr
+                       END IF
+                       !IF(Debug) PRINT *,'Found keyword with stack namespace: '//TRIM(stack % name)
+                       EXIT
+                     END IF
+                   END IF
+                   stack => stack % next
+                 END DO
+               END IF
+             END IF
+           END IF
+         END IF
+         ptr => ptr % Next
+       END DO
+
+       IF(.NOT. ASSOCIATED(ptr) ) THEN
+         IF(ASSOCIATED(ptr1)) THEN
+           ptr => ptr1
+         ELSE
+           ptr => ptr0
+         END IF
        END IF
+
+     ELSE  ! .NOT. CheckNamespace
+
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF( n==k) THEN
+           IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+         END IF
+         ptr => ptr % Next
+       END DO
+
      END IF
-         
+                      
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
