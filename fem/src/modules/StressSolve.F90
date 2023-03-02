@@ -1705,7 +1705,7 @@ CONTAINS
        CALL ListAddLogical( SolverParams,'Apply Contact BCs',.FALSE.) 
      END IF
 
-     CALL ListSetNameSpace('stress:')
+     CALL ListPushNameSpace('stress:')
 
      n = MAX( Mesh % MaxElementDOFs, Mesh % MaxElementNodes )
      ALLOCATE( Indexes(n), LocalDisplacement(4,n), &
@@ -2148,7 +2148,7 @@ CONTAINS
       CALL Info('StressSolver','Finished Stress Computation',Level=7)
       CALL Info('StressSolver','------------------------------------------',Level=7)
 
-      CALL ListSetNameSpace('')
+      CALL ListPopNamespace('stress:')
 
 !------------------------------------------------------------------------------
    END SUBROUTINE ComputeStress

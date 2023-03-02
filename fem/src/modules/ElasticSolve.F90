@@ -3314,13 +3314,13 @@ CONTAINS
          Basis(n), &
          dBasisdx(n,3) )
 
+    CALL ListPushNameSpace('strain:')
+
     IF (FirstTime) THEN
        ALLOCATE( StSolver )
        StSolver = Solver
 
        ALLOCATE( Permutation( SIZE(Solver % Variable % Perm) ) )
-
-       CALL ListSetNameSpace('strain:')
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
@@ -3355,9 +3355,7 @@ CONTAINS
        StSolver % Variable => VariableGet( StSolver % Mesh % Variables, 'StrainTemp' )
 
        FirstTime = .FALSE.
-    ELSE
-       CALL ListSetNameSpace('strain:')
-    END IF
+     END IF
 
     Model % Solver => StSolver
     NodalStrain = 0.0d0
@@ -3525,7 +3523,7 @@ CONTAINS
          dBasisdx )
 
     Model % Solver => Solver
-    CALL ListSetNameSpace('')
+    CALL ListPopNameSpace('strain:')
 
     CALL Info(Caller,'Finished strain postprocessing',Level=7)
 !--------------------------------------------------------------------------------
@@ -3580,13 +3578,13 @@ CONTAINS
          SForce(6*n), &
          Basis(n) )
 
+    CALL ListPushNameSpace('stress:')
+
     IF (FirstTime) THEN
        ALLOCATE( StSolver )
        StSolver = Solver
 
        ALLOCATE( Permutation( SIZE(Solver % Variable % Perm) ) )
-
-       CALL ListSetNameSpace('stress:')
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
@@ -3631,8 +3629,6 @@ CONTAINS
        StSolver % Variable => VariableGet( StSolver % Mesh % Variables, 'StressTemp' )
 
        FirstTime = .FALSE.
-    ELSE
-       CALL ListSetNameSpace('stress:')
     END IF
 
     StressDofs = UMatStressVar % Dofs
@@ -3756,6 +3752,7 @@ CONTAINS
        StSolver % Variable % Values = 0.0d0
 
        res = DefaultSolve()
+       
        WRITE( Message, '(a,g15.8)') 'Solution Norm:', ComputeNorm(StSolver,n)
        CALL Info( 'GenerateStressVariable', Message, Level=5 )
 
@@ -3786,7 +3783,7 @@ CONTAINS
          Basis )
 
     Model % Solver => Solver
-    CALL ListSetNameSpace('')
+    CALL ListPopNameSpace('stress:')
 
     CALL Info(Caller,'Finished stress postprocessing',Level=7)
 !----------------------------------------------------------------------------------
@@ -3866,14 +3863,14 @@ CONTAINS
          NodalLame1(n), &
          NodalLame2(n) )   
 
+    CALL ListPushNameSpace('stress:')
+    
     IF (FirstTime) THEN
        ALLOCATE( StSolver )
        StSolver = Solver
 
        ALLOCATE( Permutation( SIZE(Solver % Variable % Perm) ) )
        ! Permutation = Perm
-
-       CALL ListSetNameSpace('stress:')
 
        OptimizeBW = GetLogical( StSolver % Values, 'Optimize Bandwidth', Found )
        IF ( .NOT. Found ) OptimizeBW = .TRUE.
@@ -3910,8 +3907,6 @@ CONTAINS
        StSolver % Variable => VariableGet( StSolver % Mesh % Variables, 'StressTemp' )
 
        FirstTime = .FALSE.
-    ELSE
-       CALL ListSetNameSpace('stress:')
     END IF
 
     LimiterOn = ListGetLogical( StSolver % Values,'Apply Limiter', Found ) 
@@ -4483,7 +4478,7 @@ CONTAINS
 
     Model % Solver => Solver
 
-    CALL ListSetNameSpace('')
+    CALL ListPopNameSpace('stress:')
 
     IF( LimiterOn ) THEN
       CALL ListAddLogical( StSolver % Values,'Apply Limiter',.TRUE.)

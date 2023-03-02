@@ -4267,7 +4267,8 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace(); CALL ListPopNameSpace()
+            CALL ListPopNameSpace('block '//i2s(RowVar)//i2s(ColVar)//':')
+            CALL ListPopNameSpace('block:')
           END DO
         END DO
       END IF
@@ -4360,7 +4361,7 @@ CONTAINS
 	CALL Info('BlockSolver','Using block solution strategy',Level=8)
         CALL BlockStandardIter( Solver, MaxChange )
       END IF      
-      CALL ListPopNameSpace()
+      CALL ListPopNameSpace('outer:')
 
       ! For legacy matrices do the backmapping 
       !------------------------------------------

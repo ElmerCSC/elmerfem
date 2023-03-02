@@ -91,6 +91,9 @@ MODULE Lists
    CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: Namespace
    !$OMP THREADPRIVATE(NameSpace)
 
+   INTEGER, SAVE, PRIVATE :: NamespaceLen = 0
+   !$OMP THREADPRIVATE(NameSpaceLen
+   
    TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
    !$OMP THREADPRIVATE(NameSpace_stack)
 
@@ -107,6 +110,8 @@ MODULE Lists
    
    LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
 
+   PRIVATE :: ListSetNamespace, ListGetNamespace
+   
 CONTAINS
 
 
@@ -1889,6 +1894,8 @@ CONTAINS
      CALL Info('ListSetNamespace','Setting namespace to: '//TRIM(str_lcase),Level=15)
      
      NameSpace = str_lcase
+     NameSpaceLen = LEN_TRIM(str_lcase)
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE ListSetNamespace
 !------------------------------------------------------------------------------
@@ -1926,6 +1933,7 @@ CONTAINS
      ALLOCATE(stack)
      L = ListGetNameSpace(tstr)
      IF(ALLOCATED(tstr)) THEN
+       !PRINT *,'setting on top:',TRIM(tstr)
        stack % name = tstr
      ELSE
        stack % name = ''
@@ -1958,7 +1966,8 @@ CONTAINS
        END IF
 
        Namespace = Namespace_stack % name
-
+       NameSpaceLen = Namespace_stack % namelen
+       
        CALL Info('ListPopNameSpace','Deleting entry from name space: '&
            //TRIM(Namespace),Level=12)      
 
@@ -2049,34 +2058,41 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueListEntry_t), POINTER :: ptr0    
+     TYPE(ValueListEntry_t), POINTER :: ptr0, ptr1    
      TYPE(String_stack_t), POINTER :: stack
-     CHARACTER(:), ALLOCATABLE :: stra
-     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
-     LOGICAL :: FoundNamespace, CheckNamespace
+     LOGICAL :: CheckNamespace
+     LOGICAL :: GotIt, Debug
 !------------------------------------------------------------------------------
-     INTEGER :: k, k1, n, m
+     INTEGER :: k, k1, n, m, m1
      
      IF(PRESENT(Found)) Found = .FALSE.
      ptr => NULL()
      ptr0 => NULL()
+     ptr1 => NULL()
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     CheckNamespace = ListGetnamespace(strn)
-     FoundNamespace = .FALSE.
+     !Debug = (str(1:20) == 'linear system solver' ) !3*6+2
+     !IF( Debug ) PRINT *,'Debug keyword: '//TRIM(str)
+     
+     CheckNamespace = ALLOCATED(NameSpace)
+     m1 = 0
      
      Ptr => List % Head
      DO WHILE( ASSOCIATED(ptr) )
-       n = ptr % NameLen         
+       n = ptr % NameLen
+       
+       !IF(Debug) PRINT *,'Test keyword: '//TRIM(ptr % Name)
        IF(.NOT. CheckNamespace ) THEN
          ! If we don't check namespace then we are good to go if we find a hit
          IF( n==k) THEN
            IF ( ptr % Name(1:n) == str(1:n) ) EXIT
          END IF
        ELSE IF ( n==k ) THEN
+         ! If we have namespace we give it higher priority and hence continue search
+         ! even after we have found a fitting candidate. 
          IF ( ptr % Name(1:n) == str(1:n) ) THEN
            ptr0 => ptr
          END IF           
@@ -2084,35 +2100,59 @@ CONTAINS
          ! Check if the length of the keyword in list could be the keyword we are looking for
          ! just looking at the part after semicolon. This way we do not need to check the
          ! namespaces in wain. 
-         IF( n == ptr % ColonLoc + 1 + k ) THEN           
+         IF( n == ptr % ColonLoc + 1 + k ) THEN
+           !IF( Debug ) THEN
+           !  PRINT *,'Looking with namespace ('//I2S(ptr % ColonLoc)//'): '//TRIM(str)
+           !  PRINT *,'First namespace: '//TRIM(NameSpace)
+           !END IF
+           
            IF( ptr % Name(n-k+1:n) == str(1:k) ) THEN
-             !PRINT *,'str:',TRIM(ptr % name)
-             stack => Namespace_stack
-             m = 0             
-             DO WHILE(.TRUE.)               
-               m = m+1
-               !PRINT *,'Stack:',m,stack % namelen, ptr % ColonLoc, stack % name               
-               IF( stack % namelen == 0 ) EXIT
-               IF( stack % namelen == ptr % ColonLoc ) THEN
-                 IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
-                   FoundNamespace = .TRUE.
-                   PRINT *,'Found keyword: '//TRIM(str)//' with namespace: '//TRIM(stack % name)
-                   EXIT
-                 END IF
+             ! This is the historical one-level namespace. 
+             IF( NameSpaceLen == ptr % ColonLoc ) THEN
+               IF( Namespace(1:NamespaceLen) == ptr % name(1:NamespaceLen) ) THEN
+                 ! If we find keyword from stack we cannot hope to find better than
+                 ! from to top of the stack.
+                 !IF(Debug) PRINT *,'Found keyword with top namespace: '//TRIM(Namespace)
+                 EXIT
                END IF
-               
-               stack => stack % next
-               IF(.NOT. ASSOCIATED(stack)) EXIT
-             END DO
+             END IF
+             ! If we didn't find the value at active namespace, then go through the stack
+             ! if we have "Additive Namespaces" activated!
+             IF(DoNamespaceCheck ) THEN                 
+               m = 1
+               stack => Namespace_stack
+               DO WHILE(ASSOCIATED(stack))               
+                 m = m + 1
+                 !IF(Debug) PRINT *,'Test namespace: '//TRIM(stack % name)
+
+                 IF( stack % namelen == 0 ) EXIT
+                 IF( stack % namelen == ptr % ColonLoc ) THEN
+                   IF( stack % name(1:stack % namelen) == ptr % name(1:stack % namelen) ) THEN
+                     ! We go the namespace through in several sequences.
+                     ! Accept the 1st fitting namespace that is in top of the stack.
+                     IF(m1 == 0 .OR. m < m1) THEN
+                       m1 = m
+                       ptr1 => ptr
+                     END IF
+                     !IF(Debug) PRINT *,'Found keyword with stack namespace: '//TRIM(stack % name)
+                     EXIT
+                   END IF
+                 END IF
+                 stack => stack % next
+               END DO
+             END IF
            END IF
          END IF
-         IF(FoundNamespace) EXIT
        END IF
        ptr => ptr % Next
      END DO
 
      IF(.NOT. ASSOCIATED(ptr) ) THEN
-       IF(ASSOCIATED(ptr0)) ptr => ptr0 
+       IF(ASSOCIATED(ptr1)) THEN
+         ptr => ptr1
+       ELSE
+         ptr => ptr0
+       END IF
      END IF
          
 #ifdef DEVEL_LISTCOUNTER
@@ -2129,6 +2169,15 @@ CONTAINS
        CALL Warn( 'ListFind', Message )
        CALL Warn( 'ListFind', ' ' )
      END IF
+
+     !IF(Debug) THEN
+     !  PRINT *,'Looking for:'//TRIM(name)
+     !  IF(ASSOCIATED(ptr) ) THEN
+     !    PRINT *,'Found:'//TRIM(ptr % name)
+     !  ELSE
+     !    PRINT *,'Did not find'
+     !  END IF
+     !END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListFind
 !------------------------------------------------------------------------------

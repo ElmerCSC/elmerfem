@@ -494,7 +494,12 @@ CONTAINS
     
     IF ( .NOT. PRESENT(PrecF) ) THEN
       str = ListGetString( Params, 'Linear System Preconditioning',gotit )
-      IF ( .NOT.gotit ) str = 'none'
+      IF( .NOT. GotIt ) THEN
+        CALL Warn('IterSolver','"Linear System Preconditioning" not found, using "none"')
+        str = 'none'      
+      ELSE
+        CALL Info('IterSolver','Using Linear System Preconditioning: '//TRIM(str),Level=9)
+      END IF      
       
       A % Cholesky = ListGetLogical( Params,'Linear System Symmetric ILU', Gotit )
       

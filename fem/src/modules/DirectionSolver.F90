@@ -175,7 +175,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, PosEl, NegEl
+  LOGICAL :: AllocationsDone = .FALSE., Found, PosEl, NegEl, SetNS
   TYPE(Element_t), POINTER :: Element
 
   CHARACTER(LEN=MAX_NAME_LEN) :: varname, Namespace, VNWithNS
@@ -207,7 +207,8 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
   DO ns_iter=1,NofNameSpaces 
    Namespace='body '//i2s(ns_iter)//':'
    VNWithNS = TRIM(Namespace)//' '//TRIM(varname)
-   IF (ListCheckPresentAnyBC(Model,VNWithNS)) CALL ListSetNameSpace(Namespace)
+   SetNS = ListCheckPresentAnyBC(Model,VNWithNS)
+   IF(SetNS) CALL ListPushNameSpace(Namespace)
    !System assembly:
    !----------------
    Active = GetNOFActive()
@@ -261,7 +262,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
    !--------------------
    Norm = DefaultSolve()
    CALL SaveSolutionWithBodyMethod(ns_iter)
-   CALL ListSetNameSpace('')
+   CALL ListPopNameSpace(Namespace)
 !------------------------------------------------------------------------------
   END DO ! namespaces
 !------------------------------------------------------------------------------

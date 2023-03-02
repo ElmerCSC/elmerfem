@@ -1685,7 +1685,7 @@ END SUBROUTINE FetiProject
     ! ------------------------------------------------------------------------
     CALL DirectSolver(A,x,x,Solver,Free_Fact=.TRUE.)
 
-    CALL ListPopNameSpace()
+    CALL ListPopNameSpace('feti:')
 
     ! Finally create null(A) from zero freq. eigenvectors:
     ! ----------------------------------------------------
