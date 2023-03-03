@@ -1872,7 +1872,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                       CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
@@ -1985,7 +1985,7 @@ CONTAINS
                      END DO
                      IF( k2 < slen ) THEN
                        IF(str(k2:slen) /= 'end') THEN
-                         CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                         CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
                               //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                        END IF
                      END IF
@@ -2120,7 +2120,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
@@ -2150,7 +2150,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
