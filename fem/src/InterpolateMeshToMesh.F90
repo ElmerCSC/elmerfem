@@ -1003,6 +1003,9 @@ END SUBROUTINE InterpolateMeshToMesh
              WRITE( Message,'(A,I0,A,I0,A)') 'Points not found: ',TotFails,' (found ',&
                  NewMesh % NumberOfNodes - TotFails,')'
              CALL Warn( 'InterpolateMeshToMesh', Message )
+             IF( ListGetLogical( CurrentModel % Simulation,'Interpolation Abort Not Found',Stat) ) THEN
+               CALL Fatal('InterpolateMeshToMesh','Can not continue with incomplete interpolation!')
+             END IF
            END IF
          END IF
 
