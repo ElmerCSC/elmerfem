@@ -62,11 +62,20 @@ SUBROUTINE FilmFlowSolver_init0( Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !------------------------------------------------------------------------------
+  LOGICAL :: Found, Serendipity
   TYPE(ValueList_t), POINTER :: Params 
   Params => GetSolverParams()
+
+  Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+  IF(.NOT.Found) Serendipity = .TRUE.
   
-  CALL ListAddNewString(Params,'Element', &
-      'p:1 -line b:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  IF(Serendipity) THEN
+    CALL ListAddNewString(Params,'Element', &
+        'p:1 -line b:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  ELSE
+    CALL ListAddNewString(Params,'Element', &
+        'p:1 -line b:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE FilmFlowSolver_Init0
 !------------------------------------------------------------------------------

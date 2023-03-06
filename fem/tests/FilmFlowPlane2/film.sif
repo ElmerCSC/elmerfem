@@ -24,6 +24,7 @@ Simulation
 
   Output Intervals = 0
 !  Post File = film.vtu
+  Serendipity P Elements = False
 End
 
 

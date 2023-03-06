@@ -22,6 +22,8 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
+ 
+  Serendipity P Elements = False
 End
 
 
@@ -83,10 +85,6 @@ Solver 1
   stress: Linear System Max Iterations = 1000
   stress: Linear System Convergence Tolerance = 1.0e-8
   stress: Linear System Symmetric = True
-
-! This keyword reduces the number of Gauss points needed.
-! As we have only entries involving dBasisdx lower order rules will do!
-  Relative Integration Order = Integer -1
 End
 
 
@@ -144,5 +142,5 @@ Boundary Condition 3
   Force 1 = 1.0e6
 End
 
-Solver 1 :: Reference Norm = 9.98685341E-03
-Solver 2 :: Reference Norm = 1.86258907E+08
+Solver 1 :: Reference Norm = 8.65945861E-03
+Solver 2 :: Reference Norm = 1.86201174E+08

@@ -2584,7 +2584,7 @@ CONTAINS
 
            ! Take into account the case of economic integration. Map a tensor
            ! product rule to a corresponding economic rule.
-           IF (elmt % ElementCode / 100 == 4) THEN
+           IF (elm % PDefs % Serendipity .AND. elmt % ElementCode / 100 == 4) THEN
              SELECT CASE(n)
              CASE(9)
                n = 8
@@ -2646,13 +2646,16 @@ CONTAINS
      CASE (4)
        IF (pElement .AND. ASSOCIATED( elm % pdefs ) ) THEN
          Economic = .FALSE.
-         ! For certain polynomial orders, economic quadratures may be used:
-         IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 8) Economic = .TRUE.
-         ! An explicit bubble augmentation with lower-order methods switches to
-         ! the standard rule:
-         IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
-         ! The economic 12-point rule appears to be somehow faulty, so we 
-         ! shall never call it
+         IF(elm % pdefs % Serendipity) THEN
+           ! For certain polynomial orders, economic quadratures may be used:
+           IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 7) Economic = .TRUE.
+           ! An explicit bubble augmentation with lower-order methods switches to
+           ! the standard rule:
+           IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
+           ! The economic 12-point rule appears to be somehow faulty, so we 
+           ! shall never call it
+         END IF
+
          IF (Economic .AND. n==12) THEN
            IntegStuff = GaussPointsQuad(16)
          ELSE

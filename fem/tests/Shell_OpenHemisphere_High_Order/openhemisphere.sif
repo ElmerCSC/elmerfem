@@ -31,6 +31,8 @@ Simulation
 !  Timestep Intervals = 20
 !  Output Intervals = 1
   Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -141,5 +143,5 @@ Boundary Condition 5
   U 3 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 3.93229292E-02
+Solver 1 :: Reference Norm = Real 2.78750029E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

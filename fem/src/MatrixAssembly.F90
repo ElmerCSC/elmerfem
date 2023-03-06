@@ -780,7 +780,7 @@ BLOCK
              FDOFs = k
            ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect when p varies over mesh; cf. what is done in InitialPermutation
-             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
            END IF
 
            DO i=1,FDOFs
@@ -883,7 +883,7 @@ BLOCK
              
              FDOFs = 0
              IF (Solver % Def_Dofs(ParentFamily,id,6) > 1) THEN
-               FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind)
+               FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind,Face)
              ELSE
                k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
                IF (k == 0) THEN

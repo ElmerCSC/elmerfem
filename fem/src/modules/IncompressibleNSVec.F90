@@ -1292,8 +1292,18 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
-  CALL ListAddNewString(GetSolverParams(),'Element', &
-    'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  LOGICAL :: Found, Serendipity
+
+  Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+  IF(.NOT.Found) Serendipity = .TRUE.
+  
+  IF(Serendipity) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  ELSE
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------

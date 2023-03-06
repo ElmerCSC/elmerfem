@@ -37,6 +37,8 @@ Simulation
   BDF Order = 2
   Timestepping Method = BDF
   !Output File = $name".results"
+
+  Serendipity P Elements = False
 End
 
 !Lithosphere

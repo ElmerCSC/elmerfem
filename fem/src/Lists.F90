@@ -453,7 +453,8 @@ CONTAINS
            IF(Element % Type % ElementCode >= 500) THEN
              DO i=1,Element % TYPE % NumberOfFaces
                j = Element % FaceIndexes(i)
-               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i))
+               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i, &
+                      Mesh % Faces(j)) )
              END DO
            END IF
          END IF

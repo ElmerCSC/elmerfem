@@ -8,7 +8,8 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File   = "case.vtu"
+  Post File   = "case.ep"
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -54,5 +55,5 @@ Boundary Condition 3
   Field Flux = 10.0
 End
 
-Solver 1 :: Reference Norm = Real 1.0578593
+Solver 1 :: Reference Norm = Real 9.23486039E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

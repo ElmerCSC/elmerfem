@@ -92,6 +92,14 @@ SUBROUTINE H1BasisEvaluation( Model,Solver,dt,TransientSimulation )
     END DO
 
     DO P=1,MaxP
+      netest = TestPyramidElement(Solver, tol3d, P)
+      IF (netest /= 0) THEN
+        CALL Warn('H1BasisEvaluation','Pyramid element contained errors')
+      END IF
+      nerror = nerror + netest
+    END DO
+
+    DO P=1,MaxP
       netest = TestWedgeElement(Solver, tol3d, P)
       IF (netest /= 0) THEN
         CALL Warn('H1BasisEvaluation','Wedge element contained errors')
@@ -594,11 +602,11 @@ CONTAINS
         CALL NodalFirstDerivatives2D( dBasisdx(i,1:nndof,1:3), Element, UWrk(i), VWrk(i))
       END DO
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
+      q = 4
 
       IF (P>1) THEN
         ! Edge basis
         t_start_tmp=ftimer()
-        q = 4
         DO perm=1,EdgePerm
           DO i=1,4
             DO ndof=1,nedof
@@ -614,11 +622,11 @@ CONTAINS
       END IF
 
       ! Bubble basis 
-      IF (P > 3) THEN
+      IF (P >= 2) THEN
         IF (.NOT. isEdge) THEN
           t_start_tmp=ftimer()
-          DO i=2,(p-2)
-            DO j=2,(p-i)
+          DO i=0,p-2
+            DO j=0,p-2
               q = q + 1
               DO k = 1, ngp
                 Basis(k, q) = QuadBubblePBasis(i,j,UWrk(k),VWrk(k))
@@ -629,9 +637,9 @@ CONTAINS
           t_tot_b=t_tot_b+(ftimer()-t_start_tmp)
         ELSE
           t_start_tmp=ftimer()
-          DO perm=1,BubblePerm
-            DO i=2,(p-2)
-              DO j=2,(p-i)
+          DO perm=1, BubblePerm
+            DO i=0,p-2
+              DO j=0,p-2
                 q = q + 1
                 DO k = 1, ngp
                   Basis(k, q) = QuadBubblePBasis(i,j,UWrk(k),VWrk(k),&
@@ -675,16 +683,17 @@ CONTAINS
         IF (P > 1) THEN
           ! Edge basis
           t_start_tmp=ftimer()
-          DO perm=1,EdgePerm
+          DO perm=1, EdgePerm
             CALL H1Basis_QuadEdgeP(ncl, UBlk, VBlk, EdgeP, &
                     SIZE(BasisBlk,2), BasisBlk, nbasisvec, EdgeDir(:,:,perm))
+
             CALL H1Basis_dQuadEdgeP(ncl, UBlk, VBlk, EdgeP, &
                     SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec, EdgeDir(:,:,perm))
           END DO
           t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)
         END IF
 
-        IF (P > 3) THEN
+        IF (P >= 2) THEN
           IF (.NOT. isEdge) THEN
             t_start_tmp=ftimer()
             CALL H1Basis_QuadBubbleP(ncl, UBlk, VBlk, P, &
@@ -695,7 +704,7 @@ CONTAINS
             t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
           ELSE
             t_start_tmp=ftimer()
-            DO perm=1,BubblePerm
+            DO perm=1, BubblePerm
               CALL H1Basis_QuadBubbleP(ncl, UBlk, VBlk, P, &
                       SIZE(BasisBlk,2), BasisBlk, nbasisvec, BubbleDir(1:4,perm))
               
@@ -996,7 +1005,7 @@ CONTAINS
     END IF
 
     GP = GaussPoints(Element)
-    
+
     nndof = Element % Type % NumberOfNodes
     nedof = getEdgeDOFs( Element, P )
     nfdof = 2*getFaceDofs( Element, P, 1)+3*getFaceDOFs( Element, P, 3 )
@@ -1068,11 +1077,11 @@ CONTAINS
         END DO
       END Do
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
+      q = 6
 
       IF (P > 1) THEN
         ! Edge basis
         t_start_tmp=ftimer()
-        q = 6
         DO perm=1,EdgePerm
           DO i=1,9
             DO ndof=1,nedof
@@ -1089,7 +1098,7 @@ CONTAINS
         t_tot_e=t_tot_e+(ftimer()-t_start_tmp)
       END IF
 
-      IF (P > 2) THEN
+      IF (P >= 2) THEN
         ! Face basis
         t_start_tmp=ftimer()
         DO perm=1,FacePerm
@@ -1119,8 +1128,8 @@ CONTAINS
               direction(4) = tmp
             END IF
             
-            DO j=2,p-2
-              DO k=2,p-j
+            DO j=0,p-2
+              DO k=0,p-2
                 q = q + 1
                 IF (.NOT. invert) THEN
                   DO l=1,ngp
@@ -1145,11 +1154,11 @@ CONTAINS
       END IF
       
       ! Bubble basis 
-      IF (P > 4) THEN
+      IF (P >=3 ) THEN
         t_start_tmp=ftimer()
-        DO i=0,p-5
-          DO j=0,p-5-i
-            DO k=2,p-3-i-j
+        DO i=0,p-3
+          DO j=0,p-i-3
+            DO k=0,p-2
               q = q + 1
               DO l = 1, ngp
                 Basis(l, q) = WedgeBubblePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l))
@@ -1199,8 +1208,7 @@ CONTAINS
                     SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec, EdgeDir(:,:,perm))
           END DO
           t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)    
-        END IF
-        IF (P > 2) THEN
+
           t_start_tmp=ftimer()
           DO perm=1,FacePerm
             CALL H1Basis_WedgeFaceP(ncl, UBlk, VBlk, WBlk, FaceP, &
@@ -1209,8 +1217,7 @@ CONTAINS
                     SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec, FaceDir(:,:,perm))
           END DO
           t_totvec_f=t_totvec_f+(ftimer()-t_start_tmp)    
-        END IF
-        IF (P > 4) THEN
+
           t_start_tmp=ftimer()
           CALL H1Basis_WedgeBubbleP(ncl, UBlk, VBlk, WBlk, P, &
                   SIZE(BasisBlk,2), BasisBlk, nbasisvec)
@@ -1237,6 +1244,283 @@ CONTAINS
           BasisBlk, dBasisdxBlk)
   END FUNCTION TestWedgeElement  
   
+
+  FUNCTION TestPyramidElement(Solver, tol, P) RESULT(nerror)
+    IMPLICIT NONE
+    
+    TYPE(Solver_t) :: Solver
+    REAL(kind=dp), INTENT(IN) :: tol
+    INTEGER, INTENT(IN) :: P
+
+    TYPE(Element_t), POINTER :: Element
+    TYPE( GaussIntegrationPoints_t ) :: GP
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), &
+          BasisVec(:,:), dBasisdxVec(:,:,:), UWrk(:), VWrk(:), WWrk(:), &
+          UBlk(:), VBlk(:), WBlk(:), BasisBlk(:,:), dBasisdxBlk(:,:,:)
+
+    INTEGER :: i, j, k, l, q, ngp, nerror, nbasis, nndof, nedof, &
+          nfdof, nbdof, allocstat, perm, &
+          nbasisvec, ndbasisdxvec, rep, dim, tag, ndof, ll, lln, ncl
+    INTEGER, PARAMETER :: NREP = 100, EdgePerm=2, FacePerm=4
+    REAL(kind=dp) :: t_start, t_end, t_startvec, t_endvec, &
+            t_start_tmp, t_tot_n, t_totvec_n, &
+            t_tot_e, t_totvec_e, t_tot_f, t_totvec_f, t_tot_b, t_totvec_b
+    INTEGER :: EdgeDir(H1Basis_MaxPElementEdgeNodes,&
+                       H1Basis_MaxPElementEdges,&
+                       EdgePerm), EdgeP(H1Basis_MaxPElementEdges), &
+               FaceDir(H1Basis_MaxPElementFaceNodes, &
+                       H1Basis_MaxPElementFaces, &
+                       FacePerm), FaceP(H1Basis_MaxPElementFaces)
+    INTEGER :: direction(H1Basis_MaxPElementFaceNodes), tmp
+    LOGICAL :: InvertEdge(9, EdgePerm), invert
+!DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, BasisVec, dBasisdxVec, BasisBlk, dBasisdxBlk
+!DIR$ ATTRIBUTES ALIGN:64 :: UWrk, VWrk, WWrk, UBlk, VBlk, WBlk
+    
+    nerror = 0
+    Element => AllocatePElement(Solver % Mesh, 605, P)
+    ! Insert P element definitions to Solver mapping (sets P elements as "active")
+    IF (ALLOCATED(Solver % Def_Dofs)) THEN
+      tag = Element % Type % ElementCode / 100
+      Solver % Def_Dofs(tag,1,6) = P
+    END IF
+
+    GP = GaussPoints(Element)
+
+    nndof = Element % Type % NumberOfNodes
+    nedof = getEdgeDOFs( Element, P)
+    nfdof = getFaceDofs(Element, P, 1)+4*getFaceDOFs(Element, P, 2)
+    nbdof = Element % Bdofs
+    nbasis = nndof + 8*nedof*EdgePerm + nfdof*FacePerm + nbdof
+    ngp = GP % N
+
+    ! Reserve workspace for finite element basis
+    ALLOCATE(Basis(ngp,nbasis), dBasisdx(ngp,nbasis,3), &
+            BasisVec(ngp,nbasis), dBasisdxVec(ngp,nbasis,3), &
+            UWrk(ngp), VWrk(ngp), WWrk(ngp), &
+            UBlk(VECTOR_BLOCK_LENGTH), &
+            VBlk(VECTOR_BLOCK_LENGTH), &
+            WBlk(VECTOR_BLOCK_LENGTH), &
+            BasisBlk(VECTOR_BLOCK_LENGTH,nbasis), &
+            dBasisdxBlk(VECTOR_BLOCK_LENGTH,nbasis,3), &
+            STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal('H1BasisEvaluation',&
+              'Storage allocation for local element basis failed')
+    END IF
+    
+    ! Copy Gauss points to local arrays
+    UWrk(1:ngp) = GP % U(1:ngp)
+    VWrk(1:ngp) = GP % V(1:ngp)
+    WWrk(1:ngp) = GP % W(1:ngp)
+
+    ! Initialize arrays
+    Basis = 0
+    dBasisdx = 0
+    DO i=1,8
+      EdgeDir(1:2,i,1)=getPyramidEdgeMap(i)
+    END DO
+    ! Invert direction
+    DO i=1,8
+      EdgeDir(2:1:-1,i,2)=EdgeDir(1:2,i,1)
+    END DO
+    InvertEdge(:,1) = .FALSE.
+    InvertEdge(:,2) = .TRUE.
+
+    DO i=1,5
+      FaceDir(1:4,i,1)=getPyramidFaceMap(i)
+    END DO
+    DO j=2,FacePerm
+      DO i=1,1
+        FaceDir(1:4,i,j)=CSHIFT(FaceDir(1:4,i,1), j-1)
+      END DO
+
+      DO i=2,5
+        FaceDir(1:3,i,j)=CSHIFT(FaceDir(1:3,i,1), j-1)
+      END DO
+    END DO
+
+    EdgeP = P
+    FaceP = P
+
+    t_tot_n = REAL(0,dp)
+    t_tot_e = REAL(0,dp)
+    t_tot_f = REAL(0,dp)
+    t_tot_b = REAL(0,dp)
+    
+    t_start = ftimer()
+    DO rep=1,NREP
+      ! Nodal basis 
+      t_start_tmp=ftimer()
+      DO ndof=1,nndof
+        DO i=1,ngp
+          Basis(i,ndof) = PyramidNodalPBasis(ndof, UWrk(i), VWrk(i), WWrk(i))
+          dBasisdx(i,ndof,1:3) = dPyramidNodalPBasis(ndof, UWrk(i), VWrk(i), WWrk(i))
+        END DO
+      END Do
+      t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
+      q = 5
+
+      IF (P > 1) THEN
+        ! Edge basis
+        t_start_tmp=ftimer()
+        DO perm=1,EdgePerm
+          DO i=1,8
+            DO ndof=1,nedof
+              q=q+1
+              DO k=1,ngp
+                Basis(k,q) = PyramidEdgePBasis(i, ndof+1, UWrk(k), VWrk(k), WWrk(k), &
+                        InvertEdge(i,perm))
+                dBasisdx(k,q,1:3) = dPyramidEdgePBasis(i, ndof+1, UWrk(k), VWrk(k), WWrk(k), &
+                        InvertEdge(i,perm))
+              END DO
+            END DO
+          END DO
+        END DO
+        t_tot_e=t_tot_e+(ftimer()-t_start_tmp)
+      END IF
+
+      IF (P >= 2) THEN
+        ! Face basis
+        t_start_tmp=ftimer()
+        DO perm=1,FacePerm
+          ! Square faces
+          DO i=1,1
+            ! First and second node must form an edge in the upper or lower triangle
+            direction(1:4) = FaceDir(1:4,i,perm)
+            invert=.FALSE. 
+            
+            DO j=0,p-2
+              DO k=0,p-2
+                q = q + 1
+                IF (.NOT. invert) THEN
+                  DO l=1,ngp
+                    Basis(l,q) = PyramidFacePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l), &
+                            direction)
+                    dBasisdx(l,q,1:3) = dPyramidFacePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l), &
+                            direction)
+                  END DO
+                ELSE
+                  DO l=1,ngp
+                    Basis(l,q) = PyramidFacePBasis(i,k,j,UWrk(l), VWrk(l), WWrk(l), &
+                          direction)
+                    dBasisdx(l,q,1:3) = dPyramidFacePBasis(i,k,j,UWrk(l), VWrk(l), WWrk(l), &
+                            direction)
+                  END DO
+                END IF
+              END DO
+            END DO
+          END DO
+          ! Triangle faces
+          DO i=2,5
+            DO j=0,p-3
+              DO k=0,p-j-3
+                q = q + 1
+                DO l=1,ngp
+                  Basis(l,q) = PyramidFacePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l), &
+                          FaceDir(1:4,i,perm))
+                  dBasisdx(l,q,1:3) = dPyramidFacePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l), &
+                          FaceDir(1:4,i,perm))
+                END DO
+              END DO
+            END DO
+          END DO
+        END DO
+        t_tot_f=t_tot_f+(ftimer()-t_start_tmp)
+      END IF
+      
+      ! Bubble basis 
+      IF (P >=3 ) THEN
+        t_start_tmp=ftimer()
+        DO i=0,p-3
+          DO j=0,p-i-3
+            DO k=0,p-i-j-3
+              q = q + 1
+              DO l = 1, ngp
+                Basis(l, q) = PyramidBubblePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l))
+                dBasisdx(l, q, 1:3) = dPyramidBubblePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l))  
+              END DO
+            END DO
+          END DO
+        END DO
+        t_tot_b=t_tot_b+(ftimer()-t_start_tmp)
+      END IF
+    END DO
+    t_end = ftimer()
+    
+    ! Initialize arrays
+    BasisVec = 0
+    dBasisdxVec = 0
+
+    t_totvec_n = REAL(0,dp)
+    t_totvec_e = REAL(0,dp)
+    t_totvec_f = REAL(0,dp)
+    t_totvec_b = REAL(0,dp)    
+    t_startvec = ftimer()
+    DO rep=1,NREP
+      ! Block over Gauss points
+      DO ll=1,ngp,VECTOR_BLOCK_LENGTH
+        nbasisvec = 0
+        ndbasisdxvec = 0
+
+        lln = MIN(ll+VECTOR_BLOCK_LENGTH-1,ngp)
+        ncl = lln-ll+1
+        UBlk(1:ncl)=UWrk(ll:lln)
+        VBlk(1:ncl)=VWrk(ll:lln)
+        WBlk(1:ncl)=WWrk(ll:lln)
+        
+        nbasisvec = 0
+        ndbasisdxvec = 0
+        t_start_tmp=ftimer()
+        CALL H1Basis_PyramidNodalP(ncl, UBlk, VBlk, WBlk, SIZE(BasisBlk,2), BasisBlk, nbasisvec)
+        CALL H1Basis_dPyramidNodalP(ncl, UBlk, VBlk, WBlk, SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec)
+        t_totvec_n=t_totvec_n+(ftimer()-t_start_tmp)
+        IF (P > 1) THEN
+          t_start_tmp=ftimer()
+          DO perm=1,EdgePerm
+            CALL H1Basis_PyramidEdgeP(ncl, UBlk, VBlk, WBlk, EdgeP, &
+                    SIZE(BasisBlk,2), BasisBlk, nbasisvec, EdgeDir(:,:,perm))
+            CALL H1Basis_dPyramidEdgeP(ncl, UBlk, VBlk, WBlk, EdgeP, &
+                    SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec, EdgeDir(:,:,perm))
+          END DO
+          t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)    
+
+          t_start_tmp=ftimer()
+          DO perm=1,FacePerm
+            CALL H1Basis_PyramidFaceP(ncl, UBlk, VBlk, WBlk, FaceP, &
+                    SIZE(BasisBlk,2), BasisBlk, nbasisvec, FaceDir(:,:,perm))
+
+            CALL H1Basis_dPyramidFaceP(ncl, UBlk, VBlk, WBlk, FaceP, &
+                    SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec, FaceDir(:,:,perm))
+          END DO
+          t_totvec_f=t_totvec_f+(ftimer()-t_start_tmp)    
+
+          t_start_tmp=ftimer()
+          CALL H1Basis_PyramidBubbleP(ncl, UBlk, VBlk, WBlk, P, &
+                  SIZE(BasisBlk,2), BasisBlk, nbasisvec)
+          CALL H1Basis_dPyramidBubbleP(ncl, UBlk, VBlk, WBlk, P, &
+                  SIZE(dBasisdxBlk,2), dBasisdxBlk, ndbasisdxvec)
+          t_totvec_b=t_totvec_b+(ftimer()-t_start_tmp)
+        END IF
+
+        BasisVec(ll:lln,1:nbasisvec)=BasisBlk(1:ncl,1:nbasisvec)
+        dBasisdxVec(ll:lln,1:ndbasisdxvec,1:3)=dBasisdxBlk(1:ncl,1:ndbasisdxvec,1:3)        
+      END DO
+    END DO
+    t_endvec = ftimer()
+    
+    CALL PrintTestData(Element, ngp, nrep, 9*nedof+nfdof+nbdof, &
+          t_tot_n, t_tot_e+t_tot_f+t_tot_b, t_end-t_start, &
+          t_totvec_n, t_totvec_e+t_totvec_f+t_totvec_b, t_endvec-t_startvec)
+
+    nerror = TestBasis(ngp, nbasis, Element % TYPE % DIMENSION, Basis, BasisVec, &
+            dBasisdx, dBasisdxVec, tol)
+
+    CALL DeallocatePElement(Element)
+    DEALLOCATE(Basis, dBasisdx, BasisVec, dBasisdxVec, UWrk, VWrk, WWrk, UBlk, VBlk, WBlk, &
+          BasisBlk, dBasisdxBlk)
+  END FUNCTION TestPyramidElement  
+  
+
   FUNCTION TestBrickElement(Solver, tol, P) RESULT(nerror)
     IMPLICIT NONE
     
@@ -1344,11 +1628,11 @@ CONTAINS
                 UWrk(i), VWrk(i), WWrk(i))
       END DO
       t_tot_n=t_tot_n+(ftimer()-t_start_tmp)
+      q = 8
 
       ! Edge basis
       IF (P > 1) THEN
         t_start_tmp=ftimer()
-        q = 8
         DO perm=1,EdgePerm
           DO i=1,12
             DO ndof=1,nedof
@@ -1365,13 +1649,13 @@ CONTAINS
         t_tot_e=t_tot_e+(ftimer()-t_start_tmp)
       END IF
 
-      IF (P > 3) THEN
+      IF (P >=2) THEN
         ! Face basis
         t_start_tmp=ftimer()
         DO perm=1,FacePerm
           DO i=1,6
-            DO j=2,FaceP(i)-2
-              DO k=2,FaceP(i)-j
+            DO j=0,FaceP(i)-2
+              DO k=0,FaceP(i)-2
                 q = q + 1
                 DO l=1,ngp
                   Basis(l,q) = BrickFacePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l), &
@@ -1387,17 +1671,15 @@ CONTAINS
       END IF
 
       ! Bubble basis 
-      IF (P > 5) THEN
+      IF (P >= 2) THEN
         t_start_tmp=ftimer()
-        DO i=2,p-4
-          DO j=2,p-i-2
-            DO k=2,p-i-j
+        DO i=0,p-2
+          DO j=0,p-2
+            DO k=0,p-2
               q = q + 1
               DO l=1,ngp
-                Basis(l,q) = BrickBubblePBasis(i,j,k, &
-                        UWrk(l), VWrk(l), WWrk(l))
-                dBasisdx(l,q,:) = dBrickBubblePBasis(i,j,k, &
-                        UWrk(l), VWrk(l), WWrk(l))
+                Basis(l,q) = BrickBubblePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l))
+                dBasisdx(l,q,:) = dBrickBubblePBasis(i,j,k,UWrk(l), VWrk(l), WWrk(l))
               END DO
             END DO
           END DO
@@ -1444,7 +1726,7 @@ CONTAINS
           t_totvec_e=t_totvec_e+(ftimer()-t_start_tmp)
         END IF
 
-        IF (P > 3) THEN
+        IF (P >= 2) THEN
           t_start_tmp=ftimer()
           DO perm=1,FacePerm
             CALL H1Basis_BrickFaceP(ncl, UBlk, VBlk, WBlk, FaceP, &
@@ -1455,7 +1737,7 @@ CONTAINS
           t_totvec_f=t_totvec_f+(ftimer()-t_start_tmp)
         END IF
 
-        IF (P > 5) THEN
+        IF (P >= 2) THEN
           t_start_tmp=ftimer()
           CALL H1Basis_BrickBubbleP(ncl, UBlk, VBlk, WBlk, P, &
                   SIZE(BasisBlk,2), BasisBlk, nbasisvec)

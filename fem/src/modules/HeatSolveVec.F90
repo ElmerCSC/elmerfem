@@ -53,7 +53,7 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found
+  LOGICAL :: Found, Serendipity
   
   Params => GetSolverParams()
 
@@ -61,8 +61,15 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
       ListCheckPresentAnyEquation( Model,'Draw Velocity') .OR. &
       ListGetLogical( Params,'Bubbles',Found) ) THEN
     IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
-      CALL ListAddString(Params,'Element', &
-          'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+      IF(.NOT.Found) Serendipity = .TRUE.
+      IF(Serendipity) THEN
+        CALL ListAddString(Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      ELSE
+        CALL ListAddString(Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+      END IF
       CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
     END IF
   END IF

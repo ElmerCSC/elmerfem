@@ -12,6 +12,8 @@ Simulation
   Steady State Max Iterations = 1
 ! Post File   = "ptest.ep"
 ! Output File = "ptest.dat"
+
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -79,5 +81,5 @@ Boundary Condition 1
   Potentialc = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.223544023689E-01
+Solver 1 :: Reference Norm = Real 1.96743752E-02
 RUN

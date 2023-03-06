@@ -12,6 +12,8 @@ Simulation
   Steady State Max Iterations = 1
   timestep intervals(1) = 7
   timestep sizes(1) = 1
+
+  Serendipity P Elements = False
 End
 
 Body 1

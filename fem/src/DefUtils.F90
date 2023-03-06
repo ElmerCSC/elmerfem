@@ -1840,6 +1840,7 @@ CONTAINS
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
+
            IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
              IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
            END IF
@@ -1866,7 +1867,7 @@ CONTAINS
                FDOFs = k
              ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
-               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j)
+               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
              END IF
            END IF
            n = n + FDOFs
@@ -1957,7 +1958,7 @@ CONTAINS
 
                FDOFs = 0
                IF (Solver % Def_Dofs(ParentFamily,id,6) > 1) THEN
-                 FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind)
+                 FDOFs = getFaceDOFs(Parent,Solver % Def_Dofs(ParentFamily,id,6),Ind,Face)
                ELSE
                  k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
                  IF (k == 0) THEN

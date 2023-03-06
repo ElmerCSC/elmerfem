@@ -1,0 +1,133 @@
+! Standard stokes equation except with heat equation
+! hierarchically coupled.
+!
+! This one with new vectorized solvers.
+!
+! P.R. 12.5.2020
+
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "Step.vtu"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2
+  Convection = "computed"
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+
+  Stokes Flow = Logical True
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Solver 2
+  Equation = "Heat"
+
+  Procedure = "HeatSolveVec" "HeatSolver"
+  Variable = "Temperature"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Element = p:1 b:3
+  Bubbles in Global System = False
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+End
+ 
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Viscosity = 0.01
+  Heat Conductivity = 1.0
+  Heat Capacity = 1000.0 ! ensure convection dominated
+End
+
+Boundary Condition 1
+  Name = "Inlet"
+
+  Target Boundaries = 1
+   
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+  Temperature = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+    
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+
+  External Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = 0 
+End
+
+!legacy solvers
+!Solver 1 :: Reference Norm = 0.30861526
+!Solver 2 :: Reference Norm = 6.32597086E-01
+
+Solver 1 :: Reference Norm = 3.08835269E-01
+Solver 2 :: Reference Norm = 6.30561412E-01  

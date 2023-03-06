@@ -9,6 +9,8 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = Steady
   Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
 End
 
 Solver 1
@@ -59,6 +61,5 @@ Solver 8
   Element = "p:8"
   Procedure = "P2ndDerivativesTest" "TestSolver"
 End
-
 Solver 1 :: Reference Norm = Real 0
 

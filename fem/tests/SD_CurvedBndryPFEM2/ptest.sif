@@ -1,0 +1,62 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+! Output File = "ptest.dat"
+End
+
+Body 1 :: Equation = 1
+Body 1 :: Body Force = 1
+
+Body Force 1 :: Source = Real 1
+Equation 1 :: Element="p:6"
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = Mesh Update
+  Exec Solver = Before Simulation
+  Linear System Solver = Direct
+End
+
+Solver 2
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Procedure = "./Poisson" "PoissonSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1e-09
+End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = ptest
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Lagrange Element Degree = Integer 6
+  Save Bulk Only = True
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+  Mesh Update 1 = Real Procedure "./Poisson" "Circx"
+  Mesh Update 2 = Real Procedure "./Poisson" "Circy"
+End
+
+
+Solver 2 :: Reference Norm = Real 0.75409042E-01
+RUN

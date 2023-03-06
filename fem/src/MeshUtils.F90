@@ -93,6 +93,7 @@ CONTAINS
      IMPLICIT NONE
      INTEGER :: istat,n
 
+     LOGICAL :: Found
      TYPE(Element_t) :: Element
 
      ! Sanity check to avoid memory leaks
@@ -107,9 +108,12 @@ CONTAINS
      Element % PDefs % P = 0 
      Element % PDefs % TetraType = 0
      Element % PDefs % isEdge = .FALSE.
-     Element % PDefs % pyramidQuadEdge = .FALSE.
      Element % PDefs % localNumber = 0
      Element % PDefs % GaussPoints = 0
+
+     Element % PDefs % Serendipity = ListGetLogical( CurrentModel % Simulation, &
+           'Serendipity P elements', Found )
+     IF(.NOT.Found) Element % PDefs % Serendipity = .TRUE.
 !------------------------------------------------------------------------------
    END SUBROUTINE AllocatePDefinitions
 !------------------------------------------------------------------------------
@@ -3005,7 +3009,6 @@ CONTAINS
          END IF
 
          ! All elements in actual mesh are not edges
-         Element % PDefs % pyramidQuadEdge = .FALSE.
          Element % PDefs % isEdge = .FALSE.
 
          ! If element is of type tetrahedron and is a p element, 
@@ -3774,7 +3777,7 @@ CONTAINS
              ! Set face polynomial degree and dofs
              Face % PDefs % P = MAX(Element % PDefs % P, Face % PDefs % P)
              ! Get number of face dofs
-             Face % BDOFs = MAX( Face % BDOFs, getFaceDOFs(Element, Face % PDefs % P, j) )
+             Face % BDOFs = MAX(Face % BDOFs, getFaceDOFs(Element, Face % PDefs % P, j,Face) )
              Face % PDefs % isEdge = .TRUE.
              Face % PDefs % GaussPoints = getNumberOfGaussPointsFace( Face, Mesh )
              IF (ASSOCIATED(Face % BoundaryInfo % Left) ) THEN
@@ -3782,6 +3785,7 @@ CONTAINS
              ELSE
                CALL AssignLocalNumber(Face, Face % BoundaryInfo % Right, Mesh)
              END IF
+
           ELSE IF (PRESENT(FaceDOFs)) THEN
              !
              ! NOTE: This depends on what dofs have been introduced
@@ -18019,7 +18023,7 @@ CONTAINS
               Faces(Face) % NodeIndexes(n2) = &
                   Element % NodeIndexes(FaceMap(k,n2)) 
             END DO
-            
+
             ALLOCATE( Faces(Face) % BoundaryInfo )
             Faces(Face) % BoundaryInfo % Left  => NULL()
             Faces(Face) % BoundaryInfo % Right => NULL()
@@ -18346,7 +18350,6 @@ CONTAINS
             IF ( ASSOCIATED( Element % PDefs ) ) THEN
               CALL AllocatePDefinitions(Edges(Edge))              
               Edges(Edge) % PDefs % P = 0
-              Edges(Edge) % PDefs % pyramidQuadEdge = .FALSE.
             ELSE
               NULLIFY( Edges(Edge) % PDefs )
             END IF            
@@ -18355,11 +18358,6 @@ CONTAINS
           ! Stuff for both existing and new edge
           !--------------------------------------
           Element % EdgeIndexes(k) = Edge
-          
-          ! Mark edge as an edge of pydamid square face 
-          IF (isPPyramid(Element) .AND. k < 5) THEN
-            Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
-          END IF
           
           IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
             DO ii=1,Element % TYPE % NumberOfFaces
@@ -20245,7 +20243,6 @@ END SUBROUTINE FindNeighbourNodes
            Enew % PDefs = PDefs
 
            ! All elements in actual mesh are not edges
-           Enew % PDefs % pyramidQuadEdge = .FALSE.
            Enew % PDefs % isEdge = .FALSE.
 
            ! If element is of type tetrahedron and is a p element,

@@ -1,0 +1,143 @@
+$f = 1000
+
+Header
+ Mesh DB "." "tube"
+End
+
+Simulation
+!  Max Output Level = 5
+!  Coordinate System = "Cartesian 2D"
+  Coordinate System = String Axi Symmetric
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep intervals = 20
+  Timestep sizes = $1/(40*f)
+  Output Intervals(1) = 1
+!  Post File   = "tube.vtu"
+!  Output File = "tube.dat"
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Equilibrium Temperature = Real 293
+  Equilibrium Density = Real 1.21
+  Viscosity = Real 1.82e-5
+  Bulk Viscosity = Real 0.0
+  Specific Heat = Real 717.0
+  Heat Conductivity = Real 0.026
+  Specific Heat Ratio = Real 1.4
+End
+
+Solver 1
+  Equation = "Compressible NS"
+
+  Variable = -dofs 4 "NSSol"
+  Procedure = "CompressibleNS" "CompressibleNS"  
+  Bubbles in Global System = Logical True
+  Element = "p:1 b:1"
+
+  Nonlinear Iteration Method = String "Picard"
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = Real 1.0e-4
+  Nonlinear System Convergence Measure = String "Solution"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = BiCGStabl
+!  Linear System Max Iterations = 1000
+!  Linear System Convergence Tolerance = 1.0e-7
+!  Linear System Preconditioning = ILU2
+  Steady State Convergence Tolerance = 1e-5
+End
+
+
+Solver 2
+  Procedure = "FilterTimeSeries" "FilterTimeSeries"
+
+  Variable 1 = "NSSol 1"
+  Start Time 1 = Real $ 49/f
+  Stop Time 1 = Real $ 50/f
+  Cosine Series 1 = Integer 3
+  Frequency 1 = Real 1000  
+
+  Variable 2 = "NSSol 1"
+  Start Time 2 = Real $ 49/f
+  Stop Time 2 = Real $ 50/f
+  Sine Series 2 = Integer 3
+  Frequency 2 = Real 1000  
+
+  Variable 3 = "NSSol 2"
+  Start Time 3 = Real $ 49/f
+  Stop Time 3 = Real $ 50/f
+  Cosine Series 3 = Integer 3
+  Frequency 3 = Real 1000  
+
+  Variable 4 = "NSSol 2"
+  Start Time 4 = Real $ 49/f
+  Stop Time 4 = Real $ 50/f
+  Sine Series 4 = Integer 3
+  Frequency 4 = Real 1000  
+
+  Variable 5 = "NSSol 3"
+  Start Time 5 = Real $ 49/f
+  Stop Time 5 = Real $ 50/f
+  Cosine Series 5 = Integer 3
+  Frequency 5 = Real 1000  
+
+  Variable 6 = "NSSol 3"
+  Start Time 6 = Real $ 49/f
+  Stop Time 6 = Real $ 50/f
+  Sine Series 6 = Integer 3
+  Frequency 6 = Real 1000  
+
+  Variable 7 = "NSSol 4"
+  Start Time 7 = Real $ 49/f
+  Stop Time 7 = Real $ 50/f
+  Cosine Series 7 = Integer 3
+  Frequency 7 = Real 1000  
+
+  Variable 8 = "NSSol 4"
+  Start Time 8 = Real $ 49/f
+  Stop Time 8 = Real $ 50/f
+  Sine Series 8 = Integer 3
+  Frequency 8 = Real 1000  
+
+End
+
+
+Boundary Condition 1 
+  Target Boundaries(1) = 1
+  NSSol 1 = Real 0.0
+  NSSol 2 = Variable Time, Coordinate 1
+     Real MATC "0.001 * (1 - tx(1)/0.01) * sin(2.0 * 3.141592654 * f * tx(0))"
+  NSSol 3 = Real 0.0  
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  NSSol 1 = Real 0.0  
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = Integer 2 3
+  NSSol 1 = Real 0.0
+  NSSol 2 = Real 0.0
+  NSSol 3 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = Real 0.78248274E-04
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
+RUN
+

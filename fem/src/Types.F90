@@ -690,7 +690,7 @@ MODULE Types
       INTEGER :: TetraType       ! Type of p tetrahedron={0,1,2}
       LOGICAL :: isEdge          ! Is element an edge or face?
       INTEGER :: GaussPoints     ! Number of gauss points to use when using p elements
-      LOGICAL :: pyramidQuadEdge ! Is element an edge of pyramid quad face?
+      LOGICAL :: Serendipity=.TRUE.     ! Is this a serendipity of complete basis element ?
       INTEGER :: localNumber     ! Local number of an edge or face for element on boundary
       TYPE(Element_t), POINTER :: localParent => Null()     ! Local number of an edge or face for element on boundary
    END TYPE PElementDefs_t

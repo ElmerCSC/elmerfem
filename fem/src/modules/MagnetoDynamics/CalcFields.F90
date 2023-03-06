@@ -551,7 +551,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    IMPLICIT NONE
 !------------------------------------------------------------------------------
-   TYPE(Solver_t) :: Solver
+   TYPE(Solver_t), TARGET :: Solver
    TYPE(Model_t) :: Model
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
@@ -657,6 +657,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: HasReluctivityFunction, HBIntegProblem 
    REAL(KIND=dp) :: rdummy
    INTEGER :: mudim, ElementalMode
+
+type(nodes_t), save :: lnodes
+type(solver_t), pointer :: lSolver
    
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -948,7 +951,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ALLOCATE(Tcoef(3,3,n))
      END IF
      
-     CALL GetElementNodes( Nodes )
+     CALL GetElementNodes( Nodes, USolver=pSolver )
+     lSolver => Solver
+     CALL GetElementNodes( lNodes, USolver=lSolver )
 
      ! If potential is not available we have to use given current directly to estimate Joule losses
      JouleHeatingFromCurrent = ( np == 0 .AND. &
@@ -1628,7 +1633,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !IF(.NOT. HasZirka) then
            IF (RealField) THEN
              FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + &
-                 s * (MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p)
+                 s * (MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p) 
              k = k+fdim
            ELSE
              FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * ( &
@@ -2703,8 +2708,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     ConstantMassMatrixInUse = ListGetLogical( SolverParams,'Constant Mass Matrix',Found )    
   END IF
 
-  
-  
 CONTAINS
 
 !-------------------------------------------------------------------

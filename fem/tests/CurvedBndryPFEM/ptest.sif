@@ -11,13 +11,14 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 ! Output File = "ptest.dat"
+  Serendipity P Elements = False
 End
 
 Body 1 :: Equation = 1
 Body 1 :: Body Force = 1
 
 Body Force 1 :: Source = Real 1
-Equation 1 :: Element="p:3"
+Equation 1 :: Element="p:3
 Equation 1 :: Active Solvers = 1
 
 Solver 1
@@ -51,5 +52,5 @@ Boundary Condition 1
 End
 
 
-Solver 1 :: Reference Norm = Real 0.12579221
+Solver 1 :: Reference Norm = Real 0.127327239
 RUN

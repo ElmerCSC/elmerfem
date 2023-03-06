@@ -17,6 +17,7 @@ Simulation
 !  Post File   = "tube.vtu"
 !  Output File = "tube.dat"
   Steady State Max Iterations = 1
+  Serendipity P Elements = False
 End
 
 Body 1

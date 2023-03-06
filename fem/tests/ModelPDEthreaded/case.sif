@@ -9,6 +9,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 !  Post File   = "case.vtu"
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -73,6 +74,6 @@ End
 
 ! Solver 1 :: Reference Norm = Real 9.6852E-01
 ! Solver 1 :: Reference Norm Tolerance = Real 1.0E-4
-Solver 1 :: Reference Norm = Real 1.0578593
+Solver 1 :: Reference Norm = Real 9.23485293E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
 RUN

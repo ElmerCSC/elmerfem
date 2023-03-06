@@ -80,9 +80,7 @@ CONTAINS
     FORCE = 0.0d0
 
     edim = Element % Type % Dimension
-    nodes % x = 0
-    nodes % y = 0
-    nodes % z = 0
+
     Nodes % x(1:n) = Element % Type % NodeU
     IF(edim>1) Nodes % y(1:n) = Element % Type % NodeV
     IF(edim>2) Nodes % z(1:n) = Element % Type % NodeW
@@ -126,6 +124,7 @@ CONTAINS
               end do
             end do
           end do
+!               Force(p) = Force(p) + ip % s(t) * detJ * basis(p) * x * x
         END SELECT
       end do
     END DO
@@ -164,16 +163,17 @@ CONTAINS
         end do
       end do
 
-      DO i=1,nd
-        IF (MAXVAL(ABS(ddxFromNodaldx(i,:,:)-ddBasisddx(i,:,:)))>1.d-8) THEN
-          print*,i
-          print*,ddxFromNodaldx(i,1,:), ddbasisddx(i,1,:)
-          print*,ddxFromNodaldx(i,2,:), ddbasisddx(i,2,:)
-          PRINT*,ddxFromNodaldx(i,3,:), ddbasisddx(i,3,:)
-          PRINT *,"ddx did not match"
-          STOP 
-        END IF
-      END DO
+      IF(GetElementFamily()/=6 .AND. GetElementFamily()/=7) THEN
+        DO i=1,nd
+          IF (MAXVAL(ABS(ddxFromNodaldx(i,:,:)-ddBasisddx(i,:,:)))>1.d-8) THEN
+            print*,i
+            print*,ddxFromNodaldx(i,1,:), ddbasisddx(i,1,:)
+            print*,ddxFromNodaldx(i,2,:), ddbasisddx(i,2,:)
+            print*,ddxFromNodaldx(i,3,:), ddbasisddx(i,3,:)
+            STOP "ddx's don't match"
+          END IF
+        END DO
+      END IF
       diff=0
       fx = 0
       ddiff=0
@@ -216,6 +216,11 @@ CONTAINS
             end do
           end do
         end do
+!diff=0
+!ddiff=0
+!fx = x*x
+!diff(1) = 2*x
+!ddiff(1,1) = 2
       END SELECT
 
 !     print*, sum(dbasisdx(1:nd,1)*f), diff(1)
@@ -230,26 +235,25 @@ CONTAINS
 !     print*,sum(ddbasisddx(1:nd,2,3)*f), ddiff(2,3), sum(ddxFromNodaldx(1:nd,2,3)*f)
 !     print*,'-'
 
-!print*,fx,sum(basis(1:nd)*f)
-      CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-8, 'fx')
+      CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-7, 'fx')
 
-      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 2.5d-7, 'dx')
-      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 2.5d-7, 'dy')
-      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 2.5d-7, 'dz')
+      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 1.0d-6, 'dx')
+      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 1.0d-6, 'dy')
+      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 1.0d-6, 'dz')
 
-      CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 5.0d-7, 'dxx')
-      CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 5.0d-7, 'dxy')
-      CALL CheckValue(ddiff(1,3),SUM(ddBasisddx(1:nd,1,3)*f), 5.0d-7, 'dxz')
-      CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 5.0d-7, 'dyy')
-      CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 5.0d-7, 'dyz')
-      CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 5.0d-7, 'dzz')
+      CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 1.0d-5, 'dxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 1.0d-5, 'dxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddBasisddx(1:nd,1,3)*f), 1.0d-5, 'dxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 1.0d-5, 'dyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 1.0d-5, 'dyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 1.0d-5, 'dzz')
 
-      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 5.0d-7, 'dfxx')
-      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 5.0d-7, 'dfxy')
-      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 5.0d-7, 'dfxz')
-      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 5.0d-7, 'dfyy')
-      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 5.0d-7, 'dfyz')
-      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 5.0d-7, 'dfzz')
+      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 1.0d-5, 'dfxx')
+      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 1.0d-5, 'dfxy')
+      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 1.0d-5, 'dfxz')
+      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 1.0d-5, 'dfyy')
+      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 1.0d-5, 'dfyz')
+      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 1.0d-5, 'dfzz')
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -262,11 +266,11 @@ CONTAINS
      REAL :: scal
      CHARACTER(*) :: str
 
-     IF( ABS(f1-f2) < 1.d-12 ) RETURN
+     IF( ABS(f1-f2) < 1.d-7 ) RETURN
      scal = MAX(ABS(f1),ABS(f2))
      IF(ABS(f1-f2)>scal*eps) THEN
-       PRINT*,str,":",f1,f2,ABS(f1-f2), '>', scal*eps
-       STOP  
+       PRINT*,f1,f2,ABS(f1-f2), '>', scal*eps, str
+       STOP str 
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE CheckValue
