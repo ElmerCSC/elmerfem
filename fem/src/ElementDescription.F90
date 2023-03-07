@@ -3660,7 +3660,6 @@ CONTAINS
         nb = pSolver % Def_Dofs(6,BodyId,5)
         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
         IF ( BDOFs > 0 ) THEN
-
            p = getEffectiveBubbleP(element,p,bdofs)
  
            ! Calculate the values of bubble functions for indexes
@@ -3990,7 +3989,6 @@ CONTAINS
         nb = pSolver % Def_Dofs(8,BodyId,5)
         BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
         IF ( BDOFs > 0 ) THEN
-
           p = getEffectiveBubbleP(element,p,bdofs)
 
           IF(SerendipityPBasis) THEN
@@ -4343,9 +4341,9 @@ CONTAINS
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     IF(ASSOCIATED(Element % PDefs) .OR. Element % Type % BasisFunctionDegree<2) THEN
+     IF(isActivePelement(Element) .OR. Element % Type % BasisFunctionDegree<2 ) THEN
        retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
-             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx, USolver)
+             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx,USolver)
      ELSE
        retval = .TRUE.
        n    = Element % TYPE % NumberOfNodes
@@ -4446,17 +4444,23 @@ CONTAINS
        pSolver => CurrentModel % Solver
      END IF
 
+     BodyId = Element % BodyId
      IF( isActivePElement(Element)) THEN
-       BodyId = Element % BodyId
        IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
          Parent => Element % PDefs % LocalParent
          IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
        END IF
-       IF (BodyId==0) THEN
-         CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
-         BodyId = 1
-       END IF
        SerendipityPBasis = Element % PDefs % Serendipity
+     ELSE
+       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+         Parent => Element % BoundaryInfo % Left
+         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+       END IF
+     END IF
+
+     IF (BodyId==0) THEN
+       CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
+       BodyId = 1
      END IF
 
      retval = .TRUE.
