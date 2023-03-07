@@ -5099,10 +5099,16 @@ CONTAINS
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
      Parallel = Solver % Parallel 
      
-!------------------------------------------------------------------------------
-     IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     !------------------------------------------------------------------------------
+
+
+     IF( ListGetLogical(Solver % Values,'MMG Remesh',Found ) .OR. &
+         Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
+
+       PRINT *,'UPDATE ACTIVE'
        
        IF ( Found ) THEN
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 

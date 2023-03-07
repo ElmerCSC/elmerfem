@@ -76,11 +76,14 @@ CONTAINS
     REAL(KIND=dp), POINTER  :: Time(:), PrevValues(:), &
          Hvalue(:), ptr(:), tt(:)
     REAL(KIND=dp), POINTER  :: eRef(:), hRef(:), Work(:)
-    LOGICAL :: NoInterp, Parallel, AdaptInit
+    LOGICAL :: NoInterp, Parallel
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Solver_t), POINTER :: pSolver
+    INTEGER :: VisitedCount = 0, RemeshInterval    
     CHARACTER(*), PARAMETER :: Caller = 'ReMesh'
 
+    SAVE VisitedCount
+    
 !---------------------------------------------------------------------------------
 !
 !   Initialize:
@@ -97,12 +100,18 @@ CONTAINS
     END IF
 
     Params => Solver % Values 
+    VisitedCount = VisitedCount + 1
+
+    RemeshInterval = ListGetInteger( Params,'Remesh Interval',Found )
+    IF( Found ) THEN
+      IF( MODULO( VisitedCount, RemeshInterval ) == 0 ) THEN
+        CALL Info( Caller,'Visited Count is '//I2S(VisitedCount)//', remeshing is active!')
+      ELSE
+        CALL Info( Caller,'Visited Count is '//I2S(VisitedCount)//', doing nothing!')
+        RETURN
+      END IF
+    END IF         
     
-    AdaptInit = ( RefMesh % AdaptiveDepth == 0 ) 
-    IF( AdaptInit ) THEN
-      CALL Info(Caller,'Initializing stuff on coarsest level!')
-    END IF
-        
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
     NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
@@ -310,7 +319,8 @@ CONTAINS
 !   due to bandwidth optimization:
 !   -----------------------------------------    
     CALL Info( Caller,'Updating primary solver structures: '//TRIM(Solver % Variable % Name))
-    CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )          
+    CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
+    NewMesh % Changed = .TRUE.
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
     DO i=1,Model % NumberOfSolvers
