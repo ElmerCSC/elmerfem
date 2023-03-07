@@ -512,7 +512,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
     
-    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    IP = GaussPointsAdapt(Element)
     ngp = IP % n
     
     ! Deallocate storage if needed

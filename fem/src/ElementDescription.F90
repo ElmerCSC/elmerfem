@@ -4284,11 +4284,10 @@ CONTAINS
    !   END IF
    ! END SUBROUTINE ElementInfoVec_FreeWork
 
-! ElementInfoVec currently uses only P element definitions for basis
-! functions, even for purely nodal elements. Support for standard nodal elements
-! will be implemented in the future. 
+!
 !------------------------------------------------------------------------------
-   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, Basis, dBasisdx, USolver ) RESULT(retval)
+   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, &
+               Basis, dBasisdx, USolver ) RESULT(retval)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -4341,7 +4340,7 @@ CONTAINS
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     IF(isActivePelement(Element) .OR. Element % Type % BasisFunctionDegree<2 ) THEN
+     IF( isPelement(Element) ) THEN
        retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
              uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx,USolver)
      ELSE

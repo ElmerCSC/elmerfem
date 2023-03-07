@@ -112,7 +112,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension

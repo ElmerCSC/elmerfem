@@ -358,12 +358,10 @@ CONTAINS
     
     dim = CoordinateSystemDimension()
 
-    ! Use p-element basis, unless 2nd or 3rd order nodal element
-    Pref = isPElement(Element) .OR. Element % Type % BasisFunctionDegree<2
     IF( RelOrder /= 0 ) THEN
-      IP = GaussPoints( Element, PReferenceElement = Pref, RelOrder = RelOrder)
+      IP = GaussPoints( Element, RelOrder = RelOrder)
     ELSE
-      IP = GaussPoints( Element, PReferenceElement = Pref )
+      IP = GaussPoints( Element )
     END IF
       
     ngp = IP % n
