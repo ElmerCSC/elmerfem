@@ -2779,9 +2779,8 @@ END SUBROUTINE DistributedRemeshParMMG
       Element % BoundaryInfo % Constraint = ref
 
       CALL MMG2D_GET_TRIFROMEDGE(mmgMesh,ii,parent,ied,ier)
-      PRINT *,'Edge:',kk,ii,nt,nt0,na,na0,parent,ied
       IF( parent < 1 .OR. parent > nt ) THEN
-        !PRINT *,'Edge:',ii,na,nt,nt0,parent,ied
+        PRINT *,'Edge:',ii,na,nt,nt0,parent,ied
         CALL Fatal(FuncName,'Parent out of range')
       END IF
       IF ( ier /= 1 ) CALL Fatal(FuncName,'Call to  MMG2D_Get_TRIFROMEDGE failed!')      
@@ -2920,7 +2919,7 @@ END SUBROUTINE DistributedRemeshParMMG
       NEle = 0
       DO tt=1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(tt)
-        IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) CYCLE
+        IF ( .NOT. CheckElementEquation( CurrentModel, Element, EquationName ) ) CYCLE
         NEle = NEle +1 
       END DO
       
@@ -2942,7 +2941,7 @@ END SUBROUTINE DistributedRemeshParMMG
     ! support only 303 elements no 404
     Nquad=0
 
-    PRINT *,'Nele:',NVert, Nele, Nedge
+    !PRINT *,'Nele:',NVert, Nele, Nedge, Mesh % NumberOfBulkElements - Nele
     
     CALL Info(FuncName,'Setting mesh for MMG2D',Level=20)
     
@@ -2990,11 +2989,11 @@ END SUBROUTINE DistributedRemeshParMMG
       IF( ASSOCIATED( Perm ) ) THEN
         CALL MMG2D_Set_triangle(mmgMesh, &
             Perm(NodeIndexes(1)), Perm(NodeIndexes(2)), Perm(NodeIndexes(3)), &
-            Element % BodyId, tt, ier)
+            Element % BodyId, jj, ier)
       ELSE
         CALL MMG2D_Set_triangle(mmgMesh, &
             NodeIndexes(1), NodeIndexes(2), NodeIndexes(3), &
-            Element % BodyId, tt, ier)
+            Element % BodyId, jj, ier)
       END IF        
       IF ( ier == 0 ) CALL Fatal(FuncName,'Call to MMG2D_Set_triangle failed!')
     END DO
