@@ -78,7 +78,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
-      RotorMode 
+      RotorMode, DoIt
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
   LOGICAL, POINTER :: NodeDone(:)
@@ -199,8 +199,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
      END DO
   END IF
 
-
-  IF( .NOT. Visited .AND. ASSOCIATED(Solver % Matrix) ) THEN
+  DoIt = ASSOCIATED( Solver % Matrix )
+  IF( DoIt ) THEN
+    DoIt = .NOT. Visited .OR. ListGetLogical( SolverParams,'mmg remesh',Found )     
+  END IF
+  
+  IF( DoIt ) THEN
     N = Solver % Mesh % MaxElementNodes 
     ALLOCATE( FORCE(N), STIFF(N,N), STAT=istat )
 
@@ -570,9 +574,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   DEALLOCATE( NodeDone )
+
+  CALL DefaultFinish()
   
   Visited = .TRUE.
-
 
 CONTAINS
 
