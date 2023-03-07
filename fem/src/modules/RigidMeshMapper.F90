@@ -524,13 +524,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ! moving and fixed walls.
       !------------------------------------------------------------------------------
       IF( GotRelaxField ) THEN
-        IF( RelaxPerm(NodeI) == 0 ) THEN
-          Found = .FALSE.
-        ELSE
-          Relax(1) = RelaxField( RelaxPerm( NodeI ) )
-          Found = .TRUE.
+        IF( RelaxPerm(NodeI) > 0 ) THEN
+          Relax(1:1) = RelaxField( RelaxPerm( NodeI ) )
+          dx = Relax(1) * dx
         END IF
-        dx = Relax(1) * dx 
       ELSE IF( AnyRelax ) THEN
         Relax(1:1) = ListGetReal( ValueList,'Mesh Relax',1,NodeIndex,Found)
         IF( Found ) dx = Relax(1) * dx

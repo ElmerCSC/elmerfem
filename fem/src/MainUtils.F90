@@ -5108,8 +5108,6 @@ CONTAINS
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
-       PRINT *,'UPDATE ACTIVE'
-       
        IF ( Found ) THEN
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )

@@ -2648,9 +2648,6 @@ END SUBROUTINE DistributedRemeshParMMG
           END IF
         END IF
       END DO
-        
-      PRINT *,'NewStuff:',nt, na, np
-      PRINT *,'OldStuff:',nt0, na0, np0, np1
     END IF
     
     NewMesh % MaxElementNodes = 3
@@ -2707,7 +2704,7 @@ END SUBROUTINE DistributedRemeshParMMG
             Perm0(i) = jmin
           END IF
         END DO        
-        PRINT *,'MaxMin dx:',SQRT(s2minmax)
+        !PRINT *,'MaxMin dx:',SQRT(s2minmax)
         IF( SQRT(s2minmax) > 1.0e-8 ) THEN
           CALL Fatal(FuncName,'Could not accurately find the boundary nodes in the new mesh!')
         END IF

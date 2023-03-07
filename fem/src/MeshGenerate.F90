@@ -465,7 +465,8 @@ CONTAINS
       CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
     END IF
 
-    CALL CheckMeshInfo(NewMesh)
+    !For debugging
+    !CALL CheckMeshInfo(NewMesh)
     
     Visited = .TRUE.
     
