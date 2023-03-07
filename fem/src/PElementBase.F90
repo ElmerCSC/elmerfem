@@ -227,7 +227,7 @@ MODULE PElementBase
       phiPar = u
       IF (invert) phiPar = -phiPar
 
-      value = phi(i,phiPar)
+      value = Phi(i,phipar)
     END FUNCTION LineBubblePBasis
 
 
@@ -271,7 +271,7 @@ MODULE PElementBase
       
       phiPar = u
       IF (invert) phiPar = -phiPar
-      
+
       grad = dPhi(i,phiPar)
     END FUNCTION dLineBubblePBasis
 
@@ -351,13 +351,13 @@ MODULE PElementBase
       ! By local edge, calculate value of nodal function
       SELECT CASE(node)
       CASE (1)
-         value = 1d0/4*(1-u)*(1-v)
+         value = (1-u)*(1-v)/4
       CASE (2)
-         value = 1d0/4*(1+u)*(1-v)
+         value = (1+u)*(1-v)/4
       CASE (3)
-         value = 1d0/4*(1+u)*(1+v)
+         value = (1+u)*(1+v)/4
       CASE (4)
-         value = 1d0/4*(1-u)*(1+v)
+         value = (1-u)*(1+v)/4
       CASE DEFAULT
          CALL Fatal('PElementBase::QuadNodalPBasis', 'Unknown node for quadrilateral')
       END SELECT
@@ -410,17 +410,17 @@ MODULE PElementBase
       ! By local edge, calculate value of nodal function
       SELECT CASE(node)
       CASE (1)
-         grad(1) = -1d0/4*(1-v)
-         grad(2) = -1d0/4*(1-u)
+         grad(1) = -(1-v)/4
+         grad(2) = -(1-u)/4
       CASE (2)
-         grad(1) =  1d0/4*(1-v)
-         grad(2) = -1d0/4*(1+u)
+         grad(1) =  (1-v)/4
+         grad(2) = -(1+u)/4
       CASE (3)
-         grad(1) =  1d0/4*(1+v)
-         grad(2) =  1d0/4*(1+u)
+         grad(1) =  (1+v)/4
+         grad(2) =  (1+u)/4
       CASE (4)
-         grad(1) = -1d0/4*(1+v)
-         grad(2) =  1d0/4*(1-u)
+         grad(1) = -(1+v)/4
+         grad(2) =  (1-u)/4
       CASE DEFAULT
          CALL Fatal('PElementBase::dQuadNodalPBasis', 'Unknown node for quadrilateral')
       END SELECT
@@ -1052,9 +1052,9 @@ MODULE PElementBase
       END IF
 
       ! Get value of edge function
-      vPhi  = VarPhi(i,Phipar)
-      dvPhi = dVarPhi(i,Phipar)*dPhiPar
-      grad = dNa*Nb*vPhi + Na*dNb*vPhi + Na*Nb*dVPhi
+      vPhi  = varPhi(i,Phipar)
+      dvPhi = dvarPhi(i,Phipar)*dPhiPar
+      grad = dNa*Nb*vPhi + Na*dNb*vPhi + Na*Nb*dvPhi
     END FUNCTION dQuadEdgePBasis
 
 

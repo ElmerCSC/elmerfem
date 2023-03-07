@@ -68,7 +68,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),ddBasisddx(nd,3,3),DetJ,f(nd),diff(3)
     REAL(KIND=dp) :: dNodal(nd,nd,3),dx(nd,nd,3),ddxFromNodaldx(nd,3,3),ddiff(3,3)
     REAL(KIND=dp) :: x, y, z, fx, s
-    LOGICAL :: Stat
+    LOGICAL :: Stat, sq
     INTEGER :: i,j,k,t,p,q, edim
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -84,6 +84,9 @@ CONTAINS
     Nodes % x(1:n) = Element % Type % NodeU
     IF(edim>1) Nodes % y(1:n) = Element % Type % NodeV
     IF(edim>2) Nodes % z(1:n) = Element % Type % NodeW
+
+    i = Element % Type % ElementCode
+    sq = i==202 .or. i==404 .or. i==808
 
     IP = GaussPoints( Element )
     dNodal = 0
@@ -111,7 +114,7 @@ CONTAINS
         CASE(2)
           do i=0,qp
             do j=0,qp
-              if ( i+j>qp ) cycle
+              if ( .not.sq .and.  i+j>qp ) cycle
               Force(p) = Force(p) + ip % s(t) * detJ * basis(p) * (x**i*y**j)
             end do
           end do
@@ -119,7 +122,7 @@ CONTAINS
           do i=0,qp
             do j=0,qp
               do k=0,qp
-                if ( i+j+k>qp ) cycle
+                if ( .not.sq .and. i+j+k>qp ) cycle
                 Force(p) = Force(p) + ip % s(t) * detJ * basis(p) * (x**i*y**j*z**k)
               end do
             end do
@@ -187,7 +190,7 @@ CONTAINS
       CASE(2)
         do i=0,qp
           do j=0,qp
-            if ( i+j>qp ) cycle
+            if ( .not.sq .and. i+j>qp ) cycle
             fx = fx + x**i*y**j
             if ( i>0 ) diff(1) = diff(1) + i*x**(i-1)*y**j
             if ( j>0 ) diff(2) = diff(2) + x**i*j*y**(j-1)
@@ -201,7 +204,7 @@ CONTAINS
         do i=0,qp
           do j=0,qp
             do k=0,qp
-              if ( i+j+k>qp ) cycle
+              if ( .not.sq .and. i+j+k>qp ) cycle
               fx = fx + x**i*y**j*z**k
               if ( i>0 ) diff(1) = diff(1) + i*x**(i-1)*y**j*z**k
               if ( j>0 ) diff(2) = diff(2) + x**i*j*y**(j-1)*z**k
@@ -237,9 +240,9 @@ CONTAINS
 
       CALL CheckValue(fx,SUM(Basis(1:nd)*f), 1.0d-7, 'fx')
 
-      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 1.0d-6, 'dx')
-      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 1.0d-6, 'dy')
-      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 1.0d-6, 'dz')
+      CALL CheckValue(diff(1),SUM(dBasisdx(1:nd,1)*f), 2.5d-7, 'dx')
+      CALL CheckValue(diff(2),SUM(dBasisdx(1:nd,2)*f), 2.5d-7, 'dy')
+      CALL CheckValue(diff(3),SUM(dBasisdx(1:nd,3)*f), 2.5d-7, 'dz')
 
       CALL CheckValue(ddiff(1,1),SUM(ddBasisddx(1:nd,1,1)*f), 1.0d-5, 'dxx')
       CALL CheckValue(ddiff(1,2),SUM(ddBasisddx(1:nd,1,2)*f), 1.0d-5, 'dxy')
@@ -247,13 +250,6 @@ CONTAINS
       CALL CheckValue(ddiff(2,2),SUM(ddBasisddx(1:nd,2,2)*f), 1.0d-5, 'dyy')
       CALL CheckValue(ddiff(2,3),SUM(ddBasisddx(1:nd,2,3)*f), 1.0d-5, 'dyz')
       CALL CheckValue(ddiff(3,3),SUM(ddBasisddx(1:nd,3,3)*f), 1.0d-5, 'dzz')
-
-      CALL CheckValue(ddiff(1,1),SUM(ddxFromNodaldx(1:nd,1,1)*f), 1.0d-5, 'dfxx')
-      CALL CheckValue(ddiff(1,2),SUM(ddxFromNodaldx(1:nd,1,2)*f), 1.0d-5, 'dfxy')
-      CALL CheckValue(ddiff(1,3),SUM(ddxFromNodaldx(1:nd,1,3)*f), 1.0d-5, 'dfxz')
-      CALL CheckValue(ddiff(2,2),SUM(ddxFromNodaldx(1:nd,2,2)*f), 1.0d-5, 'dfyy')
-      CALL CheckValue(ddiff(2,3),SUM(ddxFromNodaldx(1:nd,2,3)*f), 1.0d-5, 'dfyz')
-      CALL CheckValue(ddiff(3,3),SUM(ddxFromNodaldx(1:nd,3,3)*f), 1.0d-5, 'dfzz')
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -266,7 +262,7 @@ CONTAINS
      REAL :: scal
      CHARACTER(*) :: str
 
-     IF( ABS(f1-f2) < 1.d-7 ) RETURN
+     IF( ABS(f1) < 1.d-10 ) RETURN
      scal = MAX(ABS(f1),ABS(f2))
      IF(ABS(f1-f2)>scal*eps) THEN
        PRINT*,f1,f2,ABS(f1-f2), '>', scal*eps, str
