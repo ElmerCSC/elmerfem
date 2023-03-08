@@ -2652,7 +2652,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 {
   int noknots,noelements,maxnodes,elematts,nodeatts,dim;
   int elementtype,bcmarkers,sideelemtype;
-  int i,j,k,*boundnodes;
+  int i,j,k,jmin,jmax,kmin,kmax,*boundnodes;
   FILE *in;
   char *cp,line[MAXLINESIZE],elemfile[MAXFILESIZE],nodefile[MAXFILESIZE], 
     polyfile[MAXLINESIZE];
@@ -2705,13 +2705,19 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=noknots;i++) 
     boundnodes[i] = 0;
 
+  k = 0;
+  jmax = 0;
+  jmin = noknots;
   in = fopen(nodefile,"r");
   GETLINE;
   for(i=1; i <= noknots; i++) {
     GETLINE;
     cp = line;
     j = next_int(&cp);
-    if(j != i) printf("LoadTriangleInput: nodes i=%d j=%d\n",i,j);
+    if(j != i) k++;
+    jmax = MAX(jmax,j);
+    jmin = MIN(jmin,j);
+    
     data->x[i] = next_real(&cp);
     data->y[i] = next_real(&cp);
     for(j=0;j<nodeatts;j++) {
@@ -2721,7 +2727,15 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
       boundnodes[i] = next_int(&cp);
   }
   fclose(in);
+  printf("LoadTriangleInput: Node index different from order index for %d nodes\n",k);
+  printf("LoadTriangleInput: Node index ranged was [%d %d]\n",jmin,jmax);
+    
 
+  k = 0;
+  jmax = 0;
+  jmin = noelements;
+  kmax = 0;
+  kmin = noknots;
   in = fopen(elemfile,"r");
   GETLINE;
   for(i=1; i <= noelements; i++) {
@@ -2729,7 +2743,9 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     cp = line;
     data->elementtypes[i] = elementtype;
     j = next_int(&cp);
-    if(j != i) printf("LoadTriangleInput: elem i=%d j=%d\n",i,j);
+    if(j != i) k++;
+    jmin = MIN(jmin,j);
+    jmax = MAX(jmax,j);
     for(j=0;j<3;j++)
       data->topology[i][j] = next_int(&cp);
     if(maxnodes == 6) {
@@ -2737,11 +2753,16 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
       data->topology[i][5] = next_int(&cp);
       data->topology[i][3] = next_int(&cp);
     }
+    for(j=0;j<maxnodes;j++) kmax = MAX(kmax,data->topology[i][j]);
+    for(j=0;j<maxnodes;j++) kmin = MIN(kmin,data->topology[i][j]);
     data->material[i] = 1;
   }
   fclose(in);
-
-
+  printf("LoadTriangleInput: Element index different from order index for %d nodes\n",k);
+  printf("LoadTriangleInput: Element index ranged was [%d %d]\n",jmin,jmax);
+  printf("LoadTriangleInput: Node indexes in elements range [%d %d]\n",kmin,kmax);
+  
+  
   sprintf(polyfile,"%s.poly",prefix);
   if ((in = fopen(polyfile,"r")) == NULL) {
     printf("LoadTriangleInput: The opening of the poly file %s failed!\n",polyfile);
@@ -2816,6 +2837,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 
 
       /* Find the correct side of the triangular element */
+      k = 0;
       for(side=0;side<elemsides;side++) {
 	GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
 	
@@ -2829,8 +2851,11 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 	  bound->parent2[i] = 0;
 	  bound->side2[i] = 0;
 	  bound->types[i] = bctype;
+	  k++;
 	}
       }
+      printf("LoadTriangleInput: %d boundary elements found correctly out of %d\n",k,elemsides);
+
     }
   } 
 
