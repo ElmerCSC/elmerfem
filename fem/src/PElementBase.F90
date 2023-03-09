@@ -815,7 +815,6 @@ MODULE PElementBase
       ! Calculate value of function without direction and return
       ! if local numbering not present
       IF (.NOT. PRESENT(localNumbers)) THEN
-         grad = 0
          grad(1) = dPhi(i,u)*Phi(j,v)
          grad(2) = Phi(i,u)*dPhi(j,v)
          RETURN
@@ -1192,7 +1191,6 @@ MODULE PElementBase
       INTEGER, INTENT(IN) :: i,j
       REAL (KIND=dp), INTENT(IN) :: u,v
       INTEGER, OPTIONAL :: localNumbers(4)
-      INTEGER :: local(4) 
       REAL (KIND=dp) :: La, Lb, Lc, value, Pa, Pb
 
       ! Calculate value of function without direction and return
@@ -1246,7 +1244,7 @@ MODULE PElementBase
       INTEGER, OPTIONAL :: localNumbers(4)
       REAL(Kind=dp) :: La, Lb, Lc, Pa, Pb, Legi, Legj
       REAL(Kind=dp), DIMENSION(2) :: dLa, dLb, dLc, grad, dPa, dPb, dLegi, dLegj
-      
+
       ! Calculate value of function without direction and return
       ! if local numbering not present
       IF (.NOT. PRESENT(localNumbers)) THEN
@@ -1264,11 +1262,11 @@ MODULE PElementBase
       dLb = dQuadL(localNumbers(2),u,v)
       dLc = dQuadL(localNumbers(4),u,v)
 
-      Pa = QuadNodalPBasis(LocalNumbers(1),u,v)
-      Pb = QuadNodalPBasis(LocalNumbers(3),u,v)
+      Pa = QuadNodalPBasis(localNumbers(1),u,v)
+      Pb = QuadNodalPBasis(localNumbers(3),u,v)
 
-      dPa = dQuadNodalPBasis(LocalNumbers(1),u,v)
-      dPb = dQuadNodalPBasis(LocalNumbers(3),u,v)
+      dPa = dQuadNodalPBasis(localNumbers(1),u,v)
+      dPb = dQuadNodalPBasis(localNumbers(3),u,v)
 
       Legi = LegendreP(i,Lb-La)
       Legj = LegendreP(j,Lc-La)

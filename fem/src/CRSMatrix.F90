@@ -1270,7 +1270,6 @@ CONTAINS
       
       DO l=A % Rows(n),A % Rows(n+1)-1
         i = A % Cols(l)
-        
         IF( A % ConstrainedDOF(i) ) THEN         
           b(n) = b(n) - A % Values(l) * A % DValues(i)
 

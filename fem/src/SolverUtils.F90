@@ -8221,9 +8221,7 @@ CONTAINS
         
     ! Eliminate all entries in matrix that may be eliminated in one sweep
     ! If this is an offdiagonal entry this cannot be done.  
-    IF ( A % Symmetric .AND. .NOT. NoDiag ) THEN
-      CALL CRS_ElimSymmDirichlet(A,b)
-    END IF
+    IF ( A % Symmetric .AND. .NOT. NoDiag ) CALL CRS_ElimSymmDirichlet(A,b)
  
     
     DO k=1,A % NumberOfRows

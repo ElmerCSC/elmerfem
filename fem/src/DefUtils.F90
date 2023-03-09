@@ -5041,7 +5041,7 @@ CONTAINS
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
-     LOGICAL :: ReleaseAny, NodalBCsWithBraces
+     LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      
      CHARACTER(:), ALLOCATABLE :: Name
 
@@ -5183,12 +5183,14 @@ CONTAINS
                nb = x % Perm( gInd(k) )
                IF ( nb <= 0 ) CYCLE
                nb = Offset + x % DOFs * (nb-1) + DOF
+
                IF ( ConstantValue  ) THEN
                  A % ConstrainedDOF(nb) = .TRUE.
                  A % Dvalues(nb) = 0._dp
                ELSE
                  CALL ZeroRow( A, nb )
                  A % RHS(nb) = 0._dp
+                 A % Symmetric = .FALSE.
                END IF
              END DO
            ELSE
@@ -5313,9 +5315,7 @@ CONTAINS
 
            IF ( ConstantValue ) CYCLE
 
-
-           SELECT CASE(Parent % TYPE % DIMENSION)
-
+           SELECT CASE(Parent % Type % Dimension )
            CASE(2)
              ! If no edges do not try to set boundary conditions
              ! @todo This should changed to EXIT
@@ -5328,63 +5328,63 @@ CONTAINS
              n = Element % TYPE % NumberOfNodes
 
              ! Get indexes for boundary and values for dofs associated to them
-             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
-             CALL LocalBcBDOFs( BC, Element, numEdgeDofs, Name, STIFF, Work )
+             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, nd)
+             CALL LocalBcBDOFs( BC, Element, nd, Name, STIFF, Work )
 
-             IF ( Solver % Matrix % Symmetric ) THEN
+             AllConstrained = .TRUE.
+             DO l=1,n
+               nb = x % Perm( gInd(l) )
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs * (nb-1) + DOF
 
-               DO l=1,n
+               IF(A % ConstrainedDOF(nb)) THEN
+                 s = A % Dvalues(nb)
+                 DO k=n+1,nd
+                   Work(k) = Work(k) - s*STIFF(k,l)
+                   STIFF(k,l) = 0.0_dp
+                 END DO
+               ELSE
+                 AllConstrained = .FALSE.
+               END IF
+             END DO
+
+             IF(AllConstrained.AND.CoordinateSystemDimension()<=2) THEN
+               IF(nd==n+1) THEN
+                 Work(nd) = Work(nd) / STIFF(nd,nd)
+               ELSE
+                 CALL SolveLinSys(STIFF(n+1:nd,n+1:nd), Work(n+1:nd), nd-n)
+               END IF
+
+               DO l=n+1,nd
                  nb = x % Perm( gInd(l) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
 
-                 s = A % Dvalues(nb)
-                 DO k=n+1,numEdgeDOFs
-                   Work(k) = Work(k) - s*STIFF(k,l)
-                 END DO
-               END DO
-
-               DO k=n+1,numEdgeDOFs
-                 DO l=n+1,numEdgeDOFs
-                   STIFF(k-n,l-n) = STIFF(k,l)
-                 END DO
-                 Work(k-n) = Work(k)
-               END DO
-               l = numEdgeDOFs-n
-               IF ( l==1 ) THEN
-                 Work(1) = Work(1)/STIFF(1,1)
-               ELSE
-                 CALL SolveLinSys(STIFF(1:l,1:l),Work(1:l),l)
-               END IF
-
-               DO k=n+1,numEdgeDOFs
-                 nb = x % Perm( gInd(k) )
-                 IF ( nb <= 0 ) CYCLE
-                 nb = Offset + x % DOFs * (nb-1) + DOF
-
+                 A % Dvalues(nb) = Work(l)
                  A % ConstrainedDOF(nb) = .TRUE.
-                 A % Dvalues(nb) = Work(k-n)
                END DO
              ELSE
-
                ! Contribute this boundary to global system
                ! (i.e solve global boundary problem)
-               DO k=n+1,numEdgeDofs
+               A % Symmetric = .FALSE.
+               DO k=1,nd
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
-                 A % RHS(nb) = A % RHS(nb) + Work(k) 
-                 DO l=1,numEdgeDofs
-                   mb = x % Perm( gInd(l) )
-                   IF ( mb <= 0 ) CYCLE
-                   mb = Offset + x % DOFs * (mb-1) + DOF
-                   DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
-                     IF ( A % Cols(kk) == mb ) THEN
-                       A % Values(kk) = A % Values(kk) + STIFF(k,l)
-                       EXIT
-                     END IF
+                 IF(.NOT.A % ConstrainedDOF(nb)) THEN
+                   A % RHS(nb) = A % RHS(nb) + Work(k) 
+                   DO l=n+1,nd
+                     mb = x % Perm( gInd(l) )
+                     IF ( mb <= 0 ) CYCLE
+                     mb = Offset + x % DOFs * (mb-1) + DOF
+                     DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
+                       IF ( A % Cols(kk) == mb ) THEN
+                         A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                         EXIT
+                       END IF
+                     END DO
                    END DO
-                 END DO
+                 END IF
                END DO
              END IF
 
@@ -5397,46 +5397,50 @@ CONTAINS
              n = Element % TYPE % NumberOfNodes
 
              ! Get global boundary indexes and solve dofs associated to them
-             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, numEdgeDofs )
+             CALL mGetBoundaryIndexesFromParent( Solver % Mesh, Element, gInd, nd )
 
              ! If boundary face has no dofs skip to next boundary element
-             IF (numEdgeDOFs == n) CYCLE
+             IF (nd == n) CYCLE
 
              ! Get local solution
-             CALL LocalBcBDofs( BC, Element, numEdgeDofs, Name, STIFF, Work )
+             CALL LocalBcBDofs( BC, Element, nd, Name, STIFF, Work )
 
-             n_start = 1
-             IF ( Solver % Matrix % Symmetric ) THEN
-               DO l=1,n
-                 nb = x % Perm( gInd(l) )
-                 IF ( nb <= 0 ) CYCLE
-                 nb = Offset + x % DOFs * (nb-1) + DOF
+             DO l=1,n
+               nb = x % Perm( gInd(l) )
+               IF ( nb <= 0 ) CYCLE
+               nb = Offset + x % DOFs * (nb-1) + DOF
 
+               IF(A % ConstrainedDOF(nb)) THEN
                  s = A % Dvalues(nb)
-                 DO k=n+1,numEdgeDOFs
+                 DO k=n+1,nd
                    Work(k) = Work(k) - s*STIFF(k,l)
+                   STIFF(k,l) = 0
+                   STIFF(l,k) = 0
                  END DO
-               END DO
-               n_start=n+1
-             END IF
+               END IF
+             END DO
 
              ! Contribute this entry to global boundary problem
-             DO k=n+1,numEdgeDOFs
+             A % Symmetric = .FALSE.
+             DO k=1,nd
                nb = x % Perm( gInd(k) )
                IF ( nb <= 0 ) CYCLE
                nb = Offset + x % DOFs * (nb-1) + DOF
-               A % RHS(nb) = A % RHS(nb) + Work(k) 
-               DO l=n_start,numEdgeDOFs
-                 mb = x % Perm( gInd(l) )
-                 IF ( mb <= 0 ) CYCLE
-                 mb = Offset + x % DOFs * (mb-1) + DOF
-                 DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
-                   IF ( A % Cols(kk) == mb ) THEN
-                     A % Values(kk) = A % Values(kk) + STIFF(k,l)
-                     EXIT
-                   END IF
+
+               IF(.NOT.A % ConstrainedDOF(nb)) THEN
+                 A % RHS(nb) = A % RHS(nb) + Work(k) 
+                 DO l=n+1,nd
+                   mb = x % Perm( gInd(l) )
+                   IF ( mb <= 0 ) CYCLE
+                   mb = Offset + x % DOFs * (mb-1) + DOF
+                   DO kk=A % Rows(nb)+DOF-1,A % Rows(nb+1)-1,x % DOFs
+                     IF ( A % Cols(kk) == mb ) THEN
+                       A % Values(kk) = A % Values(kk) + STIFF(k,l)
+                       EXIT
+                     END IF
+                   END DO
                  END DO
-               END DO
+               END IF
              END DO
            END SELECT
          END DO
