@@ -50,6 +50,7 @@ MODULE DefUtils
 #include "../config.h"
 
    USE Adaptive
+   USE MeshGenerate 
    USE SolverUtils
 
    IMPLICIT NONE
@@ -3385,7 +3386,6 @@ CONTAINS
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
-
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
 
@@ -3421,6 +3421,11 @@ CONTAINS
        IF( ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) ) THEN
          CALL FinalizeLumpedMatrix( Solver )            
        END IF
+     END IF
+
+
+     IF( ListGetLogical( Solver % Values,'MMG Remesh', Found ) ) THEN
+       CALL Remesh(CurrentModel,Solver)
      END IF
      
      CALL Info('DefaultFinish','Finished solver: '//&         

@@ -455,7 +455,7 @@ CONTAINS
 #endif          
       ELSE       
         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
-        NewMesh => ReMesh( RefMesh, ErrorLimit/3, HValue, &
+        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       END IF
       RemeshTime = RealTime() - t
@@ -970,7 +970,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  FUNCTION ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
@@ -1088,7 +1088,7 @@ CONTAINS
     END IF
 
 !------------------------------------------------------------------------------
-  END FUNCTION ReMesh
+  END FUNCTION External_ReMesh
 !------------------------------------------------------------------------------
 
 

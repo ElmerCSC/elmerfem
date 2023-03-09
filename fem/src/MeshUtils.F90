@@ -17240,6 +17240,134 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Check mesh for various info. Mainly for debugging.
+!------------------------------------------------------------------------------
+  SUBROUTINE CheckMeshInfo( Mesh )
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    INTEGER :: na, nb, nn
+    INTEGER :: i,j,k,t,ii,jj,maxi,mini
+    INTEGER, ALLOCATABLE :: NodeHits(:), TypeHits(:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: mins, maxs, s, s2
+    CHARACTER(*), PARAMETER :: Caller="CheckMeshInfo"   
+!------------------------------------------------------------------------------
+
+    CALL Info(Caller,'Checking mesh information')
+
+    na = Mesh % NumberOfBulkElements
+    nb = Mesh % NumberOfBoundaryElements
+    nn = Mesh % NumberOfNodes
+    
+    CALL Info(Caller,'Number of bulk elements: '//I2S(na))
+    CALL Info(Caller,'Number of boundary elements: '//I2S(nb))
+    CALL Info(Caller,'Number of nodes: '//I2S(nn))
+
+    ALLOCATE(TypeHits(27))
+    TypeHits = 0
+
+    ALLOCATE(NodeHits(nn))
+    NodeHits = 0
+
+    DO t=1,na
+      Element => Mesh % Elements(t)
+      i = Element % TYPE % NumberOfNodes
+      TypeHits(i) = TypeHits(i)+1
+      IF(ANY(Element % NodeIndexes < 1 ) ) THEN
+        PRINT *,'NodeIndexes:', Element % NodeIndexes 
+        CALL Fatal(Caller,'Bulk element '//I2S(t)//' has non-positive index!')
+      END IF
+      IF(ANY(Element % NodeIndexes > nn ) ) THEN
+        PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn 
+        CALL Fatal(Caller,'Bulk element '//I2S(t)//' has too large index!')
+      END IF
+      NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
+    END DO
+    DO i=1,27
+      j = TypeHits(i)
+      IF(j>0) CALL Info(Caller,'Bulk elements with '//I2S(i)//' nodes: '//I2S(j))
+    END DO
+    PRINT *,'Bulk node hits range: ',MINVAL(NodeHits), MAXVAL(NodeHits)
+
+    TypeHits = 0
+    NodeHits = 0
+    DO t=na+1,na+nb
+      Element => Mesh % Elements(t)
+      i = Element % TYPE % NumberOfNodes
+      TypeHits(i) = TypeHits(i)+1
+      IF(ANY(Element % NodeIndexes < 1 ) ) THEN
+        PRINT *,'NodeIndexes:', Element % NodeIndexes 
+        CALL Fatal(Caller,'Boundary element '//I2S(t)//' has non-positive index!')
+      END IF
+      IF(ANY(Element % NodeIndexes > nn ) ) THEN
+        PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn 
+        CALL Fatal(Caller,'Buondary element '//I2S(t)//' has too large index!')
+      END IF
+      NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
+
+      IF(ASSOCIATED(Element % BoundaryInfo) ) THEN
+        IF(.NOT. ( ASSOCIATED(Element % BoundaryInfo % Left) .OR. &
+            ASSOCIATED(Element % BoundaryInfo % Right) ) ) THEN
+          PRINT *,'Boundary Info present but no left/right parent: ',t
+        END IF
+      END IF
+    END DO
+    DO i=1,27
+      j = TypeHits(i)
+      IF(j>0) CALL Info(Caller,'Boundry elements with '//I2S(i)//' nodes: '//I2S(j))
+    END DO
+    PRINT *,'Boundary node hits range: ',MINVAL(NodeHits, NodeHits >0), MAXVAL(NodeHits)
+    
+    PRINT *,'Coordinate x: ',MINVAL(Mesh % Nodes % x), MAXVAL(Mesh % Nodes % x)
+    PRINT *,'Coordinate y: ',MINVAL(Mesh % Nodes % y), MAXVAL(Mesh % Nodes % y)
+    PRINT *,'Coordinate z: ',MINVAL(Mesh % Nodes % z), MAXVAL(Mesh % Nodes % z)
+
+    mins = HUGE(mins); maxs = 0.0_dp
+    DO t=1,na+nb
+      Element => Mesh % Elements(t)
+      DO i=1,Element % TYPE % NumberOfNodes
+        ii = Element % NodeIndexes(i)
+        DO j=i+1, Element % TYPE % NumberOfNodes
+          jj = Element % NodeIndexes(j)
+          s2 = (Mesh % Nodes % x(ii)-Mesh % Nodes % x(jj))**2 + &
+              (Mesh % Nodes % y(ii)-Mesh % Nodes % y(jj))**2 + &
+              (Mesh % Nodes % z(ii)-Mesh % Nodes % z(jj))**2
+          IF( s2 < mins ) THEN
+            mins = s2
+            mini = t 
+          END IF
+          IF( s2 > maxs ) THEN
+            maxs = s2
+            maxi = t
+          END IF
+        END DO
+      END DO
+      
+      IF( t==na .OR. t==na+nb) THEN
+        mins = SQRT(mins)
+        maxs = SQRT(maxs)            
+        IF(t==na) THEN
+          PRINT *,'Bulk element h range:',mins,maxs          
+          mins = HUGE(mins); maxs = 0.0_dp
+        ELSE
+          PRINT *,'Boundary element h range:',mins,maxs
+        END IF
+        
+        Element => Mesh % Elements(maxi)
+        PRINT *,'Maximum element:',maxi
+        PRINT *,'x:',Mesh % Nodes % x(Element % NodeIndexes)
+        PRINT *,'y:',Mesh % Nodes % y(Element % NodeIndexes)
+        PRINT *,'z:',Mesh % Nodes % z(Element % NodeIndexes)
+        
+      END IF
+    END DO
+    
+    CALL Info(Caller,'Finished checking mesh!')
+!------------------------------------------------------------------------------
+  END SUBROUTINE CheckMeshInfo
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -18595,16 +18723,16 @@ END SUBROUTINE FindNeighbourNodes
 
      IF  (DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
-          SaveVar % Name, ThisOnly = .FALSE. )
+           SaveVar % Name, ThisOnly = .FALSE. )
        CALL AllocateVector(Permutation, SIZE(Solver % Variable % Perm))
      ELSE
        ALLOCATE(Permutation(Mesh % NumberOfNodes + &
-          Solver % Mesh % MaxEdgeDofs*Mesh % NumberOfEdges + &
-            Solver % Mesh % MaxFaceDofs*Mesh % NumberOfFaces + &
-              Solver % Mesh % MaxBDofs*Mesh % NumberOfBulkElements))
-    END IF
-    Permutation = 0
-
+           Solver % Mesh % MaxEdgeDofs*Mesh % NumberOfEdges + &
+           Solver % Mesh % MaxFaceDofs*Mesh % NumberOfFaces + &
+           Solver % Mesh % MaxBDofs*Mesh % NumberOfBulkElements))
+     END IF
+     Permutation = 0
+     
      
      GlobalBubbles = ListGetLogical( Solver % Values, &
          'Bubbles in Global System', Found )
@@ -18621,11 +18749,11 @@ END SUBROUTINE FindNeighbourNodes
      IF( ASSOCIATED( Matrix ) ) THEN
        Matrix % Symmetric = ListGetLogical( Solver % Values, &
            'Linear System Symmetric', Found )
-       
+
        Matrix % Lumped = ListGetLogical( Solver % Values, &
            'Lumped Mass Matrix', Found )    
      END IF
-       
+
      IF(.NOT. DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
            SaveVar % Name, ThisOnly = .TRUE. )                     
@@ -18651,7 +18779,7 @@ END SUBROUTINE FindNeighbourNodes
            END IF
          END DO
        END DO
-       
+
        IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
          DO j=1,SIZE(Solver % Variable % PrevValues,2)
            Work = Solver % Variable % PrevValues(:,j)
@@ -18669,46 +18797,46 @@ END SUBROUTINE FindNeighbourNodes
        Solver % Variable % Perm = Permutation
        DEALLOCATE( Permutation )
      END IF
-       
+
      Solver % Variable % Solver => Solver
 
 
      CALL AllocateVector( Matrix % RHS, Matrix % NumberOfRows )
 
      IF ( ASSOCIATED(SaveVar % EigenValues) ) THEN
-        n = SIZE(SaveVar % EigenValues)
+       n = SIZE(SaveVar % EigenValues)
 
-        IF ( n > 0 ) THEN
-           Solver % NOFEigenValues = n
-           CALL AllocateVector( Solver % Variable % EigenValues,n )
-           CALL AllocateArray( Solver % Variable % EigenVectors, n, &
-                    SIZE(Solver % Variable % Values) ) 
+       IF ( n > 0 ) THEN
+         Solver % NOFEigenValues = n
+         CALL AllocateVector( Solver % Variable % EigenValues,n )
+         CALL AllocateArray( Solver % Variable % EigenVectors, n, &
+             SIZE(Solver % Variable % Values) ) 
 
-           IF( Solver % Variable % Dofs > 1 ) THEN
-             DO k=1,Solver % Variable % DOFs
-               str = ComponentName( Solver % Variable % Name, k )
-               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
-               IF ( ASSOCIATED( Var ) ) THEN
-                 Var % EigenValues => Solver % Variable % EigenValues
-                 Var % EigenVectors =>  & 
-                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
-               END IF
-             END DO
-           END IF
-           
-           Solver % Variable % EigenValues  = 0.0d0
-           Solver % Variable % EigenVectors = 0.0d0
+         IF( Solver % Variable % Dofs > 1 ) THEN
+           DO k=1,Solver % Variable % DOFs
+             str = ComponentName( Solver % Variable % Name, k )
+             Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+             IF ( ASSOCIATED( Var ) ) THEN
+               Var % EigenValues => Solver % Variable % EigenValues
+               Var % EigenVectors =>  & 
+                   Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+             END IF
+           END DO
+         END IF
 
-           CALL AllocateVector( Matrix % MassValues, SIZE(Matrix % Values) )
-           Matrix % MassValues = 0.0d0
-        END IF
+         Solver % Variable % EigenValues  = 0.0d0
+         Solver % Variable % EigenVectors = 0.0d0
+
+         CALL AllocateVector( Matrix % MassValues, SIZE(Matrix % Values) )
+         Matrix % MassValues = 0.0d0
+       END IF
      ELSE IF ( ASSOCIATED( Solver % Matrix ) ) THEN
-        IF( ASSOCIATED( Solver % Matrix % Force) ) THEN
-           n1 = Matrix % NumberOFRows
-           n2 = SIZE(Solver % Matrix % Force,2)
-           ALLOCATE(Matrix % Force(n1,n2))
-           Matrix % Force = 0.0d0
-        END IF
+       IF( ASSOCIATED( Solver % Matrix % Force) ) THEN
+         n1 = Matrix % NumberOFRows
+         n2 = SIZE(Solver % Matrix % Force,2)
+         ALLOCATE(Matrix % Force(n1,n2))
+         Matrix % Force = 0.0d0
+       END IF
      END IF
 
      Solver % Matrix => Matrix

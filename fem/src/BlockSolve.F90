@@ -1776,13 +1776,15 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Amat, PMat
     TYPE(Variable_t), POINTER :: AVar
     
+    CALL Info('BlockPrecMatrix','Checking for tailored preconditioning matrices',Level=6)
     
     Params => Solver % Values
- 
+    
     ! The user may give a user defined preconditioner matrix
     !-----------------------------------------------------------
     DO RowVar=1,NoVar
       i = TotMatrix % Submatrix(RowVar,RowVar) % PrecMat % NumberOfRows 
+
       IF( i > 0 ) CYCLE
       
       str = 'Prec Matrix Diffusion '//I2S(RowVar)
@@ -1792,7 +1794,7 @@ CONTAINS
       Coeff = ListGetCReal( Params, str, GotIt2)
       
       IF( GotIt .OR. GotIt2 ) THEN
-        CALL Info('BlockPrecMatrix','Creating simple preconditioning matrix')
+        CALL Info('BlockPrecMatrix','Creating simple preconditioning matrix',Level=8)
         
         CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(RowVar,RowVar) % Mat, &
             TotMatrix % Submatrix(RowVar,RowVar) % PrecMat )   
@@ -1808,6 +1810,31 @@ CONTAINS
         END IF
       END IF
 
+      str = 'Prec Matrix Complex Coeff'
+      Coeff = ListGetCReal( Params, str, GotIt )
+
+      IF( GotIt ) THEN
+        IF(RowVar==1) THEN
+          CONTINUE
+        ELSE IF(RowVar==2) THEN
+          Coeff = -Coeff
+        ELSE
+          CALL Fatal('BlockPrecMatrix','Assuming only two blocks for the complex preconditioner!')
+        END IF
+
+        CALL Info('BlockPrecMatrix','Creating preconditioning matrix from block sums',Level=8)       
+        CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(RowVar,RowVar) % Mat, &
+            TotMatrix % Submatrix(RowVar,RowVar) % PrecMat )   
+        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
+
+        AMat % Values = TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values                
+        DO ColVar=1,NoVar
+          IF(ColVar == RowVar) CYCLE
+          AMat % Values = Amat % Values + &
+              Coeff * TotMatrix % Submatrix(RowVar,ColVar) % Mat % Values                
+        END DO
+      END IF
+      
       str = 'Prec Matrix Diagonal '//I2S(RowVar)
       Coeff = ListGetCReal( Params, str, GotIt)
       IF( GotIt ) THEN
@@ -4235,9 +4262,8 @@ CONTAINS
       ELSE IF( BlockDummy .OR. VarDofs == 1 ) THEN
         CALL Info('BlockSolveInt','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
-        TotMatrix % SubMatrix(1,1) % Mat % Complex = ListGetLogical(Params,'Linear System Complex',Found)
-        
-      ELSE 
+        TotMatrix % SubMatrix(1,1) % Mat % Complex = ListGetLogical(Params,'Linear System Complex',Found)        
+      ELSE
         CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
         VarDofs = NoVar
       END IF

@@ -1340,7 +1340,9 @@
        CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
-
+       CALL ListAddLogical(Params,'No Matrix',.TRUE.)
+       CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
+       
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
