@@ -1310,7 +1310,6 @@ CONTAINS
   END SUBROUTINE BlockPickMatrixHorVer
 
 
-#if 1
   !-------------------------------------------------------------------------------------
   !> Picks linear parts of a quadratic Hcurl matrix.
   !-------------------------------------------------------------------------------------
@@ -1319,13 +1318,14 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     INTEGER :: Novar
 
-    INTEGER::i,j,k,n,n0,dofs,nn,t,ndir(2),ic,kc
+    INTEGER::i,j,k,n,m,n0,dofs,nn,t,ic,kc
     TYPE(Matrix_t), POINTER :: A,B
-    INTEGER, ALLOCATABLE :: DTag(:), DPerm(:)
+    INTEGER, ALLOCATABLE :: DTag(:), DPerm(:), ndir(:)
     INTEGER, POINTER :: QuadIndexes(:), LinIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-
+    LOGICAL :: DoCmplx
+    
     n = 28 ! currently just large enough
     ALLOCATE( QuadIndexes(n), LinIndexes(n) )
         
@@ -1336,12 +1336,22 @@ CONTAINS
     
     A => Solver % Matrix
     dofs = Solver % Variable % Dofs
+
+    DoCmplx = (NoVar == 4)
     
-    n = A % NumberOfRows / dofs
-    
-    ALLOCATE( DTag(n), DPerm(n*dofs)  ) 
-    DTag = 2
-    DPerm = 0
+    m = A % NumberOfRows    
+    n = m
+    IF(.NOT. DoCmplx) n = n / dofs
+      
+    ALLOCATE( DTag(n), DPerm(m), ndir(NoVar) ) 
+
+    ! Set the default blocks. Only linear basis will be set separately. 
+    IF( DoCmplx ) THEN
+      DTag(1::2) = 3
+      DTag(2::2) = 4
+    ELSE     
+      DTag = 2
+    END IF
 
     IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Edges!')
@@ -1349,8 +1359,6 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Mesh % Faces ) ) THEN
       CALL Fatal('BlockPickMatrixHcurl','This subroutine needs Faces!')
     END IF
-
-    n0 = Mesh % NumberOfNodes
     
     ! quad
     ! CALL ListAddString( SolverParams, "Element", &
@@ -1361,29 +1369,41 @@ CONTAINS
     ! CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
 
         
-    n0 = Mesh % NumberOfNodes
-    
+    n0 = Mesh % NumberOfNodes    
     DO i=1, Mesh % NumberOfEdges
       ! This corresponds to the linear edge
       j = n0 + 2*i-1
       k = Solver % Variable % Perm(j)
-      IF(k<=0) THEN
-        CALL Fatal('BlockPickMatrixHcurl','k should not be zero!')
+      IF(k==0) CYCLE
+      IF( DoCmplx ) THEN
+        Dtag(2*k-1) = 1
+        Dtag(2*k) = 2 
+      ELSE
+        Dtag(k) = 1
       END IF
-      Dtag(k) = 1
     END DO
           
     ! Number linear and quadratic-only dofs separately
+    Dperm = 0
     ndir = 0
-    DO i=1,n
-      DO j=1,dofs
+    IF( DoCmplx ) THEN
+      DO i=1,n
         ndir(DTag(i)) = ndir(DTag(i)) + 1
-        k = dofs*(i-1)+j
-        DPerm(k) = ndir(DTag(i))
+        DPerm(i) = ndir(DTag(i))
       END DO
-    END DO
+    ELSE      
+      DO i=1,n
+        DO j=1,dofs
+          ndir(DTag(i)) = ndir(DTag(i)) + 1
+          k = dofs*(i-1)+j
+          DPerm(k) = ndir(DTag(i))
+        END DO
+      END DO
+    END IF
 
-    PRINT *,'Linear and quadratic dofs:',ndir(1:NoVar)
+    DO i=1,NoVar
+      CALL Info('BlockPickMatrixHcurl','Block vector '//I2S(i)//' size: '//I2S(ndir(i)),Level=6)
+    END DO
 
     ! Allocate vectors if not present
     DO i=1,NoVar
@@ -1400,12 +1420,21 @@ CONTAINS
     
 
     DO i=1,A % NumberOfRows
-      ic = (i-1)/dofs+1
-      
+      IF( DoCmplx ) THEN
+        ic = i
+      ELSE       
+        ic = (i-1)/dofs+1
+      END IF
+        
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
         k = A % Cols(j)
-        kc = (k-1)/dofs+1
-        
+
+        IF( DoCmplx ) THEN
+          kc = k
+        ELSE
+          kc = (k-1)/dofs+1
+        END IF
+          
         IF( DTag(ic) < 1 .OR. DTag(ic) > NoVar ) THEN
           PRINT *,'i:',i,ic,Dtag(ic)
         END IF
@@ -1434,6 +1463,7 @@ CONTAINS
         IF (B % FORMAT == MATRIX_LIST) THEN
           CALL List_toCRSMatrix(B)
         END IF
+        CALL Info('BlockPickMatrixHcurl','Matrix '//I2S(10*i+j)//' nonzeros: '//I2S(SIZE(B % Values)),Level=6)
       END DO
     END DO
     
@@ -1442,7 +1472,6 @@ CONTAINS
     END IF
     
   END SUBROUTINE BlockPickMatrixHcurl
-#endif
   
 
   !-------------------------------------------------------------------------------------
@@ -1770,7 +1799,7 @@ CONTAINS
     INTEGER :: i, RowVar, ColVar, CopyVar
     CHARACTER(:), ALLOCATABLE :: str
     REAL(KIND=dp) :: Coeff
-    LOGICAL :: GotIt, GotIt2
+    LOGICAL :: GotIt, GotIt2, DoIt
     INTEGER, POINTER :: VarPerm(:)
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: Amat, PMat
@@ -1809,30 +1838,44 @@ CONTAINS
           Amat % Values = Coeff * Amat % Values
         END IF
       END IF
-
-      str = 'Prec Matrix Complex Coeff'
+      
+      str = 'Prec Matrix Complex Coeff '//I2S(RowVar)      
       Coeff = ListGetCReal( Params, str, GotIt )
 
+      IF(.NOT. GotIt) THEN
+        str = 'Prec Matrix Complex Coeff'
+        Coeff = ListGetCReal( Params, str, GotIt )        
+      END IF
+      
+      IF(.NOT. GotIt) THEN
+        GotIt = ListGetLogical( Params,'Block Split Complex', GotIt )  
+        Coeff = 1.0_dp
+      END IF     
+      
       IF( GotIt ) THEN
-        IF(RowVar==1) THEN
-          CONTINUE
-        ELSE IF(RowVar==2) THEN
-          Coeff = -Coeff
-        ELSE
-          CALL Fatal('BlockPrecMatrix','Assuming only two blocks for the complex preconditioner!')
+        IF( NoVar /= 2 .AND. NoVar /= 4 ) THEN
+          CALL Fatal('BlockPrecMatrix','Assuming 2 or 4 blocks for the complex preconditioner!')
         END IF
-
+        
         CALL Info('BlockPrecMatrix','Creating preconditioning matrix from block sums',Level=8)       
         CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(RowVar,RowVar) % Mat, &
             TotMatrix % Submatrix(RowVar,RowVar) % PrecMat )   
-        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
 
+        Amat => TotMatrix % Submatrix(RowVar,RowVar) % PrecMat
         AMat % Values = TotMatrix % Submatrix(RowVar,RowVar) % Mat % Values                
-        DO ColVar=1,NoVar
-          IF(ColVar == RowVar) CYCLE
-          AMat % Values = Amat % Values + &
-              Coeff * TotMatrix % Submatrix(RowVar,ColVar) % Mat % Values                
-        END DO
+        
+        IF( RowVar == 1 .OR. RowVar == 3 ) THEN
+          ColVar = RowVar + 1
+        ELSE
+          ColVar = RowVar - 1
+          Coeff = -Coeff
+        END IF
+        IF( SIZE( Amat % Values ) /= SIZE( TotMatrix % Submatrix(RowVar,ColVar) % Mat % Values ) ) THEN
+          CALL Fatal('BlockPrecMatrix','Mismatch in matrix size!')
+        END IF
+        
+        AMat % Values = Amat % Values + &
+            Coeff * TotMatrix % Submatrix(RowVar,ColVar) % Mat % Values                
       END IF
       
       str = 'Prec Matrix Diagonal '//I2S(RowVar)
@@ -3573,7 +3616,7 @@ CONTAINS
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:),ParPerm(:)
     INTEGER :: i,j,k,l,ia,ib,istat
-    LOGICAL :: LS, BlockAV,BlockHcurl, Found, UseMono
+    LOGICAL :: LS, BlockAV,Found, UseMono
     CHARACTER(*), PARAMETER :: Caller = 'BlockKrylovIter'
  
     
@@ -3583,7 +3626,6 @@ CONTAINS
     Params => Solver % Values
     
     BlockAV = ListGetLogical(Params,'Block A-V System', Found)
-    BlockHcurl = ListGetLogical( Params,'Block Quadratic Hcurl System',Found )
 
     ndim = TotMatrix % TotSize 
     NoVar = TotMatrix % NoVar
@@ -4127,7 +4169,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,nd,NonLinIter,tests,NoTests,iter
     LOGICAL :: GotIt, GotIt2, BlockPrec, BlockGS, BlockJacobi, BlockAV, &
         BlockHdiv, BlockHcurl, BlockHorVer, BlockCart, BlockNodal, BlockDomain, &
-        BlockDummy
+        BlockDummy, BlockComplex 
     INTEGER :: ColVar, RowVar, NoVar, BlockDofs, VarDofs
     
     REAL(KIND=dp) :: NonlinearTol, Norm, PrevNorm, Residual, PrevResidual, &
@@ -4185,6 +4227,7 @@ CONTAINS
     BlockCart = ListGetLogical( Params,'Block Cartesian System', GotIt)
     BlockDomain = ListGetLogical( Params,'Block Domain System',GotIt) 
     BlockDummy = ListGetLogical( Params,'Block Nested System',GotIt)
+    BlockComplex = ListGetLogical( Params,'Block Complex System',GotIt) 
     
     SlaveSolvers =>  ListGetIntegerArray( Params, &
          'Block Solvers', GotSlaveSolvers )
@@ -4204,6 +4247,7 @@ CONTAINS
       SkipVar = .TRUE.
     ELSE IF( BlockAV .OR. BlockNodal .OR. BlockHorVer .OR. BlockHcurl ) THEN
       BlockDofs = 2
+      IF(BlockComplex) BlockDofs = 2 * BlockDofs 
       SkipVar = .TRUE.
     ELSE IF( BlockCart ) THEN
       BlockDofs = 3
@@ -4216,6 +4260,7 @@ CONTAINS
       BlockDofs = Solver % Variable % Dofs      
     END IF
     VarDofs = BlockDofs
+
     
     HaveConstraint = 0
     IF ( ASSOCIATED(A % ConstraintMatrix) )  HaveConstraint = 1
