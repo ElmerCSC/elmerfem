@@ -42,7 +42,6 @@
 !> clustering and p-multigrid.
 !------------------------------------------------------------------------------
 
-
 MODULE Multigrid
 
    USE CRSMatrix
@@ -884,7 +883,7 @@ CONTAINS
        TYPE(Solver_t), POINTER :: PSolver             
 
        INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
-       LOGICAL :: Condition, Found, Parallel, Project,Transient
+       LOGICAL :: Condition, Found, Parallel, Project,Transient, EdgeBasis
        CHARACTER(:), ALLOCATABLE :: Path,str,mgname, LowestSolver
 
        TYPE(Matrix_t), POINTER :: ProjPN, ProjQT
@@ -905,6 +904,15 @@ CONTAINS
        TYPE(Nodes_t), SAVE :: Nodes
        TYPE(Element_t), POINTER :: Element
        TYPE(ValueList_t), POINTER :: Params
+
+       INTERFACE
+         SUBROUTINE BlockSolveExt(A,x,b,Solver)
+           USE Types
+           TYPE(Matrix_t), POINTER :: A
+           TYPE(Solver_t) :: Solver
+           REAL(KIND=dp) :: x(:),b(:)
+         END SUBROUTINE BlockSolveExt 
+       END INTERFACE
 !------------------------------------------------------------------------------
        tt = CPUTime()
 
@@ -948,6 +956,9 @@ CONTAINS
           CALL Info('PMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
 
           SELECT CASE(LowestSolver)
+
+          CASE('block')
+            CALL BlockSolveExt( Matrix1, Solution, ForceVector, Solver )
 
           CASE('iterative')
             IF ( Parallel ) THEN
@@ -996,8 +1007,7 @@ CONTAINS
 !      Parallel initializations:
 !      -------------------------
        IF ( Parallel ) THEN
-          CALL ParallelInitSolve( Matrix1, Solution, &
-              ForceVector, Residual, NewLinearSystem )
+          CALL ParallelInitSolve(Matrix1,Solution,ForceVector,Residual,NewLinearSystem)
           PMatrix => ParallelMatrix(Matrix1) 
        END IF
 !
@@ -1022,6 +1032,7 @@ CONTAINS
        Permutation => Variable1 % Perm
 
        Matrix2 => Matrix1 % Child
+       EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', Found)
       
        IF ( NewLinearSystem ) THEN
          IF ( .NOT. ASSOCIATED(Matrix2) ) THEN
@@ -1031,19 +1042,33 @@ CONTAINS
 
            DO i=1,Solver % NumberOfActiveElements
              Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
-#if 0
-             n = PMGGetElementDOFs( Indexes, Element )
-#else
-             n = mGetElementDOFs( Indexes, Element ) 
-#endif
-             
-             CALL ElementBasisDegree(Element, Deg)
 
-             DO j=1,n
-               DO k=1,DOFs
-                 Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
+             n = mGetElementDOFs( Indexes, Element ) 
+             IF(EdgeBasis) THEN
+               l = Solver % Mesh % MaxNDOFs * Element % Type % NumberOfNodes
+               DO j=l+1,l+2*Element % Type % NumberOfEdges,2
+                 DO k=1,DOFs
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 1
+                 END DO
                END DO
-             END DO
+               DO j=l+2,l+2*Element % Type % NumberOfEdges,2
+                 DO k=1,DOFs
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
+                 END DO
+               END DO
+               DO j=l+2*Element % Type % NumberOfEdges+1,n
+                 DO k=1,DOFs
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = 2
+                 END DO
+               END DO
+             ELSE
+               CALL ElementBasisDegree(Element, Deg)
+               DO j=1,n
+                 DO k=1,DOFs
+                   Degree(DOFs*(Permutation(Indexes(j))-1)+k) = Deg(j)
+                 END DO
+               END DO
+             END IF
            END DO
            DEALLOCATE(Indexes,Deg)
             
