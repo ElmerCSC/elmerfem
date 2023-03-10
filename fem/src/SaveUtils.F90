@@ -896,7 +896,6 @@ CONTAINS
       IF( DgVar ) THEN        
         IF(PRESENT(LocalDGNode)) NodeIndex(1) = LocalDGNode
         IF(NodeIndex(1) == 0 ) THEN
-          PRINT *,'Find from base',PRESENT(Element), LocalNode
           IF( PRESENT(LocalNode)) THEN
             PToIndexes => PickDGIndexes(Element)
             DO i=1, n
