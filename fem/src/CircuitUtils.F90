@@ -230,17 +230,19 @@ CONTAINS
       BodyParams => Null()
     END DO
 
-    DO i = 1, SIZE(CurrentModel % BCs)
-      BCParams => CurrentModel % BCs(i) % Values
-      IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
-                                                   'Boundary Condition parameters not found!')
-      j = GetInteger(BCParams, 'Component', Found)
-      IF (.NOT. Found) CYCLE
+    IF (ASSOCIATED(BCAssociations)) THEN
+      DO i = 1, SIZE(CurrentModel % BCs)
+        BCParams => CurrentModel % BCs(i) % Values
+        IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
+                                                     'Boundary Condition parameters not found!')
+        j = GetInteger(BCParams, 'Component', Found)
+        IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A)') '"Boundary Condition '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
-      CALL Info('AddComponentsToBodyList',Message,Level=5)
-      BCParams => Null()
-    END DO
+        WRITE(Message,'(A)') '"Boundary Condition '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
+        CALL Info('AddComponentsToBodyList',Message,Level=5)
+        BCParams => Null()
+      END DO
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AddComponentsToBodyLists
 !------------------------------------------------------------------------------
