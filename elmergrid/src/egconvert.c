@@ -2767,7 +2767,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     }
     for(j=0;j<maxnodes;j++) kmax = MAX(kmax,data->topology[i][j]);
     for(j=0;j<maxnodes;j++) kmin = MIN(kmin,data->topology[i][j]);
-    data->material[i] = 1;
+    j = next_int(&cp);    
+    data->material[i] = MAX(1,j);
   }
   fclose(in);
   if(info) {
