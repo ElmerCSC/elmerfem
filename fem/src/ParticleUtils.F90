@@ -6635,8 +6635,9 @@ RETURN
       CHARACTER(LEN=*) :: Prefix
       INTEGER :: FileNo
       LOGICAL, SAVE :: Visited = .FALSE.
-      CHARACTER(:), ALLOCATABLE :: FileName
-      
+      !CHARACTER(:), ALLOCATABLE :: FileName
+      CHARACTER(MAX_NAME_LEN) :: FileName
+
       IF( FileNo == 0 ) THEN
         WRITE( FileName,'(A,A)') TRIM(FilePrefix),'.dat'
         IF( .NOT. Visited ) THEN
