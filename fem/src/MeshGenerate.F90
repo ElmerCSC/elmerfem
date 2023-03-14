@@ -323,6 +323,13 @@ CONTAINS
     NewMesh % Changed = .TRUE.
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
+    ! This is no longer valid. We could call the routine to update this
+    ! but it is not visible in this module now...
+    IF(Solver % NumberOfActiveElements > 0 ) THEN
+      DEALLOCATE( Solver % ActiveElements )
+      Solver % NumberOfActiveElements = 0
+    END IF
+      
     DO i=1,Model % NumberOfSolvers
       pSolver => Model % Solvers(i)
       IF( .NOT. ASSOCIATED( pSolver ) ) CYCLE
@@ -341,6 +348,10 @@ CONTAINS
         CALL Info( Caller,'Updating other solver structures: '//TRIM(pSolver % Variable % Name))
         CALL UpdateSolverMesh( pSolver, NewMesh, NoInterp )          
         CALL ParallelInitMatrix( pSolver, pSolver % Matrix )        
+        IF(pSolver % NumberOfActiveElements > 0 ) THEN
+          DEALLOCATE(pSolver % ActiveElements )
+          pSolver % NumberOfActiveElements = 0
+        END IF
       ELSE
         pSolver % Mesh => NewMesh
       END IF
@@ -418,14 +429,24 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh, TmpMesh
     INTEGER :: i,j,k,n
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshInputFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: Hname
     LOGICAL :: Success, Rebalance
     TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Variable_t), POINTER :: hVar
     LOGICAL :: Visited = .FALSE., UsePerm
 !------------------------------------------------------------------------------
     
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
 
+    hName = ListGetString( Params, 'Metric Variable Name',Found )
+    IF(.NOT. Found) hName = "hvalue"
+    hVar => VariableGet(RefMesh % Variables,hname)
+    IF( ASSOCIATED( hVar ) ) THEN
+      IF (hvar % dofs /= 1 .AND. hvar % dofs /= 3) THEN
+        CALL Fatal('MMG_ReMesh','Variable "'//TRIM(hname)//'" should have 1 or 3 DOFs!')
+      END IF
+    END IF
+    
     IF( RefMesh % MeshDim == 2 ) THEN
       CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
       pSolver => Solver
@@ -438,16 +459,16 @@ CONTAINS
       END IF
       IF( UsePerm ) THEN
         CALL Info('MMG_Remesh','Masking meshing where solver is active!')        
-        NewMesh => MMG2D_ReMesh( RefMesh, Var, pSolver )
+        NewMesh => MMG2D_ReMesh( RefMesh, hVar, pSolver )
       ELSE
         CALL Info('MMG_Remesh','Performing meshing everywhere!')
-        NewMesh => MMG2D_ReMesh( RefMesh, Var )
+        NewMesh => MMG2D_ReMesh( RefMesh, hVar )
       END IF
     ELSE
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
         CALL DistributedRemeshParMMG(Model, RefMesh, TmpMesh,&
-            Params = Solver % Values, HVar = Var )
+            Params = Solver % Values, HVar = hVar )
         CALL RenumberGElems(TmpMesh)
         Rebalance = ListGetLogical(Model % Solver % Values, "Adaptive Rebalance", Found, DefValue = .TRUE.)
         IF(Rebalance) THEN
@@ -460,7 +481,7 @@ CONTAINS
       ELSE              
         CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
         CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Solver % Values, &
-            HVar = Var, Success = Success )
+            HVar = hVar, Success = Success )
       END IF
       CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
     END IF

@@ -3216,7 +3216,7 @@ END SUBROUTINE DistributedRemeshParMMG
     IF(PRESENT(HVar)) THEN
       IF(ASSOCIATED(HVar)) THEN
         CALL Info(FuncName,'Set the local size field!',Level=20)      
-        CALL SET_MMG2D_Sol(Mesh,HVar,Scalar=.TRUE.)
+        CALL SET_MMG2D_Sol(Mesh,HVar,Hvar % Dofs == 1 )
       END IF
     END IF
       
