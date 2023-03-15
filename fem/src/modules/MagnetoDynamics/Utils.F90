@@ -507,7 +507,7 @@ CONTAINS
                r_e(Mesh % NUmberOfNodes) )
      ii = 0
      DO i=1,Mesh % NumberOfNodes
-       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
+       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k== ParEnv % MyPE ) CYCLE
@@ -630,7 +630,7 @@ CONTAINS
 
       ii = 0
       DO i=1,Mesh % NumberOfNodes
-        IF ( Done(i) .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
+        IF ( Done(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k>ParEnv % myPE ) THEN

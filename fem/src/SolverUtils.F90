@@ -8073,7 +8073,7 @@ CONTAINS
        ineigh(k) = nn
      END DO
 
-     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % NodeInterface)
+     n = COUNT(A % ConstrainedDOF .AND. A % ParallelInfo % GInterface)
      ALLOCATE( s_e(n, nn ), r_e(n) )
      ALLOCATE( d_e(n, nn ), g_e(n) )
 
@@ -8081,7 +8081,7 @@ CONTAINS
 
      ii = 0
      DO i=1, A % NumberOfRows
-       IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % NodeInterface(i) ) THEN
+       IF(A % ConstrainedDOF(i) .AND. A % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(A % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = A % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k == ParEnv % MyPE ) CYCLE
@@ -8405,7 +8405,7 @@ CONTAINS
       IF ( NumberOfBoundaryNodes>0 ) THEN
         DO i=1,Mesh % NumberOfNodes
           IF (BoundaryReorder(i)<=0 ) CYCLE
-          IF (.NOT.Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
+          IF (.NOT.Mesh % ParallelInfo % GInterface(i) ) CYCLE
 
           nlist => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
           DO j=1,SIZE(nlist)
@@ -8421,7 +8421,7 @@ CONTAINS
         n_count = 0
         DO i=1,Mesh % NumberOfNodes
           IF (BoundaryReorder(i)<=0 ) CYCLE
-          IF (.NOT.Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
+          IF (.NOT.Mesh % ParallelInfo % GInterface(i) ) CYCLE
 
           nlist => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
           DO j=1,SIZE(nlist)
@@ -8867,7 +8867,7 @@ CONTAINS
         IF ( NumberOfBoundaryNodes>0 ) THEN
           DO i=1,Mesh % NumberOfNodes
             IF (BoundaryReorder(i)<=0 .OR. n_comp(i)<=0 ) CYCLE
-            IF (.NOT.Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
+            IF (.NOT.Mesh % ParallelInfo % GInterface(i) ) CYCLE
   
             nlist => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
             DO j=1,SIZE(nlist)
@@ -8885,7 +8885,7 @@ CONTAINS
           n_count = 0
           DO i=1,Model % NumberOfNodes
             IF (BoundaryReorder(i)<=0 .OR. n_comp(i)<=0 ) CYCLE
-            IF (.NOT.Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
+            IF (.NOT.Mesh % ParallelInfo % GInterface(i) ) CYCLE
 
             nlist => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
             DO j=1,SIZE(nlist)
@@ -17231,7 +17231,7 @@ CONTAINS
            END IF
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
              DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
                IF ( m==ParEnv % myPE ) CYCLE
@@ -17256,7 +17256,7 @@ CONTAINS
            END IF
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
              DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
                IF ( m==ParEnv % myPE ) CYCLE

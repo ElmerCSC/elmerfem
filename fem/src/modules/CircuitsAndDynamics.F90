@@ -1376,7 +1376,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL VectorValuesRange(px,SIZE(px),'CircuitRhs',.TRUE.)
   END IF
 
-  IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
+  IF( ListGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
     CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
     CALL SaveLinearSystem( Solver, CM )
   END IF
@@ -1454,7 +1454,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! B x:
         ! ------
         IF(Cvar % B(j) /= 0._dp) THEN
-          
           IF (Cvar % Mre(j) /= 0._dp .OR. Cvar % Mim(j) /= 0._dp) THEN
             cmplx_val = Cvar % Mre(j) + im * Cvar % Mim(j)
             cmplx_val = cmplx_val * Cvar % B(j)
@@ -1506,7 +1505,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IvarId = Comp % ivar % ValueId + nm
 
       CompParams => CurrentModel % Components(Comp % ComponentId) % Values
-      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', &
+               'Component parameters not found')
+
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = ListGetCReal(CompParams, 'Resistance', Found)
         IF (Found) THEN

@@ -4969,7 +4969,7 @@ RETURN
       IF ( Particles % Status(i) == PARTICLE_LOST ) CYCLE
       
       node = Particles % ClosestNode(i)
-      IF ( .NOT. PI % NodeInterface(node) ) CYCLE
+      IF ( .NOT. PI % GInterface(node) ) CYCLE
       Neighbours => PI % NeighbourList(node) % Neighbours
       DO j=1,SIZE(Neighbours)
         proc = Neighbours(j)
@@ -4998,7 +4998,7 @@ RETURN
       IF ( Particles % Status(i) == PARTICLE_LOST ) CYCLE
       
       node = Particles % ClosestNode(i)
-      IF ( .NOT. PI % NodeInterface(node) ) CYCLE
+      IF ( .NOT. PI % GInterface(node) ) CYCLE
       Neighbours => PI % NeighbourList(node) % Neighbours
       DO j=1,SIZE(Neighbours)
         proc = Neighbours(j)

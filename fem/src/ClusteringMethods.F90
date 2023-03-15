@@ -887,7 +887,7 @@ CONTAINS
       ! while for Meshes in equals the number of nodes. Here the former is used.
       DO i=1,nodesize
         j = Components*(i-1) + Component1
-        IF( Amat % ParallelInfo % NodeInterface(j) ) CYCLE        
+        IF( Amat % ParallelInfo % GInterface(j) ) CYCLE        
         IF( Amat % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % Mype ) &
             Passive(i) = .TRUE.
       END DO     

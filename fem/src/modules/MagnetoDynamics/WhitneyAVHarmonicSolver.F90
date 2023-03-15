@@ -729,7 +729,7 @@ BLOCK
       IF(ParEnv % PEs>1) THEN
         ! Assuming here that this is an internal boundary, if all elements nodes are
         ! interface nodes. Not foolproof i guess, but quite safe (?)
-        IF (ALL(Solver % Mesh % ParallelInfo % NodeInterface(Element % NodeIndexes))) CYCLE
+        IF (ALL(Solver % Mesh % ParallelInfo % GInterface(Element % NodeIndexes))) CYCLE
       END IF
  
       Parent => Element % BoundaryInfo % Left

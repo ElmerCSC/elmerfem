@@ -5120,7 +5120,7 @@ CONTAINS
          IF(DoBulk .OR. DoBC ) THEN
            IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
              ParEnv % ActiveComm = Solver % Matrix % Comm
-             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
                Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
@@ -5253,7 +5253,7 @@ END BLOCK
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( Parallel .AND. MeActive ) THEN
-         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 

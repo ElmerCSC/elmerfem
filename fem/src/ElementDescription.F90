@@ -5322,7 +5322,7 @@ CONTAINS
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        !--------------------------------------------------------------------
        ! Check whether BDM or dual basis functions should be created and 
@@ -6092,7 +6092,7 @@ SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -6320,7 +6320,7 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -6636,7 +6636,7 @@ END SUBROUTINE PickActiveFace
 !----------------------------------------------------------------------------------------------------------
 
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        stat = .TRUE.
        Basis = 0.0d0
@@ -10841,7 +10841,7 @@ END SUBROUTINE PickActiveFace
 !---------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1       
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        SignVec = 1.0d0
        Ind => Element % Nodeindexes
@@ -11003,7 +11003,7 @@ END SUBROUTINE PickActiveFace
      INTEGER, POINTER :: EdgeMap(:,:)
 !------------------------------------------------------------------------
      Mesh => CurrentModel % Solver % Mesh
-     Parallel = ASSOCIATED(Mesh % ParallelInfo % NodeInterface)
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
      IF (Element % TYPE % BasisFunctionDegree>1) THEN
        CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
