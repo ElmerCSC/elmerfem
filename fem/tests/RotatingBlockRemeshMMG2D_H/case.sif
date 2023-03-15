@@ -1,0 +1,178 @@
+!----------------------------------------------------------------------------
+! This is a test case for remeshing after rigid mesh mapper.
+!
+! Compared to the primary case this is different in that the mesh
+! density is given by a separate solver that is obtained from a solution
+! of the ModelPDE with reaction term: Div(D*Grad(h)) + R*h = f,
+! where f=R*r2 and h=h0 on inner BC and h=h1 at outer. This creates a
+! nice refinement for the mesh. We can not maintain the boundary
+! elements while honoring this. Therefore not remeshing the whole
+! geometry is not an option for this scenario. 
+!
+! P.R. 14.3.2023
+!-------------------------------------------------------------------------
+
+$dangle=2.0
+$steps=90
+$vrelax=2.0
+$R=10.0
+$h2=0.20
+$h1=0.10
+$h0=0.05
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "BlockInBlock"
+  Include Path ""
+  Results Directory "results"
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Scanning
+
+  Timestep Intervals = 5 ! $steps
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.vtu
+
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Beam"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Box"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+
+Body Force 1
+  Name = "Rotate"
+  ! This is cumulative, each timestep has same angle
+  Mesh Rotate 3 = $dangle
+  Field Source = Real $R*h2
+End
+
+
+! Rotate the rotor & compute the mesh velocity for ALE
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshH
+  Procedure = "ModelPDE" "AdvDiffSolver"
+
+  Variable = h
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+End
+
+
+
+! Rotate the rotor & compute the mesh velocity for ALE
+Solver 2
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical True
+  Translate Before Rotate = Logical True
+
+  Variable = "MeshRelax"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+! This make the meshing follow the computed refinement pattern!
+  Metric Variable Name = String "h"
+
+  MMG Remesh = Logical True
+  mmg no move = Logical True
+
+! Output directory remains the same...
+  Remesh Mesh Numbering = Logical False
+End
+
+
+! Solve the heat equation in the deformed mesh.
+Solver 3
+  Equation = Heat
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 50
+End
+
+
+Equation 1
+  Name = "Deform"
+
+! One may toggle this resulting the mesh being remeshed everywhere. 
+  Active Solvers(1) = 1
+End
+
+Equation 2
+  Name = "Mesh Deform & Flow"
+  Active Solvers(3) = 1 2 3
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1
+
+! For the mesh parameter solver
+  Diffusion Coefficient = Real 1.0
+  Reaction Coefficient = Real $R
+End
+
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Name = "BeamSides"
+  Moving Boundary = True
+  Temperature = 1.0
+  H = Real $h0
+End
+
+Boundary Condition 2
+  Target Boundaries(4) = 5 6 7 8 
+  Name = "BoxSides"
+  Temperature = 0.0
+  Fixed Boundary = True
+  H = Real $h1
+End
+
+
+! After 5 steps.
+Solver 3 :: Reference Norm = 7.32253337E-01
+

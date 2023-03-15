@@ -2651,8 +2651,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
    */
 {
   int noknots,noelements,maxnodes,elematts,nodeatts,dim;
-  int elementtype,bcmarkers,sideelemtype,offset;
-  int i,j,k,jmin,jmax,kmin,kmax,*boundnodes;
+  int elementtype,bcmarkers,sideelemtype,offset,bcinds;
+  int i,ii,j,k,jmin,jmax,kmin,kmax,*boundnodes;
   FILE *in;
   char *cp,line[MAXLINESIZE],elemfile[MAXFILESIZE],nodefile[MAXFILESIZE], 
     polyfile[MAXLINESIZE];
@@ -2697,7 +2697,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   data->noelements = noelements;
   data->noknots = noknots;
   elementtype = 300 + maxnodes;
-
+  bcinds = FALSE;
+  
   if(info) printf("Allocating for %d knots and %d elements.\n",noknots,noelements);
   AllocateKnots(data);
 
@@ -2766,7 +2767,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     }
     for(j=0;j<maxnodes;j++) kmax = MAX(kmax,data->topology[i][j]);
     for(j=0;j<maxnodes;j++) kmin = MIN(kmin,data->topology[i][j]);
-    data->material[i] = 1;
+    j = next_int(&cp);    
+    data->material[i] = MAX(1,j);
   }
   fclose(in);
   if(info) {
@@ -2776,7 +2778,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   }
     
   
-  sprintf(polyfile,"%s.poly",prefix);
+  sprintf(polyfile,"%s.edge",prefix);
   if ((in = fopen(polyfile,"r")) == NULL) {
     printf("LoadTriangleInput: The opening of the poly file %s failed!\n",polyfile);
     return(1);
@@ -2793,28 +2795,34 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     hit = FALSE;
 
     GETLINE;
-    GETLINE;
     sscanf(line,"%d %d",&bcelems,&markers);
+    
+    if(bcelems == 0) goto finish;
     
     if(info) printf("Allocating for %d boundary elements.\n",bcelems);
     
     CreateInverseTopology(data,info);
     invrow = data->invtopo.rows;
     invcol = data->invtopo.cols;
-
+    
     AllocateBoundary(bound,bcelems);
 
     jmin = noknots;
     jmax = 0;
-    
-    for(i=1;i<=bcelems;i++) {
-      
+
+    i = 0;
+    for(ii=1;ii<=bcelems;ii++) {            
       GETLINE;
       if(markers)
 	sscanf(line,"%d %d %d %d",&j,&ind1,&ind2,&bctype);
       else 
 	sscanf(line,"%d %d %d",&j,&ind1,&ind2);
 
+      if(!bctype) continue;
+      i += 1;
+
+      bctype = abs(bctype);
+      
       ind1 += offset;
       ind2 += offset;
 
@@ -2822,24 +2830,6 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
       jmax = MAX(jmax,MAX(ind1,ind2));
       
       /* find an element which owns both the nodes */
-#if 0
-      for(j=1;j<=data->maxinvtopo;j++) {
-	hit = FALSE;
-	k = data->invtopo[j][ind1];
-	if(!k) break;
-
-	for(j2=1;j2<=data->maxinvtopo;j2++) { 
-	  k2 = data->invtopo[j2][ind2];
-	  if(!k2) break;
-	  if(k == k2) {
-	    hit = TRUE;
-	    elemind = k;
-	    break;
-	  }
-	}
-	if(hit) break;
-      }
-#else
       for(j=invrow[ind1-1];j<invrow[ind1];j++) {
 	k = invcol[j]+1;
 	hit = FALSE;
@@ -2854,39 +2844,48 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 	}
 	if(hit) break;
       }
-#endif
-
-
-      if(!hit) return(1);
-
-
+   
       /* Find the correct side of the triangular element */
-      k = 0;
-      for(side=0;side<elemsides;side++) {
-	GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
-	
-	hit = FALSE;
-	if(sideind[0] == ind1 && sideind[1] == ind2) hit = TRUE;
-	if(sideind[0] == ind2 && sideind[1] == ind1) hit = TRUE;
-
-	if(hit) {
-	  bound->parent[i] = elemind;
-	  bound->side[i] = side;
-	  bound->parent2[i] = 0;
-	  bound->side2[i] = 0;
-	  bound->types[i] = bctype;
-	  k++;
+      if(hit) {
+	k = 0;
+	for(side=0;side<elemsides;side++) {
+	  GetElementSide(elemind,side,1,data,&sideind[0],&sideelemtype);
+	  
+	  hit = FALSE;
+	  if(sideind[0] == ind1 && sideind[1] == ind2) hit = TRUE;
+	  if(sideind[0] == ind2 && sideind[1] == ind1) hit = TRUE;
+	  
+	  if(hit) break;
 	}
       }
-      printf("LoadTriangleInput: %d boundary elements found correctly out of %d\n",k,elemsides);
+	
+      if(hit) {
+	bound->parent[i] = elemind;
+	bound->side[i] = side;
+      } else {
+	bound->parent[i] = 0;
+	bound->side[i] = 0;
+	if(!bcinds) {
+	  bound->topology = Imatrix(1,bcelems,0,1);
+	  bcinds = TRUE;
+	}
+	bound->topology[i][0] = ind1;
+	bound->topology[i][1] = ind2;
+      }
+      bound->parent2[i] = 0;
+      bound->side2[i] = 0;
+      bound->types[i] = bctype;
+      k++;
+
+      if(0) printf("LoadTriangleInput: %d boundary elements found correctly out of %d\n",k,elemsides);
 
     }
+    bound->nosides = i;
     printf("LoadTriangleInput: Node indexes in boundary range [%d %d] (with offset)\n",jmin,jmax);
 
   }
 
-  
-
+ finish:
   printf("Successfully read the mesh from the Triangle input file.\n");
 
   return(0);

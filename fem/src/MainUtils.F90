@@ -5102,8 +5102,7 @@ CONTAINS
      !------------------------------------------------------------------------------
 
 
-     IF( ListGetLogical(Solver % Values,'MMG Remesh',Found ) .OR. &
-         Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
      
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
