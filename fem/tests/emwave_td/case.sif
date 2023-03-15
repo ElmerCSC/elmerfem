@@ -1,7 +1,7 @@
 Check Keywords "Warn"
 
 Header
-  Mesh DB "." "square"
+  Mesh DB "." "channel"
 End
 
 Simulation
