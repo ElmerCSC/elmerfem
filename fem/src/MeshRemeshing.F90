@@ -616,7 +616,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   NewMesh % NumberOfBoundaryElements = NTris
 
   IF(Parallel) THEN
-    NewMesh % ParallelInfo % GInteraface = .FALSE.
+    NewMesh % ParallelInfo % GInterface = .FALSE.
   END IF
 
   !! GET NEW VERTICES
@@ -1004,7 +1004,7 @@ SUBROUTINE RenumberGElems(Mesh)
 END SUBROUTINE RenumberGElems
 
 
-! Based on a previous mesh with valid nodal parallelinfo (% GInteraface & % NeighbourList)
+! Based on a previous mesh with valid nodal parallelinfo (% GInterface & % NeighbourList)
 ! map that info onto NewMesh which shares at least some GlobalDOFs. Intended use is
 ! to enable reconnection of a parallel mesh part which has been remeshed internally, but
 ! whose partition boundaries remain as they were. e.g. CalvingRemeshMMG.F90
@@ -1035,7 +1035,7 @@ SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   END DO
 
   DO i=1,OldMesh % NumberOfNodes
-    IF(OldMesh % ParallelInfo % GInteraface(i)) THEN
+    IF(OldMesh % ParallelInfo % GInterface(i)) THEN
       k = OldMesh % ParallelInfo % GlobalDOFs(i)
       IF(k < LBOUND(GToNewLMap,1) .OR. k > UBOUND(GToNewLMap,1)) THEN
         CALL Warn(FuncName, "Interface node from OldMesh missing in NewMesh")
@@ -1045,7 +1045,7 @@ SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
         CYCLE
       END IF
       k = GToNewLMap(k)
-      NewMesh % ParallelInfo % GInteraface(k) = .TRUE.
+      NewMesh % ParallelInfo % GInterface(k) = .TRUE.
 
       n = SIZE(OldMesh % ParallelInfo % Neighbourlist(i) % Neighbours)
       IF(ASSOCIATED(NewMesh % ParallelInfo % Neighbourlist(k) % Neighbours)) &
@@ -2002,7 +2002,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   NewMesh % NumberOfBoundaryElements = NTris
 
   IF(Parallel) THEN
-    NewMesh % ParallelInfo % GInteraface = .FALSE.
+    NewMesh % ParallelInfo % GInterface = .FALSE.
   END IF
 
   !! GET NEW VERTICES
@@ -2121,9 +2121,9 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     PRINT *,'Neighbours:',ParEnv % MyPe, NSharedNodes    
   END IF
 
-  IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % GInteraface)) &
-      ALLOCATE(NewMesh % ParallelInfo % GInteraface(NewMesh % NumberOfNodes))
-  NewMesh % ParallelInfo % GInteraface = .FALSE.
+  IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % GInterface)) &
+      ALLOCATE(NewMesh % ParallelInfo % GInterface(NewMesh % NumberOfNodes))
+  NewMesh % ParallelInfo % GInterface = .FALSE.
   IF(.NOT. ASSOCIATED(NewMesh % ParallelInfo % NeighbourList)) &
       ALLOCATE(NewMesh % ParallelInfo % NeighbourList(NewMesh % NumberOfNodes))
   ALLOCATE(NodeNeigh0(ParEnv % PEs))
@@ -2153,7 +2153,7 @@ SUBROUTINE Get_ParMMG_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
       NodeNeigh(counter+1) = Neighbours(i)
       NewMesh % ParallelInfo % NeighbourList(k) % Neighbours => NodeNeigh       
-      NewMesh % ParallelInfo % GInteraface(k) = .TRUE.
+      NewMesh % ParallelInfo % GInterface(k) = .TRUE.
     END DO
   END DO
 
