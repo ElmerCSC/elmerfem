@@ -88,8 +88,8 @@ Solver 1 ! whitneyavsolver
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
   Fix Input Current Density = true
-  Use Piola Transform = Logical true
-  quadratic approximation = logical false
+! Use Piola Transform = Logical true
+! quadratic approximation = logical false
   use tree gauge = logical false
 
   linear system use hypre = logical true
