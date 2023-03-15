@@ -85,7 +85,6 @@ CONTAINS
 
       Parallel = ParEnv % PEs > 1
 
-
       IF ( .NOT. Parallel ) THEN
         M  => A
         Mx => x
@@ -201,7 +200,6 @@ CONTAINS
 
       CASE( 'direct1d' ) 
         ALLOCATE( dx(n) )
-
       END SELECT
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
@@ -1270,10 +1268,10 @@ CONTAINS
         
         CALL MGCmv( A, x, r )
         r(1:n/2) = b(1:n/2) - r(1:n/2)
-        
+
         DO i=1,Rounds
           Z(1:n/2) = r(1:n/2)
-          CALL CRS_ComplexLUSolve( n, M, Z )
+          CALL CRS_ComplexLUSolve( n/2, M, Z )
           rho = MGCdot( n/2, r, Z )
           
           IF ( i == 1 ) THEN
@@ -1295,8 +1293,6 @@ CONTAINS
           rr(2*i-0) =  AIMAG( r(i) )
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
-          rb(2*i-1) =  REAL( b(i) )
-          rb(2*i-0) =  AIMAG( b(i) )
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE CCG

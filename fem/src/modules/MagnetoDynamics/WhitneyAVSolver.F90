@@ -46,7 +46,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, StaticConductivity
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, StaticConductivity, &
+             ElectroDynamics
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
@@ -56,6 +57,11 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   Paramlist = 0
 
   SolverParams => GetSolverParams()
+
+  ElectroDynamics = ListGetLogical( SolverParams, 'Electrodynamics model', Found )
+  IF ( ElectroDynamics) THEN
+    CALL ListAddInteger( SolverParams, 'Time derivative order', 2)
+  END IF
 
   StaticConductivity = ListGetLogical( SolverParams,'Static Conductivity',Found )
   IF( .NOT. Found ) THEN
@@ -325,7 +331,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
                                 ThinLineCrossect(:),ThinLineCond(:)
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:), &
-      JFixVec(:,:),PrevSol(:), DConstr(:,:)
+      JFixVec(:,:),PrevSol(:), DConstr(:,:), DAMP(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
   LOGICAL :: LaminateStack, CoilBody, HasHBCurve, HasReluctivityFunction, &
@@ -359,7 +365,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent, ElemCurrent
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
 
@@ -367,7 +373,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Solver_t), POINTER :: pSolver
   
   
-  SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
+  SAVE STIFF, LOAD, MASS, DAMP, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr, ThinLineCrossect, ThinLineCond
 !------------------------------------------------------------------------------
@@ -383,6 +389,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     
   SolverParams => GetSolverParams()
   pSolver => Solver
+
+  ElectroDynamics = ListGetLogical( SolverParams, 'Electrodynamics model', Found )
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
@@ -505,12 +513,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
 
      IF(ALLOCATED(FORCE)) THEN
-       DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
+       DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, DAMP, TCoef, GapLength, AirGapMu, &
              Acoef, LamThick, LamCond, WBase, RotM, DConstr, ThinLineCrossect, ThinLineCond )
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(3,3,N), GapLength(N), &
+          MASS(N,N), DAMP(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N),  &
           DConstr(N,N), &
@@ -703,7 +711,6 @@ CONTAINS
   CALL ResetTimer('MGDynAssembly')
   CALL DefaultInitialize()
   Active = GetNOFActive()
-
   
   IF( ListCheckPresentAnyMaterial(Model,'Reluctivity Function') ) THEN
     CALL ListInitElementKeyword( mu_h,'Material','Reluctivity Function',&
@@ -776,7 +783,6 @@ CONTAINS
      RotM = 0._dp
      ConstraintActive = .TRUE.
      IF (ASSOCIATED(CompParams)) THEN
-
        CoilType = GetString(CompParams, 'Coil Type', Found)
        IF (Found) THEN
          SELECT CASE (CoilType)
@@ -842,14 +848,17 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+       CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
          Element, n, nd+nb, PiolaVersion, SecondOrder)
        
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
-     IF (Transient) CALL DefaultUpdateMass(MASS)
+     IF (Transient) THEN
+       CALL DefaultUpdateMass(MASS)
+       IF ( ElectroDynamics ) CALL DefaultUpdateDamp(DAMP)
+     END IF
 
      
      ! Collect weak divergence constraint.
@@ -956,6 +965,12 @@ CONTAINS
 
      Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
      FoundAny = FoundAny .OR. Found
+
+     Found = ListCheckPresent( BC, 'Perfect Electric Conductor' )
+     FoundAny = FoundAny .OR. Found
+ 
+     Found = ListCheckPresent( BC, 'Outflow BC' )
+     FoundAny = FoundAny .OR. Found
      
      ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
@@ -983,12 +998,17 @@ CONTAINS
        IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
        CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
      ELSE IF(  FoundAny ) THEN
-       CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       CALL LocalMatrixBC(STIFF,MASS, FORCE,LOAD,Acoef,Element,n,nd )
      ELSE
        CYCLE
      END IF
     
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+     IF(ElectroDynamics) THEN
+       CALL DefaultUpdateDamp(MASS)
+     ELSE
+       CALL DefaultUpdateMass(MASS)
+     END IF
   END DO
   
   CALL DefaultFinishBoundaryAssembly(BulkUpdate=ConstantSystem)
@@ -1167,7 +1187,6 @@ END BLOCK
 
   norm = DefaultSolve()
   Converged = Solver % Variable % NonlinConverged==1
-
 
   IF( ListGetLogical( SolverParams,'Calculate Magnetic Norm',Found ) ) THEN
     BLOCK
@@ -1729,13 +1748,13 @@ END SUBROUTINE LocalConstraintMatrix
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
     LOGICAL :: LaminateStack, CoilBody, ConstraintActive
@@ -1749,7 +1768,7 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3), A_t_der(3,3), eps=1.0e-3
+                     A_t(3,3), A_t_der(3,3), eps=1.0e-3, Permittivity(nd), P_ip
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
@@ -1771,6 +1790,7 @@ END SUBROUTINE LocalConstraintMatrix
     STIFF = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     JAC = 0.0_dp
 
     IF( JFix ) THEN
@@ -1792,6 +1812,9 @@ END SUBROUTINE LocalConstraintMatrix
       LocalGauge = GetLogical( BodyForce,'Local Lagrange Gauge', Found ) 
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
+
+    Permittivity = GetReal( GetMaterial(), 'Permittivity', Found )
+
     
     IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
@@ -1910,6 +1933,8 @@ END SUBROUTINE LocalConstraintMatrix
          C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
        END IF
 
+       P_ip = SUM( Permittivity(1:n) * Basis(1:n) )
+
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
          
@@ -1942,10 +1967,10 @@ END SUBROUTINE LocalConstraintMatrix
          ! --------------------------------------------------------
          ! The constraint equation involving the scalar potential:
          !     -div(C*(dA/dt+grad(V)))=0
-         ! All terms that are added here depend on the electrical conductivity,
+         ! All terms that are added here depend on the electrical conductivity or permittivity,
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
+         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics ) THEN
            IF ( Transient ) THEN
              DO p=1,np
                DO q=1,np
@@ -1955,7 +1980,9 @@ END SUBROUTINE LocalConstraintMatrix
                  ! -------------------------------------------
 
                  STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
-
+                 IF(ElectroDynamics) THEN
+                   DAMP(p,q) = DAMP(p,q) + P_ip*SUM( dBasisdx(q,:)*dBasisdx(p,:) )*detJ*IP % s(t)
+                 END IF
                END DO
                DO j=1,nd-np
                  q = j+np
@@ -1963,12 +1990,20 @@ END SUBROUTINE LocalConstraintMatrix
                  ! Compute the conductivity term <C A,grad v> for 
                  ! mass matrix (anisotropy taken into account)
                  ! -------------------------------------------
-                 MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+                 IF(ElectroDynamics) THEN
+                   MASS(p,q) = MASS(p,q) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
+                   DAMP(p,q) = DAMP(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+                 ELSE
+                   MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+                 END IF
 
                  ! Compute the conductivity term <C grad V, eta> for 
                  ! stiffness matrix (anisotropy taken into account)
                  ! ------------------------------------------------
                  STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
+                 IF(ElectroDynamics) THEN
+                   DAMP(q,p) = DAMP(q,p) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
+                 END IF
                END DO
              END DO
 
@@ -2082,8 +2117,15 @@ END SUBROUTINE LocalConstraintMatrix
            ! mass matrix (anisotropy taken into account)
            ! This is not used in the case of stranded coil:
            ! ----------------------------------------------
-           IF (CoilType /= 'stranded') THEN
-             MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
+           IF(ElectroDynamics) THEN
+             MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*WBasis(i,:) )*detJ*IP % s(t)
+             IF (CoilType /= 'stranded') THEN
+               DAMP(p,q) = DAMP(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
+             END IF
+           ELSE
+             IF (CoilType /= 'stranded') THEN
+               MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
+             END IF
            END IF
 
            ! Compute the low frequency eddy term for laminate stack model.
@@ -2219,20 +2261,18 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
 
 
-
-  
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
+  SUBROUTINE LocalMatrixBC(  MASS, STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), Bcoef(:)
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
-    LOGICAL :: Stat
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3), Normal(3), t1(3), t2(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC, c
+    LOGICAL :: Stat, Found, PEC, OutFlow
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
@@ -2246,6 +2286,12 @@ END SUBROUTINE LocalConstraintMatrix
     END IF
 
     CALL GetElementNodes( Nodes, Element )
+
+    PEC = GetLogical( GetBC(), 'Perfect Electric Conductor', Found)
+    Outflow = GetLogical( GetBC(), 'Outflow BC', Found)
+    IF(OutFlow) THEN
+      c = GetCReal( GetBC(), 'Wave speed' )
+    END IF
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -2261,7 +2307,7 @@ END SUBROUTINE LocalConstraintMatrix
     DO t=1,IP % n
        IF ( PiolaVersion ) THEN
          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-             IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+             IP % W(t), DetF = DetJ, Basis = Basis, dBasisdx=dBasisdx, EdgeBasis = WBasis, &
              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -2274,6 +2320,30 @@ END SUBROUTINE LocalConstraintMatrix
 
        F  = SUM(LOAD(4,1:n)*Basis(1:n))
        TC = SUM(LOAD(5,1:n)*Basis(1:n))
+
+       IF(PEC) THEN
+         DO i = 1,nd-np
+           p = i+np
+           DO q=1,np
+             STIFF(p,q) = STIFF(p,q) + 1d5*SUM(WBasis(i,:)*dBasisdx(q,:))*detJ*IP % s(t)
+           END DO
+
+           DO j = 1,nd-np
+             q = j+np
+             MASS(p,q) = MASS(p,q) + 1d5*SUM(WBasis(i,:)*Wbasis(j,:))*detJ*IP % s(t)
+           END DO
+         END DO
+       END IF
+
+       IF(Outflow) THEN
+         DO i = 1,nd-np
+           p = i+np
+           DO j = 1,nd-np
+             q = j+np
+             MASS(p,q) = MASS(p,q) + SUM(WBasis(i,:)*Wbasis(j,:))*detJ*IP % s(t) / c
+           END DO
+         END DO
+       END IF
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------

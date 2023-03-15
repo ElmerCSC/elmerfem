@@ -5195,7 +5195,6 @@ CONTAINS
                ELSE
                  CALL ZeroRow( A, nb )
                  A % RHS(nb) = 0._dp
-                 A % Symmetric = .FALSE.
                END IF
              END DO
            ELSE

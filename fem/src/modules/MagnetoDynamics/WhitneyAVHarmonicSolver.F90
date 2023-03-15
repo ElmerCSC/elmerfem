@@ -228,7 +228,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
@@ -250,11 +250,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: CompParams
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent, ElemCurrent
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
   
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
+  SAVE STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
        GapLength, MuParameter, SkinCond
@@ -266,6 +266,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVHarmonicSolver','Solving harmonic AV equations with edge elements',Level=5 )
    
   SolverParams => GetSolverParams()
+
+  ElectroDynamics = GetLogical( SolverParams, 'Electrodynamics Model', Found )
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
@@ -323,7 +325,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), &
-          MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
+          JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -565,7 +567,7 @@ CONTAINS
 
        !Get element local matrix and rhs vector:
        !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+       CALL LocalMatrix( STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
           LamCond, CoilBody, CoilType, RotM, ConstraintActive, Element, n, nd, PiolaVersion, SecondOrder )
 
@@ -656,7 +658,7 @@ CONTAINS
        ELSE
          SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
-           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           MuParameter = GetConstReal( BC, 'Layer Relative Permeability', Found)
            ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
            CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
@@ -1268,13 +1270,13 @@ END BLOCK
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+  SUBROUTINE LocalMatrix( STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
       Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
       LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
       Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
     LOGICAL :: LaminateStack, CoilBody, ConstraintActive
@@ -1290,7 +1292,7 @@ END BLOCK
                      lorentz_velo(3,n), RotWJ(3)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
-    REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp) :: nu_val, nuim_val, Permittivity(nd), P_ip
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
@@ -1316,7 +1318,6 @@ END BLOCK
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     IF( Jfix ) THEN
       IF( JfixSolve ) THEN
@@ -1338,6 +1339,8 @@ END BLOCK
       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
     
+    Permittivity(1:n) = GetReal( GetMaterial(), 'Permittivity', Found)
+  
     HBCurve = ListCheckPresent(Material,'H-B Curve')
 
     IF(HBCurve) THEN
@@ -1426,6 +1429,8 @@ END BLOCK
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
+
+       P_ip = SUM( Permittivity(1:n) * Basis(1:n) )
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------       
@@ -1523,7 +1528,7 @@ END BLOCK
 
        ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
        ! --------------------------------------------------------------------------------------------
-       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. SUM(ABS(C)) > AEPS ) THEN
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics) ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -1534,7 +1539,10 @@ END BLOCK
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+              IF(ElectroDynamics) THEN             
+                STIFF(p,q) = STIFF(p,q) + im * Omega * P_ip * SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
+              END IF
+              STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1545,10 +1553,20 @@ END BLOCK
               STIFF(p,q) = STIFF(p,q) + im * Omega * &
                   SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
 
+              IF(ElectroDynamics) THEN             
+                STIFF(p,q) = STIFF(p,q) - Omega**2 * &
+                       P_ip * SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+              END IF
+
               ! Compute the conductivity term <C grad V, eta> for 
               ! stiffness matrix (anisotropy taken into account)
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+
+              IF(ElectroDynamics) THEN             
+                STIFF(q,p) = STIFF(q,p) + im * Omega * &
+                       P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
+              END IF
             END DO
           END DO
        END IF NONCOIL_CONDUCTOR
@@ -1600,7 +1618,12 @@ END BLOCK
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
            IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
-                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+                SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+
+           IF(ElectroDynamics ) THEN
+             STIFF(p,q) = STIFF(p,q) - Omega**2 * &
+                P_ip*SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END IF
          END DO
        END DO
 
@@ -1714,7 +1737,6 @@ END BLOCK
     
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     ! We may have line elements that define BC for the conductive layers, for example.
     ! However, line elements do not have all the features of edge elements. Only
@@ -1826,7 +1848,6 @@ END BLOCK
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
 
@@ -1893,7 +1914,6 @@ END BLOCK
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
 
@@ -1979,7 +1999,7 @@ END BLOCK
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, &
-                                Element, CircuitDrivenBC, n, nd )
+                 Element, CircuitDrivenBC, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
