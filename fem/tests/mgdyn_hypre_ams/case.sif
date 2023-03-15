@@ -155,5 +155,5 @@ Equation 1
 End
 
 Solver 3:: Show Norm Index = 2
-Solver 3:: Reference Norm = 8.32659876E-06
+Solver 3:: Reference Norm = 4.76880839E-08
 Solver 3:: Reference Norm Tolerance = 2e-4
