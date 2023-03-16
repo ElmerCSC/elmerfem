@@ -40,4 +40,3 @@ End
 Solver 1 :: Reference Norm = Real 1.0
 Solver 1 :: Reference Norm Tolerance = Real 0.0
 
-RUN

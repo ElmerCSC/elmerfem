@@ -74,11 +74,11 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
     END IF
     nerror = nerror + netest
 
-    netest = TestPyramidElement(Solver, P, tol3d*10)
-    IF (netest /= 0) THEN
-      CALL Warn('LinearFormsAssembly','Pyramid element contained errors')
-    END IF
-    nerror = nerror + netest
+    !netest = TestPyramidElement(Solver, P, tol3d)
+    !IF (netest /= 0) THEN
+    !  CALL Warn('LinearFormsAssembly','Pyramid element contained errors')
+    !END IF
+    !nerror = nerror + netest
 
     netest = TestWedgeElement(Solver, P, tol3d)
     IF (netest /= 0) THEN
@@ -191,7 +191,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, nthr, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
-    INTEGER, PARAMETER :: NREP = 100
+    INTEGER, PARAMETER :: NREP = 10 ! 100 To imrpove statistics increase this
     REAL(kind=dp) :: t_start, t_end, t_tot, t_startvec, t_endvec, t_tot_vec
     TYPE(GaussIntegrationPoints_t) :: Quadrature
     

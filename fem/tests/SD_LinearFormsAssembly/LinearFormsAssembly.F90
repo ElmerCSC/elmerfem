@@ -174,7 +174,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, nthr, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
-    INTEGER, PARAMETER :: NREP = 100
+    INTEGER, PARAMETER :: NREP = 10 ! 100 increase for better accuracy
     REAL(kind=dp) :: t_start, t_end, t_tot, t_startvec, t_endvec, t_tot_vec
     TYPE(GaussIntegrationPoints_t) :: Quadrature
     
