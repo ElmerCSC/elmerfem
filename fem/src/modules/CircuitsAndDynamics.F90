@@ -2124,8 +2124,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         !
         IF(dim==3) THEN
           IF (SkinBc) THEN
-            localC = delta*cond
-            cmplx_val = IP % s(t)*detJ*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+            cmplx_val = IP % s(t)*detJ*delta*cond*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
           END IF
