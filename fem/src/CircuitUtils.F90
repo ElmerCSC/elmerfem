@@ -1517,7 +1517,12 @@ CONTAINS
         RowId = Cvar % ValueId + nm
 
         nn = COUNT(r_cnt>0)
-        IF( r_cnt(CVar % Owner+1)<=0 ) Nn=nn+1
+        IF( r_cnt(CVar % Owner+1)<=0 ) nn=nn+1
+
+        IF(r_cnt(Parenv % myPE)<=0) THEN
+          r_cnt(parenv % mype+1) = 1
+          nn = nn + 1
+        END IF
 
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
