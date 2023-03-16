@@ -11,7 +11,7 @@ Simulation
   Simulation Type = Transient
 
   Timestep Sizes = $ 4*pi/100
-  Timestep Intervals = 100
+  Timestep Intervals = 10 ! 100
 
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
@@ -85,13 +85,9 @@ Boundary Condition 2
 End
 
 Boundary Condition 3
-  Target Boundaries(2) = 3 4
-  a = real 0
-End
-
-Boundary Condition 3
   Target Boundaries(2) = 5 6
-   a {e} = real 0
+  a = real 0
+  a {e} = real 0
 End
 
 Solver 1 :: Reference Norm = Real 2.35436295E-02
