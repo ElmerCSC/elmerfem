@@ -49,6 +49,12 @@ MODULE Messages
 #else
 #define stdout 6
 #endif
+
+
+#ifdef HAVE_XIOS
+  USE XIOS
+#endif
+
    IMPLICIT NONE
    
    CHARACTER(LEN=512) :: Message = ' '
@@ -63,7 +69,12 @@ MODULE Messages
    
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
- CONTAINS
+#ifdef HAVE_XIOS
+   LOGICAL :: USE_XIOS = .FALSE. 
+#endif
+
+
+CONTAINS
 
 !-----------------------------------------------------------------------
 !> Prints information on the standard output if the requested or 
@@ -275,6 +286,12 @@ MODULE Messages
 
 !-----------------------------------------------------------------------
 
+#ifdef HAVE_XIOS
+     IF (USE_XIOS) THEN
+       CALL xios_context_finalize()
+       CALL xios_finalize()
+     ENDIF
+#endif 
      IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
