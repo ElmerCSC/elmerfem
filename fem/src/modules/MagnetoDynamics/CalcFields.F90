@@ -993,7 +993,11 @@ type(solver_t), pointer :: lSolver
      END IF
        
      IF ( Transient ) THEN
-       CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+       IF(pSolver % TimeOrder==1) THEN
+         CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+       ELSE
+         CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-3)
+       END IF
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
 
@@ -1367,8 +1371,8 @@ type(solver_t), pointer :: lSolver
              !
            CASE(3)
              ! -Grad(V)
-             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             E(1,:) = E(1,:) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             E(2,:) = E(2,:) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
 
              IF (HasVelocity) THEN
                !
@@ -1391,22 +1395,18 @@ type(solver_t), pointer :: lSolver
          END SELECT
          
        ELSE   ! Real case (transient case)
+         E(1,:) = 0._dp
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
-             E(1,1) = 0._dp
-             E(1,2) = 0._dp
              E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
            CASE(3)
              E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
            END SELECT
-         ELSE
-           E(1,:) = 0._dp
          END IF
          localV=0._dp
 
          SELECT CASE (CoilType)
-
          CASE ('stranded')
            SELECT CASE(dim)
            CASE(2)
@@ -1467,7 +1467,7 @@ type(solver_t), pointer :: lSolver
              !
            CASE(3)
              IF (Transient) THEN
-               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+               E(1,:) = E(1,:) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              END IF
 
              IF (np > 0 .AND. .NOT. Transient) THEN
@@ -1573,7 +1573,7 @@ type(solver_t), pointer :: lSolver
              VP_ip(l,2) = 0._dp
              VP_ip(l,3) = SUM(SOL(l,1:nd) * Basis(1:nd))
            CASE(3)
-             VP_ip(l,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
+             VP_ip(l,:) = MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
            END SELECT
          END DO
        END IF
@@ -1650,15 +1650,17 @@ type(solver_t), pointer :: lSolver
            !FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)-s*(REAL(MG_ip))*Basis(p)
            !END IF
          END IF
+
          IF ( ASSOCIATED(VP).OR.ASSOCIATED(EL_VP)) THEN
            DO l=1,vDOFs
              FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*VP_ip(l,:)*Basis(p)
              k = k+3
            END DO
          END IF
+
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
            DO l=1,vDOFs
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*E(l,:)*Basis(p)
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*E(l,:)*Basis(p)
              k = k+3
            END DO
          END IF
