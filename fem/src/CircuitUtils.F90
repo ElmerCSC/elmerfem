@@ -1519,7 +1519,7 @@ CONTAINS
         nn = COUNT(r_cnt>0)
         IF( r_cnt(CVar % Owner+1)<=0 ) nn=nn+1
 
-        IF(r_cnt(Parenv % myPE)<=0) THEN
+        IF(r_cnt(Parenv % myPE+1)<=0) THEN
           r_cnt(parenv % mype+1) = 1
           nn = nn + 1
         END IF
