@@ -912,13 +912,13 @@ CONTAINS
             CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * val * localC/dt)
             CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * val * localC/dt
           ELSE
-            ! 1st time derivate
+            ! 1st time derivative
             CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), &
                   val * localC * gamma/(beta*dt) )
             CM % RHS(vvarid) = CM % RHS(vvarid) + val * localC*( gamma/(beta*dt)*pPot(q) + &
                (gamma/beta-1)*pVel(q) - ((1-gamma)+gamma*(1-1/(2*beta)))*dt*pAcc(q) )
 
-            ! 2nd time derivate
+            ! 2nd time derivative
             CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), &
                  val * localP * (1-alpha)/(beta*dt**2) )
             CM % RHS(vvarid) = CM % RHS(vvarid) + val * localP*((1-alpha)/(beta*dt**2)*pPot(q) + &
