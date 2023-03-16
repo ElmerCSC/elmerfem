@@ -1381,7 +1381,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   END IF
   
   MaxRemeshIter = ListGetInteger( FuncParams,'MMG Remesh Max Iterations', Found )
-  !MaxRemeshIter = ListGetInteger( FuncParams,'Adaptive Max Depth', Found )
   IF(.NOT. Found ) MaxRemeshIter = 10
    
   RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality", Found, DefValue=0.0001_dp)
@@ -1719,8 +1718,7 @@ SUBROUTINE SequentialRemeshParMMG(Model, InMesh,OutMesh,Boss,EdgePairs,PairCount
   FuncParams => Params
   
   MaxRemeshIter = ListGetInteger( FuncParams,'MMG Remesh Max Iterations', Found )
-  !MaxRemeshIter = ListGetInteger( FuncParams,'Adaptive Max Depth', Found )
-  IF(.NOT. Found ) MaxRemeshIter = 1
+  IF(.NOT. Found ) MaxRemeshIter = 10
     
   !Get parameters from valuelist
   !hausd, hmin, hmax, hgrad, anisoflag, the metric
@@ -2530,7 +2528,6 @@ SUBROUTINE DistributedRemeshParMMG(Model, InMesh,OutMesh,EdgePairs,PairCount,&
   FuncParams => Params
   
   MaxRemeshIter = ListGetInteger( FuncParams,'MMG Remesh Max Iterations', Found )
-  !MaxRemeshIter = ListGetInteger( FuncParams,'Adaptive Max Depth', Found )
   IF(.NOT. Found ) MaxRemeshIter = 10
     
   RemeshMinQuality = ListGetConstReal(FuncParams, "MMG Min Quality",Found, DefValue=0.0001_dp)
@@ -3520,7 +3517,7 @@ END SUBROUTINE DistributedRemeshParMMG
     IF(.NOT. Found) Numbering = ListGetLogical(SolverParams,'Adaptive Mesh Numbering',Found)
     IF(.NOT. Found) Numbering = .TRUE.
     IF( Numbering ) MeshNumber = MeshNumber + 1
-
+ 
     filename = ListGetString( SolverParams, 'Adaptive Mesh Name', Found )
     IF(.NOT. Found) filename = 'RefinedMesh'
 
