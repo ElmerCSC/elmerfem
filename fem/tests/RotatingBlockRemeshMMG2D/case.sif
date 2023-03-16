@@ -17,7 +17,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 30
+  Max Output Level = 5
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Scanning
@@ -106,7 +106,7 @@ Solver 1
 ! The other regions remain as is and are combined with the remeshed region.
 ! Intended use of the feature is, for example, air gap between stator & rotor. 
   Keep Unmeshed regions = Logical True
-  Remesh Active Regionds = Logical True
+  Remesh Active Regions = Logical True
 End
 
 
