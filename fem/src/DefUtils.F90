@@ -3046,8 +3046,8 @@ CONTAINS
       FORCE(1) = Solver % Matrix % RHS(i)
       Solver % Matrix % Force(i,1) = FORCE(1)
       
-      CALL Bossak2ndOrder( n, Solver % dt, MASS, DAMP, STIFF, &
-          FORCE, X(1:n,3), X(1:n,4), X(1:n,5), Solver % Alpha )
+      CALL Time2ndOrder( n, Solver % dt, MASS, DAMP, STIFF, &
+          FORCE, X(1:n,3), X(1:n,4), X(1:n,5), X(1:n,7), Solver % Alpha, Solver % Beta )
       
       n = 0
       DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
@@ -5960,7 +5960,7 @@ CONTAINS
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
 
-    REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,1:n),VL(3),e(3),d(3)
+    REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,n),VL(3),e(3),d(3)
     REAL(KIND=dp) :: E21(3),E32(3) 
     REAL(KIND=dp) :: u,v,L,s,DetJ
 !------------------------------------------------------------------------------
@@ -6048,7 +6048,7 @@ CONTAINS
     SavedType => Element % TYPE
     IF ( GetElementFamily()==1 ) Element % TYPE=>GetElementType(202)
       
-    Integral(1:DOFs) = 0._dp
+    Integral = 0._dp
     IP = GaussPoints(Element)
     DO p=1,IP % n
       Lstat = ElementInfo( Element, Nodes, IP % u(p), &

@@ -572,7 +572,7 @@ CONTAINS
      INTEGER :: i,j,k,l
      REAL(KIND=dp) :: s,t
 !    CHARACTER(:), ALLOCATABLE :: Method
-     REAL(KIND=dp) :: X(DOFs*n),V(DOFs*N),A(DOFs*N),LForce(n*DOFs)
+     REAL(KIND=dp) :: X(DOFs*n),V(DOFs*N),A(DOFs*N),A2(DOFs*N), LForce(n*DOFs)
 
 !------------------------------------------------------------------------------
 
@@ -662,6 +662,7 @@ CONTAINS
              X(K) = Solver % Variable % PrevValues(L,3)
              V(K) = Solver % Variable % PrevValues(L,4)
              A(K) = Solver % Variable % PrevValues(L,5)
+             A2(K) = Solver % Variable % PrevValues(L,7)
 !          END SELECT
          END IF
        END DO
@@ -673,9 +674,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
 !    SELECT CASE(Method)
-!    CASE DEFAULT
-       CALL Bossak2ndOrder( n*DOFs, dt, MassMatrix, DampMatrix, StiffMatrix, &
-                    Force, X, V, A, Solver % Alpha )
+     CALL Time2ndOrder( n*DOFs, dt, MassMatrix, DampMatrix, StiffMatrix, &
+                Force, X, V, A, A2, Solver % Alpha, Solver % Beta )
 !    END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE Add2ndOrderTime
@@ -9260,18 +9260,16 @@ END FUNCTION SearchNodeL
        IF ( .NOT.GotIt ) THEN
          IF (Solver % TimeOrder > 1) THEN
            Method = 'bossak'
-           Solver % Beta = 1.0d0
          ELSE
            CALL Warn( 'InitializeTimestep', &
                'Timestepping method defaulted to IMPLICIT EULER' )
 
-           Solver % Beta = 1.0D0
+           Solver % Beta = 1.0_dp
            Method = 'implicit euler'
          END IF
        END IF
 
      ELSE
-
        Solver % Beta = 1._dp
        SELECT CASE( Method )
          CASE('implicit euler')
@@ -9313,8 +9311,7 @@ END FUNCTION SearchNodeL
              CALL Fatal( 'InitializeTimestep', Message )
            END IF
 
-         CASE('bossak')
-           Solver % Beta = 1.0d0
+         CASE('generalized-alpha','bossak')
 
          CASE DEFAULT 
            WRITE( Message, * ) 'Unknown timestepping method: ',Method
@@ -9335,23 +9332,34 @@ END FUNCTION SearchNodeL
        IF(ExtrapolateInTime) eFact = 1._dp
      END IF
 
-     IF ( Method /= 'bdf' .OR. Solver % TimeOrder > 1 ) THEN
-
-       IF ( Solver % DoneTime == 1 .AND. Solver % Beta /= 0.0d0 ) THEN
-         Solver % Beta = 1.0d0
-       END IF
+     IF ( Solver % TimeOrder>1 .OR. method/='bdf') THEN
        IF( Solver % TimeOrder == 2 ) THEN         
-         Solver % Alpha = ListGetConstReal( Solver % Values, &
-             'Bossak Alpha', GotIt )
-         IF ( .NOT. GotIt ) THEN
-           Solver % Alpha = ListGetConstReal( CurrentModel % Simulation, &
-               'Bossak Alpha', GotIt )
-         END IF
-         IF ( .NOT. GotIt ) Solver % Alpha = -0.05d0
+         Solver % Beta = -1 ! use this to select method later (for now)
+         SELECT CASE(Method)
+         CASE('generalized-alpha')
+         Solver % Beta = ListGetConstReal(Solver % Values, 'Generalized-alpha rinf', GotIt)
+         IF ( .NOT. GotIt ) &
+           Solver % Beta = ListGetConstReal( CurrentModel % Simulation, &
+                         'Generalized-alpha rinf', GotIt )
+         IF( .NOT.GotIt ) Solver % Beta = 0.75_dp
+
+         CASE('bossak')
+           Solver % Alpha = ListGetConstReal(Solver % Values, 'Bossak Alpha', GotIt)
+           IF ( .NOT. GotIt ) &
+             Solver % Alpha = ListGetConstReal(CurrentModel % Simulation,'Bossak Alpha',GotIt)
+           IF(.NOT.GotIt) Solver % Alpha = -0.05_dp
+
+         CASE DEFAULT
+           Solver % Alpha = ListGetConstReal(Solver % Values, 'Bossak Alpha', GotIt)
+           IF ( .NOT. GotIt ) &
+             Solver % Alpha = ListGetConstReal(CurrentModel % Simulation,'Bossak Alpha',GotIt)
+           IF(.NOT.GotIt) Solver % Alpha = -0.05_dp
+         END SELECT
+       ELSE
+         IF (Solver % DoneTime==1 .AND.Solver % Beta/= 0.0_dp) Solver % Beta = 1.0_dp
        END IF
        
        SELECT CASE( Solver % TimeOrder )
-         
        CASE(1)
          Order = MIN(Solver % DoneTime, Solver % Order)
          DO i=Order, 2, -1
@@ -9367,6 +9375,7 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,3) = Var % Values
          Var % PrevValues(:,4) = Var % PrevValues(:,1)
          Var % PrevValues(:,5) = Var % PrevValues(:,2)
+         Var % PrevValues(:,7) = Var % PrevValues(:,6)
        END SELECT
      ELSE
        Order = MIN(Solver % DoneTime, Solver % Order)
@@ -9465,7 +9474,7 @@ END FUNCTION SearchNodeL
 
       IF ( Order <= 0 .OR. Solver % TimeOrder /= 1 .OR. Method=='bdf' ) RETURN
 
-      IF ( Solver % Beta /= 0.0d0 ) THEN
+      IF ( Solver % Beta /= 0.0_dp ) THEN
         ForceVector = ForceVector + ( Solver % Beta - 1 ) * &
             Solver % Matrix % Force(:,1) + &
                 ( 1 - Solver % Beta ) * Solver % Matrix % Force(:,2)
@@ -14400,7 +14409,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,colsj,rowoffset
     CHARACTER(:), ALLOCATABLE :: Method, VariableName
     INTEGER(KIND=AddrInt) :: Proc
-    REAL(KIND=dp) :: Relaxation,Beta,Gamma
+    REAL(KIND=dp) :: Relaxation,Alpha,Beta,Gamma
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
@@ -14537,20 +14546,8 @@ END FUNCTION SearchNodeL
       CALL Info('SolveSystem','Setting up PrevValues for 2nd order transient equations',Level=12)
 
       IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-        Gamma =  0.5d0 - Solver % Alpha
-        Beta  = (1.0d0 - Solver % Alpha)**2 / 4.0d0
-        DO i=1,n
-          Solver % Variable % PrevValues(i,2) = &
-             (1.0d0/(Beta*Solver % dt**2))* &
-               (x(i)-Solver % Variable % PrevValues(i,3)) -  &
-                  (1.0d0/(Beta*Solver % dt))*Solver % Variable % PrevValues(i,4)+ &
-                        (1.0d0-1.0d0/(2*Beta))*Solver % Variable % PrevValues(i,5)
-
-          Solver % Variable % PrevValues(i,1) = &
-            Solver % Variable % PrevValues(i,4) + &
-               Solver % dt*((1.0d0-Gamma)*Solver % Variable % PrevValues(i,5)+&
-                  Gamma*Solver % Variable % PrevValues(i,2))
-        END DO
+        CALL Update2ndOrder(n,Solver % dt,x, &
+            Solver % Variable % PrevValues,Solver % Alpha,Solver % Beta)
       END IF
     END IF
 

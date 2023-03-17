@@ -426,48 +426,108 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Apply second order Bossak time integration scheme to the elementwise matrix
-!> entry.
+!> Apply time integration scheme for 2nd order time derivative systems to the
+!  elementwise matrix entry.
 !------------------------------------------------------------------------------
-   SUBROUTINE Bossak2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
-                        Force, X,V,A,Alpha )
+   SUBROUTINE Time2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
+                   Force, X,V,A,A2, param_a, param_b )
 !------------------------------------------------------------------------------
 
      INTEGER :: N
-     REAL(KIND=dp) :: Force(:),X(:),V(:),A(:),dt
-     REAL(KIND=dp) :: Alpha,Beta, Gamma
+     REAL(KIND=dp) :: Force(:),X(:),V(:),A(:),A2(:), dt
+     REAL(KIND=dp) :: Alpha,Beta,Gamma,Delta,param_a, param_b
      REAL(KIND=dp) :: MassMatrix(:,:),DampMatrix(:,:),StiffMatrix(:,:)
 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,n1,n2
 
-     REAL(KIND=dp) :: s, aa
+     REAL(KIND=dp) :: s, aa, a2b(n)
 !------------------------------------------------------------------------------
-     n1 = MIN( N, SIZE(StiffMatrix,1) )
-     n2 = MIN( N, SIZE(StiffMatrix,2) )
+     n1 = MIN( n, SIZE(StiffMatrix,1) )
+     n2 = MIN( n, SIZE(StiffMatrix,2) )
 
-     Gamma = 0.5d0 - Alpha
-     Beta = (1.0d0 - Alpha)**2 / 4.0d0
+     IF(param_b>=0) THEN ! this is rho_inf for Generalized-alpha
+       Alpha  = (2*param_b-1)/(param_b+1)
+       Beta = 1/(param_b+1)**2
+       Gamma = (3-param_b)/(2*(param_b+1))
+       Delta = param_b/(param_b+1)
+       A2b(1:n2) = A2(1:n2)
+     ELSE !bossak
+       Alpha = param_a
+       Gamma = 0.5d0 - Alpha
+       Beta = (1-Alpha)**2/4
+       Delta = 0
+       A2b(1:n2) = A(1:n2)
+     END IF
+
      DO i=1,n1
        s = 0.0d0
        DO j=1,n2
-         s = s + ( (1.0d0 - Alpha) / (Beta*dt**2) ) * MassMatrix(i,j) * X(j)
-         s = s + ( (1.0d0 - Alpha) / (Beta*dt)) * MassMatrix(i,j) * V(j)
-         s = s - ( (1.0d0 - Alpha) * (1.0d0 - 1.0d0 / (2.0d0*Beta)) + Alpha )*&
-                              MassMatrix(i,j) * A(j)
+         s = s + (1-Alpha)/(1-Delta)/(Beta*dt**2) * MassMatrix(i,j) * X(j)
+         s = s + (1-Alpha)/(1-Delta)/(Beta*dt) * MassMatrix(i,j) * V(j)
+         s = s + Delta/(1-Delta) * MassMatrix(i,j) * A(j)
+         s = s - ((1-Alpha)*(1-1/(2*Beta))+Alpha)/(1-Delta) * MassMatrix(i,j) * A2b(j)
 
-         s = s + ( Gamma / (Beta*dt) ) * DampMatrix(i,j) * X(j)
-         s = s + ( Gamma/Beta - 1.0d0) * DampMatrix(i,j) * V(j)
-         s = s - ((1.0d0 - Gamma) + Gamma * (1.0d0 - 1.0d0 / (2.0d0*Beta))) * &
-                          dt * DampMatrix(i,j) * A(j)
+         s = s + Gamma / (Beta*dt) * DampMatrix(i,j) * X(j)
+         s = s + (Gamma/Beta-1) * DampMatrix(i,j) * V(j)
+         s = s - ((1-Gamma) + Gamma * (1-1/(2*Beta))) * dt * DampMatrix(i,j) * A2b(j)
 
          StiffMatrix(i,j) = StiffMatrix(i,j) +  &
-           ( (1.0d0 - Alpha) / (Beta*dt**2) ) * MassMatrix(i,j) + &
+           (1-Alpha)/(1-Delta)/(Beta*dt**2) * MassMatrix(i,j) + &
                   (Gamma / (Beta*dt)) * DampMatrix(i,j)
        END DO 
        Force(i) = Force(i) + s
      END DO 
-   END SUBROUTINE Bossak2ndOrder
+   END SUBROUTINE Time2ndOrder
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE Update2ndOrder(n,dt,x,prevX,param_a, param_b)
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      REAL(KIND=dp) :: x(:), prevX(:,:), dt, param_a, param_b
+!------------------------------------------------------------------------------
+      INTEGER :: i
+      REAL(KIND=dp) :: Alpha, Gamma, Beta, Delta, dx,v,a,a2
+!------------------------------------------------------------------------------
+      IF(param_b>=0) THEN ! this is rho_inf for Generalized-alpha
+        Alpha  = (2*param_b-1)/(param_b+1)
+        Beta = 1/(param_b+1)**2
+        Gamma = (3-param_b)/(2*(param_b+1))
+        Delta = param_b/(param_b+1)
+      ELSE !bossak
+        Alpha = param_a
+        Gamma = 0.5d0 - Alpha
+        Beta = (1-Alpha)**2/4
+        Delta = 0
+      END IF
+
+      IF(delta==0) THEN
+        DO i=1,n
+          dx = x(i) - prevx(i,3)
+          v = prevx(i,4)
+          a = prevx(i,5)
+
+          prevx(i,1) = Gamma/(Beta*dt)*dx - (Gamma-Beta)/Beta*v - dt*(Gamma-2*Beta)/(2*Beta)*a
+          prevx(i,2) = (1-Alpha)/(Beta*dt**2)*dx - &
+              (1-Alpha)/(Beta*dt)*v - (1-Alpha-2*Beta)/(2*Beta)*a
+        END DO
+      ELSE
+        DO i=1,n
+          dx  = x(i) - prevx(i,3)
+          v  = prevx(i,4)
+          a  = prevx(i,5)
+          a2 = prevx(i,7)
+
+          prevx(i,1) = Gamma/(Beta*dt)*dx - (Gamma-Beta)/Beta*v - dt*(Gamma-2*Beta)/(2*Beta)*a
+          prevx(i,2) = (1-Alpha)/(1-Delta)/(Beta*dt**2)*dx - &
+              (1-Alpha)/(1-Delta)/(Beta*dt)*v - &
+                  Delta/(1-Delta)*a - (1-Alpha-2*Beta)/(1-Delta)/(2*Beta)*a2
+          prevx(i,6) = (1-Delta)/(1-Alpha)*prevx(i,2) + Delta/(1-Alpha)*a - Alpha/(1-Alpha)*a2
+        END DO
+      END IF
+!-----------------------------------------------------------------------------
+   END SUBROUTINE Update2ndOrder
 !------------------------------------------------------------------------------
 
 

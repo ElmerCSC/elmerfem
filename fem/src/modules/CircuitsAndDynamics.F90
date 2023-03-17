@@ -758,8 +758,8 @@ CONTAINS
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
-    REAL(KIND=dp) :: Basis(nd), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),pVel(nd),pAcc(nd),  &
-                          tscl, ascl, bscl, alpha, beta, gamma, prevV
+    REAL(KIND=dp) :: Basis(nd), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),pVel(nd),pAcc(nd),pAcc2(nd),  &
+                    tscl, ascl, bscl, alpha, beta, gamma, delta, prevV, param_a, param_b
     REAL(KIND=dp) :: dBasisdx(nd,3)
     REAL(KIND=dp) :: LondonLambda(nn)
     REAL(KIND=dp) :: LondonLambda_ip, Permittivity(nn), LocalP
@@ -800,13 +800,23 @@ CONTAINS
       CALL GetLocalSolution(pPot,UElement=Element,USolver=ASolver,tstep=-3)
       CALL GetLocalSolution(pVel,UElement=Element,USolver=ASolver,tstep=-4)
       CALL GetLocalSolution(pAcc,UElement=Element,USolver=ASolver,tstep=-5)
+      CALL GetLocalSolution(pAcc2,UElement=Element,USolver=ASolver,tstep=-7)
 
-      alpha = Asolver % alpha
-      beta = (1-alpha)**2 / 4.0d0
-      gamma = 0.5d0 - alpha
-
+      param_a = Asolver % alpha
+      param_b = Asolver % beta
+      IF(param_b>=0) THEN ! this is rho_inf for Generalized-alpha
+        alpha  = (2*param_b-1)/(param_b+1)
+        beta = 1/(param_b+1)**2
+        gamma = (3-param_b)/(2*(param_b+1))
+        delta = param_b/(param_b+1)
+       ELSE !bossak
+        alpha = param_a
+        beta = (1-alpha)**2/4
+        gamma = 0.5d0 - alpha
+        delta = 0
+        pAcc2(1:nd) = pAcc(1:nd)
+      END IF
       prevV = Crt(vvarId-nm)
-
       Permittivity(1:nn) = GetReal(GetMaterial(), 'Permittivity', Found )
     ELSE
       CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
@@ -920,9 +930,12 @@ CONTAINS
 
             ! 2nd time derivative
             CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), &
-                 val * localP * (1-alpha)/(beta*dt**2) )
-            CM % RHS(vvarid) = CM % RHS(vvarid) + val * localP*((1-alpha)/(beta*dt**2)*pPot(q) + &
-                  (1-alpha)/(beta*dt)*pVel(q) - ((1-alpha)*(1-1/(2*beta))+alpha)*pAcc(q) )
+                 val * localP * (1-alpha)/(1-delta)/(beta*dt**2) )
+            CM % RHS(vvarid) = CM % RHS(vvarid) + val * localP*( &
+                (1-alpha)/(1-delta)/(beta*dt**2)*pPot(q) + &
+                  (1-alpha)/(1-delta)/(beta*dt)*pVel(q) + &
+                    delta/(1-delta)*pAcc(q) - &
+                      ((1-alpha)*(1-1/(2*beta))+alpha)/(1-delta)*pAcc2(q) )
 
             IF(dim==2) val = IP % s(t)*detJ*localC*basis(j)*grads_coeff
             IF(dim==3) val = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))

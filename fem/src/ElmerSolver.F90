@@ -1836,7 +1836,10 @@
                     DO j=1,n
                       k = Element % NodeIndexes(j)
                       IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
-                      IF ( k>0 ) Var % PrevValues(k,2) = Work(j)
+                      IF ( k>0 ) THEN
+                        Var % PrevValues(k,2) = Work(j)
+                        Var % PrevValues(k,6) = Work(j)
+                      END IF
                     END DO
                   END IF
                END IF
@@ -2109,7 +2112,10 @@
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
-                     IF ( k1>0 ) Var % PrevValues(k1,2) = Work(k)
+                     IF ( k1>0 ) THEN
+                       Var % PrevValues(k1,2) = Work(k)
+                       Var % PrevValues(k1,6) = Work(k)
+                     END IF
                    END DO
                  END IF
                END IF

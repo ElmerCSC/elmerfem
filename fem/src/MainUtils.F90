@@ -2301,7 +2301,7 @@ CONTAINS
 
         n = SIZE(Solver % Variable % Values)
         IF ( Solver % TimeOrder == 2 ) THEN
-          m = 5
+          m = 7
         ELSE 
           m = MAX( Solver % Order, Solver % TimeOrder )
         END IF
