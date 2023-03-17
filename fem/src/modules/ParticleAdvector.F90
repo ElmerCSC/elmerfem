@@ -64,7 +64,8 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: Var, PTimeVar
-  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, ParticleInfo, InitAllVelo
+  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, &
+      ParticleInfo, InitAllVelo, ReverseTime
   INTEGER :: i,j,k,n,dim,No,nodims,&
       ElementIndex, VisitedTimes = 0, nstep, &
       Status,TimeOrder, PartitionChanges, TimeStepsTaken=0,&
@@ -123,13 +124,12 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   IF( VisitedTimes == 1 ) THEN
     CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
-  ELSE	 
-    PtimeVar => ParticleVariableGet( Particles, 'particle time' )
-    IF( ASSOCIATED( PTimeVar ) ) THEN
-      PTimeVar % Values = 0.0_dp
-    END IF
   END IF
-
+  PtimeVar => ParticleVariableGet( Particles, 'particle time' )
+  IF( ASSOCIATED( PTimeVar ) ) THEN
+    PTimeVar % Values = 0.0_dp
+  END IF
+    
   ! Freeze particles that are known not to move (e.g. no-slip wall)
   !----------------------------------------------------------------
   CALL SetFixedParticles( )
@@ -143,11 +143,16 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     iorder = 1
   END IF
 
+  ReverseTime = ListGetLogical( Params,'Particle time reverse',GotIt)
+  
 !  CALL ParticleStatusCount( Particles )
 
+  ! This is the default for particle advector!
+  Particles % DtSign = -1
 
+1 CONTINUE
+  
   DO i=1,nstep
-
     ! Get the timestep size, initialize at 1st round
     !--------------------------------------------------------------
     maxdt = GetParticleTimeStep( Particles, InitTimestep )
@@ -200,8 +205,10 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
       ! Integrate over the particle path (\int f(r) ds or \int f(r) dt )
       !------------------------------------------------------------------
-      CALL ParticlePathIntegral( Particles, istep )
-
+      IF(.NOT. ReverseTime .OR. Particles % DtSign == 1 ) THEN
+        CALL ParticlePathIntegral( Particles, istep )
+      END IF
+        
       InitTimestep = .FALSE.
     END DO 
 
@@ -221,17 +228,34 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       
   END DO
 
+    
   ! Set the advected field giving the final locations of the particles backward in time
   !------------------------------------------------------------------------------------
-  CALL SetAdvectedField()
-  
+  IF( Particles % DtSign == -1 ) THEN
+    CALL SetAdvectedField()
+  END IF
+
   ! In the end show some statistical info
   !---------------------------------------------------------------   
-  IF( ParticleInfo ) THEN
+  IF( ParticleInfo ) THEN    
     CALL ParticleInformation(Particles, ParticleStepsTaken, &
 	TimeStepsTaken, tottime )
   END IF
-    
+  
+  IF( ReverseTime ) THEN
+    IF( Particles % DtSign == -1 ) THEN
+      CALL Info(Caller,'Reversing time and restarting integration', Level=7)
+      Particles % DtSign = 1
+      InitTimestep = .TRUE.
+      IF( ASSOCIATED( PTimeVar ) ) THEN
+        PTimeVar % Values = 0.0_dp
+      END IF      
+      GOTO 1
+    ELSE
+      CALL Info(Caller,'Time reversal finished!',Level=7)
+    END IF
+  END IF
+        
   CALL Info(Caller,'All done',Level=4)
   CALL Info(Caller, '-----------------------------------------', Level=4 )
   
@@ -999,7 +1023,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
     
   CALL ListAddInteger( Params,'Time Order',0 )
   CALL ListAddNewLogical( Params,'Particle Accurate At Face',.FALSE.)  
-  CALL ListAddLogical( Params,'Particle Dt Negative',.TRUE.)
+  !CALL ListAddLogical( Params,'Particle Dt Negative',.TRUE.)
   CALL ListAddLogical( Params,'Particle Fix Frozen',.TRUE.)
 
   ! If we want to show a pseudonorm add a variable for which the norm

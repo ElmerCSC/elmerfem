@@ -5098,7 +5098,7 @@ CONTAINS
      ! Create soft limiters to be later applied by the Dirichlet conditions
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
+     IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
        CALL DetermineSoftLimiter( Solver )	
      END IF
       
@@ -5455,8 +5455,8 @@ CONTAINS
 
      ! BLOCK
      !------------------------------------
-     QuadraticApproximation = ListGetLogical(Solver % Values, 'Quadratic Approximation', Found)
-     SecondKindBasis = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+     QuadraticApproximation = ListGetLogical(Params, 'Quadratic Approximation', Found)
+     SecondKindBasis = ListGetLogical(Params, 'Second Kind Basis', Found)
      DO DOF=1,x % DOFs
        IF(.NOT. ReleaseAny) CYCLE
        
@@ -5529,8 +5529,8 @@ CONTAINS
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
      ! ----------------------------------------------------------------------------
-     QuadraticApproximation = ListGetLogical(Solver % Values, 'Quadratic Approximation', Found)
-     SecondKindBasis = ListGetLogical(Solver % Values, 'Second Kind Basis', Found)
+     QuadraticApproximation = ListGetLogical(Params, 'Quadratic Approximation', Found)
+     SecondKindBasis = ListGetLogical(Params, 'Second Kind Basis', Found)
      DO DOF=1,x % DOFs
         name = TRIM(x % name)
         IF (x % DOFs>1) name=ComponentName(name,DOF)
@@ -5872,7 +5872,7 @@ CONTAINS
                 
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
-     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
+     IF ( GetLogical(Params,'Constraint Modes Analysis',Found) ) THEN
        CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
       

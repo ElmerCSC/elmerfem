@@ -17273,6 +17273,9 @@ CONTAINS
 
     DO t=1,na
       Element => Mesh % Elements(t)
+      IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
+        CALL Fatal(Caller,'Element type not associated for bulk elem: '//I2S(t))
+      END IF
       i = Element % TYPE % NumberOfNodes
       TypeHits(i) = TypeHits(i)+1
       IF(ANY(Element % NodeIndexes < 1 ) ) THEN
@@ -17295,6 +17298,9 @@ CONTAINS
     NodeHits = 0
     DO t=na+1,na+nb
       Element => Mesh % Elements(t)
+      IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
+        CALL Fatal(Caller,'Element type not associated for bc elem: '//I2S(t-na))
+      END IF
       i = Element % TYPE % NumberOfNodes
       TypeHits(i) = TypeHits(i)+1
       IF(ANY(Element % NodeIndexes < 1 ) ) THEN

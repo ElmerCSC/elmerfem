@@ -445,18 +445,28 @@ CONTAINS
       IF (hvar % dofs /= 1 .AND. hvar % dofs /= 3) THEN
         CALL Fatal('MMG_ReMesh','Variable "'//TRIM(hname)//'" should have 1 or 3 DOFs!')
       END IF
+      CALL Info('MMG_Remesh','Using externally provided mesh metric',Level=10)
     END IF
-    
-    IF( RefMesh % MeshDim == 2 ) THEN
-      CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
+
+    UsePerm = .FALSE.
+    IF( ListGetLogical( Params,'Remesh Active Regions', Found ) ) THEN      
       pSolver => Solver
       UsePerm = ASSOCIATED( Solver % Variable ) 
       IF( UsePerm ) THEN
-        UsePerm = ASSOCIATED( Solver % Variable % Perm )
+        IF(.NOT. ASSOCIATED( Solver % Variable % Perm ) ) THEN
+          CALL Fatal('MMG_Remesh','Requesting "Remesh Active Regions" but Perm not associated!')
+        END IF
       END IF
       IF( UsePerm ) THEN
         UsePerm = ANY( Solver % Variable % Perm(1:RefMesh % NumberOfNodes) == 0)
       END IF
+    END IF
+    IF( UsePerm ) THEN
+      CALL Info('MMG_Remesh','Remeshing only active regions')
+    END IF
+
+    IF( RefMesh % MeshDim == 2 ) THEN
+      CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
       IF( UsePerm ) THEN
         CALL Info('MMG_Remesh','Masking meshing where solver is active!')        
         NewMesh => MMG2D_ReMesh( RefMesh, hVar, pSolver )
@@ -470,7 +480,7 @@ CONTAINS
         CALL DistributedRemeshParMMG(Model, RefMesh, TmpMesh,&
             Params = Solver % Values, HVar = hVar )
         CALL RenumberGElems(TmpMesh)
-        Rebalance = ListGetLogical(Model % Solver % Values, "Adaptive Rebalance", Found, DefValue = .TRUE.)
+        Rebalance = ListGetLogical(Params, 'Adaptive Rebalance', Found, DefValue = .TRUE.)
         IF(Rebalance) THEN
           CALL Zoltan_Interface( Model, TmpMesh, StartImbalanceTol=1.1_dp, TolChange=0.02_dp, MinElems=10 )          
           NewMesh => RedistributeMesh(Model, TmpMesh, .TRUE., .FALSE.)
@@ -480,8 +490,13 @@ CONTAINS
         END IF
       ELSE              
         CALL Info('MMG_Remesh','Calling serial remeshing routines in 3D',Level=10)
-        CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Solver % Values, &
-            HVar = hVar, Success = Success )
+        IF( UsePerm ) THEN
+          CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Params, &
+              HVar = hVar, Solver = pSolver, Success = Success )
+        ELSE
+          CALL RemeshMMG3D(Model, RefMesh, NewMesh,Params = Params, &
+              HVar = hVar, Success = Success )
+        END IF
       END IF
       CALL Info('MMG_Remesh','Finished MMG remeshing',Level=20)      
     END IF

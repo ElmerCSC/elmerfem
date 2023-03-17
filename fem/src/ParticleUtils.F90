@@ -2456,9 +2456,9 @@ RETURN
     Particles % DtConstant = ListGetLogical( Params,'Particle Dt Constant',GotIt )
     IF(.NOT. GotIt) Particles % DtConstant = .TRUE.
 
-    IF( ListGetLogical( Params,'Particle Dt Negative',GotIt ) ) THEN
-      Particles % DtSign = -1
-    END IF
+    !IF( ListGetLogical( Params,'Particle Dt Negative',GotIt ) ) THEN
+    !  Particles % DtSign = -1
+    !END IF
 
     
     !------------------------------------------------------------------------
@@ -5985,17 +5985,20 @@ RETURN
 
     INTEGER :: No, Status    
     REAL(KIND=dp) :: dt,dt0,tfin,tprev,dsgoal,hgoal,dtmax,dtmin,dtup,dtlow, &
-        CharSpeed, CharTime, dtave
+        CharSpeed, CharTime, dtave, dtmax2, dtmin2
     LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,HgoalIsUniso,DtIs
-    INTEGER :: nstep, TimeStep, PrevTimeStep = -1
+    INTEGER :: nstep, TimeStep, PrevTimeStep = -1, nset
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: TimeVar, DtVar
     
     SAVE dt0,dsgoal,hgoal,dtmax,dtmin,DtIs,Nstep,&
         tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
 	DtVar,TimeVar
+
+
+    CALL Info('GetParticleTimestep','Setting timesteps for particles!',Level=20)
     
-    dtout = 0.0_dp; dtave = 0._dp
+    dtout = 0.0_dp; dtave = 0._dp; nset = 0
 
     IF( InitInterval ) THEN
       Params => ListGetSolverParams()
@@ -6083,9 +6086,14 @@ RETURN
       tprev = tprev + dt
       Particles % dtime = dt
       dtout = dt
+
+      WRITE(Message,'(A,ES12.3)') 'Constant particle timestep:',dtout
+      CALL Info('GetParticleTimestep', Message,Level=12)           
     ELSE 
       DtVar % Values = 0.0_dp
       dtave = 0.0_dp
+      dtmax2 = -HUGE(dtmax2)
+      dtmin2 = HUGE(dtmin2)
       
       DO No = 1, Particles % NumberOfParticles
 
@@ -6126,22 +6134,29 @@ RETURN
           dt = tfin - tprev
         END IF
         DtVar % Values(No) = dt
-
-        dtout = MAX( dtout, dt )
+        nset = nset + 1
+        
         dtave = dtave + dt
+        dtmin2 = MIN(dtmin2, dt)
+        dtmax2 = MAX(dtmax2, dt)          
       END DO
 
-      dtave = dtave / Particles % NumberOfParticles
-
+      dtave = dtave / Particles % NumberOfParticles      
       WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
       CALL Info('GetParticleTimestep', Message,Level=12)           
+
+      WRITE(Message,'(A,ES12.3)') 'Minimum particle timestep:',dtmin2
+      CALL Info('GetParticleTimestep', Message, Level=12)           
+      
+      WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtmax2
+      CALL Info('GetParticleTimestep', Message,Level=12)           
+
+      WRITE(Message,'(A,I0)') 'Timestep set for particles: ',nset
+      CALL Info('GetParticleTimestep', Message,Level=12)           
+
+      dtout = ParallelReduction(dtmax2, 2)     
     END IF
     
-    dtout = ParallelReduction( dtout, 2 )       
-      
-    WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtout
-    CALL Info('GetParticleTimestep', Message,Level=12)           
-  
     
     IF( Particles % Rk2 ) THEN
       IF( Particles % DtConstant ) THEN
