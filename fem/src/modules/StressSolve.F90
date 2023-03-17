@@ -1509,7 +1509,7 @@ CONTAINS
      INTEGER :: i,j,k,l,n
      REAL(KIND=dp) :: FORCE(1)
      REAL(KIND=dp), POINTER :: SaveValues(:) => NULL()
-     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),MASS(:,:),DAMP(:,:),X(:),V(:),A(:)
+     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:),MASS(:,:),DAMP(:,:),X(:),V(:),A(:), A2(:)
      SAVE STIFF, MASS, DAMP, X, V, A
 
      IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
@@ -1519,7 +1519,7 @@ CONTAINS
         DO i=1,Solver % Matrix % NumberOfRows
           n = MAX( n,Solver % Matrix % Rows(i+1)-Solver % Matrix % Rows(i) )
         END DO
-        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n) )
+        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n),A2(:) )
 
         SaveValues => Solver % Variable % Values
      END IF
@@ -1535,10 +1535,11 @@ CONTAINS
          X(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),3)
          V(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),4)
          A(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),5)
+         A2(n) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),7)
        END DO
        FORCE(1) = Solver % Matrix % RHS(i)
        Solver % Matrix % Force(i,1) = FORCE(1)
-       CALL Bossak2ndOrder( n,dt,MASS,DAMP,STIFF,FORCE,X,V,A,Solver % Alpha )
+       CALL Time2ndOrder( n,dt,MASS,DAMP,STIFF,FORCE,X,V,A,A2,Solver % Alpha, Solver % Beta )
        n = 0
        DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
          n = n + 1
