@@ -10,8 +10,11 @@ Simulation
 
   Simulation Type = Transient
 
+  Timestepping Method = Generalized-alpha
+  Generalized-alpha rinf = Real 1
+
   Timestep Sizes = $ 4*pi/100
-  Timestep Intervals = 10 ! 100
+  Timestep Intervals = 10
 
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
@@ -23,6 +26,12 @@ Body 1
   Equation = 1
   Body Force = 1
   Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  a {e} = real 0
+  a {e} 3 = real 1
 End
 
 Material 1 
@@ -35,7 +44,7 @@ Body Force 1 :: Source = Real 0
 Equation 1 :: Active Solvers(2) = 1 2
 
 Solver 1
-  Equation = "Poisson"
+  Equation = "emwave"
 
   Variable = "a"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
@@ -51,7 +60,7 @@ Solver 1
 End
 
 Solver 2
-  Equation = "Poisson2"
+  Equation = "emwave calc"
 
   Potential Variable = "a"
   Procedure = "MagnetoDynamics" "MagnetodynamicsCalcFields"
@@ -76,7 +85,7 @@ Boundary Condition 1
 
   a {e} = real 0
   a {e} 3 = variable time
-    Real MATC "sin(tx)"
+    Real MATC "cos(tx)"
 End
  
 Boundary Condition 2
@@ -90,5 +99,5 @@ Boundary Condition 3
   a {e} = real 0
 End
 
-Solver 1 :: Reference Norm = Real 2.35436295E-02
+Solver 1 :: Reference Norm = Real 1.09101185E-01
 RUN
