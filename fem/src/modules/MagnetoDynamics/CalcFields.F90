@@ -993,12 +993,10 @@ type(solver_t), pointer :: lSolver
      END IF
        
      IF ( Transient ) THEN
-       IF(pSolver % TimeOrder==1) THEN
-         CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
-       ELSE
-         CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-3)
+       CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+       IF (pSolver % TimeOrder==1) THEN
+         PSOL(1:nd) = (SOL(1,1:nd)-PSOL(1:nd)) / dt
        END IF
-       PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
 
      Omega = GetAngularFrequency(pSOlver % Values,Found,Element)
