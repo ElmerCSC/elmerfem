@@ -500,6 +500,7 @@ CONTAINS
         Gamma = 0.5d0 - Alpha
         Beta = (1-Alpha)**2/4
         Delta = 0
+        Alpha = 0
       END IF
 
       IF(delta==0) THEN
