@@ -1519,7 +1519,7 @@ CONTAINS
         DO i=1,Solver % Matrix % NumberOfRows
           n = MAX( n,Solver % Matrix % Rows(i+1)-Solver % Matrix % Rows(i) )
         END DO
-        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n),A2(:) )
+        ALLOCATE( STIFF(1,n),MASS(1,n),DAMP(1,n),V(n),X(n),A(n),A2(n) )
 
         SaveValues => Solver % Variable % Values
      END IF
