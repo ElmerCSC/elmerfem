@@ -500,7 +500,6 @@ CONTAINS
         Gamma = 0.5d0 - Alpha
         Beta = (1-Alpha)**2/4
         Delta = 0
-        Alpha = 0
       END IF
 
       IF(delta==0) THEN
@@ -510,8 +509,7 @@ CONTAINS
           a = prevx(i,5)
 
           prevx(i,1) = Gamma/(Beta*dt)*dx - (Gamma-Beta)/Beta*v - dt*(Gamma-2*Beta)/(2*Beta)*a
-          prevx(i,2) = (1-Alpha)/(Beta*dt**2)*dx - &
-              (1-Alpha)/(Beta*dt)*v - (1-Alpha-2*Beta)/(2*Beta)*a
+          prevx(i,2) = 1/(Beta*dt**2)*dx - 1/(Beta*dt)*v - (1-2*Beta)/(2*Beta)*a
         END DO
       ELSE
         DO i=1,n
@@ -520,7 +518,7 @@ CONTAINS
           a  = prevx(i,5)
           a2 = prevx(i,7)
 
-          prevx(i,1) = Gamma/(Beta*dt)*dx - (Gamma-Beta)/Beta*v - dt*(Gamma-2*Beta)/(2*Beta)*a
+          prevx(i,1) = Gamma/(Beta*dt)*dx - (Gamma-Beta)/Beta*v - dt*(Gamma-2*Beta)/(2*Beta)*a2
           prevx(i,2) = (1-Alpha)/(1-Delta)/(Beta*dt**2)*dx - &
               (1-Alpha)/(1-Delta)/(Beta*dt)*v - &
                   Delta/(1-Delta)*a - (1-Alpha-2*Beta)/(1-Delta)/(2*Beta)*a2
