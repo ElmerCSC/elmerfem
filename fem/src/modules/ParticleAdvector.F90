@@ -250,6 +250,9 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       IF( ASSOCIATED( PTimeVar ) ) THEN
         PTimeVar % Values = 0.0_dp
       END IF      
+      DO i = 1, Particles % NumberOfParticles
+        CALL SetParticleStatus( Particles, i, PARTICLE_MOVING)
+      END DO
       GOTO 1
     ELSE
       CALL Info(Caller,'Time reversal finished!',Level=7)
