@@ -1919,11 +1919,11 @@ RETURN
     REAL(KIND=dp) :: Coord(3),MeanCoord(3),AbsCoord(3),VarCoord(3), &
         MinCoord(3), MaxCoord(3),val    
     INTEGER :: i,j,Cnt,NoParticles,TotParticles,dim
-    REAL(KIND=dp), POINTER :: TargetVector(:,:)
+    REAL(KIND=dp), POINTER :: TargetVector(:,:), StdVector(:)
     INTEGER, POINTER :: Status(:)
     CHARACTER(:), ALLOCATABLE :: DataName
-
-    
+    TYPE(Variable_t), POINTER :: PartVar
+        
     MeanCoord = 0.0_dp
     AbsCoord = 0.0_dp
     VarCoord = 0.0_dp
@@ -1934,31 +1934,48 @@ RETURN
     NoParticles =  Particles % NumberOfParticles
     dim = Particles % dim
     Coord = 0.0_dp
-    
-    IF( DerOrder == -1 ) THEN
+    StdVector => NULL()
+
+    SELECT CASE( DerOrder )
+    CASE(-1)
       TargetVector => Particles % PrevCoordinate
       DataName = 'previous coordinate values'
-    ELSE IF( DerOrder == 0 ) THEN
+    CASE(0)
       TargetVector => Particles % Coordinate
       DataName = 'current coordinate values'      
-    ELSE IF( DerOrder == 1 ) THEN
+    CASE(1)
       TargetVector => Particles % Velocity
       DataName = 'current velocity values'
-    ELSE IF( DerOrder == 2 ) THEN
+    CASE(2)
       TargetVector => Particles % Force
       DataName = 'current force values'
-    ELSE
+    CASE(3)
+      DataName = 'particle time integral'
+      PartVar => ParticleVariableGet( Particles,DataName)
+      IF(.NOT. ASSOCIATED(PartVar) ) RETURN
+      StdVector => PartVar % Values 
+    CASE(4)
+      DataName = 'particle distance integral'
+      PartVar => ParticleVariableGet( Particles,DataName)
+      IF(.NOT. ASSOCIATED(PartVar) ) RETURN
+      StdVector => PartVar % Values 
+    CASE DEFAULT
       CALL Fatal('ParticleStatistics','Unknown value for DerOrder!')
-    END IF
+    END SELECT
     
     Status => Particles % Status
+    IF(ASSOCIATED(StdVector)) dim = 1
     
     DO i=1,NoParticles
       IF( Status(i) >= PARTICLE_LOST ) CYCLE
       IF( Status(i) < PARTICLE_INITIATED ) CYCLE
-      
-      Coord(1:dim) = TargetVector(i,1:dim)
-      
+
+      IF( ASSOCIATED( StdVector ) ) THEN
+        Coord(1) = StdVector(i)
+      ELSE
+        Coord(1:dim) = TargetVector(i,1:dim)
+      END IF
+        
       MeanCoord = MeanCoord + Coord
       AbsCoord = AbsCoord + ABS( Coord )
       VarCoord = VarCoord + Coord**2
@@ -1993,7 +2010,6 @@ RETURN
         PRINT *,'Val: ',MinCoord(1:dim),&
             ' Abs: ',SQRT(SUM( MinCoord(1:dim)**2 ))
       END IF
-      
     ELSE 
       MeanCoord = MeanCoord / TotParticles
       AbsCoord = AbsCoord / TotParticles
@@ -5594,7 +5610,7 @@ RETURN
         END IF
       END IF      
     END IF
-      
+
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 
@@ -5617,7 +5633,7 @@ RETURN
     IF( TimeDepFields ) THEN
       MeshDt = MeshDtVar % Values(1)
     END IF
-    
+
     j = 0    
     DO No=1, NoParticles
       Status = Particles % Status(No)
@@ -5717,7 +5733,7 @@ RETURN
         Source = ListGetElementReal( DistSource_h, Basis, Element, Found )
         IF( Found ) THEN
           IF ( UseGradSource ) THEN
-            GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element)                    
+            GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element)                  
             Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
           END IF          
           IF( TimeDepFields ) THEN

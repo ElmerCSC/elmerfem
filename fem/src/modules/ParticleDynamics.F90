@@ -731,6 +731,8 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------
     CALL DeleteLostParticles( Particles )
 
+    CALL ParticlePathIntegral( Particles, istep )    
+    
     IF( OutputInterval > 0 ) THEN
       IF ( MOD(i,OutputInterval) == 0) CALL SaveParticleData( Model,Solver,dt,TransientSimulation )
     END IF
@@ -773,6 +775,8 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   IF(StatInfo) THEN
     CALL ParticleStatistics( Particles, 0 )
     CALL ParticleStatistics( Particles, 1 )
+    CALL ParticleStatistics( Particles, 3 )
+    CALL ParticleStatistics( Particles, 4 )
   END IF
   
   IF( ParticleInfo ) THEN
