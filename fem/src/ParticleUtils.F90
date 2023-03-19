@@ -6677,7 +6677,7 @@ RETURN
       ELSE
         IF ( FileNo==1 .AND.  .NOT. Visited ) THEN
           CALL Info( 'ParticleOutputTable', 'Saving particle data to files: '// &
-                             TRIM(FilePrefix)//'_*.dat' )
+                             TRIM(FilePrefix)//'_*.dat', Level=4 )
         END IF
         FileName=TRIM(FilePrefix)//'_'//i2s(fileno)//'.dat'
       END IF
