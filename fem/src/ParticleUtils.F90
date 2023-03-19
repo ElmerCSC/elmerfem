@@ -6666,18 +6666,18 @@ RETURN
       CHARACTER(LEN=*) :: Prefix
       INTEGER :: FileNo
       LOGICAL, SAVE :: Visited = .FALSE.
-      !CHARACTER(:), ALLOCATABLE :: FileName
-      CHARACTER(MAX_NAME_LEN) :: FileName
+      CHARACTER(:), ALLOCATABLE :: FileName
+      !CHARACTER(MAX_NAME_LEN) :: FileName
 
       IF( FileNo == 0 ) THEN
-        WRITE( FileName,'(A,A)') TRIM(FilePrefix),'.dat'
+        FileName = TRIM(FilePrefix)//'.dat'
         IF( .NOT. Visited ) THEN
-          CALL Info( 'ParticleOutputTable', 'Saving particle data to file: '//TRIM(FileName), Level=4 )
+          CALL Info( 'ParticleOutputTable', 'Saving particle data to file: '//FileName, Level=4 )
         END IF
       ELSE
         IF ( FileNo==1 .AND.  .NOT. Visited ) THEN
-          WRITE( Message, * ) 'Saving particle data to files: ', TRIM(FilePrefix)//'_*.dat'
-          CALL Info( 'ParticleOutputTable', Message, Level=4 )
+          CALL Info( 'ParticleOutputTable', 'Saving particle data to files: '// &
+                             TRIM(FilePrefix)//'_*.dat' )
         END IF
         FileName=TRIM(FilePrefix)//'_'//i2s(fileno)//'.dat'
       END IF
