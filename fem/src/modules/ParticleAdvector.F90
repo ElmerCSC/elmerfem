@@ -1039,5 +1039,6 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
+  CALL ListAddLogical(Params,'Advector Mode',.TRUE.)
   
 END SUBROUTINE ParticleAdvector_Init

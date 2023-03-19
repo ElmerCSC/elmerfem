@@ -2420,7 +2420,7 @@ RETURN
     LOGICAL, OPTIONAL :: SaveOrigin
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
-    TYPE(Variable_t), POINTER :: Var, AdvVar
+    TYPE(Variable_t), POINTER :: VeloVar, MaskVar, AdvVar
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: Nodes
@@ -2439,9 +2439,11 @@ RETURN
     REAL(KIND=dp), POINTER :: MaskVal(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
-    LOGICAL :: CheckForSize, Parallel, SaveParticleOrigin
+    LOGICAL :: CheckForSize, Parallel, SaveParticleOrigin, AdvectorMode
     LOGICAL, POINTER :: DoneParticle(:)
     CHARACTER(:), ALLOCATABLE :: VariableName
+    CHARACTER(LEN=MAX_NAME_LEN) :: AdvName
+
     CHARACTER(*), PARAMETER :: Caller = 'InitializeParticles'
 
     
@@ -2461,9 +2463,24 @@ RETURN
     
     !------------------------------------------------------------------------
     ! Initialize the timestepping strategy stuff
-    !-------------------------------------------------------------------------
-    
+    !-------------------------------------------------------------------------    
+    AdvectorMode = ListGetLogical(Params,'Advector Mode')
+
     InitMethod = ListGetString( Params,'Coordinate Initialization Method',gotIt ) 
+    VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
+    IF(.NOT. GotIt) VariableName = 'Flow Solution'
+    VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
+    vdofs = 0
+    IF(ASSOCIATED(VeloVar)) vdofs = VeloVar % dofs
+
+    VariableName = ListGetString( Params,'Advector Variable Name',GotIt)
+    IF(.NOT. GotIt) VariableName = 'AdvectorData'
+    AdvVar => VariableGet( Mesh % Variables, VariableName )
+    IF(AdvectorMode .AND. .NOT. ASSOCIATED(AdvVar) ) THEN
+      !CALL Fatal(Caller,'Advector mode needs variable for: '//TRIM(VariableName))
+    END IF
+
+    
     Particles % RK2 = ListGetLogical( Params,'Runge Kutta', GotIt )
     IF( Particles % RK2 .AND. ParEnv % PEs > 1 ) THEN
       CALL Warn(Caller,'> Runge Kutta < integration might not work in parallel')
@@ -2471,11 +2488,6 @@ RETURN
     
     Particles % DtConstant = ListGetLogical( Params,'Particle Dt Constant',GotIt )
     IF(.NOT. GotIt) Particles % DtConstant = .TRUE.
-
-    !IF( ListGetLogical( Params,'Particle Dt Negative',GotIt ) ) THEN
-    !  Particles % DtSign = -1
-    !END IF
-
     
     !------------------------------------------------------------------------
     ! The user may use a mask to initialize the particles only at a part of the 
@@ -2492,13 +2504,13 @@ RETURN
     END IF
 
     IF(GotIt) THEN
-      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
-      IF( .NOT. ASSOCIATED( Var ) ) THEN
+      MaskVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
+      IF( .NOT. ASSOCIATED( MaskVar ) ) THEN
         CALL Fatal(Caller,'Mask / Condition variable does not exist!')
       END IF
 
-      MaskPerm => Var % Perm
-      MaskVal => Var % Values
+      MaskPerm => MaskVar % Perm
+      MaskVal => MaskVar % Values
 
       IF(.NOT. ( ASSOCIATED( MaskPerm ) .AND. ASSOCIATED(MaskVal)) ) THEN
         CALL Warn(Caller,'Initialization variable does not exist?')
@@ -2620,8 +2632,6 @@ RETURN
       END IF
     END IF
 
-    AdvVar => VariableGet( Mesh % Variables,'AdvectorData')
-    
     !------------------------------------------------------------------------
     ! Now decide on the number of particles.
     !-------------------------------------------------------------------------  
@@ -2927,7 +2937,6 @@ RETURN
       END IF
 
     CASE ('advector')
-      AdvVar => VariableGet( Mesh % Variables,'AdvectorData' )
       IF( .NOT. ASSOCIATED( AdvVar ) ) THEN
         CALL Fatal(Caller,'Variable >AdvectorData< should exist!')
       END IF
@@ -2947,13 +2956,9 @@ RETURN
       END IF
         
       
-      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
-      IF(.NOT. GotIt) VariableName = 'Flow Solution'
-      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
-      IF( .NOT. ASSOCIATED( Var ) ) THEN
+      IF( vdofs == 0 ) THEN
         CALL Fatal(Caller,'Velocity variable needed to initialize advector')
       END IF
-      vdofs = Var % Dofs
       
       NewParticles = SIZE( AdvVar % Values )
       
@@ -2967,7 +2972,7 @@ RETURN
           Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
           IF( dim == 3 ) Center(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
           DO j=1,dim
-            CenterVelo(j) = SUM( Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+j) ) / n
+            CenterVelo(j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / n
           END DO
         END IF
 
@@ -3003,7 +3008,7 @@ RETURN
               IF( dim == 3 ) Coord(3) = Mesh % Nodes % z(k)            
 
               DO l=1,dim
-                Velo(l) = Var % Values(vdofs*(Var % Perm(k)-1)+l) 
+                Velo(l) = VeloVar % Values(vdofs*(VeloVar % Perm(k)-1)+l) 
               END DO
 
               IF( GotScale ) THEN
@@ -3065,7 +3070,8 @@ RETURN
               IF( dim == 3 ) Coord(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
 
               DO l=1,dim
-                Velo(l) = SUM( Basis(1:n) * Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+l ) )
+                Velo(l) = SUM( Basis(1:n) * &
+                    VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+l ) )
               END DO
 
               IF( Debug ) THEN
@@ -3273,42 +3279,33 @@ RETURN
     CASE ('nodal velocity')
       CALL Info(Caller,&
           'Initializing velocities from the corresponding nodal velocity',Level=10)
-      
-      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
-      IF(.NOT. GotIt) VariableName = 'Flow Solution'
-      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
-      IF( .NOT. ASSOCIATED( Var ) ) THEN
+      IF( vdofs == 0 ) THEN
         CALL Fatal(Caller,'Velocity variable needed for method >nodal velocity<')
       END IF
 
-      vdofs = Var % Dofs
       DO i=1,NewParticles
         k = Offset + i
         l = Particles % NodeIndex(i)
-        l = Var % Perm(l)
+        l = VeloVar % Perm(l)
         DO j=1,dim
-          Velocity(k,j) = Var % Values(vdofs*(l-1)+j)
+          Velocity(k,j) = VeloVar % Values(vdofs*(l-1)+j)
         END DO
       END DO
 
     CASE ('elemental velocity') 
       CALL Info(Caller,&
-          'Initializing velocities from the corresponding elemental velocity',Level=10)
-      
-      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
-      IF(.NOT. GotIt) VariableName = 'Flow Solution'
-      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
-      IF( .NOT. ASSOCIATED( Var ) ) THEN
+          'Initializing velocities from the corresponding elemental velocity',Level=10)      
+      IF( vdofs == 0 ) THEN
         CALL Fatal(Caller,'Velocity variable needed for method >elemental velocity<')
       END IF
-      vdofs = Var % Dofs
 
       DO i=1,NewParticles
         k = Offset + i
         l = Particles % NodeIndex(i) ! now an elemental index
         NodeIndexes => Mesh % Elements(l) % NodeIndexes
         DO j=1,dim
-          Velocity(k,j) = SUM( Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+j) ) / SIZE( NodeIndexes )
+          Velocity(k,j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / &
+              SIZE( NodeIndexes )
         END DO
       END DO
 
