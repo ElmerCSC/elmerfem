@@ -2411,13 +2411,14 @@ RETURN
   !> Initialize particle positions and velocities with a number of different
   !> methods, both random and uniform.
   !-------------------------------------------------------------------------
-  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group, SaveOrigin ) 
+  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, &
+      Group, IsAdvector ) 
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
     INTEGER, OPTIONAL :: Group
-    LOGICAL, OPTIONAL :: SaveOrigin
+    LOGICAL, OPTIONAL :: IsAdvector
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
     TYPE(Variable_t), POINTER :: VeloVar, MaskVar, AdvVar
@@ -2455,17 +2456,18 @@ RETURN
     dim = Particles % Dim
     Parallel = ( ParEnv % PEs > 1 )
 
-    IF( PRESENT( SaveOrigin ) ) THEN
-      SaveParticleOrigin = SaveOrigin
-    ELSE
-      SaveParticleOrigin = .FALSE.
-    END IF
+    n = MAX( Mesh % MaxElementNodes, 27 )
+    IF(.NOT. ASSOCIATED( Nodes % x ) ) THEN
+      ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
+    END IF      
     
     !------------------------------------------------------------------------
     ! Initialize the timestepping strategy stuff
     !-------------------------------------------------------------------------    
-    AdvectorMode = ListGetLogical(Params,'Advector Mode')
-
+    AdvectorMode = .FALSE.
+    IF(PRESENT(IsAdvector)) AdvectorMode = .TRUE.
+    SaveParticleOrigin = AdvectorMode
+    
     InitMethod = ListGetString( Params,'Coordinate Initialization Method',gotIt ) 
     VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
     IF(.NOT. GotIt) VariableName = 'Flow Solution'
@@ -2476,10 +2478,26 @@ RETURN
     VariableName = ListGetString( Params,'Advector Variable Name',GotIt)
     IF(.NOT. GotIt) VariableName = 'AdvectorData'
     AdvVar => VariableGet( Mesh % Variables, VariableName )
-    IF(AdvectorMode .AND. .NOT. ASSOCIATED(AdvVar) ) THEN
-      !CALL Fatal(Caller,'Advector mode needs variable for: '//TRIM(VariableName))
+    IF(AdvectorMode) THEN
+      IF( vdofs == 0) THEN
+        CALL Fatal(Caller,'Velocity variable needed to initialize advector')
+      END IF
+      IF( ASSOCIATED( AdvVar ) ) THEN
+        IF( AdvVar % TYPE == Variable_on_elements ) THEN
+          InitMethod = 'advector elemental'
+          CALL Info(Caller,&
+              'Initializing particles evenly on center of bulk elements',Level=10)
+        ELSE IF( AdvVar % Type == Variable_on_nodes_on_elements ) THEN 
+          InitMethod = 'advector dg'
+          CALL Info(Caller,&
+              'Initializing particles evenly on scaled dg points',Level=10)
+        ELSE IF( AdvVar % Type == Variable_on_gauss_points ) THEN
+          InitMethod = 'advector ip'
+          CALL Info(Caller,&
+              'Initializing particles evenly on gauss points',Level=10)
+        END IF
+      END IF
     END IF
-
     
     Particles % RK2 = ListGetLogical( Params,'Runge Kutta', GotIt )
     IF( Particles % RK2 .AND. ParEnv % PEs > 1 ) THEN
@@ -2739,8 +2757,7 @@ RETURN
     SELECT CASE ( InitMethod ) 
       
     CASE ('nodal ordered')
-      CALL Info(Caller,&
-          'Initializing particles evenly among nodes',Level=10)
+      CALL Info(Caller,'Initializing particles evenly among nodes',Level=10)
 
       Particles % NumberOfParticles = NewParticles
       DO i=1,NewParticles
@@ -2773,9 +2790,6 @@ RETURN
     CASE ('elemental random')
       CALL Info(Caller,&
           'Initializing particles randomly within elements',Level=10)
-
-      n = Mesh % MaxElementNodes 
-      ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
 
       Particles % NumberOfParticles = NewParticles
 
@@ -2819,8 +2833,8 @@ RETURN
         DetJ = ElementSize( CurrentElement, Nodes ) 
         MaxDetJ = MAX( MaxDetJ, DetJ ) 
         MinDetJ = MIN( MinDetJ, DetJ )
-      END DO
-
+      END DO      
+      
       WRITE( Message,'(A,ES12.3)') 'Maximum size of elements:',MaxDetJ
       CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,ES12.3)') 'Minimum size of elements:',MinDetJ
@@ -2898,7 +2912,6 @@ RETURN
 
         IF( i == NewParticles ) EXIT
       END DO
-      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
 
     CASE ('elemental ordered')
       CALL Info(Caller,&
@@ -2936,162 +2949,165 @@ RETURN
         Particles % NodeIndex = Particles % ElementIndex
       END IF
 
-    CASE ('advector')
-      IF( .NOT. ASSOCIATED( AdvVar ) ) THEN
-        CALL Fatal(Caller,'Variable >AdvectorData< should exist!')
-      END IF
-
-      IF( AdvVar % TYPE == Variable_on_elements ) THEN
-        CALL Info(Caller,&
-            'Initializing particles evenly on center of bulk elements',Level=10)
-      ELSE IF( AdvVar % Type == Variable_on_nodes_on_elements ) THEN 
-        CALL Info(Caller,&
-            'Initializing particles evenly on scaled dg points',Level=10)
-      ELSE IF( AdvVar % Type == Variable_on_gauss_points ) THEN
-        CALL Info(Caller,&
-            'Initializing particles evenly on gauss points',Level=10)
-      ELSE
-        CALL Fatal(Caller,'Initialization method "advector" not defined for type: '&
-            //I2S(AdvVar % Type))                
-      END IF
-        
-      
-      IF( vdofs == 0 ) THEN
-        CALL Fatal(Caller,'Velocity variable needed to initialize advector')
-      END IF
-      
+    CASE ('advector elemental')
       NewParticles = SIZE( AdvVar % Values )
       
       DO i=1,NoElements                       
+        No = AdvVar % Perm( i )
+        IF( No == 0 ) CYCLE
+        
         CurrentElement => Mesh % Elements(i)
         NodeIndexes =>  CurrentElement % NodeIndexes
         n = CurrentElement % TYPE % NumberOfNodes
+        
+        Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
+        Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
+        IF( dim == 3 ) Center(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+        Coordinate(No,1:dim) = Center(1:dim)        
 
-        IF( AdvVar % TYPE /= Variable_on_gauss_points ) THEN        
-          Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
-          Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
-          IF( dim == 3 ) Center(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+        IF(vdofs>0) THEN
           DO j=1,dim
             CenterVelo(j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / n
           END DO
+          Velocity(No,1:dim) = CenterVelo(1:dim) 
         END IF
+                  
+        Particles % ElementIndex(No) = i
+        IF( SaveParticleOrigin ) THEN
+          Particles % NodeIndex(No) = No
+        END IF
+      END DO
 
-        IF( AdvVar % TYPE == Variable_on_elements ) THEN
+    CASE ('advector ip','ip')
+
+      BLOCK
+        TYPE(GaussIntegrationPoints_t) :: IP
+        REAL(KIND=dp) :: detJ, Basis(27)
+        INTEGER :: m
+        LOGICAL :: stat
+        LOGICAL :: Debug
+        
+        Debug = ( i == 0 )
+              
+        NewParticles = SIZE( AdvVar % Values )
+        
+        DO i=1,NoElements                       
           No = AdvVar % Perm( i )
           IF( No == 0 ) CYCLE
-          Coordinate(No,1:dim) = Center(1:dim)
-
-          Velocity(No,1:dim) = CenterVelo(1:dim) 
-
-          Particles % ElementIndex(No) = i
-          IF( SaveParticleOrigin ) THEN
-            Particles % NodeIndex(No) = No
-          END IF
-
-
-        ELSE IF( AdvVar % Type == Variable_on_nodes_on_elements ) THEN
-
-          BLOCK
-            REAL(KIND=dp) :: DgScale
-            LOGICAL :: GotScale
           
-            DGScale = ListGetCReal( Params,'DG Nodes Scale',GotScale )
-            IF(.NOT. GotScale ) DgScale = 1.0 / SQRT( 3.0_dp ) 
-            GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
+          CurrentElement => Mesh % Elements(i)
+          NodeIndexes =>  CurrentElement % NodeIndexes
+          n = CurrentElement % TYPE % NumberOfNodes
+          
+          Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+          Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+          Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+                    
+          IF( debug ) THEN
+            PRINT *,'x:',nodes % x(1:n) 
+            PRINT *,'y:',nodes % y(1:n) 
+            PRINT *,'z:',nodes % z(1:n) 
+          END IF
+          
+          m = AdvVar % Perm(i+1) - AdvVar % Perm(i) 
+          IF( m == 0 ) CYCLE
+          
+          IP = GaussPoints(CurrentElement, m )
+          
+          DO j = 1, IP % n 
+            stat = ElementInfo( CurrentElement, Nodes, IP % v(j), IP % u(j), IP % w(j), detJ, Basis ) 
+            No = AdvVar % Perm(i) + j
             
-            DO j = 1, n
-              No = AdvVar % Perm( CurrentElement % DgIndexes(j) )
-              IF( No == 0 ) CYCLE
-              k = NodeIndexes(j)
-              Coord(1) = Mesh % Nodes % x(k)
-              Coord(2) = Mesh % Nodes % y(k)
-              IF( dim == 3 ) Coord(3) = Mesh % Nodes % z(k)            
+            Coord(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
+            Coord(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
+            IF( dim == 3 ) Coord(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
+            Coordinate(No,1:dim) = Coord(1:dim)
 
-              DO l=1,dim
-                Velo(l) = VeloVar % Values(vdofs*(VeloVar % Perm(k)-1)+l) 
-              END DO
-
-              IF( GotScale ) THEN
-                Coord(1:dim) = Center(1:dim) + ( Coord(1:dim) - Center(1:dim) ) * DgScale 
-                Velo(1:dim) = CenterVelo(1:dim) + (Velo(1:dim) - CenterVelo(1:dim)) * DgScale
-              END IF
-
-              Coordinate(No,1:dim) = Coord(1:dim) 
-              Velocity(No,1:dim) = Velo(1:dim) 
-
-              Particles % ElementIndex(No) = i
-
-              IF( SaveParticleOrigin ) THEN
-                Particles % NodeIndex(No) = No                       
-              END IF
-            END DO
-          END BLOCK
-
-            
-        ELSE IF( AdvVar % TYPE == Variable_on_gauss_points ) THEN
-
-          BLOCK
-            TYPE(GaussIntegrationPoints_t) :: IP
-            REAL(KIND=dp) :: detJ, Basis(27)
-            LOGICAL :: stat
-            TYPE(Nodes_t), SAVE :: Nodes
-            INTEGER :: m
-            LOGICAL :: Debug
-
-            Debug = ( i == 0 )
-            
-            IF( i == 1 ) THEN
-              m = 27
-              ALLOCATE( Nodes % x(m), Nodes % y(m), Nodes % z(m))
-            END IF
-
-            Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-            Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-            Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-
-
-            IF( debug ) THEN
-              PRINT *,'x:',nodes % x(1:n) 
-              PRINT *,'y:',nodes % y(1:n) 
-              PRINT *,'z:',nodes % z(1:n) 
-            END IF
-            
-            m = AdvVar % Perm(i+1) - AdvVar % Perm(i) 
-            IF( m == 0 ) CYCLE
-
-            IP = GaussPoints(CurrentElement, m )
-            
-            DO j = 1, IP % n 
-              stat = ElementInfo( CurrentElement, Nodes, IP % v(j), IP % u(j), IP % w(j), detJ, Basis ) 
-              No = AdvVar % Perm(i) + j
-              
-              Coord(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
-              Coord(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
-              IF( dim == 3 ) Coord(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
-
+            IF( vdofs > 0 ) THEN
               DO l=1,dim
                 Velo(l) = SUM( Basis(1:n) * &
                     VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+l ) )
               END DO
-
-              IF( Debug ) THEN
-                PRINT *,'j:',j,m,No,Coord(1:dim),Velo(1:dim)
-              END IF
-                
-              Coordinate(No,1:dim) = Coord(1:dim)
               Velocity(No,1:dim) = Velo(1:dim)
+            END IF
               
-              Particles % ElementIndex(No) = i
-              IF( SaveParticleOrigin ) THEN
-                Particles % NodeIndex(No) = No                       
-              END IF
-            END DO            
-          END BLOCK
+            IF( Debug ) THEN
+              PRINT *,'j:',j,m,No,Coord(1:dim),Velo(1:dim)
+            END IF
+                            
+            Particles % ElementIndex(No) = i
+            IF( SaveParticleOrigin ) THEN
+              Particles % NodeIndex(No) = No                       
+            END IF
+          END DO
+        END DO
+      END BLOCK
+      
+    CASE ( 'advector dg','dg')      
 
-        END IF
-      END DO
-      
-      
+      BLOCK
+        REAL(KIND=dp) :: DgScale
+        LOGICAL :: GotScale
+
+        DGScale = ListGetCReal( Params,'DG Nodes Scale',GotScale )
+        IF(.NOT. GotScale ) DgScale = 1.0 / SQRT( 3.0_dp ) 
+        GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
+
+        NewParticles = SIZE( AdvVar % Values )
+
+        DO i=1,NoElements                       
+          CurrentElement => Mesh % Elements(i)
+          NodeIndexes =>  CurrentElement % NodeIndexes
+          n = CurrentElement % TYPE % NumberOfNodes
+
+          CurrentElement => Mesh % Elements(i)
+          NodeIndexes =>  CurrentElement % NodeIndexes
+          n = CurrentElement % TYPE % NumberOfNodes
+
+          IF( GotScale ) THEN
+            Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
+            Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
+            IF( dim == 3 ) Center(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+            
+            IF( vdofs > 0 ) THEN
+              DO j=1,dim
+                CenterVelo(j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / n
+              END DO
+            END IF
+          END IF
+            
+          DO j = 1, n
+            No = AdvVar % Perm( CurrentElement % DgIndexes(j) )
+            IF( No == 0 ) CYCLE
+            k = NodeIndexes(j)
+            Coord(1) = Mesh % Nodes % x(k)
+            Coord(2) = Mesh % Nodes % y(k)
+            IF( dim == 3 ) Coord(3) = Mesh % Nodes % z(k)            
+            
+            IF( GotScale ) THEN
+              Coord(1:dim) = Center(1:dim) + ( Coord(1:dim) - Center(1:dim) ) * DgScale 
+            END IF            
+            Coordinate(No,1:dim) = Coord(1:dim) 
+            
+            IF( vdofs > 0 ) THEN
+              DO l=1,dim
+                Velo(l) = VeloVar % Values(vdofs*(VeloVar % Perm(k)-1)+l) 
+              END DO              
+              IF( GotScale ) THEN
+                Velo(1:dim) = CenterVelo(1:dim) + (Velo(1:dim) - CenterVelo(1:dim)) * DgScale
+              END IF              
+              Velocity(No,1:dim) = Velo(1:dim) 
+            END IF
+              
+            Particles % ElementIndex(No) = i
+            
+            IF( SaveParticleOrigin ) THEN
+              Particles % NodeIndex(No) = No                       
+            END IF
+          END DO
+        END DO
+      END BLOCK
+                  
     CASE ('sphere random')
       CALL Info(Caller,&
           'Initializing particles randomly within a sphere',Level=10)

@@ -112,7 +112,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   ! Initialize particles always since we just advance -dt each time
   !-------------------------------------------------------------------------
   IF( VisitedTimes == 1 .OR. GetLogical( Params,'Reinitialize Particles',GotIt ) ) THEN
-    CALL InitializeParticles( Particles, SaveOrigin = .TRUE. ) 
+    CALL InitializeParticles( Particles, IsAdvector = .TRUE.) 
     CALL ReleaseWaitingParticles(Particles) 
     Particles % Status = PARTICLE_LOCATED
   ELSE
@@ -1039,6 +1039,5 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
-  CALL ListAddLogical(Params,'Advector Mode',.TRUE.)
   
 END SUBROUTINE ParticleAdvector_Init
