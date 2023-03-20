@@ -2109,7 +2109,7 @@ END SUBROUTINE LocalConstraintMatrix
                JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
                    SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
              ELSE IF( HasReluctivityFunction ) THEN
-               ! Note: check this though for unisotropic cases!!!
+               ! Note: check this though for anisotropic cases!!!
                DO k=1,3
                  JAC(p,q) = JAC(p,q) + SUM(A_t_der(k,:) *  B_ip(k) * RotWBasis(j,:)) * &
                      SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs

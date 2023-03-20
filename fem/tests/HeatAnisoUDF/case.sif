@@ -1,4 +1,4 @@
-! Test case for unisotropic heat conduction.
+! Test case for anisotropic heat conduction.
 ! The geometry is designed such that it is relatively easy
 ! to see that the solution is realistic.
 !
@@ -96,7 +96,7 @@ Material 1
 !
 ! Same with user defined function
   Heat Conductivity(2,2) = Variable Coordinate 1
-    Real Procedure "HeatCondUniso" "HeatCondUniso"
+    Real Procedure "HeatCondAniso" "HeatCondAniso"
 End
 
 
