@@ -5372,7 +5372,7 @@ END BLOCK
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), POINTER :: Mesh, pMesh
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5383,16 +5383,23 @@ END BLOCK
 
      IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
        i = 0
-       DO WHILE( ASSOCIATED( Mesh % Child ) )
-         Mesh => Mesh % Child 
+       pMesh => Mesh
+       DO WHILE( ASSOCIATED( pMesh % Child ) )
+         pMesh => pMesh % Child 
          i = i+1 
-         IF(Mesh % OutputActive) EXIT 
+         IF(pMesh % OutputActive) EXIT 
        END DO
-       CALL Info('SolverActivate','Changing Solver mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
-           //TRIM(Mesh % Name),Level=7)
-       Solver % Mesh => Mesh
+       IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
+         IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
+           CALL Warn('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
+           CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
+               ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
+               //TRIM(Mesh % Name),Level=7)
+           Solver % Mesh => Mesh
+         END IF
+       END IF
      END IF
-
+     
      CALL SetCurrentMesh( Model, Solver % Mesh )
 
      Model % Solver => Solver

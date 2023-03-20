@@ -1404,8 +1404,9 @@
 !------------------------------------------------------------------------------
     SUBROUTINE AddSolvers()
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k,nlen
+      INTEGER :: i,j,k,n,nlen
       LOGICAL :: InitSolver, Found, DoTiming
+      TYPE(Mesh_t), POINTER :: pMesh
 !------------------------------------------------------------------------------
 
       CALL Info('AddSolvers','Setting up '//I2S(CurrentModel % NumberOfSolvers)//&
@@ -1462,6 +1463,24 @@
            Solver % Mesh => CurrentModel % Meshes
          END IF
 
+         n = ListGetInteger( Solver % Values,'Relative Mesh Level',Found )
+         IF( Found .AND. n /= 0) THEN
+           IF( n > 0 ) CALL Fatal('AddSolvers','Relative Mesh Level should ne negative!')
+           j = 0
+           DO WHILE(j > n)             
+             pMesh => pMesh % Parent
+             IF(.NOT. ASSOCIATED(pMesh)) EXIT
+             j = j-1
+           END DO
+           IF(ASSOCIATED(pMesh) ) THEN
+             CALL Info('AddSolvers','Using relative mesh level '//I2S(n),Level=10)
+           ELSE
+             CALL Fatal('AddSolvers','Could not find relative mesh level: '//I2S(n))
+           END IF
+           Solver % Mesh => pMesh
+         END IF
+         
+         
          DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
          IF( DoTiming ) CALL ResetTimer('SolverInitialization')
          

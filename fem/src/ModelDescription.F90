@@ -3221,7 +3221,7 @@ CONTAINS
         ELSE
           Model % Meshes => Solver % Mesh
         END IF
-      END IF
+      END IF  ! "Mesh" given for Solver
     END DO
 
     CALL SetCoordinateSystem( Model )
