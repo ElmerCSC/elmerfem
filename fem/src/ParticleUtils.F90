@@ -6093,7 +6093,6 @@ RETURN
       ELSE IF( HgoalIs ) THEN
         CharTime = CharacteristicElementTime( Particles )
         dt = Hgoal * CharTime ! ElementH / Speed
-        !PRINT *,'ratio of timesteps:',tfin/dt
       ELSE IF( tfinIs ) THEN
         dt = tfin / Nstep
       ELSE IF( HgoalIsUniso ) THEN
@@ -7585,8 +7584,6 @@ RETURN
             LocalVal(3)  = SUM( Basis(1:n) * Nodes % z(1:n) )
           END IF
 
-          !PRINT *,'ParticleMode:',ParticleMode,j,dim,LocalVal
-          
           CALL AscBinRealWrite( LocalVal(1) )
           CALL AscBinRealWrite( LocalVal(2) )
           CALL AscBinRealWrite( LocalVal(3) )

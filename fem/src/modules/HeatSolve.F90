@@ -181,6 +181,11 @@
 
      CALL Info('HeatSolver','-------------------------------------------',Level=6)
      CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
+
+     IF( ListCheckPresentAnyBC( Model,'Heat Gap') ) THEN
+       CALL Warn('HeatSolver','The old way of dealing with HeatGap is obsolite!!')
+     END IF
+
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
