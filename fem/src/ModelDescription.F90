@@ -1842,12 +1842,12 @@ CONTAINS
                      END IF
 
                      ! Find first empty space at "k2"
-                     k2 = k 
-                     DO WHILE( k2 <= slen )
+                     k2 = k
+                     DO WHILE( k2 < slen )
                        k2 = k2 + 1
-                       IF ( str(k2:k2) == ' ') EXIT
+                       IF(str(k2:k2) == ' ') EXIT
                      END DO
-                     k2 = k2-1
+                     IF(str(k2:k2)==' ') k2 = k2-1
 
                      IF( ScanOnly ) THEN
                        IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN

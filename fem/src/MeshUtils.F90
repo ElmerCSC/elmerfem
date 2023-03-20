@@ -2722,8 +2722,8 @@ CONTAINS
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
 
-   
-   
+
+
  CONTAINS
      
 
@@ -3063,9 +3063,24 @@ CONTAINS
          END IF
 
          j = Element % BoundaryInfo % Left % ElementIndex
+         Element % BDOFs = 0
+
          IF ( Element % TYPE % DIMENSION == 1 ) THEN
            IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             k2 = k2 + 1
+             IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo)) THEN
+               IF(ASSOCIATED(Element % BoundaryInfo % Left % BoundaryInfo % Left)) THEN
+                 j = Element % BoundaryInfo % Left % BoundaryInfo % Left % ElementIndex
+                 IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
+                   k2 = k2 + 1
+                 ELSE
+                   Element % BDOFs = EdgeDOFs(j)
+                 END IF
+               ELSE
+                 k2 = k2 + 1
+               END IF
+             ELSE
+               k2 = k2 + 1
+             END IF            
            ELSE
              Element % BDOFs = EdgeDOFs(j)
            END IF
@@ -3085,10 +3100,22 @@ CONTAINS
          END IF
 
          j = Element % BoundaryInfo % Right % ElementIndex
-
          IF ( Element % TYPE % DIMENSION == 1 ) THEN
            IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
-             k2 = k2 + 1
+             IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo)) THEN
+               IF(ASSOCIATED(Element % BoundaryInfo % Right % BoundaryInfo % Left)) THEN
+                 j = Element % BoundaryInfo % Right % BoundaryInfo % Left % ElementIndex
+                 IF(j<1 .OR. j>SIZE(EdgeDOFs)) THEN
+                   k2 = k2 + 1
+                 ELSE
+                   Element % BDOFs = EdgeDOFs(j)
+                 END IF
+               ELSE
+                 k2 = k2 + 1
+               END IF
+             ELSE
+               k2 = k2 + 1
+             END IF
            ELSE
              Element % BDOFs = EdgeDOFs(j)
            END IF
@@ -3101,6 +3128,7 @@ CONTAINS
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
+
        
        ! Optionally also set DG indexes for BCs
        ! It is easy for outside boundaries, but for internal boundaries

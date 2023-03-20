@@ -358,6 +358,14 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
             "Relative Permeability[Relative Permeability re:1 Relative Permeability im:1]" )
       END IF
     END IF
+
+    IF ( GetLogical( SolverParams, 'Calculate Electric Scalar Potential', Found ) ) THEN
+      i = i + 1
+      IF ( RealField ) THEN
+        CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
+            "Electric Scalar Potential" )
+      END IF
+    END IF
   END IF    
 
   IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
@@ -592,7 +600,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
-   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, &
+   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, ESP, &
                                 JH, NJH, VP, FWP, MPerm, JXB, ML, ML2, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_MPerm, EL_JXB, EL_ML, EL_ML2, &
@@ -751,6 +759,8 @@ type(solver_t), pointer :: lSolver
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
+
+   ESP => VariableGet( Mesh % Variables, 'Electric Scalar Potential')
    
    IF( .NOT. PreComputedElectricPot ) THEN
      ImposeBodyForcePotential = GetLogical(SolverParams, 'Impose Body Force Potential', Found)
@@ -837,6 +847,11 @@ type(solver_t), pointer :: lSolver
    IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
+
+   IF ( ASSOCIATED(ESP) ) THEN
+     ESP  % Values(ESP % Perm) = pSolver % Variable % Values( &
+           pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
+   END IF
 
    CALL Info('MagnetoDynamicsCalcFields',&
        'Number of components to compute: '//I2S(DOFs),Level=8)

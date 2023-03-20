@@ -943,10 +943,12 @@ CONTAINS
      SELECT CASE(GetElementFamily())
      CASE(1)
        CYCLE
+#if 0
      CASE(2)
        k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
      CASE(3,4)
        k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
+#endif
      END SELECT
      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
@@ -1002,8 +1004,9 @@ CONTAINS
      ELSE
        CYCLE
      END IF
-    
+
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+
      IF(ElectroDynamics) THEN
        CALL DefaultUpdateDamp(MASS)
      ELSE
@@ -1831,6 +1834,7 @@ END SUBROUTINE LocalConstraintMatrix
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
           RotBasis = RotWBasis, USolver = pSolver )
+
 
 !      IF (PiolaVersion) THEN
 !          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
