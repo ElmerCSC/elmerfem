@@ -107,6 +107,8 @@ Solver 1
 ! Intended use of the feature is, for example, air gap between stator & rotor. 
   Keep Unmeshed regions = Logical True
   Remesh Active Regions = Logical True
+
+!  Skip Interpolation = Logical True
 End
 
 
@@ -184,7 +186,6 @@ Boundary Condition 5
 End
 
 ! After 5 steps.
-! The solver structures for Solver 1 are erased and zeroed when remeshed. 
-Solver 1 :: Reference Norm = 0.0 
+Solver 1 :: Reference Norm = 4.86146194E-01
 Solver 2 :: Reference Norm = 4.86366596E-01
 
