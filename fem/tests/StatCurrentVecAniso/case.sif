@@ -1,6 +1,6 @@
 ! A test case for the new StatCurrentSolveVec module.
 !
-! Includes unisotropic conduction. 
+! Includes anisotropic conduction. 
 ! Non-vectorized assembly.
 !
 ! P.R. 13.11.2018
