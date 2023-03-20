@@ -65,13 +65,14 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: Var, PTimeVar
   LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, &
-      ParticleInfo, InitAllVelo, ReverseTime
+      ParticleInfo, InitAllVelo, ReverseTime, Reinitialize
   INTEGER :: i,j,k,n,dim,No,nodims,&
       ElementIndex, VisitedTimes = 0, nstep, &
       Status,TimeOrder, PartitionChanges, TimeStepsTaken=0,&
       ParticleStepsTaken=0, TotParticleStepsTaken, TotNoParticles, &
       istep,iorder,NoMoving
   REAL(KIND=dp) :: maxdt, dertime = 0.0, tottime = 0.0
+  REAL(KIND=dp), ALLOCATABLE :: OrigCoordinate(:,:)
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, IntegMethod
   TYPE(Particle_t), POINTER  :: Particles
   CHARACTER(*), PARAMETER :: Caller = 'ParticleAdvector'
@@ -93,6 +94,18 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   PSolver => Solver
   DIM = CoordinateSystemDimension()
 
+  ReverseTime = ListGetLogical( Params,'Particle time reverse',GotIt)
+  Reinitialize = GetLogical( Params,'Reinitialize Particles',GotIt ) 
+  IF( ReverseTime .AND. .NOT. Reinitialize) THEN
+    IF(GotIt) THEN
+      CALL Fatal(Caller,'Reverse time and no reinitialization are in conflict!')
+    ELSE
+      CALL Info(Caller,'Enforcing reinitialization because of reverset time!')
+      Reinitialize = .TRUE.
+    END IF
+  END IF
+
+  
   maxdt = 0.0_dp  
   istep = 1
   iorder = 1
@@ -111,10 +124,20 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
   ! Initialize particles always since we just advance -dt each time
   !-------------------------------------------------------------------------
-  IF( VisitedTimes == 1 .OR. GetLogical( Params,'Reinitialize Particles',GotIt ) ) THEN
-    CALL InitializeParticles( Particles, SaveOrigin = .TRUE. ) 
+  IF( VisitedTimes == 1 .OR. Reinitialize ) THEN
+    CALL InitializeParticles( Particles, IsAdvector = .TRUE.) 
     CALL ReleaseWaitingParticles(Particles) 
     Particles % Status = PARTICLE_LOCATED
+
+    IF( ReverseTime ) THEN
+      n = Particles % NumberOfParticles
+      ALLOCATE(OrigCoordinate(n,dim))      
+      DO i=1,n
+        DO j=1,dim
+          OrigCoordinate(i,j) = Particles % Coordinate(i,j) 
+        END DO
+      END DO
+    END IF
   ELSE
     ! in case the velocity field is changed update also the particle velocities
     CALL SetParticleVelocities(InitAllVelo)
@@ -143,8 +166,6 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     iorder = 1
   END IF
 
-  ReverseTime = ListGetLogical( Params,'Particle time reverse',GotIt)
-  
 !  CALL ParticleStatusCount( Particles )
 
   ! This is the default for particle advector!
@@ -231,9 +252,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     
   ! Set the advected field giving the final locations of the particles backward in time
   !------------------------------------------------------------------------------------
-  IF( Particles % DtSign == -1 ) THEN
-    CALL SetAdvectedField()
-  END IF
+  CALL SetAdvectedField()
 
   ! In the end show some statistical info
   !---------------------------------------------------------------   
@@ -418,7 +437,7 @@ CONTAINS
     TYPE(Valuelist_t), POINTER :: Params
     REAL(KIND=dp) :: VeloAtPoint(3), GradVeloAtPoint(3,3),dtime
     LOGICAL :: Stat, UseGradVelo, Visited = .FALSE.
-    INTEGER :: i,j,k,l,n,dim,TimeOrder, NewLost(3), OldLost, FixedLost
+    INTEGER :: i,j,k,l,n,TimeOrder, NewLost(3), OldLost, FixedLost
     INTEGER, POINTER :: NodeIndexes(:), FieldPerm(:),FieldIndexes(:)
     REAL(KIND=dp) :: SqrtElementMetric, Weight, Speed, SpeedMin
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:), Coordinate(:,:), Velocity(:,:)
@@ -428,12 +447,11 @@ CONTAINS
     TYPE(Variable_t), POINTER :: DtVar	
     
     
-    SAVE :: Visited, Mesh, dim, Basis, dBasisdx, Params, VeloVar, UseGradvelo, DtVar, &
+    SAVE :: Visited, Mesh, Basis, dBasisdx, Params, VeloVar, UseGradvelo, DtVar, &
 	SpeedMin, NewLost 
 
     IF( .NOT. Visited ) THEN
       Mesh => GetMesh()
-      dim = Mesh % MeshDim
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), dBasisdx(n, 3) )
       
@@ -569,14 +587,14 @@ CONTAINS
   !> Compute field values at the given points in the FE mesh. 
   !-------------------------------------------------------------------------
   SUBROUTINE SetAdvectedField()
-
+    
     TYPE(Element_t), POINTER :: BulkElement
     INTEGER :: No, Status, NoParticles
     REAL(KIND=dp) :: dtime, Coord(3),Velo(3),val,vals(10)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: Params
     LOGICAL :: Stat, Visited = .FALSE.
-    INTEGER :: i,j,k,l,n,nsize,dim,wallcount,NoVar,NoNorm,dofs,maxdim,VarType
+    INTEGER :: i,j,k,l,n,nsize,wallcount,NoVar,NoNorm,dofs,maxdim,VarType
     INTEGER, POINTER :: NodeIndexes(:), PPerm(:)
     REAL(KIND=dp) :: SqrtElementMetric, Norm, PrevNorm = 0.0_dp, Change
     REAL(KIND=dp), POINTER :: Basis(:)
@@ -592,21 +610,26 @@ CONTAINS
     
     SAVE :: Visited, PrevNorm, UnitPerm
 
-    CALL Info(Caller,'Setting the advected fields',Level=10)
-
+    IF( ReverseTime ) THEN
+      IF( Particles % DtSign == -1 ) THEN
+        CALL Info(Caller,'Setting the advected fields at turning point',Level=10)
+      ELSE
+        CALL Info(Caller,'Setting the advected fields after reverse tracking',Level=10)
+      END IF
+    ELSE
+      CALL Info(Caller,'Setting the advected fields',Level=10)
+    END IF
     
     Mesh => GetMesh()
-    dim = Mesh % MeshDim
+    maxdim = dim
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
     Coord = 0.0_dp
     Velo = 0.0_dp
-
+    
     Params => GetSolverParams()
     NoNorm = GetInteger( Params,'Norm Variable Index',GotIt)
     NoParticles = Particles % NumberOfParticles
-    maxdim = 0
-
     
     DataVar => VariableGet( Mesh % Variables,'AdvectorData')
     IF( ASSOCIATED( DataVar ) ) THEN
@@ -617,7 +640,7 @@ CONTAINS
     END IF    
 
     Parallel = ( ParEnv % PEs > 1 ) 
-
+    
     Initiated = .FALSE.
 100 NoVar = 0 
     DO WHILE(.TRUE.)
@@ -626,8 +649,18 @@ CONTAINS
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
-
-      CALL Info(Caller,'Setting field for variable: '//TRIM(VariableName),Level=15)
+      
+      WRITE (Name,'(A,I0)') 'Operator ',NoVar
+      OperName = GetString( Params,Name,GotOper)
+      
+      IF( ReverseTime ) THEN
+        Stat = ( VariableName == 'particle disp' .OR. &
+            VariableName == 'particle time integral' .OR. &
+            VariableName == 'particle distance integral' ) 
+        IF( .NOT. XOR( Stat, Particles % DtSign == -1 ) ) CYCLE
+      END IF
+      
+      CALL Info(Caller,'Setting field '//I2S(NoVar)//' for variable: '//TRIM(VariableName),Level=15)
 
       ! Get the target variables
       ! Variables starting with 'particle' as associated with particles
@@ -636,15 +669,14 @@ CONTAINS
       
       IF( VariableName == 'particle coordinate' .OR. &
           VariableName == 'particle velocity' .OR. &
-          VariableName == 'particle force') THEN
+          VariableName == 'particle force' .OR. &
+          VariableName == 'particle disp') THEN
 
         dofs = dim 
         InternalVariable = .TRUE.
-        maxdim = MAX( dim, maxdim )
       ELSE IF( SEQL(VariableName, 'particle') ) THEN
         dofs = 1
         InternalVariable = .TRUE.
-        maxdim = MAX( 1, maxdim )
       ELSE
         TargetVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
         IF( .NOT. ASSOCIATED(TargetVar)) THEN
@@ -669,9 +701,6 @@ CONTAINS
       Derivative = .FALSE.
       Cumulative = .FALSE.
 
-      WRITE (Name,'(A,I0)') 'Operator ',NoVar
-      OperName = GetString( Params,Name,GotOper)
-
       IF( GotOper ) THEN
         IF( OperName == 'difference' ) THEN
           Difference = .TRUE.
@@ -685,8 +714,8 @@ CONTAINS
       ELSE
         OperName = 'adv'
       END IF
-
-      CALL Info(Caller,'Using operator for variable: '//TRIM(OperName),Level=15)
+      
+      CALL Info(Caller,'Using operator '//I2S(NoVar)//' for variable: '//TRIM(OperName),Level=15)
       
       WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
       ResultName = GetString( Params,Name,GotRes)
@@ -750,14 +779,24 @@ CONTAINS
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
-        CALL Info(Caller,'Setting particle variable to fields',Level=15)
+        CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'"to fields',Level=15)
 
-        IF( VariableName == 'particle coordinate') THEN
+        IF( VariableName == 'particle disp') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
           DO i=1,NoParticles
             DO j=1,dim
+              NewValues(dim*(i-1)+j) = Particles % Coordinate(i,j) - OrigCoordinate(i,j)
+            END DO
+          END DO
+
+        ELSE IF( VariableName == 'particle coordinate') THEN
+          IF( ResultVar % Dofs /= dim ) THEN
+            CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
+          END IF          
+          DO j=1,dim
+            DO i=1,NoParticles
               NewValues(dim*(i-1)+j) = Particles % Coordinate(i,j)
             END DO
           END DO
@@ -802,7 +841,7 @@ CONTAINS
           DO i=1,NoParticles
             NewValues(i) = 1.0_dp * Particles % Status(i)
           END DO
-
+          
         ELSE IF( VariableName == 'particle number') THEN
           DO i=1,NoParticles
             NewValues(i) = 1.0_dp * i
@@ -823,7 +862,7 @@ CONTAINS
         END IF
         
       ELSE 
-        CALL Info(Caller,'Setting field variable to advected fields',Level=15)
+        CALL Info(Caller,'Setting field variable "'//TRIM(VariableName)//'" to advected fields',Level=15)
         
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -839,10 +878,10 @@ CONTAINS
           
           Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
           Velo(1:dim) = Particles % Velocity(i, 1:dim) 
-          
+                    
           stat = ParticleElementInfo( BulkElement, Coord, SqrtElementMetric, Basis )
           IF(.NOT. stat) CYCLE
-          
+
           IF( dofs == 1 ) THEN
             CALL GetScalarFieldInMesh(TargetVar, BulkElement, Basis, val ) 
             NewValues( i ) =  val 
@@ -867,25 +906,29 @@ CONTAINS
       ! Finally move the nodal values to the target variable 
       !---------------------------------------------------------------------
       IF( ASSOCIATED( DataVar ) ) THEN
+        n = SIZE(ResultVar % Values)
         IF( Difference .OR. Derivative ) THEN
-          ResultVar % Values = NodeValues - TargetVar % Values 
+          ResultVar % Values = NodeValues(1:n) - TargetVar % Values 
         ELSE IF( Cumulative ) THEN
-          ResultVar % Values = NodeValues + ResultVar % Values
+          ResultVar % Values = NodeValues(1:n) + ResultVar % Values
         ELSE
-          ResultVar % Values = NodeValues
+          ResultVar % Values = NodeValues(1:n)
         END IF
       ELSE
-        DO j=1,nsize
-          k = j
+        DO i=1,nsize
+          k = i
           IF( ASSOCIATED( ResultVar % Perm ) ) k = ResultVar % Perm( k )
           IF( k == 0 ) CYCLE
-          IF( Difference .OR. Derivative ) THEN
-            ResultVar % Values( k ) = NodeValues( j ) - TargetVar % Values( k ) 
-          ELSE IF( Cumulative ) THEN
-            ResultVar % Values( k ) = NodeValues( j ) + ResultVar % Values( k )
-          ELSE
-            ResultVar % Values( k ) = NodeValues( j ) 
-          END IF
+          dofs = ResultVar % Dofs
+          DO j=1,dofs
+            IF( Difference .OR. Derivative ) THEN
+              ResultVar % Values( dofs*(k-1)+j ) = NodeValues( dofs*(i-1)+j ) - TargetVar % Values( dofs*(k-1)+j ) 
+            ELSE IF( Cumulative ) THEN
+              ResultVar % Values( dofs*(k-1)+j ) = NodeValues( dofs*(i-1)+j ) + ResultVar % Values( dofs*(k-1)+j )
+            ELSE
+              ResultVar % Values( dofs*(k-1)+j ) = NodeValues( dofs*(i-1)+j ) 
+            END IF
+          END DO
         END DO
       END IF
       
@@ -927,10 +970,15 @@ CONTAINS
       !---------------------------------------------------------------
       IF( NoVar == NoNorm ) THEN
         n = SIZE( ResultVar % Values ) 
-        Norm = SQRT( SUM( ResultVar % Values ** 2) / n )
+        Norm = SUM( ResultVar % Values ** 2)
+
+        n = ParallelReduction(n)
+        Norm = ParallelReduction(Norm)
+        Norm = SQRT(Norm)/n
+        
         Change = 2.0 * ABS( Norm-PrevNorm ) / ( Norm + PrevNorm )
         PrevNorm = Norm
-
+               
         Solver % Variable % Norm = Norm
         Solver % Variable % NonlinChange = Change
         Solver % Variable % Values = Norm
