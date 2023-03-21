@@ -14640,7 +14640,7 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 !> Compute lumped fluxes, for example for capacitance or impedance matrices. 
 !------------------------------------------------------------------------------
-SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm ) 
+SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   INTEGER :: NoModes, iMode
@@ -14650,37 +14650,37 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,n,Nmode,Mmode
   REAL(KIND=dp), POINTER :: PValues(:)
-  
+  TYPE(LumpedModel_t), POINTER :: Lumped
   CHARACTER(*), PARAMETER :: Caller = 'StoreLumpedFluxes'
       
   CALL Info(Caller,'Storing lumped fluxes',Level=10)
 
-  IF(.NOT. ASSOCIATED( Solver % Lumped ) ) THEN
+  Lumped => Solver % Lumped
+  IF(.NOT. ASSOCIATED( Lumped ) ) THEN
     CALL Info(Caller,'Allocating lumped model of size: '//I2S(NoModes), Level=5)
-    ALLOCATE( Solver % Lumped ) 
+    ALLOCATE( Solver % Lumped )
+    Lumped => Solver % Lumped
 
-    Solver % Lumped % NoModes = NoModes
-
-    ALLOCATE( Solver % Lumped % CMatrix( NoModes, NoModes ) )
-    Solver % Lumped % CMatrix = 0.0_dp
+    Lumped % NoModes = NoModes
+    ALLOCATE( Lumped % CMatrix( NoModes, NoModes ) )
+    Lumped % CMatrix = 0.0_dp
 
     IF( PRESENT(FluxesRowIm) ) THEN
-      Solver % Lumped % IsComplex = .TRUE.
-      ALLOCATE( Solver % Lumped % CMatrixIm( NoModes, NoModes ) )
-      Solver % Lumped % CMatrixIm = 0.0_dp
+      Lumped % IsComplex = .TRUE.
+      ALLOCATE( Lumped % CMatrixIm( NoModes, NoModes ) )
+      Lumped % CMatrixIm = 0.0_dp
     END IF
   END IF
 
-  FluxesMatrix => Solver % Lumped % CMatrix
-  IF( Solver % Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
+  IF( Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
 
   !PRINT *,'iMode:',iMode,FluxesRow(1:NoModes), Solver % Lumped % IsComplex
 
-  FluxesMatrix(iMode,1:NoModes) = FluxesRow(1:NoModes)
+  Lumped % CMatrix(iMode,1:NoModes) = FluxesRow(1:NoModes)
   IF(PRESENT(FluxesRowIm) ) THEN
-    FluxesMatrixIm(iMode,1:NoModes) = FluxesRowIm(1:NoModes)
+    Lumped % CMatrixIm(iMode,1:NoModes) = FluxesRowIm(1:NoModes)
   END IF
-
+  
 END SUBROUTINE StoreLumpedFluxes
 
 
@@ -14815,7 +14815,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Nmode,Mmode,ierr
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, ComputeLinkage, Symmetric, &
-        IsComplex, Parallel, ConsiderP, RhsMode, EnergyMode
+        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
@@ -14866,8 +14866,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     ComputeFluxes = ListGetLogical( Params,'Constraint Modes Fluxes',Found) 
     ComputeLinkage = ListGetLogical( Params,'Constraint Modes Linkage',Found )
     RhsMode = ListGetLogical( Params,'Constraint Modes rhs',Found )
-    EnergyMode = ListGetLogical( Params,'Constraint Modes EM Wave', Found ) 
-    IF( EnergyMode ) THEN
+    EmWaveMode = ListGetLogical( Params,'Constraint Modes EM Wave', Found ) 
+    IF( EmWaveMode ) THEN
       ComputeFluxes = .TRUE.; RhsMode = .TRUE.
     END IF
     
@@ -14966,14 +14966,14 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
 
         IF( ComputeFluxes ) THEN
-          CALL ConstraintModesFluxes(EnergyMode)
+          CALL ConstraintModesFluxes(EmWaveMode)
         ELSE
           CALL ConstraintModesLinkage()
         END IF          
         CALL CommunicateConstraintModesFluxes()
 
         IF( IsComplex ) THEN
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm  ) 
+          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm )
         ELSE
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
@@ -14995,13 +14995,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
   CONTAINS
 
-    SUBROUTINE ConstraintModesFluxes(EnergyMode)
-      LOGICAL :: EnergyMode
+    SUBROUTINE ConstraintModesFluxes(EmWaveMode)
+      LOGICAL :: EmWaveMode
 
       REAL(KIND=dp), POINTER CONTIG :: PValues(:)
       INTEGER :: poffset
       REAL(KIND=dp) :: flux, w
-      COMPLEX(KIND=dp) :: cflux, cx, cmult
+      COMPLEX(KIND=dp) :: cflux, cx, cmult, cb, crhs
       
       ! Use the initial bulk values that do not include Dirichlet conditions
       PValues => A % Values
@@ -15025,8 +15025,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       poffset = 2*(NoModes + 1)
       FluxesRow = 0.0_dp
       IF(IsComplex) FluxesRowIm = 0.0_dp
+      crhs = 0.0_dp
 
-      IF( EnergyMode ) THEN
+      
+      IF( EmWaveMode ) THEN
         w = ListGetAngularFrequency( Found = Found )
         IF(.NOT. Found) CALL Fatal(Caller,'Energy mode requires "Angular Frequency"!')
         cmult = 1.0/(2*w*CMPLX(0.0_dp,1.0_dp)) 
@@ -15045,10 +15047,12 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
               cflux = CMPLX(Fluxes(j),Fluxes(j+1))                            
-              IF( EnergyMode ) THEN
+              IF( EmWaveMode ) THEN
                 cx = CMPLX(x(j),x(j+1))
                 cflux = cmult * cx * CONJG(cflux)
-              END IF                
+                cb = CMPLX(b(j),b(j+1))
+                crhs = crhs + cmult * cx * CONJG(cb)
+              END IF
               IF( Nmode /= Mmode ) THEN
                 FluxesRow(Mmode) = FluxesRow(Mmode) - REAL(cflux)
                 FluxesRowIm(Mmode) = FluxesRowIm(Mmode) - AIMAG(cflux)
@@ -15059,7 +15063,6 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
             END IF
           ELSE
             flux = Fluxes(j)
-            IF( EnergyMode ) flux = x(j) * flux
             Mmode = k 
             IF( Nmode /= Mmode ) THEN                
               FluxesRow(Mmode) = FluxesRow(Mmode) - flux
@@ -15068,7 +15071,16 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END IF
         END IF
       END DO
-
+      
+      IF( EmWaveMode ) THEN
+        ! Normalize the S-matrix with the source term
+        DO j=1,NoModes
+          cx = CMPLX( FluxesRow(j), FluxesRowIm(j) ) / crhs
+          FluxesRow(j) = REAL(cx)
+          FluxesRowIm(j) = AIMAG(cx)           
+        END DO        
+      END IF
+      
     END SUBROUTINE ConstraintModesFluxes
 
 
