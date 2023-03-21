@@ -100,6 +100,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   USE CircuitUtils
   USE CircuitsMod
   USE CircMatInitMod
+  USE MGDynMaterialUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
