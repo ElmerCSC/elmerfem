@@ -5,6 +5,9 @@
 ! Periodic BCs are enforced on the particles. Basically these features were implemetented
 ! during MMM@HPC project but added to the test set much later.
 !
+! Compared to base case this includes also magnetic field completing the Lorentz force
+! f=eE + q v x B
+!
 ! P.R. 21.3.2023
 !---------------------------------------------------------------------------------------------
 
@@ -33,7 +36,16 @@ End
 Body 1
   Equation = 1
   Material = 1
+  Initial Condition = 1
 End
+
+! We set the magnetic field such that the particles remain in (x,y) plane.
+Initial Condition 1
+  Name = "SetB"
+  B 1 = Real 0.0
+  B 2 = Real 0.0
+  B 3 = Real 1.0
+End 
 
 Equation 1
   Active Solvers(3) = 1 2 3
@@ -54,6 +66,8 @@ Solver 1
   Linear System Preconditioning = ILU1
   Linear System Residual Output = 20
   Nonlinear System Max Iterations = 1
+
+  Exported Variable 1 = -dofs 3 "B"
 End
 
 
@@ -71,6 +85,7 @@ Solver 2
   Time Order = 2
 
   Potential Variable Name = "Potential"
+  Magnetic Field Variable Name = String "B"
 
   Particle Mass = 1.0
   Particle Charge = 1.0
@@ -174,5 +189,5 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = 5.84522573E-01
-Solver 2 :: Reference Norm = 1.00000001E+00
-Solver 3 :: Reference Norm = 5.00000014E-01
+Solver 2 :: Reference Norm = 9.61234836E-01
+Solver 3 :: Reference Norm = 4.61986205E-01

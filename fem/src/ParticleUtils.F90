@@ -4469,7 +4469,7 @@ RETURN
     REAL(KIND=dp), POINTER :: LocalVelo(:,:)
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: VeloFieldDofs
+    INTEGER :: Dofs
     REAL(KIND=dp) :: SumBasis
     INTEGER :: i,j,k,n,npos,ind,dim
     LOGICAL :: GotIt, InterfaceNodes
@@ -4491,9 +4491,14 @@ RETURN
       Dim = Mesh % MeshDim
       Visited = .TRUE.
     END IF
-    
+
     Velo = 0.0_dp
     IF( PRESENT( GradVelo ) ) GradVelo = 0.0_dp
+
+    IF(.NOT. ASSOCIATED(Var) ) THEN
+      CALL Fatal('GetVectorFieldInMesh','Variable not associated!')
+    END IF
+
     
     n = CurrentElement % TYPE % NumberOfNodes    
     IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN      
@@ -4502,9 +4507,10 @@ RETURN
       LocalPerm(1:n) = Var % Perm( CurrentElement % NodeIndexes )
     END IF
     npos = COUNT ( LocalPerm(1:n) > 0 )
-    
+        
     
     IF( npos == 0 ) RETURN
+    dofs = MIN(3,Var % Dofs)
     
     !-----------------------------------------------------------------
     ! compute the velocity also for case when the particle
@@ -4513,12 +4519,11 @@ RETURN
     ! only be done conditionally....
     ! Can't really determine the gradient here
     !-----------------------------------------------------------------
-    VeloFieldDofs = Var % Dofs
     IF( npos == n ) THEN
       DO i=1,n
         j = LocalPerm(i)
-	DO k=1,dim
-          LocalVelo(i,k) = Var % Values( VeloFieldDofs*(j-1)+k)
+	DO k=1,dofs
+          LocalVelo(i,k) = Var % Values( Dofs*(j-1)+k)
         END DO
       END DO
     ELSE    
@@ -4529,8 +4534,8 @@ RETURN
         j = LocalPerm(i)
         IF( j > 0 ) THEN
           SumBasis = SumBasis + Basis(i)
-          DO k=1,dim
-            LocalVelo(i,k) = Var % Values( VeloFieldDofs*(j-1)+k)
+          DO k=1,dofs
+            LocalVelo(i,k) = Var % Values( Dofs*(j-1)+k)
           END DO
         ELSE
           Basis(i) = 0.0_dp
@@ -4540,9 +4545,10 @@ RETURN
     END IF
     
 
-    DO i=1,dim
+    DO i=1,dofs
       Velo(i) = SUM( Basis(1:n) * LocalVelo(1:n,i) )
       IF( PRESENT( GradVelo ) ) THEN
+        ! dBasisdx has only stuff up until the dimension!
         DO j=1,dim
           GradVelo(i,j) = SUM( dBasisdx(1:n,j) * LocalVelo(1:n,i) )
         END DO
@@ -4550,7 +4556,7 @@ RETURN
     END DO
     
     IF( npos < n ) THEN
-      Velo(1:dim) = Velo(1:dim) / SumBasis
+      Velo(1:dofs) = Velo(1:dofs) / SumBasis
       IF( PRESENT( GradVelo ) ) THEN
         GradVelo(:,1:dim) = GradVelo(:,1:dim) / SumBasis
       END IF
