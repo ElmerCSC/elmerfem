@@ -1420,7 +1420,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,&
     IF(.NOT. Found) AnisoFlag = .TRUE.
     
     IF(AnisoFlag) THEN
-      CALL Info(FuncName,'Using unisotropic mesh metric',Level=15)
+      CALL Info(FuncName,'Using anisotropic mesh metric',Level=15)
       WorkMesh => Model % Mesh
       Model % Mesh => InMesh
       

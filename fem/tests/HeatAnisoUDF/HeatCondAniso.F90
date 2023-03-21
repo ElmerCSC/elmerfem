@@ -1,4 +1,4 @@
-SUBROUTINE HeatCondUniso( Model, n, t, f )
+SUBROUTINE HeatCondAniso( Model, n, t, f )
   USE DefUtils
 
   IMPLICIT NONE
@@ -23,4 +23,4 @@ SUBROUTINE HeatCondUniso( Model, n, t, f )
   f(2,1) = 0.0_dp
   f(2,2) = 20.0_dp - 2.0_dp * t
   
-END SUBROUTINE HeatCondUniso
+END SUBROUTINE HeatCondAniso

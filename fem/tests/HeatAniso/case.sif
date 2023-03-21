@@ -1,9 +1,8 @@
-! Test case for unisotropic heat conduction.
+! Test case for anisotropic heat conduction.
 ! The geometry is designed such that it is relatively easy
 ! to see that the solution is realistic.
 !
-! This case with k_xx=1+x/5, k_yy=20-2*x.
-! Dependence via MATC is used. 
+! This case with k_xx=1, k_yy=10.
 !
 ! P.R. 9.3.2018
 
@@ -87,15 +86,13 @@ Material 1
   Name = "Material"
   Density = 1
 
-! For 2D tensor conductivity
-!  Heat Conductivity(2,2) = Variable Coordinate 1
-!    Real 
-!      0 1 0 0 20 
-!      5 2 0 0 10 
-!    End
+! For 3D constant diagonal conductivity
+  Heat Conductivity(3) = 1 10 0
+!  Heat Conductivity(3,3) = 1 0 0 0 10 0 0 0 0
 
-  Heat Conductivity(2,2) = Variable Coordinate 1
-     Real MATC "(1+tx/5) 0 0 (20-2*tx)"
+! For 2D these are ok as well
+!  Heat Conductivity(2) = 1 10
+!  Heat Conductivity(2,2) = 1 0 0 10 
 End
 
 
@@ -129,6 +126,6 @@ Boundary Condition 5
 End
 
 
-Solver 1 :: Reference Norm = 6.49668807E-01
-Solver 2 :: Reference Norm = 8.45767667E-01
+Solver 1 :: Reference Norm = 9.30658750E-01
+Solver 2 :: Reference Norm = 8.45189077E-01
 

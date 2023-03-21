@@ -82,10 +82,21 @@ CONTAINS
     INTEGER :: VisitedCount = 0, RemeshInterval    
     CHARACTER(*), PARAMETER :: Caller = 'ReMesh'
 
+    INTERFACE
+      SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
+          NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+        USE Types
+        TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
+        TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
+        LOGICAL, OPTIONAL :: UseQuadrantTree
+        LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
+        CHARACTER(LEN=*),OPTIONAL :: MaskName
+        TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+      END SUBROUTINE InterpolateMeshToMesh
+    END INTERFACE
+    
     SAVE VisitedCount
     
-!---------------------------------------------------------------------------------
-!
 !   Initialize:
 !   -----------
     CALL Info( Caller, ' ', Level=5 )
@@ -112,10 +123,10 @@ CONTAINS
       END IF
     END IF         
     
-    ! Interpolation is costly in parallel. Do it by default only in serial. 
-    Parallel = ( ParEnv % PEs > 1 )
-    NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
-    IF(.NOT. Found) NoInterp = Parallel 
+    ! Interpolation is best done all in one sweep at the end
+    ! Hence this is omitted at the moment. 
+    ! NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
+    NoInterp = .TRUE. 
     
 !   Compute the local error indicators:
 !   -----------------------------------
@@ -140,6 +151,7 @@ CONTAINS
     WRITE( Message, * ) 'Remeshing time (real-secs):                      ',RemeshTime
     CALL Info( Caller, Message, Level=6 )
 
+    
     IF ( .NOT.ASSOCIATED( NewMesh ) ) THEN
       CALL Info( Caller,'Current mesh seems fine. Nothing to do.', Level=6 )
       RefMesh % OUtputActive = .TRUE.
@@ -201,135 +213,39 @@ CONTAINS
       END IF
     END IF
     
-!   Initialize local variables for the new mesh:
+!   Initialize glocal variables for the new mesh:
 !   --------------------------------------------
-    NULLIFY( NewMesh % Variables )
-    
+    NULLIFY( NewMesh % Variables )    
     CALL TransferCoordAndTime( RefMesh, NewMesh ) 
     
-    ! Initialize the field variables for the new mesh. These are
-    ! interpolated from the old meshes variables. Vector variables
-    ! are in the variable lists in two ways: as vectors and as
-    ! vector components. We MUST update the vectors (i.e. DOFs>1)
-    ! first!!!!!
+    ! Set the current mesh.
     ! -----------------------------------------------------------
     CALL SetCurrentMesh( Model, NewMesh )
 
-#if 0
-    IF( .NOT. ListGetLogical( Params,'Skip Interpolation', Found ) ) THEN
-      
-      CALL Info(Caller,'Interpolate vectors from old mesh to new mesh!',Level=7)    
-      Var => RefMesh % Variables
-      DO WHILE( ASSOCIATED( Var ) )
-        ! This cycles global variable such as time etc. 
-        IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-          Var => Var % Next
-          CYCLE
-        END IF
-
-        IF ( Var % DOFs > 1 ) THEN
-          NewVar => VariableGet( NewMesh % Variables,Var % Name,.FALSE. )
-          k = SIZE( NewVar % Values )
-          IF ( ASSOCIATED( NewVar % Perm ) ) THEN
-            k = COUNT( NewVar % Perm > 0 )
-          END IF
-          IF ( GetVarName( NewVar ) == 'flow solution' ) THEN
-            NewVar % Norm = 0.0d0
-            DO i=1,NewMesh % NumberOfNodes
-              DO j=1,NewVar % DOFs-1
-                NewVar % Norm = NewVar % Norm + &
-                    NewVar % Values( NewVar % DOFs*(i-1)+j )**2
-              END DO
-            END DO
-            NewVar % Norm = SQRT( NewVar % Norm / k )
-          ELSE
-            NewVar % Norm = SQRT( SUM(NewVar % Values**2) / k )
-          END IF
-        END IF
-        Var => Var % Next
-      END DO
-      CALL Info(Caller,'Interpolation to new mesh done!',Level=20)    
-
-      !   Second time around, update scalar variables and
-      !   vector components:
-      !   -----------------------------------------------
-      CALL Info(Caller,'Interpolate scalars from old mesh to new mesh!',Level=7)    
-      Var => RefMesh % Variables
-      DO WHILE( ASSOCIATED( Var ) )
-
-        ! This cycles global variable such as time etc. 
-        IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-          Var => Var % Next
-          CYCLE
-        END IF
-
-        SELECT CASE( Var % Name )
-
-        CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
-          CONTINUE
-
-        CASE DEFAULT
-          IF ( Var % DOFs == 1 ) THEN
-            IF( NoInterp ) THEN
-              ! Add field without interpolation
-              NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
-              IF(.NOT. ASSOCIATED(NewVar) ) THEN
-                CALL VariableAddVector( NewMesh % Variables, NewMesh, Solver,&
-                    Var % Name,Var % DOFs)
-                NewVar => VariableGet( NewMesh % Variables, Var % Name, .TRUE. )
-              END IF
-              NewVar % Norm = Var % Norm
-            ELSE
-              ! Interpolate scalar variables using automatic internal interpolation 
-              NewVar => VariableGet( NewMesh % Variables, Var % Name, .FALSE. )
-              k = SIZE(NewVar % Values)
-              IF ( ASSOCIATED( NewVar % Perm ) ) THEN
-                k = COUNT( NewVar % Perm > 0 )
-              END IF
-              NewVar % Norm = SQRT(SUM(NewVar % Values**2)/k)
-            END IF
-          END IF
-        END SELECT
-        Var => Var % Next
-      END DO
-    
-!-------------------------------------------------------------------    
-      WRITE( Message, * ) 'Mesh variable update time (cpu-secs):            ',CPUTime()-t
-      CALL Info( Caller, Message, Level = 6 )
-!-------------------------------------------------------------------    
-    END IF
-#endif
-    
-    
-    ! Adaptive meshing is trailing. This is usually preceeding and hance we immediately change the
-    ! Mesh to the active one.
-    !----------------------------------
+    ! Change the active mesh to be the new one.
+    !------------------------------------------
     RefMesh % OutputActive = .FALSE.
     NewMesh % SavesDone = 0  
     NewMesh % OutputActive = .TRUE.
     NewMesh % Changed = .TRUE.
-
-!
+    NewMesh % Projector => NULL()
+    
 !   Create matrix structures for the new mesh:
 !   ------------------------------------------    
     t = CPUTime()
-
-
-!   Try to account for the reordering of DOFs
-!   due to bandwidth optimization:
-!   -----------------------------------------    
     CALL Info( Caller,'Updating primary solver structures: '//TRIM(Solver % Variable % Name))
     CALL UpdateSolverMesh( Solver, NewMesh, NoInterp )
     NewMesh % Changed = .TRUE.
     CALL ParallelInitMatrix( Solver, Solver % Matrix )
 
     ! This is no longer valid. We could call the routine to update this
-    ! but it is not visible in this module now...
+    ! but it is not visible in this module now so just deallocate it.
     IF(Solver % NumberOfActiveElements > 0 ) THEN
       DEALLOCATE( Solver % ActiveElements )
       Solver % NumberOfActiveElements = 0
     END IF
-      
+
+    ! Update also other variables that use the same mesh but in different solvers.    
     DO i=1,Model % NumberOfSolvers
       pSolver => Model % Solvers(i)
       IF( .NOT. ASSOCIATED( pSolver ) ) CYCLE
@@ -363,10 +279,35 @@ CONTAINS
     !   Update Solver structure to use the new mesh:
     !   ---------------------------------------------    
     CALL MeshStabParams( NewMesh )
-            
-!   Release previous meshes. Keep only the original mesh, and
-!   the last two meshes:
-!   ---------------------------------------------------------
+
+    Model % Solver % Mesh => NewMesh
+        
+    ! Here is all the real interpolation work (serial & parallel)
+    ! Do it at the end since now all variables have been properly initialized
+    ! and mainly interpolation remains to be done. 
+    !---------------------------------------------------------------------
+    IF( .NOT. ListGetLogical( Params,'Skip Interpolation', Found ) ) THEN
+      CALL Info(Caller,'Mapping all fields in old mesh to new mesh!',Level=7)
+      PRINT *,'ASS:',ASSOCIATED(RefMesh % Variables), ASSOCIATED(NewMesh % VAriables)
+      CALL InterpolateMeshToMesh( RefMesh, NewMesh, &
+          RefMesh % Variables, NewMesh % Variables )
+      CALL Info(Caller,'Done mapping all fields in old mesh to new mesh!',Level=15)
+
+      ! Compute the norms so that we have better estimate for the accuracy
+      DO i=1,CurrentModel % NumberOfSolvers
+        pSolver => CurrentModel % Solvers(i)
+        IF(.NOT. ASSOCIATED( NewMesh, pSolver % Mesh ) ) CYCLE
+        IF(.NOT. ASSOCIATED( pSolver % Variable) ) CYCLE
+        IF(.NOT. ASSOCIATED( pSolver % Matrix ) ) CYCLE
+        CALL Info(Caller,'Computing norm for mapped field of solver: '//I2S(pSolver % SolverId),Level=12)
+        pSolver % Variable % Norm = ComputeNorm(pSolver, &
+            SIZE(pSolver % Variable % Values), pSolver % Variable % Values ) 
+      END DO
+    END IF    
+    
+    ! Release previous meshes. Keep only the original mesh, and
+    ! the last two meshes:
+    !---------------------------------------------------------
     n = 0
     Mesh => RefMesh % Parent
     DO WHILE( ASSOCIATED(Mesh) )
@@ -376,17 +317,14 @@ CONTAINS
         IF ( ASSOCIATED( Mesh % Parent ) ) THEN
           Mesh % Parent % Child => Mesh % Child                        
         END IF
-
         IF ( ASSOCIATED(Mesh % Child) ) THEN
           Mesh % Child % Parent => Mesh % Parent
           ! Eliminate the mesh to be released also from here!
           Mesh % Child % Next => Mesh % Next 
         END IF
-
         CALL Info(Caller,'Releasing mesh: '//TRIM(Mesh % Name),Level=8)
         CALL ReleaseMesh( Mesh )
       END IF
-
       Mesh => sMesh
     END DO
 
@@ -401,19 +339,11 @@ CONTAINS
       CALL ReleaseMeshFaceTables( RefMesh )
     END IF
     
-    CALL SetCurrentMesh( Model, NewMesh )
-    Model % Solver % Mesh => NewMesh
-    
 20  CONTINUE
 
-    WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
+    WRITE( Message, * ) 'Mesh alteration took in total (cpu-secs):           ', &
         CPUTIme() - TotalTime 
     CALL Info( Caller, Message, Level=6 )
-    IF ( RemeshTime > 0 ) THEN
-      WRITE( Message, * ) 'Remeshing took in total (real-secs):            ', &
-          RemeshTime
-      CALL Info( Caller, Message, Level=6 )
-    END IF
     CALL Info( Caller,'----------- E N D   M E S H   R E F I N E M E N T --------------', Level=5 )
     
     

@@ -974,7 +974,7 @@ CONTAINS
 
         n = ParallelReduction(n)
         Norm = ParallelReduction(Norm)
-        Norm = SQRT(Norm)/n
+        Norm = SQRT(Norm/n)
         
         Change = 2.0 * ABS( Norm-PrevNorm ) / ( Norm + PrevNorm )
         PrevNorm = Norm
