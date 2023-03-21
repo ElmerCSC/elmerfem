@@ -573,13 +573,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 dBasisdx(:,:)
    REAL(KIND=dp), ALLOCATABLE :: SOL(:,:), PSOL(:), ElPotSol(:,:), C(:)
    REAL(KIND=dp), ALLOCATABLE :: Wbase(:), alpha(:), NF_ip(:,:)
-   REAL(KIND=dp), ALLOCATABLE :: PR(:), omega_velo(:,:), lorentz_velo(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: omega_velo(:,:), lorentz_velo(:,:)
    COMPLEX(KIND=dp), ALLOCATABLE :: Magnetization(:,:), BodyForceCurrDens(:,:)
-   COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: R_Z(:), PR(:)
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
-   REAL(KIND=dp) :: ldetJ,detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
+   REAL(KIND=dp) :: ldetJ,detJ, C_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: localThickness
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
@@ -589,7 +589,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: R_ip, mu_r
    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
 
-   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
+   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3), PR_ip
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value, Zs
@@ -1618,7 +1618,7 @@ type(solver_t), pointer :: lSolver
          END IF
        END IF
        
-       Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
+       Energy(1) = Energy(1) + s*0.5*ABS(PR_ip)*SUM(E**2)
        Energy(2) = Energy(2) + s*w_dens
        Energy(3) = Energy(3) + (HdotB - w_dens) * s
 
@@ -1901,9 +1901,9 @@ type(solver_t), pointer :: lSolver
            IF ( Vdofs==1 ) THEN
              DO l=1,3
                DO m=l,3
-                 ST(l,m)=PR_ip*E(1,l)*E(1,m)+R_ip*B(1,l)*B(1,m)
+                 ST(l,m)=REAL(PR_ip)*E(1,l)*E(1,m)+R_ip*B(1,l)*B(1,m)
                END DO
-               ST(l,l)=ST(l,l)-(PR_ip*SUM(E(1,:)**2)+R_ip*SUM(B(1,:)**2))/2
+               ST(l,l)=ST(l,l)-(REAL(PR_ip)*SUM(E(1,:)**2)+R_ip*SUM(B(1,:)**2))/2
              END DO
              DO l=1,6
                FORCE(p,k+l)=FORCE(p,k+l) + s*ST(ind1(l),ind2(l))*Basis(p)

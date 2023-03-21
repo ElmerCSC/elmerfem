@@ -1814,9 +1814,8 @@ END SUBROUTINE LocalConstraintMatrix
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
-    Permittivity = GetReal( GetMaterial(), 'Permittivity', Found )
+    CALL GetPermittivity(GetMaterial(), Permittivity, n)
 
-    
     IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
     END IF

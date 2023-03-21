@@ -1291,11 +1291,11 @@ END BLOCK
                      lorentz_velo(3,n), RotWJ(3)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
-    REAL(KIND=dp) :: nu_val, nuim_val, Permittivity(nd), P_ip
+    REAL(KIND=dp) :: nu_val, nuim_val
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum
+                        CVelo(3), CVeloSum, Permittivity(nd), P_ip
 
     LOGICAL :: Stat, Newton, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
@@ -1338,8 +1338,7 @@ END BLOCK
       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
     
-    Permittivity(1:n) = GetReal( GetMaterial(), 'Permittivity', Found)
-  
+    CALL GetPermittivity(GetMaterial(), Permittivity, n)
     HBCurve = ListCheckPresent(Material,'H-B Curve')
 
     IF(HBCurve) THEN

@@ -794,6 +794,8 @@ CONTAINS
 
     vvarId = Comp % vvar % ValueId + nm
 
+    Material => GetMaterial( Element )
+
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
     IF (ASolver % TimeOrder==2) THEN
@@ -817,7 +819,7 @@ CONTAINS
         pAcc2(1:nd) = pAcc(1:nd)
       END IF
       prevV = Crt(vvarId-nm)
-      Permittivity(1:nn) = GetReal(GetMaterial(), 'Permittivity', Found )
+      CALL GetPermittivity(Material, Permittivity, nn)
     ELSE
       CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
       IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN 
@@ -835,7 +837,6 @@ CONTAINS
       ncdofs=nd-nn
     END IF
 
-    Material => GetMaterial( Element )
     LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
 
     ! Numerical integration:
@@ -1957,7 +1958,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
-    REAL(KIND=dp) :: ModelDepth, Permittivity(1:nn), localP
+    REAL(KIND=dp) :: ModelDepth
+    COMPLEX(KIND=dp) :: Permittivity(nn), localP
 
     SAVE CSymmetry, dim, First
 
@@ -1992,7 +1994,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ElectroDynamics = GetLogical( Asolver % values, 'Electrodynamics Model', Found)
     IF(ElectroDynamics) THEN
-      Permittivity(1:n) = GetReal(Material, 'Permittivity', Found )
+      CALL GetPermittivity(Material, Permittivity, nn)
     END IF
 
     LondonLambda(:) = GetReal( Material, 'London Lambda', LondonEquations, Element)
