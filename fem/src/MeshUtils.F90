@@ -17745,6 +17745,7 @@ CONTAINS
              DO j=2,Degree
                Edges(Edge) % NodeIndexes(j+1) = Element % NodeIndexes(k+n+j-2)
              END DO
+             Edges(Edge) % PartIndex = Element % PartIndex
              
              ! Create P element definitions if needed
              IF ( ASSOCIATED( Element % PDefs ) ) THEN
@@ -18185,6 +18186,8 @@ CONTAINS
               Faces(Face) % NodeIndexes(n2) = &
                   Element % NodeIndexes(FaceMap(k,n2)) 
             END DO
+
+            Faces(Face) % PartIndex = Element % PartIndex
 
             ALLOCATE( Faces(Face) % BoundaryInfo )
             Faces(Face) % BoundaryInfo % Left  => NULL()

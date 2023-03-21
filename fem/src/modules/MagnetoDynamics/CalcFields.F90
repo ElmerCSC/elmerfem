@@ -360,8 +360,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
 
     IF ( GetLogical( SolverParams, 'Calculate Electric Scalar Potential', Found ) ) THEN
-      i = i + 1
       IF ( RealField ) THEN
+        i = i + 1
         CALL ListAddString( SolverParams, "Exported Variable "//i2s(i), &
             "Electric Scalar Potential" )
       END IF

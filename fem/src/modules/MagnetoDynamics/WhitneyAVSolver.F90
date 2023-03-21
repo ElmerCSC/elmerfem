@@ -943,12 +943,10 @@ CONTAINS
      SELECT CASE(GetElementFamily())
      CASE(1)
        CYCLE
-#if 0
      CASE(2)
        k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
      CASE(3,4)
        k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
-#endif
      END SELECT
      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
