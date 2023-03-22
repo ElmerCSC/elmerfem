@@ -15697,7 +15697,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       str = TRIM( ComponentName(var_name) ) // ' Velocity'
       DerVar => VariableGet( Solver % Mesh % Variables, str )        
       IF(.NOT. ASSOCIATED(DerVar)) THEN
-        CALL Warn('DerivatingExportedVariables','Variable does not exist:'//TRIM(str))
+        CALL Warn('DerivateExportedVariables','Variable does not exist:'//TRIM(str))
         CYCLE
       END IF
 
