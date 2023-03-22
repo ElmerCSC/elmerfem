@@ -531,7 +531,7 @@
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: Found, Found_im, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Pvacuum
     SAVE FirstTime, Warned, Pvacuum
     REAL(KIND=dp), PARAMETER :: im  = (0._dp, 1._dp)
@@ -548,11 +548,11 @@
     IF ( Found ) THEN
       Acoef(1:n) = Pvacuum * Acoef(1:n)
       Acoef(1:n) = Acoef(1:n) + im * Pvacuum * & 
-              GetReal(Material,'Relative Permittivity  im', Found)
+              GetReal(Material,'Relative Permittivity  im', Found_im )
     ELSE
       Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
       Acoef(1:n) = Acoef(1:n) + im * &
-                  GetReal(Material,'Permittivity  im', Found)
+                 GetReal(Material,'Permittivity  im', Found_im )
     END IF
 
     IF( .NOT. Found ) THEN
