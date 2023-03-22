@@ -516,7 +516,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       ! We want one group to be already a test case for the group concept
       NoGroups = 0
     END IF
-      
+
     CALL SetParticlePreliminaries( Particles, dim, TimeOrder )
 
     ParticleToField = GetLogical( Params,'Particle To Field',Found)
@@ -756,6 +756,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
   END DO
 
+  
   ! Do one last assembly if particle field is requested
   !------------------------------------------------------------------------
   IF( ParticleToField ) THEN
@@ -783,12 +784,43 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     CALL ParticleInformation(Particles, ParticleStepsTaken, &
 	TimeStepsTaken, tottime )
   END IF
-    
+
+  CALL PseudoNorm()
+ 
+  
   CALL Info('ParticleDynamics','All done',Level=4)
   CALL Info('ParticleDynamics', '-----------------------------------------', Level=4 )
   
   
 CONTAINS   
+
+
+  ! This prints a suitable norm that can be used for consistency tests etc.
+  ! The norm is based on L2 norm of the velocity field.
+  !------------------------------------------------------------------------
+  SUBROUTINE PseudoNorm()
+
+    REAL(KIND=dp) :: prevnrm = 0.0_dp, nrm, change, v2sum
+    INTEGER :: i, n
+    
+    v2sum = 0.0_dp
+    n = Particles % NumberOfParticles 
+    DO i=1, n
+      v2sum = v2sum + SUM(Particles % Velocity(i,1:dim)**2)
+    END DO
+    n = ParallelReduction(n)
+    v2sum = ParallelReduction(v2sum)
+
+    prevnrm = Solver % Variable % Norm
+    nrm = SQRT( v2sum / n )     
+    change = ABS((prevnrm-nrm)/(prevnrm+nrm))
+    
+    Solver % Variable % Norm = nrm
+    Solver % Variable % Values = nrm
+   
+  END SUBROUTINE PseudoNorm
+  
+
   
   !---------------------------------------------------------
   !> Advance the particles with a time step. The timestep may
@@ -1157,9 +1189,9 @@ CONTAINS
        CALL Warn('ParticleFieldInteraction','> Particle Mass < is needed by gravity!')
      END IF
 
-     IF( GotPot .AND. .NOT. GotCharge) THEN
+     IF( ( GotPot .OR. GotB ) .AND. .NOT. GotCharge) THEN
        CALL Fatal('ParticleFieldInteraction',&
-           '> Particle Charge < is needed by external field!')
+           '> Particle Charge < is needed by electric and magnetic fields!')
      END IF
       
      IF( GotVelo .AND. .NOT. GotDrag ) THEN
@@ -1293,8 +1325,9 @@ CONTAINS
          END IF
 
          IF( GotB ) THEN           
-           CALL GetVectorFieldInMesh(BVar, BulkElement, Basis, BAtPoint )
+           CALL GetVectorFieldInMesh(BVar, BulkElement, Basis, BAtPoint )           
            Force = Force + charge * CrossProduct( Velo, BAtPoint )  
+           IF(dim<3) Force(3) = 0.0_dp
          END IF
          
          ! there can be a secondary potential field also
@@ -1385,7 +1418,7 @@ CONTAINS
                  Charge * PotAtPoint
 
            CASE( 3 )
-             val = 0.5 * Mass * SUM( Velo ** 2 ) 
+             val = 0.5 * Mass * SUM( Velo(1:dim) ** 2 ) 
 
            CASE( 4 ) 
              val = Mass * SUM( Gravity(1:dim) * Coord(1:dim) )
@@ -1397,7 +1430,7 @@ CONTAINS
              val = Charge 
 
            CASE( 7 )
-             val = SQRT( SUM( VeloAtPoint ** 2 ) )
+             val = SQRT( SUM( VeloAtPoint(1:dim) ** 2 ) )
 
            CASE( 8 ) 
              val = SQRT( SUM( Force(1:dim) ** 2 ) )
@@ -1413,7 +1446,7 @@ CONTAINS
            ELSE
              ForcePerm => NULL()
            END IF
-
+           
            DO i = 1,n
              ! As the weight should be proportional to the particle amount rather than
              ! element volume this is not to be multiplied with local element size!
@@ -1428,7 +1461,7 @@ CONTAINS
              
              ForceVector( j ) = ForceVector( j ) + weight * val
            END DO
-
+           
          END DO
        END IF
 
@@ -1462,7 +1495,7 @@ CONTAINS
          END DO
        END IF
      END IF
-
+       
      PrevDtime = dtime
      
 
@@ -1886,6 +1919,9 @@ SUBROUTINE ParticleDynamics_Init( Model,Solver,dt,TransientSimulation )
 
   Params => Solver % Values
 
+  CALL ListAddNewString( Params,'Variable',&
+        '-nooutput -global ParticleDynamics_var')
+  
 END SUBROUTINE ParticleDynamics_Init
 
 !> \}
