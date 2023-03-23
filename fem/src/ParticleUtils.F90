@@ -2413,7 +2413,7 @@ RETURN
   !-------------------------------------------------------------------------
   SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, &
       Group, IsAdvector ) 
-    
+   
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
@@ -2465,7 +2465,7 @@ RETURN
     ! Initialize the timestepping strategy stuff
     !-------------------------------------------------------------------------    
     AdvectorMode = .FALSE.
-    IF(PRESENT(IsAdvector)) AdvectorMode = .TRUE.
+    IF(PRESENT(IsAdvector)) AdvectorMode = IsAdvector
     SaveParticleOrigin = AdvectorMode
     
     InitMethod = ListGetString( Params,'Coordinate Initialization Method',gotIt ) 
@@ -2479,23 +2479,31 @@ RETURN
     IF(.NOT. GotIt) VariableName = 'AdvectorData'
     AdvVar => VariableGet( Mesh % Variables, VariableName )
     IF(AdvectorMode) THEN
-      IF( vdofs == 0) THEN
-        CALL Fatal(Caller,'Velocity variable needed to initialize advector')
-      END IF
+      GotIt = .FALSE.
       IF( ASSOCIATED( AdvVar ) ) THEN
         IF( AdvVar % TYPE == Variable_on_elements ) THEN
           InitMethod = 'advector elemental'
           CALL Info(Caller,&
-              'Initializing particles evenly on center of bulk elements',Level=10)
-        ELSE IF( AdvVar % Type == Variable_on_nodes_on_elements ) THEN 
+              'Initializing particles on center of bulk elements',Level=10)
+          GotIt = .TRUE.
+        ELSE IF( AdvVar % TYPE == Variable_on_nodes_on_elements ) THEN 
           InitMethod = 'advector dg'
           CALL Info(Caller,&
-              'Initializing particles evenly on scaled dg points',Level=10)
-        ELSE IF( AdvVar % Type == Variable_on_gauss_points ) THEN
+              'Initializing particles on scaled dg points',Level=10)
+          GotIt = .TRUE.
+        ELSE IF( AdvVar % TYPE == Variable_on_gauss_points ) THEN
           InitMethod = 'advector ip'
           CALL Info(Caller,&
-              'Initializing particles evenly on gauss points',Level=10)
+              'Initializing particles on gauss points',Level=10)
+          GotIt = .TRUE.
         END IF
+      END IF
+      IF(.NOT. GotIt) THEN
+        InitMethod = 'advector nodal'          
+        CALL Info(Caller,'Initializing particles on each node',Level=10)
+      END IF
+      IF( vdofs == 0) THEN
+        CALL Fatal(Caller,'Velocity variable needed to initialize advector')
       END IF
     END IF
     
@@ -2628,7 +2636,6 @@ RETURN
       IF(.NOT. GotIt) MaxCoord(3) = Particles % LocalMaxCoord(3) - eps
     END IF
     
-    
     IF( InitMethod == 'box random cubic' .OR. InitMethod == 'box uniform cubic') THEN
       Diam = 2 * GetCReal( Params,'Particle Cell Radius',GotIt)
       IF(.NOT. GotIt ) THEN
@@ -2653,18 +2660,16 @@ RETURN
     !------------------------------------------------------------------------
     ! Now decide on the number of particles.
     !-------------------------------------------------------------------------  
-    IF( PRESENT( AppendParticles ) ) THEN
-      Offset = Particles % NumberOfParticles
-    ELSE
-      Offset = 0
-    END IF
-    
-    
-    IF( PRESENT( InitParticles ) ) THEN
+    IF( AdvectorMode ) THEN
+      IF( ASSOCIATED( AdvVar ) ) THEN
+        NewParticles = SIZE( AdvVar % Values )
+      ELSE
+        NewParticles = Mesh % NumberOfNodes
+      END IF
+      CALL Info(Caller,'Using ParticleData variable of size '&
+          //I2S(NewParticles)//' to define particles!')
+    ELSE IF( PRESENT( InitParticles ) ) THEN
       NewParticles = InitParticles
-    ELSE IF( ASSOCIATED( AdvVar ) ) THEN
-      NewParticles = SIZE( AdvVar % Values )
-      CALL Info(Caller,'Using pre-existing ParticleData variable to define particles!')
     ELSE
       IF( InitMethod == 'box uniform cubic') THEN
         NewParticles = nx * ny * nz
@@ -2708,8 +2713,7 @@ RETURN
     ! If there are no particles in this partition, nothing to do
     !------------------------------------------------------------------------- 
     IF( NewParticles == 0 ) RETURN
-    
-    
+        
     !------------------------------------------------------------------------
     ! Interval of particles
     !-------------------------------------------------------------------------  
@@ -2768,24 +2772,6 @@ RETURN
         Coordinate(k,2) = Mesh % Nodes % y(j)
         IF( dim == 3 ) Coordinate(k,3) = Mesh % Nodes % z(j)
       END DO
-
-
-      IF( SaveParticleOrigin ) THEN
-        DO i=1,Mesh % NumberOfBulkElements
-          CurrentElement => Mesh % Elements(i)
-          NodeIndexes =>  CurrentElement % NodeIndexes
-          n = CurrentElement % TYPE % NumberOfNodes
-          DO j=1,n
-            k = NodeIndexes(j)
-            IF( GotMask ) THEN
-              k = MaskPerm(k)
-              IF( k == 0 ) CYCLE
-            END IF
-            Particles % ElementIndex(k) = i
-            Particles % NodeIndex(k) = NodeIndexes(j)
-          END DO
-        END DO
-      END IF
       
     CASE ('elemental random')
       CALL Info(Caller,&
@@ -2943,15 +2929,44 @@ RETURN
           Particles % ElementIndex(i) = j
         END IF
       END DO
-
-      IF( SaveParticleOrigin ) THEN
-        ! For now the initial index is confusingly named always "NodeIndex"
-        Particles % NodeIndex = Particles % ElementIndex
-      END IF
-
-    CASE ('advector elemental')
-      NewParticles = SIZE( AdvVar % Values )
       
+    CASE ('advector nodal')
+      DO i=1,Mesh % NumberOfNodes
+        j = i
+        IF( ASSOCIATED( AdvVar ) ) THEN
+          j = AdvVar % Perm(i)
+	  IF(j==0) CYCLE
+        END IF
+        Coordinate(j,1) = Mesh % Nodes % x(i)
+        Coordinate(j,2) = Mesh % Nodes % y(i)
+        IF( dim == 3 ) Coordinate(j,3) = Mesh % Nodes % z(i)
+
+        IF(vdofs>0) THEN
+          DO k=1,dim	
+            Velocity(j,k) = VeloVar % Values(vdofs*(VeloVar % Perm(i)-1)+k)
+          END DO
+        END IF
+      END DO
+      
+      IF( SaveParticleOrigin ) THEN
+        DO i=1,Mesh % NumberOfBulkElements
+          CurrentElement => Mesh % Elements(i)
+          NodeIndexes =>  CurrentElement % NodeIndexes
+          n = CurrentElement % TYPE % NumberOfNodes
+          DO j=1,n
+            IF( ASSOCIATED( AdvVar ) ) THEN
+              k = AdvVar % Perm(NodeIndexes(j))
+            ELSE
+              k = NodeIndexes(j)
+            END IF
+            IF(k==0) CYCLE
+            Particles % ElementIndex(k) = i
+            Particles % NodeIndex(k) = NodeIndexes(j)
+          END DO
+        END DO
+      END IF
+      
+    CASE ('advector elemental')
       DO i=1,NoElements                       
         No = AdvVar % Perm( i )
         IF( No == 0 ) CYCLE
@@ -2988,8 +3003,6 @@ RETURN
         LOGICAL :: Debug
         
         Debug = ( i == 0 )
-              
-        NewParticles = SIZE( AdvVar % Values )
         
         DO i=1,NoElements                       
           No = AdvVar % Perm( i )
@@ -3052,8 +3065,6 @@ RETURN
         DGScale = ListGetCReal( Params,'DG Nodes Scale',GotScale )
         IF(.NOT. GotScale ) DgScale = 1.0 / SQRT( 3.0_dp ) 
         GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
-
-        NewParticles = SIZE( AdvVar % Values )
 
         DO i=1,NoElements                       
           CurrentElement => Mesh % Elements(i)
@@ -3230,8 +3241,7 @@ RETURN
       END DO
      
     CASE DEFAULT       
-      CALL Info(Caller,&
-          'Initializing particles using given coordinates',Level=10)
+      CALL Info(Caller,'Initializing particles using given coordinates',Level=10)
 
       InitialValues => ListGetConstRealArray(Params,'Initial Coordinate',gotIt)    
       IF(gotIt) THEN
@@ -3265,147 +3275,143 @@ RETURN
     ! from random even or maxwell boltzmann distributions. These are additive to 
     ! allow bulk velocities with the random one.
     !-------------------------------------------------------------------------
+    IF( .NOT. AdvectorMode ) THEN
+      InitialValues => ListGetConstRealArray(Params,'Initial Velocity',gotIt)
+      IF(gotIt) THEN
+        IF( SIZE(InitialValues,2) /= DIM ) THEN
+          CALL Fatal('ParticleTracker','Wrong dimension in Initial Velocity')
+        ELSE IF( SIZE(InitialValues,1) == 1 ) THEN
+          DO i=1,NewParticles
+            k = Offset + i
+            Velocity(k,1:dim) = InitialValues(1,1:DIM)
+          END DO
+        ELSE IF( SIZE(InitialValues,1) /= NewParticles ) THEN
+          CALL Fatal('ParticleTracker','Wrong number of particles in Initial Velocity')
+        ELSE
+          DO i=1,NewParticles
+            k = Offset + i
+            Velocity(k,1:dim) = InitialValues(i,1:dim)
+          END DO
+        END IF
+      END IF
 
-    InitialValues => ListGetConstRealArray(Params,'Initial Velocity',gotIt)
-    IF(gotIt) THEN
-      IF( SIZE(InitialValues,2) /= DIM ) THEN
-        CALL Fatal('ParticleTracker','Wrong dimension in Initial Velocity')
-      ELSE IF( SIZE(InitialValues,1) == 1 ) THEN
+      InitMethod = ListGetString( Params,'Velocity Initialization Method',gotIt ) 
+      IF( GotIt ) THEN
+        coeff = ListGetCReal( Params,'Initial Velocity Amplitude',GotIt)
+
+        SELECT CASE ( InitMethod ) 
+
+        CASE ('nodal velocity')
+          CALL Info(Caller,&
+              'Initializing velocities from the corresponding nodal velocity',Level=10)
+          IF( vdofs == 0 ) THEN
+            CALL Fatal(Caller,'Velocity variable needed for method >nodal velocity<')
+          END IF
+
+          DO i=1,NewParticles
+            k = Offset + i
+            l = Particles % NodeIndex(i)
+            l = VeloVar % Perm(l)
+            DO j=1,dim
+              Velocity(k,j) = VeloVar % Values(vdofs*(l-1)+j)
+            END DO
+          END DO
+
+        CASE ('elemental velocity') 
+          CALL Info(Caller,&
+              'Initializing velocities from the corresponding elemental velocity',Level=10)      
+          IF( vdofs == 0 ) THEN
+            CALL Fatal(Caller,'Velocity variable needed for method >elemental velocity<')
+          END IF
+
+          DO i=1,NewParticles
+            k = Offset + i
+            l = Particles % NodeIndex(i) ! now an elemental index
+            NodeIndexes => Mesh % Elements(l) % NodeIndexes
+            DO j=1,dim
+              Velocity(k,j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / &
+                  SIZE( NodeIndexes )
+            END DO
+          END DO
+
+        CASE ('thermal random')  
+          CALL Info(Caller,&
+              'Initializing velocities from a thermal distribution',Level=10)
+
+          IF(.NOT. GotIt) THEN
+            mass = ListGetConstReal( Params,'Particle Mass')
+            temp = ListGetConstReal( Params,'Particle Temperature')
+            boltz = ListGetConstReal( CurrentModel % Constants,'Boltzmann constant')
+            coeff = SQRT(boltz * temp / mass )
+          END IF
+
+          DO i=1,NewParticles
+            k = Offset + i
+            DO j=1,dim
+              Velo(j) = NormalRandom()
+            END DO
+            Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
+          END DO
+
+        CASE ('even random')
+          CALL Info(Caller,'Initializing velocities from a even distribution',Level=10)
+
+          DO i=1,NewParticles
+            k = Offset + i
+            DO j=1,dim
+              Velo(j) = (2*EvenRandom()-1)
+            END DO
+            Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
+          END DO
+
+        CASE ('constant random')
+          CALL Info(Caller,'Initializing constant velocities in random direction',Level=10)
+
+          DO i=1,NewParticles
+            k = Offset + i
+            DO j=1,dim
+              Velo(j) =  (2*EvenRandom()-1)
+            END DO
+            Velo(1:dim) = Velo(1:dim) / SQRT(SUM(Velo(1:dim)**2))
+            Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
+          END DO
+
+        CASE ('constant 2d')
+          CALL Info(Caller,'Initializing constant velocities evenly to space',Level=10)
+
+          DO i=1,NewParticles
+            k = Offset + i
+            Phi = 2.0_dp * PI * i / NewParticles
+            Velo(1) = coeff * COS( Phi )
+            Velo(2) = coeff * SIN( Phi )
+            Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
+          END DO
+          
+        CASE DEFAULT
+          CALL Fatal(Caller,'Unknown velocity initialization method: '//TRIM(InitMethod))
+          
+        END SELECT
+      END IF
+        
+
+      ! There may be a timestep related to initial velocity,
+      ! which may be used to have the initial status developed
+      ! from the initial coordinates.
+      !-------------------------------------------------------
+      time0 = ListGetCReal(Params,'Initial Velocity Time',gotIt)
+      IF( GotIt ) THEN
         DO i=1,NewParticles
           k = Offset + i
-          Velocity(k,1:dim) = InitialValues(1,1:DIM)
-        END DO
-      ELSE IF( SIZE(InitialValues,1) /= NewParticles ) THEN
-        CALL Fatal('ParticleTracker','Wrong number of particles in Initial Velocity')
-      ELSE
-        DO i=1,NewParticles
-          k = Offset + i
-          Velocity(k,1:dim) = InitialValues(i,1:dim)
+          Coord(1:dim) = time0 * Velocity(k,:)
+          Coordinate(k,:) = Coordinate(k,:) + Coord(1:dim)
+
+          dist = SQRT( SUM( Coord(1:dim)**2 ) )
+          !        Particles % Distance(k) = dist
         END DO
       END IF
     END IF
 
-
-    InitMethod = ListGetString( Params,'Velocity Initialization Method',gotIt ) 
-    coeff = ListGetCReal( Params,'Initial Velocity Amplitude',GotIt)
-
-
-    SELECT CASE ( InitMethod ) 
-
-    CASE ('nodal velocity')
-      CALL Info(Caller,&
-          'Initializing velocities from the corresponding nodal velocity',Level=10)
-      IF( vdofs == 0 ) THEN
-        CALL Fatal(Caller,'Velocity variable needed for method >nodal velocity<')
-      END IF
-
-      DO i=1,NewParticles
-        k = Offset + i
-        l = Particles % NodeIndex(i)
-        l = VeloVar % Perm(l)
-        DO j=1,dim
-          Velocity(k,j) = VeloVar % Values(vdofs*(l-1)+j)
-        END DO
-      END DO
-
-    CASE ('elemental velocity') 
-      CALL Info(Caller,&
-          'Initializing velocities from the corresponding elemental velocity',Level=10)      
-      IF( vdofs == 0 ) THEN
-        CALL Fatal(Caller,'Velocity variable needed for method >elemental velocity<')
-      END IF
-
-      DO i=1,NewParticles
-        k = Offset + i
-        l = Particles % NodeIndex(i) ! now an elemental index
-        NodeIndexes => Mesh % Elements(l) % NodeIndexes
-        DO j=1,dim
-          Velocity(k,j) = SUM( VeloVar % Values(vdofs*(VeloVar % Perm(NodeIndexes)-1)+j) ) / &
-              SIZE( NodeIndexes )
-        END DO
-      END DO
-
-    CASE ('advector') 
-      CALL Info(Caller,&
-          'Velocities have been initialized together with the position',Level=10)
       
-    CASE ('thermal random')  
-       CALL Info(Caller,&
-          'Initializing velocities from a thermal distribution',Level=10)
-     
-      IF(.NOT. GotIt) THEN
-        mass = ListGetConstReal( Params,'Particle Mass')
-        temp = ListGetConstReal( Params,'Particle Temperature')
-        boltz = ListGetConstReal( CurrentModel % Constants,'Boltzmann constant')
-        coeff = SQRT(boltz * temp / mass )
-      END IF
-
-      DO i=1,NewParticles
-        k = Offset + i
-        DO j=1,dim
-          Velo(j) = NormalRandom()
-        END DO
-        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
-      END DO
-
-    CASE ('even random')
-      CALL Info(Caller,&
-          'Initializing velocities from a even distribution',Level=10)
-      
-      DO i=1,NewParticles
-        k = Offset + i
-        DO j=1,dim
-          Velo(j) = (2*EvenRandom()-1)
-        END DO
-        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
-      END DO
-
-    CASE ('constant random')
-      CALL Info(Caller,&
-          'Initializing constant velocities with random direction',Level=10)
-      
-      DO i=1,NewParticles
-        k = Offset + i
-        DO j=1,dim
-          Velo(j) =  (2*EvenRandom()-1)
-        END DO
-        Velo(1:dim) = Velo(1:dim) / SQRT(SUM(Velo(1:dim)**2))
-        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
-      END DO
-
-    CASE ('constant 2d')
-      CALL Info(Caller,&
-          'Initializing constant velocities evenly to space',Level=10)
-      
-      DO i=1,NewParticles
-        k = Offset + i
-        Phi = 2.0_dp * PI * i / NewParticles
-        Velo(1) = coeff * COS( Phi )
-        Velo(2) = coeff * SIN( Phi )
-        Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
-      END DO
-
-    CASE DEFAULT
-
-    END SELECT
-
-
-    ! There may be a timestep related to initial velocity,
-    ! which may be used to have the initial status developed
-    ! from the initial coordinates.
-    !-------------------------------------------------------
-    time0 = ListGetCReal(Params,'Initial Velocity Time',gotIt)
-    IF( GotIt ) THEN
-      DO i=1,NewParticles
-        k = Offset + i
-        Coord(1:dim) = time0 * Velocity(k,:)
-        Coordinate(k,:) = Coordinate(k,:) + Coord(1:dim)
-
-        dist = SQRT( SUM( Coord(1:dim)**2 ) )
-!        Particles % Distance(k) = dist
-      END DO
-    END IF
-
     ! Initialize coordinate with octree if requested
     !-------------------------------------------------------
     IF( ListGetLogical(Params,'Initial Coordinate Search',gotIt) ) THEN
@@ -3430,7 +3436,7 @@ RETURN
     ELSE
       InitStatus = PARTICLE_INITIATED
     END IF
-    
+  
     DO i=1,NewParticles
       k = Offset + i
       Particles % Status(k) = InitStatus
@@ -4101,7 +4107,6 @@ RETURN
           IF( Debug ) THEN
             PRINT *,'WallBC:',Rfin, MinLambda
           END IF
-
 
           EXIT                      
         END IF
@@ -5542,18 +5547,18 @@ RETURN
         PartTimeVar, MeshDtVar 
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
-        Source,PrevSource,detJ,RKCoeff,GradSource(3),MeshDt, dtRat
+        Source,PrevSource,detJ,RKCoeff,GradSource(3),MeshDt, dtRat, DummyVals(1)
     INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
-    LOGICAL :: Found, Stat, Visited = .FALSE.
+    LOGICAL :: Found, Stat, Visited = .FALSE., UseDummy
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
     INTEGER, POINTER :: Indexes(:)
     TYPE(ValueList_t), POINTER :: BodyForce
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: TimeInteg, DistInteg, UseGradSource, TimeDepFields
+    LOGICAL :: TimeInteg = .FALSE., DistInteg = .FALSE., UseGradSource = .FALSE., TimeDepFields = .FALSE.
     TYPE(ValueHandle_t), SAVE :: TimeSource_h, DistSource_h
     CHARACTER(:), ALLOCATABLE :: VariableName
     CHARACTER(*), PARAMETER :: Caller = 'ParticlePathIntegral'
@@ -5561,7 +5566,7 @@ RETURN
 
     SAVE TimeInteg, DistInteg, dim, Visited, Mesh, DtVar, Basis, Nodes, Params, &
         TimeIntegVar, DistIntegVar, UseGradSource, dBasisdx, TimeDepFields, &
-        PartTimeVar, MeshDtVar
+        PartTimeVar, MeshDtVar, UseDummy
 
     CALL Info(Caller,'Integrating variables over the path',Level=12)
 
@@ -5569,7 +5574,7 @@ RETURN
     ! If Runge-Kutta is used take the mid-point rule.
     RKSTep = 0
     IF( PRESENT( RKStepInput ) ) RKStep = RKStepInput
-
+    
     IF( RKStep > 1 ) RETURN
     
     IF(.NOT. Visited ) THEN
@@ -5627,15 +5632,23 @@ RETURN
         IF(.NOT. ASSOCIATED( DtVar ) ) THEN
           CALL Fatal(Caller,'Variable timestep, > particle dt < should exist!')
         END IF
-      END IF      
-    END IF
+      END IF
 
+      UseDummy = ListGetLogical( Params,'Particle Integral Dummy Argument',Found )
+    END IF
+    
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 
-    IF(TimeInteg) CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source')    
-    IF(DistInteg) CALL ListInitElementKeyword( DistSource_h,'Body Force','Particle Distance Integral Source')
-
+    j = 0
+    IF( UseDummy ) j = 1
+      
+    IF(TimeInteg) THEN
+      CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source',DummyCount=j)    
+    ELSE
+      CALL ListInitElementKeyword( DistSource_h,'Body Force','Particle Distance Integral Source',DummyCount=j)
+    END IF
+      
     NoParticles = Particles % NumberOfParticles
     RK2 = Particles % RK2
     IF( RK2 ) THEN
@@ -5649,6 +5662,7 @@ RETURN
     IF( Particles % DtConstant ) THEN
       dtime = RKCoeff * Particles % dTime
     END IF
+    MeshDt = 0.0_dp
     IF( TimeDepFields ) THEN
       MeshDt = MeshDtVar % Values(1)
     END IF
@@ -5679,6 +5693,8 @@ RETURN
       Velo(1:dim) = Particles % Velocity(No,:) 	
       
       Element => Mesh % Elements( Particles % ElementIndex(No) )            
+      CurrentModel % CurrentElement => Element
+
       n = Element % TYPE % NumberOfNodes
       Indexes => Element % NodeIndexes
 
@@ -5715,7 +5731,12 @@ RETURN
 
       ! Path integral over time
       IF( TimeInteg ) THEN        
-        Source = ListGetElementReal( TimeSource_h, Basis, Element, Found )
+        IF( UseDummy ) THEN
+          DummyVals(1) = TimeIntegVar % Values(No)
+          Source = ListGetElementReal( TimeSource_h, Basis, Element, Found, DummyVals = DummyVals )         
+        ELSE
+          Source = ListGetElementReal( TimeSource_h, Basis, Element, Found )
+        END IF
         IF( Found ) THEN
           IF ( UseGradSource ) THEN
             GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element)                    
@@ -5749,7 +5770,13 @@ RETURN
           ds = SQRT(SUM((PrevCoord(1:dim) - Coord(1:dim))**2))
         END IF
         
-        Source = ListGetElementReal( DistSource_h, Basis, Element, Found )
+        IF( UseDummy ) THEN
+          DummyVals(1) = DistIntegVar % Values(No)
+          Source = ListGetElementReal( DistSource_h, Basis, Element, Found, DummyVals = DummyVals )         
+        ELSE
+          Source = ListGetElementReal( DistSource_h, Basis, Element, Found )
+        END IF
+
         IF( Found ) THEN
           IF ( UseGradSource ) THEN
             GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element)                  
@@ -6277,8 +6304,14 @@ RETURN
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: val, vals(3), Coord(3), Basis(27), detJ
     TYPE(ValueHandle_t), SAVE :: InitField_h
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 
+
+    IF( ANY( Particles % ElementIndex == 0) ) THEN
+      CALL Info('ParticleVariableInitialize','We need owner elements, going to find them!',Level=10)
+      CALL LocateParticles( Particles ) 
+    END IF
+        
     ToVar => VariableGet( Particles % Variables, TRIM(ToName) )
     IF(.NOT. ASSOCIATED(ToVar)) RETURN
     dofs = ToVar % Dofs
@@ -6311,6 +6344,7 @@ RETURN
       IF( j == 0 ) CYCLE
 
       Element => Mesh % Elements( j )
+      CurrentModel % CurrentElement => Element
       Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
 
       stat = ParticleElementInfo( Element, Coord, DetJ, Basis )
@@ -6318,7 +6352,7 @@ RETURN
       
       IF( UseHandle ) THEN
         val = ListGetElementReal( InitField_h, Basis, Element, Stat )
-        ToVar % Values( i ) = val      
+        ToVar % Values( i ) = val
       ELSE
         IF( ToVar % dofs == 1 ) THEN
           CALL GetScalarFieldInMesh(FromVar, Element, Basis, val ) 
@@ -6332,6 +6366,10 @@ RETURN
       END IF
     END DO
 
+    IF( InfoActive(20) ) THEN
+      PRINT *,'ParticleVariableInitialize',TRIM(ToVar % Name), MINVAL(ToVar % Values),MAXVAL(ToVar % Values)
+    END IF
+      
   END SUBROUTINE ParticleVariableInitialize
     
   

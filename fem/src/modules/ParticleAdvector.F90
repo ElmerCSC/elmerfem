@@ -1055,37 +1055,25 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   AdvectElemental = ListGetLogical( Params,'Advect Elemental',Found) 
   AdvectDG = ListGetLogical( Params,'Advect DG',Found) 
   AdvectIp = ListGetLogical( Params,'Advect Ip',Found) 
-
-  IF( AdvectElemental .OR. AdvectDg .OR. AdvectIp ) THEN  
-    IF( AdvectElemental ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-elem AdvectorData')
-    ELSE IF( AdvectDg ) THEN
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-dg AdvectorData')
-    ELSE
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-ip AdvectorData')
-    END IF      
-    CALL ListAddString( Params,'Coordinate Initialization Method','advector')    
-    CALL ListAddString( Params,'Velocity Initialization Method','advector')
-  ELSE
-    CALL ListAddString( Params,'Coordinate Initialization Method','nodal ordered')
-    CALL ListAddString( Params,'Velocity Initialization Method','nodal velocity')
-    CALL ListAddConstReal( Params,'Particle Node Fraction',1.0_dp)
+  
+  IF( AdvectElemental ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-elem AdvectorData')
+  ELSE IF( AdvectDg ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-dg AdvectorData')
+  ELSE IF( AdvectIp ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-ip AdvectorData')
+    ! This is not a good idea since if the solver is not active this will have size zero!
+    !ELSE
+    !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-nodal AdvectorData')
   END IF
     
   CALL ListAddInteger( Params,'Time Order',0 )
   CALL ListAddNewLogical( Params,'Particle Accurate At Face',.FALSE.)  
-  !CALL ListAddLogical( Params,'Particle Dt Negative',.TRUE.)
   CALL ListAddLogical( Params,'Particle Fix Frozen',.TRUE.)
 
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
-  NormInd = ListGetInteger( Params,'Norm Variable Index',Found)
-  IF( NormInd > 0 ) THEN
-    IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
-      CALL ListAddString( Solver % Values,'Variable','-nooutput -global particleadvector_var')
-    END IF
-  END IF
-
+  CALL ListAddNewString( Solver % Values,'Variable','-nooutput -global particleadvector_var')
   CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
   
 END SUBROUTINE ParticleAdvector_Init
