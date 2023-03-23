@@ -14607,7 +14607,7 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: InvPerm(:)
     LOGICAL, OPTIONAL :: Parallel
 
-    INTEGER :: i,j,ii,jj
+    INTEGER :: i,j,ii,jj,zerocnt,nonzerocnt
     REAL(KIND=dp) :: rowsum, dia, val
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
@@ -14642,14 +14642,19 @@ CONTAINS
         GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
       END IF
     END IF
-          
+
+    zerocnt = 0
+    nonzerocnt = 0
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
       IF( ASSOCIATED( IntInvPerm ) ) THEN
         ii = intinvperm(i)        
         IF( ii == 0) THEN
-          PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+          zerocnt = zerocnt + 1
+          !PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
           CYCLE
+        ELSE
+          nonzerocnt = nonzerocnt + 1
         END IF
       ELSE
         ii = i
@@ -14692,6 +14697,11 @@ CONTAINS
     END DO
     CLOSE(1)     
 
+    IF( zerocnt > 0 ) THEN      
+      CALL Warn('SaveProjector','Invperm zero count is '&
+          //I2S(zerocnt)//' (vs. nonzero '//I2S(nonzerocnt)//')')
+    END IF
+    
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
         FileName = TRIM(Prefix)//'_rsum.dat'
