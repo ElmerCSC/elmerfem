@@ -1984,6 +1984,10 @@ CONTAINS
          AddDiag = .FALSE.
        END IF
 
+       IF(InfoActive(30)) THEN
+         PRINT *,'Contact Flags:',TieContact, FrictionContact, StickContact, SlipContact, SkipFriction, AddDiag 
+       END IF
+              
        ! d) allocate and initialize all necessary vectors for the contact 
        !------------------------------------------------------------------
        CALL InitializeMortarVectors()
@@ -21242,8 +21246,17 @@ CONTAINS
          mcount = mcount + 1
          row = row + Ctmp % NumberOfRows
          Ctmp => Ctmp % ConstraintMatrix
+
+         IF( InfoActive(32) ) THEN           
+           CALL VectorValuesRange(Ctmp % Values,SIZE(Ctmp % Values),'Ctmp'//I2S(mcount))
+           IF( ASSOCIATED( Ctmp % InvPerm ) ) THEN
+             PRINT *,'InvPerm range:',MINVAL(Ctmp % InvPerm), MAXVAL(Ctmp % InvPerm), SUM(Ctmp % InvPerm)
+           END IF
+         END IF
+    
        END DO
        CALL Info(Caller,'Number of initial constraint matrices: '//I2S(mcount),Level=12)       
+       CALL Info(Caller,'Number of rows in constraint matrices: '//I2S(row),Level=20)       
      END IF
        
      
