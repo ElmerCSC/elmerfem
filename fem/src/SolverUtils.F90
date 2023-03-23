@@ -2091,6 +2091,10 @@ CONTAINS
          END DO
        END DO
 
+       IF( InfoActive(30) ) THEN
+         CALL VectorValuesRange(RotatedField, SIZE(RotatedField),'RotatedField')
+       END IF
+       
      END SUBROUTINE RotatedDisplacementField
 
 
@@ -2124,6 +2128,10 @@ CONTAINS
 
        CALL CalculateLoads( Solver, Solver % Matrix, TempX, Var % DOFs, .FALSE., LoadVar ) 
 
+       IF( InfoActive(30) ) THEN
+         CALL VectorValuesRange(LoadVar % Values, SIZE(LoadVar % Values),'ContactLoad')
+       END IF
+       
      END FUNCTION CalculateContactLoad
 
 
@@ -2178,8 +2186,10 @@ CONTAINS
          END IF
        END DO
 
-       !PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
-       !PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
+       IF(InfoActive(30)) THEN
+         CALL VectorValuesRange( LinsysVar % Values,SIZE(LinsysVar % Values),'LinsysValues')
+         CALL VectorValuesRange( ContactSysVar % Values,SIZE(ContactSysVar % Values),'ContactSysValues')
+       END IF
                      
      END SUBROUTINE PickLagrangeMultiplier
 
@@ -2316,7 +2326,6 @@ CONTAINS
        IF( .NOT. AddDiag .AND. ASSOCIATED(MortarBC % Diag) ) THEN
          DEALLOCATE( MortarBC % Diag ) 
        END IF
-
 
        ! Create the permutation that is later need in putting the diag and rhs to correct position
        ALLOCATE( Perm( SIZE( FieldPerm ) ) )
@@ -2947,7 +2956,7 @@ CONTAINS
        DEALLOCATE( SlaveNode )
        IF( CreateDual ) DEALLOCATE( MasterNode )
        
-       IF( InfoActive(25 ) ) THEN
+       IF( InfoActive(30) ) THEN
          ! We don't know if other partitions are here, so let us not make parallel reductions!
          CALL VectorValuesRange(DistVar % Values,SIZE(DistVar % Values),'Dist',.TRUE.)
          CALL VectorValuesRange(GapVar % Values,SIZE(GapVar % Values),'Gap',.TRUE.)
@@ -3176,6 +3185,11 @@ CONTAINS
        IF( ListGetLogical( BC,'Normal Sign Negative',Found ) ) DistSign = -1
        IF( ListGetLogical( BC,'Normal Sign Positive',Found ) ) DistSign = 1
 
+       IF(InfoActive(30) ) THEN
+         CALL VectorValuesRange( SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoad')
+         CALL VectorValuesRange( NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoad')
+       END IF
+
        DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, NodeDone )
 
        CALL Info(Caller,'Finished computing contact pressure',Level=30)
@@ -3215,11 +3229,9 @@ CONTAINS
        IF( .NOT. Found ) DistOffset = ListGetCReal( BC,&
            'Contact Depth Offset',Found)
 
-       
-       !PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
-       !    Projector % NumberOfRows
-           
-
+       IF( InfoActive(30) ) THEN      
+         PRINT *,'InitialActiveSet:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active )
+       END IF
        
        ! Determine now whether we have contact or not
        DO i = 1,Projector % NumberOfRows
@@ -3308,8 +3320,9 @@ CONTAINS
          CALL Info(Caller,Message,Level=6)
        END IF
 
-       !PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
-
+       IF( InfoActive(30) ) THEN      
+         PRINT *,'ModifiedActiveSet:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active )
+       END IF
 
      END SUBROUTINE NormalContactSet
 
@@ -3578,8 +3591,12 @@ CONTAINS
          END IF
        END DO
 
-       PRINT *,'Active Tangent:',COUNT( MortarBC % Active ) 
-
+       IF( InfoActive(30) ) THEN
+         PRINT *,'Active Tangent set:',COUNT( MortarBC % Active ) 
+         CALL VectorValuesRange(NormalActiveVar % Values,SIZE(NormalActiveVar % Values),'NormalActive')
+         CALL VectorValuesRange(StickActiveVar % Values,SIZE(StickActiveVar % Values),'StickActive')
+       END IF
+         
      END SUBROUTINE TangentContactSet
 
 
@@ -3622,6 +3639,10 @@ CONTAINS
          MortarBC % Diag(indT1) = coeff
          IF( Dofs == 3 ) MortarBC % Diag(indT2) = coeff
        END DO
+
+       IF(InfoActive(30)) THEN
+         CALL VectorValuesRange( MortarBC % Diag, SIZE( MortarBC % Diag),'MortarBC Diag')
+       END IF
        
      END SUBROUTINE StickCoefficientSet
 
@@ -3916,7 +3937,15 @@ CONTAINS
            END IF
          END IF
        END DO
-
+       
+       IF( InfoActive(30) ) THEN
+         CALL Info('PojectFromSlaveToMaster','Projecting fields')
+         CALL VectorValuesRange(NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoadVar')
+         CALL VectorValuesRange(SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoadVar')
+         IF( CalculateVelocity ) THEN
+           CALL VectorValuesRange(VeloVar % Values,SIZE(VeloVar % Values),'VeloVar')
+         END IF
+       END IF
 
      END SUBROUTINE ProjectFromSlaveToMaster
    
@@ -4094,8 +4123,13 @@ CONTAINS
        n = COUNT( NodeDone ) 
        CALL Info('SetSlideFriction','Number of friction nodes: '//I2S(n),Level=10)
        
-       DEALLOCATE( NodeDone )
+       DEALLOCATE( NodeDone )       
 
+       IF( InfoActive(30) ) THEN
+         CALL VectorValuesRange(A % Values,SIZE(A % Values),'A-friction')
+       END IF
+
+       
      END SUBROUTINE SetSlideFriction
      
 
@@ -9134,11 +9168,18 @@ CONTAINS
         END IF
       END IF
     END IF
-      
-    !DO i=1,NumberOfBoundaryNodes
-    !  PRINT *,'nrm',i,BoundaryNormals(i,:)
-    !END DO
 
+    IF( InfoActive(25) ) THEN
+      DO i=1,3        
+        CALL VectorValuesRange(BoundaryNormals(:,i),SIZE(BoundaryNormals(:,i)),'Normal '//I2S(i))
+      END DO
+      IF( dim > 2 ) THEN
+        DO i=1,3        
+          CALL VectorValuesRange(BoundaryTangent1(:,i),SIZE(BoundaryTangent1(:,i)),'Tangent1 '//I2S(i))
+          CALL VectorValuesRange(BoundaryTangent2(:,i),SIZE(BoundaryTangent2(:,i)),'Tangent2 '//I2S(i))
+        END DO
+      END IF
+    END IF
 
  CONTAINS
 
