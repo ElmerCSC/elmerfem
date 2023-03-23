@@ -1991,7 +1991,7 @@ END BLOCK
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + sheetThickness * &
+           DAMP(p,q) = DAMP(p,q) + sheetThickness * &
               C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
