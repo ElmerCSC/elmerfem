@@ -191,19 +191,23 @@ CONTAINS
 #ifdef HAVE_XIOS
     INQUIRE(FILE="iodef.xml", EXIST=USE_XIOS)
     IF (USE_XIOS) THEN
-     CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
-    ENDIF
+      CALL xios_initialize(TRIM(xios_id),return_comm=ELMER_COMM_WORLD)
+    ELSE
+#ifndef ELMER_COLOUR
+#define ELMER_COLOUR 0
 #endif
-
-IF (.NOT.USE_XIOS) THEN
+      CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
+           ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+    ENDIF
+#else
     ! The colour could be set to be some different if we want to couple ElmerSolver with some other
     ! software having MPI colour set to zero. 
 #ifndef ELMER_COLOUR
 #define ELMER_COLOUR 0
 #endif
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
-        ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
-ENDIF
+         ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
+#endif  
 
     ParEnv % ActiveComm = ELMER_COMM_WORLD
 
