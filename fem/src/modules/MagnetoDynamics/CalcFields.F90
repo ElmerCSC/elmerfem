@@ -666,8 +666,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: rdummy
    INTEGER :: mudim, ElementalMode
 
-type(nodes_t), save :: lnodes
-type(solver_t), pointer :: lSolver
+   TYPE VariableArray_t
+     TYPE(Variable_t), POINTER :: Field => Null()
+   END TYPE VariableArray_t
+
+   TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
+   TYPE(Variable_t), POINTER :: FieldVariable
+   LOGICAL :: EigenAnalysis
+   INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
    
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -851,36 +857,44 @@ type(solver_t), pointer :: lSolver
 
    CALL Info('MagnetoDynamicsCalcFields',&
        'Number of components to compute: '//I2S(DOFs),Level=8)
-         
-   NodalFields = &
-       ASSOCIATED(MFD) .OR. &
-       ASSOCIATED(MFS) .OR. &
-       ASSOCIATED(VP) .OR. &
-       ASSOCIATED(CD) .OR. &
-       ASSOCIATED(FWP) .OR. &
-       ASSOCIATED(MPerm) .OR. &
-       ASSOCIATED(EF) .OR. &
-       ASSOCIATED(JXB) .OR. &
-       ASSOCIATED(MST) .OR. &
-       ASSOCIATED(NF) .OR. ASSOCIATED(NJH) .OR. &
-       ASSOCIATED(JH) .OR. &
-       ASSOCIATED(ML) .OR. &
-       ASSOCIATED(ML2) 
+
+   MaxFields = 14  !  
+
+   NodalFieldPointers(1) % Field => MFD
+   NodalFieldPointers(2) % Field => MFS
+   NodalFieldPointers(3) % Field => VP
+   NodalFieldPointers(4) % Field => CD
+   NodalFieldPointers(5) % Field => FWP
+   NodalFieldPointers(6) % Field => MPerm
+   NodalFieldPointers(7) % Field => EF
+   NodalFieldPointers(8) % Field => JXB
+   NodalFieldPointers(9) % Field => MST
+   NodalFieldPointers(10) % Field => NF
+   NodalFieldPointers(11) % Field => NJH
+   NodalFieldPointers(12) % Field => JH
+   NodalFieldPointers(13) % Field => ML
+   NodalFieldPointers(14) % Field => ML2
    
-   ElementalFields = &
-       ASSOCIATED(EL_MFD) .OR. &
-       ASSOCIATED(EL_MFS) .OR. &
-       ASSOCIATED(EL_VP) .OR. &
-       ASSOCIATED(EL_CD)  .OR. &
-       ASSOCIATED(EL_FWP) .OR. & 
-       ASSOCIATED(EL_MPerm) .OR. & 
-       ASSOCIATED(EL_EF)  .OR. &
-       ASSOCIATED(EL_JXB) .OR. &
-       ASSOCIATED(EL_MST) .OR. & 
-       ASSOCIATED(EL_NF) .OR. & 
-       ASSOCIATED(EL_JH) .OR. & 
-       ASSOCIATED(EL_ML)  .OR. &
-       ASSOCIATED(EL_ML2) 
+   ElementalFieldPointers(1) % Field => EL_MFD
+   ElementalFieldPointers(2) % Field => EL_MFS
+   ElementalFieldPointers(3) % Field => EL_VP
+   ElementalFieldPointers(4) % Field => EL_CD
+   ElementalFieldPointers(5) % Field => EL_FWP
+   ElementalFieldPointers(6) % Field => EL_MPerm
+   ElementalFieldPointers(7) % Field => EL_EF
+   ElementalFieldPointers(8) % Field => EL_JXB
+   ElementalFieldPointers(9) % Field => EL_MST
+   ElementalFieldPointers(10) % Field => EL_NF
+   ElementalFieldPointers(11) % Field => JH
+   ElementalFieldPointers(12) % Field => ML
+   ElementalFieldPointers(13) % Field => ML2
+   ElementalFieldPointers(14) % Field => Null()
+
+   NodalFields = .FALSE.; ElementalFields = .FALSE.
+   DO i=1,MaxFields
+     NodalFields = NodalFields .OR. ASSOCIATED(NodalFieldPointers(i) % Field)
+     ElementalFields = ElementalFields .OR. ASSOCIATED(ElementalFieldPointers(i) % Field)
+   END DO
    
    IF(NodalFields ) THEN
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
@@ -898,19 +912,9 @@ type(solver_t), pointer :: lSolver
 !------------------------------------------------------------------------------
    SOL = 0._dp; PSOL=0._dp
 
-   IF(GetLogical(pSolver % Values, 'Eigen Analysis', Found)) THEN
-     k = GetInteger(pSolver % Values, 'Eigen Post Select', Found )
-     IF(.NOT.Found) k = 1
-
-     DO i=1,pSolver % Matrix % NumberOfRows/2
-       pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(k,i))
-       pSolver % Variable % Values(2*i) = AIMAG(pSolver % Variable % EigenVectors(k,i))
-     END DO
-   END IF
-
    IF ( ASSOCIATED(ESP) ) THEN
      ESP  % Values(ESP % Perm) = pSolver % Variable % Values( &
-           pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
+         pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
    END IF
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
@@ -947,6 +951,46 @@ type(solver_t), pointer :: lSolver
       BodyLoss = 0.0_dp
    END IF
 
+   EigenAnalysis = GetLogical( pSolver % Values, 'Eigen Analysis', Found )
+   IF(EigenAnalysis) THEN
+     NOFeigen = SIZE(pSolver % Variable % EigenValues)
+     DO i=1,MaxFields
+
+       FieldVariable => NodalFieldPointers(i) % Field
+       IF(ASSOCIATED(FieldVariable)) THEN
+
+         ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
+         FieldVariable % EigenValues = pSolver % Variable % EigenValues
+
+         n = SIZE(FieldVariable % Values)/2
+         ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
+         FieldVariable % EigenVectors = 0
+       END IF
+
+       FieldVariable => ElementalFieldPointers(i) % Field
+       IF(ASSOCIATED(FieldVariable)) THEN
+
+         ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
+         FieldVariable % EigenValues = pSolver % Variable % EigenValues
+
+         n = SIZE(FieldVariable % Values)/2
+         ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
+         FieldVariable % EigenVectors = 0
+       END IF
+     END DO
+     FieldsToCompute = NofEigen
+   ELSE
+     FieldsToCompute = 1
+   END IF
+
+   COMPUTE_FIELDS: DO Field=1,FieldsToCompute
+
+   IF(EigenAnalysis) THEN
+     DO i=1,pSolver % Matrix % NumberOfRows/2
+       pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(Field,i))
+       pSolver % Variable % Values(2*i) = AIMAG(pSolver % Variable % EigenVectors(Field,i))
+     END DO
+   END IF
 
    C = 0._dp; PR=0._dp
    Magnetization = 0._dp
@@ -978,8 +1022,6 @@ type(solver_t), pointer :: lSolver
      END IF
      
      CALL GetElementNodes( Nodes, USolver=pSolver )
-     lSolver => Solver
-     CALL GetElementNodes( lNodes, USolver=lSolver )
 
      ! If potential is not available we have to use given current directly to estimate Joule losses
      JouleHeatingFromCurrent = ( np == 0 .AND. &
@@ -2317,8 +2359,6 @@ type(solver_t), pointer :: lSolver
      CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',SUM(Energy(1:2)))
    END IF
    
-   IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS, FORCE, Tcoef, RotM )
    
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
@@ -2505,8 +2545,6 @@ type(solver_t), pointer :: lSolver
     CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Area', Area )
     END IF
   END IF
-
-  
 
   
   HasThinLines = ListCheckPresentAnyBC(Model,'Thin Line Crossection Area')
@@ -2724,13 +2762,36 @@ type(solver_t), pointer :: lSolver
     CALL ListAddConstReal(Model % Simulation, 'res: Thin sheet current power', Power)
 
   END IF
+
+  IF (EigenAnalysis) THEN
+    DO i=1,MaxFields
+      FieldVariable => NodalFieldPointers(i) % Field
+      IF (ASSOCIATED(FieldVariable)) THEN
+        n = SIZE(FieldVariable % Values)
+        DO j=1,n/2
+          FieldVariable % EigenVectors(field,j) = CMPLX( &
+              FieldVariable % Values(2*j-1), FieldVariable % Values(2*j), KIND=dp )
+        END DO
+      END IF
+
+      FieldVariable => ElementalFieldPointers(i) % Field
+      IF (ASSOCIATED(FieldVariable)) THEN
+        n = SIZE(FieldVariable % Values)
+        DO j=1,n/2
+          FieldVariable % EigenVectors(field,j) = CMPLX( &
+              FieldVariable % Values(2*j-1), FieldVariable % Values(2*j), KIND=dp )
+        END DO
+      END IF
+    END DO
+  END IF
+
+  END DO COMPUTE_FIELDS
   
   IF( NormIndex > 0 ) THEN
     WRITE(Message,*) 'Reverting norm to: ', SaveNorm
     CALL Info( 'MagnetoDynamicsCalcFields', Message )
     Solver % Variable % Norm = SaveNorm
   END IF
-
 
   IF(.NOT. ConstantMassMatrixInUse ) THEN
     ConstantMassMatrixInUse = ListGetLogical( SolverParams,'Constant Mass Matrix',Found )    
