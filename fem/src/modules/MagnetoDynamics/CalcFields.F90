@@ -885,9 +885,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ElementalFieldPointers(8) % Field => EL_JXB
    ElementalFieldPointers(9) % Field => EL_MST
    ElementalFieldPointers(10) % Field => EL_NF
-   ElementalFieldPointers(11) % Field => JH
-   ElementalFieldPointers(12) % Field => ML
-   ElementalFieldPointers(13) % Field => ML2
+   ElementalFieldPointers(11) % Field => EL_JH
+   ElementalFieldPointers(12) % Field => EL_ML
+   ElementalFieldPointers(13) % Field => EL_ML2
    ElementalFieldPointers(14) % Field => Null()
 
    NodalFields = .FALSE.; ElementalFields = .FALSE.
@@ -1352,7 +1352,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
              E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
            CASE(3)
-             E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+             E(1,:) =  Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
              E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
            END SELECT
          ELSE
