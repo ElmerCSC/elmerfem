@@ -985,6 +985,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    COMPUTE_FIELDS: DO Field=1,FieldsToCompute
 
+   IF ( NodalFields ) GForce = 0._dp
+
    IF(EigenAnalysis) THEN
      DO i=1,pSolver % Matrix % NumberOfRows/2
        pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(Field,i))
