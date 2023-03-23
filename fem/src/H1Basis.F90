@@ -2803,7 +2803,7 @@ CONTAINS
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER :: j
     REAL(KIND=dp) :: s, sq2=SQRT(2.0_dp), sq42=4*SQRT(2._dp)
-!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
 
       !_ELMER_OMP_SIMD
       DO j=1,nvec
@@ -3016,7 +3016,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
     REAL(KIND=dp) :: La, Lb, dLa(3), dLb(3), Na, Nb, dNa(3), dNb(3), Phi, dPhi(3)
     INTEGER :: i,j,k,l, node1, node2, nnb
-!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+!!!!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
 
     REAL(KIND=dp) :: s, sq2=SQRT(2.0_dp)
 
@@ -3158,7 +3158,7 @@ CONTAINS
     REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj
     REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj
     INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
-!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
 
     nnb = 0; CALL H1Basis_PyramidNodalP(nvec,u,v,w,nbasismax,n,nnb)
 
@@ -3292,7 +3292,7 @@ CONTAINS
     REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj, Legk, s
     REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj, dLegk
     INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
-!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
 
 
     nnb = 0; CALL H1Basis_PyramidNodalP(nvec,u,v,w,nbasismax,n,nnb)
