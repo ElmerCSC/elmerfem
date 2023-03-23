@@ -43,24 +43,16 @@ Solver 1
   Variable = "a[a re:1 a im:1]"
   Procedure = "MagnetoDynamics" "WhitneyAVHArmonicSolver"
 
+  Electrodynamics Model = Logical True
+
   Eigen Analysis = True
   Eigen System Values = 10
-
-  Eigen Post Select = integer 5
 
   Eigen System Shift = Real 3
   Eigen System Convergence Tolerance = Real 1.0e-6
 
-  Electrodynamics Model = Logical True
   Use Tree Gauge = False
   Linear System Solver = Direct
-
-  Linear System Iterative Method = Gcr
-  Linear System Residual Output = 10
-  Linear System Max Iterations = 200
-  Linear System Preconditioning = None
-  Linear System Abort Not Converged = False
-  Linear System Convergence TOLERANCE = 1e-9
 
   Steady State Convergence Tolerance = 1e-09
 End
