@@ -50,8 +50,12 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion, SecondOrder
-  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
+  CHARACTER(:), ALLOCATABLE :: ElemType
 
+  TYPE(Solver_t), POINTER :: Solvers(:)
+  INTEGER :: i,j,k,n
+  CHARACTER(:), ALLOCATABLE :: eq
+  INTEGER, POINTER :: ActiveSolvers(:)
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -82,15 +86,7 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 
   CALL ListAddNewString( SolverParams,'Variable','AV[AV re:1 AV im:1]')
 
-
   IF(ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
-
-BLOCK
-TYPE(Solver_t), POINTER :: Solvers(:)
-INTEGER :: i,j,k,n
-CHARACTER(LEN=MAX_NAME_LEN) :: eq
-INTEGER, POINTER :: ActiveSolvers(:)
-
     Solvers => Model % Solvers
     n = Model % NumberOfSolvers
     Model % NumberOfSolvers = n+2
@@ -144,7 +140,6 @@ INTEGER, POINTER :: ActiveSolvers(:)
         END IF
       END IF
     END DO
-END BLOCK
   END IF
 
     
@@ -228,7 +223,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
@@ -250,14 +245,12 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: CompParams
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
   
-  SAVE STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, &
-       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM, &
-       GapLength, MuParameter, SkinCond
+  SAVE MASS, STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
+     Cwrk, Cwrk_im, LamCond, LamThick, AllocationsDone, RotM, GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -267,6 +260,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
    
   SolverParams => GetSolverParams()
 
+  EigenSystem = GetLogical( SolverParams, 'Eigen Analysis', Found )
   ElectroDynamics = GetLogical( SolverParams, 'Electrodynamics Model', Found )
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
@@ -324,7 +318,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
          'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), MASS(n,n), &
           JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
@@ -339,7 +333,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
   
   Omega = GetAngularFrequency(Found=Found)
-  IF(.NOT. Found ) THEN
+  IF(.NOT. Found .AND. .NOT. EigenSystem ) THEN
     CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
   END IF
     
@@ -567,13 +561,14 @@ CONTAINS
 
        !Get element local matrix and rhs vector:
        !----------------------------------------
-       CALL LocalMatrix( STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
           LamCond, CoilBody, CoilType, RotM, ConstraintActive, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
+       IF (EigenSystem) CALL DefaultUpdateMass(MASS)
        
        ! Memorize stuff for the fixing potential
        ! 1) Divergence of the source term
@@ -654,14 +649,14 @@ CONTAINS
        IF (Found) THEN
          MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
          IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
+         CALL LocalMatrixAirGapBC(MASS,STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
          SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
            MuParameter = GetConstReal( BC, 'Layer Relative Permeability', Found)
            ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
+           CALL LocalMatrixSkinBC(MASS,STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
          ELSE         
            GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
            IF (Found) THEN
@@ -670,15 +665,16 @@ CONTAINS
              ! Technically, there is no skin but why create yet another conductivity variable?
              SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
              IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
-             CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
+             CALL LocalMatrixThinSheet( MASS, STIFF, FORCE, LOAD, GapLength, MuParameter, &
                                             SkinCond, Element, n, nd )
            ELSE
-             CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+             CALL LocalMatrixBC(MASS,STIFF,FORCE,LOAD,Acoef,Element,n,nd )
            END IF
          END IF
        END IF
 
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+       IF(EigenSystem) CALL DefaultUpdateMass(MASS,Element)
     END DO
 
     CALL DefaultFinishAssembly()
@@ -1269,13 +1265,13 @@ END BLOCK
 
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
       Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
       LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
       Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
     LOGICAL :: LaminateStack, CoilBody, ConstraintActive
@@ -1295,7 +1291,7 @@ END BLOCK
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum, Permittivity(nd), P_ip
+          CVelo(3), CVeloSum, Permittivity(nd), P_ip, DAMP(nd,nd)
 
     LOGICAL :: Stat, Newton, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
@@ -1315,6 +1311,8 @@ END BLOCK
 
     CALL GetElementNodes( Nodes )
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
@@ -1538,7 +1536,7 @@ END BLOCK
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
               IF(ElectroDynamics) THEN             
-                STIFF(p,q) = STIFF(p,q) + im * Omega * P_ip * SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
+                DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
               END IF
               STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
@@ -1548,12 +1546,11 @@ END BLOCK
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+              DAMP(p,q) = DAMP(p,q) + &
                   SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
 
               IF(ElectroDynamics) THEN             
-                STIFF(p,q) = STIFF(p,q) - Omega**2 * &
-                       P_ip * SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+                MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
               END IF
 
               ! Compute the conductivity term <C grad V, eta> for 
@@ -1562,7 +1559,7 @@ END BLOCK
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
 
               IF(ElectroDynamics) THEN             
-                STIFF(q,p) = STIFF(q,p) + im * Omega * &
+                DAMP(q,p) = DAMP(q,p) + &
                        P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
               END IF
             END DO
@@ -1615,11 +1612,11 @@ END BLOCK
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
+           IF (CoilType /= 'stranded') DAMP(p,q) = DAMP(p,q) + &
                 SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
 
            IF(ElectroDynamics ) THEN
-             STIFF(p,q) = STIFF(p,q) - Omega**2 * &
+             MASS(p,q) = MASS(p,q) + &
                 P_ip*SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END IF
          END DO
@@ -1630,6 +1627,13 @@ END BLOCK
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+    END IF
+
+    IF(EigenSystem) THEN
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -Omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
     END IF
 
 !------------------------------------------------------------------------------
@@ -1705,16 +1709,16 @@ END BLOCK
  
   
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
+  SUBROUTINE LocalMatrixBC(  MASS, STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
-    COMPLEX(KIND=dp) :: B, F, TC, L(3), imu
+    COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1731,8 +1735,7 @@ END BLOCK
 
     CALL GetElementNodes( Nodes )
 
-    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
-    
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
@@ -1788,8 +1791,8 @@ END BLOCK
        ! the input surface current is done in the following.
        !   
        IF( LineElem ) THEN
-         F = F * (1-imu)
-         TC = TC * (1-imu)
+         F = F * (1-im)
+         TC = TC * (1-im)
        END IF
 
        
@@ -1821,11 +1824,11 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
+  SUBROUTINE LocalMatrixAirGapBC(MASS, STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
@@ -1844,6 +1847,7 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
@@ -1884,19 +1888,19 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinSheet(  STIFF, FORCE, LOAD, Thickness, Permeability, &
+  SUBROUTINE LocalMatrixThinSheet(  MASS, STIFF, FORCE, LOAD, Thickness, Permeability, &
                                           Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
-    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C, DAMP(nd,nd)
     
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1910,6 +1914,8 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
@@ -1956,7 +1962,7 @@ END BLOCK
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+              DAMP(p,q) = DAMP(p,q) + &
                   sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
 
               ! Compute the conductivity term <C grad V, eta> for 
@@ -1983,12 +1989,18 @@ END BLOCK
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + sheetThickness * im*Omega* &
+           STIFF(p,q) = STIFF(p,q) + sheetThickness * &
               C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
-
     END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixThinSheet
@@ -1996,22 +2008,22 @@ END BLOCK
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, &
+  SUBROUTINE LocalMatrixSkinBC( MASS, STIFF, FORCE, SkinCond, SkinMu, &
                  Element, CircuitDrivenBC, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: CircuitDrivenBC
     INTEGER :: n, nd
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ, DAMP(nd,nd)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp) :: invZs
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
-    COMPLEX(KIND=dp) :: imu, invZs
     
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -2020,11 +2032,12 @@ END BLOCK
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
     
     ! Numerical integration:
     !-----------------------
@@ -2048,7 +2061,7 @@ END BLOCK
       cond = SUM(Basis(1:n) * SkinCond(1:n))
       mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
       delta = SQRT( 2.0_dp/(cond*omega*mu))      
-      invZs = (cond*delta)/(1.0_dp+imu)
+      invZs = (cond*delta)/(1.0_dp+im)
       !PRINT *,'skin:',cond,delta,omega,invZs
       !PRINT *,'elem:',Element % NodeIndexes
 
@@ -2064,7 +2077,7 @@ END BLOCK
           ! the edge basis functions returned by the function EdgeElementInfo are automatically 
           ! tangential and hence the normal doesn't appear in the expression.
           !
-          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
+          DAMP(p,q) = DAMP(p,q) + invZs * &
               SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
         END DO
 
@@ -2098,13 +2111,19 @@ END BLOCK
 
             DO j = 1,nd-np
               q = j+np
-              STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
+              DAMP(p,q) = DAMP(p,q) + delta * cond * &
                 SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
             END DO
           END DO
         END IF
-
     END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixSkinBC
 !------------------------------------------------------------------------------

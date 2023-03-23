@@ -848,10 +848,6 @@ type(solver_t), pointer :: lSolver
    IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) DOFs=DOFs+1   
    IF ( ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF) ) DOFs=DOFs+fdim
 
-   IF ( ASSOCIATED(ESP) ) THEN
-     ESP  % Values(ESP % Perm) = pSolver % Variable % Values( &
-           pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
-   END IF
 
    CALL Info('MagnetoDynamicsCalcFields',&
        'Number of components to compute: '//I2S(DOFs),Level=8)
@@ -901,6 +897,21 @@ type(solver_t), pointer :: lSolver
    ALLOCATE( Magnetization(3,n), BodyForceCurrDens(3,n), R_Z(n) )
 !------------------------------------------------------------------------------
    SOL = 0._dp; PSOL=0._dp
+
+   IF(GetLogical(pSolver % Values, 'Eigen Analysis', Found)) THEN
+     k = GetInteger(pSolver % Values, 'Eigen Post Select', Found )
+     IF(.NOT.Found) k = 1
+
+     DO i=1,pSolver % Matrix % NumberOfRows/2
+       pSolver % Variable % Values(2*i-1) = REAL(pSolver % Variable % EigenVectors(k,i))
+       pSolver % Variable % Values(2*i) = AIMAG(pSolver % Variable % EigenVectors(k,i))
+     END DO
+   END IF
+
+   IF ( ASSOCIATED(ESP) ) THEN
+     ESP  % Values(ESP % Perm) = pSolver % Variable % Values( &
+           pSolver % Variable % Perm(1:Mesh % NumberOfNodes))
+   END IF
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
        .OR. ASSOCIATED( ML ) .OR. ASSOCIATED( EL_ML ) &
@@ -1016,8 +1027,8 @@ type(solver_t), pointer :: lSolver
 
      Omega = GetAngularFrequency(pSOlver % Values,Found,Element)
      IF( .NOT. ( RealField .OR. Found ) ) THEN
-       CALL Fatal('MagnetoDynamicsCalcFields',&
-           '(Angular) Frequency must be given for complex fields!')
+!      CALL Fatal('MagnetoDynamicsCalcFields',&
+!          '(Angular) Frequency must be given for complex fields!')
      END IF
      Freq = Omega / (2*PI)
      
@@ -2647,12 +2658,14 @@ type(solver_t), pointer :: lSolver
       END IF
 
       Model % CurrentElement => Element
+
       nd = GetElementNOFDOFs(Element)
       n  = GetElementNOFNodes(Element)
       CALL GetElementNodes(Nodes, Element)
-      CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
+
+      CALL GetLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
       IF (Transient) THEN 
-        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+        CALL GetLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
         PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
       END IF
 
