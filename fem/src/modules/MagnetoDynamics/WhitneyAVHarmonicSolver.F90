@@ -1900,7 +1900,9 @@ END BLOCK
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
-    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C, DAMP(nd,nd)
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+
+    COMPLEX(KIND=dp) :: DAMP(nd,nd)
     
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -2018,11 +2020,11 @@ END BLOCK
     LOGICAL :: CircuitDrivenBC
     INTEGER :: n, nd
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ, DAMP(nd,nd)
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
-    COMPLEX(KIND=dp) :: invZs
+    COMPLEX(KIND=dp) :: invZs, DAMP(nd,nd)
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
     
     TYPE(Nodes_t), SAVE :: Nodes
