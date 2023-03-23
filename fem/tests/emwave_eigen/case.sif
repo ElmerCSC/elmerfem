@@ -84,7 +84,6 @@ Boundary Condition 1
 
   a re {e} = real 0
   a im {e} = real 0
-  a re {e} 3 = real 1
 End
  
 Boundary Condition 2
