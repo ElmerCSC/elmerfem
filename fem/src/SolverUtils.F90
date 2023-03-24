@@ -16240,8 +16240,8 @@ END SUBROUTINE ChangeToHarmonicSystem
 !>  ConstraintMatrix.
 !>  NOTE: Only serial solver implemented so far ...
 !------------------------------------------------------------------------------
-RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solution, &
-        Norm, DOFs, Solver )
+RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
+                 Solution, Norm, DOFs, Solver )
 !------------------------------------------------------------------------------  
   IMPLICIT NONE
   TYPE(Matrix_t), POINTER :: StiffMatrix !< Linear equation matrix information. 
@@ -16273,9 +16273,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   INTEGER, ALLOCATABLE, TARGET :: SlavePerm(:), SlaveIPerm(:), MasterPerm(:), MasterIPerm(:)
   INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
-  REAL(KIND=dp), POINTER :: UseDiag(:)
+  REAL(KIND=dp), POINTER :: UseDiag(:), svals(:)
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
-  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel, UseTreeGauge
+  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel, UseTreeGauge, NeedMassDampValues
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
   LOGICAL, ALLOCATABLE :: TrueDof(:)
   INTEGER, ALLOCATABLE :: Iperm(:)
@@ -16293,6 +16293,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
+
+  NeedMassDampValues = ListGetLogical( Solver % Values, 'Eigen Analysis', Found )
 
   RestMatrix => NULL()
   IF(.NOT.NotExplicit) RestMatrix => StiffMatrix % ConstraintMatrix
@@ -16325,6 +16327,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   ELSE
     DEALLOCATE(CollectionMatrix % RHS)
     CollectionMatrix % Values = 0.0_dp
+
+    IF(NeedMassDampValues) THEN
+      CollectionMatrix % MassValues = 0.0_dp
+      CollectionMatrix % DampValues = 0.0_dp
+    END IF
   END IF
   IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix  
   
@@ -16343,7 +16350,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionVector => CollectionMatrix % RHS
   CollectionVector = 0.0_dp
   CollectionSolution = 0.0_dp
-
 
   ComplexSystem = StiffMatrix % COMPLEX
   ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
@@ -16591,7 +16597,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 ! Put the AddMatrix to upper part of CollectionMatrix
 !------------------------------------------------------------------------------
   IF(ASSOCIATED(AddMatrix)) THEN
-
     CALL Info(Caller,'Adding AddMatrix into CollectionMatrix',Level=12)
 
     DO i=AddMatrix % NumberOfRows,1,-1
@@ -16976,11 +16981,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
       CALL List_toCRSMatrix(CollectionMatrix)
 
-  IF( InfoActive(30) ) THEN    
-    CALL VectorValuesRange(CollectionMatrix % Values,&
-        SIZE(CollectionMatrix % Values),'CollectionMatrix')           
-    CALL VectorValuesRange(CollectionVector,&
-        SIZE(CollectionVector),'CollectionVector')           
+  ! CRS-format matrix needed here
+  IF ( NeedMassDampValues ) THEN  ! Doesn't work with constraints, "AddMatrix" only !!
+    CALL CopyMassDampValues(CollectionMatrix, StiffMatrix, AddMatrix)
   END IF
   
   CALL Info( Caller, 'CollectionMatrix done', Level=12 )
@@ -17084,8 +17087,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF( ListGetLogical( Solver % Values,'Restricted System Norm Skip Nodes',Found ) ) THEN
       i = 1
       j = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes) )
-      CALL Info(Caller,'Skipping nodal dof range: '&
-          //I2S(i)//'-'//I2S(j),Level=8)
+      CALL Info(Caller,'Skipping nodal dof range: '//I2S(i)//'-'//I2S(j),Level=8)
       TrueDof(i:j) = .FALSE.
     END IF
 
@@ -17353,6 +17355,73 @@ CONTAINS
        END DO
      END IF
    END SUBROUTINE tota
+
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CopyMassDampValues(A,B,C)
+!------------------------------------------------------------------------------
+     TYPE(Matrix_t)  :: A,B,C
+!------------------------------------------------------------------------------
+     INTEGER :: i,j,n
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), POINTER :: svals(:)
+!------------------------------------------------------------------------------
+     n = SIZE(A % Values)
+
+     IF(ASSOCIATED(B % MassValues) .OR. ASSOCIATED(C % MassValues)) THEN
+       IF(.NOT.ASSOCIATED(A % MassValues)) THEN
+         ALLOCATE(A % MassValues(n)); A % MassValues = 0._dp
+       END IF
+     END IF
+
+     IF(ASSOCIATED(B % DampValues) .OR. ASSOCIATED(C % DampValues)) THEN
+       IF(.NOT.ASSOCIATED(A % DampValues)) THEN
+         ALLOCATE(A % DampValues(n)); A % DampValues = 0._dp
+       END IF
+     END IF
+
+     svals => A % Values
+
+     IF(ASSOCIATED(B % MassValues)) THEN
+       A % Values => A % MassValues
+       DO i=B % NumberOfRows,1,-1
+         DO j=B % Rows(i+1)-1,B % Rows(i),-1
+           CALL AddToMatrixElement( A, i, B % Cols(j), B % Values(j) )
+         END DO
+       END DO
+     END IF
+ 
+     IF(ASSOCIATED(C % MassValues)) THEN
+       A % Values => A % MassValues
+       DO i=C % NumberOfRows,1,-1
+         DO j=C % Rows(i+1)-1,C % Rows(i),-1
+           CALL AddToMatrixElement( A, i, C % Cols(j), C % Values(j) )
+         END DO
+       END DO
+     END IF
+ 
+     IF(ASSOCIATED(B % DampValues)) THEN
+       A % Values => A % DampValues
+       DO i=B % NumberOfRows,1,-1
+         DO j=B % Rows(i+1)-1,B % Rows(i),-1
+           CALL AddToMatrixElement( A, i, B % Cols(j), B % DampValues(j) )
+         END DO
+       END DO
+     END IF
+ 
+     IF(ASSOCIATED(C % DampValues)) THEN
+       A % Values => A % DampValues
+       DO i=C % NumberOfRows,1,-1
+         DO j=C % Rows(i+1)-1,C % Rows(i),-1
+           CALL AddToMatrixElement( A, i, C % Cols(j), C % DampValues(j) )
+         END DO
+       END DO
+     END IF
+
+     A % Values => svals
+!------------------------------------------------------------------------------
+   END SUBROUTINE CopyMassDampValues
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveWithLinearRestriction

@@ -1303,7 +1303,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)  
-  LOGICAL :: Parallel, Found
+  LOGICAL :: Parallel, Found, EigenSystem
   REAL(KIND=dp), POINTER :: px(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamicsHarmonic'
@@ -1396,6 +1396,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     CALL Circuits_MatrixInit()
   END IF
   
+  EigenSystem = GetLogical( Asolver % Values, 'Eigen Analysis', Found )
+
   max_element_dofs = Model % Mesh % MaxElementDOFs
   Circuits => Model % Circuits
   n_Circuits => Model % n_Circuits
@@ -1506,7 +1508,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! im * Omega * A x: (x could be voltage or current):
         !--------------------------------------------
         IF(Cvar % A(j) /= 0._dp) THEN
-          CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, Omega * Cvar % A(j))
+          CALL AddMatrixEntry( CM, RowId, ColId, (0._dp,0._dp), im*Omega*Cvar % A(j) )
         END IF
 
         ! B x:
@@ -2069,12 +2071,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
 
-      IF(.NOT.SkinBC) cmplx_val = cmplx_val*localC + im * Omega * cmplx_val*localP
+      IF(SkinBC) THEN
+        CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
+             REAL(cmplx_val), AIMAG(cmplx_val))
+      ELSE
+        CALL AddMatrixEntry(CM, vvarId, vvarId, &
+             cmplx_val*localC, im*Omega*cmplx_val*localP )
+      END IF
 
       localConductance = ABS(cmplx_val)
       Comp % Conductance = Comp % Conductance + localConductance
-      CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
-              REAL(cmplx_val), AIMAG(cmplx_val))
 
       IF ( LondonEquations ) THEN
         LondonLambda_ip = SUM( Basis(1:nn) * LondonLambda(1:nn) )
@@ -2122,10 +2128,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           END IF
         END IF
 
-        IF(.NOT.SkinBc ) cmplx_val = im*Omega*cmplx_val*localC - omega**2*cmplx_val*localP
+        IF(SkinBc ) THEN
+          CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
+                    REAL(cmplx_val), AIMAG(cmplx_val))
+        ELSE
+          cmplx_val = im*Omega*cmplx_val*localC - omega**2*cmplx_val*localP
+          CALL AddMatrixEntry(CM, vvarId, ReIndex(PS(Indexes(q))), &
+                     (0._dp, 0._dp), cmplx_val )
+        END IF
 
-        CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
-               REAL(cmplx_val), AIMAG(cmplx_val))
 
 !        localL = ABS(1._dp/cmplx_val)
 !        Comp % Inductance = Comp % Inductance + localL
@@ -2146,10 +2157,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           END IF
         END IF
 
-        IF(.NOT.SkinBc) cmplx_val = cmplx_val * localC + im * Omega * cmplx_val * localP
-
-        CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
-                REAL(cmplx_val), AIMAG(cmplx_val))
+        IF(SkinBc) THEN
+          CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
+                  REAL(cmplx_val), AIMAG(cmplx_val))
+        ELSE
+          CALL AddMatrixEntry(CM, ReIndex(PS(indexes(q))), vvarId, &
+               cmplx_val*LocalC, im*Omega*cmplx_val*LocalP )
+        END IF
       END DO
     END DO
 
@@ -2458,10 +2472,42 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           END DO
        END IF
     END IF
-
-
 !------------------------------------------------------------------------------
   END SUBROUTINE GetConductivity
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddMatrixEntry( A, row, col, val, tval )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: A
+    INTEGER :: row, col
+    COMPLEX(KIND=dp) :: val, tval
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: cval
+    REAL(KIND=dp), POINTER :: svalues(:)
+!------------------------------------------------------------------------------
+
+    IF(EigenSystem) THEN
+      CALL AddToCmplxMatrixElement(A, row, col, REAL(val), AIMAG(val))
+
+      IF(.NOT.ASSOCIATED(A % MassValues)) THEN
+        ALLOCATE(A % MassValues(SIZE(A % Values)))
+        A % MassValues = 0._dp
+      END IF
+
+      svalues => A % Values
+      A % Values => A % MassValues
+
+      CALL AddToCmplxMatrixElement(A, row, col, REAL(tval), AIMAG(tval))
+
+      A % Values => svalues
+    ELSE
+      cval = val+tval
+      CALL AddToCmplxMatrixElement(A, row, col, REAL(cval), AIMAG(cval))
+    END IF
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddMatrixEntry
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -2742,6 +2788,5 @@ CONTAINS
 !-------------------------------------------------------------------
   END SUBROUTINE SimListAddAndOutputConstReal
 !-------------------------------------------------------------------
-
 
 END SUBROUTINE CircuitsOutput
