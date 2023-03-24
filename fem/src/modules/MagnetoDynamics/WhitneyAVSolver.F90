@@ -53,7 +53,14 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
        b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
   INTEGER :: Paramlist
-  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
+  CHARACTER(:), ALLOCATABLE :: ElemType
+
+  TYPE(Solver_t), POINTER :: Solvers(:)
+  INTEGER :: i,j,k,n
+  CHARACTER(:), ALLOCATABLE :: eq
+  INTEGER, POINTER :: ActiveSolvers(:)
+
+
   Paramlist = 0
 
   SolverParams => GetSolverParams()
@@ -97,8 +104,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     IF (PiolaVersion) Paramlist = Paramlist + b_Piola
     IF (SecondOrder) Paramlist = Paramlist + b_Secondorder
     IF (LagrangeGauge) Paramlist = Paramlist + b_Gauge
-    IF (Transient) Paramlist = Paramlist + b_Transient
     IF (StaticConductivity) Paramlist = Paramlist + b_StaticCond
+    IF (Transient .OR. ElectroDynamics) Paramlist = Paramlist + b_Transient
 
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
@@ -172,15 +179,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   ! THIS ENFORCES THE NEW STRATEGY !!!!
   CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
 
-
-  IF(ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
-
-BLOCK
-TYPE(Solver_t), POINTER :: Solvers(:)
-INTEGER :: i,j,k,n
-CHARACTER(LEN=MAX_NAME_LEN) :: eq
-INTEGER, POINTER :: ActiveSolvers(:)
-
+  ! Add solvers, if "Helmholtz projection" requested
+  IF (ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
     Solvers => Model % Solvers
     n = Model % NumberOfSolvers
     Model % NumberOfSolvers = n+2
@@ -190,10 +190,10 @@ INTEGER, POINTER :: ActiveSolvers(:)
 
     DO i=n+1,n+2
       Model % Solvers(i) % PROCEDURE = 0
-      NULLIFY( Model % Solvers(i) % Matrix )
-      NULLIFY( Model % Solvers(i) % Mesh )
-      NULLIFY( Model % Solvers(i) % Variable )
-      NULLIFY( Model % Solvers(i) % ActiveElements )
+      Model % Solvers(i) % Matrix => Null()
+      Model % Solvers(i) % Mesh => Null()
+      Model % Solvers(i) % Variable => Null()
+      Model % Solvers(i) % ActiveElements => Null()
       Model % Solvers(i) % NumberOfActiveElements = 0
     END DO
 
@@ -207,7 +207,7 @@ INTEGER, POINTER :: ActiveSolvers(:)
     CALL ListAddIntegerArray( SolverParams, 'Post Solvers', 2, [n+1,n+2] )
 
     CALL ListAddString( Model % Solvers(n+1) % Values, 'Procedure', &
-              'MagnetoDynamics HelmholtzProjectorT', CaseConversion=.FALSE. )
+                'MagnetoDynamics HelmholtzProjectorT', CaseConversion=.FALSE. )
     CALL ListAddString( Model % Solvers(n+1) % Values, 'Equation', 'HP' )
     CALL ListAddString( Model % Solvers(n+1) % Values, 'Exec Solver', 'Never' )
 
@@ -234,10 +234,7 @@ INTEGER, POINTER :: ActiveSolvers(:)
         END IF
       END IF
     END DO
-END BLOCK
   END IF
-
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -281,8 +278,6 @@ SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
       END IF
     END DO
   END BLOCK
-
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init
 !------------------------------------------------------------------------------
@@ -365,9 +360,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
 
   TYPE(ValueHandle_t), SAVE :: mu_h 
   TYPE(Solver_t), POINTER :: pSolver
@@ -391,6 +386,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   pSolver => Solver
 
   ElectroDynamics = ListGetLogical( SolverParams, 'Electrodynamics model', Found )
+  EigenSystem = ListGetLogical( SolverParams, 'Eigen Analysis', Found )
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
@@ -858,7 +854,7 @@ CONTAINS
        
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
-     IF (Transient) THEN
+     IF (Transient .OR. EigenSystem) THEN
        CALL DefaultUpdateMass(MASS)
        IF ( ElectroDynamics ) CALL DefaultUpdateDamp(DAMP)
      END IF
@@ -985,7 +981,13 @@ CONTAINS
        CALL LocalMatrixThinLine(MASS,STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd, &
            SecondOrder)
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
-       IF (Transient) CALL DefaultUpdateMass(MASS)
+       IF (Transient .OR. EigenSystem) THEN
+         IF(ElectroDynamics) THEN
+           CALL DefaultUpdateDamp(MASS,Element)
+         ELSE
+           CALL DefaultUpdateMass(MASS,Element)
+         END IF
+       END IF
        CYCLE
      END IF
  
@@ -1004,9 +1006,9 @@ CONTAINS
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
 
      IF(ElectroDynamics) THEN
-       CALL DefaultUpdateDamp(MASS)
+       CALL DefaultUpdateDamp(MASS,Element)
      ELSE
-       CALL DefaultUpdateMass(MASS)
+       CALL DefaultUpdateMass(MASS,Element)
      END IF
   END DO
   
@@ -1021,7 +1023,7 @@ CONTAINS
 200 CONTINUE
 
   ! This is now automatically invoked as the time integration is set global in the Solver_init
-  ! IF ( Transient ) CALL Default1stOrderTimeGlobal()
+  ! IF ( Transient.OR.EigenSystem) CALL Default1stOrderTimeGlobal()
   CALL DefaultFinishAssembly()
 
   ! Dirichlet BCs in terms of vector potential A:
@@ -2018,7 +2020,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
          CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics ) THEN
-           IF ( Transient ) THEN
+           IF ( Transient.OR.EigenSystem ) THEN
              DO p=1,np
                DO q=1,np
 
