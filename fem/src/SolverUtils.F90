@@ -1669,7 +1669,7 @@ CONTAINS
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params
      CHARACTER(:), ALLOCATABLE ::  Str,VarName, ContactType
-     INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
+     INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter, EasyIters
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, NormalProjector, FirstTime = .TRUE., &
@@ -1680,12 +1680,12 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: BC, MasterBC
      REAL(KIND=dp), POINTER :: nWrk(:,:)
      LOGICAL :: CreateDual, pContact
-     CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
      INTEGER, TARGET :: pIndexes(12)
      TYPE(Variable_t), POINTER :: UseLoadVar
      LOGICAL :: UseLagrange
      TYPE(NormalTangential_t), POINTER :: NT
-     
+     CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
+
      
      SAVE FirstTime
 
@@ -1752,6 +1752,9 @@ CONTAINS
        END IF
      END IF
          
+     EasyIters = ListGetInteger(Params,'Nonlinear System Initial Friction Iterations',Found )
+     IF(.NOT. Found ) EasyIters = 1          
+
      ResidualMode = ListGetLogical(Params,&
          'Linear System Residual Mode',Found )
 
@@ -1934,48 +1937,59 @@ CONTAINS
          END IF
        END IF
 
-       IF( StickContact ) CALL Info(Caller,'Using stick contact for displacement',Level=10)
-       IF( TieContact ) CALL Info(Caller,'Using tie contact for displacement',Level=10)
-       IF( FrictionContact ) CALL Info(Caller,'Using friction contact for displacement',Level=10)
-       IF( SlipContact ) CALL Info(Caller,'Using slip contact for displacement',Level=10)
+       IF( StickContact ) CALL Info(Caller,'Using "Stick Contact" for displacement',Level=10)
+       IF( TieContact ) CALL Info(Caller,'Using "Tie Contact" for displacement',Level=10)
+       IF( FrictionContact ) CALL Info(Caller,'Using "Friction Contact" for displacement',Level=10)
+       IF( SlipContact ) CALL Info(Caller,'Using "Slip Contact" for displacement',Level=10)
        
 
-       ! At the start it may be beneficial to assume initial tie contact
-       IF( (FrictionContact .OR. StickContact .OR. SlipContact ) .AND. &
-           (TimeStep == 1 .AND. NonlinIter == 1 ) ) THEN
-         DoIt = ListGetLogical(BC,'Initial Tie Contact',Found )
-         IF( DoIt ) THEN
-           FrictionContact = .FALSE.; StickContact = .FALSE.; SlipContact = .FALSE.
-           TieContact = .TRUE.
-           CALL Info(Caller,'Assuming initial tie contact',Level=10)
-         END IF
-       END IF
+       ! At the start of nonlinear or transient iteration it may be beneficial to assume
+       ! less challenging initial contat model
+       ! friction models -> stick contact /slip contact -> tie contact
+       BLOCK
+         LOGICAL :: InitialTie, InitialStick, InitialSlip 
+
+         InitialTie = .FALSE.
+         InitialStick = .FALSE.
+         InitialSlip = .FALSE.
          
-       ! At the first time it may be beneficial to assume frictionless initial contact.
-       SkipFriction = .FALSE.
-       IF( (FrictionContact .OR. StickContact .OR. SlipContact ) .AND. TimeStep == 1 ) THEN
-         DoIt = .NOT. ListGetLogical(BC,'Initial Contact Friction',Found )
-         IF( DoIt ) THEN
-           FrictionContact = .FALSE.; StickContact = .FALSE.
-           SlipContact = .TRUE.
-           SkipFriction = .TRUE.
-           CALL Info(Caller,'Assuming frictionless initial contact',Level=10)
-         END IF
-       ELSE IF( ( FrictionContact .OR. SlipContact) .AND. NonlinIter == 1 ) THEN
-         DoIt = ListGetLogical(BC,'Nonlinear System Initial Stick',Found )
-         IF(.NOT. Found ) THEN
-           ! If contact velocity is not given then it is difficult to determine the direction at 
-           ! start of nonlinear iteration when the initial guess still reflects the old displacements. 
-           DoIt = .NOT. ListCheckPresent( BC,'Contact Velocity') .AND. &
-               ListCheckPresent( BC,'Dynamic Friction Coefficient')
-         END IF
-         IF( DoIt ) THEN
+         DO i=1,3
+           IF(i==1) THEN
+             Str = 'Nonlinear System'
+             IF( NonlinIter > EasyIters ) CYCLE
+           ELSE IF(i==2) THEN
+             Str = 'Transient System'
+             IF( TimeStep > 1 ) CYCLE 
+           ELSE
+             Str = ''
+             IF( NonlinIter > 1 .OR. Timestep > 1 ) CYCLE
+           END IF
+
+           IF( ListGetLogical( BC,TRIM(Str)//' Initial Tie Contact', Found ) ) InitialTie = .TRUE.
+           IF( ListGetLogical( BC,TRIM(Str)//' Initial Stick Contact', Found ) ) InitialStick = .TRUE.
+           IF( ListGetLogical( BC,TRIM(Str)//' Initial Slip Contact', Found ) ) InitialSlip = .TRUE.
+         END DO
+         
+         SkipFriction = .FALSE.
+         IF( InitialTie .OR. InitialStick .OR. InitialSlip ) THEN
            FrictionContact = .FALSE.
+           StickContact = .FALSE.
            SlipContact = .FALSE.
+           TieContact = .FALSE.
+           SkipFriction = .TRUE.
+         END IF
+
+         IF( InitialTie ) THEN
+           TieContact = .TRUE.
+           CALL Info(Caller,'Reverting to "Tie Contact" for the start',Level=10)                      
+         ELSE IF(InitialStick) THEN
            StickContact = .TRUE.
-           CALL Info(Caller,'Assuming sticking in first iteration initial contact',Level=10)
-         END IF        
-       END IF
+           CALL Info(Caller,'Reverting to "Stick Contact" for the start',Level=10)                      
+         ELSE IF(InitialSlip ) THEN
+           SlipContact = .TRUE.
+           CALL Info(Caller,'Reverting to "Slip Contact" for the start',Level=10)                      
+         END IF
+       END BLOCK
 
        ! If we have stick contact then create a diagonal entry to the projection matrix.
        IF( StickContact .OR. FrictionContact ) THEN
@@ -2322,7 +2336,6 @@ CONTAINS
        LOGICAL, POINTER :: Active(:)
        REAL(KIND=dp), POINTER :: Diag(:)
        LOGICAL :: SamePerm, SameSize
-
        
        onesize = Projector % NumberOfRows
        totsize = Dofs * onesize
@@ -2337,10 +2350,6 @@ CONTAINS
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
          IF( j == 0 ) CYCLE
-         IF( j > SIZE( Perm ) ) THEN
-           PRINT *,'j beyond perm:',j,SIZE(Perm)
-           CALL Fatal('','This is the end')
-         END IF
          Perm( j ) = i
        END DO
 
@@ -2400,15 +2409,13 @@ CONTAINS
          END DO
        END DO
 
-       DEALLOCATE( MortarBC % Active ) 
-       DEALLOCATE( MortarBC % Perm ) 
+       IF( ASSOCIATED( MortarBC % Active ) ) DEALLOCATE( MortarBC % Active )
+       IF( ASSOCIATED( MortarBC % Perm ) ) DEALLOCATE( MortarBC % Perm )
        MortarBC % Active => Active 
        MortarBC % Perm => Perm 
 
        IF( AddDiag ) THEN
-         IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-           DEALLOCATE( MortarBC % Diag ) 
-         END IF
+         IF( ASSOCIATED( MortarBC % Diag ) ) DEALLOCATE( MortarBC % Diag ) 
          MortarBC % Diag => Diag 
        END IF
 
@@ -3026,13 +3033,6 @@ CONTAINS
            n = Element % TYPE % NumberOfNodes         
            Indexes => Element % NodeIndexes
          END IF
-
-         IF( MAXVAL( Indexes(1:n) ) > SIZE( Mesh % Nodes % x ) ) THEN
-           PRINT *,'Indexes:',n,Indexes(1:n)
-           PRINT *,'size x:',SIZE( Mesh % Nodes % x )
-           CALL Fatal('','index too large for x')
-         END IF
-
          
          Nodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
          Nodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
@@ -3071,18 +3071,8 @@ CONTAINS
            END IF
 
            DO i=1,n
-             IF( Indexes(i) > SIZE( NormalLoadVar % Perm ) ) THEN
-               PRINT *,'Index too big for NodeDone',j,SIZE(NormalLoadVar % Perm)
-               CALL Fatal('','just stop')
-             END IF
-
              j = NormalLoadVar % Perm( Indexes(i) )
-             IF( j == 0 ) CYCLE
-             
-             IF( Indexes(i) > SIZE( NodeDone ) ) THEN
-               PRINT *,'Index too big for NodeDone',j,SIZE(NodeDone)
-               CALL Fatal('','just stop')
-             END IF
+             IF( j == 0 ) CYCLE             
              
              IF( .NOT. NodeDone( Indexes(i) ) ) THEN             
                NodeDone( Indexes(i) ) = .TRUE.
@@ -3103,8 +3093,9 @@ CONTAINS
              ELSE
                NormalForce = SUM( NodalForce * Normal ) 
              END IF
-             SlipForce = SQRT( SUM( NodalForce**2 ) - NormalForce**2 )
-
+             ! By construction the expression should be positive but due to rounding errors we have to ensure it!
+             SlipForce = SQRT( MAX(0.0_dp, SUM( NodalForce**2 ) - NormalForce**2 ) )
+             
              NormalLoadVar % Values(j) = NormalLoadVar % Values(j) - &
                  s * Basis(i) * NormalForce
              SlipLoadVar % Values(j) = SlipLoadVar % Values(j) + &
@@ -3115,7 +3106,7 @@ CONTAINS
            
          END DO
        END DO
-
+       
        ! Normalize the computed normal loads such that the unit will be that of pressure
        DO i=1,SIZE(FieldPerm)
          IF( NodeDone( i ) ) THEN             
@@ -3171,6 +3162,12 @@ CONTAINS
            END SELECT
          END DO
        END IF
+
+       IF( InfoActive(20) ) THEN
+         CALL VectorValuesRange(SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoad')       
+         CALL VectorValuesRange(NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoad')       
+       END IF
+
        
        IF( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) THEN
          IF( NormalCount == 0 ) THEN
@@ -3439,7 +3436,7 @@ CONTAINS
          
            mustatic = ListGetRealAtNode( BC,'Static Friction Coefficient', j )
            mudynamic = ListGetRealAtNode( BC,'Dynamic Friction Coefficient', j )
-           IF( mustatic <= mudynamic ) THEN
+           IF( ( mustatic - mudynamic ) < -EPSILON(mustatic) ) THEN
              CALL Warn('TangentContactSet','Static friction coefficient should be larger than dynamic!')
            END IF
            
@@ -3529,7 +3526,7 @@ CONTAINS
          mustatic = ListGetRealAtNode( BC,'Static Friction Coefficient', j )
          mudynamic = ListGetRealAtNode( BC,'Dynamic Friction Coefficient', j )
 
-         IF( mustatic <= mudynamic ) THEN
+         IF( ( mustatic - mudynamic ) < -EPSILON(mustatic) ) THEN
            CALL Warn('TangentContactSet','Static friction coefficient should be larger than dynamic!')
          END IF
 
@@ -3972,16 +3969,25 @@ CONTAINS
        REAL(KIND=dp), POINTER :: VeloDir(:,:)
        REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
        INTEGER :: VeloSign = 1
+       CHARACTER(LEN=MAX_NAME_LEN) :: ContactVeloName
 
 
        IF(.NOT. ListCheckPresent( BC, 'Dynamic Friction Coefficient') ) RETURN
       
        CALL Info(Caller,'Setting contact friction for boundary',Level=10)
 
-       GivenDirection = ListCheckPresent( BC,'Contact Velocity')
+       ContactVeloName = 'Contact Velocity'
+       GivenDirection = ListCheckPresent( BC, ContactVeloName )        
+       IF( .NOT. GivenDirection .AND. TimeStep == 1 ) THEN
+         ContactVeloName = 'Initial Contact Velocity'
+         GivenDirection = ListCheckPresent( BC, ContactVeloName ) 
+       END IF
+       
        IF(.NOT. GivenDirection ) THEN
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
-           CALL Fatal(Caller,'Contact velocity must be given in some way')
+           CALL Info(Caller,'Contact velocity not defined: Give "Contact Velocity" or',Level=3)
+           CALL Info(Caller,'"Initial Contact Velocity" or use e.g. "Initial Stick Model = True"')
+           CALL Fatal(Caller,'Cannot continue with friction without direction!')
          END IF
        END IF
 
@@ -4060,15 +4066,12 @@ CONTAINS
 
            IF( GivenDirection ) THEN
              IF( Slave ) THEN
-               VeloDir => ListGetConstRealArray( BC, &
-                   'Contact Velocity', Found)
+               VeloDir => ListGetConstRealArray( BC, ContactVeloName )
              ELSE
-               VeloDir => ListGetConstRealArray( MasterBC, &
-                   'Contact Velocity', Found)
+               VeloDir => ListGetConstRealArray( MasterBC, ContactVeloName, Found)
                IF(.NOT. Found ) THEN
                  ! If velocity direction not found in master then use the opposite velocity of the slave
-                 VeloDir => ListGetConstRealArray( BC, &
-                     'Contact Velocity', Found)
+                 VeloDir => ListGetConstRealArray( BC, ContactVeloName )
                  VeloSign = -1
                END IF
              END IF
@@ -4085,7 +4088,6 @@ CONTAINS
            END IF
 
            ! Normalize coefficient to unity so that it only represents the direction of the force
-
            AbsVeloCoeff = SQRT( SUM( VeloCoeff**2 ) )
            IF( AbsVeloCoeff > TINY(AbsVeloCoeff) ) THEN
              VeloCoeff = VeloSign * VeloCoeff / AbsVeloCoeff
@@ -4125,18 +4127,16 @@ CONTAINS
        END DO
        
        n = COUNT( NodeDone ) 
-       CALL Info('SetSlideFriction','Number of friction nodes: '//I2S(n),Level=10)
+       CALL Info(Caller,'Number of friction nodes: '//I2S(n),Level=10)
        
        DEALLOCATE( NodeDone )       
 
        IF( InfoActive(30) ) THEN
          CALL VectorValuesRange(A % Values,SIZE(A % Values),'A-friction')
        END IF
-
        
      END SUBROUTINE SetSlideFriction
      
-
    END SUBROUTINE DetermineContact
 
 
@@ -8409,8 +8409,7 @@ CONTAINS
       ALLOCATE( Condition(n)  )
       
       DO i=1,Model % NumberOfBCs
-        IF ( Element % BoundaryInfo % Constraint == &
-            Model % BCs(i) % Tag ) THEN
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
           IF ( ListGetLogical( Model % BCs(i) % Values,VariableName, gotIt) ) THEN
             Found = ListGetLogical( Model % BCs(i) % Values, &
                 TRIM(VariableName) // ' Rotate',gotIt)
@@ -8419,8 +8418,7 @@ CONTAINS
                   TRIM(VariableName) // ' Condition', n, Indexes, Conditional )
               
               DO j=1,n
-                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
-                
+                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE                
                 k = Indexes(j)
                 IF ( BoundaryReorder(k)==0 ) THEN
                   NumberOfBoundaryNodes = NumberOfBoundaryNodes + 1
@@ -8608,13 +8606,9 @@ CONTAINS
     INTEGER, POINTER :: Indexes(:)
     TYPE(Matrix_t), POINTER :: Projector
     REAL(KIND=dp), ALLOCATABLE :: Condition(:)
-
     TYPE(Variable_t), POINTER :: NrmVar, Tan1Var, Tan2Var
-
     LOGICAL, ALLOCATABLE :: Done(:), NtMasterBC(:), NtSlaveBC(:)
-  
     REAL(KIND=dp), POINTER :: SetNormal(:,:), Rot(:,:)
-
     REAL(KIND=dp), TARGET :: x(Model % MaxElementNodes)
     REAL(KIND=dp), TARGET :: y(Model % MaxElementNodes)
     REAL(KIND=dp), TARGET :: z(Model % MaxElementNodes)
@@ -8637,10 +8631,15 @@ CONTAINS
     INTEGER, TARGET :: pIndexes(12)
     REAL(KIND=dp), POINTER :: Pwrk(:,:)
     LOGICAL :: GotOrigin,GotAxis,OneSidedNormals,pDisp
-    CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
+    LOGICAL :: NtBoss, AnyNtBoss, ThisBoss
+    INTEGER :: NtBossCount
+    LOGICAL, ALLOCATABLE :: NtBossTag(:)
     TYPE(Variable_t), POINTER :: DispVar
+    CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
     !------------------------------------------------------------------------------
 
+    CALL Info(Caller,'Setting boundary normals for n-t conditions',Level=8)
+    
     pDisp = .FALSE.
     NULLIFY( DispVar )
     DO i=1,Model % NumberOfSolvers
@@ -8651,10 +8650,34 @@ CONTAINS
       END IF
     END DO
 
+    Mesh => Model % Mesh
     ElementNodes % x => x
     ElementNodes % y => y
     ElementNodes % z => z
 
+
+    ! Tag all nodes that have priority over conflicting normal-tangential BCs.
+    AnyNtBoss = ListGetLogicalAnyBC( Model,'Normal-Tangential Priority')
+    IF(AnyNtBoss) THEN
+      ALLOCATE(NtBossTag(Mesh % NumberOfNodes) ) 
+      NtBossTag = .FALSE.
+      DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+          Mesh % NumberOfBoundaryElements
+        Element => Model % Elements(t)
+        DO i=1,Model % NumberOfBCs
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
+            ThisBoss = ListGetLogical( Model % BCs(i) % Values,'Normal-Tangential Priority', gotIt)
+            IF( ThisBoss ) NtBossTag(Element % NodeIndexes) = .TRUE.
+            EXIT
+          END IF
+        END DO
+      END DO
+      n = COUNT( NtBossTag )
+      CALL Info(Caller,'Number of nodes on with normal-tangential priority is: '//I2S(n),Level=10)
+      NtBossCount = 0
+    END IF
+
+    
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
     
@@ -8710,6 +8733,11 @@ CONTAINS
               BC => Model % BCs(i) % Values
 
               IF ( ListGetLogical( BC, VariableName, gotIt) ) THEN
+                ThisBoss = .FALSE.
+                IF( AnyNtBoss ) THEN
+                  ThisBoss = ListGetLogical(BC,'Normal-Tangential Priority', gotIt)
+                END IF
+                                
                 Found = ListGetLogical( BC, TRIM(VariableName) // ' Rotate',gotIt)
                 IF ( Found .OR. .NOT. Gotit ) THEN
                   MassConsistent = ListGetLogical( BC,'Mass Consistent Normals',gotIt)
@@ -8741,7 +8769,14 @@ CONTAINS
                     IF ( Conditional ) THEN
                       IF( Condition(j) < 0._dp ) CYCLE
                     END IF
-                      
+
+                    IF( AnyNtBoss ) THEN
+                      IF(NtBossTag(Indexes(j)) .AND. .NOT. ThisBoss) THEN
+                        NtBossCount = NtBossCount + 1
+                        CYCLE
+                      END IF
+                    END IF                    
+                    
                     k = BoundaryReorder( Indexes(j) )
                     IF (k>0) THEN
                       nrm = 0._dp
@@ -8788,6 +8823,11 @@ CONTAINS
           DEALLOCATE(Condition)
         END DO
 
+        IF(AnyNtBoss ) THEN
+          CALL Info(Caller,'Number of priority nodes for normal-tangential dofs: '&
+              //I2S(NtBossCount),Level=10)
+        END IF
+                
         IF( ConflictCount > 0 ) THEN
           CALL Info(Caller,'There are '//I2S(ConflictCount)//' conflicting normal directions!',Level=8)
         END IF
@@ -9060,18 +9100,21 @@ CONTAINS
         k = BoundaryReorder(i) 
         IF ( k > 0 ) THEN
           s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
-          IF ( s /= 0.0d0 ) &
-              BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
-          IF ( dim > 2 ) THEN
-            CALL TangentDirections( BoundaryNormals(k,:),  &
-                BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
-            IF( LhsSystem ) THEN
-              IF( LhsTangent(i) ) THEN
-                BoundaryTangent2(k,:) = -BoundaryTangent2(k,:)
+          IF ( s > TINY(s) ) THEN
+            BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
+            IF ( dim > 2 ) THEN
+              CALL TangentDirections( BoundaryNormals(k,:),  &
+                  BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
+              IF( LhsSystem ) THEN
+                IF( LhsTangent(i) ) THEN
+                  BoundaryTangent2(k,:) = -BoundaryTangent2(k,:)
+                END IF
               END IF
             END IF
+          ELSE
+            CALL Warn(Caller,'Suspiciously small normal for node: '//I2S(i))
           END IF
-        END IF
+        END IF        
       END DO
       
 
@@ -9107,17 +9150,21 @@ CONTAINS
 
             ! Even though the two normals have unit length their mean may not have unit length. 
             s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
-            IF ( s /= 0.0d0 ) BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
-            
+            IF ( s > TINY(s) ) THEN
+              BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
+            ELSE
+              CALL Warn(Caller,'Starnegly small normal for dofs: '//I2S(i))
+            END IF
+              
             IF( dim > 2 ) THEN
               BoundaryTangent1(k,:) = ( BoundaryTangent1(k1,:) + BoundaryTangent1(k2,:) ) / 2
               BoundaryTangent2(k,:) = ( BoundaryTangent2(k1,:) + BoundaryTangent2(k2,:) ) / 2
 
               s = SQRT( SUM( BoundaryTangent1(k,:)**2 ) )
-              IF ( s /= 0.0d0 ) BoundaryTangent1(k,:) = BoundaryTangent1(k,:) / s
+              IF ( s > TINY(s) ) BoundaryTangent1(k,:) = BoundaryTangent1(k,:) / s
 
               s = SQRT( SUM( BoundaryTangent2(k,:)**2 ) )
-              IF ( s /= 0.0d0 ) BoundaryTangent2(k,:) = BoundaryTangent2(k,:) / s
+              IF ( s > TINY(s) ) BoundaryTangent2(k,:) = BoundaryTangent2(k,:) / s
             END IF
           END DO
         END DO
@@ -10348,7 +10395,8 @@ END FUNCTION SearchNodeL
     END IF
     
     IF(Stat .AND. .NOT. SkipConstraints ) THEN
-      IF (SIZE(x0) /= SIZE(x)) CALL Info(Caller,'WARNING: Possible mismatch in length of vectors!',Level=10)
+      IF (SIZE(x0) /= SIZE(x)) CALL Info(Caller,'WARNING: Possible mismatch in length of vectors ('&
+          //I2S(SIZE(x))//' vs. '//I2S(SIZE(x0))//')!',Level=10)
     END IF
 
     ! This ensures that the relaxation does not affect the mean of the pressure

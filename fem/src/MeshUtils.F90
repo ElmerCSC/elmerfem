@@ -15333,6 +15333,11 @@ CONTAINS
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP EXIT_OK
     END IF    
 
+    IF( InfoActive(20) ) THEN
+      PRINT *,'Projector range:',MINVAL(Projector % Values), MAXVAL(Projector % Values), &
+          SUM(Projector % Values)/SIZE(Projector % Values)
+    END IF
+    
     CALL CheckTimer(Caller,Delete=.TRUE.)
     CALL Info(Caller,'Projector created, now exiting...',Level=8)
 
