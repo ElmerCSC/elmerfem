@@ -16329,8 +16329,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, &
     CollectionMatrix % Values = 0.0_dp
 
     IF(NeedMassDampValues) THEN
-      CollectionMatrix % MassValues = 0.0_dp
-      CollectionMatrix % DampValues = 0.0_dp
+      IF(ASSOCIATED(CollectionMatrix % MassValues)) CollectionMatrix % MassValues = 0.0_dp
+      IF(ASSOCIATED(CollectionMatrix % DampValues)) CollectionMatrix % DampValues = 0.0_dp
     END IF
   END IF
   IF(NotExplicit) CollectionMatrix % ConstraintMatrix => StiffMatrix % ConstraintMatrix  
