@@ -16316,7 +16316,7 @@ CONTAINS
     IF(Found) THEN
       IF( ParEnv % PEs > 1 ) THEN
         ! Or WriteMeshToDiskPartitioned ? 
-        CALL WriteMeshToDisk2(Mesh_out, ExtrudedMeshName)
+        CALL WriteMeshToDisk2( CurrentModel, Mesh_out, ExtrudedMeshName, ParEnv % MyPe )
       ELSE        
         CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
       END IF
