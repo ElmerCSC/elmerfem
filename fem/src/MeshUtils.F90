@@ -16314,7 +16314,12 @@ CONTAINS
     
     ExtrudedMeshName = ListGetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
     IF(Found) THEN
-      CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Or WriteMeshToDiskPartitioned ? 
+        CALL WriteMeshToDisk2(Mesh_out, ExtrudedMeshName)
+      ELSE        
+        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+      END IF
     END IF
 
 !------------------------------------------------------------------------------
