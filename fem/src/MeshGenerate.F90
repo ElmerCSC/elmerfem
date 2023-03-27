@@ -461,7 +461,7 @@ CONTAINS
        !------------------------------------------------------------------------------
        TYPE(Element_t), POINTER :: Element, OldElement
        TYPE(Variable_t), POINTER :: Var, OldVar
-       INTEGER :: i,j,k,np, oldnp
+       INTEGER :: i,j,k,ii,jj,kk,m,np, oldnp
        INTEGER, POINTER :: pIndexes(:), OldpIndexes(:)
        TYPE(Solver_t), POINTER :: pSolver
        LOGICAL :: DoIt
@@ -496,37 +496,58 @@ CONTAINS
            IF( DoIt ) THEN
              ! Get the old variable with the same name
              OldVar => VariableGet( OldMesh % Variables, Var % Name, .TRUE. ) 
-                          
+             m = 0
+             IF( ASSOCIATED( Var % PrevValues ) ) m = SIZE(Var % PrevValues, 2)
+             
              IF(.NOT. ASSOCIATED(OldVar) ) THEN
                CONTINUE
                
              ELSE IF( Var % TYPE == Variable_on_nodes ) THEN
-               WHERE( Var % Perm( Element % NodeIndexes ) > 0 ) 
-                 Var % Values( Var % Perm( Element % NodeIndexes ) ) = &
-                     OldVar % Values( OldVar % Perm( OldElement % NodeIndexes ) )
-               END WHERE
-                 
+               DO ii=1,Element % TYPE % NumberOfNodes
+                 jj = Var % Perm( Element % NodeIndexes(ii) )
+                 IF(jj==0) CYCLE
+                 kk = OldVar % Perm( OldElement % NodeIndexes(ii) )
+                 IF(kk==0) CYCLE
+                                  
+                 Var % Values( jj ) = OldVar % Values( kk )
+                 IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+               END DO
+                                
              ELSE IF (Var % TYPE == Variable_on_nodes_on_elements ) THEN
-               WHERE( Var % Perm( Element % NodeIndexes  ) > 0 ) 
-                 Var % Values( Var % Perm( Element % NodeIndexes ) ) = &
-                     OldVar % Values( OldVar % Perm( OldElement % NodeIndexes ) )
-               END WHERE
+               DO ii=1,Element % TYPE % NumberOfNodes
+                 jj = Var % Perm( Element % DGIndexes(ii) )
+                 IF(jj==0) CYCLE
+                 kk = OldVar % Perm( OldElement % DGIndexes(ii) )
+                 IF(kk==0) CYCLE
+                 
+                 Var % Values( jj ) = OldVar % Values( kk )
+                 IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+               END DO
                  
              ELSE IF( Var % Type == Variable_on_elements ) THEN
-               IF( Var % Perm(i) > 0 ) THEN
-                 Var % Values( Var % Perm( i ) ) = &
-                     OldVar % Values( OldVar % Perm( j ) )
-               END IF
-                 
+               jj = Var % Perm( i )
+               IF(jj==0) CYCLE
+               kk = OldVar % Perm( j )
+               IF(kk==0) CYCLE
+               
+               Var % Values( jj ) = OldVar % Values( kk ) 
+               IF(m>0) Var % PrevValues( jj,1:m) = OldVar % PrevValues( kk,1:m ) 
+               
              ELSE
                pSolver => Var % Solver
                IF( ASSOCIATED( pSolver ) ) THEN
-                 np = mGetElementDOFs(pIndexes,Element,USolver=pSolver)
-                 oldnp = mGetElementDOFs(OldpIndexes,OldElement,USolver=pSolver)
-                 WHERE( Var % Values( Var % Perm( pIndexes ) ) > 0 )
-                   Var % Values( Var % Perm( pIndexes ) ) = &
-                       OldVar % Values( OldVar % Perm( OldpIndexes ) )
-                 END WHERE
+                 np = mGetElementDOFs(pIndexes,Element,USolver=pSolver,UMesh=Mesh)
+                 oldnp = mGetElementDOFs(OldpIndexes,OldElement,USolver=pSolver,UMesh=Mesh)
+
+                 DO ii=1,np
+                   jj = Var % Perm(pIndexes(ii))
+                   IF(jj==0) CYCLE
+                   kk = OldVar % perm(OldPIndexes(ii))
+                   IF(kk==0) CYCLE
+
+                   Var % Values( jj ) = OldVar % Values( kk )
+                   IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+                 END DO
                END IF
              END IF
            END IF
