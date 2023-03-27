@@ -755,7 +755,12 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   NewMesh % NumberOfBulkElements = NTetras+nt0
   NewMesh % NumberOfBoundaryElements = NTris+na0
 
+  IF( Combine ) THEN
+    ALLOCATE( NewMesh % InvPerm( NewMesh % NumberOfBulkElements ) )
+    NewMesh % InvPerm = 0    
+  END IF
 
+  
   PRINT *,'Mesh Counts',NewMesh % NumberOfNodes,NewMesh % NumberOfBulkElements,&
       NewMesh % NumberOfBoundaryElements 
   
@@ -878,6 +883,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
       Element % PartIndex = ParEnv % myPE
       CALL AllocateVector(Element % NodeIndexes, SIZE(Element0 % NodeIndexes))
       Element % NodeIndexes = Perm0(Element0 % NodeIndexes)
+
+      ! This may be needed for efficient interpolation of remaining dofs
+      NewMesh % InvPerm(Ntetras+nt0) = t 
 
       IF( ANY(Element % NodeIndexes < 0 ) ) THEN        
         PRINT *,'Perm0 small:',Perm0(Element0 % NodeIndexes), np0
@@ -2928,7 +2936,12 @@ END SUBROUTINE DistributedRemeshParMMG
     CALL AllocateVector( NewMesh % Nodes % y, np + np0 ) 
     CALL AllocateVector( NewMesh % Nodes % z, np + np0 ) 
     CALL AllocateVector( NewMesh % Elements, nt+nt0 + na+na0 )
-      
+
+    IF( Combine ) THEN
+      ALLOCATE( NewMesh % InvPerm( NewMesh % NumberOfBulkElements ) )
+      NewMesh % InvPerm = 0    
+    END IF
+    
     ! Get new nodes in 2d
     NewMesh % Nodes % z = 0._dp
     DO ii=1,np
@@ -3009,7 +3022,10 @@ END SUBROUTINE DistributedRemeshParMMG
         Element % PartIndex = ParEnv % myPE
         CALL AllocateVector(Element % NodeIndexes, SIZE(Element0 % NodeIndexes))
         Element % NodeIndexes = Perm0(Element0 % NodeIndexes)
-
+        
+        ! This may be needed for efficient interpolation of remaining dofs
+        NewMesh % InvPerm(nt+nt0) = t 
+                
         IF( ANY(Element % NodeIndexes < 0 ) ) THEN        
           PRINT *,'Perm0 small:',Perm0(Element0 % NodeIndexes), np0
         END IF

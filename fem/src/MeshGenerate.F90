@@ -288,7 +288,6 @@ CONTAINS
     !---------------------------------------------------------------------
     IF( .NOT. ListGetLogical( Params,'Skip Interpolation', Found ) ) THEN
       CALL Info(Caller,'Mapping all fields in old mesh to new mesh!',Level=7)
-      PRINT *,'ASS:',ASSOCIATED(RefMesh % Variables), ASSOCIATED(NewMesh % VAriables)
       CALL InterpolateMeshToMesh( RefMesh, NewMesh, &
           RefMesh % Variables, NewMesh % Variables )
       CALL Info(Caller,'Done mapping all fields in old mesh to new mesh!',Level=15)
@@ -304,6 +303,14 @@ CONTAINS
             SIZE(pSolver % Variable % Values), pSolver % Variable % Values ) 
       END DO
     END IF    
+
+    IF( ListGetLogical( Params,'Elemental Interpolation', Found ) ) THEN
+      IF( ASSOCIATED( NewMesh % InvPerm ) ) THEN
+        CALL InterpolateMeshToMeshElemental(RefMesh, NewMesh, NewMesh % InvPerm)
+        DEALLOCATE( NewMesh % InvPerm )
+      END IF
+    END IF
+
     
     ! Release previous meshes. Keep only the original mesh, and
     ! the last two meshes:
@@ -439,13 +446,101 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION MMG_Remesh
 !------------------------------------------------------------------------------
-#endif
 
-  
- 
+
+!------------------------------------------------------------------------------
+!> Interpolate the values that are in the elements that stay the same. Then
+!> the interpolation becomes easy involving only mapping of the indexes of old
+!> mesh to the new mesh.
+!------------------------------------------------------------------------------
+  SUBROUTINE InterpolateMeshToMeshElemental( OldMesh, NewMesh, InvPerm )
+!------------------------------------------------------------------------------
+       TYPE(Mesh_t), TARGET  :: OldMesh   !< Old mesh structure
+       TYPE(Mesh_t), TARGET  :: NewMesh   !< New mesh structure
+       INTEGER, POINTER :: InvPerm(:)
+       !------------------------------------------------------------------------------
+       TYPE(Element_t), POINTER :: Element, OldElement
+       TYPE(Variable_t), POINTER :: Var, OldVar
+       INTEGER :: i,j,k,np, oldnp
+       INTEGER, POINTER :: pIndexes(:), OldpIndexes(:)
+       TYPE(Solver_t), POINTER :: pSolver
+       LOGICAL :: DoIt
+!------------------------------------------------------------------------------
+       
+       IF ( OldMesh % NumberOfNodes == 0 ) RETURN       
+       IF ( OldMesh % NumberOfBulkElements == 0 ) RETURN       
+             
+!------------------------------------------------------------------------------
+! Loop over all bulk elements in the new mesh
+!------------------------------------------------------------------------------
+       DO i=1,NewMesh % NumberOfBulkElements
+         
+         j = InvPerm(i)
+         IF(j==0) CYCLE
+         Element => NewMesh % Elements(i)         
+         
+         ! Find the same element in the old mesh         
+         OldElement => OldMesh % Elements(j)
+         
+         ! Go through all variables to be interpolated:
+         Var => NewMesh % Variables
+         DO WHILE( ASSOCIATED( Var ) )            
+           DoIt = .TRUE.
+           
+           ! There are many reasons to skip interpolation of this field
+           IF( SIZE( Var % Values ) == Var % DOFs ) DoIt = .FALSE.            
+           IF( Var % Secondary ) DoIt = .FALSE.            
+           IF( Var % Name(1:10) == 'coordinate') DoIt = .FALSE.
+           IF( Var % Dofs > 1 ) DoIt = .FALSE.
+           
+           IF( DoIt ) THEN
+             ! Get the old variable with the same name
+             OldVar => VariableGet( OldMesh % Variables, Var % Name, .TRUE. ) 
+                          
+             IF(.NOT. ASSOCIATED(OldVar) ) THEN
+               CONTINUE
+               
+             ELSE IF( Var % TYPE == Variable_on_nodes ) THEN
+               WHERE( Var % Perm( Element % NodeIndexes ) > 0 ) 
+                 Var % Values( Var % Perm( Element % NodeIndexes ) ) = &
+                     OldVar % Values( OldVar % Perm( OldElement % NodeIndexes ) )
+               END WHERE
+                 
+             ELSE IF (Var % TYPE == Variable_on_nodes_on_elements ) THEN
+               WHERE( Var % Perm( Element % NodeIndexes  ) > 0 ) 
+                 Var % Values( Var % Perm( Element % NodeIndexes ) ) = &
+                     OldVar % Values( OldVar % Perm( OldElement % NodeIndexes ) )
+               END WHERE
+                 
+             ELSE IF( Var % Type == Variable_on_elements ) THEN
+               IF( Var % Perm(i) > 0 ) THEN
+                 Var % Values( Var % Perm( i ) ) = &
+                     OldVar % Values( OldVar % Perm( j ) )
+               END IF
+                 
+             ELSE
+               pSolver => Var % Solver
+               IF( ASSOCIATED( pSolver ) ) THEN
+                 np = mGetElementDOFs(pIndexes,Element,USolver=pSolver)
+                 oldnp = mGetElementDOFs(OldpIndexes,OldElement,USolver=pSolver)
+                 WHERE( Var % Values( Var % Perm( pIndexes ) ) > 0 )
+                   Var % Values( Var % Perm( pIndexes ) ) = &
+                       OldVar % Values( OldVar % Perm( OldpIndexes ) )
+                 END WHERE
+               END IF
+             END IF
+           END IF
+
+           Var => Var % next
+         END DO
+       END DO
+       
+     END SUBROUTINE InterpolateMeshToMeshElemental
+         
 !------------------------------------------------------------------------------
 END SUBROUTINE ReMesh
 !------------------------------------------------------------------------------
+#endif
 
 !------------------------------------------------------------------------------
 END MODULE MeshGenerate
