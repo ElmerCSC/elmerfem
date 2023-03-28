@@ -1276,7 +1276,7 @@ CONTAINS
           IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,VarType)
+              Perm,Output,.TRUE.,VarType)
         END DO
       END IF
 

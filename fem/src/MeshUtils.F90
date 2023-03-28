@@ -18754,7 +18754,7 @@ END SUBROUTINE FindNeighbourNodes
      LOGICAL, OPTIONAL :: NoInterp 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
-     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles
+     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles, IsTransient
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
@@ -18814,17 +18814,31 @@ END SUBROUTINE FindNeighbourNodes
      IF(.NOT. DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
            SaveVar % Name, ThisOnly = .TRUE. )                     
-
-       CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
-           SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
-       Solver % Variable => VariableGet( Mesh % Variables, &
-           SaveVar % Name, ThisOnly = .TRUE. )                     
-
+       IF(.NOT. ASSOCIATED( Solver % Variable ) ) THEN
+         CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
+             SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
+         Solver % Variable => VariableGet( Mesh % Variables, &
+             SaveVar % Name, ThisOnly = .TRUE. )                     
+       END IF
+         
        Solver % Variable % Perm => Permutation
        IF(.NOT. ASSOCIATED( Solver % Variable % perm) ) THEN
          CALL Fatal('UpdateSolverMesh','No Perm associated?!')
        END IF
        NULLIFY(Permutation)
+
+       IsTransient = ( ListGetString( CurrentModel % Simulation,&
+           'Simulation Type' ) == 'transient' ) 
+       IF( IsTransient ) THEN
+         n1 = SIZE( Solver % Variable % Values )
+         IF ( Solver % TimeOrder == 2 ) THEN
+           n2 = 7
+         ELSE 
+           n2 = MAX( Solver % Order, Solver % TimeOrder )
+         END IF
+         ALLOCATE( Solver % Variable % PrevValues(n1,n2) )
+         Solver % Variable % PrevValues = 0.0_dp
+       END IF         
      ELSE
        ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
        Work = Solver % Variable % Values

@@ -125,7 +125,6 @@ CONTAINS
     
     ! Interpolation is best done all in one sweep at the end
     ! Hence this is omitted at the moment. 
-    ! NoInterp = ListGetLogical( Params,'Adaptive Interpolate',Found )
     NoInterp = .TRUE. 
     
 !   Compute the local error indicators:
@@ -461,7 +460,7 @@ CONTAINS
        !------------------------------------------------------------------------------
        TYPE(Element_t), POINTER :: Element, OldElement
        TYPE(Variable_t), POINTER :: Var, OldVar
-       INTEGER :: i,j,k,ii,jj,kk,m,np, oldnp
+       INTEGER :: i,j,k,ii,jj,kk,m,np, oldnp, dofs
        INTEGER, POINTER :: pIndexes(:), OldpIndexes(:)
        TYPE(Solver_t), POINTER :: pSolver
        LOGICAL :: DoIt
@@ -481,7 +480,7 @@ CONTAINS
          
          ! Find the same element in the old mesh         
          OldElement => OldMesh % Elements(j)
-         
+
          ! Go through all variables to be interpolated:
          Var => NewMesh % Variables
          DO WHILE( ASSOCIATED( Var ) )            
@@ -491,14 +490,23 @@ CONTAINS
            IF( SIZE( Var % Values ) == Var % DOFs ) DoIt = .FALSE.            
            IF( Var % Secondary ) DoIt = .FALSE.            
            IF( Var % Name(1:10) == 'coordinate') DoIt = .FALSE.
-           IF( Var % Dofs > 1 ) DoIt = .FALSE.
+           IF( Var % Secondary ) DoIt = .FALSE.
            
            IF( DoIt ) THEN
              ! Get the old variable with the same name
+             dofs = Var % Dofs 
              OldVar => VariableGet( OldMesh % Variables, Var % Name, .TRUE. ) 
              m = 0
-             IF( ASSOCIATED( Var % PrevValues ) ) m = SIZE(Var % PrevValues, 2)
-             
+             IF( ASSOCIATED( OldVar ) ) THEN
+               IF( ASSOCIATED( OldVar % PrevValues ) ) THEN
+                 m = SIZE(OldVar % PrevValues, 2)
+                 IF(.NOT. ASSOCIATED( Var % PrevValues ) ) THEN
+                   ALLOCATE( Var % PrevValues(SIZE(Var % Values),m))
+                   Var % PrevValues = 0.0_dp
+                 END IF
+               END IF
+             END IF
+               
              IF(.NOT. ASSOCIATED(OldVar) ) THEN
                CONTINUE
                
@@ -508,11 +516,12 @@ CONTAINS
                  IF(jj==0) CYCLE
                  kk = OldVar % Perm( OldElement % NodeIndexes(ii) )
                  IF(kk==0) CYCLE
-                                  
-                 Var % Values( jj ) = OldVar % Values( kk )
-                 IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+                 
+                 Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values(dofs*(kk-1)+1:dofs*kk )
+                 IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
+                     OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                END DO
-                                
+                 
              ELSE IF (Var % TYPE == Variable_on_nodes_on_elements ) THEN
                DO ii=1,Element % TYPE % NumberOfNodes
                  jj = Var % Perm( Element % DGIndexes(ii) )
@@ -520,8 +529,9 @@ CONTAINS
                  kk = OldVar % Perm( OldElement % DGIndexes(ii) )
                  IF(kk==0) CYCLE
                  
-                 Var % Values( jj ) = OldVar % Values( kk )
-                 IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+                 Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk )
+                 IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
+                     OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                END DO
                  
              ELSE IF( Var % Type == Variable_on_elements ) THEN
@@ -530,23 +540,24 @@ CONTAINS
                kk = OldVar % Perm( j )
                IF(kk==0) CYCLE
                
-               Var % Values( jj ) = OldVar % Values( kk ) 
-               IF(m>0) Var % PrevValues( jj,1:m) = OldVar % PrevValues( kk,1:m ) 
-               
+               Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk ) 
+               IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
+                   OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
              ELSE
                pSolver => Var % Solver
                IF( ASSOCIATED( pSolver ) ) THEN
                  np = mGetElementDOFs(pIndexes,Element,USolver=pSolver,UMesh=Mesh)
                  oldnp = mGetElementDOFs(OldpIndexes,OldElement,USolver=pSolver,UMesh=Mesh)
-
+                 
                  DO ii=1,np
                    jj = Var % Perm(pIndexes(ii))
                    IF(jj==0) CYCLE
                    kk = OldVar % perm(OldPIndexes(ii))
                    IF(kk==0) CYCLE
-
-                   Var % Values( jj ) = OldVar % Values( kk )
-                   IF(m>0) Var % PrevValues( jj,1:m ) = OldVar % PrevValues( kk,1:m )
+                   
+                   Var % Values( dofs*(jj-1)+1:dofs*jj ) = OldVar % Values( dofs*(kk-1)+1:dofs*kk ) 
+                   IF(m>0) Var % PrevValues( dofs*(jj-1)+1:dofs*jj,1:m ) = &
+                       OldVar % PrevValues( dofs*(kk-1)+1:dofs*kk,1:m )
                  END DO
                END IF
              END IF
