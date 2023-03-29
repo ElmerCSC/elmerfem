@@ -303,6 +303,9 @@ CONTAINS
             n = Element % TYPE % NumberOfNodes
             CALL AllocateVector( Element % NodeIndexes, n )          
             READ(str,*) j,GmshType,j,j,j, Element % Nodeindexes(1:n)
+            IF( CumNodes > 0 ) THEN
+              Element % NodeIndexes(1:) = Element % NodeIndexes(1:n) + CumNodes
+            END IF
             IF( ElemDim == MaxElemDim ) NoBulkElems = k
           ELSE
             MaxElemDim = MAX( MaxElemDim, ElemDim ) 
