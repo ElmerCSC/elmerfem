@@ -89,7 +89,7 @@ Solver 2
 
 ! This has to be consistent with the setup of the initialization case.
 ! Without this flag everything is assumed to be serial.
-  Filename Partitions = Integer 8
+  Filename Partitions = Integer 4
 
 ! This could help in speed sometimes and parallel I/O too...
   Use Bounding Box = Logical True
