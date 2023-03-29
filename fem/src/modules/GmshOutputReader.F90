@@ -96,6 +96,9 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
    
   dim = CoordinateSystemDimension()
 
+
+  
+
   
   
   CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile))
@@ -106,139 +109,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   MaxElemDim = 0
   MaxElemNodes = 0
 
-10 CONTINUE
-  
-  DO WHILE( .TRUE. )
-    READ( FileUnit,'(A)',END=20,ERR=20 ) str    
-    IF ( SEQL( str, '$MeshFormat') ) THEN
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str    
-      IF(.NOT. AllocationsDone ) THEN
-        READ( str,*) GmshVer
-        WRITE(Message,'(A,ES12.3)') 'Gmsh file version: ',GmshVer
-        CALL Info(Caller,Message)
-      END IF
-    END IF
-
-    IF ( SEQL( str, '$Nodes') ) THEN
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str    
-      IF(.NOT. AllocationsDone ) THEN
-        READ( str,*) NoNodes
-        CALL Info(Caller,'Number of nodes in mesh: '//I2S(NoNodes),Level=7)
-      END IF
-      DO i=1,NoNodes 
-        READ( FileUnit,'(A)',END=20,ERR=20 ) str     
-        READ( str,*) j,x,y,z
-        IF( i /= j ) CALL Fatal(Caller,'Do node permutations!')
-        IF( AllocationsDone ) THEN
-          FromMesh % Nodes % x(i) = x
-          FromMesh % Nodes % y(i) = y
-          FromMesh % Nodes % z(i) = z
-        END IF
-      END DO
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodes  
-      IF(.NOT. AllocationsDone ) THEN
-        IF( NoElems > 0 .AND. NoNodes > 0 ) EXIT
-      END IF
-    END IF ! Nodes
-
-
-    IF ( SEQL( str, '$Elements') ) THEN
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str    
-      IF(.NOT. AllocationsDone ) THEN
-        READ( str,*) NoElems
-        CALL Info(Caller,'Number of elements in mesh: '//I2S(NoElems),Level=7)
-      END IF
-        
-      DO i=1,NoElems
-        READ( FileUnit,'(A)',END=20,ERR=20 ) str     
-        READ(str,*) j,GmshType
-        IF( i /= j ) CALL Fatal(Caller,'Do element permutations!')        
-        ElmerType = GmshToElmerType(GmshType)
-
-        ElemDim = 0
-        IF( ElmerType > 500 ) THEN
-          ElemDim = 3
-        ELSE IF( ElmerType > 300 ) THEN
-          ElemDim = 2
-        ELSE IF( ElmerType > 200 ) THEN
-          ElemDim = 1
-        END IF
-          
-        IF( AllocationsDone ) THEN
-          Element => FromMesh % Elements(i)
-          Element % TYPE => GetElementType(ElmerType)
-          n = Element % TYPE % NumberOfNodes
-          CALL AllocateVector( Element % NodeIndexes, n )          
-          READ(str,*) j,GmshType,k,k,k, Element % Nodeindexes(1:n)
-          IF( ElemDim == MaxElemDim ) NoBulkElems = i
-        ELSE
-          MaxElemDim = MAX( MaxElemDim, ElemDim ) 
-          MaxElemNodes = MAX( MaxElemNodes, MODULO( ElmerType, 100 ) )        
-        END IF
-      END DO
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndElements  
-
-      ! Leave early since we don't have structures to read the results
-      IF( .NOT. AllocationsDone ) THEN
-        IF( NoElems > 0 .AND. NoNodes > 0 ) EXIT
-      END IF
-    END IF ! Elements
-
-
-    IF ( SEQL( str, '$NodeData') ) THEN
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! "name"            
-      n = LEN_TRIM(str)
-
-      VarName = str(2:n-1)
-      CALL Info(Caller,'Reading variable: '//TRIM(VarName))
-            
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! time
-      READ( str, * ) time
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dim  
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! visited
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dofs
-      READ( str, * ) dofs
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! n
-      READ( str, * ) n
-
-      IF( n /= NoNodes ) THEN
-        CALL Info(Caller,'Mismatch is vector size!')
-      END IF
-            
-      IF( ASSOCIATED( FromMesh % Variables ) ) THEN
-        CALL Info(Caller,'Creating variable structure',Level=20)
-      ELSE
-        CALL Info(Caller,'Reusing variable structure',Level=20)
-        FromMesh % Variables => Null()
-        ALLOCATE( Perm( NoNodes ) )
-        DO i =1, NoNodes
-          Perm(i) = i
-        END DO
-      END IF
-      
-      CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
-          VarName, dofs = dofs, Perm = Perm )
-      Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
-      
-      DO i=1,NoNodes
-        READ( FileUnit,'(A)',END=20,ERR=20 ) str  
-        IF( dofs == 1 ) THEN
-          READ( str, * ) j, Var % Values(i)
-        ELSE
-          READ( str, * ) j, Var % Values(dofs*(i-1)+1:dofs*i) 
-        END IF
-      END DO
-      READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
-
-      IF( InfoActive(30) ) THEN
-        PRINT *,'Var Range:',TRIM(Var % Name), MINVAL( Var % Values ), MAXVAL( Var % Values )
-      END IF
-    END IF ! NodeData
-  END DO
-
-20 CONTINUE
+10 CALL ReadSingleGmshFile()
   
   IF(AllocationsDone ) THEN
     CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
@@ -261,7 +132,6 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   
   CALL Info(Caller,'Gmsh reader complete!')
 
-
   CALL InterpolateFromGmshFile()
   
   CALL Info(Caller,'Interpolation from Gmsh format complete')
@@ -269,6 +139,144 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+  SUBROUTINE ReadSingleGmshFile()
+
+    DO WHILE( .TRUE. )
+      READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+      IF ( SEQL( str, '$MeshFormat') ) THEN
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+        IF(.NOT. AllocationsDone ) THEN
+          READ( str,*) GmshVer
+          WRITE(Message,'(A,ES12.3)') 'Gmsh file version: ',GmshVer
+          CALL Info(Caller,Message)
+        END IF
+      END IF
+
+      IF ( SEQL( str, '$Nodes') ) THEN
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+        IF(.NOT. AllocationsDone ) THEN
+          READ( str,*) NoNodes
+          CALL Info(Caller,'Number of nodes in mesh: '//I2S(NoNodes),Level=7)
+        END IF
+        DO i=1,NoNodes 
+          READ( FileUnit,'(A)',END=20,ERR=20 ) str     
+          READ( str,*) j,x,y,z
+          IF( i /= j ) CALL Fatal(Caller,'Do node permutations!')
+          IF( AllocationsDone ) THEN
+            FromMesh % Nodes % x(i) = x
+            FromMesh % Nodes % y(i) = y
+            FromMesh % Nodes % z(i) = z
+          END IF
+        END DO
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodes  
+        IF(.NOT. AllocationsDone ) THEN
+          IF( NoElems > 0 .AND. NoNodes > 0 ) EXIT
+        END IF
+      END IF ! Nodes
+
+
+      IF ( SEQL( str, '$Elements') ) THEN
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+        IF(.NOT. AllocationsDone ) THEN
+          READ( str,*) NoElems
+          CALL Info(Caller,'Number of elements in mesh: '//I2S(NoElems),Level=7)
+        END IF
+
+        DO i=1,NoElems
+          READ( FileUnit,'(A)',END=20,ERR=20 ) str     
+          READ(str,*) j,GmshType
+          IF( i /= j ) CALL Fatal(Caller,'Do element permutations!')        
+          ElmerType = GmshToElmerType(GmshType)
+
+          ElemDim = 0
+          IF( ElmerType > 500 ) THEN
+            ElemDim = 3
+          ELSE IF( ElmerType > 300 ) THEN
+            ElemDim = 2
+          ELSE IF( ElmerType > 200 ) THEN
+            ElemDim = 1
+          END IF
+
+          IF( AllocationsDone ) THEN
+            Element => FromMesh % Elements(i)
+            Element % TYPE => GetElementType(ElmerType)
+            n = Element % TYPE % NumberOfNodes
+            CALL AllocateVector( Element % NodeIndexes, n )          
+            READ(str,*) j,GmshType,k,k,k, Element % Nodeindexes(1:n)
+            IF( ElemDim == MaxElemDim ) NoBulkElems = i
+          ELSE
+            MaxElemDim = MAX( MaxElemDim, ElemDim ) 
+            MaxElemNodes = MAX( MaxElemNodes, MODULO( ElmerType, 100 ) )        
+          END IF
+        END DO
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndElements  
+
+        ! Leave early since we don't have structures to read the results
+        IF( .NOT. AllocationsDone ) THEN
+          IF( NoElems > 0 .AND. NoNodes > 0 ) EXIT
+        END IF
+      END IF ! Elements
+
+
+      IF ( SEQL( str, '$NodeData') ) THEN
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! "name"            
+        n = LEN_TRIM(str)
+
+        VarName = str(2:n-1)
+        CALL Info(Caller,'Reading variable: '//TRIM(VarName))
+
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! time
+        READ( str, * ) time
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dim  
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! visited
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dofs
+        READ( str, * ) dofs
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! n
+        READ( str, * ) n
+
+        IF( n /= NoNodes ) THEN
+          CALL Info(Caller,'Mismatch is vector size!')
+        END IF
+
+        IF( ASSOCIATED( FromMesh % Variables ) ) THEN
+          CALL Info(Caller,'Creating variable structure',Level=20)
+        ELSE
+          CALL Info(Caller,'Reusing variable structure',Level=20)
+          FromMesh % Variables => Null()
+          ALLOCATE( Perm( NoNodes ) )
+          DO i =1, NoNodes
+            Perm(i) = i
+          END DO
+        END IF
+
+        CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
+            VarName, dofs = dofs, Perm = Perm )
+        Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
+
+        DO i=1,NoNodes
+          READ( FileUnit,'(A)',END=20,ERR=20 ) str  
+          IF( dofs == 1 ) THEN
+            READ( str, * ) j, Var % Values(i)
+          ELSE
+            READ( str, * ) j, Var % Values(dofs*(i-1)+1:dofs*i) 
+          END IF
+        END DO
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
+
+        IF( InfoActive(30) ) THEN
+          PRINT *,'Var Range:',TRIM(Var % Name), MINVAL( Var % Values ), MAXVAL( Var % Values )
+        END IF
+      END IF ! NodeData
+    END DO
+
+20  CONTINUE
+   
+  END SUBROUTINE ReadSingleGmshFile
+
+
+  
   ! Interpolate from the loaded Gmsh file to exiting mesh.
   !------------------------------------------------------
   SUBROUTINE InterpolateFromGmshFile()
