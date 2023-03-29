@@ -43,21 +43,21 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   COMPLEX(KIND=dp), POINTER :: CValues(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   
-  LOGICAL :: Found, AllocationsDone = .FALSE.
-  
+  LOGICAL :: Found, AllocationsDone  
   INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
-      MaxElemNodes
-  INTEGER :: GmshToElmerType(21), GmshIndexes(27) 
+      MaxElemNodes, InputPartitions, ReadPart, AlignCoord
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
-  REAL(KIND=dp) :: x,y,z,GmshVer,dx
+  REAL(KIND=dp) :: x,y,z,dx
+  REAL(KIND=dp), ALLOCATABLE :: BBox(:,:), MyBBox(:)
+  LOGICAL, ALLOCATABLE :: ActivePart(:)
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
-  CHARACTER(MAX_NAME_LEN) :: InputFile, VarName
+  CHARACTER(MAX_NAME_LEN) :: BaseFile, InputFile, VarName
   CHARACTER(:), ALLOCATABLE :: InputDirectory
-  INTEGER :: FileUnit=1
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var
+  INTEGER :: FileUnit=1
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputReader'  
   
   INTERFACE
@@ -82,54 +82,88 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   CALL Info(Caller,'Reading Gmsh results and interpolating to current mesh!')
 
 
-  GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
-      510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
-
-
   SolverParams => GetSolverParams()
+  ToMesh => Solver % Mesh
 
-  InputFile = ListGetString( SolverParams, 'Filename', UnfoundFatal = .TRUE. ) 
-  IF(INDEX(InputFile,'.') == 0) WRITE( InputFile,'(A,A)') TRIM(InputFile),".msh"
-    
-  CALL SolverOutputDirectory( Solver, InputFile, InputDirectory, UseMeshDir = .TRUE. )
-  InputFile = TRIM(InputDirectory)// '/' //TRIM(InputFile)
-   
   dim = CoordinateSystemDimension()
-
-
+  AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
   
-
+  BaseFile = ListGetString( SolverParams, 'Filename', UnfoundFatal = .TRUE. ) 
+  IF(INDEX(BaseFile,'.') == 0) WRITE( BaseFile,'(A,A)') TRIM(BaseFile),".msh"    
+  CALL SolverOutputDirectory( Solver, BaseFile, InputDirectory, UseMeshDir = .TRUE. )
+  BaseFile = TRIM(InputDirectory)// '/' //TRIM(BaseFile)
   
-  
-  CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile))
-  OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old')
+  InputPartitions = ListGetInteger( SolverParams,'Filename Partitions', Found )
+  IF(.NOT. Found) InputPartitions = 1
 
-  NoNodes = 0
-  NoElems = 0
+  IF( InputPartitions > 1) THEN
+    ALLOCATE(Bbox(InputPartitions,6),MyBBox(6))
+    Bbox(:,1:3) = HUGE(x)
+    Bbox(:,4:6) = -HUGE(x)
+    ALLOCATE(ActivePart(InputPartitions))
+    ActivePart = .TRUE.
+
+    n = ToMesh % NumberOfNodes 
+    MyBbox(1) = MINVAL(ToMesh % Nodes % x(1:n))
+    MyBbox(2) = MINVAL(ToMesh % Nodes % y(1:n))
+    MyBbox(3) = MINVAL(ToMesh % Nodes % z(1:n))
+    MyBbox(4) = MAXVAL(ToMesh % Nodes % x(1:n))
+    MyBbox(5) = MAXVAL(ToMesh % Nodes % y(1:n))
+    MyBbox(6) = MAXVAL(ToMesh % Nodes % z(1:n))
+  END IF
+  
+  AllocationsDone = .FALSE.
   MaxElemDim = 0
   MaxElemNodes = 0
-
-10 CALL ReadSingleGmshFile()
   
-  IF(AllocationsDone ) THEN
-    CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
-    FromMesh % NumberOfBulkElements = NoBulkElems
-    FromMesh % NumberOfBoundaryElements = NoElems - NoBulkElems
-  ELSE
-    CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
-    CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)
+10 CONTINUE
+
+  DO ReadPart = 1, InputPartitions 
     
+    NoNodes = 0
+    NoElems = 0
+
+    IF( InputPartitions == 1 ) THEN
+      InputFile = TRIM(BaseFile)
+    ELSE
+      IF( AllocationsDone ) THEN
+        IF( .NOT. ActivePart(ReadPart) ) CYCLE
+      END IF
+
+      ! With this heuristics ensure that not every partition tries to read the same file
+      ! In ideal case everybody starts on their own partition.
+      i = MODULO(ReadPart-1 + ParEnv % MyPe, InputPartitions)
+      InputFile = TRIM(BaseFile)//'_'//I2S(InputPartitions)//'np'//I2S(i+1)
+    END IF
+
+    IF( InputPartitions > 1 .OR. .NOT. AllocationsDone ) THEN
+      CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile))
+      OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old')
+    END IF
+    
+    CALL ReadSingleGmshFile()
+    
+    IF( InputPartitions > 1 .OR. AllocationsDone ) THEN
+      CLOSE( FileUnit )
+    ELSE
+      REWIND( FileUnit )
+    END IF    
+  END DO
+   
+  IF(.NOT. AllocationsDone ) THEN
+    CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
+    CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)    
     FromMesh => AllocateMesh(NoElems,0,NoNodes)    
     FromMesh % MeshDim = MaxElemDim
     FromMesh % MaxElementNodes = MaxElemNodes
-       
-    REWIND( FileUnit ) 
     AllocationsDone = .TRUE.    
     GOTO 10 
   END IF
+
+  CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
+  FromMesh % NumberOfBulkElements = NoBulkElems
+  FromMesh % NumberOfBoundaryElements = NoElems - NoBulkElems
     
-  CLOSE(FileUnit)
-  
   CALL Info(Caller,'Gmsh reader complete!')
 
   CALL InterpolateFromGmshFile()
@@ -141,6 +175,15 @@ CONTAINS
 
   SUBROUTINE ReadSingleGmshFile()
 
+    REAL(KIND=dp) :: GmshVer
+    REAL(KIND=dp) :: coord(3)
+    INTEGER :: GmshToElmerType(21), GmshIndexes(27)
+
+    SAVE GmshVer
+    
+    GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
+        510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
+        
     DO WHILE( .TRUE. )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF ( SEQL( str, '$MeshFormat') ) THEN
@@ -154,18 +197,21 @@ CONTAINS
 
       IF ( SEQL( str, '$Nodes') ) THEN
         READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+        READ( str,*) NoNodes
         IF(.NOT. AllocationsDone ) THEN
-          READ( str,*) NoNodes
           CALL Info(Caller,'Number of nodes in mesh: '//I2S(NoNodes),Level=7)
         END IF
         DO i=1,NoNodes 
           READ( FileUnit,'(A)',END=20,ERR=20 ) str     
-          READ( str,*) j,x,y,z
+          READ( str,*) j, coord
           IF( i /= j ) CALL Fatal(Caller,'Do node permutations!')
           IF( AllocationsDone ) THEN
-            FromMesh % Nodes % x(i) = x
-            FromMesh % Nodes % y(i) = y
-            FromMesh % Nodes % z(i) = z
+            FromMesh % Nodes % x(i) = coord(1)
+            FromMesh % Nodes % y(i) = coord(2)
+            FromMesh % Nodes % z(i) = coord(3)
+          ELSE IF( InputPartitions > 1 ) THEN
+            Bbox(ReadPart,1:3) = MIN(Bbox(ReadPart,1:3),Coord)
+            Bbox(ReadPart,4:6) = MAX(Bbox(ReadPart,4:6),Coord)            
           END IF
         END DO
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodes  
@@ -174,11 +220,23 @@ CONTAINS
         END IF
       END IF ! Nodes
 
-
+      IF( InputPartitions > 1 .AND. .NOT. AllocationsDone ) THEN              
+        DO i=1,3
+          IF(i==AlignCoord) CYCLE
+          IF( Bbox(ReadPart,i) > MyBbox(i+3) ) ActivePart(ReadPart) = .FALSE.
+          IF( Bbox(ReadPart,i+3) < MyBbox(i) ) ActivePart(ReadPart) = .FALSE.
+        END DO
+        IF( .NOT. ActivePart(ReadPart) ) THEN
+          NoNodes = 0
+          NoElems = 0
+          RETURN
+        END IF
+      END IF
+                       
       IF ( SEQL( str, '$Elements') ) THEN
         READ( FileUnit,'(A)',END=20,ERR=20 ) str    
+        READ( str,*) NoElems
         IF(.NOT. AllocationsDone ) THEN
-          READ( str,*) NoElems
           CALL Info(Caller,'Number of elements in mesh: '//I2S(NoElems),Level=7)
         END IF
 
@@ -272,7 +330,7 @@ CONTAINS
     END DO
 
 20  CONTINUE
-   
+    
   END SUBROUTINE ReadSingleGmshFile
 
 
@@ -283,13 +341,10 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: x1(:), x2(:)
     REAL(KIND=dp) :: minx, maxx
-    INTEGER :: n1,n2,AlignCoord
+    INTEGER :: n1,n2
     INTEGER, POINTER :: NewMaskPerm(:)
     
-    ToMesh => Solver % Mesh
-
-    AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
-    IF( Found ) THEN
+    IF( AlignCoord /= 0 ) THEN
       k = ABS( AlignCoord ) 
 
       IF( k == 1 ) THEN
