@@ -191,8 +191,9 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile),Level=7)
       OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old',iostat=iostat)
       IF( iostat /= 0 ) THEN
-        IF( InputPartitions > 1 .AND. UseBBox) THEN
-          ActivePart(ReadPart) = .FALSE.
+        IF( InputPartitions > 1 ) THEN
+          IF( UseBBox ) ActivePart(ReadPart) = .FALSE.
+          ! We need not have all partition present
           CALL Info(Caller,'Could not open file: '//TRIM(InputFile))
           CYCLE
         ELSE
