@@ -42,17 +42,15 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Time
   COMPLEX(KIND=dp), POINTER :: CValues(:)
   TYPE(ValueList_t), POINTER :: SolverParams
-  INTEGER, POINTER :: NewMaskPerm(:)
   
   LOGICAL :: Found, AllocationsDone = .FALSE.
   
-  INTEGER :: i,j,k,l,m,n,n1,n2,nsize,dim,dofs,ElmerType, GmshType,body_id,&
+  INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
-      MaxElemNodes, AlignCoord
+      MaxElemNodes
   INTEGER :: GmshToElmerType(21), GmshIndexes(27) 
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
-  REAL(KIND=dp) :: x,y,z,GmshVer,dx,minx,maxx
-  REAL(KIND=dp), POINTER :: x1(:), x2(:)
+  REAL(KIND=dp) :: x,y,z,GmshVer,dx
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
   CHARACTER(MAX_NAME_LEN) :: InputFile, VarName
@@ -98,15 +96,16 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
    
   dim = CoordinateSystemDimension()
 
+  
+  
   CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile))
   OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old')
-
 
   NoNodes = 0
   NoElems = 0
   MaxElemDim = 0
   MaxElemNodes = 0
-  
+
 10 CONTINUE
   
   DO WHILE( .TRUE. )
@@ -263,64 +262,80 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   CALL Info(Caller,'Gmsh reader complete!')
 
 
-  ToMesh => Solver % Mesh
+  CALL InterpolateFromGmshFile()
+  
+  CALL Info(Caller,'Interpolation from Gmsh format complete')
 
-  AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
-  IF( Found ) THEN
-    k = ABS( AlignCoord ) 
 
-    IF( k == 1 ) THEN
-      x1 => FromMesh % Nodes % x
-      x2 => ToMesh % Nodes % x
-    ELSE IF( k == 2 ) THEN
-      x1 => FromMesh % Nodes % y
-      x2 => ToMesh % Nodes % y
-    ELSE IF( k == 3 ) THEN      
-      x1 => FromMesh % Nodes % z
-      x2 => ToMesh % Nodes % z
-    ELSE
-      CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//I2S(AlignCoord))
-    END IF
-      
-    n1 = FromMesh % NumberOfNodes
-    n2 = ToMesh % NumberOfNodes
+CONTAINS
 
-    IF( AlignCoord > 0 ) THEN
-      minx = MINVAL( x2(1:n2) )
-      maxx = MAXVAL( x1(1:n1) ) 
-      dx = minx - maxx
-    ELSE
-      minx = MINVAL( x1(1:n1) )
-      maxx = MAXVAL( x2(1:n2) ) 
-      dx = minx - maxx
-    END IF
+  ! Interpolate from the loaded Gmsh file to exiting mesh.
+  !------------------------------------------------------
+  SUBROUTINE InterpolateFromGmshFile()
+
+    REAL(KIND=dp), POINTER :: x1(:), x2(:)
+    REAL(KIND=dp) :: minx, maxx
+    INTEGER :: n1,n2,AlignCoord
+    INTEGER, POINTER :: NewMaskPerm(:)
     
-    WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//I2S(k)//' with: ',dx
-    CALL Info(Caller,Message)
-    
-    x1 = x1 + dx
-  END IF
-  
-  Str = ListGetString( SolverParams,'Mask Name',Found) 
-  IF( Found ) THEN
-    ALLOCATE( NewMaskPerm( ToMesh % NumberOfNodes ) )
-    NewMaskPerm = 0
-    CALL MakePermUsingMask( Model, Solver, ToMesh, Str, .FALSE., &
-        NewMaskPerm, n, RequireLogical = .TRUE. )
-    IF( n == 0 ) THEN
-      CALL Fatal(Caller,'Zero masked nodes')
-    ELSE
-      CALL Info(Caller,'Number of masked nodes: '//I2S(n))
+    ToMesh => Solver % Mesh
+
+    AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
+    IF( Found ) THEN
+      k = ABS( AlignCoord ) 
+
+      IF( k == 1 ) THEN
+        x1 => FromMesh % Nodes % x
+        x2 => ToMesh % Nodes % x
+      ELSE IF( k == 2 ) THEN
+        x1 => FromMesh % Nodes % y
+        x2 => ToMesh % Nodes % y
+      ELSE IF( k == 3 ) THEN      
+        x1 => FromMesh % Nodes % z
+        x2 => ToMesh % Nodes % z
+      ELSE
+        CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//I2S(AlignCoord))
+      END IF
+
+      n1 = FromMesh % NumberOfNodes
+      n2 = ToMesh % NumberOfNodes
+
+      IF( AlignCoord > 0 ) THEN
+        minx = MINVAL( x2(1:n2) )
+        maxx = MAXVAL( x1(1:n1) ) 
+        dx = minx - maxx
+      ELSE
+        minx = MINVAL( x1(1:n1) )
+        maxx = MAXVAL( x2(1:n2) ) 
+        dx = minx - maxx
+      END IF
+
+      WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//I2S(k)//' with: ',dx
+      CALL Info(Caller,Message)
+
+      x1 = x1 + dx
     END IF
 
-    CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
-        NewMaskPerm = NewMaskPerm ) 
-  ELSE
-    CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables )
-  END IF
-  
-  
-  CALL Info(Caller,'Interpolation complete')
+    Str = ListGetString( SolverParams,'Mask Name',Found) 
+    IF( Found ) THEN
+      ALLOCATE( NewMaskPerm( ToMesh % NumberOfNodes ) )
+      NewMaskPerm = 0
+      CALL MakePermUsingMask( Model, Solver, ToMesh, Str, .FALSE., &
+          NewMaskPerm, n, RequireLogical = .TRUE. )
+      IF( n == 0 ) THEN
+        CALL Fatal(Caller,'Zero masked nodes')
+      ELSE
+        CALL Info(Caller,'Number of masked nodes: '//I2S(n))
+      END IF
+
+      CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
+          NewMaskPerm = NewMaskPerm ) 
+    ELSE
+      CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables )
+    END IF
+
+  END SUBROUTINE InterpolateFromGmshFile
+    
   
 !------------------------------------------------------------------------------
 END SUBROUTINE GmshOutputReader
