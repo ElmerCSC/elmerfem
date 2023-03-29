@@ -96,9 +96,35 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   IF(INDEX(BaseFile,'.') == 0) WRITE( BaseFile,'(A,A)') TRIM(BaseFile),".msh"    
   CALL SolverOutputDirectory( Solver, BaseFile, InputDirectory, UseMeshDir = .TRUE. )
   BaseFile = TRIM(InputDirectory)// '/' //TRIM(BaseFile)
-  
+
   InputPartitions = ListGetInteger( SolverParams,'Filename Partitions', Found )
   IF(.NOT. Found) InputPartitions = 1
+
+  n = -1
+  MaskPerm => NULL()
+  Str = ListGetString( SolverParams,'Mask Name',Found) 
+  IF( Found ) THEN
+    ALLOCATE( MaskPerm( ToMesh % NumberOfNodes ) )
+    MaskPerm = 0
+    CALL MakePermUsingMask( Model, Solver, ToMesh, Str, .FALSE., &
+        MaskPerm, n, RequireLogical = .TRUE. )
+    CALL Info(Caller,'Using given mask "'//TRIM(Str)//'" for interpolation!')            
+    IF(n==0) DEALLOCATE(MaskPerm)
+  ELSE IF( ASSOCIATED( Solver % Variable ) ) THEN
+    MaskPerm => Solver % Variable % Perm
+    IF( ASSOCIATED(MaskPerm) ) THEN
+      CALL Info(Caller,'Using Solver % Variable % Perm as the mask for interpolation!')        
+      n = COUNT(MaskPerm(1:ToMesh % NumberOfNodes) > 0)
+    END IF
+  END IF
+
+  IF( n == 0 ) THEN
+    CALL Info(Caller,'Zero masked nodes, returning without interpolation!')
+    RETURN
+  ELSE IF( n > 0 ) THEN
+    CALL Info(Caller,'Number of masked nodes: '//I2S(n),Level=7)
+  END IF
+    
   UseBBox = .FALSE.
   IF( InputPartitions > 1 ) THEN
     UseBBox = ListGetLogical( SolverParams,'Use Bounding Box',Found ) 
@@ -108,23 +134,30 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   ! By default all pieces are read and a union mesh is created on-the-fly. 
   IF( UseBBox ) THEN
     ALLOCATE(Bbox(InputPartitions,6),MyBBox(6))
-    Bbox(:,1:3) = HUGE(x)
-    Bbox(:,4:6) = -HUGE(x)
+    Bbox(:,1:3) = HUGE(x)   ! initialize min values
+    Bbox(:,4:6) = -HUGE(x)  ! initialize max values
     ALLOCATE(ActivePart(InputPartitions))
     ActivePart = .TRUE.
 
     n = ToMesh % NumberOfNodes 
-    MyBbox(1) = MINVAL(ToMesh % Nodes % x(1:n))
-    MyBbox(2) = MINVAL(ToMesh % Nodes % y(1:n))
-    MyBbox(3) = MINVAL(ToMesh % Nodes % z(1:n))
-    MyBbox(4) = MAXVAL(ToMesh % Nodes % x(1:n))
-    MyBbox(5) = MAXVAL(ToMesh % Nodes % y(1:n))
-    MyBbox(6) = MAXVAL(ToMesh % Nodes % z(1:n))
-
-    BBtol = ListGetConstReal( SolverParams,'Bounding box tolerance',Found )
-    IF(.NOT. Found ) THEN
-      BBtol = 1.0d-3 * SQRT(SUM((MyBbox(4:6)-MyBbox(1:3))**2))
+    IF( ASSOCIATED( MaskPerm ) ) THEN
+      MyBbox(1) = MINVAL(ToMesh % Nodes % x(1:n),MaskPerm(1:n)>0)
+      MyBbox(2) = MINVAL(ToMesh % Nodes % y(1:n),MaskPerm(1:n)>0)
+      MyBbox(3) = MINVAL(ToMesh % Nodes % z(1:n),MaskPerm(1:n)>0)
+      MyBbox(4) = MAXVAL(ToMesh % Nodes % x(1:n),MaskPerm(1:n)>0)
+      MyBbox(5) = MAXVAL(ToMesh % Nodes % y(1:n),MaskPerm(1:n)>0)
+      MyBbox(6) = MAXVAL(ToMesh % Nodes % z(1:n),MaskPerm(1:n)>0)
+    ELSE
+      MyBbox(1) = MINVAL(ToMesh % Nodes % x(1:n))
+      MyBbox(2) = MINVAL(ToMesh % Nodes % y(1:n))
+      MyBbox(3) = MINVAL(ToMesh % Nodes % z(1:n))
+      MyBbox(4) = MAXVAL(ToMesh % Nodes % x(1:n))
+      MyBbox(5) = MAXVAL(ToMesh % Nodes % y(1:n))
+      MyBbox(6) = MAXVAL(ToMesh % Nodes % z(1:n))
     END IF
+      
+    BBtol = ListGetConstReal( SolverParams,'Bounding box tolerance',Found )
+    IF(.NOT. Found ) BBtol = 1.0d-6
   END IF
   
   AllocationsDone = .FALSE.
@@ -143,8 +176,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
     IF( InputPartitions == 1 ) THEN
       InputFile = TRIM(BaseFile)
-    ELSE 
-      IF( AllocationsDone .AND. UseBBox) THEN
+    ELSE
+      IF( AllocationsDone .AND. UseBBox ) THEN
         IF( .NOT. ActivePart(ReadPart) ) CYCLE
       END IF
 
@@ -345,7 +378,7 @@ CONTAINS
         n = LEN_TRIM(str)
 
         VarName = str(2:n-1)
-        CALL Info(Caller,'Reading variable: '//TRIM(VarName))
+        CALL Info(Caller,'Reading gmsh variable: '//TRIM(VarName))
 
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! time
@@ -370,8 +403,6 @@ CONTAINS
           Secondary = .FALSE.
         END IF
 
-        IF(.NOT. AllocationsDone ) CALL Fatal('','not jere!')
-        
         IF(.NOT. ASSOCIATED(Var) ) THEN
           CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
               VarName, dofs = dofs, Perm = Perm, Secondary = Secondary )
@@ -380,7 +411,8 @@ CONTAINS
 
         DO i=1,NoNodes
           READ( FileUnit,'(A)',END=20,ERR=20 ) str  
-          k = i + CumNodes 
+          k = i + CumNodes
+          !IF( k > SIZE( Var % Values ) ) CALL Fatal('','k is too large!')
           IF( dofs == 1 ) THEN
             READ( str, * ) j, Var % Values(k)
           ELSE
@@ -389,8 +421,10 @@ CONTAINS
         END DO
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
 
-        IF( InfoActive(32) ) THEN
-          CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(Var % Name))       
+        IF( InfoActive(30) ) THEN
+          IF( ReadPart == InputPartitions ) THEN
+            CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(Var % Name))       
+          END IF
         END IF
       END IF ! NodeData
     END DO
@@ -408,7 +442,6 @@ CONTAINS
     REAL(KIND=dp), POINTER :: x1(:), x2(:)
     REAL(KIND=dp) :: minx, maxx
     INTEGER :: n1,n2
-    INTEGER, POINTER :: NewMaskPerm(:)
     
     IF( AlignCoord /= 0 ) THEN
       k = ABS( AlignCoord ) 
@@ -445,22 +478,12 @@ CONTAINS
       x1 = x1 + dx
     END IF
 
-    Str = ListGetString( SolverParams,'Mask Name',Found) 
-    IF( Found ) THEN
-      ALLOCATE( NewMaskPerm( ToMesh % NumberOfNodes ) )
-      NewMaskPerm = 0
-      CALL MakePermUsingMask( Model, Solver, ToMesh, Str, .FALSE., &
-          NewMaskPerm, n, RequireLogical = .TRUE. )
-      IF( n == 0 ) THEN
-        CALL Fatal(Caller,'Zero masked nodes')
-      ELSE
-        CALL Info(Caller,'Number of masked nodes: '//I2S(n))
-      END IF
-
+    IF( ASSOCIATED( MaskPerm ) ) THEN
       CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
-          NewMaskPerm = NewMaskPerm ) 
+          UseQuadrantTree=.FALSE.,NewMaskPerm = MaskPerm ) 
     ELSE
-      CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables )
+      CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
+          UseQuadrantTree=.FALSE.)
     END IF
 
   END SUBROUTINE InterpolateFromGmshFile
@@ -469,4 +492,21 @@ CONTAINS
 !------------------------------------------------------------------------------
 END SUBROUTINE GmshOutputReader
 !------------------------------------------------------------------------------
-  
+
+
+SUBROUTINE GmshOutputReader_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()
+  CALL ListAddNewLogical(Params,'No Matrix',.TRUE.)  
+
+END SUBROUTINE GmshOutputReader_init
