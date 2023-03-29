@@ -43,11 +43,11 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   COMPLEX(KIND=dp), POINTER :: CValues(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   
-  LOGICAL :: Found, AllocationsDone  
+  LOGICAL :: Found, UseBBox, AllocationsDone
   INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
       MaxElemNodes, InputPartitions, ReadPart, AlignCoord, PassiveCoord, &
-      CumNodes, CumElems, iostat
+      CumNodes, CumElems, iostat 
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
   REAL(KIND=dp) :: x,y,z,dx,BBTol
   REAL(KIND=dp), ALLOCATABLE :: BBox(:,:), MyBBox(:)
@@ -99,10 +99,14 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   
   InputPartitions = ListGetInteger( SolverParams,'Filename Partitions', Found )
   IF(.NOT. Found) InputPartitions = 1
-
+  UseBBox = .FALSE.
+  IF( InputPartitions > 1 ) THEN
+    UseBBox = ListGetLogical( SolverParams,'Use Bounding Box',Found ) 
+  END IF
+   
   ! We use simple bounding box to avoid reading unnecessary pieces in parallel.
   ! By default all pieces are read and a union mesh is created on-the-fly. 
-  IF( InputPartitions > 1) THEN
+  IF( UseBBox ) THEN
     ALLOCATE(Bbox(InputPartitions,6),MyBBox(6))
     Bbox(:,1:3) = HUGE(x)
     Bbox(:,4:6) = -HUGE(x)
@@ -180,8 +184,10 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     IF( InputPartitions > 1 ) THEN
       CALL Info(Caller,'Number of cumulative nodes to read: '//I2S(CumNodes),Level=5)
       CALL Info(Caller,'Number of cumulative elements to read: '//I2S(CumElems),Level=5)
+    END IF
+    IF( UseBBox ) THEN
       i = COUNT( ActivePart )
-      CALL Info(Caller,'Number of active partition '&
+      CALL Info(Caller,'Number of active partitions '&
           //I2S(i)//' out of '//I2S(InputPartitions),Level=10)
     END IF
 
@@ -191,6 +197,14 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     FromMesh % MeshDim = MaxElemDim
     FromMesh % MaxElementNodes = MaxElemNodes
     AllocationsDone = .TRUE.    
+
+    CALL Info(Caller,'Creating variable structure',Level=20)
+    FromMesh % Variables => NULL()
+    ALLOCATE( Perm( CumNodes ) )
+    DO i =1, CumNodes
+      Perm(i) = i
+    END DO
+
     GOTO 10 
   END IF
 
@@ -207,12 +221,15 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+  ! Read a Gmsh file with results. When reading multiple files use the offsets for
+  ! CumNodes and CumElems. 
   SUBROUTINE ReadSingleGmshFile()
 
     REAL(KIND=dp) :: GmshVer
     REAL(KIND=dp) :: coord(3)
     INTEGER :: GmshToElmerType(21), GmshIndexes(27)
     INTEGER :: i,j,k
+    LOGICAL :: Secondary 
     
     SAVE GmshVer
     
@@ -246,7 +263,7 @@ CONTAINS
             FromMesh % Nodes % x(k) = coord(1)
             FromMesh % Nodes % y(k) = coord(2)
             FromMesh % Nodes % z(k) = coord(3)
-          ELSE IF( InputPartitions > 1 ) THEN
+          ELSE IF( UseBBox ) THEN
             Bbox(ReadPart,1:3) = MIN(Bbox(ReadPart,1:3),Coord)
             Bbox(ReadPart,4:6) = MAX(Bbox(ReadPart,4:6),Coord)            
           END IF
@@ -254,11 +271,12 @@ CONTAINS
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodes  
         
         IF(.NOT. AllocationsDone ) THEN
-          IF( InputPartitions > 1 ) THEN
+          IF( UseBBox ) THEN
             ! Check the bounding boxes so that we do not need to go through this
             ! piece again if the bounding boxes do not overlap.
             DO i=1,3
-              IF(i==ABS(PassiveCoord)) CYCLE
+              IF(i==PassiveCoord) CYCLE
+              IF(i>dim) CYCLE
               IF( Bbox(ReadPart,i) > MyBbox(i+3) + BBtol ) ActivePart(ReadPart) = .FALSE.
               IF( Bbox(ReadPart,i+3) < MyBbox(i) - BBtol ) ActivePart(ReadPart) = .FALSE.
             END DO
@@ -343,33 +361,36 @@ CONTAINS
           CALL Info(Caller,'Mismatch is vector size!')
         END IF
 
+        Var => NULL()
         IF( ASSOCIATED( FromMesh % Variables ) ) THEN
-          CALL Info(Caller,'Creating variable structure',Level=20)
-        ELSE
           CALL Info(Caller,'Reusing variable structure',Level=20)
-          FromMesh % Variables => Null()
-          ALLOCATE( Perm( NoNodes ) )
-          DO i =1, NoNodes
-            Perm(i) = i
-          END DO
+          Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
+          Secondary = .TRUE.
+        ELSE
+          Secondary = .FALSE.
         END IF
 
-        CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
-            VarName, dofs = dofs, Perm = Perm )
+        IF(.NOT. AllocationsDone ) CALL Fatal('','not jere!')
+        
+        IF(.NOT. ASSOCIATED(Var) ) THEN
+          CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
+              VarName, dofs = dofs, Perm = Perm, Secondary = Secondary )
+        END IF
         Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
 
         DO i=1,NoNodes
           READ( FileUnit,'(A)',END=20,ERR=20 ) str  
+          k = i + CumNodes 
           IF( dofs == 1 ) THEN
-            READ( str, * ) j, Var % Values(i)
+            READ( str, * ) j, Var % Values(k)
           ELSE
-            READ( str, * ) j, Var % Values(dofs*(i-1)+1:dofs*i) 
+            READ( str, * ) j, Var % Values(dofs*(k-1)+1:dofs*k) 
           END IF
         END DO
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
 
-        IF( InfoActive(30) ) THEN
-          PRINT *,'Var Range:',TRIM(Var % Name), MINVAL( Var % Values ), MAXVAL( Var % Values )
+        IF( InfoActive(32) ) THEN
+          CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(Var % Name))       
         END IF
       END IF ! NodeData
     END DO
