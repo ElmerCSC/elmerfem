@@ -1484,7 +1484,6 @@ RETURN
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
       CALL IncreaseParticles( Particles, Particles % NumberOfParticles + 2*n - &
                     Particles % MaxNumberOfParticles )
-    ELSE
     END IF
     
     IF(Particles % dim==2 ) THEN
@@ -1498,6 +1497,9 @@ RETURN
     DO i=1,NoPartitions
       n = Recv_Parts(i)
       IF ( n<=0 ) CYCLE
+
+      CALL Info(Caller,'Partition '//I2S(ParEnv % MyPe+1)//&
+          ' receiving from '//I2S(i)//': '//TRIM(I2S(n)),Level=20)   
       
       proc = Neigh(i)
       ALLOCATE(Indexes(n))
@@ -3894,7 +3896,7 @@ RETURN
       DebugPart = ListGetInteger( Params,'Debug particle partition',Stat)
 
       Eps = ListGetConstReal( Params,'Particle Hit Tolerance',Stat)
-      IF(.NOT. Stat) Eps = 1.0e-10
+      IF(.NOT. Stat) Eps = 1.0e-8
       Problems = 0
       Visited = .TRUE.     
     END IF
@@ -4081,7 +4083,6 @@ RETURN
                 ASSOCIATED(LeftElement),ASSOCIATED(RightElement)
           END IF
           
-
           IF( ASSOCIATED( LeftElement) .AND. ASSOCIATED(RightElement)) THEN
             IF( ASSOCIATED(Element, LeftElement)) THEN
               NextElement => RightElement
@@ -4117,8 +4118,6 @@ RETURN
             ASSOCIATED( NextElement, Element), ASSOCIATED( NextElement, PrevElement )
       END IF
       
-
-
       ! continue the search to new elements
       IF( .NOT. ASSOCIATED( NextElement ) ) THEN
         CALL Warn('LocateParticleInMeshMarch','Element not associated!')
@@ -4167,8 +4166,6 @@ RETURN
           EXIT
         END IF 
 
-
-
         Problems(3) = Problems(3) + 1
         WRITE(Message,'(A,3ES12.3)') 'Losing particle '//I2S(No)//' in: ',Rfin(1:3)
         CALL Info('LocateParticlesInMesh',Message,Level=15)
@@ -4182,7 +4179,7 @@ RETURN
     END DO
 
     IF( i >= MaxTrials ) THEN
-      PRINT *,'Used maximum number of trials',MaxTrials,No
+      PRINT *,'Used maximum number of trials',MaxTrials,No,SQRT(ds2)
     END IF
 
     IF( ParticleStatus == PARTICLE_LOST ) THEN
@@ -4363,6 +4360,14 @@ RETURN
         FaceIndex = FaceIndex0
       END IF
 
+
+      IF( ElementIndex == 0 ) THEN
+        Rfin = Rfin0
+        Velo = Velo0
+        ElementIndex = ElementIndex0
+        FaceIndex = FaceIndex0
+      END IF
+      
       IF( debug ) THEN
         PRINT *,parenv % mype, 'No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
         PRINT *,parenv % mype, 'Init:    ',Rinit(1:dim),Rfin(1:dim)

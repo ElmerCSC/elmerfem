@@ -838,19 +838,20 @@ CONTAINS
           END DO
 
         ELSE IF( VariableName == 'particle status') THEN
-          DO i=1,NoParticles
-            NewValues(i) = 1.0_dp * Particles % Status(i)
-          END DO
-          
+          NewValues(1:NoParticles) = 1.0_dp * Particles % Status(1:NoParticles)
+
+        ELSE IF( VariableName == 'particle partition') THEN
+          IF( ASSOCIATED( Particles % Partition ) ) THEN
+            NewValues(1:NoParticles) = ParEnv % MyPe + 1.0_dp 
+          END IF
+            
         ELSE IF( VariableName == 'particle number') THEN
           DO i=1,NoParticles
             NewValues(i) = 1.0_dp * i
           END DO
 
         ELSE IF( VariableName == 'particle index') THEN
-          DO i=1,NoParticles
-            NewValues(i) = 1.0_dp * Particles % NodeIndex(i)
-          END DO
+          NewValues(1:NoParticles) = 1.0_dp * Particles % NodeIndex(1:NoParticles)
           
         ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
@@ -1069,7 +1070,6 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
     
   CALL ListAddInteger( Params,'Time Order',0 )
   CALL ListAddNewLogical( Params,'Particle Accurate At Face',.FALSE.)  
-  CALL ListAddLogical( Params,'Particle Fix Frozen',.TRUE.)
 
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
