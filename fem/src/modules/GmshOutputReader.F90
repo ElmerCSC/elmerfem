@@ -46,9 +46,10 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, AllocationsDone  
   INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
-      MaxElemNodes, InputPartitions, ReadPart, AlignCoord
+      MaxElemNodes, InputPartitions, ReadPart, AlignCoord, PassiveCoord, &
+      CumNodes, CumElems, iostat
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
-  REAL(KIND=dp) :: x,y,z,dx
+  REAL(KIND=dp) :: x,y,z,dx,BBTol
   REAL(KIND=dp), ALLOCATABLE :: BBox(:,:), MyBBox(:)
   LOGICAL, ALLOCATABLE :: ActivePart(:)
   INTEGER, PARAMETER :: LENGTH = 1024
@@ -87,6 +88,9 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
   dim = CoordinateSystemDimension()
   AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
+
+  PassiveCoord = ListGetInteger( SolverParams,'Interpolation Passive Coordinate',Found)
+  IF(.NOT. Found) PassiveCoord = ABS(AlignCoord)
   
   BaseFile = ListGetString( SolverParams, 'Filename', UnfoundFatal = .TRUE. ) 
   IF(INDEX(BaseFile,'.') == 0) WRITE( BaseFile,'(A,A)') TRIM(BaseFile),".msh"    
@@ -96,6 +100,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   InputPartitions = ListGetInteger( SolverParams,'Filename Partitions', Found )
   IF(.NOT. Found) InputPartitions = 1
 
+  ! We use simple bounding box to avoid reading unnecessary pieces in parallel.
+  ! By default all pieces are read and a union mesh is created on-the-fly. 
   IF( InputPartitions > 1) THEN
     ALLOCATE(Bbox(InputPartitions,6),MyBBox(6))
     Bbox(:,1:3) = HUGE(x)
@@ -110,6 +116,11 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     MyBbox(4) = MAXVAL(ToMesh % Nodes % x(1:n))
     MyBbox(5) = MAXVAL(ToMesh % Nodes % y(1:n))
     MyBbox(6) = MAXVAL(ToMesh % Nodes % z(1:n))
+
+    BBtol = ListGetConstReal( SolverParams,'Bounding box tolerance',Found )
+    IF(.NOT. Found ) THEN
+      BBtol = 1.0d-3 * SQRT(SUM((MyBbox(4:6)-MyBbox(1:3))**2))
+    END IF
   END IF
   
   AllocationsDone = .FALSE.
@@ -118,6 +129,9 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   
 10 CONTINUE
 
+  CumNodes = 0
+  CumElems = 0
+  
   DO ReadPart = 1, InputPartitions 
     
     NoNodes = 0
@@ -137,11 +151,23 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF( InputPartitions > 1 .OR. .NOT. AllocationsDone ) THEN
-      CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile))
-      OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old')
+      CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile),Level=7)
+      OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old',iostat=iostat)
+      IF( iostat /= 0 ) THEN
+        IF( InputPartitions > 1 ) THEN
+          ActivePart(ReadPart) = .FALSE.
+          CALL Info(Caller,'Could not open file: '//TRIM(InputFile))
+          CYCLE
+        ELSE
+          CALL Fatal(Caller,'Could not open file: '//TRIM(InputFile))
+        END IF
+      END IF
     END IF
     
     CALL ReadSingleGmshFile()
+
+    CumNodes = CumNodes + NoNodes
+    CumElems = CumElems + NoElems 
     
     IF( InputPartitions > 1 .OR. AllocationsDone ) THEN
       CLOSE( FileUnit )
@@ -149,11 +175,19 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       REWIND( FileUnit )
     END IF    
   END DO
-   
+
   IF(.NOT. AllocationsDone ) THEN
+    IF( InputPartitions > 1 ) THEN
+      CALL Info(Caller,'Number of cumulative nodes to read: '//I2S(CumNodes),Level=5)
+      CALL Info(Caller,'Number of cumulative elements to read: '//I2S(CumElems),Level=5)
+      i = COUNT( ActivePart )
+      CALL Info(Caller,'Number of active partition '&
+          //I2S(i)//' out of '//I2S(InputPartitions),Level=10)
+    END IF
+
     CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
     CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)    
-    FromMesh => AllocateMesh(NoElems,0,NoNodes)    
+    FromMesh => AllocateMesh(CumElems,0,CumNodes)    
     FromMesh % MeshDim = MaxElemDim
     FromMesh % MaxElementNodes = MaxElemNodes
     AllocationsDone = .TRUE.    
@@ -178,7 +212,8 @@ CONTAINS
     REAL(KIND=dp) :: GmshVer
     REAL(KIND=dp) :: coord(3)
     INTEGER :: GmshToElmerType(21), GmshIndexes(27)
-
+    INTEGER :: i,j,k
+    
     SAVE GmshVer
     
     GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
@@ -206,32 +241,38 @@ CONTAINS
           READ( str,*) j, coord
           IF( i /= j ) CALL Fatal(Caller,'Do node permutations!')
           IF( AllocationsDone ) THEN
-            FromMesh % Nodes % x(i) = coord(1)
-            FromMesh % Nodes % y(i) = coord(2)
-            FromMesh % Nodes % z(i) = coord(3)
+            ! In parallel we have an offset, in serial it is zero
+            k = i + CumNodes
+            FromMesh % Nodes % x(k) = coord(1)
+            FromMesh % Nodes % y(k) = coord(2)
+            FromMesh % Nodes % z(k) = coord(3)
           ELSE IF( InputPartitions > 1 ) THEN
             Bbox(ReadPart,1:3) = MIN(Bbox(ReadPart,1:3),Coord)
             Bbox(ReadPart,4:6) = MAX(Bbox(ReadPart,4:6),Coord)            
           END IF
         END DO
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodes  
+        
         IF(.NOT. AllocationsDone ) THEN
+          IF( InputPartitions > 1 ) THEN
+            ! Check the bounding boxes so that we do not need to go through this
+            ! piece again if the bounding boxes do not overlap.
+            DO i=1,3
+              IF(i==ABS(PassiveCoord)) CYCLE
+              IF( Bbox(ReadPart,i) > MyBbox(i+3) + BBtol ) ActivePart(ReadPart) = .FALSE.
+              IF( Bbox(ReadPart,i+3) < MyBbox(i) - BBtol ) ActivePart(ReadPart) = .FALSE.
+            END DO
+            IF( .NOT. ActivePart(ReadPart) ) THEN
+              NoNodes = 0
+              NoElems = 0
+              EXIT
+            END IF
+          END IF
+      
           IF( NoElems > 0 .AND. NoNodes > 0 ) EXIT
         END IF
       END IF ! Nodes
 
-      IF( InputPartitions > 1 .AND. .NOT. AllocationsDone ) THEN              
-        DO i=1,3
-          IF(i==AlignCoord) CYCLE
-          IF( Bbox(ReadPart,i) > MyBbox(i+3) ) ActivePart(ReadPart) = .FALSE.
-          IF( Bbox(ReadPart,i+3) < MyBbox(i) ) ActivePart(ReadPart) = .FALSE.
-        END DO
-        IF( .NOT. ActivePart(ReadPart) ) THEN
-          NoNodes = 0
-          NoElems = 0
-          RETURN
-        END IF
-      END IF
                        
       IF ( SEQL( str, '$Elements') ) THEN
         READ( FileUnit,'(A)',END=20,ERR=20 ) str    
@@ -254,14 +295,15 @@ CONTAINS
           ELSE IF( ElmerType > 200 ) THEN
             ElemDim = 1
           END IF
-
+                    
           IF( AllocationsDone ) THEN
-            Element => FromMesh % Elements(i)
+            k = CumElems + i
+            Element => FromMesh % Elements(k)
             Element % TYPE => GetElementType(ElmerType)
             n = Element % TYPE % NumberOfNodes
             CALL AllocateVector( Element % NodeIndexes, n )          
-            READ(str,*) j,GmshType,k,k,k, Element % Nodeindexes(1:n)
-            IF( ElemDim == MaxElemDim ) NoBulkElems = i
+            READ(str,*) j,GmshType,j,j,j, Element % Nodeindexes(1:n)
+            IF( ElemDim == MaxElemDim ) NoBulkElems = k
           ELSE
             MaxElemDim = MAX( MaxElemDim, ElemDim ) 
             MaxElemNodes = MAX( MaxElemNodes, MODULO( ElmerType, 100 ) )        
