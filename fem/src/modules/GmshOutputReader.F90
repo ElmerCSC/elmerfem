@@ -143,8 +143,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
     IF( InputPartitions == 1 ) THEN
       InputFile = TRIM(BaseFile)
-    ELSE
-      IF( AllocationsDone ) THEN
+    ELSE 
+      IF( AllocationsDone .AND. UseBBox) THEN
         IF( .NOT. ActivePart(ReadPart) ) CYCLE
       END IF
 
@@ -158,7 +158,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller,'Reading mesh from file: '//TRIM(InputFile),Level=7)
       OPEN(UNIT=FileUnit, FILE=InputFile, STATUS='old',iostat=iostat)
       IF( iostat /= 0 ) THEN
-        IF( InputPartitions > 1 ) THEN
+        IF( InputPartitions > 1 .AND. UseBBox) THEN
           ActivePart(ReadPart) = .FALSE.
           CALL Info(Caller,'Could not open file: '//TRIM(InputFile))
           CYCLE
