@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+CONFIGURE_FILE(sif/6481.sif sif/6481.sif COPYONLY)
+file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY sif/6481-circuits.definitions DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/sif")
+file(COPY 6481/mesh.boundary 6481/mesh.header 6481/mesh.nodes 6481/mesh.elements 6481/mesh.names DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/6481")
+file(COPY 6481/dat/gittrack DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/6481/dat")
+ADD_ELMER_TEST(circuits_steady_massive LABELS circuits steady 3D mgdyn whitney)
