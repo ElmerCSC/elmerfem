@@ -1538,7 +1538,10 @@ CONTAINS
           ! We need to precompute view factors if they are included in CRS matrix
           ! Benefit of doing it at later stage is that we may modify the geometry, for example. 
           IF( .NOT. (ListGetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
-              ListGetLogical( SolverParams,'Spectral Model',Found ) ) ) THEN            
+              ListGetLogical( SolverParams,'Spectral Model',Found ) .OR. &
+              ListGetLogical( SolverParams,'Update Gebhart Factors',Found ) ) ) THEN            
+            ! If we need to update the Gebhart factors we may not create the matrix topology at this
+            ! stage as we don't know the emissivities yet.
             CALL RadiationFactors( Solver, .TRUE., .FALSE.)
           END IF
         END IF
