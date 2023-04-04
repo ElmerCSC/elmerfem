@@ -146,7 +146,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: BC
   INTEGER :: n,istat,i,nNodes,Active,dofs
-  INTEGER :: NoIterationsMax
+  INTEGER :: NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp) :: Norm
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:)
@@ -166,8 +166,10 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )  
   IF( SecondOrder ) THEN
     PiolaVersion = .TRUE.
+    EdgeBasisDegree = 2
   ELSE
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+    EdgeBasisDegree = 1
   END IF
 
   IF (CoordinateSystemDimension() == 2) THEN
@@ -464,7 +466,8 @@ CONTAINS
       !
       IF (GetElementFamily(Element) == 2) THEN
         stat = EdgeElementInfo(Element, Nodes, IP % u(t), IP % v(t), IP % w(t), detF = detJ, &
-            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
+            ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
