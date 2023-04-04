@@ -180,7 +180,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   ENDIF
 
   Omega = GetAngularFrequency(Found=Found)
-
+  IF(.NOT. Found ) THEN
+    CALL Fatal(Caller,'Harmonic wave equation requires angular frequency!')
+  END IF
+  
   PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
