@@ -142,7 +142,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   LOGICAL :: Found, HasPrecDampCoeff, MassProportional
   REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
-  INTEGER :: i, NoIterationsMax
+  INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
@@ -159,8 +159,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
     PiolaVersion = .TRUE.
+    EdgeBasisDegree = 2
   ELSE
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+    EdgeBasisDegree = 1
   END IF
 
   IF (CoordinateSystemDimension() == 2) THEN
@@ -683,7 +685,8 @@ CONTAINS
       !
       IF (GetElementFamily(Element) == 2) THEN
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
-            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
+            ApplyPiolaTransform = .TRUE.)
       ELSE    
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx, &
