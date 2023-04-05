@@ -2372,10 +2372,10 @@ CONTAINS
     REAL(KIND=dp) :: nrm
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:)
-    LOGICAL :: Trans, Isolated 
+    LOGICAL :: Trans, Isolated
     
     CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
-    
+
     NoVar = TotMatrix % NoVar
     MaxSize = TotMatrix % MaxSize
     ALLOCATE( s(MaxSize) )
@@ -3082,6 +3082,8 @@ CONTAINS
     NoVar = TotMatrix % NoVar
     Solver => TotMatrix % Solver
 
+    TotMatrix % NoIters = TotMatrix % NoIters + 1
+   
     IF( isParallel ) THEN
       offset => TotMatrix % ParOffset
     ELSE
@@ -3466,6 +3468,9 @@ CONTAINS
     Relax = 1.0_dp
     
     DO iter = 1, LinIter
+
+      ! Store the iteration count
+      TotMatrix % NoIters = iter
       
       ! In block Jacobi the r.h.s. is not updated during the iteration cycle
       !----------------------------------------------------------------------
@@ -3630,6 +3635,8 @@ CONTAINS
     ndim = TotMatrix % TotSize 
     NoVar = TotMatrix % NoVar
 
+    TotMatrix % NoIters = 0
+    
     offset => TotMatrix % Offset
     IF(isParallel) THEN
       poffset => TotMatrix % ParOffset
@@ -4439,7 +4446,11 @@ CONTAINS
     IF( BlockHorVer .OR. BlockCart .OR. BlockDomain .OR. BlockHcurl ) THEN
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
-      
+
+    IF( ListGetLogical( Solver % Values,'Block Save Iterations',Found ) ) THEN
+      CALL ListAddInteger(CurrentModel % Simulation,'res: block iterations',TotMatrix % NoIters)
+    END IF   
+    
     CALL Info('BlockSolveInt','All done')
     CALL Info('BlockSolveInt','-------------------------------------------------',Level=5)
 
