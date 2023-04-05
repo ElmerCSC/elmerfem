@@ -16835,6 +16835,135 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  ! Routine for increasing element order by adding an additional node an each edge.
+  ! Basically the same order of elements could be created by p-elements but this provides
+  ! alternative solution when nodal finite element are preferred. Often the mesh may be
+  ! made quadratic with the preprocessors but this enables also the use of mesh extrusion
+  ! and mesh multiplication which cannot be used with higher order nodal elements.
+  !--------------------------------------------------------------------------------------
+  SUBROUTINE IncreseElementOrder( Mesh )
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element, Edge
+    INTEGER :: n0,n1,n,m,i,i1,i2,j,t,ElemType, NewType
+    INTEGER, POINTER  :: NewIndexes(:)
+    REAL(KIND=dp), POINTER :: x(:), y(:), z(:), xtmp(:)
+    
+    CALL Info('IncreaseElementOrder','Increasing element order from linear to quadratic!')
+    
+    IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL FindMeshEdges( Mesh )
+    END IF
+      
+    n0 = Mesh % NumberOfNodes
+    n1 = Mesh % NumberOfEdges
+
+    ! Increase size of coorinate vectors
+    ALLOCATE(xtmp(n0))
+    xtmp = Mesh % Nodes % x
+    DEALLOCATE( Mesh % Nodes % x)
+    ALLOCATE( Mesh % Nodes % x(n0+n1))
+    x => Mesh % Nodes % x
+    x(1:n0) = xtmp; x(n0+1:n0+n1) = 0.0_dp
+
+    xtmp = Mesh % Nodes % y
+    DEALLOCATE( Mesh % Nodes % y)
+    ALLOCATE( Mesh % Nodes % y(n0+n1))
+    y => Mesh % Nodes % y
+    y(1:n0) = xtmp; y(n0+1:n0+n1) = 0.0_dp
+
+    xtmp = Mesh % Nodes % z
+    DEALLOCATE( Mesh % Nodes % z)
+    ALLOCATE( Mesh % Nodes % z(n0+n1))
+    z => Mesh % Nodes % z
+    z(1:n0) = xtmp; z(n0+1:n0+n1) = 0.0_dp
+    DEALLOCATE(xtmp)
+
+    ! Locate new nodes at the center of edges
+    DO t=1,Mesh % NumberOfEdges
+      Edge => Mesh % Edges(t)
+      i1 = Edge % NodeIndexes(1)
+      i2 = Edge % NodeIndexes(2)
+      x(n0+t) = 0.5_dp*(x(i1)+x(i2))
+      y(n0+t) = 0.5_dp*(y(i1)+y(i2))
+      z(n0+t) = 0.5_dp*(z(i1)+z(i2))
+    END DO
+
+    ! Add the new nodes to the linear elements and
+    ! change the element type to reflect the increase in number of nodes.
+    DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+      ElemType = Element % TYPE % ElementCode
+      IF( ElemType == 101) CYCLE
+      
+      n = Element % TYPE % NumberOfNodes
+      m = Element % TYPE % NumberOfEdges
+      NewType = ElemType + m
+      ALLOCATE( NewIndexes(n+m) )
+      NewIndexes(1:n) = Element % NodeIndexes(1:n)
+      NewIndexes(n+1:n+m) = n0 + Element % EdgeIndexes(1:m)      
+      DEALLOCATE( Element % NodeIndexes )
+      Element % NodeIndexes => NewIndexes
+      NULLIFY(NewIndexes)
+      Element % TYPE => GetElementType( NewType ) 
+    END DO
+
+    ! Parallel info is needed to renumber the nodes in parallel.
+    CALL IncreaseParallelInfoOrder()
+    
+    Mesh % NumberOfNodes = n0 + n1
+
+    CALL ReleaseMeshEdgeTables( Mesh )
+    CALL ReleaseMeshFaceTables( Mesh )     
+
+    
+  CONTAINS
+
+    
+    SUBROUTINE IncreaseParallelInfoOrder()
+      TYPE( ParallelInfo_t), POINTER :: ParInfo
+      INTEGER, POINTER :: globaldofs(:)
+      LOGICAL, POINTER :: ginterface(:)
+      TYPE(NeighbourList_t), POINTER  :: NeighbourList(:)
+
+      IF(ParEnv % PEs == 1 .OR. Mesh % SingleMesh ) RETURN
+
+      ParInfo => Mesh % ParallelInfo
+      
+      ginterface => ParInfo % Ginterface
+      NULLIFY( ParInfo % Ginterface)
+      ALLOCATE( ParInfo % Ginterface(n0+n1))
+      ParInfo % Ginterface(1:n0) = ginterface(1:n0)
+      DEALLOCATE(ginterface)
+
+      globaldofs => ParInfo % Globaldofs
+      NULLIFY( ParInfo % Globaldofs)
+      ALLOCATE( ParInfo % Globaldofs(n0+n1))
+      ParInfo % Globaldofs(1:n0) = globaldofs(1:n0)
+      DEALLOCATE(globaldofs)
+      DO i=1,n1
+        ParInfo % Globaldofs(n0+i) = Mesh % Edges(i) % GelementIndex 
+      END DO
+      
+      neighbourList => ParInfo % NeighbourList
+      NULLIFY( ParInfo % NeighbourList )
+      ALLOCATE( ParInfo % NeighbourList(n0+n1))
+      DO i=1, n0
+        ParInfo % NeighbourList(i) % Neighbours => NeighbourList(i) % Neighbours
+        NULLIFY( NeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( NeighbourList )
+
+      DO i=1,n1
+        ParInfo % NeighbourList(n0+i) % Neighbours => ParInfo % EdgeNeighbourList(i) % Neighbours
+        NULLIFY( ParInfo % EdgeNeighbourList(i) % Neighbours )
+      END DO
+
+    END SUBROUTINE IncreaseParallelInfoOrder
+          
+  END SUBROUTINE IncreseElementOrder
+
+
+  
 !------------------------------------------------------------------------------
 !> Writes the mesh to disk. Note that this does not include the information
 !> of shared nodes needed in parallel computation. This may be used for 
