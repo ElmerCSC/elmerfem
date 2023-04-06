@@ -6,6 +6,9 @@ image::ElmerLogoPlain64x64.png[float="right"]
 
 This is the official source code repository for the Elmer FEM software suite.
 
+Elmer is a tool for the solving a large variety of partial differential equations making it an ideal tool for
+multiphysical problems. It includes models, for example, of structural mechanics, fluid dynamics, heat transfer,
+electromagnetics and beyond. 
 
 
 [.text-center]
@@ -17,15 +20,8 @@ image:https://img.shields.io/github/contributors/ElmerCSC/elmerfem.svg?style=fla
  image:https://img.shields.io/github/issues-pr/ElmerCSC/elmerfem.svg?style=flat["GitHub pull requests", link=https://github.com/ElmerCSC/elmerfem/pulls] image:https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat[] 
 
 [.text-center]
-image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues] image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
-
-
-
-
-[.text-justify]
-Elmer is a finite element software for numerical solution of partial differential equations. Elmer is capable of handling any number of equations and is therefore ideally suited for the simulation of multiphysical problems. It includes models, for example, of structural mechanics, fluid dynamics, heat transfer and electromagnetics. Users can also write their own equations that can be dynamically linked with the main program.
-
-Elmer consists of several parts. The most important ones are ElmerSolver the finite element solver, ElmerGUI the graphical user interface, and ElmerGrid the mesh creation and manipulation tool. Also a visualization tool, ElmerPost, is included in the package but it is no longer developed.  
+image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues]
+// image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
 
 
 === Download binaries
@@ -34,7 +30,8 @@ You may download binaries and virtual machines from http://www.elmerfem.org/blog
 
 === Docker
 
- * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub], https://raw.githubusercontent.com/ElmerCSC/elmerfem/release/ReleaseNotes/release_8.4.txt[more info]
+ * elmerfem: https://github.com/ElmerCSC/elmerfem/blob/devel/docker/elmer.dockerfile[GitHub]
+ * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub]
  * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
  * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 
@@ -114,19 +111,21 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
 image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
 [.text-justify]
-Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well,
+Elmer software is licensed under GPL except for the ElmerSolver library and selected physical modules
+which are under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland.
+However, there have been numerous contributions from other organizations and developers as well,
 and the project is open for new contributions. More information about Elmer's licensing link:license_texts/ElmerLicensePolicy.txt[here].
 
 
-=== Package managers
+//=== Package managers
 
-[.text-center]
-image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
+//[.text-center]
+//image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
 
-==== Chocolatey
+//==== Chocolatey
 
-[.text-center]
-image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
+//[.text-center]
+//image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
 
 === Social
 
@@ -139,9 +138,9 @@ image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", lin
 Follow ElmerFEM on Twitter:
 
 [.text-center]
-image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1] image:https://img.shields.io/twitter/follow/CSCfi.svg?style=social["Twitter Follow", link=https://twitter.com/CSCfi] 
+image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1]
 
-Ask your questions on Reddit:
+Discuss Elmer on Reddit (low traffic):
 
 [.text-center]
 image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
