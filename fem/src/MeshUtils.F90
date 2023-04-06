@@ -2684,10 +2684,16 @@ CONTAINS
    TYPE(Mesh_t), POINTER :: Mesh
    LOGICAL :: Parallel
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
+   TYPE(ValueList_t), POINTER :: Vlist
    LOGICAL :: Found
    CHARACTER(*),PARAMETER :: Caller='PrepareMesh'
-
-      
+   
+   IF( PRESENT( mySolver ) ) THEN     
+     VList => Model % Solvers(mySolver) % Values
+   ELSE
+     VList => Model % Simulation
+   END IF
+   
    IF( Mesh % MaxDim == 0) THEN
      CALL SetMeshDimension( Mesh )
    END IF
@@ -2695,6 +2701,12 @@ CONTAINS
      
    CALL CreateIntersectionBCs(Model,Mesh)
 
+   IF( ListGetLogical( Vlist,'Increase Element Order',Found ) ) THEN
+     ! We need to follow the boundary also for the new nodes of the quadratic mesh.
+     CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
+     CALL IncreaseElementOrder( Model, Mesh )
+   END IF
+   
    CALL NonNodalElements()
 
    IF( Parallel ) THEN
@@ -2706,14 +2718,15 @@ CONTAINS
    CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
 
    CALL TagBCsUsingLevelset(Model, Mesh)
+
    
    CALL GeneratePeriodicProjectors( Model, Mesh )    
    
-   IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
+   IF( ListGetLogical( Vlist,'Inspect Quadratic Mesh', Found ) ) THEN
      CALL InspectQuadraticMesh( Mesh ) 
    END IF
    
-   IF( ListGetLogical( Model % Simulation,'Inspect Mesh',Found ) ) THEN
+   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) ) THEN
      CALL InspectMesh( Mesh ) 
    END IF
 
@@ -2721,7 +2734,6 @@ CONTAINS
      Mesh % MaxElementDOFs  = ParallelReduction( Mesh % MaxElementDOFs,2  ) 
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
-
 
 
  CONTAINS
@@ -15787,9 +15799,11 @@ CONTAINS
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
+    CHARACTER(*), PARAMETER :: Caller="MeshExtrude"   
+
 !------------------------------------------------------------------------------
 
-    CALL Info('MeshExtrude','Creating '//I2S(in_levels+1)//' extruded element layers',Level=10)
+    CALL Info(Caller,'Creating '//I2S(in_levels+1)//' extruded element layers',Level=10)
 
     Mesh_out => AllocateMesh()
 
@@ -15811,15 +15825,15 @@ CONTAINS
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
     
-      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrude','PI_in not associated!')
-      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-        CALL Fatal('MeshExtrude','Neighnours not associated!')
+        CALL Fatal(Caller,'Neighnours not associated!')
       END IF
 
       ! For unset neighbours just set the this partition to be the only owner
@@ -15848,8 +15862,8 @@ CONTAINS
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
 
-    CALL Info('MeshExtrude','Number of extruded nodes: '//I2S(nnodes),Level=12)
-    CALL Info('MeshExtrude','Number of extruded elements: '//I2S(gelements),Level=12)
+    CALL Info(Caller,'Number of extruded nodes: '//I2S(nnodes),Level=12)
+    CALL Info(Caller,'Number of extruded elements: '//I2S(gelements),Level=12)
 
 
     ! Create the division for the 1D unit mesh
@@ -15886,7 +15900,7 @@ CONTAINS
     Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
     IF( Rotational ) THEN
       Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0d-3*PI )
-      IF( Rotate2Pi ) CALL Info('MeshExtrude','Perfoming full 2Pi rotation',Level=6)
+      IF( Rotate2Pi ) CALL Info(Caller,'Perfoming full 2Pi rotation',Level=6)
     END IF
 
     
@@ -16203,7 +16217,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info('MeshExtrude',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -16216,7 +16230,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
-    CALL Info('MeshExtrude',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
 
     ! Add start and finish planes except if we have a full rotational symmetry
@@ -16351,18 +16365,19 @@ CONTAINS
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord,zmin,zmax
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
+    CHARACTER(*), PARAMETER :: Caller="MeshExtrudeSlices"   
 !------------------------------------------------------------------------------
 
     ! The historical choice in_levels in annoying when we want to split the divisions.
     nlev = in_levels+1
     
-    CALL Info('MeshExtrudeSlices','Creating '//I2S(nlev)//' extruded element layers',Level=10)
+    CALL Info(Caller,'Creating '//I2S(nlev)//' extruded element layers',Level=10)
 
     IF( ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found ) ) &
-        CALL Fatal('MeshExtrudeSlices','The slice version cannot handle "Preserve Baseline"!')
+        CALL Fatal(Caller,'The slice version cannot handle "Preserve Baseline"!')
     
     IF( ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found ) ) &
-        CALL Fatal('MeshExtrudeSlices','The slice version cannot handle "Extruded Mesh Rotational"!')    
+        CALL Fatal(Caller,'The slice version cannot handle "Extruded Mesh Rotational"!')    
     
     isParallel = ( ParEnv % PEs > 1 )
     SingleIn = Mesh_in % SingleMesh
@@ -16382,18 +16397,18 @@ CONTAINS
       IF(.NOT. Found) THEN
         nParMesh = 1
         IF(.NOT. SingleIn ) THEN
-          CALL Fatal('MeshExtrudedSlices','This routine expects either Mesh Modulo or Single Mesh!')
+          CALL Fatal(Caller,'This routine expects either Mesh Modulo or Single Mesh!')
         END IF
       END IF
       
       nParExt = nParExt / nParMesh                    
       IF( MODULO(nlev,nParExt) /= 0 ) THEN
-        CALL Fatal('MeshExtrudedSlices','Number of element layers '//I2S(nlev)//&
+        CALL Fatal(Caller,'Number of element layers '//I2S(nlev)//&
             ' not divisible by '//I2S(ParEnv % PEs))
       END IF
       nlev = nlev / nParExt
       IF(nlev < 2) THEN
-        CALL Fatal('MeshExtrudedSlices','At least two element layers needed in each partition!')
+        CALL Fatal(Caller,'At least two element layers needed in each partition!')
       END IF
       ilev = ( ParEnv % MyPe / nParMesh ) * nlev
       Wtable(0:nlev) = Wtable(ilev:nlev+ilev) 
@@ -16440,8 +16455,8 @@ CONTAINS
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
 
-      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrudeSlices','PI_in not associated!')
-      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrudeSlices','PI_out not associated!')
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
@@ -16449,7 +16464,7 @@ CONTAINS
 
       IF(.NOT. SingleIn ) THEN
         IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-          CALL Fatal('MeshExtrudeSlices','Neighnours not associated!')
+          CALL Fatal(Caller,'Neighnours not associated!')
         END IF
       END IF
         
@@ -16479,11 +16494,11 @@ CONTAINS
       END IF
     END IF
 
-    CALL Info('MeshExtrudeSlices','Number of nodes in layer: '//I2S(gnodes),Level=12)
-    CALL Info('MeshExtrudeSlices','Number of elements in layer: '//I2S(gelements),Level=12)
+    CALL Info(Caller,'Number of nodes in layer: '//I2S(gnodes),Level=12)
+    CALL Info(Caller,'Number of elements in layer: '//I2S(gelements),Level=12)
     
-    !CALL Info('MeshExtrudeSlices','Number of extruded nodes: '//I2S((nlev+1)*gnodes),Level=7)
-    !CALL Info('MeshExtrudeSlices','Number of exruded elements: '//I2S(nlev*gelements),Level=7)
+    !CALL Info(Caller,'Number of extruded nodes: '//I2S((nlev+1)*gnodes),Level=7)
+    !CALL Info(Caller,'Number of exruded elements: '//I2S(nlev*gelements),Level=7)
     
     cnt=0
     DO i=0,nlev
@@ -16657,7 +16672,7 @@ CONTAINS
           pInds(1) = Mesh_in % Elements(k) % NodeIndexes(1) +i*n
           pInds(2) = Mesh_in % Elements(k) % NodeIndexes(1) +(i+1)*n
         ELSE
-          CALL Fatal('MeshExtrudeSlices','Cannot extrude boundary element: '//I2S(ElemCode))
+          CALL Fatal(Caller,'Cannot extrude boundary element: '//I2S(ElemCode))
         END IF
         Mesh_out % Elements(cnt) % ElementIndex = cnt
       END DO
@@ -16670,7 +16685,7 @@ CONTAINS
     END IF
     
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info('MeshExtrudeSlices',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -16683,7 +16698,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for each layer: ',max_body
-    CALL Info('MeshExtrudeSlices',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     ALLOCATE(ChildBCs(2*max_body))
     ChildBCs = -1
@@ -16761,7 +16776,7 @@ CONTAINS
     END IF
     
     IF( cnt /= totalnumberofelements ) THEN
-      CALL Fatal('MeshExtrudedSlices','Mismatch between allocated and set elements: '//&
+      CALL Fatal(Caller,'Mismatch between allocated and set elements: '//&
           I2S(totalnumberofelements)//' vs. '//I2S(cnt))
     END IF
 
@@ -16841,10 +16856,11 @@ CONTAINS
   ! made quadratic with the preprocessors but this enables also the use of mesh extrusion
   ! and mesh multiplication which cannot be used with higher order nodal elements.
   !--------------------------------------------------------------------------------------
-  SUBROUTINE IncreseElementOrder( Mesh )
+  SUBROUTINE IncreaseElementOrder( Model, Mesh )
+    TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: Element, Edge
-    INTEGER :: n0,n1,n,m,i,i1,i2,j,t,ElemType, NewType
+    INTEGER :: n0,n1,m1,m2,i,i1,i2,t,ElemType, NewType, Tinds(4)
     INTEGER, POINTER  :: NewIndexes(:)
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:), xtmp(:)
     
@@ -16857,6 +16873,8 @@ CONTAINS
     n0 = Mesh % NumberOfNodes
     n1 = Mesh % NumberOfEdges
 
+    CALL Info('IncreaseElementOrder','Adding node to each edge: '//I2S(n1),Level=8)
+    
     ! Increase size of coorinate vectors
     ALLOCATE(xtmp(n0))
     xtmp = Mesh % Nodes % x
@@ -16879,13 +16897,13 @@ CONTAINS
     DEALLOCATE(xtmp)
 
     ! Locate new nodes at the center of edges
-    DO t=1,Mesh % NumberOfEdges
-      Edge => Mesh % Edges(t)
+    DO i=1,Mesh % NumberOfEdges
+      Edge => Mesh % Edges(i)
       i1 = Edge % NodeIndexes(1)
       i2 = Edge % NodeIndexes(2)
-      x(n0+t) = 0.5_dp*(x(i1)+x(i2))
-      y(n0+t) = 0.5_dp*(y(i1)+y(i2))
-      z(n0+t) = 0.5_dp*(z(i1)+z(i2))
+      x(n0+i) = 0.5_dp*(x(i1)+x(i2))
+      y(n0+i) = 0.5_dp*(y(i1)+y(i2))
+      z(n0+i) = 0.5_dp*(z(i1)+z(i2))
     END DO
 
     ! Add the new nodes to the linear elements and
@@ -16895,16 +16913,32 @@ CONTAINS
       ElemType = Element % TYPE % ElementCode
       IF( ElemType == 101) CYCLE
       
-      n = Element % TYPE % NumberOfNodes
-      m = Element % TYPE % NumberOfEdges
-      NewType = ElemType + m
-      ALLOCATE( NewIndexes(n+m) )
-      NewIndexes(1:n) = Element % NodeIndexes(1:n)
-      NewIndexes(n+1:n+m) = n0 + Element % EdgeIndexes(1:m)      
-      DEALLOCATE( Element % NodeIndexes )
-      Element % NodeIndexes => NewIndexes
-      NULLIFY(NewIndexes)
-      Element % TYPE => GetElementType( NewType ) 
+      SELECT CASE( ElemType )
+      CASE( 101 )
+        CYCLE
+      CASE( 202, 303, 404, 504, 605, 706, 808 )              
+        m1 = Element % TYPE % NumberOfNodes
+        m2 = Element % TYPE % NumberOfEdges
+        NewType = ElemType + m2
+        ALLOCATE( NewIndexes(m1+m2) )
+        NewIndexes(1:m1) = Element % NodeIndexes(1:m1)
+        NewIndexes(m1+1:m1+m2) = n0 + Element % EdgeIndexes(1:m2)      
+        
+        IF( ElemType == 808 ) THEN
+          ! This is somewhat annoying that the edges and nodes cannot be consistent...
+          Tinds(1:4) = NewIndexes(17:20)
+          NewIndexes(17:20) = NewIndexes(13:16)
+          NewIndexes(13:16) = Tinds(1:4)
+        END IF
+
+        DEALLOCATE( Element % NodeIndexes )
+        Element % NodeIndexes => NewIndexes
+        NULLIFY(NewIndexes)
+        Element % TYPE => GetElementType( NewType ) 
+      CASE DEFAULT
+        CALL Fatal('IncreaseElementOrder','Cannot increase element order for: '//I2S(ElemType))
+      END SELECT
+
     END DO
 
     ! Parallel info is needed to renumber the nodes in parallel.
@@ -16915,6 +16949,8 @@ CONTAINS
     CALL ReleaseMeshEdgeTables( Mesh )
     CALL ReleaseMeshFaceTables( Mesh )     
 
+    CALL Info('IncreaseElementOrder','Elements increased to 2nd order serendipity elements')
+    
     
   CONTAINS
 
@@ -16960,7 +16996,7 @@ CONTAINS
 
     END SUBROUTINE IncreaseParallelInfoOrder
           
-  END SUBROUTINE IncreseElementOrder
+  END SUBROUTINE IncreaseElementOrder
 
 
   
