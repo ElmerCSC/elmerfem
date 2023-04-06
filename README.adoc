@@ -32,8 +32,8 @@ You may download binaries and virtual machines from http://www.elmerfem.org/blog
 
  * elmerfem: https://github.com/ElmerCSC/elmerfem/blob/devel/docker/elmer.dockerfile[GitHub]
  * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub]
- * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
- * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
+// * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
+// * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 
 === Documentation
 
@@ -127,40 +127,23 @@ and the project is open for new contributions. More information about Elmer's li
 //[.text-center]
 //image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
 
-=== Social
+=== Dicussions and Media   
 
-[.text-justify]
-Here on https://discordapp.com/invite/NeZEBZn[this Discord channel] you may ask for help or dicuss different Elmer related matters:
+* http://www.elmerfem.org/forum/[Elmer forum] (preferred place for questions with long history)
+* Elmer on Twitter:  image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1]
+* Elmer on LinkedIn: image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
 
-[.text-center]
-image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
-
-Follow ElmerFEM on Twitter:
-
-[.text-center]
-image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1]
-
-Discuss Elmer on Reddit (low traffic):
-
-[.text-center]
-image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
+* https://discordapp.com/invite/NeZEBZn[Discord channel] for more generic discussions on engineering software. image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
+* Elmer on Reddit (low traffic, no support): image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
+* https://www.youtube.com/user/elmerfem[Youtube], animations and webinars
 
 
-=== Computational Glaciology "Elmer/Ice"
+=== Other links for Elmer resources:
 
 * http://elmerice.elmerfem.org[Elmer/Ice community web site]
-* https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/[Elmer/Ice README]
-
-
-=== Other links
-
 * http://www.elmerfem.org/[Elmer Blog]
-* https://www.csc.fi/web/elmer[official CSC homepage]
-* http://www.elmerfem.org/forum/[Elmer forum] (preferred place for asking questions)
-* https://postit.csc.fi/sympa/info/elmerupdates[Updates maling list]
-* https://sourceforge.net/projects/elmerfem/[Elmer at sourceforge (deprecated)] image:https://img.shields.io/sourceforge/dt/elmerfem.svg["Download Elmer", link=https://sourceforge.net/projects/elmerfem/files/latest/download]
-* image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
-* https://www.youtube.com/user/elmerfem[YouTube]
+* https://www.csc.fi/elmer[official CSC homepage]
+* https://postit.csc.fi/sympa/info/elmerupdates[Updates mailing list, low traffic]
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
