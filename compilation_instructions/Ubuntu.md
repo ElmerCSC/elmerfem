@@ -19,3 +19,7 @@ Compilation of Elmer under Ubuntu
  * `make`
  * `sudo make install`
  * The executables are in `/usr/local/bin` folder, you may add this to your PATH if you will
+
+
+These are more recent instructions on discussion forum for Ubuntu 22.04:
+* http://www.elmerfem.org/forum/viewtopic.php?p=28018#p28018
