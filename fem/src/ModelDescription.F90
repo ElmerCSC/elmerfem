@@ -3776,6 +3776,7 @@ CONTAINS
               VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
+	      IF (len(Var % Name) < k2) CYCLE
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
                 SaveThis = .TRUE.
                 ! This makes it possible to request saving of vectors
