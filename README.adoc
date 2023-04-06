@@ -36,8 +36,8 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * Pre-compiled builds:
+http://www.nic.funet.fi/pub/sci/physics/elmer/bin/windows[Winwos Installers],
 http://www.nic.funet.fi/pub/sci/physics/elmer/bin/VirtualMachines/[VirtualBox VM]
-http://www.nic.funet.fi/pub/sci/physics/elmer/bin/windows[Winwos Installers]
 * Documentation (>800 pages): http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[PDF]
 * image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1] link:license_texts/ElmerLicensePolicy.md[Elmer license policy].
 * Compilation:  https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/Ubuntu.md[Linux/Ubuntu],  https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/Windows-msys2.md[Windows/msys2], https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/macOS.md[macOS]

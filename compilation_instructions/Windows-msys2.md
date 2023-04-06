@@ -1,4 +1,7 @@
-==== Windows under msys2
+Windows under msys2
+===================
+
+(note: instructions may be out of date)
 
  * Install MSYS from https://www.msys2.org/
  * Launch MSYS via the "MSYS2 MinGW x64" shortcut.

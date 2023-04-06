@@ -1,4 +1,8 @@
-== Compilation of Elmer under Ubuntu
+Compilation of Elmer under Ubuntu
+=================================
+
+(note: instructions may be out of date)
+
 
  * Download the source code and create `build` directory as above
  * Install the dependencies `sudo apt install git cmake build-essential gfortran libopenmpi-dev libblas-dev liblapack-dev`
