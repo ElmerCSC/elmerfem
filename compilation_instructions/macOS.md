@@ -1,4 +1,4 @@
-==== macOS
+== macOS
 
  * Download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
  * Go to the downloaded directory `mkdir build` and `cd build`
