@@ -30,6 +30,7 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 * image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1] link:license_texts/ElmerLicensePolicy.md[Elmer license policy].
 * http://www.elmerfem.org/blog/documentation/[PDF documentation].
 * http://www.elmerfem.org/blog/binaries/[Binaries].
+* Compilation:  https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/Ubuntu.md[Linux/Ubuntu],  https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/Windows.md[Windows/msys2], https://github.com/ElmerCSC/elmerfem/blob/devel/compilation_instructions/macOS.md[macOS]
 * Docker: https://github.com/ElmerCSC/elmerfem/blob/devel/docker/elmer.dockerfile[GitHub], nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub]
 // * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
 // * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
@@ -58,83 +59,4 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 
 
 
-
-
-==== macOS
-
- * Download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
- * Go to the downloaded directory `mkdir build` and `cd build`
- * Install Homebrew
- * Install GCC `brew install gcc`
- * Install CMake `brew install cmake`
- * Without MPI: 
-    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE`
- * With MPI:
-    ** Install OpenMPI `brew install open-mpi`
-    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE`
- * With ElmerGUI:
-    ** install qt4 with `brew install cartr/qt4/qt@4` 
-    ** install qwt with `brew install cartr/qt4/qwt-qt4`
-    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE -D WITH_ELMERGUI:BOOLEAN=TRUE`
- * With ElmerPost:
-    ** `brew cask install xquartz`
-    ** ....
- * `make`
- * `make install`
-
-==== Ubuntu
-
- * Download the source code and create `build` directory as above
- * Install the dependencies `sudo apt install git cmake build-essential gfortran libopenmpi-dev libblas-dev liblapack-dev`
- * Without MPI:
-    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
- * With MPI:
-    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
- * With ElmerGUI:
-    ** `sudo apt install libqt4-dev libqwt-dev`
-    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ELMERGUI:BOOLEAN=TRUE`
- * With Elmer/Ice (enabling netcdf and MUMPS):
-    ** `sudo apt install libnetcdf-dev libnetcdff-dev libmumps-dev libparmetis-dev`
-    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ElmerIce:BOOLEAN=TRUE -DWITH_Mumps:BOOL=TRUE` 
- * `make`
- * `sudo make install`
- * The executables are in `/usr/local/bin` folder, you may add this to your PATH if you will
-
-==== Windows
-
- * Install MSYS from https://www.msys2.org/
- * Launch MSYS via the "MSYS2 MinGW x64" shortcut.
- * Download fresh MSYS package databases and upgrade installed packages by running `pacman -Syu` twice.
- * Install Elmer MSYS dependencies:
-    ** `pacman -S --noconfirm --needed base-devel mingw-w64-x86_64-toolchain mingw64/mingw-w64-x86_64-cmake mingw64/mingw-w64-x86_64-openblas mingw64/mingw-w64-x86_64-qt5 mingw64/mingw-w64-x86_64-qwt-qt5 mingw64/mingw-w64-x86_64-nsis git`
- * Get the Elmer source code:
-    ** `git clone https://github.com/ElmerCSC/elmerfem`
- * Create directories required for building a local Elmer install
-    ** `mkdir -p bundle_msys2/bin bundle_qt5/bin platforms`
- * Create a build directory for build artifacts
-    ** `mkdir -p build`
- * Run CMake to prepare the build with executable binaries in an "install" directory. Note that the QWT_INCLUDE_DIR needs to be correctly set to match the MSYS installation location.
-    ** `cd build`
-    ** `cmake -G "MSYS Makefiles" -DWITH_ELMERGUI:BOOL=TRUE -DWITH_MPI:BOOL=FALSE -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_Fortran_COMPILER=/mingw64/bin/gfortran.exe -DQWT_INCLUDE_DIR=C:/msys64/mingw64/include/qwt-qt5/ -DWIN32:BOOL=TRUE -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS:BOOL=TRUE ../elmerfem`
- * Build the source code and create a local installation
-    ** `make install`
- * Copy additional dependencies from /mingw64/bin/ to the "install" directory:
-    ** libgfortran-5.dll libgcc_s_seh-1.dll libopenblas.dll libquadmath-0.dll libwinpthread-1.dll libstdc++-6.dll qwt-qt5.dll libdouble-conversion.dll libicuin69.dll libicuuc69.dll libpcre2-16-0.dll libharfbuzz-0.dll libmd4c.dll libpng16-16.dll zlib1.dll libzstd.dll libicudt69.dll libfreetype-6.dll libglib-2.0-0.dll libgraphite2.dll libintl-8.dll libbz2-1.dll libbrotlidec.dll libpcre-1.dll libiconv-2.dll libbrotlicommon.dll
- * Copy Qt platform dependencies into the "install/bin/platforms" directory
-    ** `cp /mingw64/share/qt5/plugins/platforms/qwindows.dll ../install/bin/platforms`
- * Binaries like ElmerSolver.exe or ElmerGUI.exe can now be run from the ../install/bin directory.
-
-
-
-
-
-//=== Package managers
-
-//[.text-center]
-//image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
-
-//==== Chocolatey
-
-//[.text-center]
-//image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
 
