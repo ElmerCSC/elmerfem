@@ -24,22 +24,40 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 // image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
 
 
-=== Download binaries
 
-You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here].
+=== Essential resources
 
-=== Docker
-
- * elmerfem: https://github.com/ElmerCSC/elmerfem/blob/devel/docker/elmer.dockerfile[GitHub]
- * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub]
+* image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1] link:license_texts/ElmerLicensePolicy.md[Elmer license policy].
+* http://www.elmerfem.org/blog/documentation/[PDF documentation].
+* http://www.elmerfem.org/blog/binaries/[Binaries].
+* Docker: https://github.com/ElmerCSC/elmerfem/blob/devel/docker/elmer.dockerfile[GitHub], nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub]
 // * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
 // * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 
-=== Documentation
 
-You may find the PDFs for the documentation http://www.elmerfem.org/blog/documentation/[here].
 
-=== Compiling
+=== Dicussions and Media   
+
+* http://www.elmerfem.org/forum/[phpBB] Discussion forum, preferred place for questions with long history!
+* https://www.youtube.com/user/elmerfem[Youtube], webinars and random animations
+* Elmer on Twitter:  image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1]
+* Elmer on LinkedIn: image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/]
+* https://discordapp.com/invite/NeZEBZn[Discord], more generic discussions on engineering software.
+* Elmer on Reddit (low traffic, no support): image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
+
+
+=== Other links for Elmer resources:
+
+* http://elmerice.elmerfem.org[Elmer/Ice community web site]
+* http://www.elmerfem.org/[Elmer Blog]
+* https://www.csc.fi/elmer[official CSC homepage]
+* https://postit.csc.fi/sympa/info/elmerupdates[Updates mailing list, low traffic]
+* https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
+
+
+
 
 
 ==== macOS
@@ -106,15 +124,8 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
     ** `cp /mingw64/share/qt5/plugins/platforms/qwindows.dll ../install/bin/platforms`
  * Binaries like ElmerSolver.exe or ElmerGUI.exe can now be run from the ../install/bin directory.
 
-=== Licensing
 
-image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
-[.text-justify]
-Elmer software is licensed under GPL except for the ElmerSolver library and selected physical modules
-which are under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland.
-However, there have been numerous contributions from other organizations and developers as well,
-and the project is open for new contributions. More information about Elmer's licensing link:license_texts/ElmerLicensePolicy.txt[here].
 
 
 //=== Package managers
@@ -126,26 +137,4 @@ and the project is open for new contributions. More information about Elmer's li
 
 //[.text-center]
 //image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
-
-=== Dicussions and Media   
-
-* http://www.elmerfem.org/forum/[Elmer forum] (preferred place for questions with long history)
-* Elmer on Twitter:  image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1]
-* Elmer on LinkedIn: image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
-
-* https://discordapp.com/invite/NeZEBZn[Discord channel] for more generic discussions on engineering software. image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
-* Elmer on Reddit (low traffic, no support): image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
-* https://www.youtube.com/user/elmerfem[Youtube], animations and webinars
-
-
-=== Other links for Elmer resources:
-
-* http://elmerice.elmerfem.org[Elmer/Ice community web site]
-* http://www.elmerfem.org/[Elmer Blog]
-* https://www.csc.fi/elmer[official CSC homepage]
-* https://postit.csc.fi/sympa/info/elmerupdates[Updates mailing list, low traffic]
-* https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
-* http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
-* http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
-
 
