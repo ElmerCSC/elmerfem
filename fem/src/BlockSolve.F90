@@ -1916,16 +1916,15 @@ CONTAINS
     IF(ListGetLogical( Params,'Block Nested System',GotIt ) ) THEN
       Amat => TotMatrix % Submatrix(1,1) % Mat
       IF( ASSOCIATED( Amat % PrecValues ) ) THEN
-        IF (.NOT. ASSOCIATED(TotMatrix % Submatrix(1,1) % PrecMat % Values)) THEN
+        PMat => TotMatrix % Submatrix(1,1) % PrecMat
+        IF (.NOT. ASSOCIATED(PMat % Values)) THEN
           CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
-          CALL CRS_CopyMatrixTopology( AMat, &
-              TotMatrix % Submatrix(1,1) % PrecMat )
+          CALL CRS_CopyMatrixTopology( AMat, PMat )
         ELSE
           ! Make a partial check that PrecMat has been derived from the right template:
-          IF (.NOT. ASSOCIATED(AMat % Rows, TotMatrix % Submatrix(1,1) % PrecMat % Rows)) &
+          IF (.NOT. ASSOCIATED(AMat % Rows, PMat % Rows)) &
               CALL Fatal('BlockPrecMatrix', 'Inconsistent matrix structures')
         END IF
-        PMat => TotMatrix % Submatrix(1,1) % PrecMat
         PMat % Values => Amat % PrecValues
         NULLIFY(Amat % PrecValues)
       END IF
