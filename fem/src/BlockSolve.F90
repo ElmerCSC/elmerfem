@@ -1911,14 +1911,20 @@ CONTAINS
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVar % Solver % Matrix
     END IF  
 
-    ! When we have an inner-outer iteration we could well have a different matrix
+    ! When we have an inner-outer iteration, we could well have a different matrix
     ! assembled for the purpose of preconditioning. Use it here, if available.
     IF(ListGetLogical( Params,'Block Nested System',GotIt ) ) THEN
       Amat => TotMatrix % Submatrix(1,1) % Mat
       IF( ASSOCIATED( Amat % PrecValues ) ) THEN
-        CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
-        CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(1,1) % Mat, &
-            TotMatrix % Submatrix(1,1) % PrecMat )   
+        IF (.NOT. ASSOCIATED(TotMatrix % Submatrix(1,1) % PrecMat % Values)) THEN
+          CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
+          CALL CRS_CopyMatrixTopology( AMat, &
+              TotMatrix % Submatrix(1,1) % PrecMat )
+        ELSE
+          ! Make a partial check that PrecMat has been derived from the right template:
+          IF (.NOT. ASSOCIATED(AMat % Rows, TotMatrix % Submatrix(1,1) % PrecMat % Rows)) &
+              CALL Fatal('BlockPrecMatrix', 'Inconsistent matrix structures')
+        END IF
         PMat => TotMatrix % Submatrix(1,1) % PrecMat
         PMat % Values => Amat % PrecValues
         NULLIFY(Amat % PrecValues)
