@@ -16960,7 +16960,8 @@ CONTAINS
       INTEGER, POINTER :: globaldofs(:)
       LOGICAL, POINTER :: ginterface(:)
       TYPE(NeighbourList_t), POINTER  :: NeighbourList(:)
-
+      INTEGER :: globaln0 
+      
       IF(ParEnv % PEs == 1 .OR. Mesh % SingleMesh ) RETURN
 
       ParInfo => Mesh % ParallelInfo
@@ -16975,9 +16976,13 @@ CONTAINS
       NULLIFY( ParInfo % Globaldofs)
       ALLOCATE( ParInfo % Globaldofs(n0+n1))
       ParInfo % Globaldofs(1:n0) = globaldofs(1:n0)
+
+      globaln0 = MAXVAL( globaldofs(1:n0) )
+      globaln0 = ParallelReduction(globaln0,2)
+
       DEALLOCATE(globaldofs)
       DO i=1,n1
-        ParInfo % Globaldofs(n0+i) = Mesh % Edges(i) % GelementIndex 
+        ParInfo % Globaldofs(n0+i) = globaln0 + Mesh % Edges(i) % GelementIndex 
       END DO
       
       neighbourList => ParInfo % NeighbourList
