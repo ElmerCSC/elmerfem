@@ -2079,7 +2079,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
              cmplx_val*localC, im*Omega*cmplx_val*localP )
       END IF
 
-      localConductance = ABS(cmplx_val)
+      localConductance = ABS(cmplx_val*localC)
       Comp % Conductance = Comp % Conductance + localConductance
 
       IF ( LondonEquations ) THEN
