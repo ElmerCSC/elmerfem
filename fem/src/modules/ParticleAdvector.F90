@@ -64,7 +64,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: Var, PTimeVar
-  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, &
+  LOGICAL :: GotIt, Hit, InitLocation, InitTimestep, Found, &
       ParticleInfo, InitAllVelo, ReverseTime, Reinitialize
   INTEGER :: i,j,k,n,dim,No,nodims,&
       ElementIndex, VisitedTimes = 0, nstep, &
@@ -598,8 +598,8 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:), PPerm(:)
     REAL(KIND=dp) :: SqrtElementMetric, Norm, PrevNorm = 0.0_dp, Change
     REAL(KIND=dp), POINTER :: Basis(:)
-    LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,Debug,&
-        UsePerm,InternalVariable,Initiated, Parallel
+    LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,&
+        UsePerm,InternalVariable,Initiated, Parallel, InitIntegral
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, ResultName, OperName, Name
     TYPE(Variable_t), POINTER :: TargetVar, ResultVar, DataVar, Var
     TYPE(Variable_t), POINTER :: ParticleVar
@@ -640,24 +640,34 @@ CONTAINS
     END IF    
 
     Parallel = ( ParEnv % PEs > 1 ) 
-    
+
     Initiated = .FALSE.
 100 NoVar = 0 
     DO WHILE(.TRUE.)
       NoVar = NoVar + 1
-
+      
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
       
       WRITE (Name,'(A,I0)') 'Operator ',NoVar
       OperName = GetString( Params,Name,GotOper)
-      
+
+      InitIntegral = .FALSE.
       IF( ReverseTime ) THEN
-        Stat = ( VariableName == 'particle disp' .OR. &
-            VariableName == 'particle time integral' .OR. &
-            VariableName == 'particle distance integral' ) 
-        IF( .NOT. XOR( Stat, Particles % DtSign == -1 ) ) CYCLE
+        IF( VariableName == 'particle disp' ) THEN
+          ! This is done only at end of forward cycle
+          IF( Particles % DtSign == -1 ) CYCLE          
+        ELSE IF( VariableName == 'particle time integral' .OR. &
+            VariableName == 'particle distance integral' ) THEN
+          ! These are done both at forward and backward cycle
+          ! End of backward cycle, initialize the integral
+          ! End of forward cycle, project particle info to nodal info
+          InitIntegral = ( Particles % DtSign == -1 )
+        ELSE
+          ! This is done at end of backward cycle
+          IF( Particles % DtSign == 1 ) CYCLE
+        END IF
       END IF
       
       CALL Info(Caller,'Setting field '//I2S(NoVar)//' for variable: '//TRIM(VariableName),Level=15)
@@ -666,6 +676,7 @@ CONTAINS
       ! Variables starting with 'particle' as associated with particles
       !----------------------------------------------------------------
       TargetVar => NULL()
+      ResultVar => NULL()
       
       IF( VariableName == 'particle coordinate' .OR. &
           VariableName == 'particle velocity' .OR. &
@@ -726,7 +737,6 @@ CONTAINS
 
       ! Create variables if they do not exist
       !---------------------------------------------------------      
-
       ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName) )
       IF( ASSOCIATED(ResultVar) ) THEN        
         IF( ASSOCIATED( DataVar) ) THEN        
@@ -778,7 +788,7 @@ CONTAINS
 
       ! Finally, set the values
       !---------------------------------------------------------      
-      IF( InternalVariable ) THEN
+      IF( InternalVariable .AND. .NOT. InitIntegral ) THEN
         CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'"to fields',Level=15)
 
         IF( VariableName == 'particle disp') THEN
@@ -864,6 +874,12 @@ CONTAINS
         
       ELSE 
         CALL Info(Caller,'Setting field variable "'//TRIM(VariableName)//'" to advected fields',Level=15)
+
+        IF( InitIntegral ) THEN
+          ! This is a cludge as the path integrals are somewhat special
+          TargetVar => ResultVar
+        END IF
+        
         
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -893,8 +909,23 @@ CONTAINS
             END DO
           END IF
         END DO
-      END IF
+        
+        ! These are initializations related to path integrals.
+        ! No parallel communication required for these.      
+        IF( InitIntegral ) THEN
+          IF( ASSOCIATED( TargetVar ) ) THEN
+            ParticleVar => ParticleVariableGet( Particles, VariableName )
+            IF( ASSOCIATED( ParticleVar ) ) THEN
+              CALL Info(Caller,'Initialize "'//TRIM(ParticleVar % Name)//'" with "'//TRIM(TargetVar % Name)//'"')
+              ParticleVar % Values = NewValues(1:NoParticles)
+            END IF
+          END IF          
+          TargetVar => NULL()
+          CYCLE
+        END IF
 
+      END IF
+        
       ! In a serial case the nodes and particles are directly associated. 
       ! In a parallel case we need to transfer the values from particles in 
       ! different partitions to nodes. 

@@ -5640,13 +5640,20 @@ RETURN
       END IF
 
       UseDummy = ListGetLogical( Params,'Particle Integral Dummy Argument',Found )
+
+      IF( UseDummy .AND. UseGradSource ) THEN
+        CALL Fatal(Caller,'Gradient correction and dummy arguments are incompatible for now!')
+      END IF
     END IF
-    
+      
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 
     j = 0
-    IF( UseDummy ) j = 1
+    IF( UseDummy ) THEN
+      CALL Info(Caller,'Expecting one dummy argument for integral sources!',Level=30)
+      j = 1
+    END IF
       
     IF(TimeInteg) THEN
       CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source',DummyCount=j)    
@@ -5749,7 +5756,11 @@ RETURN
           END IF
 
           IF( TimeDepFields ) THEN
-            PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1  )
+            IF( UseDummy ) THEN
+              PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1, DummyVals = DummyVals  )
+            ELSE
+              PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1 )
+            END IF
             IF ( UseGradSource ) THEN
               GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element,tstep=-1)                    
               PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
@@ -5788,7 +5799,11 @@ RETURN
             Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
           END IF          
           IF( TimeDepFields ) THEN
-            PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1  )
+            IF( UseDummy ) THEN
+              PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1, DummyVals = DummyVals  )
+            ELSE
+              PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1  )
+            END IF
             IF ( UseGradSource ) THEN
               GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element,tstep=-1)                    
               PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
@@ -6387,7 +6402,7 @@ RETURN
     CHARACTER(LEN=*) :: Name
     TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------
-    Var => VariableGet( Particles % Variables, Name )
+    Var => VariableGet( Particles % Variables, Name, ThisOnly = .TRUE. )
 
   END FUNCTION ParticleVariableGet
 !------------------------------------------------------------------------------
