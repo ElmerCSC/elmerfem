@@ -5669,7 +5669,7 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
    fields in FE community are treated. */
 {
   int noknots,totknots,noelements,elemcode,maxnodes;
-  int allocated,dim,ind,lines;
+  int allocated,dim,ind,lines,groupset;
   int reordernodes,reorderelements,nogroups,maxnodeind,maxelem,elid,unvtype,elmertype;
   int nonodes,group,grouptype,mode,nopoints,nodeind,matind,physind,colorind;
   int minelemtype,maxelemtype,physoffset=0,doscaling=FALSE;
@@ -5714,7 +5714,8 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
   maxgroup = 0;
   minphys = INT_MAX;
   maxphys = 0;
-    
+  groupset = 0;
+  
 omstart:
 
   /* this is a global variable in the module */
@@ -6085,7 +6086,8 @@ omstart:
 	      elemcode = data->elementtypes[ind];
 	      maxelemtype = MAX( maxelemtype, elemcode );
 	      minelemtype = MIN( minelemtype, elemcode );
-	      data->material[ind] = nogroup;
+	      data->material[ind] = -nogroup;
+	      groupset++;
 	    }
 	  }
 	  else if(grouptype == 7) {
@@ -6093,11 +6095,12 @@ omstart:
 
 	    if(allocated) {
 	      elemcode = 101;
-	      data->material[noelements+nopoints] = nogroup;
+	      data->material[noelements+nopoints] = -nogroup;
 	      maxelemtype = MAX( maxelemtype, elemcode );
 	      minelemtype = MIN( minelemtype, elemcode );
 	      data->elementtypes[noelements+nopoints] = elemcode;	      
 	      data->topology[noelements+nopoints][0] = ind;
+	      groupset++;
 	    }
 	  }
 	  else {
@@ -6183,6 +6186,21 @@ end:
   }
   fclose(in);
 
+  if( groupset ) {    
+    printf("Group set for %d elements out of %d\n",groupset,noelements);
+    k = 0;
+    for(i=1;i<=data->noelements;i++) {
+      j = data->material[i];
+      if(j<0)
+	data->material[i] = -j;
+      else
+	k++;
+    }
+    printf("Unset group for %d elements\n",k);
+  }
+    
+  
+  
   /* If the physical index may be zero, then we have a risk that there is 
      an unset material index. Elmer does not like material indexes of zeros. 
      This could be made prettier as now the almost same thing is done twice. */
