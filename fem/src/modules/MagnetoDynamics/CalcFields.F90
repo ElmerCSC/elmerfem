@@ -3047,7 +3047,7 @@ CONTAINS
               B(k,3) = 0._dp
             END IF
           CASE(3)
-            B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
+            B(k,:) = normal*MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
           END SELECT
         END DO
 
