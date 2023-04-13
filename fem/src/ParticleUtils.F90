@@ -1703,17 +1703,16 @@ RETURN
   END FUNCTION ChangeParticlePartition
   
 
-  !---------------------------------------------------------
-  !> Subroutine for advecting back to given partition and 
-  !> node index.
-  !---------------------------------------------------------
+  !-----------------------------------------------------------------
+  !> Subroutine for advecting back to given partition and node index.
+  !-----------------------------------------------------------------
   SUBROUTINE ParticleAdvectParallel(Particles, SentField, RecvField, dofs ) 
-    !---------------------------------------------------------
+    !----------------------------------------------------------------------
     TYPE(Particle_t), POINTER :: Particles
     REAL(KIND=dp), POINTER :: SentField(:), RecvField(:)
     INTEGER :: Dofs
     !---------------------------------------------------------
-    INTEGER i,j,k,l,m,n,dim,NoPartitions,NoParticles,part, &
+    INTEGER i,j,k,idof,l,m,n,dim,NoPartitions,NoParticles,part, &
         ierr, status(MPI_STATUS_SIZE), nReceived, nSent, nerr
     INTEGER, ALLOCATABLE :: RecvParts(:), SentParts(:), Requests(:)
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1740,9 +1739,6 @@ RETURN
     IF( .NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
       CALL Fatal('ParticleAdvectParallel','NodeIndex must be present!')
     END IF
-    IF( Dofs /= 1 ) THEN
-      CALL Fatal('ParticleAdvectParallel','Implement for more than one dof!')
-    END IF
 
     ! First take the components of the field that lie in the present partition. 
     !-------------------------------------------------------------------------
@@ -1751,7 +1747,13 @@ RETURN
       IF( Part-1 == ParEnv % MyPe ) THEN
         j = Particles % NodeIndex(i)
         IF ( j==0 ) CYCLE
-        RecvField(j) = SentField(i)
+        IF( dofs == 1 ) THEN
+          RecvField(j) = SentField(i)
+        ELSE
+          DO idof=1,dofs
+            RecvField(dofs*(j-1)+idof) = SentField(dofs*(i-1)+idof)
+          END DO
+        END IF          
       END IF
     END DO
 
@@ -1822,7 +1824,7 @@ RETURN
     CALL Info('ParticleAdvectParallel','Total number of particles to be received: '&
         //I2S(nReceived),Level=12)
 
-    n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
+    n = 2*(dofs*n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
 
     CALL Info('ParticleAdvectParallel','Buffer size for sending and receiving: ' &
@@ -1832,13 +1834,13 @@ RETURN
     ! Allocate sent and receive buffers based on the maximum needed size.
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
-    ALLOCATE( SentReal(n), SentInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
+    ALLOCATE( SentReal(dofs*n), SentInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating sent buffer for size: '&
         //I2S(n),Level=18)
 
     n = MAXVAL( RecvParts )
-    ALLOCATE( RecvReal(n), RecvInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating receive buffer of size: '&
+    ALLOCATE( RecvReal(dofs*n), RecvInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating receive buffer for size: '&
         //I2S(n),Level=18)
 
     ! Send particles:
@@ -1854,7 +1856,13 @@ RETURN
       DO l=1,NoParticles
         IF( Particles % Partition(l) == j ) THEN
           m = m + 1
-          SentReal(m) = SentField(l)
+          IF(dofs==1) THEN
+            SentReal(m) = SentField(l)
+          ELSE
+            DO idof=1,dofs
+              SentReal(dofs*(m-1)+idof) = SentField(dofs*(l-1)+idof)
+            END DO
+          END IF
           SentInt(m) = Particles % NodeIndex(l)
         END IF
       END DO
@@ -1862,7 +1870,7 @@ RETURN
       CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
           1001, ELMER_COMM_WORLD, ierr )
 
-      CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
+      CALL MPI_BSEND( SentReal, dofs*m, MPI_DOUBLE_PRECISION, j-1, &
           1002, ELMER_COMM_WORLD, ierr )
     END DO
 
@@ -1882,7 +1890,7 @@ RETURN
       CALL MPI_RECV( RecvInt, m, MPI_INTEGER, j-1, &
           1001, ELMER_COMM_WORLD, status, ierr )
 
-      CALL MPI_RECV( RecvReal, m, MPI_DOUBLE_PRECISION, j-1, &
+      CALL MPI_RECV( RecvReal, dofs*m, MPI_DOUBLE_PRECISION, j-1, &
           1002, ELMER_COMM_WORLD, status, ierr )
       
       DO l=1,m
@@ -1891,7 +1899,13 @@ RETURN
           nerr = nerr + 1
           CYCLE
         END IF
-        RecvField(k) = RecvReal(l)
+        IF(dofs==1) THEN
+          RecvField(k) = RecvReal(l)
+        ELSE
+          DO idof=1,dofs
+            RecvField(dofs*(k-1)+idof) = RecvReal(dofs*(l-1)+idof)
+          END DO
+        END IF
       END DO
     END DO
 
@@ -2949,7 +2963,7 @@ RETURN
           END DO
         END IF
       END DO
-      
+
       IF( SaveParticleOrigin ) THEN
         DO i=1,Mesh % NumberOfBulkElements
           CurrentElement => Mesh % Elements(i)
@@ -6326,8 +6340,13 @@ RETURN
     TYPE(ValueHandle_t), SAVE :: InitField_h
 !------------------------------------------------------------------------------
 
+    NoParticles = Particles % NumberOfParticles
+    
 
-    IF( ANY( Particles % ElementIndex == 0) ) THEN
+    k = COUNT( Particles % ElementIndex(1:NoParticles) == 0 )
+    k = ParallelReduction(k)
+
+    IF( k > 0 ) THEN
       CALL Info('ParticleVariableInitialize','We need owner elements, going to find them!',Level=10)
       CALL LocateParticles( Particles ) 
     END IF

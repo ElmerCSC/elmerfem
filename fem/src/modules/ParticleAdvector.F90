@@ -100,7 +100,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     IF(GotIt) THEN
       CALL Fatal(Caller,'Reverse time and no reinitialization are in conflict!')
     ELSE
-      CALL Info(Caller,'Enforcing reinitialization because of reverset time!')
+      CALL Info(Caller,'Enforcing reinitialization because of reversed time!')
       Reinitialize = .TRUE.
     END IF
   END IF
@@ -128,7 +128,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     CALL InitializeParticles( Particles, IsAdvector = .TRUE.) 
     CALL ReleaseWaitingParticles(Particles) 
     Particles % Status = PARTICLE_LOCATED
-
+    
     IF( ReverseTime ) THEN
       n = Particles % NumberOfParticles
       ALLOCATE(OrigCoordinate(n,dim))      
@@ -655,7 +655,7 @@ CONTAINS
 
       InitIntegral = .FALSE.
       IF( ReverseTime ) THEN
-        IF( VariableName == 'particle disp' ) THEN
+        IF( VariableName == 'particle disp' .OR. VariableName == 'particle disp abs' ) THEN
           ! This is done only at end of forward cycle
           IF( Particles % DtSign == -1 ) CYCLE          
         ELSE IF( VariableName == 'particle time integral' .OR. &
@@ -789,9 +789,17 @@ CONTAINS
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable .AND. .NOT. InitIntegral ) THEN
-        CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'"to fields',Level=15)
+        CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'" to fields',Level=15)
 
-        IF( VariableName == 'particle disp') THEN
+        IF( VariableName == 'particle disp abs') THEN
+          IF( ResultVar % Dofs /= 1 ) THEN
+            CALL Fatal(Caller,'Variable should have one dof: '//TRIM(VariableName))
+          END IF
+          DO i=1,NoParticles
+            NewValues(i) = SQRT(SUM((Particles % Coordinate(i,:) - OrigCoordinate(i,:))**2))
+          END DO
+
+        ELSE IF( VariableName == 'particle disp') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
