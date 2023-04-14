@@ -135,6 +135,9 @@ Solver 4
 
 ! Treat eigenmodes as timesteps
   Eigen Analysis = True
+  ! Choose between 're', 'im', 'abs' and 'complex'
+  Eigen Vector Component = String "complex"
+
   Exec Solver = after saving
 End 
 

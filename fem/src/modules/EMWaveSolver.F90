@@ -621,14 +621,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Elfield E[Elfield E:3]");    
   
-  ! Electric field is always computed
-  IF( EigenAnalysis ) THEN
-    IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
-      CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable', SolverParams), &
-          "Elfield Im E[Elfield Im E:3]");
-    END IF
-  ELSE          
+  IF( .NOT. EigenAnalysis ) THEN
     ! When requested we may also compute the 1st and 2nd time derivative.
     ! They exist by default as whitney fields but also needs to be projected
     ! to nodal fields.
@@ -676,6 +669,8 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
 
   ! The matrix is constant hence do not ever refactorize.
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
+
+  CALL ListAddNewLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
   
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
   IF(Found .AND. .NOT. NodalFields ) RETURN
@@ -686,13 +681,7 @@ SUBROUTINE EMWaveCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Elfield[Elfield:3]");
   
-  IF( EigenAnalysis ) THEN
-    IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
-      CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable', SolverParams), &
-          "Elfield Im[Elfield Im:3]");
-    END IF
-  ELSE
+  IF( .NOT. EigenAnalysis ) THEN
     IF (GetLogical(SolverParams,'Calculate Electric field derivatives',Found)) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable', SolverParams), &
@@ -743,7 +732,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer
    LOGICAL :: ConstantBulkMatrix, ConstantBulkInUse, Erroneous, EigenAnalysis
-   INTEGER :: soln, NofEigen, iEigen
+   INTEGER :: soln, NofEigen, iEigen, cdofs
    TYPE(ValueList_t), POINTER :: SolverParams 
 
    REAL(KIND=dp) :: mu, eps, mu0, eps0
@@ -794,36 +783,32 @@ END SUBROUTINE EMWaveCalcFields_Init
 
    EF => VariableGet( Mesh % Variables, 'Elfield')
    EF_e => VariableGet( Mesh % Variables, 'Elfield E')
-      
-   IF( EigenAnalysis ) THEN
-     dEF => VariableGet( Mesh % Variables, 'Elfield Im')
-     dEF_e => VariableGet( Mesh % Variables, 'Elfield Im E')
 
+   cdofs = 1
+   IF( EigenAnalysis ) THEN
      ! Dirty allocation loop to reduce code
-     DO i=1,4
+     DO i=1,2
        IF(i==1) THEN
-         ddEF => EF
+         dEF => EF
        ELSEIF(i==2) THEN
-         ddEF => EF_e
-       ELSEIF(i==3) THEN
-         ddEF => dEF
-       ELSE
-         ddEF => dEF_e
+         dEF => EF_e
        END IF
-       IF(ASSOCIATED(ddEF) ) THEN
-         n = SIZE( ddEF % Values ) 
-         IF(.NOT. ASSOCIATED(ddEF % EigenVectors ) ) THEN
-           ALLOCATE( ddEF % EigenVectors(NofEigen,n) )
-           ddEF % EigenVectors = 0.0_dp
+       IF(ASSOCIATED(dEF) ) THEN
+         n = SIZE( dEF % Values ) 
+         IF(.NOT. ASSOCIATED(dEF % EigenVectors ) ) THEN
+           ALLOCATE( dEF % EigenVectors(NofEigen,n) )
+           dEF % EigenVectors = 0.0_dp
            ! Eigenvalues are copied as some postprocessing solvers may use
            ! these to dertemine sizes etc. 
-           ALLOCATE( ddEF % EigenValues(NofEigen) )
-           ddEF % EigenValues = pVar % EigenValues 
+           ALLOCATE( dEF % EigenValues(NofEigen) )
+           dEF % EigenValues = pVar % EigenValues 
          END IF
        END IF
      END DO     
+     dEF => NULL(); dEF_e => NULL()
      ddEF => NULL(); ddEF_e => NULL()
      AnyTimeDer = .FALSE.
+     cdofs = 2
    ELSE
      dEF => VariableGet( Mesh % Variables, 'dEdt')
      dEF_e => VariableGet( Mesh % Variables, 'dEdt E')
@@ -836,7 +821,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        ASSOCIATED( dEF_e ) .OR. ASSOCIATED( ddEF_e ) 
      
    i = 0 
-   IF ( ASSOCIATED(EF)  ) i=i+3
+   IF ( ASSOCIATED(EF)  ) i=i+cdofs*3
    IF ( ASSOCIATED(dEF)  ) i=i+3
    IF ( ASSOCIATED(ddEF)  ) i=i+3
    NodalFields = ( i > 0 )
@@ -846,7 +831,7 @@ END SUBROUTINE EMWaveCalcFields_Init
    END IF
       
    j = 0 
-   IF ( ASSOCIATED(EF_e)  ) j=j+3
+   IF ( ASSOCIATED(EF_e)  ) j=j+cdofs*3
    IF ( ASSOCIATED(dEF_e)  ) j=j+3
    IF ( ASSOCIATED(ddEF_e)  ) j=j+3
    ElementalFields = ( j > 0 )
@@ -897,7 +882,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        dofcount = 0
        CALL LUdecomp(MASS,n,pivot,Erroneous)
        IF (Erroneous) CALL Fatal('EMWaveCalcFields', 'LU-decomposition fails')
-       CALL LocalSol(EF_e,   3, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EF_e,   cdofs*3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(dEF_e,  3, n, MASS, FORCE, pivot, dofcount)
        CALL LocalSol(ddEF_e, 3, n, MASS, FORCE, pivot, dofcount)
      END IF
@@ -925,11 +910,10 @@ END SUBROUTINE EMWaveCalcFields_Init
        CALL Info('EMWaveCalcFields', 'Saving the system matrix', Level=6)
        CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
      END IF
-
      Fsave => NULL()
      IF( ASSOCIATED( Solver % Matrix ) ) Fsave => Solver % Matrix % RHS
      dofcount = 0
-     CALL GlobalSol(EF ,  3, Gforce, dofcount, EF_e)
+     CALL GlobalSol(EF ,  cdofs*3, Gforce, dofcount, EF_e)
      CALL GlobalSol(dEF , 3, Gforce, dofcount, dEF_e)
      CALL GlobalSol(ddEF ,3, Gforce, dofcount, ddEF_e)
      IF(ASSOCIATED(Fsave)) Solver % Matrix % RHS => Fsave
@@ -996,10 +980,8 @@ CONTAINS
         j = pVar % Perm( Indexes(i) )       
         IF ( j > 0 ) THEN
           sol(i) = REAL(pVar % EigenVectors(iEigen,j))
-          IF( AnyTimeDer ) THEN
-            dsol(i) = AIMAG(pVar % EigenVectors(iEigen,j))
-            ddsol(i) = 0.0_dp
-          END IF
+          dsol(i) = AIMAG(pVar % EigenVectors(iEigen,j))
+          ddsol(i) = 0.0_dp
         END IF
       END DO
     ELSE
@@ -1041,7 +1023,7 @@ CONTAINS
       !curr(3) = ListGetElementReal( Cd_h(3), Basis, Element, Found )
       
       EF_ip = MATMUL(sol(1:nd),WBasis(1:nd,:))
-      IF( AnyTimeDer ) THEN
+      IF( AnyTimeDer .OR. EigenAnalysis ) THEN
         dEF_ip = MATMUL(dsol(1:nd),WBasis(1:nd,:))
         ddEF_ip = MATMUL(ddsol(1:nd),WBasis(1:nd,:))
       END IF
@@ -1062,7 +1044,7 @@ CONTAINS
           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(EF_ip)*Basis(p)
           k = k+3
         END IF
-        IF ( ASSOCIATED(dEF).OR.ASSOCIATED(dEF_e)) THEN
+        IF ( ASSOCIATED(dEF).OR.ASSOCIATED(dEF_e).OR.EigenAnalysis) THEN
           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(dEF_ip)*Basis(p)
           k = k+3
         END IF
@@ -1113,7 +1095,12 @@ CONTAINS
      Norm = DefaultSolve()
      
      IF(EigenAnalysis ) THEN
-       Var % EigenVectors(iEigen,i::m) = Solver % Variable % Values
+       IF(i<=3) THEN         
+         Var % EigenVectors(iEigen,i::m/2) = Solver % Variable % Values
+       ELSE
+         Var % EIgenVectors(iEigen,i-3::m/2) = &
+             CMPLX( REAL(Var % EIgenVectors(iEigen,i-3::m/2)), Solver % Variable % Values )
+       END IF
      ELSE
        var % Values(i::m) = Solver % Variable % Values
      END IF
@@ -1142,7 +1129,12 @@ CONTAINS
       CALL LUSolve(n,MASS,x,pivot)
       
       IF(EigenAnalysis ) THEN
-        Var % EigenVectors(iEigen,ind(1:n)+i) = x
+        IF(i<=3) THEN
+          Var % EigenVectors(iEigen,ind(1:n)+i) = x
+        ELSE
+          Var % EIgenVectors(iEigen,ind(1:n)+i-3) = &
+              CMPLX( REAL(Var % EigenVectors(iEigen,ind(1:n)+i-3)), x )
+        END IF
       ELSE
         Var % Values(ind(1:n)+i) = x
       END IF
