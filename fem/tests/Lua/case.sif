@@ -19,7 +19,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "case.ep"
+  Post File   = "case.vtu"
   mesh levels = 3
 End
 
@@ -104,4 +104,4 @@ Solver 1 :: Reference Norm = Real $refnorm$
 Solver 2 :: Reference Norm = Real $refnorm$
 Solver 1 :: Reference Norm Tolerance = Real 1e-5
 Solver 2 :: Reference Norm Tolerance = Real 1e-5
-RUN
+

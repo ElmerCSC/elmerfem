@@ -12,7 +12,8 @@ Simulation
 
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "case.ep"
+  Post File   = "case.vtu"
+  vtu: eigen analysis = logical True
 ! Output File = "case.dat"
 
   Angular Frequency = 1
@@ -68,13 +69,24 @@ Solver 2
   Calculate Magnetic Vector Potential = Logical True
 
   Linear system Solver = Iterative
-  Linear SYstem Iterative Method = CG
+  Linear System Iterative Method = CG
   Linear System Residual Output = 100
   Linear System Max Iterations = 1000
-  Linear System Convergence TOLERANCE = 1e-6
+  Linear System Convergence Tolerance = 1e-6
 
   Steady State Convergence Tolerance = 1e-09
 End
+
+Solver 3
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Save Eigenfrequencies = Logical True
+  Filename = f.dat
+
+  Exec Solver = "after saving"
+  Show Norm Index = 1
+End 
 
 Boundary Condition 1
   Target Boundaries(1) =1 
@@ -104,5 +116,6 @@ Boundary Condition 4
   a im {e} = real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.00000000E+00
-RUN
+! Test for 1st eigenvalue
+Solver 3 :: Reference Norm = 1.98948403E-02
+
