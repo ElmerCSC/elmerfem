@@ -56,7 +56,7 @@ END SUBROUTINE HelmholtzSolver_init
   
 
 !------------------------------------------------------------------------------
-!> Solver for Helmholtz equation accounting also for variable density and 
+!> Solver for the Helmholtz equation accounting also for variable density and 
 !> convection field. Also includes a built-in interface for coupling with harmonic
 !> velocity or displacement fields at the boundary. 
 !> \ingroup Solvers
@@ -76,7 +76,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
 
   LOGICAL :: AllocationsDone = .FALSE., Bubbles, Found, UseConvection, &
-      UseDensity, PlaneWave
+      UseDensity, PlaneWave, UsePrecShift
 
   INTEGER :: iter, i, j, k, l, n, nd, t, istat, eq, LocalNodes
   REAL(KIND=dp) :: Norm, AngularFrequency, s
@@ -89,10 +89,12 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: Load(:,:), Work(:), &
        SoundSpeed(:), Density(:), Damping(:), Impedance(:,:), ConvVelo(:,:)
 
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), PREC(:,:), FORCE(:)
+  COMPLEX(KIND=dp) :: ShiftCoeff
+  
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
 
-  SAVE STIFF, Work, Load, FORCE, &
+  SAVE STIFF, PREC, Work, Load, FORCE, &
        SoundSpeed, Density, Damping, Impedance, AllocationsDone, ConvVelo
 
 !-----------------------------------------------------------------------------
@@ -125,7 +127,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         DEALLOCATE(            &
              Impedance,        &
              Work,             &
-             FORCE,  STIFF,    &
+             FORCE, STIFF, PREC,   &
              SoundSpeed, Density, ConvVelo, Damping, Load, &
              WallVelocity )
      END IF
@@ -135,6 +137,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
           Work( N ),           &
           FORCE( 2*N ),        &
           STIFF( 2*N,2*N ),    &
+          PREC( 2*N,2*N ),    &          
           SoundSpeed( N ), Density( N ), ConvVelo(3,N), Damping( N ), Load( 2,N ), &
           WallVelocity(3,N), STAT=istat )
 
@@ -157,7 +160,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   Bubbles = GetLogical( SolverParams, 'Bubbles', Found )
 
 ! Initially density was not used in the Helmholtz equation. However, if there 
-! are several different densities it must be used and hence it was added later.
+! are several different densities, it must be used and hence it was added later.
 ! Now, a Fatal is returned if not given.
 !---------------------------------------------------------------------------------------
   UseDensity = .TRUE.
@@ -253,9 +256,16 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   IF(.NOT. GotFrequency ) THEN
     CALL Fatal('HelmholtzSolver','Could not figure out Frequency!')
   END IF
-
-
+  
   CALL ListAddConstReal( Model % Simulation, 'res: Frequency', AngularFrequency /(2*PI) )
+
+  
+  ! Check if a special preconditioner is applied:
+  !----------------------------------------------------------
+  ShiftCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', UsePrecShift)
+  ShiftCoeff = CMPLX(REAL(ShiftCoeff), &
+      GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient Im', Found))
+  UsePrecShift = UsePrecShift .OR. Found
 
 
   ! Check whether the equation lives on a convection field
@@ -332,7 +342,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 
 !       Get element local matrix and rhs vector:
 !       ----------------------------------------
-        CALL LocalMatrix(  STIFF, FORCE, AngularFrequency, &
+        CALL LocalMatrix( STIFF, PREC, FORCE, AngularFrequency, &
            SoundSpeed, ConvVelo, Damping, Load, Bubbles, Element, n, nd )
 
 !       Update global matrix and rhs vector from local matrix & vector:
@@ -482,12 +492,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  STIFF, FORCE, AngularFrequency, SoundSpeed, &
+  SUBROUTINE LocalMatrix( STIFF, PREC, FORCE, AngularFrequency, SoundSpeed, &
        ConvVelo, Damping, Load, Bubbles, Element, n, nd )
 !------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: STIFF(:,:), PREC(:,:), FORCE(:)
     REAL(KIND=dp) ::  AngularFrequency, &
          SoundSpeed(:), Damping(:), Load(:,:), ConvVelo(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     LOGICAL :: Bubbles
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
@@ -514,7 +524,8 @@ CONTAINS
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-
+    IF (UsePrecShift) PREC = 0.0_dp
+    
     DiffCoef = 0.0_dp
 
 !------------------------------------------------------------------------------
@@ -595,7 +606,11 @@ CONTAINS
        DO p=1,NBasis
           DO q=1,NBasis
              A = CMPLX( M, D,KIND=dp ) * Basis(q) * Basis(p)
-
+             IF (UsePrecShift) THEN
+               B = -M * ShiftCoeff * Basis(q) * Basis(p)
+               PREC(p,q) = PREC(p,q) + s * B / Rho
+             END IF
+             
              DO i=1,dim
                IF( UseConvection ) THEN
                  A = A + ConvCoef * Velo(i) * dBasisdx(q,i) * Basis(p)
@@ -618,7 +633,16 @@ CONTAINS
        END DO
     END DO
 !------------------------------------------------------------------------------
-
+    IF (UsePrecShift) THEN
+      PREC = STIFF + PREC
+      IF (Bubbles) THEN
+        CALL CondensateP(n, n, PREC)
+        CALL DefaultUpdatePrec(PREC(1:n,1:n))
+      ELSE
+        CALL DefaultUpdatePrec(PREC(1:NBasis,1:NBasis))      
+      END IF
+    END IF
+    
     IF ( Bubbles ) THEN
        CALL CondensateP( n, n, STIFF, FORCE )
     END IF
@@ -628,7 +652,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBoundary(  STIFF, FORCE, AngularFrequency, &
+  SUBROUTINE LocalMatrixBoundary( STIFF, FORCE, AngularFrequency, &
               Impedance, Load, Element, n, nd, ConvVelo )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
@@ -724,7 +748,9 @@ CONTAINS
        END DO
 !------------------------------------------------------------------------------
     END DO
-!------------------------------------------------------------------------------
+
+    IF (UsePrecShift) CALL DefaultUpdatePrec(STIFF(1:nd,1:nd))      
+ !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
 !------------------------------------------------------------------------------
 

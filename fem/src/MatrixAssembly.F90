@@ -1134,10 +1134,10 @@ END SUBROUTINE Condensate
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
-    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
-    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
-    REAL(KIND=dp) :: F(:)      !< Local force vector.
+    REAL(KIND=dp), OPTIONAL :: F(:)   !< Local force vector.
     REAL(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
@@ -1155,7 +1155,7 @@ SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 
     CALL InvertMatrix( Kbb,nb )
 
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F)) F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
       Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
@@ -1173,10 +1173,10 @@ END SUBROUTINE CondensatePR
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
-    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
-    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
-    COMPLEX(KIND=dp) :: F(:)      !< Local force vector.
+    COMPLEX(KIND=dp), OPTIONAL :: F(:)   !< Local force vector.
     COMPLEX(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
@@ -1194,7 +1194,7 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 
     CALL ComplexInvertMatrix( Kbb,nb )
 
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F)) F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
       Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
