@@ -229,7 +229,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
       ELSE IF( DispDofs == dim ) THEN
         DispSolIm => VariableGet( Solver % Mesh % Variables,TRIM(VarName)//' im' )
         DispMode = 3 
-        IF ( ASSOCIATED(DispSol) ) THEN
+        IF ( ASSOCIATED(DispSolIm) ) THEN
           DispIm => DispSolIm % Values
           DispMode = 4
         END IF
