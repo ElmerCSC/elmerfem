@@ -105,6 +105,10 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  IF( ListGetLogical( Params,'Fix Tangent Velocity',GotIt ) ) THEN
+    CALL ApplyTangentFix(.FALSE.)
+  END IF
+  
   
   maxdt = 0.0_dp  
   istep = 1
@@ -144,6 +148,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     InitAllVelo = .FALSE.
   END IF
 
+  
   IF( VisitedTimes == 1 ) THEN
     CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
@@ -277,7 +282,12 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller,'Time reversal finished!',Level=7)
     END IF
   END IF
-        
+  
+  IF( ListGetLogical( Params,'Fix Tangent Velocity',GotIt ) ) THEN
+    CALL ApplyTangentFix(.TRUE.)
+  END IF
+
+  
   CALL Info(Caller,'All done',Level=4)
   CALL Info(Caller, '-----------------------------------------', Level=4 )
   
@@ -421,6 +431,37 @@ CONTAINS
     END IF
       
   END SUBROUTINE SetRetiredParticles
+
+
+  SUBROUTINE ApplyTangentFix(UndoFix)
+    LOGICAL :: UndoFix
+    INTEGER :: sgn,i,jv,jf,vdofs
+    TYPE(Variable_t), POINTER :: VeloVar, FixVar
+    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName
+
+    sgn = -1
+    IF(UndoFix) sgn=1
+    
+    VariableName = ListGetString(Params,'Velocity Variable Name',Found)
+    IF(.NOT. Found) VariableName = 'flow solution'
+    VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )    
+
+    FixVar => VariableGet( Mesh % Variables,'fixvelo')
+    IF(.NOT. ASSOCIATED(FixVar)) CALL Fatal('ApplyTangentFix','"FixVelo" not found!')
+    
+    vdofs = VeloVar % dofs
+    
+    DO i=1, Mesh % NumberOfNodes
+      jf = FixVar % Perm(i)
+      jv = VeloVar % Perm(i)
+      IF(jf==0 .OR. jv==0) CYCLE
+      
+      VeloVar % Values(vdofs*(jv-1)+3) = VeloVar % Values(vdofs*(jv-1)+3) +&
+          sgn * FixVar % Values(jf)
+    END DO
+    
+  END SUBROUTINE ApplyTangentFix
+
 
   
   !------------------------------------------------------------------------

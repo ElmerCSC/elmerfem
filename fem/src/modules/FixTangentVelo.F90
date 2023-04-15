@@ -28,7 +28,7 @@
 ! *
 ! *****************************************************************************/
 
-SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
+SUBROUTINE FixTangentVelo( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   IMPLICIT NONE
   TYPE(Model_t) :: Model
@@ -52,7 +52,7 @@ SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
   SAVE Visited, Nodes, FixVar, VeloVar, FixVals, FixPerm
 
   
-  CALL Info('RegulateSurfVelo','Regulating surface velocity not to go out domain')
+  CALL Info('FixTangentVelo','Regulating surface velocity not to go out domain')
 
   IF(.NOT. Visited) THEN
     Mesh => Solver % Mesh
@@ -62,7 +62,7 @@ SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
     IF(.NOT. Found) str = 'flow solution'
     VeloVar => VariableGet( Mesh % Variables, str )
     IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
-      CALL Fatal('RegulateSurfVelo','Velocity field variable does not exist: '//TRIM(str))           
+      CALL Fatal('FixTangentVelo','Velocity field variable does not exist: '//TRIM(str))           
     END IF
 
     ALLOCATE(FixPerm(Mesh % NumberOfNodes) )
@@ -88,8 +88,8 @@ SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
     END DO
 
     n = ParallelReduction(n)
-    CALL Info('RegulateSurfVelo','Total number of nodes to fix: '//I2S(n))
-    IF(n==0) CALL Fatal('RegulateSurfaceVelo','No nodes to fix!')
+    CALL Info('FixTangentVelo','Total number of nodes to fix: '//I2S(n))
+    IF(n==0) CALL Fatal('FixTangentVelo','No nodes to fix!')
     
     CALL VariableAddVector( Mesh % Variables, Mesh, Solver,'FixVelo', Perm = FixPerm )
     FixVar => VariableGet( Mesh % Variables,'FixVelo')    
@@ -111,7 +111,7 @@ SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
     CALL GetElementNodes(Nodes, Element )
     n = Element % TYPE % NumberOfNodes
     IF(.NOT. (n==3 .OR. n==4)) THEN
-      CALL Fatal('RegulateSurfVelo','Only implemented for 3 and 4 nodes!')
+      CALL Fatal('FixTangentVelo','Only implemented for 3 and 4 nodes!')
     END IF
     
     ! Go through each element node. So lazy coding here fetching the same stuff many times. 
@@ -148,4 +148,4 @@ SUBROUTINE RegulateSurfVelo( Model,Solver,dt,TransientSimulation )
     END DO
   END DO
   
-END SUBROUTINE RegulateSurfVelo
+END SUBROUTINE FixTangentVelo

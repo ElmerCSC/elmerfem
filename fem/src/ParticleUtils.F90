@@ -4069,6 +4069,51 @@ RETURN
             ParticleBounce = .TRUE.
 
             CYCLE
+
+          ELSE IF( ListGetLogical( BC,'Particle Tangent',Stat ) ) THEN
+            ! Get face nodes and normal vector
+            CALL GetElementNodes(ElementNodes, FaceElement )
+            Normal = NormalVector( FaceElement, ElementNodes, Check=.TRUE. )
+
+            BLOCK
+              REAL(KIND=dp) :: Amat(3,3), c(3), r0(3)
+
+              ! Corner node of face triangle
+              r0(1) = ElementNodes % x(1)
+              r0(2) = ElementNodes % y(1)
+              r0(3) = ElementNodes % z(1)
+              
+              ! Two basis vectors formed by the edges
+              Amat(1,1) = ElementNodes % x(2) - r0(1)
+              Amat(2,1) = ElementNodes % y(2) - r0(2)
+              Amat(3,1) = ElementNodes % z(2) - r0(3)
+              
+              Amat(1,2) = ElementNodes % x(3) - r0(1)
+              Amat(2,2) = ElementNodes % y(3) - r0(2)
+              Amat(3,2) = ElementNodes % z(3) - r0(3)
+
+              ! 3rd basis vector is the outward normal              
+              Amat(:,3) = Normal 
+              
+              CALL SolveLinSys3x3( Amat, c, Rfin-r0 ) 
+
+              ! If this is outward from the normal
+              IF(c(3) > 0) THEN
+                Rfin = Rfin - c(3)*Normal
+
+                IF( Debug ) THEN
+                  PRINT *,'Tangent',i,MinLambda,EPSILON(MinLambda)
+                  PRINT *,'Normal:',Normal
+                  PRINT *,'Rtmp:',Rtmp
+                  PRINT *,'Rfin:',Rfin
+                  PRINT *,'Abs(Velo):',SQRT(SUM(Velo**2))
+                  PRINT *,'Velo:',Velo
+                END IF
+                ParticleBounce = .TRUE.
+              END IF
+            END BLOCK
+            CYCLE
+
           ELSE IF( ListGetLogical( BC,'Particle Interact',Stat ) ) THEN
             ParticleStatus0 = ParticleStatus
             Velo0 = Velo
