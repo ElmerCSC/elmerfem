@@ -1947,5 +1947,6 @@ solver:logical:      'normalize by given weight'
 solver:logical:      'set constant weight sum'
 solver:logical:      'Calculate Electric field derivative'
 solver:string:       'eigen vector component'
+bc:integer:          'constraint mode'
 
 
