@@ -1484,7 +1484,6 @@ RETURN
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
       CALL IncreaseParticles( Particles, Particles % NumberOfParticles + 2*n - &
                     Particles % MaxNumberOfParticles )
-    ELSE
     END IF
     
     IF(Particles % dim==2 ) THEN
@@ -1498,6 +1497,9 @@ RETURN
     DO i=1,NoPartitions
       n = Recv_Parts(i)
       IF ( n<=0 ) CYCLE
+
+      CALL Info(Caller,'Partition '//I2S(ParEnv % MyPe+1)//&
+          ' receiving from '//I2S(i)//': '//TRIM(I2S(n)),Level=20)   
       
       proc = Neigh(i)
       ALLOCATE(Indexes(n))
@@ -1701,17 +1703,16 @@ RETURN
   END FUNCTION ChangeParticlePartition
   
 
-  !---------------------------------------------------------
-  !> Subroutine for advecting back to given partition and 
-  !> node index.
-  !---------------------------------------------------------
+  !-----------------------------------------------------------------
+  !> Subroutine for advecting back to given partition and node index.
+  !-----------------------------------------------------------------
   SUBROUTINE ParticleAdvectParallel(Particles, SentField, RecvField, dofs ) 
-    !---------------------------------------------------------
+    !----------------------------------------------------------------------
     TYPE(Particle_t), POINTER :: Particles
     REAL(KIND=dp), POINTER :: SentField(:), RecvField(:)
     INTEGER :: Dofs
     !---------------------------------------------------------
-    INTEGER i,j,k,l,m,n,dim,NoPartitions,NoParticles,part, &
+    INTEGER i,j,k,idof,l,m,n,dim,NoPartitions,NoParticles,part, &
         ierr, status(MPI_STATUS_SIZE), nReceived, nSent, nerr
     INTEGER, ALLOCATABLE :: RecvParts(:), SentParts(:), Requests(:)
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1738,9 +1739,6 @@ RETURN
     IF( .NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
       CALL Fatal('ParticleAdvectParallel','NodeIndex must be present!')
     END IF
-    IF( Dofs /= 1 ) THEN
-      CALL Fatal('ParticleAdvectParallel','Implement for more than one dof!')
-    END IF
 
     ! First take the components of the field that lie in the present partition. 
     !-------------------------------------------------------------------------
@@ -1749,7 +1747,13 @@ RETURN
       IF( Part-1 == ParEnv % MyPe ) THEN
         j = Particles % NodeIndex(i)
         IF ( j==0 ) CYCLE
-        RecvField(j) = SentField(i)
+        IF( dofs == 1 ) THEN
+          RecvField(j) = SentField(i)
+        ELSE
+          DO idof=1,dofs
+            RecvField(dofs*(j-1)+idof) = SentField(dofs*(i-1)+idof)
+          END DO
+        END IF          
       END IF
     END DO
 
@@ -1820,7 +1824,7 @@ RETURN
     CALL Info('ParticleAdvectParallel','Total number of particles to be received: '&
         //I2S(nReceived),Level=12)
 
-    n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
+    n = 2*(dofs*n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
 
     CALL Info('ParticleAdvectParallel','Buffer size for sending and receiving: ' &
@@ -1830,13 +1834,13 @@ RETURN
     ! Allocate sent and receive buffers based on the maximum needed size.
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
-    ALLOCATE( SentReal(n), SentInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
+    ALLOCATE( SentReal(dofs*n), SentInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating sent buffer for size: '&
         //I2S(n),Level=18)
 
     n = MAXVAL( RecvParts )
-    ALLOCATE( RecvReal(n), RecvInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating receive buffer of size: '&
+    ALLOCATE( RecvReal(dofs*n), RecvInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating receive buffer for size: '&
         //I2S(n),Level=18)
 
     ! Send particles:
@@ -1852,7 +1856,13 @@ RETURN
       DO l=1,NoParticles
         IF( Particles % Partition(l) == j ) THEN
           m = m + 1
-          SentReal(m) = SentField(l)
+          IF(dofs==1) THEN
+            SentReal(m) = SentField(l)
+          ELSE
+            DO idof=1,dofs
+              SentReal(dofs*(m-1)+idof) = SentField(dofs*(l-1)+idof)
+            END DO
+          END IF
           SentInt(m) = Particles % NodeIndex(l)
         END IF
       END DO
@@ -1860,7 +1870,7 @@ RETURN
       CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
           1001, ELMER_COMM_WORLD, ierr )
 
-      CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
+      CALL MPI_BSEND( SentReal, dofs*m, MPI_DOUBLE_PRECISION, j-1, &
           1002, ELMER_COMM_WORLD, ierr )
     END DO
 
@@ -1880,7 +1890,7 @@ RETURN
       CALL MPI_RECV( RecvInt, m, MPI_INTEGER, j-1, &
           1001, ELMER_COMM_WORLD, status, ierr )
 
-      CALL MPI_RECV( RecvReal, m, MPI_DOUBLE_PRECISION, j-1, &
+      CALL MPI_RECV( RecvReal, dofs*m, MPI_DOUBLE_PRECISION, j-1, &
           1002, ELMER_COMM_WORLD, status, ierr )
       
       DO l=1,m
@@ -1889,7 +1899,13 @@ RETURN
           nerr = nerr + 1
           CYCLE
         END IF
-        RecvField(k) = RecvReal(l)
+        IF(dofs==1) THEN
+          RecvField(k) = RecvReal(l)
+        ELSE
+          DO idof=1,dofs
+            RecvField(dofs*(k-1)+idof) = RecvReal(dofs*(l-1)+idof)
+          END DO
+        END IF
       END DO
     END DO
 
@@ -2947,7 +2963,7 @@ RETURN
           END DO
         END IF
       END DO
-      
+
       IF( SaveParticleOrigin ) THEN
         DO i=1,Mesh % NumberOfBulkElements
           CurrentElement => Mesh % Elements(i)
@@ -3894,7 +3910,7 @@ RETURN
       DebugPart = ListGetInteger( Params,'Debug particle partition',Stat)
 
       Eps = ListGetConstReal( Params,'Particle Hit Tolerance',Stat)
-      IF(.NOT. Stat) Eps = 1.0e-10
+      IF(.NOT. Stat) Eps = 1.0e-8
       Problems = 0
       Visited = .TRUE.     
     END IF
@@ -4053,6 +4069,51 @@ RETURN
             ParticleBounce = .TRUE.
 
             CYCLE
+
+          ELSE IF( ListGetLogical( BC,'Particle Tangent',Stat ) ) THEN
+            ! Get face nodes and normal vector
+            CALL GetElementNodes(ElementNodes, FaceElement )
+            Normal = NormalVector( FaceElement, ElementNodes, Check=.TRUE. )
+
+            BLOCK
+              REAL(KIND=dp) :: Amat(3,3), c(3), r0(3)
+
+              ! Corner node of face triangle
+              r0(1) = ElementNodes % x(1)
+              r0(2) = ElementNodes % y(1)
+              r0(3) = ElementNodes % z(1)
+              
+              ! Two basis vectors formed by the edges
+              Amat(1,1) = ElementNodes % x(2) - r0(1)
+              Amat(2,1) = ElementNodes % y(2) - r0(2)
+              Amat(3,1) = ElementNodes % z(2) - r0(3)
+              
+              Amat(1,2) = ElementNodes % x(3) - r0(1)
+              Amat(2,2) = ElementNodes % y(3) - r0(2)
+              Amat(3,2) = ElementNodes % z(3) - r0(3)
+
+              ! 3rd basis vector is the outward normal              
+              Amat(:,3) = Normal 
+              
+              CALL SolveLinSys3x3( Amat, c, Rfin-r0 ) 
+
+              ! If this is outward from the normal
+              IF(c(3) > 0) THEN
+                Rfin = Rfin - c(3)*Normal
+
+                IF( Debug ) THEN
+                  PRINT *,'Tangent',i,MinLambda,EPSILON(MinLambda)
+                  PRINT *,'Normal:',Normal
+                  PRINT *,'Rtmp:',Rtmp
+                  PRINT *,'Rfin:',Rfin
+                  PRINT *,'Abs(Velo):',SQRT(SUM(Velo**2))
+                  PRINT *,'Velo:',Velo
+                END IF
+                ParticleBounce = .TRUE.
+              END IF
+            END BLOCK
+            CYCLE
+
           ELSE IF( ListGetLogical( BC,'Particle Interact',Stat ) ) THEN
             ParticleStatus0 = ParticleStatus
             Velo0 = Velo
@@ -4081,7 +4142,6 @@ RETURN
                 ASSOCIATED(LeftElement),ASSOCIATED(RightElement)
           END IF
           
-
           IF( ASSOCIATED( LeftElement) .AND. ASSOCIATED(RightElement)) THEN
             IF( ASSOCIATED(Element, LeftElement)) THEN
               NextElement => RightElement
@@ -4117,8 +4177,6 @@ RETURN
             ASSOCIATED( NextElement, Element), ASSOCIATED( NextElement, PrevElement )
       END IF
       
-
-
       ! continue the search to new elements
       IF( .NOT. ASSOCIATED( NextElement ) ) THEN
         CALL Warn('LocateParticleInMeshMarch','Element not associated!')
@@ -4167,8 +4225,6 @@ RETURN
           EXIT
         END IF 
 
-
-
         Problems(3) = Problems(3) + 1
         WRITE(Message,'(A,3ES12.3)') 'Losing particle '//I2S(No)//' in: ',Rfin(1:3)
         CALL Info('LocateParticlesInMesh',Message,Level=15)
@@ -4182,7 +4238,7 @@ RETURN
     END DO
 
     IF( i >= MaxTrials ) THEN
-      PRINT *,'Used maximum number of trials',MaxTrials,No
+      PRINT *,'Used maximum number of trials',MaxTrials,No,SQRT(ds2)
     END IF
 
     IF( ParticleStatus == PARTICLE_LOST ) THEN
@@ -4363,6 +4419,14 @@ RETURN
         FaceIndex = FaceIndex0
       END IF
 
+
+      IF( ElementIndex == 0 ) THEN
+        Rfin = Rfin0
+        Velo = Velo0
+        ElementIndex = ElementIndex0
+        FaceIndex = FaceIndex0
+      END IF
+      
       IF( debug ) THEN
         PRINT *,parenv % mype, 'No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
         PRINT *,parenv % mype, 'Init:    ',Rinit(1:dim),Rfin(1:dim)
@@ -5635,13 +5699,20 @@ RETURN
       END IF
 
       UseDummy = ListGetLogical( Params,'Particle Integral Dummy Argument',Found )
+
+      IF( UseDummy .AND. UseGradSource ) THEN
+        CALL Fatal(Caller,'Gradient correction and dummy arguments are incompatible for now!')
+      END IF
     END IF
-    
+      
     ! Nothing to integrate over
     IF( .NOT. (TimeInteg .OR. DistInteg ) ) RETURN
 
     j = 0
-    IF( UseDummy ) j = 1
+    IF( UseDummy ) THEN
+      CALL Info(Caller,'Expecting one dummy argument for integral sources!',Level=30)
+      j = 1
+    END IF
       
     IF(TimeInteg) THEN
       CALL ListInitElementKeyword( TimeSource_h,'Body Force','Particle Time Integral Source',DummyCount=j)    
@@ -5744,7 +5815,11 @@ RETURN
           END IF
 
           IF( TimeDepFields ) THEN
-            PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1  )
+            IF( UseDummy ) THEN
+              PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1, DummyVals = DummyVals  )
+            ELSE
+              PrevSource = ListGetElementReal( TimeSource_h, Basis, Element, Found,tstep=-1 )
+            END IF
             IF ( UseGradSource ) THEN
               GradSource = ListGetElementRealGrad( TimeSource_h,dBasisdx,Element,tstep=-1)                    
               PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
@@ -5783,7 +5858,11 @@ RETURN
             Source = Source + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
           END IF          
           IF( TimeDepFields ) THEN
-            PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1  )
+            IF( UseDummy ) THEN
+              PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1, DummyVals = DummyVals  )
+            ELSE
+              PrevSource = ListGetElementReal( DistSource_h, Basis, Element, Found,tstep=-1  )
+            END IF
             IF ( UseGradSource ) THEN
               GradSource = ListGetElementRealGrad( DistSource_h,dBasisdx,Element,tstep=-1)                    
               PrevSource = PrevSource + 0.5*SUM( GradSource(1:dim) * (PrevCoord(1:dim) - Coord(1:dim)) )
@@ -6306,8 +6385,13 @@ RETURN
     TYPE(ValueHandle_t), SAVE :: InitField_h
 !------------------------------------------------------------------------------
 
+    NoParticles = Particles % NumberOfParticles
+    
 
-    IF( ANY( Particles % ElementIndex == 0) ) THEN
+    k = COUNT( Particles % ElementIndex(1:NoParticles) == 0 )
+    k = ParallelReduction(k)
+
+    IF( k > 0 ) THEN
       CALL Info('ParticleVariableInitialize','We need owner elements, going to find them!',Level=10)
       CALL LocateParticles( Particles ) 
     END IF
@@ -6382,7 +6466,7 @@ RETURN
     CHARACTER(LEN=*) :: Name
     TYPE(Variable_t), POINTER :: Var
 !------------------------------------------------------------------------------
-    Var => VariableGet( Particles % Variables, Name )
+    Var => VariableGet( Particles % Variables, Name, ThisOnly = .TRUE. )
 
   END FUNCTION ParticleVariableGet
 !------------------------------------------------------------------------------

@@ -826,6 +826,16 @@ END SUBROUTINE InterpolateMeshToMesh
                  ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
                  ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
                  ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
+
+                 IF( PassiveCoordinate > 0 ) THEN
+                   IF( PassiveCoordinate == 1 ) THEN
+                     ElementNodes % x(1:n) = 0.0_dp
+                   ELSE IF( PassiveCoordinate == 2 ) THEN
+                     ElementNodes % y(1:n) = 0.0_dp
+                   ELSE IF( PassiveCoordinate == 3 ) THEN
+                     ElementNodes % z(1:n) = 0.0_dp
+                   END IF
+                 END IF
                  
                  Found = PointInElement( Element, ElementNodes, &
                      Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric,EdgeBasis=PiolaT)
@@ -853,6 +863,16 @@ END SUBROUTINE InterpolateMeshToMesh
              ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
              ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
              ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
+
+             IF( PassiveCoordinate > 0 ) THEN
+               IF( PassiveCoordinate == 1 ) THEN
+                 ElementNodes % x(1:n) = 0.0_dp
+               ELSE IF( PassiveCoordinate == 2 ) THEN
+                 ElementNodes % y(1:n) = 0.0_dp
+               ELSE IF( PassiveCoordinate == 3 ) THEN
+                 ElementNodes % z(1:n) = 0.0_dp
+               END IF
+             END IF
              
              Found =  PointInElement( Element, ElementNodes, &
                  Point, LocalCoordinates  ) 

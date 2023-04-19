@@ -560,16 +560,18 @@ CONTAINS
    
    !> Return number of degrees of freedom and their indexes.
    !------------------------------------------------------------------------------
-   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(nd)
+   FUNCTION mGetElementDOFs( Indexes, UElement, USolver, NotDG, UMesh )  RESULT(nd)
    !------------------------------------------------------------------------------
      INTEGER :: Indexes(:)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      LOGICAL, OPTIONAL :: NotDG
+     TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      INTEGER :: nd
 
      TYPE(Solver_t),  POINTER :: Solver
      TYPE(Element_t), POINTER :: Element, Parent, Face
+     TYPE(Mesh_t), POINTER :: Mesh
 
      LOGICAL :: Found, GB, DGDisable, NeedEdges
      INTEGER :: i,j,k,id, nb, p, NDOFs, MaxNDOFs, EDOFs, MaxEDOFs, FDOFs, MaxFDOFs, BDOFs
@@ -581,14 +583,20 @@ CONTAINS
      ELSE
        Solver => CurrentModel % Solver
      END IF
-
+     
      nd = 0
 
      IF (.NOT. ASSOCIATED(Solver)) THEN
        CALL Warn('mGetElementDOFS', 'Cannot return DOFs data without knowing solver')
        RETURN
      END IF
-
+     
+     IF( PRESENT( UMesh ) ) THEN
+       Mesh => UMesh
+     ELSE
+       Mesh => Solver % Mesh
+     END IF
+            
      IF ( PRESENT( UElement ) ) THEN
        Element => UElement
      ELSE
@@ -633,7 +641,7 @@ CONTAINS
      END IF
      IF (id==0) id=1
 
-     IF (.NOT.ASSOCIATED(Solver % Mesh)) THEN
+     IF (.NOT.ASSOCIATED(Mesh)) THEN
        IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
          CALL Warn('mGetElementDOFS', &
              'Solver mesh unknown, the node indices are returned')
@@ -644,9 +652,9 @@ CONTAINS
          RETURN
        END IF
      ELSE
-       MaxNDOFs = Solver % Mesh % MaxNDOFs
+       MaxNDOFs = Mesh % MaxNDOFs
      END IF
-     NodalIndexOffset = MaxNDOFs * Solver % Mesh % NumberOfNodes     
+     NodalIndexOffset = MaxNDOFs * Mesh % NumberOfNodes     
 
      NDOFs = Solver % Def_Dofs(ElemFamily,id,1)
      IF (NDOFs > 0) THEN
@@ -660,7 +668,7 @@ CONTAINS
 
      ! The DOFs of advanced elements cannot be returned without knowing mesh
      ! ---------------------------------------------------------------------
-     IF (.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+     IF (.NOT.ASSOCIATED(Mesh)) RETURN
 
      NeedEdges = .FALSE.
      DO i=2,SIZE(Solver % Def_Dofs,3)
@@ -683,7 +691,7 @@ CONTAINS
          !
          IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
            DO j=1,Element % TYPE % NumberOfFaces
-             Face => Solver % Mesh % Faces(Element % FaceIndexes(j))
+             Face => Mesh % Faces(Element % FaceIndexes(j))
              face_type = Face % TYPE % ElementCode/100
              IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                face_id  = Face % BoundaryInfo % Left % BodyId
@@ -704,10 +712,10 @@ CONTAINS
 
      IF ( .NOT. NeedEdges ) RETURN
 
-     MaxFDOFs = Solver % Mesh % MaxFaceDOFs
-     MaxEDOFs = Solver % Mesh % MaxEdgeDOFs
-     EdgeIndexOffset = MaxEDOFs * Solver % Mesh % NumberOfEdges
-     FaceIndexOffset = MaxFDOFs * Solver % Mesh % NumberOfFaces
+     MaxFDOFs = Mesh % MaxFaceDOFs
+     MaxEDOFs = Mesh % MaxEdgeDOFs
+     EdgeIndexOffset = MaxEDOFs * Mesh % NumberOfEdges
+     FaceIndexOffset = MaxFDOFs * Mesh % NumberOfFaces
 
 BLOCK
   LOGICAL  :: EdgesDone, FacesDone
@@ -719,7 +727,7 @@ BLOCK
        IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
          EdgesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOfEdges
-           Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
+           Edge => Mesh % Edges( Element % EdgeIndexes(j) )
            IF( Edge % Type % ElementCode == Element % Type % ElementCode) THEN
              IF ( .NOT. (Solver % GlobalBubbles .AND. &
                    Element % BodyId>0.AND.ASSOCIATED(Element % BoundaryInfo)) ) THEN
@@ -747,7 +755,7 @@ BLOCK
        IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
          FacesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOfFaces
-           Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
+           Face => Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode == Element % Type % ElementCode) THEN
              IF ( .NOT. (Solver % GlobalBubbles .AND. &
@@ -810,7 +818,7 @@ BLOCK
              Ind=Element % PDefs % LocalNumber
            ELSE
              DO Ind=1,Parent % TYPE % NumberOfEdges
-               Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(ind))
+               Edge => Mesh % Edges(Parent % EdgeIndexes(ind))
                k = 0
                DO i=1,Edge % TYPE % NumberOfNodes
                  DO j=1,Element % TYPE % NumberOfNodes
@@ -842,7 +850,7 @@ BLOCK
              Ind=Element % PDefs % LocalNumber
            ELSE
              DO Ind=1,Parent % TYPE % NumberOfFaces
-               Face => Solver % Mesh % Faces(Parent % FaceIndexes(ind))
+               Face => Mesh % Faces(Parent % FaceIndexes(ind))
                k = 0
                DO i=1,Face % TYPE % NumberOfNodes
                  DO j=1,Element % TYPE % NumberOfNodes
@@ -856,14 +864,14 @@ BLOCK
            IF (Ind >= 1 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
 
              IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element, Solver) ) THEN
-               Face => Solver % Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
+               Face => Mesh % Faces(Element % PDefs % localParent % Faceindexes(Ind))
              ELSE
                Face => Element
              END IF
 
              IF (.NOT.EdgesDone .AND. ASSOCIATED(Face % EdgeIndexes)) THEN
                DO j=1,Face % TYPE % NumberOFEdges
-                 Edge => Solver % Mesh % Edges(Face % EdgeIndexes(j))
+                 Edge => Mesh % Edges(Face % EdgeIndexes(j))
 
                  EDOFs = 0
                  IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
@@ -1126,10 +1134,10 @@ END SUBROUTINE Condensate
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
-    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
-    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
-    REAL(KIND=dp) :: F(:)      !< Local force vector.
+    REAL(KIND=dp), OPTIONAL :: F(:)   !< Local force vector.
     REAL(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
@@ -1147,7 +1155,7 @@ SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 
     CALL InvertMatrix( Kbb,nb )
 
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F)) F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
       Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
@@ -1165,10 +1173,10 @@ END SUBROUTINE CondensatePR
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
-    INTEGER :: N               !< Sum of nodal, edge and face degrees of freedom.
-    INTEGER :: Nb              !< Sum of internal (bubble) degrees of freedom.
+    INTEGER :: N               !< The count of nodal, edge and face degrees of freedom.
+    INTEGER :: Nb              !< The count of internal (bubble) degrees of freedom.
     COMPLEX(KIND=dp) :: K(:,:)    !< Local stiffness matrix.
-    COMPLEX(KIND=dp) :: F(:)      !< Local force vector.
+    COMPLEX(KIND=dp), OPTIONAL :: F(:)   !< Local force vector.
     COMPLEX(KIND=dp), OPTIONAL :: F1(:)  !< Local second force vector.
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: Kbb(Nb,Nb), Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
@@ -1186,7 +1194,7 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 
     CALL ComplexInvertMatrix( Kbb,nb )
 
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
+    IF (PRESENT(F)) F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
     IF (PRESENT(F1)) THEN
       Fb  = F1(Bdofs)
       F1(1:n) = F1(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )

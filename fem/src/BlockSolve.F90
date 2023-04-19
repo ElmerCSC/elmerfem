@@ -1911,15 +1911,20 @@ CONTAINS
       TotMatrix % Submatrix(NoVar,NoVar) % PrecMat => AVar % Solver % Matrix
     END IF  
 
-    ! When we have an inner-outer iteration we could well have a different matrix
+    ! When we have an inner-outer iteration, we could well have a different matrix
     ! assembled for the purpose of preconditioning. Use it here, if available.
     IF(ListGetLogical( Params,'Block Nested System',GotIt ) ) THEN
       Amat => TotMatrix % Submatrix(1,1) % Mat
       IF( ASSOCIATED( Amat % PrecValues ) ) THEN
-        CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
-        CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(1,1) % Mat, &
-            TotMatrix % Submatrix(1,1) % PrecMat )   
         PMat => TotMatrix % Submatrix(1,1) % PrecMat
+        IF (.NOT. ASSOCIATED(PMat % Values)) THEN
+          CALL Info('BlockPrecMatrix','Moving PrecValues to PrecMat!')
+          CALL CRS_CopyMatrixTopology( AMat, PMat )
+        ELSE
+          ! Make a partial check that PrecMat has been derived from the right template:
+          IF (.NOT. ASSOCIATED(AMat % Rows, PMat % Rows)) &
+              CALL Fatal('BlockPrecMatrix', 'Inconsistent matrix structures')
+        END IF
         PMat % Values => Amat % PrecValues
         NULLIFY(Amat % PrecValues)
       END IF
@@ -2372,10 +2377,10 @@ CONTAINS
     REAL(KIND=dp) :: nrm
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: b(:)
-    LOGICAL :: Trans, Isolated 
+    LOGICAL :: Trans, Isolated
     
     CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
-    
+
     NoVar = TotMatrix % NoVar
     MaxSize = TotMatrix % MaxSize
     ALLOCATE( s(MaxSize) )
@@ -3082,6 +3087,8 @@ CONTAINS
     NoVar = TotMatrix % NoVar
     Solver => TotMatrix % Solver
 
+    TotMatrix % NoIters = TotMatrix % NoIters + 1
+   
     IF( isParallel ) THEN
       offset => TotMatrix % ParOffset
     ELSE
@@ -3466,6 +3473,9 @@ CONTAINS
     Relax = 1.0_dp
     
     DO iter = 1, LinIter
+
+      ! Store the iteration count
+      TotMatrix % NoIters = iter
       
       ! In block Jacobi the r.h.s. is not updated during the iteration cycle
       !----------------------------------------------------------------------
@@ -3630,6 +3640,8 @@ CONTAINS
     ndim = TotMatrix % TotSize 
     NoVar = TotMatrix % NoVar
 
+    TotMatrix % NoIters = 0
+    
     offset => TotMatrix % Offset
     IF(isParallel) THEN
       poffset => TotMatrix % ParOffset
@@ -4439,7 +4451,11 @@ CONTAINS
     IF( BlockHorVer .OR. BlockCart .OR. BlockDomain .OR. BlockHcurl ) THEN
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
-      
+
+    IF( ListGetLogical( Solver % Values,'Block Save Iterations',Found ) ) THEN
+      CALL ListAddInteger(CurrentModel % Simulation,'res: block iterations',TotMatrix % NoIters)
+    END IF   
+    
     CALL Info('BlockSolveInt','All done')
     CALL Info('BlockSolveInt','-------------------------------------------------',Level=5)
 

@@ -64,7 +64,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Solver_t), POINTER :: PSolver
   TYPE(Variable_t), POINTER :: Var, PTimeVar
-  LOGICAL :: GotIt, Debug, Hit, InitLocation, InitTimestep, Found, &
+  LOGICAL :: GotIt, Hit, InitLocation, InitTimestep, Found, &
       ParticleInfo, InitAllVelo, ReverseTime, Reinitialize
   INTEGER :: i,j,k,n,dim,No,nodims,&
       ElementIndex, VisitedTimes = 0, nstep, &
@@ -100,11 +100,15 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     IF(GotIt) THEN
       CALL Fatal(Caller,'Reverse time and no reinitialization are in conflict!')
     ELSE
-      CALL Info(Caller,'Enforcing reinitialization because of reverset time!')
+      CALL Info(Caller,'Enforcing reinitialization because of reversed time!')
       Reinitialize = .TRUE.
     END IF
   END IF
 
+  IF( ListGetLogical( Params,'Fix Tangent Velocity',GotIt ) ) THEN
+    CALL ApplyTangentFix(.FALSE.)
+  END IF
+  
   
   maxdt = 0.0_dp  
   istep = 1
@@ -128,7 +132,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     CALL InitializeParticles( Particles, IsAdvector = .TRUE.) 
     CALL ReleaseWaitingParticles(Particles) 
     Particles % Status = PARTICLE_LOCATED
-
+    
     IF( ReverseTime ) THEN
       n = Particles % NumberOfParticles
       ALLOCATE(OrigCoordinate(n,dim))      
@@ -144,6 +148,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     InitAllVelo = .FALSE.
   END IF
 
+  
   IF( VisitedTimes == 1 ) THEN
     CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
@@ -277,7 +282,12 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller,'Time reversal finished!',Level=7)
     END IF
   END IF
-        
+  
+  IF( ListGetLogical( Params,'Fix Tangent Velocity',GotIt ) ) THEN
+    CALL ApplyTangentFix(.TRUE.)
+  END IF
+
+  
   CALL Info(Caller,'All done',Level=4)
   CALL Info(Caller, '-----------------------------------------', Level=4 )
   
@@ -421,6 +431,37 @@ CONTAINS
     END IF
       
   END SUBROUTINE SetRetiredParticles
+
+
+  SUBROUTINE ApplyTangentFix(UndoFix)
+    LOGICAL :: UndoFix
+    INTEGER :: sgn,i,jv,jf,vdofs
+    TYPE(Variable_t), POINTER :: VeloVar, FixVar
+    CHARACTER(LEN=MAX_NAME_LEN) :: VariableName
+
+    sgn = -1
+    IF(UndoFix) sgn=1
+    
+    VariableName = ListGetString(Params,'Velocity Variable Name',Found)
+    IF(.NOT. Found) VariableName = 'flow solution'
+    VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )    
+
+    FixVar => VariableGet( Mesh % Variables,'fixvelo')
+    IF(.NOT. ASSOCIATED(FixVar)) CALL Fatal('ApplyTangentFix','"FixVelo" not found!')
+    
+    vdofs = VeloVar % dofs
+    
+    DO i=1, Mesh % NumberOfNodes
+      jf = FixVar % Perm(i)
+      jv = VeloVar % Perm(i)
+      IF(jf==0 .OR. jv==0) CYCLE
+      
+      VeloVar % Values(vdofs*(jv-1)+3) = VeloVar % Values(vdofs*(jv-1)+3) +&
+          sgn * FixVar % Values(jf)
+    END DO
+    
+  END SUBROUTINE ApplyTangentFix
+
 
   
   !------------------------------------------------------------------------
@@ -598,8 +639,8 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:), PPerm(:)
     REAL(KIND=dp) :: SqrtElementMetric, Norm, PrevNorm = 0.0_dp, Change
     REAL(KIND=dp), POINTER :: Basis(:)
-    LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,Debug,&
-        UsePerm,InternalVariable,Initiated, Parallel
+    LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,&
+        UsePerm,InternalVariable,Initiated, Parallel, InitIntegral
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, ResultName, OperName, Name
     TYPE(Variable_t), POINTER :: TargetVar, ResultVar, DataVar, Var
     TYPE(Variable_t), POINTER :: ParticleVar
@@ -640,24 +681,34 @@ CONTAINS
     END IF    
 
     Parallel = ( ParEnv % PEs > 1 ) 
-    
+
     Initiated = .FALSE.
 100 NoVar = 0 
     DO WHILE(.TRUE.)
       NoVar = NoVar + 1
-
+      
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
       
       WRITE (Name,'(A,I0)') 'Operator ',NoVar
       OperName = GetString( Params,Name,GotOper)
-      
+
+      InitIntegral = .FALSE.
       IF( ReverseTime ) THEN
-        Stat = ( VariableName == 'particle disp' .OR. &
-            VariableName == 'particle time integral' .OR. &
-            VariableName == 'particle distance integral' ) 
-        IF( .NOT. XOR( Stat, Particles % DtSign == -1 ) ) CYCLE
+        IF( VariableName == 'particle disp' .OR. VariableName == 'particle disp abs' ) THEN
+          ! This is done only at end of forward cycle
+          IF( Particles % DtSign == -1 ) CYCLE          
+        ELSE IF( VariableName == 'particle time integral' .OR. &
+            VariableName == 'particle distance integral' ) THEN
+          ! These are done both at forward and backward cycle
+          ! End of backward cycle, initialize the integral
+          ! End of forward cycle, project particle info to nodal info
+          InitIntegral = ( Particles % DtSign == -1 )
+        ELSE
+          ! This is done at end of backward cycle
+          IF( Particles % DtSign == 1 ) CYCLE
+        END IF
       END IF
       
       CALL Info(Caller,'Setting field '//I2S(NoVar)//' for variable: '//TRIM(VariableName),Level=15)
@@ -666,6 +717,7 @@ CONTAINS
       ! Variables starting with 'particle' as associated with particles
       !----------------------------------------------------------------
       TargetVar => NULL()
+      ResultVar => NULL()
       
       IF( VariableName == 'particle coordinate' .OR. &
           VariableName == 'particle velocity' .OR. &
@@ -726,7 +778,6 @@ CONTAINS
 
       ! Create variables if they do not exist
       !---------------------------------------------------------      
-
       ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName) )
       IF( ASSOCIATED(ResultVar) ) THEN        
         IF( ASSOCIATED( DataVar) ) THEN        
@@ -778,10 +829,18 @@ CONTAINS
 
       ! Finally, set the values
       !---------------------------------------------------------      
-      IF( InternalVariable ) THEN
-        CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'"to fields',Level=15)
+      IF( InternalVariable .AND. .NOT. InitIntegral ) THEN
+        CALL Info(Caller,'Setting particle variable "'//TRIM(VariableName)//'" to fields',Level=15)
 
-        IF( VariableName == 'particle disp') THEN
+        IF( VariableName == 'particle disp abs') THEN
+          IF( ResultVar % Dofs /= 1 ) THEN
+            CALL Fatal(Caller,'Variable should have one dof: '//TRIM(VariableName))
+          END IF
+          DO i=1,NoParticles
+            NewValues(i) = SQRT(SUM((Particles % Coordinate(i,:) - OrigCoordinate(i,:))**2))
+          END DO
+
+        ELSE IF( VariableName == 'particle disp') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
@@ -838,19 +897,20 @@ CONTAINS
           END DO
 
         ELSE IF( VariableName == 'particle status') THEN
-          DO i=1,NoParticles
-            NewValues(i) = 1.0_dp * Particles % Status(i)
-          END DO
-          
+          NewValues(1:NoParticles) = 1.0_dp * Particles % Status(1:NoParticles)
+
+        ELSE IF( VariableName == 'particle partition') THEN
+          IF( ASSOCIATED( Particles % Partition ) ) THEN
+            NewValues(1:NoParticles) = ParEnv % MyPe + 1.0_dp 
+          END IF
+            
         ELSE IF( VariableName == 'particle number') THEN
           DO i=1,NoParticles
             NewValues(i) = 1.0_dp * i
           END DO
 
         ELSE IF( VariableName == 'particle index') THEN
-          DO i=1,NoParticles
-            NewValues(i) = 1.0_dp * Particles % NodeIndex(i)
-          END DO
+          NewValues(1:NoParticles) = 1.0_dp * Particles % NodeIndex(1:NoParticles)
           
         ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
@@ -863,6 +923,12 @@ CONTAINS
         
       ELSE 
         CALL Info(Caller,'Setting field variable "'//TRIM(VariableName)//'" to advected fields',Level=15)
+
+        IF( InitIntegral ) THEN
+          ! This is a cludge as the path integrals are somewhat special
+          TargetVar => ResultVar
+        END IF
+        
         
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -892,8 +958,23 @@ CONTAINS
             END DO
           END IF
         END DO
-      END IF
+        
+        ! These are initializations related to path integrals.
+        ! No parallel communication required for these.      
+        IF( InitIntegral ) THEN
+          IF( ASSOCIATED( TargetVar ) ) THEN
+            ParticleVar => ParticleVariableGet( Particles, VariableName )
+            IF( ASSOCIATED( ParticleVar ) ) THEN
+              CALL Info(Caller,'Initialize "'//TRIM(ParticleVar % Name)//'" with "'//TRIM(TargetVar % Name)//'"')
+              ParticleVar % Values = NewValues(1:NoParticles)
+            END IF
+          END IF          
+          TargetVar => NULL()
+          CYCLE
+        END IF
 
+      END IF
+        
       ! In a serial case the nodes and particles are directly associated. 
       ! In a parallel case we need to transfer the values from particles in 
       ! different partitions to nodes. 
@@ -1069,7 +1150,6 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
     
   CALL ListAddInteger( Params,'Time Order',0 )
   CALL ListAddNewLogical( Params,'Particle Accurate At Face',.FALSE.)  
-  CALL ListAddLogical( Params,'Particle Fix Frozen',.TRUE.)
 
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.

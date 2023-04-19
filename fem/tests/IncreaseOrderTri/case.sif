@@ -1,0 +1,69 @@
+! Increase element order of 303 elements to 306. Reference norm
+! is computed from externally created mesh of same elements.
+!
+! P.R. 6.4.2023
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Increase Element Order = Logical True
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 1.50635987E-01
+
+!End Of File

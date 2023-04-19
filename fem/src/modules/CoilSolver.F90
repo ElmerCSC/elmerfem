@@ -439,7 +439,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   
        
   DO iter=1,MaxNonlinIter
-      
+    
     IF( iter > 1 ) THEN
       CALL Info(Caller,'Fixing the conductivity field')
       
@@ -536,10 +536,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     END DO
   END DO
 
-
+  
   ! Compute the current
   !---------------------------------
   IF( CalcCurr ) THEN
+    CALL Info(Caller,'Computing current densities',Level=20)
     CALL ListAddLogical( Params,'Calculate Loads',.FALSE.)
 
     MinCurr = 0.0_dp
@@ -2008,11 +2009,13 @@ CONTAINS
     INTEGER :: i,j,k,Coil,nsize,posi,negi
     LOGICAL :: DoIt
 
+    CALL Info(Caller,'Performing scaling of potential for desired current for '//I2S(NoCoils)//' coil',Level=30)
 
+    
     nsize = SIZE( LoadVar % Perm ) 
-
+    
     DO Coil = 1, NoCoils 
-
+      
       ! Evaluate the positive and negative currents
       ! As the total current vanishes these should be roughly the same 
       ! but with different signs. 
@@ -2113,6 +2116,9 @@ CONTAINS
       END IF
     END DO
 
+    CALL Info(Caller,'Scaling of potential finished',Level=30)
+
+    
   END SUBROUTINE ScalePotential
 
 

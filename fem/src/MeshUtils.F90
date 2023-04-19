@@ -2684,10 +2684,16 @@ CONTAINS
    TYPE(Mesh_t), POINTER :: Mesh
    LOGICAL :: Parallel
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
+   TYPE(ValueList_t), POINTER :: Vlist
    LOGICAL :: Found
    CHARACTER(*),PARAMETER :: Caller='PrepareMesh'
-
-      
+   
+   IF( PRESENT( mySolver ) ) THEN     
+     VList => Model % Solvers(mySolver) % Values
+   ELSE
+     VList => Model % Simulation
+   END IF
+   
    IF( Mesh % MaxDim == 0) THEN
      CALL SetMeshDimension( Mesh )
    END IF
@@ -2695,6 +2701,12 @@ CONTAINS
      
    CALL CreateIntersectionBCs(Model,Mesh)
 
+   IF( ListGetLogical( Vlist,'Increase Element Order',Found ) ) THEN
+     ! We need to follow the boundary also for the new nodes of the quadratic mesh.
+     CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
+     CALL IncreaseElementOrder( Model, Mesh )
+   END IF
+   
    CALL NonNodalElements()
 
    IF( Parallel ) THEN
@@ -2706,14 +2718,15 @@ CONTAINS
    CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
 
    CALL TagBCsUsingLevelset(Model, Mesh)
+
    
    CALL GeneratePeriodicProjectors( Model, Mesh )    
    
-   IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
+   IF( ListGetLogical( Vlist,'Inspect Quadratic Mesh', Found ) ) THEN
      CALL InspectQuadraticMesh( Mesh ) 
    END IF
    
-   IF( ListGetLogical( Model % Simulation,'Inspect Mesh',Found ) ) THEN
+   IF( ListGetLogical( Vlist,'Inspect Mesh',Found ) ) THEN
      CALL InspectMesh( Mesh ) 
    END IF
 
@@ -2721,7 +2734,6 @@ CONTAINS
      Mesh % MaxElementDOFs  = ParallelReduction( Mesh % MaxElementDOFs,2  ) 
      Mesh % MaxElementNodes = ParallelReduction( Mesh % MaxElementNodes,2 ) 
    END IF
-
 
 
  CONTAINS
@@ -14607,7 +14619,7 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: InvPerm(:)
     LOGICAL, OPTIONAL :: Parallel
 
-    INTEGER :: i,j,ii,jj
+    INTEGER :: i,j,ii,jj,zerocnt,nonzerocnt
     REAL(KIND=dp) :: rowsum, dia, val
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
@@ -14642,14 +14654,19 @@ CONTAINS
         GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
       END IF
     END IF
-          
+
+    zerocnt = 0
+    nonzerocnt = 0
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
       IF( ASSOCIATED( IntInvPerm ) ) THEN
         ii = intinvperm(i)        
         IF( ii == 0) THEN
-          PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
+          zerocnt = zerocnt + 1
+          !PRINT *,'Projector InvPerm is zero:',ParEnv % MyPe, i, ii
           CYCLE
+        ELSE
+          nonzerocnt = nonzerocnt + 1
         END IF
       ELSE
         ii = i
@@ -14692,6 +14709,11 @@ CONTAINS
     END DO
     CLOSE(1)     
 
+    IF( zerocnt > 0 ) THEN      
+      CALL Warn('SaveProjector','Invperm zero count is '&
+          //I2S(zerocnt)//' (vs. nonzero '//I2S(nonzerocnt)//')')
+    END IF
+    
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
         FileName = TRIM(Prefix)//'_rsum.dat'
@@ -15323,6 +15345,11 @@ CONTAINS
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP EXIT_OK
     END IF    
 
+    IF( InfoActive(20) ) THEN
+      PRINT *,'Projector range:',MINVAL(Projector % Values), MAXVAL(Projector % Values), &
+          SUM(Projector % Values)/SIZE(Projector % Values)
+    END IF
+    
     CALL CheckTimer(Caller,Delete=.TRUE.)
     CALL Info(Caller,'Projector created, now exiting...',Level=8)
 
@@ -15772,9 +15799,11 @@ CONTAINS
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
+    CHARACTER(*), PARAMETER :: Caller="MeshExtrude"   
+
 !------------------------------------------------------------------------------
 
-    CALL Info('MeshExtrude','Creating '//I2S(in_levels+1)//' extruded element layers',Level=10)
+    CALL Info(Caller,'Creating '//I2S(in_levels+1)//' extruded element layers',Level=10)
 
     Mesh_out => AllocateMesh()
 
@@ -15796,15 +15825,15 @@ CONTAINS
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
     
-      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrude','PI_in not associated!')
-      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-        CALL Fatal('MeshExtrude','Neighnours not associated!')
+        CALL Fatal(Caller,'Neighnours not associated!')
       END IF
 
       ! For unset neighbours just set the this partition to be the only owner
@@ -15833,8 +15862,8 @@ CONTAINS
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
 
-    CALL Info('MeshExtrude','Number of extruded nodes: '//I2S(nnodes),Level=12)
-    CALL Info('MeshExtrude','Number of extruded elements: '//I2S(gelements),Level=12)
+    CALL Info(Caller,'Number of extruded nodes: '//I2S(nnodes),Level=12)
+    CALL Info(Caller,'Number of extruded elements: '//I2S(gelements),Level=12)
 
 
     ! Create the division for the 1D unit mesh
@@ -15871,7 +15900,7 @@ CONTAINS
     Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
     IF( Rotational ) THEN
       Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0d-3*PI )
-      IF( Rotate2Pi ) CALL Info('MeshExtrude','Perfoming full 2Pi rotation',Level=6)
+      IF( Rotate2Pi ) CALL Info(Caller,'Perfoming full 2Pi rotation',Level=6)
     END IF
 
     
@@ -16188,7 +16217,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info('MeshExtrude',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -16201,7 +16230,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
-    CALL Info('MeshExtrude',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
 
     ! Add start and finish planes except if we have a full rotational symmetry
@@ -16299,7 +16328,12 @@ CONTAINS
     
     ExtrudedMeshName = ListGetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
     IF(Found) THEN
-      CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Or WriteMeshToDiskPartitioned ? 
+        CALL WriteMeshToDisk2( CurrentModel, Mesh_out, ExtrudedMeshName, ParEnv % MyPe )
+      ELSE        
+        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+      END IF
     END IF
 
 !------------------------------------------------------------------------------
@@ -16331,18 +16365,19 @@ CONTAINS
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord,zmin,zmax
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
+    CHARACTER(*), PARAMETER :: Caller="MeshExtrudeSlices"   
 !------------------------------------------------------------------------------
 
     ! The historical choice in_levels in annoying when we want to split the divisions.
     nlev = in_levels+1
     
-    CALL Info('MeshExtrudeSlices','Creating '//I2S(nlev)//' extruded element layers',Level=10)
+    CALL Info(Caller,'Creating '//I2S(nlev)//' extruded element layers',Level=10)
 
     IF( ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found ) ) &
-        CALL Fatal('MeshExtrudeSlices','The slice version cannot handle "Preserve Baseline"!')
+        CALL Fatal(Caller,'The slice version cannot handle "Preserve Baseline"!')
     
     IF( ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found ) ) &
-        CALL Fatal('MeshExtrudeSlices','The slice version cannot handle "Extruded Mesh Rotational"!')    
+        CALL Fatal(Caller,'The slice version cannot handle "Extruded Mesh Rotational"!')    
     
     isParallel = ( ParEnv % PEs > 1 )
     SingleIn = Mesh_in % SingleMesh
@@ -16362,18 +16397,18 @@ CONTAINS
       IF(.NOT. Found) THEN
         nParMesh = 1
         IF(.NOT. SingleIn ) THEN
-          CALL Fatal('MeshExtrudedSlices','This routine expects either Mesh Modulo or Single Mesh!')
+          CALL Fatal(Caller,'This routine expects either Mesh Modulo or Single Mesh!')
         END IF
       END IF
       
       nParExt = nParExt / nParMesh                    
       IF( MODULO(nlev,nParExt) /= 0 ) THEN
-        CALL Fatal('MeshExtrudedSlices','Number of element layers '//I2S(nlev)//&
+        CALL Fatal(Caller,'Number of element layers '//I2S(nlev)//&
             ' not divisible by '//I2S(ParEnv % PEs))
       END IF
       nlev = nlev / nParExt
       IF(nlev < 2) THEN
-        CALL Fatal('MeshExtrudedSlices','At least two element layers needed in each partition!')
+        CALL Fatal(Caller,'At least two element layers needed in each partition!')
       END IF
       ilev = ( ParEnv % MyPe / nParMesh ) * nlev
       Wtable(0:nlev) = Wtable(ilev:nlev+ilev) 
@@ -16420,8 +16455,8 @@ CONTAINS
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
 
-      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrudeSlices','PI_in not associated!')
-      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrudeSlices','PI_out not associated!')
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal(Caller,'PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal(Caller,'PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % GInterface(nnodes))
@@ -16429,7 +16464,7 @@ CONTAINS
 
       IF(.NOT. SingleIn ) THEN
         IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
-          CALL Fatal('MeshExtrudeSlices','Neighnours not associated!')
+          CALL Fatal(Caller,'Neighnours not associated!')
         END IF
       END IF
         
@@ -16459,11 +16494,11 @@ CONTAINS
       END IF
     END IF
 
-    CALL Info('MeshExtrudeSlices','Number of nodes in layer: '//I2S(gnodes),Level=12)
-    CALL Info('MeshExtrudeSlices','Number of elements in layer: '//I2S(gelements),Level=12)
+    CALL Info(Caller,'Number of nodes in layer: '//I2S(gnodes),Level=12)
+    CALL Info(Caller,'Number of elements in layer: '//I2S(gelements),Level=12)
     
-    !CALL Info('MeshExtrudeSlices','Number of extruded nodes: '//I2S((nlev+1)*gnodes),Level=7)
-    !CALL Info('MeshExtrudeSlices','Number of exruded elements: '//I2S(nlev*gelements),Level=7)
+    !CALL Info(Caller,'Number of extruded nodes: '//I2S((nlev+1)*gnodes),Level=7)
+    !CALL Info(Caller,'Number of exruded elements: '//I2S(nlev*gelements),Level=7)
     
     cnt=0
     DO i=0,nlev
@@ -16637,7 +16672,7 @@ CONTAINS
           pInds(1) = Mesh_in % Elements(k) % NodeIndexes(1) +i*n
           pInds(2) = Mesh_in % Elements(k) % NodeIndexes(1) +(i+1)*n
         ELSE
-          CALL Fatal('MeshExtrudeSlices','Cannot extrude boundary element: '//I2S(ElemCode))
+          CALL Fatal(Caller,'Cannot extrude boundary element: '//I2S(ElemCode))
         END IF
         Mesh_out % Elements(cnt) % ElementIndex = cnt
       END DO
@@ -16650,7 +16685,7 @@ CONTAINS
     END IF
     
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info('MeshExtrudeSlices',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -16663,7 +16698,7 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for each layer: ',max_body
-    CALL Info('MeshExtrudeSlices',Message,Level=8)
+    CALL Info(Caller,Message,Level=8)
 
     ALLOCATE(ChildBCs(2*max_body))
     ChildBCs = -1
@@ -16741,7 +16776,7 @@ CONTAINS
     END IF
     
     IF( cnt /= totalnumberofelements ) THEN
-      CALL Fatal('MeshExtrudedSlices','Mismatch between allocated and set elements: '//&
+      CALL Fatal(Caller,'Mismatch between allocated and set elements: '//&
           I2S(totalnumberofelements)//' vs. '//I2S(cnt))
     END IF
 
@@ -16815,6 +16850,161 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  ! Routine for increasing element order by adding an additional node an each edge.
+  ! Basically the same order of elements could be created by p-elements but this provides
+  ! alternative solution when nodal finite element are preferred. Often the mesh may be
+  ! made quadratic with the preprocessors but this enables also the use of mesh extrusion
+  ! and mesh multiplication which cannot be used with higher order nodal elements.
+  !--------------------------------------------------------------------------------------
+  SUBROUTINE IncreaseElementOrder( Model, Mesh )
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element, Edge
+    INTEGER :: n0,n1,m1,m2,i,i1,i2,t,ElemType, NewType, Tinds(4)
+    INTEGER, POINTER  :: NewIndexes(:)
+    REAL(KIND=dp), POINTER :: x(:), y(:), z(:), xtmp(:)
+    
+    CALL Info('IncreaseElementOrder','Increasing element order from linear to quadratic!')
+    
+    IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL FindMeshEdges( Mesh )
+    END IF
+      
+    n0 = Mesh % NumberOfNodes
+    n1 = Mesh % NumberOfEdges
+
+    CALL Info('IncreaseElementOrder','Adding node to each edge: '//I2S(n1),Level=8)
+    
+    ! Increase size of coorinate vectors
+    ALLOCATE(xtmp(n0))
+    xtmp = Mesh % Nodes % x
+    DEALLOCATE( Mesh % Nodes % x)
+    ALLOCATE( Mesh % Nodes % x(n0+n1))
+    x => Mesh % Nodes % x
+    x(1:n0) = xtmp; x(n0+1:n0+n1) = 0.0_dp
+
+    xtmp = Mesh % Nodes % y
+    DEALLOCATE( Mesh % Nodes % y)
+    ALLOCATE( Mesh % Nodes % y(n0+n1))
+    y => Mesh % Nodes % y
+    y(1:n0) = xtmp; y(n0+1:n0+n1) = 0.0_dp
+
+    xtmp = Mesh % Nodes % z
+    DEALLOCATE( Mesh % Nodes % z)
+    ALLOCATE( Mesh % Nodes % z(n0+n1))
+    z => Mesh % Nodes % z
+    z(1:n0) = xtmp; z(n0+1:n0+n1) = 0.0_dp
+    DEALLOCATE(xtmp)
+
+    ! Locate new nodes at the center of edges
+    DO i=1,Mesh % NumberOfEdges
+      Edge => Mesh % Edges(i)
+      i1 = Edge % NodeIndexes(1)
+      i2 = Edge % NodeIndexes(2)
+      x(n0+i) = 0.5_dp*(x(i1)+x(i2))
+      y(n0+i) = 0.5_dp*(y(i1)+y(i2))
+      z(n0+i) = 0.5_dp*(z(i1)+z(i2))
+    END DO
+
+    ! Add the new nodes to the linear elements and
+    ! change the element type to reflect the increase in number of nodes.
+    DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+      ElemType = Element % TYPE % ElementCode
+      IF( ElemType == 101) CYCLE
+      
+      SELECT CASE( ElemType )
+      CASE( 101 )
+        CYCLE
+      CASE( 202, 303, 404, 504, 605, 706, 808 )              
+        m1 = Element % TYPE % NumberOfNodes
+        m2 = Element % TYPE % NumberOfEdges
+        NewType = ElemType + m2
+        ALLOCATE( NewIndexes(m1+m2) )
+        NewIndexes(1:m1) = Element % NodeIndexes(1:m1)
+        NewIndexes(m1+1:m1+m2) = n0 + Element % EdgeIndexes(1:m2)      
+        
+        IF( ElemType == 808 ) THEN
+          ! This is somewhat annoying that the edges and nodes cannot be consistent...
+          Tinds(1:4) = NewIndexes(17:20)
+          NewIndexes(17:20) = NewIndexes(13:16)
+          NewIndexes(13:16) = Tinds(1:4)
+        END IF
+
+        DEALLOCATE( Element % NodeIndexes )
+        Element % NodeIndexes => NewIndexes
+        NULLIFY(NewIndexes)
+        Element % TYPE => GetElementType( NewType ) 
+      CASE DEFAULT
+        CALL Fatal('IncreaseElementOrder','Cannot increase element order for: '//I2S(ElemType))
+      END SELECT
+
+    END DO
+
+    ! Parallel info is needed to renumber the nodes in parallel.
+    CALL IncreaseParallelInfoOrder()
+    
+    Mesh % NumberOfNodes = n0 + n1
+
+    CALL ReleaseMeshEdgeTables( Mesh )
+    CALL ReleaseMeshFaceTables( Mesh )     
+
+    CALL Info('IncreaseElementOrder','Elements increased to 2nd order serendipity elements')
+    
+    
+  CONTAINS
+
+    
+    SUBROUTINE IncreaseParallelInfoOrder()
+      TYPE( ParallelInfo_t), POINTER :: ParInfo
+      INTEGER, POINTER :: globaldofs(:)
+      LOGICAL, POINTER :: ginterface(:)
+      TYPE(NeighbourList_t), POINTER  :: NeighbourList(:)
+      INTEGER :: globaln0 
+      
+      IF(ParEnv % PEs == 1 .OR. Mesh % SingleMesh ) RETURN
+
+      ParInfo => Mesh % ParallelInfo
+      
+      ginterface => ParInfo % Ginterface
+      NULLIFY( ParInfo % Ginterface)
+      ALLOCATE( ParInfo % Ginterface(n0+n1))
+      ParInfo % Ginterface(1:n0) = ginterface(1:n0)
+      DEALLOCATE(ginterface)
+
+      globaldofs => ParInfo % Globaldofs
+      NULLIFY( ParInfo % Globaldofs)
+      ALLOCATE( ParInfo % Globaldofs(n0+n1))
+      ParInfo % Globaldofs(1:n0) = globaldofs(1:n0)
+
+      globaln0 = MAXVAL( globaldofs(1:n0) )
+      globaln0 = ParallelReduction(globaln0,2)
+
+      DEALLOCATE(globaldofs)
+      DO i=1,n1
+        ParInfo % Globaldofs(n0+i) = globaln0 + Mesh % Edges(i) % GelementIndex 
+      END DO
+      
+      neighbourList => ParInfo % NeighbourList
+      NULLIFY( ParInfo % NeighbourList )
+      ALLOCATE( ParInfo % NeighbourList(n0+n1))
+      DO i=1, n0
+        ParInfo % NeighbourList(i) % Neighbours => NeighbourList(i) % Neighbours
+        NULLIFY( NeighbourList(i) % Neighbours )
+      END DO
+      DEALLOCATE( NeighbourList )
+
+      DO i=1,n1
+        ParInfo % NeighbourList(n0+i) % Neighbours => ParInfo % EdgeNeighbourList(i) % Neighbours
+        NULLIFY( ParInfo % EdgeNeighbourList(i) % Neighbours )
+      END DO
+
+    END SUBROUTINE IncreaseParallelInfoOrder
+          
+  END SUBROUTINE IncreaseElementOrder
+
+
+  
 !------------------------------------------------------------------------------
 !> Writes the mesh to disk. Note that this does not include the information
 !> of shared nodes needed in parallel computation. This may be used for 
@@ -18734,7 +18924,7 @@ END SUBROUTINE FindNeighbourNodes
      LOGICAL, OPTIONAL :: NoInterp 
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,n1,n2,DOFs
-     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles
+     LOGICAL :: Found, OptimizeBandwidth, GlobalBubbles, IsTransient
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
@@ -18794,17 +18984,31 @@ END SUBROUTINE FindNeighbourNodes
      IF(.NOT. DoInterp) THEN
        Solver % Variable => VariableGet( Mesh % Variables, &
            SaveVar % Name, ThisOnly = .TRUE. )                     
-
-       CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
-           SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
-       Solver % Variable => VariableGet( Mesh % Variables, &
-           SaveVar % Name, ThisOnly = .TRUE. )                     
-
+       IF(.NOT. ASSOCIATED( Solver % Variable ) ) THEN
+         CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
+             SaveVar % Name, SaveVar % Dofs, Perm = Permutation )
+         Solver % Variable => VariableGet( Mesh % Variables, &
+             SaveVar % Name, ThisOnly = .TRUE. )                     
+       END IF
+         
        Solver % Variable % Perm => Permutation
        IF(.NOT. ASSOCIATED( Solver % Variable % perm) ) THEN
          CALL Fatal('UpdateSolverMesh','No Perm associated?!')
        END IF
        NULLIFY(Permutation)
+
+       IsTransient = ( ListGetString( CurrentModel % Simulation,&
+           'Simulation Type' ) == 'transient' ) 
+       IF( IsTransient ) THEN
+         n1 = SIZE( Solver % Variable % Values )
+         IF ( Solver % TimeOrder == 2 ) THEN
+           n2 = 7
+         ELSE 
+           n2 = MAX( Solver % Order, Solver % TimeOrder )
+         END IF
+         ALLOCATE( Solver % Variable % PrevValues(n1,n2) )
+         Solver % Variable % PrevValues = 0.0_dp
+       END IF         
      ELSE
        ALLOCATE( Work(SIZE(Solver % Variable % Values)) )
        Work = Solver % Variable % Values

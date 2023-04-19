@@ -158,6 +158,7 @@ MODULE Types
     TYPE(Matrix_t), POINTER :: ParentMatrix => NULL()
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
+    INTEGER :: NoIters = 0
   END TYPE BlockMatrix_t
 
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 

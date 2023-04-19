@@ -1276,7 +1276,7 @@ CONTAINS
           IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,VarType)
+              Perm,Output,.TRUE.,VarType)
         END DO
       END IF
 
@@ -6608,13 +6608,12 @@ CONTAINS
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
                Handle % IntVarCount, tstep )
          END IF
-         
+
          IF ( ptr % LuaFun ) THEN
-           CALL Fatal('ListGetElementReal','Variable scalar API for LUA not available!')
+           CALL ElmerEvalLua(LuaState, ptr, T, RValue, Handle % ParNo )
          ELSE
            Rvalue = GetMatcReal(Ptr % Cvalue,Handle % ParNo,T)
          END IF
-
            
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
@@ -7477,7 +7476,7 @@ CONTAINS
            IF ( .NOT. ptr % LuaFun ) THEN
              Rvalue = GetMatcReal(ptr % Cvalue,Handle % Parno,T)
            ELSE
-             call ElmerEvalLua(LuaState, ptr, T, RValue, j)
+             CALL ElmerEvalLua(LuaState, ptr, T, RValue, j)
            END IF
            Handle % ValuesVec(gp) = RValue
          END DO

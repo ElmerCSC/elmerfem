@@ -564,11 +564,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-!  The following arrays have hard-coded sizes which may need to be altered if
-!  new finite elements are added. Current defaults are 54 edge finite element 
-!  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
-!  a background element of type 827):
-!------------------------------------------------------------------------------
    REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:), Basis(:), lBasis(:), &
                 dBasisdx(:,:)
    REAL(KIND=dp), ALLOCATABLE :: SOL(:,:), PSOL(:), ElPotSol(:,:), C(:)
@@ -674,8 +669,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Variable_t), POINTER :: FieldVariable
    LOGICAL :: EigenAnalysis
    INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
-   
+
 !-------------------------------------------------------------------------------------------
+
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
    
    CALL Info('MagnetoDynamicsCalcFields','------------------------------',Level=6)
@@ -3051,7 +3047,7 @@ CONTAINS
               B(k,3) = 0._dp
             END IF
           CASE(3)
-            B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
+            B(k,:) = normal*MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
           END SELECT
         END DO
 

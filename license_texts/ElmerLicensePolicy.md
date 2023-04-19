@@ -4,6 +4,10 @@ Elmer licensing policy
 Elmer is a finite element code published under open source. It uses both the GPL (GNU General Public License,
 v. 2.1) and LGPL license (GNU Lesser General Public License, v. 2.0).
 
+Elmer has been mainly developed at CSC - IT Center for Science, Finland.
+However, there have been numerous contributions from other organizations and developers as well,
+and the project is open for new contributions. 
+
 This is a short description of the licensing policy of Elmer suite from practical point of view. It applies to
 the use, modification and contribution of the code. This is a laymans description of the terms and is in no
 way legally binding, or does not add anything to the existing license terms. 

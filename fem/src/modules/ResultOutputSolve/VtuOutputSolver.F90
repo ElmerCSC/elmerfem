@@ -927,7 +927,7 @@ CONTAINS
           IF( EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
                 ASSOCIATED(EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenValues )
+              NoModes = SIZE( Solution % EigenVectors, 1 )
 
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
@@ -962,7 +962,7 @@ CONTAINS
             END IF
           ELSE
             IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenValues )
+              NoModes = SIZE( Solution % EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF
@@ -2098,7 +2098,7 @@ CONTAINS
           NoModes2 = 0          
           IF( .NOT. EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenValues )
+              NoModes = SIZE( Solution % EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
             END IF
 
@@ -2215,7 +2215,7 @@ CONTAINS
             NoModes2 = 0          
             IF( .NOT. EigenAnalysis ) THEN
               IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-                NoModes = SIZE( Solution % EigenValues )
+                NoModes = SIZE( Solution % EigenVectors, 1 )
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               END IF
 
