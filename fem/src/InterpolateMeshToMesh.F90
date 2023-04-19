@@ -887,7 +887,7 @@ END SUBROUTINE InterpolateMeshToMesh
            Element => NULL()
            IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=20 )
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )
              TotFails = TotFails + 1
            END IF
            CYCLE

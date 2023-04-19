@@ -855,6 +855,8 @@ MODULE Types
      INTEGER :: NoModes = 0
      REAL(KIND=dp), POINTER :: CMatrix(:,:) => NULL()
      REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
+     REAL(KIND=dp), POINTER :: Crhs(:) => NULL()
+     REAL(KIND=dp), POINTER :: CrhsIm(:) => NULL()
    END TYPE LumpedModel_t
 
         
