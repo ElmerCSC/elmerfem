@@ -43,7 +43,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   COMPLEX(KIND=dp), POINTER :: CValues(:)
   TYPE(ValueList_t), POINTER :: SolverParams
   
-  LOGICAL :: Found, UseBBox, AllocationsDone
+  LOGICAL :: Found, UseBBox, UseQuadTree, AllocationsDone
   INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
       MaxElemNodes, InputPartitions, ReadPart, AlignCoord, PassiveCoord, &
@@ -89,6 +89,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   dim = CoordinateSystemDimension()
   AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
 
+  UseQuadTree = ListGetLogical( SolverParams,'Use Quadrant Tree',Found ) 
+  
   PassiveCoord = ListGetInteger( SolverParams,'Interpolation Passive Coordinate',Found)
   IF(.NOT. Found) PassiveCoord = ABS(AlignCoord)
   
@@ -481,10 +483,10 @@ CONTAINS
 
     IF( ASSOCIATED( MaskPerm ) ) THEN
       CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
-          UseQuadrantTree=.FALSE.,NewMaskPerm = MaskPerm ) 
+          UseQuadrantTree=UseQuadTree,NewMaskPerm = MaskPerm ) 
     ELSE
       CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
-          UseQuadrantTree=.FALSE.)
+          UseQuadrantTree=UseQuadTree)
     END IF
 
   END SUBROUTINE InterpolateFromGmshFile
