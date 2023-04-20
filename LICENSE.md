@@ -1,3 +1,142 @@
 # License of Elmer
 
-Please, read detailed explanation of the different license schemes applied to Elmer under [Elmer license policy](https://github.com/ElmerCSC/elmerfem/blob/EOSC/license_texts/ElmerLicensePolicy.md)
+Please, find the detailed license-texts under the subdirectory [license_texts](license_texts).
+
+```
+Elmer - A finite elements software for multiphysical problems
+Copyright (C) 1995- , CSC - IT Center for Science Ltd.
+   
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+   
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+   
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+```
+
+The Elmer source files consist of the following modules (in alphabetical order):
+* buildtools - scripts used in building Elmer
+* ElmerGUI - the new graphical user interface of Elmer based on QT 
+* ElmerGUIlogger - launcher for ElmerGUI based on QT
+* eio - elmer I/O library used by ElmerSolver for some tasks
+* elmergrid - simple mesh creation and manipulation utility
+* elmerice - glaciological add-on to elmersolver kernel
+* elmerparam - optimization wrapper
+* fem - elmersolver, the computational kernel
+* front - ElmerFront, the old graphical user interface
+* hutiter - iterative linear algebra 
+* matc - library for on-the-line arithmetics  
+* meshgen2d - 2d Delaunay mesh generation 
+* post - ElmerPost, the visualization program of Elmer 
+* misc - miscallenous stuff
+
+The following exception applied to ElmerGUI module:
+
+
+## ElmerGUI GPL Exception v. 1.0
+
+### Additional rights granted by the copyright holder, beyond GPL version 2.
+
+As an exception to the conditions of Gnu Public Licence version 2 (GPL-2),
+CSC - IT Center for Science Ltd., the copyright holder of ElmerGUI, hereby
+grants you the right to link the source code within this directory against
+the library of
+
+"Open CASCADE" v. 6.3 by Open CASCADE S.A.S.
+
+You may also link ElmerGUI against any later versions of Open CASCADE,
+provided that the lincense of Open CASCADE permits such usage. The licence
+terms for the Open CASCADE library can be found from
+
+[http://www.opencascade.org](http://www.opencascade.org)
+
+
+
+### Additionally distributed libraries and their licenses
+
+Additionally the source distribution comes with some libraries wrapped 
+up in autoconf/automake built scripts:
+* mathlibs - scalapack components: blas, lapack, arpack, parpack
+* umfpack - Umfpack version 4.4 (licensed under LGPL)
+* metis - graph partitioning contained within ElmerGrid
+
+
+#### Metis license:
+
+Copyright 1997, Regents of the University of Minnesota
+
+Our policy regarding the distribution of METIS with third-party applications is as follows:
+    *  Non-commercial applications
+      METIS can be freely distributed provided that:
+          * Proper references are included.
+          * The original documentation and copyright notice is included.
+    * Commercial applications
+      METIS can be freely distributed provided that:
+          * Proper references are included.
+          * The original documentation and copyright notice is included.
+          * METIS is a relatively small portion of the overall application.
+
+#### CMake license:
+
+CMake - Cross Platform Makefile Generator
+Copyright 2000-2011 Kitware, Inc., Insight Software Consortium
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+* Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the
+  documentation and/or other materials provided with the distribution.
+* Neither the names of Kitware, Inc., the Insight Software Consortium,
+  nor the names of their contributors may be used to endorse or promote
+  products derived from this software without specific prior written
+  permission.
+```
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+The above copyright and license notice applies to distributions of
+CMake in source and binary form.  Some source files contain additional
+notices of original copyright by their contributors; see each source
+for details.  Third-party software packages supplied with CMake under
+compatible licenses provide their own copyright notices documented in
+corresponding subdirectories.
+
+
+CMake was initially developed by Kitware with the following sponsorship:
+ * National Library of Medicine at the National Institutes of Health
+   as part of the Insight Segmentation and Registration Toolkit (ITK).
+ * US National Labs (Los Alamos, Livermore, Sandia) ASC Parallel
+   Visualization Initiative.
+ * National Alliance for Medical Image Computing (NAMIC) is funded by the
+   National Institutes of Health through the NIH Roadmap for Medical Research,
+   Grant U54 EB005149.
+ * Kitware, Inc.
+
+
+
+
+
+
+
+
