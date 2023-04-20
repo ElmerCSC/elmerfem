@@ -1,6 +1,6 @@
 # Contributing to ElmerFEM
 
-:+1::tada: Thank you for your interest to contribute to ElmerFEM! :tau::+1:
+:+1::tada: Thank you for your interest to contribute to ElmerFEM! 🎉::+1:
 
 The following is a set of guidelines for contributing to Elmer, on [GitHub](https://github.com/ElmerCSC/elmerfem). Without wanting to impose too much constraints on your contribution, please see this documents as a general guideline.
 
@@ -163,8 +163,9 @@ Please open an issue on `elmerfem/devel` if you have suggestions for new labels,
 
 #### Type of Issue and Issue State
 
+
 | Label name | `elmerfem/devel` :mag_right:| Description |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | `enhancement` | [search][search-elmerfem-repo-label-enhancement]  | Feature requests. |
 | `bug` | [search][search-elmerfem-repo-label-bug] | Confirmed bugs or reports that are very likely to be bugs. |
 | `question` | [search][search-eerlmfem-repo-label-question] |  Questions more than bug reports or feature requests (e.g. how do I do X). |
