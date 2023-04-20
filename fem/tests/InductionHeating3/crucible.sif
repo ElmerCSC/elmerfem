@@ -110,7 +110,9 @@ Solver 2
 
   Nonlinear System Max Iterations = 1
 
+
 ! Pick the right norm for consistency check
+  Skip Compute Nonlinear Change = Logical False
   Skip Compute Steady State Change = Logical True
   Show Norm Index = 1
 End
