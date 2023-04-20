@@ -673,6 +673,8 @@ END SUBROUTINE InterpolateMeshToMesh
 
        RootQuadrant => OldMesh % RootQuadrant
        dim = CoordinateSystemDimension()
+
+       dim = MAX(dim,OldMesh % MeshDim)
        
        IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
          UseQTree = .TRUE.
@@ -931,7 +933,6 @@ END SUBROUTINE InterpolateMeshToMesh
                Var => Var % Next
                CYCLE
              END IF
-            
              
              IF ( Var % DOFs == 1 .AND. &
                  Var % Name(1:10) /= 'coordinate') THEN
@@ -948,7 +949,6 @@ END SUBROUTINE InterpolateMeshToMesh
                 END IF
                 OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
-                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN

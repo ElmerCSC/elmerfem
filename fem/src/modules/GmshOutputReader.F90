@@ -47,7 +47,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
       MaxElemNodes, InputPartitions, ReadPart, AlignCoord, PassiveCoord, &
-      CumNodes, CumElems, iostat 
+      CumNodes, CumElems, iostat, NoVars, MeshDim
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
   REAL(KIND=dp) :: x,y,z,dx,BBTol
   REAL(KIND=dp), ALLOCATABLE :: BBox(:,:), MyBBox(:)
@@ -59,6 +59,11 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var
   INTEGER :: FileUnit=1
+  TYPE VariableArray_t
+    TYPE(Variable_t), POINTER :: Var => NULL()
+  END TYPE VariableArray_t
+  TYPE(VariableArray_t) :: VarArray(20)
+
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputReader'  
   
   INTERFACE
@@ -114,6 +119,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     IF(n==0) DEALLOCATE(MaskPerm)
   ELSE IF( ASSOCIATED( Solver % Variable ) ) THEN
     MaskPerm => Solver % Variable % Perm
+    NULLIFY(MaskPerm)
     IF( ASSOCIATED(MaskPerm) ) THEN
       CALL Info(Caller,'Using Solver % Variable % Perm as the mask for interpolation!')        
       n = COUNT(MaskPerm(1:ToMesh % NumberOfNodes) > 0)
@@ -230,7 +236,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
     CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)    
     FromMesh => AllocateMesh(CumElems,0,CumNodes)    
-    FromMesh % MeshDim = MaxElemDim
+    FromMesh % MeshDim = MAX( MaxElemDim, MeshDim ) 
     FromMesh % MaxElementNodes = MaxElemNodes
     AllocationsDone = .TRUE.    
 
@@ -253,7 +259,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   CALL InterpolateFromGmshFile()
   
   CALL Info(Caller,'Interpolation from Gmsh format complete')
-
+  
 
 CONTAINS
 
@@ -265,13 +271,14 @@ CONTAINS
     REAL(KIND=dp) :: coord(3)
     INTEGER :: GmshToElmerType(21), GmshIndexes(27)
     INTEGER :: i,j,k
-    LOGICAL :: Secondary 
     
     SAVE GmshVer
     
     GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
         510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
-        
+
+    NoVars = 0
+    
     DO WHILE( .TRUE. )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF ( SEQL( str, '$MeshFormat') ) THEN
@@ -386,7 +393,8 @@ CONTAINS
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! 1  
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! time
         READ( str, * ) time
-        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dim  
+        READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dim
+        READ( str, * ) MeshDim 
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! visited
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! dofs
         READ( str, * ) dofs
@@ -401,17 +409,14 @@ CONTAINS
         IF( ASSOCIATED( FromMesh % Variables ) ) THEN
           CALL Info(Caller,'Reusing variable structure',Level=20)
           Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
-          Secondary = .TRUE.
-        ELSE
-          Secondary = .FALSE.
         END IF
 
         IF(.NOT. ASSOCIATED(Var) ) THEN
           CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
-              VarName, dofs = dofs, Perm = Perm, Secondary = Secondary )
+              VarName, dofs = dofs, Perm = Perm )
+          Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
         END IF
-        Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
-
+          
         DO i=1,NoNodes
           READ( FileUnit,'(A)',END=20,ERR=20 ) str  
           k = i + CumNodes
@@ -424,16 +429,19 @@ CONTAINS
         END DO
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
 
-        IF( InfoActive(30) ) THEN
-          IF( ReadPart == InputPartitions ) THEN
-            CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(Var % Name))       
-          END IF
+        NoVars = NoVars + 1
+        VarArray(NoVars) % Var => Var
+                
+        IF( InfoActive(28) ) THEN          
+          IF(NoVars==1) CALL Info(Caller,'Initial field ranges:')
+          CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'From: '//TRIM(Var % Name))       
         END IF
       END IF ! NodeData
     END DO
 
-20  CONTINUE
     
+20  CONTINUE
+
   END SUBROUTINE ReadSingleGmshFile
 
 
@@ -481,6 +489,10 @@ CONTAINS
       x1 = x1 + dx
     END IF
 
+
+    !CALL InspectMesh(FromMesh)
+    !CALL InspectMesh(ToMesh)
+    
     IF( ASSOCIATED( MaskPerm ) ) THEN
       CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
           UseQuadrantTree=UseQuadTree,NewMaskPerm = MaskPerm ) 
@@ -488,7 +500,18 @@ CONTAINS
       CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
           UseQuadrantTree=UseQuadTree)
     END IF
-
+    
+    IF( InfoActive(28) ) THEN
+      CALL Info(Caller,'Projected field ranges:')
+      DO i=1,NoVars        
+        Var => VariableGet( ToMesh % Variables, VarArray(i) % Var % Name, ThisOnly = .TRUE.)
+        IF(ASSOCIATED(Var)) THEN
+          CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'To: '//TRIM(Var % Name))          
+        END IF
+      END DO
+    END IF
+        
+    
   END SUBROUTINE InterpolateFromGmshFile
     
   
