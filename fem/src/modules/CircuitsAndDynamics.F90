@@ -2054,13 +2054,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF(dim==2) cmplx_val = IP % s(t)*detJ*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
 
       IF(dim==3) THEN
+        IF (SkinBc) THEN
         ! if SkinBC is activated:
         !   Boundary Condition: Layer Electric Conductivity
         !   Boundary Condition: Layer Relative Permeability
         !
         ! The term Vi cond*skin_depth ( grad v0, grad_v0 )
         !
-        IF (SkinBc) THEN
           cond = SUM(Basis(1:nn) * SkinCond(1:nn))
           mu  = muVacuum * SUM(Basis(1:nn) * SkinMu(1:nn))
           delta = SQRT( 2.0_dp/(cond*omega*mu))      
@@ -2114,15 +2114,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! ---------------------------------------------------------
         IF(dim==2) cmplx_val = IP % s(t)*detJ*Basis(j)*grads_coeff*circ_eq_coeff
 
-        ! if SkinBC is activated:
-        !   Boundary Condition: Layer Electric Conductivity
-        !   Boundary Condition: Layer Relative Permeability
-        ! Then activate
-        !  1/Z (a, grad v0)
-        !
         IF(dim==3) THEN
           IF (SkinBc) THEN
-            cmplx_val = IP % s(t)*detJ*invZs*SUM(Wbasis(j,:)*gradv)
+          ! if SkinBC is activated:
+          !   Boundary Condition: Layer Electric Conductivity
+          !   Boundary Condition: Layer Relative Permeability
+          ! Then activate
+          !  (cond*delta*im*Omega* a , grad v')
+          !
+            cmplx_val = IP % s(t)*detJ*cond*delta*im*Omega*SUM(Wbasis(j,:)*gradv)
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(Wbasis(j,:)*gradv)
           END IF
@@ -2143,15 +2143,15 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         
         IF(dim==2) cmplx_val = IP % s(t)*detJ*basis(j)*grads_coeff * Comp % VoltageFactor
 
-        ! if SkinBC is activated:
-        !   Layer Electric Conductivity = Real 58e6
-        !   Layer Relative Permeability = Real 1
-        !
-        !  Vi * delta * cont (gradv a, grad v0)
-        !
         IF(dim==3) THEN
           IF (SkinBc) THEN
-            cmplx_val = IP % s(t)*detJ*delta*cond*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
+            ! if SkinBC is activated:
+            !   Layer Electric Conductivity = Real 58e6
+            !   Layer Relative Permeability = Real 1
+            !
+            !  + 1/Z (grad v , a') 
+            !
+            cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*Wbasis(j,:))
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
           END IF
