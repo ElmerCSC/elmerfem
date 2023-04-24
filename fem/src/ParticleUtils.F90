@@ -2489,8 +2489,13 @@ RETURN
     IF(.NOT. GotIt) VariableName = 'Flow Solution'
     VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
     vdofs = 0
-    IF(ASSOCIATED(VeloVar)) vdofs = VeloVar % dofs
-
+    IF(ASSOCIATED(VeloVar)) THEN
+      vdofs = VeloVar % dofs
+      IF(.NOT. ASSOCIATED(VeloVar % Perm)) THEN
+        CALL Fatal(Caller,'Velocity variable should be a field with Permutation!')
+      END IF
+    END IF
+    
     VariableName = ListGetString( Params,'Advector Variable Name',GotIt)
     IF(.NOT. GotIt) VariableName = 'AdvectorData'
     AdvVar => VariableGet( Mesh % Variables, VariableName )
