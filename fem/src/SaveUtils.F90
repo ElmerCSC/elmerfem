@@ -881,11 +881,11 @@ CONTAINS
     IF( PRESENT( GotEigen ) ) THEN
       IsEigen = ASSOCIATED( Var % EigenValues )
       IF(IsEigen) NoEigenValues = SIZE( Var % EigenValues )
-      GotEigen = IsEigen
-      IF( comps > 1 ) THEN
+      IF( comps > 1 .AND. IsEigen ) THEN
         CALL Warn('EvaluetVariableAtGivenPoint','Eigenmode cannot be given in components!')
         IsEigen = .FALSE.
       END IF
+      GotEigen = IsEigen
     END IF
     
     ! Given node is the quickest way to estimate the values at nodes.
