@@ -20,6 +20,9 @@ $ n = 40
   Steady State Max Iterations = Integer 1
   Output Intervals(1) = Integer 1
 
+  Zalesak Lx = Real 1.0
+  Zalesak Ly = Real 1.0
+
 !  Output File = File "data.dat"
 !  Post File = File "data.ep"
 End
@@ -132,7 +135,7 @@ Solver 2
   Variable 2 = String "Particle Distance"
 !  Variable 3 = String "Particle time"
 !  Variable 4 = String "Particle Status"
-!  Variable 5 = String "Particle Velocity_Abs"
+!  Variable 5 = String "Particle Velocity"
 !  Variable 6 = String "Particle Number"
 End 
 
@@ -187,7 +190,7 @@ End
 Solver 6
 !  Exec Solver = after saving
 
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = zalezak
@@ -209,5 +212,13 @@ Material 1
 End
 
 
+Boundary Condition 1
+  Name = "Bounce"
+  Target Boundaries(4) = 1 2 3 4
+! This BC enables that particles do not penetrate the boundary but instead
+! continue in the direction of the tangent.
+  Particle Tangent = Logical True
+End
+
+
 Solver 5 :: Reference Norm = Real 5.761178188205E-002
-RUN
