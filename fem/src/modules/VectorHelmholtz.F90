@@ -994,6 +994,29 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
+
+  ! These use one flag to call library features to compute automatically
+  ! a capacitance matrix.
+  IF( ListGetLogical(Params,'Calculate S-Matrix',Found ) ) THEN
+    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
+    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Results',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes EM Wave',.TRUE.)        
+    IF( ListCheckPresent( Params,'S-Matrix Filename') ) THEN
+      CALL ListRename( Params,'S-Matrix Filename',&
+          'Constraint Modes Fluxes Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+          'SMatrix.dat',.FALSE.)
+    END IF
+    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
+    !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
+  END IF
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
