@@ -997,18 +997,18 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 
   ! These use one flag to call library features to compute automatically
   ! a capacitance matrix.
-  IF( ListGetLogical(Params,'Calculate S-Matrix',Found ) ) THEN
+  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
     CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
-    CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Results',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes EM Wave',.TRUE.)        
-    IF( ListCheckPresent( Params,'S-Matrix Filename') ) THEN
-      CALL ListRename( Params,'S-Matrix Filename',&
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes Results',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
+    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
+      CALL ListRename( SolverParams,'S-Matrix Filename',&
           'Constraint Modes Fluxes Filename', Found ) 
     ELSE     
-      CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+      CALL ListAddNewString( SolverParams,'Constraint Modes Fluxes Filename',&
           'SMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
