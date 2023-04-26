@@ -1123,7 +1123,7 @@ RETURN
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL, POINTER :: FaceInterface(:), IsNeighbour(:)
 
-    INTEGER :: q
+    INTEGER :: q, CntFailed
     LOGICAL, ALLOCATABLE :: Failed(:)
     TYPE(ValueList_t), POINTER :: BC
     INTEGER, ALLOCATABLE :: BCcount(:)
@@ -1156,6 +1156,8 @@ RETURN
     
     ALLOCATE( BCCount(CurrentModel % NumberOfBCs) )
     BCCount = 0
+
+    CntFailed = 0
     
     NoPartitions=0
     DO i=1,ParEnv % PEs
@@ -1640,10 +1642,16 @@ RETURN
 
        DEALLOCATE(BufInt)
       END IF
+
+      CntFailed = CntFailed + COUNT(Failed)
       
       Particles % NumberOfParticles = Particles % NumberOfParticles + COUNT(.NOT.Failed)
       DEALLOCATE(Indexes, Failed)
     END DO
+
+    IF( CntFailed > 0 ) THEN
+      CALL Warn(Caller,'Particles not found on the other side: '//I2S(CntFailed))
+    END IF
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
@@ -1652,7 +1660,8 @@ RETURN
 
     
   CONTAINS
-    
+
+   
     !
     ! Search an element Item from an ordered Element_t array(N) and return
     ! Index to that array element. Return value -1 means Item was not found.
@@ -2493,6 +2502,9 @@ RETURN
       vdofs = VeloVar % dofs
       IF(.NOT. ASSOCIATED(VeloVar % Perm)) THEN
         CALL Fatal(Caller,'Velocity variable should be a field with Permutation!')
+      END IF
+      IF(vdofs < dim) THEN
+        CALL Fatal(Caller,'Dimension of velocity variable is too small: '//I2S(vdofs))
       END IF
     END IF
     
@@ -4484,7 +4496,10 @@ RETURN
     ! Only applies to parallel cases.
     !------------------------------------------------------------------------
     PartitionChanges = ChangeParticlePartition( Particles )
-    IF( PartitionChanges > 0 .AND. Iter < MaxIter ) THEN
+    
+    IF( PartitionChanges > 0 .AND. Iter < MaxIter ) THEN      
+      CALL Info(Caller,'Parallel locate loop '//I2S(iter)//' with '&
+          //I2S(PartitionChanges)//' particles!',Level=7)
       PartitionChangesOnly = .TRUE.
       GOTO 100
     END IF
