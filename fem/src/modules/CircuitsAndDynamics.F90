@@ -2059,13 +2059,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         !   Boundary Condition: Layer Electric Conductivity
         !   Boundary Condition: Layer Relative Permeability
         !
-        ! The term Vi cond*skin_depth ( grad v0, grad_v0 )
+        ! The term Vi/Z ( grad v0, grad_v0 )
         !
           cond = SUM(Basis(1:nn) * SkinCond(1:nn))
           mu  = muVacuum * SUM(Basis(1:nn) * SkinMu(1:nn))
           delta = SQRT( 2.0_dp/(cond*omega*mu))      
           invZs = (cond*delta)/(1.0_dp+imu)
-          cmplx_val = IP % s(t)*detJ*delta*cond*SUM(gradv*gradv) * Comp % VoltageFactor
+          cmplx_val = -IP % s(t)*detJ*invZs*SUM(gradv*gradv) * Comp % VoltageFactor
         ELSE
           cmplx_val = IP % s(t)*detJ*SUM(gradv*gradv) * Comp % VoltageFactor
         END IF
@@ -2120,9 +2120,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           !   Boundary Condition: Layer Electric Conductivity
           !   Boundary Condition: Layer Relative Permeability
           ! Then activate
-          !  (cond*delta*im*Omega* a , grad v')
+          !  (1/Z*im*Omega* a , grad v')
           !
-            cmplx_val = IP % s(t)*detJ*cond*delta*im*Omega*SUM(Wbasis(j,:)*gradv)
+            cmplx_val = -IP % s(t)*detJ*invZs*im*Omega*SUM(Wbasis(j,:)*gradv)
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(Wbasis(j,:)*gradv)
           END IF
