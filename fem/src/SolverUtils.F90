@@ -12231,23 +12231,34 @@ END FUNCTION SearchNodeL
   !> This could be used to detect problems in mesh when suspecting
   !> floating parts not fixed by any BC, for example.
   !---------------------------------------------------------------------------------
-  SUBROUTINE CalculateMeshPieces( Mesh )
+  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode )
 
     TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: ElementMode
 
     LOGICAL :: Ready
-    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER :: i,j,k,n,t,t2,k2,MinIndex,MaxIndex,Loop,NoPieces
     INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element, Element2
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: Found
-
+    TYPE(Mesh_t), POINTER :: Faces(:)
+    LOGICAL :: ElemMode, Found
+    
     IF( ParEnv % PEs > 1 ) THEN
       CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
     END IF
 
-    n = Mesh % NumberOfNodes
+    ElemMode = .FALSE.
+    IF( PRESENT(ElementMode) ) THEN
+      ElemMode = ElementMode
+    END IF
+
+    IF( ElemMode ) THEN
+      n = Mesh % NumberOfBulkElements
+    ELSE   
+      n = Mesh % NumberOfNodes
+    END IF
     ALLOCATE( MeshPiece( n ) ) 
     MeshPiece = 0
 
@@ -12255,9 +12266,13 @@ END FUNCTION SearchNodeL
     ! For others the marker will remain zero. 
     DO t = 1, Mesh % NumberOfBulkElements
       Element => Mesh % Elements(t)        
-      Indexes => Element % NodeIndexes
-      MeshPiece( Indexes ) = 1
-    END DO    
+      IF( ElemMode ) THEN
+        MeshPiece( t ) = 1
+      ELSE      
+        Indexes => Element % NodeIndexes
+        MeshPiece( Indexes ) = 1
+      END IF
+    END DO
     j = 0
     DO i = 1, n
       IF( MeshPiece(i) > 0 ) THEN
@@ -12266,9 +12281,11 @@ END FUNCTION SearchNodeL
       END IF
     END DO
 
-    CALL Info('CalculateMeshPieces',&
-        'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
-    
+    IF(n>j) THEN
+      CALL Info('CalculateMeshPieces',&
+          'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
+    END IF
+      
     ! We go through the elements and set all the piece indexes to minimimum index
     ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
     ! of the piece.
@@ -12278,13 +12295,64 @@ END FUNCTION SearchNodeL
       Ready = .TRUE.
       DO t = 1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)        
-        Indexes => Element % NodeIndexes
-
-        MinIndex = MINVAL( MeshPiece( Indexes ) )
-        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
-        IF( MaxIndex > MinIndex ) THEN
-          MeshPiece( Indexes ) = MinIndex
-          Ready = .FALSE.
+        
+        IF( ElemMode ) THEN
+          k = MeshPiece(t)
+          IF( Mesh % MeshDim == 2 ) THEN
+            DO i=1, Element % TYPE % NumberOfEdges
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          ELSE
+            DO i=1, Element % TYPE % NumberOfFaces
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          END IF
+        ELSE
+          Indexes => Element % NodeIndexes          
+          MinIndex = MINVAL( MeshPiece( Indexes ) )
+          MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+          IF( MaxIndex > MinIndex ) THEN
+            MeshPiece( Indexes ) = MinIndex
+            Ready = .FALSE.
+          END IF
         END IF
       END DO
       Loop = Loop + 1
@@ -12325,8 +12393,13 @@ END FUNCTION SearchNodeL
     
     ! Save the mesh piece field to > mesh piece < 
     Var => VariableGet( Mesh % Variables,'Mesh Piece' )
-    IF(.NOT. ASSOCIATED( Var ) ) THEN      
-      CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN
+      IF( ElemMode ) THEN
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece', &
+            VarType = Variable_on_elements )
+      ELSE
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+      END IF
       Var => VariableGet( Mesh % Variables,'Mesh Piece' )
     END IF
 
