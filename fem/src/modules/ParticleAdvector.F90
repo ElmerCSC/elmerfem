@@ -157,6 +157,11 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   IF( ASSOCIATED( PTimeVar ) ) THEN
     PTimeVar % Values = 0.0_dp
   END IF
+  Var => ParticleVariableGet( Particles, 'particle distance' )
+  IF( ASSOCIATED( Var ) ) THEN
+    Var % Values = 0.0_dp
+  END IF
+  
     
   ! Freeze particles that are known not to move (e.g. no-slip wall)
   !----------------------------------------------------------------

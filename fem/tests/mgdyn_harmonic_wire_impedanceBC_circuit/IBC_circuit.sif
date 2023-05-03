@@ -186,9 +186,8 @@ Boundary Condition 6
   AV im {e} = Real 0.0
 End
 
-Solver 3 :: Reference Norm = Real 1.14928986E-01
+Solver 3 :: Reference Norm = Real 8.12672082E-02
 Solver 3 :: Reference Norm Tolerance = Real 1E-3
-!Solver 4 :: Reference Norm = Real 8.52086651E-02
-!Solver 4 :: Reference Norm Tolerance = Real 1E-3
+
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

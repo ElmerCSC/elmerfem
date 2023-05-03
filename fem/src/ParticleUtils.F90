@@ -1123,7 +1123,7 @@ RETURN
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL, POINTER :: FaceInterface(:), IsNeighbour(:)
 
-    INTEGER :: q
+    INTEGER :: q, CntFailed
     LOGICAL, ALLOCATABLE :: Failed(:)
     TYPE(ValueList_t), POINTER :: BC
     INTEGER, ALLOCATABLE :: BCcount(:)
@@ -1156,6 +1156,8 @@ RETURN
     
     ALLOCATE( BCCount(CurrentModel % NumberOfBCs) )
     BCCount = 0
+
+    CntFailed = 0
     
     NoPartitions=0
     DO i=1,ParEnv % PEs
@@ -1640,10 +1642,16 @@ RETURN
 
        DEALLOCATE(BufInt)
       END IF
+
+      CntFailed = CntFailed + COUNT(Failed)
       
       Particles % NumberOfParticles = Particles % NumberOfParticles + COUNT(.NOT.Failed)
       DEALLOCATE(Indexes, Failed)
     END DO
+
+    IF( CntFailed > 0 ) THEN
+      CALL Warn(Caller,'Particles not found on the other side: '//I2S(CntFailed))
+    END IF
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
@@ -1652,7 +1660,8 @@ RETURN
 
     
   CONTAINS
-    
+
+   
     !
     ! Search an element Item from an ordered Element_t array(N) and return
     ! Index to that array element. Return value -1 means Item was not found.
@@ -2489,8 +2498,16 @@ RETURN
     IF(.NOT. GotIt) VariableName = 'Flow Solution'
     VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
     vdofs = 0
-    IF(ASSOCIATED(VeloVar)) vdofs = VeloVar % dofs
-
+    IF(ASSOCIATED(VeloVar)) THEN
+      vdofs = VeloVar % dofs
+      IF(.NOT. ASSOCIATED(VeloVar % Perm)) THEN
+        CALL Fatal(Caller,'Velocity variable should be a field with Permutation!')
+      END IF
+      IF(vdofs < dim) THEN
+        CALL Fatal(Caller,'Dimension of velocity variable is too small: '//I2S(vdofs))
+      END IF
+    END IF
+    
     VariableName = ListGetString( Params,'Advector Variable Name',GotIt)
     IF(.NOT. GotIt) VariableName = 'AdvectorData'
     AdvVar => VariableGet( Mesh % Variables, VariableName )
@@ -3880,7 +3897,7 @@ RETURN
 	LocalCoord(3),Velo0(3)
     LOGICAL :: Hit, DoInit, Stat, StopAtFace, AtWall, Visited = .FALSE.,&
         Debug,UseCenter,GotBC,GotBC2,ParticleBounce, Robust, Inside
-    INTEGER :: i,j,k,n,FaceIndex,MaxTrials,bc_id,cons_id,ElementIndex0,ParticleStatus0, &
+    INTEGER :: i,j,k,n,dim,FaceIndex,MaxTrials,bc_id,cons_id,ElementIndex0,ParticleStatus0, &
         DebugNo, DebugPart
     INTEGER :: Problems(3), PrevNo 
     TYPE(Nodes_t), SAVE :: ElementNodes
@@ -3893,7 +3910,7 @@ RETURN
     LOGICAL, POINTER :: FaceInterface(:)
     
     SAVE :: Mesh, StopAtFace, Debug, MaxTrials, Counter, PrevNo, Eps, Robust, Problems, &
-        DebugNo, DebugPart
+        DebugNo, DebugPart, dim
     
     Mesh => GetMesh()
     Counter = Counter + 1
@@ -3909,6 +3926,8 @@ RETURN
       DebugNo = ListGetInteger( Params,'Debug particle index',Stat)
       DebugPart = ListGetInteger( Params,'Debug particle partition',Stat)
 
+      dim = Particles % dim 
+      
       Eps = ListGetConstReal( Params,'Particle Hit Tolerance',Stat)
       IF(.NOT. Stat) Eps = 1.0e-8
       Problems = 0
@@ -3916,7 +3935,6 @@ RETURN
     END IF
 
     Debug = ( No == DebugNo .AND. ParEnv % MyPe == DebugPart )
-    
 
     !--------------------------------------------------------------------
     ! This is a recursive algorithm that checks the intersections 
@@ -4074,42 +4092,73 @@ RETURN
             ! Get face nodes and normal vector
             CALL GetElementNodes(ElementNodes, FaceElement )
             Normal = NormalVector( FaceElement, ElementNodes, Check=.TRUE. )
-
+            
             BLOCK
               REAL(KIND=dp) :: Amat(3,3), c(3), r0(3)
 
-              ! Corner node of face triangle
-              r0(1) = ElementNodes % x(1)
-              r0(2) = ElementNodes % y(1)
-              r0(3) = ElementNodes % z(1)
-              
-              ! Two basis vectors formed by the edges
-              Amat(1,1) = ElementNodes % x(2) - r0(1)
-              Amat(2,1) = ElementNodes % y(2) - r0(2)
-              Amat(3,1) = ElementNodes % z(2) - r0(3)
-              
-              Amat(1,2) = ElementNodes % x(3) - r0(1)
-              Amat(2,2) = ElementNodes % y(3) - r0(2)
-              Amat(3,2) = ElementNodes % z(3) - r0(3)
+              IF( dim == 2 ) THEN
+                ! Corner node of face triangle
+                r0(1) = ElementNodes % x(1)
+                r0(2) = ElementNodes % y(1)
 
-              ! 3rd basis vector is the outward normal              
-              Amat(:,3) = Normal 
-              
-              CALL SolveLinSys3x3( Amat, c, Rfin-r0 ) 
+                ! One basis vectors formed by the edge
+                Amat(1,1) = ElementNodes % x(2) - r0(1)
+                Amat(2,1) = ElementNodes % y(2) - r0(2)
 
-              ! If this is outward from the normal
-              IF(c(3) > 0) THEN
-                Rfin = Rfin - c(3)*Normal
+                ! 2nd basis vector is the outward normal              
+                Amat(1:2,2) = Normal(1:2) 
 
-                IF( Debug ) THEN
-                  PRINT *,'Tangent',i,MinLambda,EPSILON(MinLambda)
-                  PRINT *,'Normal:',Normal
-                  PRINT *,'Rtmp:',Rtmp
-                  PRINT *,'Rfin:',Rfin
-                  PRINT *,'Abs(Velo):',SQRT(SUM(Velo**2))
-                  PRINT *,'Velo:',Velo
+                CALL SolveLinSys2x2( Amat, c, Rfin-r0 ) 
+
+                ! If this is outward from the normal
+                IF(c(2) > 0) THEN
+                  Rfin = Rfin - c(2)*Normal
+
+                  IF( Debug ) THEN
+                    PRINT *,'Tangent',i,MinLambda,EPSILON(MinLambda)
+                    PRINT *,'Normal:',Normal
+                    PRINT *,'Rtmp:',Rtmp
+                    PRINT *,'Rfin:',Rfin
+                    PRINT *,'Abs(Velo):',SQRT(SUM(Velo**2))
+                    PRINT *,'Velo:',Velo
+                  END IF
+                  ParticleBounce = .TRUE.
                 END IF
-                ParticleBounce = .TRUE.
+
+              ELSE
+                ! Corner node of face triangle
+                r0(1) = ElementNodes % x(1)
+                r0(2) = ElementNodes % y(1)
+                r0(3) = ElementNodes % z(1)
+                                
+                ! Two basis vectors formed by the edges
+                Amat(1,1) = ElementNodes % x(2) - r0(1)
+                Amat(2,1) = ElementNodes % y(2) - r0(2)
+                Amat(3,1) = ElementNodes % z(2) - r0(3)
+
+                Amat(1,2) = ElementNodes % x(3) - r0(1)
+                Amat(2,2) = ElementNodes % y(3) - r0(2)
+                Amat(3,2) = ElementNodes % z(3) - r0(3)
+
+                ! 3rd basis vector is the outward normal              
+                Amat(:,3) = Normal 
+
+                CALL SolveLinSys3x3( Amat, c, Rfin-r0 ) 
+
+                ! If this is outward from the normal
+                IF(c(3) > 0) THEN
+                  Rfin = Rfin - c(3)*Normal
+
+                  IF( Debug ) THEN
+                    PRINT *,'Tangent',i,MinLambda,EPSILON(MinLambda)
+                    PRINT *,'Normal:',Normal
+                    PRINT *,'Rtmp:',Rtmp
+                    PRINT *,'Rfin:',Rfin
+                    PRINT *,'Abs(Velo):',SQRT(SUM(Velo**2))
+                    PRINT *,'Velo:',Velo
+                  END IF
+                  ParticleBounce = .TRUE.
+                END IF
               END IF
             END BLOCK
             CYCLE
@@ -4447,7 +4496,10 @@ RETURN
     ! Only applies to parallel cases.
     !------------------------------------------------------------------------
     PartitionChanges = ChangeParticlePartition( Particles )
-    IF( PartitionChanges > 0 .AND. Iter < MaxIter ) THEN
+    
+    IF( PartitionChanges > 0 .AND. Iter < MaxIter ) THEN      
+      CALL Info(Caller,'Parallel locate loop '//I2S(iter)//' with '&
+          //I2S(PartitionChanges)//' particles!',Level=7)
       PartitionChangesOnly = .TRUE.
       GOTO 100
     END IF

@@ -794,7 +794,7 @@ CONTAINS
           !
           ! Edge i owner is owner of one of the parent nodes:
           !--------------------------------------------------
-          q = MAX(list1(1),list2(1))
+          q = MAXVAL(commonlist)
           DO p=1,SIZE(commonlist)
             IF (commonlist(p)==q) THEN
               j=commonlist(1)
@@ -1345,7 +1345,7 @@ CONTAINS
      LOGICAL :: AllM, Intf
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element, Edge
-     real(kind=dp) :: tt
+     REAL(kind=dp) :: tt
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Faces) ) RETURN
@@ -1383,7 +1383,6 @@ CONTAINS
     ig => Mesh % ParallelInfo % GInterface
     nb => Mesh % ParallelInfo % NeighbourList
 
-
     !
     ! Find neighbours and parent nodes for all new interface faces:
     ! =============================================================
@@ -1396,6 +1395,7 @@ CONTAINS
 
       nd = Element % Type % ElementCode/100
 
+      ! Check that this is an internal face
       Intf = ALL(ig(Element % NodeIndexes(1:nd)))
       Intf = Intf .AND..NOT. &
            (ASSOCIATED(Element % BoundaryInfo % Left) .AND. &
@@ -1406,7 +1406,7 @@ CONTAINS
         ! This is an perhaps an interface face:
         !--------------------------------------
 
-        commonlist => Null() ! intersection of pe lists
+        commonlist => NULL() ! intersection of pe lists
         DO j=1,nd
           l = Element % NodeIndexes(j)
           parentnodes(i,j) =  l
@@ -1414,7 +1414,8 @@ CONTAINS
         END DO
         !
         ! Determine the intersection of the PE-lists:
-        !--------------------------------------------
+        ! We should find as many shared hits as there are nodes in the face.
+        !-------------------------------------------------------------------
         DO p = 1,SIZE(list(1) % pes)
           j = 1
           DO k = 2,nd
@@ -1428,7 +1429,6 @@ CONTAINS
           IF (j==nd) CALL AddToCommonList(commonlist, list(1) % Pes(p))
         END DO
 
-        !
         ! Now, we should have a list of PEs common to the parents:
         !----------------------------------------------------------
         IF( ASSOCIATED(commonlist) ) THEN
@@ -1439,25 +1439,19 @@ CONTAINS
 
         IF( ASSOCIATED(commonlist) ) THEN
           Facen(i) % Interface = .TRUE.
-          !
-          ! Face i is given to owner of max of the parent nodes
-          !-----------------------------------------------------
-          q = 0
-          DO p=1,nd
-            q = MAX(q,list(p) % Pes(1))
-          END DO
+
+          q = MAXVAL(commonlist)
 
           DO p=1,SIZE(commonlist)
             IF (commonlist(p)==q) THEN
-              j=commonlist(1)
-              commonlist(1)=commonlist(p)
-              commonlist(p)=j
+              j = commonlist(1)
+              commonlist(1) = commonlist(p)
+              commonlist(p) = j
               EXIT
             END IF
           END DO
           Facen(i) % Neighbours => commonlist
 
-          !
           ! Finalize by sorting the parent table:
           !---------------------------------------
           CALL Sort(nd,parentnodes(i,:))

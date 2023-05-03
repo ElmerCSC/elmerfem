@@ -141,6 +141,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
   END IF
 
+  IF( GetLogical(Model % Solvers(pIndex) % Values, 'Eigen Analysis', Found) ) THEN
+    CALL ListAddNewLogical( SolverParams,'Eigen Analysis',.TRUE.)
+  END IF
+  
   CALL ListAddNewLogical( SolverParams, 'Target Variable Real Field', RealField )   
   CALL Info('MagnetoDynamicsCalcFields_Init0','Target Variable Solver Index: '&
     //I2S(pIndex),Level=12)
@@ -168,7 +172,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
 
   INTEGER  :: i, dim, fdim
   LOGICAL :: Found, FluxFound, NodalFields, ElementalFields, &
-      RealField, ComplexField, LorentzConductivity, DoIt
+      RealField, ComplexField, LorentzConductivity, DoIt, VtuStyle
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
@@ -183,10 +187,18 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   
   ! Inherit this from the _init0 solver. Hence we know it must exist!
   RealField = ListGetLogical( SolverParams,'Target Variable Real Field') 
-  ComplexField = .NOT. RealField
-  
+
+  ! We have some challenges in plotting eigenvalues for vtu if the fields are of size
+  ! 6 and have real and imaginary parts living separately. 
+  VtuStyle = ListGetLogical( SolverParams,'Vtu Style', Found )
+  IF(VtuStyle) RealField = .TRUE.
+
+  ComplexField = .NOT. RealField  
+   
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
- 
+
+  !CALL ListAddNewLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
+  
   CALL ListAddLogical( SolverParams, 'Linear System refactorize', .FALSE.)
 
   ! add these in the beginning, so that SaveData sees these existing, even
@@ -659,7 +671,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), POINTER :: muTensor(:,:)
    LOGICAL :: HasReluctivityFunction, HBIntegProblem 
    REAL(KIND=dp) :: rdummy
-   INTEGER :: mudim, ElementalMode
+   INTEGER :: mudim, ElementalMode, cdofs
 
    TYPE VariableArray_t
      TYPE(Variable_t), POINTER :: Field => Null()
@@ -667,7 +679,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(VariableArray_t) :: NodalFieldPointers(32), ElementalFieldPointers(32)
    TYPE(Variable_t), POINTER :: FieldVariable
-   LOGICAL :: EigenAnalysis
+   LOGICAL :: EigenAnalysis, VtuStyle
    INTEGER :: Field, FieldsToCompute, NOFEigen, MaxFields
 
 !-------------------------------------------------------------------------------------------
@@ -947,8 +959,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       BodyLoss = 0.0_dp
    END IF
 
+   VtuStyle = .FALSE.
+   cdofs = 1
    EigenAnalysis = GetLogical( pSolver % Values, 'Eigen Analysis', Found )
    IF(EigenAnalysis) THEN
+     CALL Info('MagnetoDynamicsCalcFields','Ensure space for eigen analysis',Level=10)
+     VtuStyle = ListGetLogical( SolverParams,'Vtu Style', Found )
+     IF(VtuStyle) cdofs=2     
      NOFeigen = SIZE(pSolver % Variable % EigenValues)
      DO i=1,MaxFields
 
@@ -958,7 +975,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
          FieldVariable % EigenValues = pSolver % Variable % EigenValues
 
-         n = SIZE(FieldVariable % Values)/2
+         n = cdofs*SIZE(FieldVariable % Values)/2         
          ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
          FieldVariable % EigenVectors = 0
        END IF
@@ -969,7 +986,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ALLOCATE( FieldVariable % EigenValues(NOFEigen) )
          FieldVariable % EigenValues = pSolver % Variable % EigenValues
 
-         n = SIZE(FieldVariable % Values)/2
+         n = cdofs*SIZE(FieldVariable % Values)/2
          ALLOCATE( FieldVariable % EigenVectors(NOFEigen,n) )
          FieldVariable % EigenVectors = 0
        END IF
@@ -2761,7 +2778,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
   END IF
 
-  IF (EigenAnalysis) THEN
+  IF (EigenAnalysis .AND. .NOT. VtuStyle ) THEN
+    ! The primary variable with size 6 is problematic for Vtu output.
+    ! Hence we operate directly on the eigenvectors if eigenmodes are active.
     DO i=1,MaxFields
       FieldVariable => NodalFieldPointers(i) % Field
       IF (ASSOCIATED(FieldVariable)) THEN
@@ -3308,6 +3327,9 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER :: i
 !------------------------------------------------------------------------------
+   COMPLEX(KIND=dp), POINTER :: EigVec(:)
+   INTEGER :: ic
+!------------------------------------------------------------------------------
 
    IF(PRESENT(EL_Var)) THEN
      IF(ASSOCIATED(El_Var)) THEN
@@ -3324,7 +3346,9 @@ CONTAINS
    END IF
 
    IF(.NOT. ASSOCIATED(Var) ) RETURN
-   
+
+   IF(VtuStyle) EigVec => Var % EigenVectors(Field,:)
+        
    CALL Info('MagnetoDynamicsCalcFields','Solving for field: '//TRIM(Var % Name),Level=6)   
    DO i=1,m
      dofs = dofs+1
@@ -3332,8 +3356,18 @@ CONTAINS
      Solver % Matrix % RHS => b(:,dofs)
      Solver % Variable % Values=0
      Norm = DefaultSolve()
-     var % Values(i::m) = Solver % Variable % Values
 
+     IF(VtuStyle) THEN
+       ic=(i+1)/2
+       IF(MODULO(i,2)==1) THEN
+         EigVec(ic::m/2) = Solver % Variable % Values
+       ELSE
+         EigVec(ic::m/2) = CMPLX( REAL(EigVec(ic::m/2)), Solver % Variable % Values )
+       END IF
+     ELSE
+       var % Values(i::m) = Solver % Variable % Values
+     END IF
+       
      IF( NormIndex == dofs ) SaveNorm = Norm
   END DO
 !------------------------------------------------------------------------------
@@ -3350,7 +3384,9 @@ CONTAINS
    INTEGER :: pivot(:), m,n,nd,dofs
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   REAL(KIND=dp) :: x(nd),s 
+   REAL(KIND=dp) :: x(nd),s
+   COMPLEX(KIND=dp), POINTER :: EigVec(:)
+   INTEGER :: ic
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
@@ -3358,7 +3394,8 @@ CONTAINS
    IF( ANY( ind(1:n) <= 0 ) ) RETURN
 
    ind(1:n) = Var % DOFs * (ind(1:n)-1)
- 
+   IF(VtuStyle) EigVec => Var % EigenVectors(Field,:)
+
    DO i=1,m
       dofs = dofs+1
       
@@ -3370,7 +3407,18 @@ CONTAINS
         x(1:nd) = b(1:nd,dofs)
         CALL LUSolve(nd,MASS,x,pivot)
       END IF
-      Var % Values(ind(1:n)+i) = x(1:n)
+
+      IF( VtuStyle ) THEN
+        ic = (i+1)/2
+          
+        IF(MODULO(i,2)==1) THEN
+          EigVec(ind(1:n)+ic) = x(1:n)
+        ELSE
+          EigVec(ind(1:n)+ic) = CMPLX( REAL(EigVec(ind(1:n)+ic)), x(1:n) )
+        END IF
+      ELSE      
+        Var % Values(ind(1:n)+i) = x(1:n)
+      END IF
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol

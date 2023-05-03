@@ -708,18 +708,18 @@
        IF ( Initialize >= 2 ) EXIT
      END DO
 
- 
+     IF( ListGetLogical( CurrentModel % Simulation,'Echo Keywords at End', GotIt ) ) THEN
+       CALL ListEchoKeywords( CurrentModel )        
+     END IF
+      
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
-
 
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
      CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
      CALL ReportListCounters( CurrentModel )
 #endif
-     
-
-     
+          
 !------------------------------------------------------------------------------
 !    THIS IS THE END (...,at last, the end, my friend,...)
 !------------------------------------------------------------------------------

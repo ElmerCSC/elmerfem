@@ -673,6 +673,8 @@ END SUBROUTINE InterpolateMeshToMesh
 
        RootQuadrant => OldMesh % RootQuadrant
        dim = CoordinateSystemDimension()
+
+       dim = MAX(dim,OldMesh % MeshDim)
        
        IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
          UseQTree = .TRUE.
@@ -887,7 +889,7 @@ END SUBROUTINE InterpolateMeshToMesh
            Element => NULL()
            IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=20 )
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )
              TotFails = TotFails + 1
            END IF
            CYCLE
@@ -931,7 +933,6 @@ END SUBROUTINE InterpolateMeshToMesh
                Var => Var % Next
                CYCLE
              END IF
-            
              
              IF ( Var % DOFs == 1 .AND. &
                  Var % Name(1:10) /= 'coordinate') THEN
@@ -948,7 +949,6 @@ END SUBROUTINE InterpolateMeshToMesh
                 END IF
                 OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
-                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN

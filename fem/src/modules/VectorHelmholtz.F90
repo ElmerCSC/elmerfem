@@ -89,7 +89,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     END IF
 
     UseGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
-    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorentz Condition', Found)
+    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
     IF (UseGauge) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
@@ -145,7 +145,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
-  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
+  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
@@ -207,7 +207,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   rob0 = Omega * SQRT( eps0 / mu0inv )
   
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
-  LorentzCondition = GetLogical(SolverParams, 'Lorentz Condition', Found)
+  LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
   
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
@@ -588,7 +588,7 @@ CONTAINS
               Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
             END DO
-            IF (LorentzCondition) THEN
+            IF (LorenzCondition) THEN
               DO j = 1,np
                 Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
               END DO
@@ -994,6 +994,29 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
+
+  ! These use one flag to call library features to compute automatically
+  ! a capacitance matrix.
+  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
+    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes Results',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
+    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
+      CALL ListRename( SolverParams,'S-Matrix Filename',&
+          'Constraint Modes Fluxes Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( SolverParams,'Constraint Modes Fluxes Filename',&
+          'SMatrix.dat',.FALSE.)
+    END IF
+    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
+    !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
+  END IF
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------

@@ -12231,23 +12231,34 @@ END FUNCTION SearchNodeL
   !> This could be used to detect problems in mesh when suspecting
   !> floating parts not fixed by any BC, for example.
   !---------------------------------------------------------------------------------
-  SUBROUTINE CalculateMeshPieces( Mesh )
+  SUBROUTINE CalculateMeshPieces( Mesh, ElementMode )
 
     TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: ElementMode
 
     LOGICAL :: Ready
-    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER :: i,j,k,n,t,t2,k2,MinIndex,MaxIndex,Loop,NoPieces
     INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element, Element2
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: Found
-
+    TYPE(Mesh_t), POINTER :: Faces(:)
+    LOGICAL :: ElemMode, Found
+    
     IF( ParEnv % PEs > 1 ) THEN
       CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
     END IF
 
-    n = Mesh % NumberOfNodes
+    ElemMode = .FALSE.
+    IF( PRESENT(ElementMode) ) THEN
+      ElemMode = ElementMode
+    END IF
+
+    IF( ElemMode ) THEN
+      n = Mesh % NumberOfBulkElements
+    ELSE   
+      n = Mesh % NumberOfNodes
+    END IF
     ALLOCATE( MeshPiece( n ) ) 
     MeshPiece = 0
 
@@ -12255,9 +12266,13 @@ END FUNCTION SearchNodeL
     ! For others the marker will remain zero. 
     DO t = 1, Mesh % NumberOfBulkElements
       Element => Mesh % Elements(t)        
-      Indexes => Element % NodeIndexes
-      MeshPiece( Indexes ) = 1
-    END DO    
+      IF( ElemMode ) THEN
+        MeshPiece( t ) = 1
+      ELSE      
+        Indexes => Element % NodeIndexes
+        MeshPiece( Indexes ) = 1
+      END IF
+    END DO
     j = 0
     DO i = 1, n
       IF( MeshPiece(i) > 0 ) THEN
@@ -12266,9 +12281,11 @@ END FUNCTION SearchNodeL
       END IF
     END DO
 
-    CALL Info('CalculateMeshPieces',&
-        'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
-    
+    IF(n>j) THEN
+      CALL Info('CalculateMeshPieces',&
+          'Number of non-body nodes in mesh is '//I2S(n-j),Level=5)
+    END IF
+      
     ! We go through the elements and set all the piece indexes to minimimum index
     ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
     ! of the piece.
@@ -12278,13 +12295,64 @@ END FUNCTION SearchNodeL
       Ready = .TRUE.
       DO t = 1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)        
-        Indexes => Element % NodeIndexes
-
-        MinIndex = MINVAL( MeshPiece( Indexes ) )
-        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
-        IF( MaxIndex > MinIndex ) THEN
-          MeshPiece( Indexes ) = MinIndex
-          Ready = .FALSE.
+        
+        IF( ElemMode ) THEN
+          k = MeshPiece(t)
+          IF( Mesh % MeshDim == 2 ) THEN
+            DO i=1, Element % TYPE % NumberOfEdges
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Edges(Element % EdgeIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          ELSE
+            DO i=1, Element % TYPE % NumberOfFaces
+              DO j=1,2
+                IF(j==1) THEN
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Left
+                ELSE
+                  Element2 => Mesh % Faces(Element % FaceIndexes(i)) % BoundaryInfo % Right
+                END IF
+                IF(.NOT. ASSOCIATED(Element2) ) CYCLE
+                t2 = Element2 % ElementIndex
+                IF(t==t2) CYCLE
+                k2 = MeshPiece(t2)
+                IF(k2 /= k ) THEN
+                  Ready = .FALSE.
+                  IF( k2 < k ) THEN
+                    k = k2 
+                    MeshPiece(t) = k2
+                  ELSE
+                    MeshPiece(t2) = k
+                  END IF
+                END IF
+              END DO
+            END DO
+          END IF
+        ELSE
+          Indexes => Element % NodeIndexes          
+          MinIndex = MINVAL( MeshPiece( Indexes ) )
+          MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+          IF( MaxIndex > MinIndex ) THEN
+            MeshPiece( Indexes ) = MinIndex
+            Ready = .FALSE.
+          END IF
         END IF
       END DO
       Loop = Loop + 1
@@ -12325,8 +12393,13 @@ END FUNCTION SearchNodeL
     
     ! Save the mesh piece field to > mesh piece < 
     Var => VariableGet( Mesh % Variables,'Mesh Piece' )
-    IF(.NOT. ASSOCIATED( Var ) ) THEN      
-      CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN
+      IF( ElemMode ) THEN
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece', &
+            VarType = Variable_on_elements )
+      ELSE
+        CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+      END IF
       Var => VariableGet( Mesh % Variables,'Mesh Piece' )
     END IF
 
@@ -14733,12 +14806,13 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 !> Compute lumped fluxes, for example for capacitance or impedance matrices. 
 !------------------------------------------------------------------------------
-SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
+SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   INTEGER :: NoModes, iMode
   REAL(KIND=dp) :: FluxesRow(:)
   REAL(KIND=dp), OPTIONAL :: FluxesRowIm(:)
+  REAL(KIND=dp), OPTIONAL :: FluxesRhs, FluxesRhsIm
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,n,Nmode,Mmode
@@ -14763,6 +14837,15 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
       ALLOCATE( Lumped % CMatrixIm( NoModes, NoModes ) )
       Lumped % CMatrixIm = 0.0_dp
     END IF
+    IF( PRESENT(FluxesRhs) ) THEN
+      ALLOCATE( Lumped % CRhs( NoModes ) )
+      Lumped % Crhs = 0.0_dp
+    END IF
+    IF( PRESENT(FluxesRhsIm) ) THEN
+      Lumped % IsComplex = .TRUE.
+      ALLOCATE( Lumped % CRhsIm( NoModes ) )
+      Lumped % CrhsIm = 0.0_dp
+    END IF
   END IF
 
   IF( Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
@@ -14773,7 +14856,13 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm )
   IF(PRESENT(FluxesRowIm) ) THEN
     Lumped % CMatrixIm(iMode,1:NoModes) = FluxesRowIm(1:NoModes)
   END IF
-  
+  IF(PRESENT(FluxesRhs) ) THEN
+    Lumped % CRhs(iMode) = FluxesRhs
+  END IF
+  IF(PRESENT(FluxesRhsIm) ) THEN
+    Lumped % CRhsIm(iMode) = FluxesRhsIm
+  END IF
+   
 END SUBROUTINE StoreLumpedFluxes
 
 
@@ -14783,10 +14872,12 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,NoModes
-  LOGICAL :: Symmetric, IsComplex, Found
+  LOGICAL :: Symmetric, IsComplex, EmWave, Found
   REAL(KIND=dp) :: nrm
   CHARACTER(:), ALLOCATABLE :: MatrixFile
   CHARACTER(*), PARAMETER :: Caller = 'FinalizeLumpedMatrix'
+  COMPLEX(KIND=dp) :: cx, cb
+  TYPE(LumpedModel_t), POINTER :: Lumped
 
   CALL Info(Caller,'Finalizing lumped matrix',Level=8)
   
@@ -14794,11 +14885,13 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     CALL Fatal(Caller,'We should not be here without the lumped system!')
   END IF
 
-  NoModes = Solver % Lumped % NoModes
-  IsComplex = Solver % Lumped % IsComplex
+  Lumped => Solver % Lumped
+  
+  NoModes = Lumped % NoModes
+  IsComplex = Lumped % IsComplex
 
-  FluxesMatrix => Solver % Lumped % CMatrix
-  IF( IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
+  FluxesMatrix => Lumped % CMatrix
+  IF( IsComplex ) FluxesMatrixIm => Lumped % CMatrixIm
     
   Symmetric = ListGetLogical( Solver % Values,&
       'Constraint Modes Fluxes Symmetric', Found ) 
@@ -14825,6 +14918,21 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       FluxesMatrixIm = 0.5_dp * ( FluxesMatrixIm + TRANSPOSE( FluxesMatrixIm ) )
     END IF
   END IF
+
+  EmWave = ListGetLogical( Solver % Values,'Constraint Modes EM Wave', Found )
+#if 0 
+  IF( EmWave ) THEN
+    ! Normalize the S-matrix with the source term
+    DO i=1, NoModes
+      cb = CMPLX( Lumped % CRhs(i), 0*Lumped % CRhsIm(i) ) 
+      DO j=1,NoModes
+        cx = CMPLX( FluxesMatrix(i,j), 0*FluxesMatrixIm(i,j) ) / cb
+        FluxesMatrix(i,j) = REAL(cx)
+        FluxesMatrixIm(i,j) = AIMAG(cx)
+      END DO
+    END DO
+  END IF
+#endif
   
   CALL Info( Caller,'Lumped Matrix', Level=5 )
   DO i=1,NoModes
@@ -14838,7 +14946,14 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       CALL Info( Caller, Message, Level=5 )
     END DO
   END DO
-  
+
+  IF( EmWave ) THEN
+    CALL info( Caller,'Lumped Port Forcing', Level=5) 
+    DO i=1,NoModes
+      WRITE( Message, '(I3,2ES17.9)' ) i,Lumped % Crhs(i),Lumped % CrhsIm(i)
+      CALL Info( Caller, Message, Level=5 )
+    END DO
+  END IF
   
   MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
   IF( Found ) THEN
@@ -14911,6 +15026,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
+    REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
     LOGICAL, ALLOCATABLE :: ConstrainedDOF0(:)
     REAL(KIND=dp) :: flux
     CHARACTER(:), ALLOCATABLE :: MatrixFile
@@ -15066,7 +15182,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         CALL CommunicateConstraintModesFluxes()
 
         IF( IsComplex ) THEN
-          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm )
+          CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
         ELSE
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow ) 
         END IF
@@ -15117,9 +15233,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       poffset = 2*(NoModes + 1)
       FluxesRow = 0.0_dp
-      IF(IsComplex) FluxesRowIm = 0.0_dp
-      crhs = 0.0_dp
-
+      IF(IsComplex) THEN
+        FluxesRowIm = 0.0_dp
+        FluxesRhs = 0.0_dp
+        FluxesRhsIm = 0.0_dp
+      END IF
       
       IF( EmWaveMode ) THEN
         w = ListGetAngularFrequency( Found = Found )
@@ -15139,12 +15257,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           IF( IsComplex ) THEN
             Mmode = (k+1)/2
             IF( MOD(k,2) == 1 ) THEN                
-              cflux = CMPLX(Fluxes(j),Fluxes(j+1))                            
               IF( EmWaveMode ) THEN
                 cx = CMPLX(x(j),x(j+1))
-                cflux = cmult * cx * CONJG(cflux)
-                cb = CMPLX(b(j),b(j+1))
-                crhs = crhs + cmult * cx * CONJG(cb)
+                cflux = cmult * cx * CONJG(CMPLX(Fluxes(j),Fluxes(j+1)))                
+                crhs = cmult * cx * CONJG(CMPLX(b(j),b(j+1)))
+              ELSE
+                cflux = CMPLX(Fluxes(j),Fluxes(j+1))                            
+                crhs = CMPLX(b(j),b(j+1))
               END IF
               IF( Nmode /= Mmode ) THEN
                 FluxesRow(Mmode) = FluxesRow(Mmode) - REAL(cflux)
@@ -15152,6 +15271,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
               ELSE
                 FluxesRow(Nmode) = FluxesRow(Nmode) + REAL(cflux)
                 FluxesRowIm(Nmode) = FluxesRowIm(Nmode) + AIMAG(cflux)
+                FluxesRhs = FluxesRhs + REAL(crhs)
+                FluxesRhsIm = FluxesRhsIm + AIMAG(crhs)
               END IF
             END IF
           ELSE
@@ -15164,15 +15285,6 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END IF
         END IF
       END DO
-      
-      IF( EmWaveMode ) THEN
-        ! Normalize the S-matrix with the source term
-        DO j=1,NoModes
-          cx = CMPLX( FluxesRow(j), FluxesRowIm(j) ) / crhs
-          FluxesRow(j) = REAL(cx)
-          FluxesRowIm(j) = AIMAG(cx)           
-        END DO        
-      END IF
       
     END SUBROUTINE ConstraintModesFluxes
 
@@ -15193,6 +15305,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       END IF
 
       FluxesRow = 0.0_dp
+      IF( IsComplex ) FluxesRowIm = 0.0_dp
       Perm => Solver % Variable % Perm
       
       DO elem=Mesh % NumberOfBulkElements + 1, &
@@ -15248,6 +15361,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         IF( IsComplex ) THEN
           tmpFluxesRow = FluxesRowIm
           CALL MPI_ALLREDUCE(tmpFluxesRow, FluxesRowIm, NoModes, MPI_DOUBLE_PRECISION, &
+              MPI_SUM, ELMER_COMM_WORLD, ierr)        
+          CALL MPI_ALLREDUCE(FluxesRhs, FluxesRhs, 1, MPI_DOUBLE_PRECISION, &
+              MPI_SUM, ELMER_COMM_WORLD, ierr)        
+          CALL MPI_ALLREDUCE(FluxesRhsIm, FluxesRhsIm, 1, MPI_DOUBLE_PRECISION, &
               MPI_SUM, ELMER_COMM_WORLD, ierr)        
         END IF
         DEALLOCATE(tmpFluxesRow)

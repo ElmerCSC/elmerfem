@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level =  5
+  Max Output Level = 5
   Coordinate System = Cartesian
 
   Simulation Type = Steady
@@ -14,6 +14,9 @@ Simulation
   Steady State Max Iterations = 1
   Post File   = "case.vtu"
   vtu: eigen analysis = logical True
+  vtu: Eigen Vector Component = String "complex"
+
+
 ! Output File = "case.dat"
 
   Angular Frequency = 1
@@ -39,10 +42,13 @@ Body Force 1 :: Source = Real 0
 Equation 1 :: Active Solvers(3) = 1 2 3
 
 Solver 1
-  Equation = "emwave"
-
+  Equation = "emwave solve"
+  
   Variable = "a[a re:1 a im:1]"
   Procedure = "MagnetoDynamics" "WhitneyAVHArmonicSolver"
+
+! Eigenmode plotting of scalar potential not good...
+  Variable Output = False
 
   Electrodynamics Model = Logical True
 
@@ -64,7 +70,9 @@ Solver 2
   Potential Variable = "a"
   Procedure = "MagnetoDynamics" "MagnetodynamicsCalcFields"
 
+  Calculate Elemental Fields = True
   Calculate Nodal Fields = True
+  
   Calculate Electric Field = Logical True
   Calculate Magnetic Vector Potential = Logical True
 
@@ -75,6 +83,8 @@ Solver 2
   Linear System Convergence Tolerance = 1e-6
 
   Steady State Convergence Tolerance = 1e-09
+
+  vtu style = logical true
 End
 
 Solver 3

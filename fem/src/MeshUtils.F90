@@ -3724,20 +3724,22 @@ CONTAINS
    PRINT *,'Bulk nodes:',COUNT(ActiveCount > 0 )
    PRINT *,'Bulk index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
 
-   mini = HUGE(mini)
-   maxi = 0
-   ActiveCount = 0
-   DO i=Mesh % NumberOfBulkElements+1, &
-       Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
-     Indexes => Mesh % Elements(i) % NodeIndexes
-     mini = MIN(mini, MINVAL( Indexes ) )
-     maxi = MAX(maxi, MAXVAL( Indexes ) )
-     ActiveCount(Indexes) = ActiveCount(Indexes) + 1
-   END DO
-   PRINT *,'Boundary index range: ',mini,maxi
-   PRINT *,'Boundary nodes: ',COUNT(ActiveCount > 0)
-   PRINT *,'Boundary index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
-
+   IF( Mesh % NumberOfBoundaryElements > 0 ) THEN
+     mini = HUGE(mini)
+     maxi = 0
+     ActiveCount = 0
+     DO i=Mesh % NumberOfBulkElements+1, &
+         Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+       Indexes => Mesh % Elements(i) % NodeIndexes
+       mini = MIN(mini, MINVAL( Indexes ) )
+       maxi = MAX(maxi, MAXVAL( Indexes ) )
+       ActiveCount(Indexes) = ActiveCount(Indexes) + 1
+     END DO
+     PRINT *,'Boundary index range: ',mini,maxi
+     PRINT *,'Boundary nodes: ',COUNT(ActiveCount > 0)
+     PRINT *,'Boundary index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
+   END IF
+     
    DEALLOCATE( ActiveCount )
 
    PRINT *,'Done inspecting mesh'

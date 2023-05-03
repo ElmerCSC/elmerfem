@@ -236,15 +236,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
   IF( DIM == 3 ) THEN
-    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )
+    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )   
+    IF(.NOT. IntersectEdge ) THEN
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate',IntersectEdge)
+    ELSE
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
+    END IF
   ELSE
+    IntersectCoordinate = 0
     IntersectEdge = .FALSE.
   END IF
   IF(IntersectEdge) THEN
-    IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
     IntersectEpsilon = ListGetConstReal(Params,'Intersect Epsilon')
-  ELSE 
-    IntersectCoordinate = 0
   END IF
   DetEpsilon = ListGetConstReal(Params,'Det Epsilon',GotIt)
   IF(.NOT. GotIt) DetEpsilon = 1.0e-6  

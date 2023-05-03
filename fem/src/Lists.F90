@@ -2914,6 +2914,94 @@ CONTAINS
 !-----------------------------------------------------------------------------------
 
 
+!----------------------------------------------------------------
+!> Echo parameters for debugging purposes.
+!> For now only supports constants...
+!----------------------------------------------------------------
+  SUBROUTINE ListEchoKeywords( Model )
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+    
+    CALL Info('ListEchoKeywords','Echoing parameters for debgging purposes')
+
+    CALL EchoList(Model % Simulation, 0, 'simulation' )
+    CALL EchoList(Model % Constants, 0, 'constants' )
+    DO i=1,Model % NumberOfEquations
+      CALL EchoList(Model % Equations(i) % Values, i, 'equation' )
+    END DO
+    DO i=1,Model % NumberOfBodies
+      CALL EchoList(Model % Bodies(i) % Values, i, 'body' )
+    END DO
+        DO i=1,Model % NumberOfBoundaries
+      CALL EchoList(Model % Boundaries(i) % Values, i, 'boundary' ) 
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL EchoList(Model % BodyForces(i) % Values, i, 'body force' )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL EchoList(Model % BCs(i) % Values, i, 'boundary condition' )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL EchoList(Model % Materials(i) % Values, i, 'material' ) 
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL EchoList(Model % Components(i) % Values, i, 'component' )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL EchoList(Model % ICs(i) % Values, i, 'initial condition' )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL EchoList(Model % Solvers(i) % Values, i, 'solver ' )
+    END DO
+
+  CONTAINS
+
+    SUBROUTINE EchoList(list, i, section )
+      TYPE(ValueList_t), POINTER :: list
+      INTEGER :: i
+      CHARACTER(LEN=*) :: section
+      CHARACTER(LEN=MAX_NAME_LEN) :: str 
+
+      TYPE(ValueListEntry_t), POINTER :: ptr
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      ptr => List % Head
+      DO WHILE( ASSOCIATED(ptr) )        
+        SELECT CASE(ptr % TYPE)
+        CASE( LIST_TYPE_CONSTANT_SCALAR )
+          WRITE(str,'(A,ES12.3)') 'Real ',ptr % Coeff * ptr % Fvalues(1,1,1)
+
+        CASE( LIST_TYPE_LOGICAL )
+          IF( ptr % LValue ) THEN
+            str = 'Logical True'
+          ELSE
+            str = 'Logical False'
+          END IF
+        CASE( LIST_TYPE_INTEGER )
+          str = 'Integer '//I2S(ptr % Ivalues(1))
+
+        CASE DEFAULT
+          ptr => ptr % Next
+          CYCLE
+        END SELECT
+
+        IF( i==0 ) THEN
+          WRITE(*,'(A)') TRIM(Section)//' :: '//TRIM(ptr % Name)//' '//TRIM(str)
+        ELSE
+          WRITE(*,'(A)') TRIM(Section)//' '//I2S(i)//' :: '//TRIM(ptr % name)//' '//TRIM(str)          
+        END IF
+        ptr => ptr % Next
+      END DO
+
+    END SUBROUTINE EchoList
+    
+  END SUBROUTINE ListEchoKeywords
+!-----------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------------
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
