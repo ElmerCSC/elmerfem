@@ -23,7 +23,8 @@ image:https://img.shields.io/github/contributors/ElmerCSC/elmerfem.svg?style=fla
 image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues]
 // image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
 
-
+[.text-center]
+[![SQAaaS badge shields.io](https://img.shields.io/badge/sqaaas%20software-silver-lightgrey)](https://api.eu.badgr.io/public/assertions/DNiOnAmjRc-JaiEU_cdn-g "SQAaaS silver badge achieved")
 
 === Elmer Homepages
 
