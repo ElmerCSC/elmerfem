@@ -344,7 +344,7 @@ Public License instead of this License.
 
 # License of Elmer
 
-Please, find the detailed license-texts under the subdirectory [license_texts](license_texts).
+Please, find the detailed license-texts under the subdirectory [LICENSES](LICENSES).
 
 ```
 Elmer - A finite elements software for multiphysical problems
