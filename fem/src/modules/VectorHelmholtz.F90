@@ -146,6 +146,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
+  LOGICAL :: UseGaussLaw
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
@@ -208,6 +209,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
+  UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
@@ -582,18 +584,32 @@ CONTAINS
             END DO
           END DO
         ELSE
-          DO i = 1,np
-            DO q = 1,nd-np
-              j = q+np
-              Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-              Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-            END DO
-            IF (LorenzCondition) THEN
-              DO j = 1,np
-                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+          IF (UseGaussLaw) THEN
+            ! Add w^2 div D = w^2 rho in a weak form when E = A + grad V:
+            DO i = 1,np
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               END DO
-            END IF
-          END DO
+              DO j = 1,np
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+              END DO
+            END DO
+          ELSE
+            DO i = 1,np
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+              END DO
+              IF (LorenzCondition) THEN
+                DO j = 1,np
+                  Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+                END DO
+              END IF
+            END DO
+          END IF
         END IF
       END IF
     END DO
@@ -632,7 +648,7 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3)
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithGauge
@@ -642,7 +658,8 @@ CONTAINS
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
-       
+    TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
+    
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
     IF(.NOT. AllocationsDone ) THEN
@@ -659,6 +676,8 @@ CONTAINS
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
       InitHandles = .FALSE.
     END IF
 
@@ -730,14 +749,25 @@ CONTAINS
 
       IF (WithGauge) THEN
         ! The following term arises if the decomposition E = A + grad V is applied:
-        DO i = 1,nd-np
-          p = i+np
-          DO j=1,n
-            q = (j-1)*ndofs + 1
-            STIFF(p,q) = STIFF(p,q) - muinv * B * &
-                SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+        IF (UseGaussLaw) THEN
+          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+          jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+          DO i = 1,np
+            FORCE(i) = FORCE(i) + im * omega * jn * Basis(i) * detJ * IP % s(t)
+            DO j = 1,np
+              STIFF(i,j) = STIFF(i,j) + im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
+            END DO
           END DO
-        END DO
+        ELSE
+          DO i = 1,nd-np
+            p = i+np
+            DO j=1,n
+              q = (j-1)*ndofs + 1
+              STIFF(p,q) = STIFF(p,q) - muinv * B * &
+                  SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+            END DO
+          END DO
+        END IF
       END IF
 
     END DO
