@@ -40,7 +40,7 @@ We maintain an official [Elmer forum](https://www.elmerfem.org/forum/) - that's 
 
 ## What should I know before I get started?
 ### Elmer code development philosophy
-We expect you to be familiar with the code development philosophy of Elmer. We mainly work on the repository branch `devel`, which by name is a constantly changing code-base. We maintain several other branches that are dedicated to certain projects and improvements to the code, but in the end shall be merged back into `devel`. If  a new feature to an existing model or even a complete new model we expect a small test case that can be integrated into our `ctest` test suite that provides a benchmark for the new functionality. Any further new feature to the library and the modules of will then be evaluated against that suite of tests.
+We expect you to be familiar with the code development philosophy of Elmer. The up-to-date version of Elmer is in repository branch `devel`, which by name is a constantly changing code-base. Larger separate steps in development take place in separate feature branches that in the end shall be merged into `devel`. If  a new feature to an existing model or even a complete new model we expect a small test case that can be integrated into our `ctest` test suite that provides a benchmark for the new functionality. Any further new feature to the library and the modules of will then be evaluated against that suite of tests.
 
 ## How Can I Contribute?
 
@@ -132,7 +132,8 @@ Elmer uses 2008 Fortran standard in which all new code should be provided.
 for formatting we use the following rules
 
 * we use 2 space indent
-* names functions and subroutines are written in capital letters
+* names functions/subroutines are written in Pascal case (or Upper Camel Case), e.g. OptimizeBandwidth()
+* variable names for short variables are small caps, while compound names usually in Pascal case also but there some variation. 
 * Fortran-language specific elements, such as variable-types (e.g., INTEGER) and properties (e.g., ALLOCATABLE) are written in capital letters
 * Comments inside the code 
 
@@ -146,7 +147,8 @@ for formatting we use the following rules
 
 ### Documentation Styleguide
 
-ElmerFEM model and solver documentation is written in LaTeX and maintained by CSC outside this repository. There are certain sub-projects (like Elmer/Ice) that provide their own documentation within this repository and use markdown language.
+ElmerFEM model and solver documentation is written in LaTeX and maintained by CSC outside this repository. Part of the documentation is publicly
+available in https://github.com/ElmerCSC/elmerfem-manuals. There are certain sub-projects (like Elmer/Ice) that provide their own documentation within this repository and use markdown language.
 
 
 ## Additional Notes

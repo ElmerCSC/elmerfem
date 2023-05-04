@@ -16,6 +16,7 @@ authors:
     family-names: Råback
     email: peter.raback@csc.fi
     affiliation: CSC-IT Center for Science Ltd.
+    orcid: 'https://orcid.org/0000-0002-3243-6314'
   - given-names: Mika
     family-names: Malinen
     email: mika.malinen@csc.fi
@@ -37,5 +38,5 @@ abstract: >-
 keywords:
   - Finite Element Method
   - Elmer/Ice
-  - mulit-physics
+  - multi-physics
 license: GPL-2.0-or-later
