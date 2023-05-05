@@ -25,7 +25,7 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 
 [.text-center]
 image:https://img.shields.io/badge/sqaaas%20software-silver-lightgrey?style=flat["SQAaaS silver badge achieved", link=https://api.eu.badgr.io/public/assertions/DMhrwLxzQI-DBp_D7n89OQ]
-image:https://zenodo.org/badge/DOI/10.5281/zenodo.7892181.svg?style=social&label=Fork&style=plastic["Zenodo DOI"]
+image:https://zenodo.org/badge/DOI/10.5281/zenodo.7892181.svg?style=social&label=Fork&style=plastic["Zenodo DOI",link=https://doi.org/10.5281/zenodo.7892181]
 
 
 === Elmer Homepages
