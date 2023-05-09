@@ -2065,7 +2065,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           mu  = muVacuum * SUM(Basis(1:nn) * SkinMu(1:nn))
           delta = SQRT( 2.0_dp/(cond*omega*mu))      
           invZs = (cond*delta)/(1.0_dp+imu)
-          cmplx_val = -IP % s(t)*detJ*invZs*SUM(gradv*gradv) * Comp % VoltageFactor
+          cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*gradv) * Comp % VoltageFactor
         ELSE
           cmplx_val = IP % s(t)*detJ*SUM(gradv*gradv) * Comp % VoltageFactor
         END IF
@@ -2122,7 +2122,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           ! Then activate
           !  (1/Z*im*Omega* a , grad v')
           !
-            cmplx_val = -IP % s(t)*detJ*invZs*im*Omega*SUM(Wbasis(j,:)*gradv)
+            cmplx_val = IP % s(t)*detJ*invZs*im*Omega*SUM(Wbasis(j,:)*gradv)
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(Wbasis(j,:)*gradv)
           END IF
