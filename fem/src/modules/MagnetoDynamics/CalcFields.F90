@@ -663,9 +663,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
    TYPE(VariableHandle_t), SAVE :: Wvec_h
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
-   LOGICAL :: LayerBC
+   LOGICAL :: LayerBC, CircuitDrivenBC
    REAL(KIND=dp) :: SurfPower
-   INTEGER :: jh_k
+   INTEGER :: jh_k, ComponentId
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
    REAL(KIND=dp), POINTER :: muTensor(:,:)
@@ -2097,6 +2097,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            EdgeBasisDegree=EdgeBasisDegree)
        FORCE = 0.0_dp
        
+       ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
+       IF (CircuitDrivenBC) THEN
+         CompParams => GetComponentParams( Element )
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
+         IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+       END IF
+
        DO j=1,IP % n
          IF ( PiolaVersion ) THEN
            stat = EdgeElementInfo(Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
@@ -2112,8 +2119,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          val = SQRT(2.0_dp/(C_ip * Omega * 4.0d0 * PI * 1d-7 * mu_r)) ! The layer thickness
          Zs = CMPLX(1.0_dp, 1.0_dp, KIND=dp) / (C_ip*val)
          
-         E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-         E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+         IF (.NOT. CircuitDrivenBC) THEN
+           E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+         ELSE
+           ! we assume 3D massive coil here
+           E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:))
+           E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:))
+
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
+           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1) * CircEqVoltageFactor
+           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+         END IF
          
          s = IP % s(j) * detJ
          IF( CSymmetry ) THEN
