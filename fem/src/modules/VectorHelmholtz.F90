@@ -651,7 +651,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithGauge
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
@@ -694,7 +694,7 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     ndofs = np/n
-    WithGauge = ndofs > 1 ! True only when the gauged A-V is used
+    WithNdofs = UseGaussLaw .OR. ndofs > 1 ! True only when the gauged A-V or the Gauss law is used
 
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -723,7 +723,9 @@ CONTAINS
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
       L = L + TemGrad
 
-      IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      IF (.NOT. UseGaussLaw) THEN
+        IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      END IF
       UpdateStiff = .TRUE.
 
       IF( ASSOCIATED( Parent ) ) THEN        
@@ -747,7 +749,7 @@ CONTAINS
         END DO
       END DO
 
-      IF (WithGauge) THEN
+      IF (WithNdofs) THEN
         ! The following term arises if the decomposition E = A + grad V is applied:
         IF (UseGaussLaw) THEN
           BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
