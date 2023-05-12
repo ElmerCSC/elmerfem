@@ -1102,7 +1102,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   LOGICAL :: WithGauge
+   LOGICAL :: WithGauge, UseGaussLaw
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
@@ -1141,6 +1141,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
     
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
+   UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
+   
    Omega = GetAngularFrequency(Found=Found)
    
    Found = .FALSE.
@@ -1304,7 +1306,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        END IF
 
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-       IF (WithGauge) THEN
+       IF (WithGauge .OR. UseGaussLaw) THEN
          DO k=1,3
            EF_ip(k) = EF_ip(k) + &
                CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
