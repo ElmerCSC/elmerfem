@@ -2287,6 +2287,11 @@ CONTAINS
    !------------------------------------------------------------------
    CALL LoadMeshStep( 5 )
 
+   ! Sometimes we need boundaries that do not exist in the original mesh.
+   ! Then we may create boundaries based on some geometric rules. 
+   !--------------------------------------------------------------------
+   CALL TagBCsUsingRule(Model, Mesh)
+   
    ! Create the discontinuous mesh that accounts for the jumps in BCs
    ! This must be created after the whole mesh has been read in and 
    ! bodies and bcs have been mapped to full operation.
@@ -2722,8 +2727,6 @@ CONTAINS
    CALL EnlargeCoordinates( Mesh ) 
 
    CALL FollowCurvedBoundary( Model, Mesh, .FALSE. ) 
-
-   CALL TagBCsUsingRule(Model, Mesh)
    
    CALL GeneratePeriodicProjectors( Model, Mesh )    
    
@@ -27856,13 +27859,10 @@ CONTAINS
 
     IF( CreateBCs ) THEN
       CALL EdgesToBoundaryElements()
-      IF(SplitBC) THEN
-        CALL Info(Caller,'Trying to create discontinuous mesh over the boundary!',Level=6)
-        CALL CreateDiscontMesh( Model, Mesh, .TRUE. )
-      END IF
+      IF(SplitBC) CALL Info(Caller,'Some of the boundaries was an internal one!',Level=10)
     END IF
 
-    CALL Info(Caller,'Done creating additional BCs',Level=12)
+    CALL Info(Caller,'Done creating additional BCs',Level=10)
     
     
   CONTAINS
