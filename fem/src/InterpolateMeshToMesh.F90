@@ -888,8 +888,8 @@ END SUBROUTINE InterpolateMeshToMesh
          IF (.NOT.Found) THEN
            Element => NULL()
            IF (.NOT. Parallel ) THEN
-             WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )
+             WRITE( Message,'(A,I0,A,3ES10.2,A)' ) 'Point ',i,' at ',Point,' not found!'
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )             
              TotFails = TotFails + 1
            END IF
            CYCLE
@@ -929,10 +929,10 @@ END SUBROUTINE InterpolateMeshToMesh
                CYCLE
              END IF          
 
-             IF( Var % Secondary ) THEN
-               Var => Var % Next
-               CYCLE
-             END IF
+             !IF( Var % Secondary ) THEN
+             !  Var => Var % Next
+             !  CYCLE
+             !END IF
              
              IF ( Var % DOFs == 1 .AND. &
                  Var % Name(1:10) /= 'coordinate') THEN
