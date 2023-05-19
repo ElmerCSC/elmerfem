@@ -15011,13 +15011,162 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 END SUBROUTINE FinalizeLumpedMatrix
 
 
+! Given an edge element and associated field variable computes the circulation over the
+! element. The consistency of the circulation is checked 1st ensuring the each edge is
+! accounted for correctly and the element is consistently accounted for with the reference
+! normal.
+!------------------------------------------------------------------------------------------
+SUBROUTINE EdgeElementCirculation( Circ, Mesh, Element, Nodes, Solver, RefNormal, Var ) 
+  REAL(KIND=dp) :: Circ(:)
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Nodes_t) :: Nodes
+  TYPE(Solver_t), POINTER :: Solver
+  TYPE(Variable_t), POINTER, OPTIONAL :: Var
+  REAL(KIND=dp), OPTIONAL :: RefNormal(3)
+
+  REAL(KIND=dp) :: EdgeVector(3), EdgeVector1(3), Normal(3), DotProd, s
+  INTEGER :: dofs, dofIndexes(20), i, j, k, n, i1, i2, j1, j2, nb
+  INTEGER :: ownParent, totParent
+  TYPE(Variable_t), POINTER :: pVar
+
+  Circ = 0.0_dp
+  nb = mGetElementDOFs( dofIndexes, Element, Solver )
+  n = Element % Type % NumberOfEdges
+  
+  IF(PRESENT(Var)) THEN
+    pVar => Var
+  ELSE
+    pVar => Solver % Variable 
+  END IF
+
+  IF( ParEnv % PEs > 1 ) THEN
+    TotParent = 0
+    OwnParent = 0   
+    IF(ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
+      TotParent = TotParent + 1
+      IF(Element % Boundaryinfo % Left % PartIndex == ParEnv % MyPe ) ownParent = ownParent + 1
+    END IF
+    IF(ASSOCIATED(Element % BoundaryInfo % Right) ) THEN
+      TotParent = TotParent + 1
+      IF(Element % Boundaryinfo % Right % PartIndex == ParEnv % MyPe ) ownParent = ownParent + 1
+    END IF
+    IF(ownParent == 0) RETURN
+  END IF
+  
+  DO i=1,nb
+    i1 = i
+    i2 = MODULO(i,n)+1
+
+    ! Vector in the direction of the edge
+    EdgeVector(1) = Nodes % x(i2) - Nodes % x(i1)
+    EdgeVector(2) = Nodes % y(i2) - Nodes % y(i1)
+    EdgeVector(3) = Nodes % z(i2) - Nodes % z(i1)
+
+    ! Among different elements define a consistent direction for circulation
+    ! Store 1st tangent vector and compute the normal from the cross product. 
+    IF( PRESENT(RefNormal) ) THEN
+      IF(i==1) THEN
+        Edgevector1 = -EdgeVector
+      ELSE IF(i==2) THEN
+        Normal = CrossProduct( EdgeVector1, EdgeVector )
+        DotProd = SUM(Normal * RefNormal) 
+      END IF
+    END IF
+
+    ! Among edges for one element define consistent direction for circulation
+    ! Edges are (1,2), (2,3), (3,1) for triangle and likewise for quad.
+    j1 = Element % NodeIndexes(i1)
+    j2 = Element % NodeIndexes(i2) 
+    IF( ParEnv % PEs > 1 ) THEN                            
+      j1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
+      j2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+    END IF
+
+    ! Integration length and direction
+    s = SQRT(SUM(EdgeVector**2))
+    IF( j1 < j2) s = -s
+
+    j = pVar % Perm(DofIndexes(i))
+    DO k=1,pVar % Dofs
+      Circ(k) = Circ(k) + s * pVar % Values(pVar % Dofs*(j-1)+k)
+    END DO
+  END DO
+
+  ! If the element normal is pointing to different direction reverse the flux.
+  IF( PRESENT(RefNormal) ) THEN
+    IF( DotProd < 0.0_dp ) Circ = -Circ
+  END IF
+
+  ! If we are at interface of partitions the face element may appear twice. Then take just half. 
+  IF( ParEnv % PEs > 1 ) THEN
+    Circ = Circ * ownParent / totParent    
+  END IF
+  
+END SUBROUTINE EdgeElementCirculation
+
+
+SUBROUTINE BoundaryCirculation( BCCirc, BcInd, Solver, Var ) 
+  REAL(KIND=dp) :: BCCirc(:)
+  INTEGER :: BcInd 
+  TYPE(Solver_t), POINTER :: Solver
+  TYPE(Variable_t), POINTER :: Var
+  
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Nodes_t), SAVE :: Nodes
+  REAL(KIND=dp) :: Normal0(3), ElemCirc(3), parCoeff
+  INTEGER :: i,t,k,n,nb,elem,dofs,ownParent,TotParent
+  LOGICAL :: NormalSet
+  TYPE(Solver_t), POINTER :: pSolver
+  
+  Mesh => Solver % Mesh
+  IF( Mesh % MeshDim < 3 ) THEN
+    CALL Fatal('BoundaryCirculation','Currently only available in 3D!')
+  END IF
+  pSolver => Solver
+  dofs = Var % dofs
+  BCCirc = 0.0_dp
+  NormalSet = .FALSE.
+  
+  DO elem=Mesh % NumberOfBulkElements + 1, &
+      Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
+    
+    Element => Mesh % Elements(elem)    
+
+    IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
+    IF(Element % BoundaryInfo % Constraint /= CurrentModel % BCs(bcInd) % Tag) CYCLE
+    
+    n = Element % Type % NumberOfNodes
+    CALL CopyElementNodesFromMesh( Nodes, Solver % Mesh, n, Element % NodeIndexes)
+
+    ! Compute a reference normal to which all other face normals are compared against.
+    IF( .NOT. NormalSet ) THEN
+      Normal0 = NormalVector(Element,Nodes)
+      NormalSet = .TRUE.
+    END IF
+      
+    CALL EdgeElementCirculation( ElemCirc, Mesh, Element, Nodes, pSolver, Normal0, Var )     
+    BcCirc(1:dofs) = BcCirc(1:dofs) + ElemCirc(1:dofs)
+  END DO
+
+  IF( ParEnv % PEs > 1 ) THEN
+    DO i=1,dofs
+      BcCirc(i) = ParallelReduction(BCCirc(i))
+    END DO
+  END IF
+    
+END SUBROUTINE BoundaryCirculation
+
+
+
 !------------------------------------------------------------------------------
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
 SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: A
-    TYPE(Solver_t) :: Solver
+    TYPE(Solver_t), TARGET :: Solver
     REAL(KIND=dp) CONTIG :: x(:),b(:)
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
@@ -15288,7 +15437,65 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       
     END SUBROUTINE ConstraintModesFluxes
 
+   
+    SUBROUTINE ConstraintModesCirculation()
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Solver_t), POINTER :: pSolver
+      INTEGER, POINTER :: dofIndexes(:), nodeIndexes(:), Perm(:)
+      REAL(KIND=dp), POINTER :: Values(:)
+      REAL(KIND=dp) :: Normal(3), Normal0(3), Circ(3)
+      TYPE(Nodes_t), SAVE :: Nodes
+      INTEGER :: i,t,k,n,nb,elem
+      LOGICAL :: NormalSet
+            
+      Mesh => Solver % Mesh
+      IF( Mesh % MeshDim < 3 ) THEN
+        CALL Fatal('ConstraintModesCirculation','Currently only available in 2D!')
+      END IF
+      pSolver => Solver
 
+      FluxesRow = 0.0_dp
+      IF( IsComplex ) FluxesRowIm = 0.0_dp
+      
+      DO elem=Mesh % NumberOfBulkElements + 1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
+
+        Element => Mesh % Elements(elem)
+        n = Element % Type % NumberOfNodes
+        nodeIndexes => Element % NodeIndexes
+
+        CALL CopyElementNodesFromMesh( Nodes, Solver % Mesh, n, Element % NodeIndexes)
+                      
+        nb = mGetElementDOFs( dofIndexes, Element, Solver )
+
+        k = Solver % Variable % ConstraintModesIndeces(Perm(dofIndexes(1)))
+        IF(k==0) CYCLE
+              
+        IF(ANY(Var % ConstraintModesIndeces(Perm(dofIndexes(1:nb))) /= k)) CYCLE        
+        
+        ! Compute a reference normal to which all other face normals are compared against.
+        Normal0 = NormalVector(Element,Nodes)
+
+        CALL EdgeElementCirculation( Circ, Mesh, Element, Nodes, pSolver, Normal0, Var ) 
+         
+        ! Store elemental fluxes to the total sums. 
+        IF( IsComplex ) THEN            
+          Mmode = (k+1)/2
+          IF( MOD(k,2) == 1 ) THEN                
+            FluxesRow(Mmode) = FluxesRow(Mmode) + Circ(1)
+          ELSE
+            FluxesRowIm(Mmode) = FluxesRowIm(Mmode) + Circ(2)
+          END IF
+        ELSE
+          Mmode = k 
+          FluxesRow(Mmode) = FluxesRow(Mmode) + Circ(1)
+        END IF
+      END DO
+
+    END SUBROUTINE ConstraintModesCirculation
+
+    
     SUBROUTINE ConstraintModesLinkage()
       TYPE(Element_t), POINTER :: Element
       TYPE(Mesh_t), POINTER :: Mesh
