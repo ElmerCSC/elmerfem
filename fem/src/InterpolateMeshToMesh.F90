@@ -694,7 +694,8 @@ END SUBROUTINE InterpolateMeshToMesh
            eps2 = 0.1_dp * MAXVAL(BoundingBox(4:6)-BoundingBox(1:3))
            BoundingBox(1:3) = BoundingBox(1:3) - eps2
            BoundingBox(4:6) = BoundingBox(4:6) + eps2
-           
+
+           CALL Info('InterpolateMeshToMeshQ','Creating quadrant tree for faster interpolation!',Level=10)
            CALL BuildQuadrantTree( OldMesh,BoundingBox,OldMesh % RootQuadrant)
            RootQuadrant => OldMesh % RootQuadrant
          END IF

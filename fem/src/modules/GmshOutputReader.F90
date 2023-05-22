@@ -235,8 +235,10 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
 
     CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
     CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)    
-    FromMesh => AllocateMesh(CumElems,0,CumNodes)    
-    FromMesh % MeshDim = MAX( MaxElemDim, MeshDim ) 
+    FromMesh => AllocateMesh(CumElems,0,CumNodes)
+
+    ! This is temporal only
+    FromMesh % MeshDim = 3
     FromMesh % MaxElementNodes = MaxElemNodes
     AllocationsDone = .TRUE.    
 
@@ -251,6 +253,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   END IF
 
   CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
+
+  FromMesh % MeshDim = MAX( MaxElemDim, MeshDim ) 
   FromMesh % NumberOfBulkElements = NoBulkElems
   FromMesh % NumberOfBoundaryElements = NoElems - NoBulkElems
     
@@ -278,6 +282,7 @@ CONTAINS
         510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
 
     NoVars = 0
+    MeshDim = 0
     
     DO WHILE( .TRUE. )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
