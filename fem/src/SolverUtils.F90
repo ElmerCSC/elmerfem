@@ -23924,7 +23924,7 @@ CONTAINS
 
          NodeDone( j ) = .TRUE.         
 
-         IF( i < nb ) THEN
+         IF( i < n ) THEN
            Coeff = NodeCoeff(i)
          ELSE
            ! Ok, this is a little dirty and only works for constants. 
