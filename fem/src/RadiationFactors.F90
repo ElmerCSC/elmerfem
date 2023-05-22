@@ -1548,7 +1548,7 @@
          CALL Info('RadiationFactors','Using existing matrix topology')
          NewPerm => Tsolver % Variable % Perm
        END IF
-
+       
        AMatrix => CreateMatrix( CurrentModel,TSolver,TSolver % Mesh, &
            NewPerm, 1, MatrixFormat, OptimizeBW,  &
            ListGetString( TSolver % Values, 'Equation', Found ), UseGivenPerm = UseGiven )       
@@ -1570,6 +1570,29 @@
            END DO
          END IF
 
+         BLOCK
+           TYPE(Variable_t), POINTER :: ExpVar
+           CHARACTER(LEN=MAX_NAME_LEN) :: str
+           INTEGER, POINTER :: ExpPerm(:)
+           INTEGER :: k
+           NULLIFY(ExpPerm)         
+           DO j=1,10
+             str = ListGetString(TSolver % Values,'exported variable '//I2S(j),Found)
+             IF(.NOT. Found) EXIT
+             ExpVar => VariableGet(TSolver % Mesh % Variables, str, ThisOnly = .TRUE. )             
+             IF(ASSOCIATED(ExpVar)) THEN
+               IF(ASSOCIATED(ExpVar % Perm, TSolver % Variable % Perm ) ) THEN
+                 DO k=1,ExpVar % Dofs
+                   WHERE( NewPerm > 0 )
+                     ExpVar % Values( ExpVar % Dofs*(NewPerm-1)+k) = &
+                         ExpVar % Values( ExpVar % Dofs*(TempPerm-1)+k)
+                   END WHERE
+                 END DO
+               END IF
+             END IF
+           END DO
+         END BLOCK
+                  
          Tsolver % Variable % Perm = NewPerm
          DEALLOCATE( NewPerm )
        END IF
