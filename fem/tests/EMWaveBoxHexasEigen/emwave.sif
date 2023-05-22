@@ -78,7 +78,7 @@ Solver 1
 
 ! This is a very sensitive parameter. Decreasing it too much
 ! will reviel tons of zero eigenmodes...
-  Eigen System Shift = Real 3.0e3
+  Eigen System Shift = Real 4.0e3
   Eigen System Complex = Logical True
 
 ! Optionally we could compute energy norm
