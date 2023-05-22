@@ -779,7 +779,7 @@ MODULE Types
      TYPE(Projector_t), POINTER :: Projector
      TYPE(Quadrant_t), POINTER  :: RootQuadrant
 
-     LOGICAL :: Changed, OutputActive, Stabilize
+     LOGICAL :: Changed, OutputActive, Stabilize = .FALSE.
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
      LOGICAL :: AdaptiveFinished = .FALSE.
 
@@ -789,16 +789,17 @@ MODULE Types
      TYPE(ParallelInfo_t) :: ParallelInfo
      TYPE(Variable_t), POINTER :: Variables
 
-     TYPE(Nodes_t), POINTER :: Nodes
-     TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
+     TYPE(Nodes_t), POINTER :: Nodes => NULL()
+     TYPE(Element_t), DIMENSION(:), POINTER :: Elements => NULL(), &
+         Edges => NULL(), Faces => NULL()
      TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
      TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
      INTEGER :: SolverId = 0
      
-     LOGICAL :: DisContMesh 
-     INTEGER, POINTER :: DisContPerm(:)
-     INTEGER :: DisContNodes
+     LOGICAL :: DisContMesh = .FALSE.  
+     INTEGER, POINTER :: DisContPerm(:) => NULL()
+     INTEGER :: DisContNodes = 0
 
      INTEGER, POINTER :: PeriodicPerm(:) => NULL()
      LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
