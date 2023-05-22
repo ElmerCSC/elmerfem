@@ -230,6 +230,16 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   
   CALL DefaultFinish()
 
+  ! This is now just for testing.
+  i = ListGetInteger( SolverParams, 'Circulation BC', Found ) 
+  IF( Found ) THEN
+    BLOCK
+      REAL(KIND=dp) :: Circ(2)      
+      CALL  BoundaryCirculation( Circ, i, pSolver, pSolver % Variable ) 
+      PRINT *,'Circulation around BC:',Circ
+    END BLOCK
+  END IF
+
   CALL Info(Caller,'All done',Level=12)
   
 CONTAINS

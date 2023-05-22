@@ -1021,10 +1021,22 @@ CONTAINS
          Var => Var % Next
          CYCLE
        END IF
-       
-       IF ( ASSOCIATED( Var % Perm ) ) &
+
+       IF ( ASSOCIATED( Var % Perm ) ) THEN
+         Var1 => VariableList
+         DO WHILE(ASSOCIATED(Var1))
+           IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+             IF (ASSOCIATED(Var % Perm,Var1 % Perm)) THEN
+               Var1 % Perm => NULL()
+             END IF
+           END IF
+           Var1 => Var1 % Next
+         END DO
+         IF (SIZE(Var % Perm)>0) THEN
            DEALLOCATE( Var % Perm )
-             
+         END IF
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          CALL DeallocateVariableEntries()
        END IF
