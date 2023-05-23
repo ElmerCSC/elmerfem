@@ -761,16 +761,7 @@ CONTAINS
 
       IF (WithNdofs) THEN
         ! The following term arises if the decomposition E = A + grad V is applied:
-        IF (UseGaussLaw) THEN
-          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
-          jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
-          DO i = 1,np
-            FORCE(i) = FORCE(i) + im * omega * jn * Basis(i) * detJ * IP % s(t)
-            DO j = 1,np
-              STIFF(i,j) = STIFF(i,j) + im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
-            END DO
-          END DO
-        ELSE
+        IF (ABS(B) > AEPS) THEN
           DO i = 1,nd-np
             p = i+np
             DO j=1,n
@@ -780,8 +771,18 @@ CONTAINS
             END DO
           END DO
         END IF
+          
+        IF (UseGaussLaw) THEN
+          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+          jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+          DO i = 1,np
+            FORCE(i) = FORCE(i) + im * omega * jn * Basis(i) * detJ * IP % s(t)
+            DO j = 1,np
+              STIFF(i,j) = STIFF(i,j) + im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
+            END DO
+          END DO
+        END IF
       END IF
-
     END DO
 
     IF (UpdateStiff) THEN
