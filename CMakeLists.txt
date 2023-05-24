@@ -11,12 +11,29 @@
 #
 
 if(APPLE)
+  find_program(CMAKE_C_COMPILER gcc-11 "Please install gcc-11 with homebrew: `brew install gcc-11`")
+  find_program(CMAKE_CXX_COMPILER g++-11)
+  find_program(CMAKE_Fortran_COMPILER gfortran-11)
+  IF(WITH_ELMERGUI)
+    execute_process(COMMAND brew --prefix qt@5 OUTPUT_VARIABLE Qt5_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    IF(NOT Qt5_PREFIX)
+      message(ERROR "Please install qt5: `brew install qt@5`")
+    ENDIF(NOT Qt5_PREFIX)
+    set(Qt5_DIR "${Qt5_PREFIX}/lib/cmake/Qt5")
+
+    execute_process(COMMAND brew --prefix qwt-qt5 OUTPUT_VARIABLE QTW_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    IF(NOT QTW_PREFIX)
+      message(ERROR "Please install qwt-qt5: `brew install qwt-qt5`")
+    ENDIF(NOT QTW_PREFIX)
+    set(Qwt_INCLUDE_DIRS "${QTW_PREFIX}/include" "${QTW_PREFIX}/lib/qwt.framework/Versions/Current/Headers")
+    set(Qwt_LIBRARY_DIRS "${QTW_PREFIX}/lib")
+  ENDIF(WITH_ELMERGUI)
   # message("you need to have gcc-gfrotran installed using HomeBrew")
   # set(CMAKE_C_COMPILER "/usr/bin/gcc")
   # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
-  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
-  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
-  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
+  # set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
+  # set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
+  # set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
   # set(BLA_VENDOR "OpenBLAS")
   # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
   # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
@@ -39,15 +56,15 @@ CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
     # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
-    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
-      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
-    find_library(X11_GL_LIB GL
-      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
+    # FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
+    #   PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
+    # find_library(X11_GL_LIB GL
+    #   PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+FIND_LIBRARY(OPENGL_gl_LIBRARY GL
+       PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
+       PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
 INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
