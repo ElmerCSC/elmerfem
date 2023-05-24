@@ -831,20 +831,22 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
 
   ! Find the solver index of the primary solver by the known procedure name.
   ! (the solver is defined here in the same module so not that dirty...)
-  soln = 0
+  soln = ListGetInteger( SolverParams,'Primary Solver index', Found ) 
 
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
-    j = INDEX( sname,'VectorHelmholtzSolver')
-    IF( j > 0 ) THEN
-      soln = i 
-      EXIT
-    END IF
-  END DO
-  
-  pname = GetString(SolverParams, 'Potential variable', Found)
-  IF( Found ) THEN
-    IF( soln == 0 ) THEN
+  IF( soln == 0 ) THEN
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX( sname,'VectorHelmholtzSolver')
+      IF( j > 0 ) THEN
+        soln = i 
+        EXIT
+      END IF
+    END DO
+  END IF
+
+  IF( soln == 0 ) THEN
+    pname = GetString(SolverParams, 'Potential variable', Found)
+    IF( Found ) THEN
       DO i=1,Model % NumberOfSolvers
         sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
 
@@ -855,9 +857,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
           EXIT
         END IF
       END DO
-    ELSE
-      CALL Info('VectorHelmholtzCalcFields_Init0',&
-          'Keyword > Potential Variable < is redundant when we match the Procedure name',Level=7)
     END IF
   END IF
     
@@ -1088,7 +1087,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), &
        EdotJ, EF_ip(3), R_ip, B(3)
 
-   TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
+   TYPE(Variable_t), POINTER :: TargetVar, MFD, MFS, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
    INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
@@ -1135,11 +1134,18 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! Pointer to primary solver
    pSolver => Model % Solvers(soln)
 
-   Pname = getVarName(pSolver % Variable)
+   Pname = ListGetString( SolverParams,'Potential Variable', Found )
+   IF(Found ) THEN
+     TargetVar => VariableGet( pSolver % Mesh % Variables, Pname ) 
+   ELSE
+     TargetVar => pSolver % Variable
+     Pname = getVarName(pSolver % Variable)
+   END IF
+
    CALL Info(Caller,'Name of potential variable: '//TRIM(pName),Level=10)
-   
+     
    ! Inherit the solution basis from the primary solver
-   vDOFs = pSolver % Variable % DOFs
+   vDOFs = TargetVar % DOFs
    IF( vDofs /= 2 ) THEN
      CALL Fatal(Caller,'Primary variable should have 2 dofs: '//I2S(vDofs))
    END IF
@@ -1221,8 +1227,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    SOL = 0._dp
    Energy = 0._dp; Energy_im = 0._dp
 
-   xx => pSolver % Variable % Values
-   bb => pSolver % Matrix % RHS
+   xx => TargetVar % Values
    
    hdotE_r = 0._dp
    hdotE_i = 0._dp
@@ -1230,6 +1235,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
    ! it treats the system complex valued.
    IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
+     IF( pSolver % Variable % dofs /= 2 ) THEN
+       CALL Fatal(Caller,'Cannot compute energy norm if dofs not 2!') 
+     END IF
+
+     bb => pSolver % Matrix % RHS
      ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
      IF ( ParEnv % PEs > 1 ) THEN
        ALLOCATE(TempRHS(SIZE(bb)))
