@@ -14466,6 +14466,7 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: u(*), v(*)
 
+#ifdef HAVE_AMGX
     INTERFACE
       SUBROUTINE AMGXmv(AMGX, n, rows, cols, vals, b, x, nonlin_update ) BIND(C, Name="AMGXmv")
 
@@ -14483,12 +14484,11 @@ END FUNCTION SearchNodeL
     LOGICAL :: Found
     INTEGER :: nonlin_update, i
 
-#ifdef HAVE_AMGX
     nonlin_update = 0
     CALL AMGXmv( A % AMGXMV, A % NumberOfRows, A % Rows-1, A % Cols-1, &
                   A % Values, u, v, nonlin_update )
 #else
-    CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
+    CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXMatrixVectorMultiply
@@ -14504,6 +14504,7 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: x(:), b(:)
 
+#ifdef HAVE_AMGX
     INTERFACE
       SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
               nonlin_update, config, comm, ng, part_vec, bnrm ) BIND(C, Name="AMGXSolve")
@@ -14531,7 +14532,6 @@ END FUNCTION SearchNodeL
     INTEGER, SAVE :: ng
     INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
 
-#ifdef HAVE_AMGX
     nonlin_update = 1
     IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
       nonlin_update = 0;
@@ -14725,7 +14725,7 @@ END FUNCTION SearchNodeL
            A % Diag, bnrm ) ! <--- a % diag  for dummy
     END IF
 #else
-    CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
+    CALL Fatal('AMGXSolver', "AMGX doesn't seem to be included.")
 #endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
