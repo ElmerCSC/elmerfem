@@ -25,6 +25,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef HAVE_AMGX
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -256,3 +258,5 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
     AMGX_SAFE_CALL(AMGX_finalize());
 #endif
 }
+
+#endif
