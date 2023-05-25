@@ -8,7 +8,7 @@
             "solver": "MULTICOLOR_DILU"
         }, 
         "use_scalar_norm": 1, 
-        "solver": "IDR",
+        "solver": "FGMRES",
         "print_solve_stats": 1, 
         "obtain_timings": 1, 
         "subspace_dim_s": 1, 
