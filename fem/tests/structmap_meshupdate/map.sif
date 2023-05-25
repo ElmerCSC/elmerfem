@@ -73,6 +73,9 @@ Solver 2
   Mesh Velocity Variable = String "Mesh Velocity 2"
   Mesh Update Variable = String "Mesh Update 2"
   Mesh Velocity First Zero  = True
+
+! The old slightly erroneous result can be restored with this flag
+!  Recompute Stabilization = Logical False
 End 
 
 Initial Condition 1
@@ -126,6 +129,5 @@ Boundary Condition 4
   Temperature = 10
 End
 
-Solver 1 :: Reference Norm = Real 5.62599881
-RUN
+Solver 1 :: Reference Norm = 5.65438143
 !End Of File

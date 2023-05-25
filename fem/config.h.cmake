@@ -158,6 +158,10 @@
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
 
+/* MMG */
+#cmakedefine HAVE_MMG 
+#cmakedefine HAVE_PARMMG
+
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
 
@@ -171,5 +175,7 @@
 #cmakedefine HAVE_LUA
 
 #cmakedefine HAVE_ZOLTAN
+
+#cmakedefine HAVE_EXTOPTIM 
 
 #endif

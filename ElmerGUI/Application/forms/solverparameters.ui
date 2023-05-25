@@ -442,17 +442,17 @@
            <widget class="QComboBox" name="linearSystemDirectMethod">
             <item>
              <property name="text">
-              <string>Banded</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
               <string>Umfpack</string>
              </property>
             </item>
             <item>
              <property name="text">
               <string>MUMPS</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Banded</string>
              </property>
             </item>
            </widget>
@@ -467,6 +467,11 @@
             <item>
              <property name="text">
               <string>BiCGStabl</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Idrs</string>
              </property>
             </item>
             <item>
@@ -656,22 +661,22 @@
             </item>
             <item>
              <property name="text">
-              <string>ILU6</string>
+              <string>BILU0</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>ILU7</string>
+              <string>BILU1</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>ILU8</string>
+              <string>BILU2</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>ILU9</string>
+              <string>BILU3</string>
              </property>
             </item>
             <item>
@@ -1707,7 +1712,7 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout">
+    <layout class="QHBoxLayout" name="buttonLayout">
      <item>
       <spacer>
        <property name="orientation">

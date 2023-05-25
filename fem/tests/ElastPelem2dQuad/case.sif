@@ -1,0 +1,113 @@
+! Test case for demonstration stress computation and saving with SaveLine
+! with p-elements in a simple 2d case. Notably the p-element solution is saved
+! accurately over the line. This case with p=4 and 12 quadrilaterals.
+!
+! P.R. 2.9.2021
+
+! Polynomial degree of element
+$n=4
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Serendipity P Elements = False
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+
+  Nonlinear System Max Iterations = 1
+  Linear System Solver = Direct 
+  Linear System Direct Method = umfpack
+
+  Element = p:$n$
+
+  Calculate Stresses = Logical True
+
+! This keyword reduces the number of Gauss points needed
+!  Relative Integration Order = Integer -1
+End
+
+
+Solver 2
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+
+! We have line going from corner to corner. 
+  Polyline Coordinates(2,2) = -1.0 -1.0 3.0 2.999
+  Polyline Divisions(1) = 400
+
+  Filename = g$n$.dat
+
+! Just make a reference norm from sum of stress_xx entries. 
+  Show Norm Index = 9
+End
+
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+
+! These are for visualizing the p-solution by high-order 
+! Lagrange interpolation:
+  Lagrange Element Degree = Integer $n 
+  Save Bulk Only = True
+End
+
+
+Equation 1
+  Name = "LinearElasticity"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0e3
+  Poisson ratio = 0.3
+  Youngs modulus = 1.0e9
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "natural"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "fixed"
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "force"
+  Force 1 = 1.0e6
+End
+
+Solver 1 :: Reference Norm = 5.99181622E-03
+Solver 2 :: Reference Norm = 1.99648761E+08

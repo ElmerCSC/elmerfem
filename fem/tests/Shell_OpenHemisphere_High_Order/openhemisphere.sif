@@ -1,0 +1,147 @@
+!
+! A benchmark problem where an open hemispherical shell is subject to point
+! loads. The reference results can be found in Sze KY, Liu XH, Lo SH. Popular 
+! benchmark problems for geometric nonlinear analysis of shells. Finite 
+! Elements in Analysis and Design 2004, 40(11):1551-1569.
+!
+! Here the problem is solved by using a high-order discretization over a 2-D
+! domain. This option needs a special command "Skip Surface Reconstruction = 
+! True" so that instead of using a physical surface mesh the surface 
+! parametrization is described by the subroutine SurfaceBasis within the solver
+! code ShellSolver.F90. Working without a physical surface mesh is limited to
+! some special geometries which allow a parametrization by lines of curvature
+! coordinates. There are other tests for general shell modelling based on
+! physical surface meshes.
+!
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "OpenHemisphere"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+!  Simulation Type = Steady
+  Simulation Type = Scanning
+  Timestep Sizes = 1
+  Timestep Intervals = 1
+!  Timestep Intervals = 20
+!  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Spherical Body = True
+End
+
+Material 1
+ 3D Material Law = Logical False
+ Poisson Ratio = Real 0.3
+ Youngs Modulus = Real 6.825e+7
+ Shell Thickness = Real 4.0e-2
+End
+
+Body Force 1 
+  Normal Pressure = Real 0.0
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+
+  Variable = "U"
+  Variable DOFs = 6
+  
+  Element = "p:8"
+  Skip Surface Reconstruction = True
+
+  Large Deflection = True
+  Displace Mesh = False
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1e-5
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Componentwise Backward Error = Logical True
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 300
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+! -------------------------------------------------------------------------
+! The following can be used to save the deflection at the points considered 
+! in the paper:
+!----------------
+Solver 2
+  Equation = "Save Scalars"
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+  Filename = hemisphere.dat
+  Variable 1 = U
+  Save Points(2) = 1 5
+End
+
+! ----------------------------------------------------------------
+! Use high-order Lagrange interpolation to visualize the solution
+! ----------------------------------------------------------------
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = hemisphere
+  Vtu Format = Logical True
+!  Ascii Output = True
+  Lagrange Element Degree = Integer 8
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  U 1 = Real 0
+  U 4 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  U 2 = Real 0
+  U 5 = Real 0
+  U 7 = Real 0
+End
+
+Boundary Condition 3
+  Target Nodes(1) = 1
+  U 1 Load = Variable Time
+    Real MATC "(tx-1)*10.0+10.0"
+! U 1 Load = Real 2.0e-0"
+End
+
+Boundary Condition 4
+  Target Nodes(1) = 5
+  U 2 Load = Variable Time
+    Real MATC "-(tx-1)*10.0-10.0"
+! U 1 Load = Real -2.0e-0"
+End
+
+Boundary Condition 5
+  Target Nodes(1) = 3
+  U 3 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 2.78750029E-02
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

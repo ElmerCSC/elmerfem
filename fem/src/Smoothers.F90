@@ -56,7 +56,6 @@ CONTAINS
     FUNCTION MGSmooth( Solver, A, Mesh, x, b, r, Level, DOFs, &
         PreSmooth, LowestSmooth, CF) RESULT(RNorm)
 !------------------------------------------------------------------------------
-      USE ParallelUtils
       TYPE(Solver_t), POINTER :: Solver
       TYPE(Matrix_t), POINTER :: A
       TYPE(Mesh_t) :: Mesh
@@ -66,7 +65,7 @@ CONTAINS
       LOGICAL, OPTIONAL :: PreSmooth, LowestSmooth
       INTEGER, POINTER, OPTIONAL :: CF(:)
 !------------------------------------------------------------------------------
-      CHARACTER(LEN=MAX_NAME_LEN) :: IterMethod, im
+      CHARACTER(:), ALLOCATABLE :: IterMethod
       LOGICAL :: Parallel, Found, Lowest, Pre
       TYPE(Matrix_t), POINTER :: M
       INTEGER :: i, j, k, n, Rounds, InvLevel, me
@@ -85,7 +84,6 @@ CONTAINS
       SAVE Z, Pr, Q, Ri, T, T1, T2, S, V
 
       Parallel = ParEnv % PEs > 1
-
 
       IF ( .NOT. Parallel ) THEN
         M  => A
@@ -202,7 +200,6 @@ CONTAINS
 
       CASE( 'direct1d' ) 
         ALLOCATE( dx(n) )
-
       END SELECT
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
@@ -691,7 +688,7 @@ CONTAINS
           DO i=1,A % NumberOFRows
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % Interface(i) ) CYCLE
+              IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0
@@ -704,7 +701,7 @@ CONTAINS
           
           DO i=A % NumberOfRows,1,-1
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % Interface(i) ) CYCLE
+              IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0
@@ -1271,10 +1268,10 @@ CONTAINS
         
         CALL MGCmv( A, x, r )
         r(1:n/2) = b(1:n/2) - r(1:n/2)
-        
+
         DO i=1,Rounds
           Z(1:n/2) = r(1:n/2)
-          CALL CRS_ComplexLUSolve( n, M, Z )
+          CALL CRS_ComplexLUSolve( n/2, M, Z )
           rho = MGCdot( n/2, r, Z )
           
           IF ( i == 1 ) THEN
@@ -1296,8 +1293,6 @@ CONTAINS
           rr(2*i-0) =  AIMAG( r(i) )
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
-          rb(2*i-1) =  REAL( b(i) )
-          rb(2*i-0) =  AIMAG( b(i) )
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE CCG

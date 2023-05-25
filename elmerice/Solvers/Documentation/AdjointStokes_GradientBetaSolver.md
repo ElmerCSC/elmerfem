@@ -23,7 +23,7 @@ This is the adjoint code corresponding to the application of the slip coefficien
 The sequence in the .sif is usually as follow:
 
 1. Compute the velocity using the Stokes solver
-2. Compute a cost function that measure the diffrence between the model and some observations
+2. Compute a cost function that measures the difference between the model and some observations
 3. Compute the solution of the [adjoint linear system](#adjoint_linearsolver)
 4. **Compute the gradient of your cost function with respect to your slip coefficient**
 
@@ -32,7 +32,7 @@ If a change of variable is used for the input slip coefficient, the derivative o
 the friction coefficient with respect to your input variable can directly be provided
 in the *Boundary Condition* section. 
 
-Be carefull:  
+Be careful:  
   - **This solver must be executed on the bottom boundary where the slip condition is applied**   
   - **The NormalTangential system has to be used**  
   - **In 3D Slip Coefficient 2 and 3 have to be equal**  

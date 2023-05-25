@@ -494,7 +494,8 @@ static int ImportMeshDefinition(int inmethod,int nofile,char *filename,int *nogr
   case 14:
     data[nofile].dim = 3; /* default dim 3 with gmsh*/
     eg.dim = 3;
-    errorstat = LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],info);
+    errorstat = LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
+			      eg.multidim,info);
     break;
 
    
@@ -850,7 +851,7 @@ int main(int argc, char *argv[])
   static Real mergeeps;
   long ii;
 
-  if(info) printf("\nStarting program Elmergrid\n");
+  if(info) printf("\nStarting program Elmergrid, compiled on %s\n", __DATE__ );
   
   InitParameters(&eg);
   grids = (struct GridType*)malloc((size_t) (MAXCASES)*sizeof(struct GridType));     

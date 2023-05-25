@@ -104,7 +104,7 @@
 
          <Parameter Widget="Label">
            <Name> Radiation Factor computation </Name>
-           <Whatis>  In some cases the geometry or the emissivities of the radiation boundaries change. This may require the recomputation of the view factors and Gebhardt factors. For that purpose also dynamic computation of the factors is enabled and it is controlled by the keywords below. The radiation factors are also automatically computed, if no files for the factors are given although radiation boundaries exist. </Whatis>
+           <Whatis>  In some cases the geometry or the emissivities of the radiation boundaries change. This may require the recomputation of the view factors and Gebhart factors. For that purpose also dynamic computation of the factors is enabled and it is controlled by the keywords below. The radiation factors are also automatically computed, if no files for the factors are given although radiation boundaries exist. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox">
             <Name> Update View Factors</Name>
@@ -113,26 +113,26 @@
          </Parameter>
 
          <Parameter Widget="CheckBox">
-            <Name> Update Gebhardt Factors </Name>
+            <Name> Update Gebhart Factors </Name>
             <Type> Logical </Type>
-            <Whatis> If the emissivities depend on the solution, the Gebhardt factors may need to be recomputed. This is activated by setting giving this flag value True. False is the default. </Whatis>
+            <Whatis> If the emissivities depend on the solution, the Gebhart factors may need to be recomputed. This is activated by setting giving this flag value True. False is the default. </Whatis>
          </Parameter>
          <Parameter Widget="Edit">
             <Name> Minimum View Factor </Name>
-            <Whatis> This keyword determines the cut-off value under which the view factors are omitted. Neglecting small values will not only save memory but also will make the matrix used for solving the Gabhardt factors less dense. This consequently will enable more efficient sparse matrix strategies in solving the Gebhardt factors. The value for this parameter might be of the order 10e-8. </Whatis>
+            <Whatis> This keyword determines the cut-off value under which the view factors are omitted. Neglecting small values will not only save memory but also will make the matrix used for solving the Gabhardt factors less dense. This consequently will enable more efficient sparse matrix strategies in solving the Gebhart factors. The value for this parameter might be of the order 10e-8. </Whatis>
          </Parameter>
          <Parameter Widget="Edit">
-           <Name> Minimum Gebhardt Factor</Name>
-           <Whatis> The Gebhardt factors make part of matrix dense. By neglecting the smallest Gebhardt factors the matrix structure for the heat equation may become significantly sparser and thus the solution time may drop. The value for this parameter might also be of the order 10e-8. </Whatis>
+           <Name> Minimum Gebhart Factor</Name>
+           <Whatis> The Gebhart factors make part of matrix dense. By neglecting the smallest Gebhart factors the matrix structure for the heat equation may become significantly sparser and thus the solution time may drop. The value for this parameter might also be of the order 10e-8. </Whatis>
          </Parameter>
          <Parameter Widget="Edit">
-            <Name> Implicit Gebhardt Factor Fraction</Name>
-            <Whatis> In computing heat transfer problems with radiation in an implicit manner, the matrix structure becomes partially filled. This affects the performance of the linear equation solvers and also increases the memory requirements. On the other hand explicit treatment of radiation slows down the convergence significantly. This keyword allows that the largest Gebhardt factors are treated in an implicit manner, whereas the smallest are treated explicitly. The value should lie in between zero (fully explicit) and one (fully implicit). </Whatis>
+            <Name> Implicit Gebhart Factor Fraction</Name>
+            <Whatis> In computing heat transfer problems with radiation in an implicit manner, the matrix structure becomes partially filled. This affects the performance of the linear equation solvers and also increases the memory requirements. On the other hand explicit treatment of radiation slows down the convergence significantly. This keyword allows that the largest Gebhart factors are treated in an implicit manner, whereas the smallest are treated explicitly. The value should lie in between zero (fully explicit) and one (fully implicit). </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox">
            <Name> Matrix Topology Fixed</Name>
            <Type> Logical </Type>
-           <Whatis> If the Gebhardt factors change, the matrix structure of the heat equation may also have to be changed, unless this flag is set to False. Then all factors that do not combine with the matrix structure are omitted. </Whatis>
+           <Whatis> If the Gebhart factors change, the matrix structure of the heat equation may also have to be changed, unless this flag is set to False. Then all factors that do not combine with the matrix structure are omitted. </Whatis>
          </Parameter>
          <Parameter Widget="Edit">
            <Name> View Factors Geometry Tolerance</Name>
@@ -147,14 +147,14 @@
          </Parameter>
 
          <Parameter Widget="CheckBox">
-            <Name>Gebhardt Factors Solver Full</Name>
+            <Name>Gebhart Factors Solver Full</Name>
             <Type> Logical </Type>
-            <Whatis> If the view factor matrix is relatively sparse, it will make sense to use a sparse matrix equation for solving the Gebhardt factors. This flag may be used if a full matrix should be desired. </Whatis>
+            <Whatis> If the view factor matrix is relatively sparse, it will make sense to use a sparse matrix equation for solving the Gebhart factors. This flag may be used if a full matrix should be desired. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox">
-           <Name> Gebhardt Factors Solver Iterative </Name>
+           <Name> Gebhart Factors Solver Iterative </Name>
            <Type> Logical </Type>
-           <Whatis> If the Gebhardt factors are solved from a sparse matrix equation, also the type of solver may be selected. The default is direct umfpack solver. Sometimes the memory usage may be a problem, or the direct strategy is simply not efficient enough. Then an iterative cgs solver may be used instead. </Whatis>
+           <Whatis> If the Gebhart factors are solved from a sparse matrix equation, also the type of solver may be selected. The default is direct umfpack solver. Sometimes the memory usage may be a problem, or the direct strategy is simply not efficient enough. Then an iterative cgs solver may be used instead. </Whatis>
          </Parameter>
 
          <Parameter Widget="Label">

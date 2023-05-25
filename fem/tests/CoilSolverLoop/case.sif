@@ -72,10 +72,10 @@ Solver 1
 
   Optimize Bandwidth = False
 
-! The fitting can be either isotropic or unisotropic.
-! In the unisotropic model the conductivity is aligned like the 
+! The fitting can be either isotropic or anisotropic.
+! In the anisotropic model the conductivity is aligned like the 
 ! previous gradient of the solution.
-!  Coil Unisotropic = Logical True
+!  Coil Anisotropic = Logical True
 
 !  Normalize Coil Current = Logical True
 
@@ -111,5 +111,5 @@ Material 1
 End
 
 
-Solver 1 :: Reference Norm = 7.74178076
-Solver 2 :: Reference Norm = 1.20855655E-01
+Solver 1 :: Reference Norm = 8.62332813E+00
+Solver 2 :: Reference Norm = 1.20856157E-01

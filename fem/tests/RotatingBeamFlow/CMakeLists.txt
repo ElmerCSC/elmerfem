@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO BeamFlow.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(RotatingBeamFlow)
+ADD_ELMER_TEST(RotatingBeamFlow LABELS mortar n-t)

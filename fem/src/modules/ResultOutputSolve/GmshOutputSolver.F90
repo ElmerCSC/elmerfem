@@ -63,11 +63,12 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   LOGICAL :: NoPermutation
   INTEGER :: NumberOfGeomNodes, NumberOfDofNodes,NumberOfElements, ElemFirst, ElemLast
-  INTEGER, POINTER :: InvFieldPerm(:)
+  INTEGER, POINTER :: InvFieldPerm(:), DGInvPerm(:)
   
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-  CHARACTER(MAX_NAME_LEN) :: OutputFile, OutputDirectory
+  CHARACTER(MAX_NAME_LEN) :: OutputFile
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   INTEGER :: GmshUnit
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputSolver'
     
@@ -108,7 +109,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   ELSE
     OutputFile = 'Output.msh'
   END IF
-    
+     
   CALL SolverOutputDirectory( Solver, OutputFile, OutputDirectory, UseMeshDir = .TRUE. )
   OutputFile = TRIM(OutputDirectory)// '/' //TRIM(OutputFile)
   
@@ -118,8 +119,22 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL GenerateSaveMask(Mesh,Params,Parallel,0,.FALSE.,&
       NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements,&
       ElemFirst,ElemLast)
+
+  IF( ParEnv % PEs > 1 ) THEN
+    IF( NumberOfElements == 0 ) THEN
+      CALL Info(Caller,'Nothing to save in partition: '//TRIM(I2S(ParEnv % MyPe)),Level=8)
+      RETURN
+    ELSE
+      OutputFile = TRIM(OutputFile)//'_'//I2S(ParEnv % PEs)//'np'//I2S(ParEnv % MyPe+1)
+    END IF
+  ELSE
+    IF( NumberOfElements == 0 ) THEN
+      CALL Warn(Caller,'Notging to save, this is suspicious')
+      RETURN      
+    END IF      
+  END IF
   
-  CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,.FALSE.,&
+  CALL GenerateSavePermutation(Mesh,.FALSE.,.FALSE.,0,.FALSE.,&
       ActiveElem,NumberOfGeomNodes,NoPermutation,NumberOfDofNodes,&
       DgPerm,InvDgPerm,NodePerm,InvNodePerm)
   
@@ -148,7 +163,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
   ! Save the header
   !-------------------------------------------------
-  CALL Info('GsmhOutputSolver','Saving results to file: '//TRIM(OutputFile))
+  CALL Info('GmshOutputSolver','Saving results to file: '//TRIM(OutputFile))
   OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
   
   WRITE(GmshUnit,'(A)') '$MeshFormat'
@@ -302,11 +317,93 @@ CONTAINS
     WRITE(GmshUnit,'(A)') '$EndPhysicalNames'
   END SUBROUTINE WritePhysicalNames
     
+
+  ! In case of DG fields we average the fields on-the-fly to nodes.
+  !----------------------------------------------------------------
+  SUBROUTINE CreateTemporalNodalField(Mesh,Solution,Revert)
+    TYPE(Mesh_t) :: Mesh
+    TYPE(Variable_t) :: Solution
+    LOGICAL, OPTIONAL :: revert
+
+    REAL(KIND=dp), POINTER :: NodalVals(:), TmpVals(:)
+    INTEGER, POINTER :: NodalPerm(:), TmpPerm(:), NodalCnt(:)
+    INTEGER :: i,j,k,l,n,t,dofs,ElemFam
+
+    SAVE NodalPerm, NodalVals, NodalCnt, TmpPerm, TmpVals
+    
+    IF( PRESENT( Revert ) ) THEN
+      IF( Revert ) THEN
+        DEALLOCATE( NodalVals, NodalPerm, NodalCnt )
+        Solution % Perm => TmpPerm
+        Solution % Values => TmpVals
+        RETURN
+      END IF
+    END IF
+    
+    dofs = Solution % dofs
+    
+    n = Mesh % NumberOfNodes
+    ALLOCATE( NodalPerm(n), NodalCnt(n), NodalVals(n*dofs) ) 
+    NodalPerm = 0
+    NodalCnt = 0
+    NodalVals = 0.0_dp
+    
+    DO t=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)
+
+      ! This is just a quick hack to not consider those element in averaging that don't
+      ! even have one face on the active set of nodes. 
+      IF( ALLOCATED(NodePerm) ) THEN
+        ElemFam = Element % TYPE % ElementCode / 100 
+        l = COUNT( NodePerm(Element % NodeIndexes ) > 0 )
+        SELECT CASE(ElemFam)          
+        CASE(3,4)
+          IF(l<2) CYCLE
+        CASE(5,6,7)
+          IF(l<3) CYCLE
+        CASE(8)
+          IF(l<4) CYCLE          
+        END SELECT
+      END IF
+      
+      DO i=1,Element % TYPE % NumberOfNodes
+        j = Element % DGIndexes(i)
+        k = Element % NodeIndexes(i)  
+
+        NodalCnt(k) = NodalCnt(k) + 1
+        NodalPerm(k) = k
+
+        j = Solution % Perm(j)
+        IF(j==0) CYCLE
+
+        DO l=1,dofs
+          NodalVals(dofs*(k-1)+l) = NodalVals(dofs*(k-1)+l) + Solution % Values(dofs*(j-1)+l)
+        END DO
+      END DO
+    END DO
+      
+    DO i=1,dofs
+      WHERE ( NodalCnt > 0 )
+        NodalVals(i::dofs) = NodalVals(i::dofs) / NodalCnt 
+      END WHERE
+    END DO
+
+    TmpVals => Solution % Values
+    TmpPerm => Solution % Perm
+    
+    Solution % Perm => NodalPerm
+    Solution % Values => NodalVals
+    
+
+  END SUBROUTINE CreateTemporalNodalField
+    
+    
   
   
   SUBROUTINE WriteGmshData()
     INTEGER :: ii
-
+    LOGICAL :: DgVar
+    
     
     ! Time is needed
     !-------------------------------------------------
@@ -331,7 +428,12 @@ CONTAINS
 
         ComponentVector = .FALSE.
         Solution => VariableGet( Mesh % Variables, FieldName )
+        DGVar = .FALSE.
+        
         IF(ASSOCIATED(Solution)) THEN
+          DGVar = ( Solution % TYPE == Variable_on_nodes_on_elements )          
+          IF(DgVar) CALL CreateTemporalNodalField(Mesh,Solution)
+
           Values => Solution % Values
           Perm => Solution % Perm
           dofs = Solution % DOFs
@@ -356,7 +458,7 @@ CONTAINS
             END IF
           END IF
           IF( .NOT. ASSOCIATED(Solution)) THEN
-            CALL Warn('GsmhOutputSolver','Variable not present: '//TRIM(FieldName))
+            CALL Warn('GmshOutputSolver','Variable not present: '//TRIM(FieldName))
             CYCLE
           END IF
         END IF
@@ -429,6 +531,8 @@ CONTAINS
         END DO
         WRITE(GmshUnit,'(A)') '$EndNodeData'
 
+        IF(DgVar) CALL CreateTemporalNodalField(Mesh,Solution,Revert=.TRUE.)
+        
       END DO
     END DO
   END SUBROUTINE WriteGmshData

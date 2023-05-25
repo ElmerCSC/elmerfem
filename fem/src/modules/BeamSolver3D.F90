@@ -76,7 +76,10 @@ SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewString(SolverPars, 'Variable', 'Deflection[U:3 Theta:3]')
   CALL ListAddNewString(SolverPars, 'Element', 'p:1 b:1')
 
-  CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
+  CALL ListAddNewLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
+  CALL ListAddNewLogical(SolverPars, 'Use Global Mass Matrix',.TRUE.)
+  
+  CALL ListAddNewLogical(SolverPars,'Beam Solver',.TRUE.)
 !------------------------------------------------------------------------------
 END SUBROUTINE TimoshenkoSolver_Init0
 !------------------------------------------------------------------------------
@@ -128,7 +131,7 @@ SUBROUTINE TimoshenkoSolver(Model, Solver, dt, TransientSimulation)
       nb = GetElementNOFBDOFs()
 
       CALL BeamStiffnessMatrix(Element, n, nd+nb, nb, TransientSimulation, &
-          MassAssembly=TransientSimulation)
+          MassAssembly=TransientSimulation)      
     END DO
 
     CALL DefaultFinishBulkAssembly()

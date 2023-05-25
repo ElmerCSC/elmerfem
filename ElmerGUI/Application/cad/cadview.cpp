@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -74,9 +74,11 @@
 #include <BRepAdaptor_Curve2d.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
-#include <BRepMesh.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
+#if OCE_FOUND
+  #include <BRepMesh.hxx>
+#endif 
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
@@ -104,7 +106,11 @@ static void pickEventHandler(vtkObject* caller, unsigned long eid,
   QVTKWidget* qvtkWidget = cadView->GetQVTKWidget();
 #endif
 
+#if VTK_MAJOR_VERSION >= 9
+  vtkAbstractPicker* picker = qvtkWidget->interactor()->GetPicker();
+#else
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
+#endif
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
   vtkActor* actor = propPicker->GetActor();
 
@@ -146,16 +152,28 @@ CadView::CadView(QWidget *parent) : QMainWindow(parent) {
 
   renderer = vtkRenderer::New();
   renderer->SetBackground(1, 1, 1);
+#if VTK_MAJOR_VERSION >=9
+  qVTKWidget->renderWindow()->AddRenderer(renderer);
+#else
   qVTKWidget->GetRenderWindow()->AddRenderer(renderer);
+#endif
   renderer->GetRenderWindow()->Render();
 
   vtkPropPicker *propPicker = vtkPropPicker::New();
   vtkCallbackCommand *cbcPick = vtkCallbackCommand::New();
+#if VTK_MAJOR_VERSION >= 9
+  qVTKWidget->interactor()->SetPicker(propPicker);
+  cbcPick->SetClientData(this);
+  cbcPick->SetCallback(pickEventHandler);
+  qVTKWidget->interactor()->GetPicker()->AddObserver(vtkCommand::PickEvent,
+                                                        cbcPick);
+#else
   qVTKWidget->GetInteractor()->SetPicker(propPicker);
   cbcPick->SetClientData(this);
   cbcPick->SetCallback(pickEventHandler);
   qVTKWidget->GetInteractor()->GetPicker()->AddObserver(vtkCommand::PickEvent,
                                                         cbcPick);
+#endif
   propPicker->Delete();
   cbcPick->Delete();
 
@@ -177,16 +195,16 @@ QSize CadView::minimumSizeHint() const { return QSize(64, 64); }
 QSize CadView::sizeHint() const { return QSize(720, 576); }
 
 void CadView::createActions() {
-  exitAct = new QAction(QIcon(""), tr("&Quit"), this);
+  exitAct = new QAction(QIcon::fromTheme("emblem-unreadable"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(closeSlot()));
 
-  cadPreferencesAct = new QAction(QIcon(""), tr("Preferences..."), this);
+  cadPreferencesAct = new QAction(QIcon::fromTheme("preferences-system"), tr("Preferences..."), this);
   cadPreferencesAct->setShortcut(tr("Ctrl+P"));
   connect(cadPreferencesAct, SIGNAL(triggered()), this,
           SLOT(cadPreferencesSlot()));
 
-  reloadAct = new QAction(QIcon(""), tr("Reload geometry"), this);
+  reloadAct = new QAction(QIcon::fromTheme("view-refresh"), tr("Reload geometry"), this);
   reloadAct->setShortcut(tr("Ctrl+R"));
   connect(reloadAct, SIGNAL(triggered()), this, SLOT(reloadSlot()));
 }
@@ -490,7 +508,11 @@ bool CadView::readFile(QString fileName) {
   // Draw:
   //------
   renderer->ResetCamera();  
+#if VTK_MAJOR_VERSION >= 9
+  qVTKWidget->renderWindow()->Render();
+#else
   qVTKWidget->GetRenderWindow()->Render();
+#endif
 
   QCoreApplication::processEvents();
 

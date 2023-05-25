@@ -1,0 +1,183 @@
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Toy model 2D for GIA
+!!!
+!!! simple 2 layer (elastic Lithosphere + Mantle) computed
+!!! on 2 dimensional half-space (symmetry at centre)
+!!! with 30km radius (50 m thickness) instantaneous
+!!! ice load at centre. Sudden deload after 30 years
+!!! rebound for 30 years
+!echo on
+!---LUA BEGIN
+! loadfile('./timeload.lua')()
+!---LUA END
+
+$name="2layer"
+
+Header
+  Mesh DB "." "2layer"
+End
+
+Constants
+  The answer to all end everything = Integer 42
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = String Cartesian 2D
+  
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+
+  Simulation Type = Transient
+  Timestep Sizes(1) =  #1.0*365.25*24.0*3600.0
+  Timestep Intervals(1) = 4 !40
+  Output Intervals(1) = 1
+  BDF Order = 2
+  Timestepping Method = BDF
+  !Output File = $name".results"
+
+  Serendipity P Elements = False
+End
+
+!Lithosphere
+Body 1
+  Equation  = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+!Upper mantle 1
+Body 2
+  Equation  = 1
+  Material = 2
+  Body Force = 2
+  Initial Condition = 1
+End
+
+! Lithosphere
+Material 1
+  Density =  3233.6
+  Damping = Real 0.0
+  Youngs Modulus = 1.8388e+11
+  ! supper high viscosity, hence,
+  ! Maxwell time is such that it acts elastic
+  Viscosity = 1.0E44
+  Poisson Ratio = Real 0.49
+End
+! Upper Mantle 1
+Material 2
+  Density =  3367.12
+  Damping = Real 0.0
+  Youngs Modulus = 1.9941e+11
+  Viscosity = 1.0E18
+  Poisson Ratio = Real 0.49
+End
+!!!!!!!!!!!!!!!!!!!1!!!!!!!!!!
+! Initial Condition for all
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  d 1 = Real 0.0
+  d 2 = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Body Force
+! density times gravity
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Lithosphere
+Body Force 1
+ Stress BodyForce 1 =  0.0
+ Stress BodyForce 2 =  0.0
+ Gravitational Prestress Advection = Logical True
+ GPA Coeff = Real # 3233.6 * 9.987630567
+End
+!Upper Mantle 1
+Body Force 2
+ Stress BodyForce 1 =  0.0
+ Stress BodyForce 2 =  0.0
+ Gravitational Prestress Advection = Logical True
+ GPA Coeff = Real # 3367.12 * 9.939356456
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  !Plane Stress = True
+End
+
+Solver 1
+  Equation = "Elasticity Analysis"
+  Procedure = "StressSolve" "StressSolver"
+
+  Displace Mesh = Logical FALSE ! physically deform the mesh?
+  Calculate Stresses = Logical True
+
+  ! 2D: 2 deformation 1 pressure (as incompressible)
+  Variable = String "t[d:2 p:1]"
+  ! bubble 3 or 6
+  Element = p:1 b:3 
+
+  !Relative Integration Order = -3
+
+  Incompressible = Logical True
+  Time Derivative Order = 1
+
+  Maxwell material = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = GCR
+  Linear System Max Iterations = 1000
+    Linear System Preconditioning = ILU1
+  Linear System Convergence Tolerance = 1.0e-07
+  
+  !Nonlinear System Convergence Tolerance = 1.0e-6
+  !Nonlinear System Max Iterations = 1
+  !Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance= 1.0e-5
+End
+
+Solver 2
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = After Timestep
+  Output Format = vtu
+  Output File Name = $name
+  !Discontinuous Galerkin = True
+  !Save Bulk Only = True
+  Save Geometry Ids = True
+End
+
+Boundary Condition 1
+  Name = "loaded surface"
+  Target Boundaries(1) = 1
+! placing a 100m thick glacier on top of surface with a size of 30 km
+! from centre for the first 30 years and then stop
+  Normal Force = Variable Coordinate 1, Time
+  Real lua "normalload(tx[0],tx[1])"
+End
+
+Boundary Condition 2
+  Name = "lower mantle"
+  Target Boundaries(1) = 2
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+Boundary Condition 3
+  Name = "centre-symmetry"
+  Target Boundaries(1) = 3 
+  d 1 = Real 0
+End
+
+Boundary Condition 4
+  Name = "far-field"
+  Target Boundaries(1) = 4
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+! 40 timesteps
+!Solver 1 :: Reference Norm = 3318.5629
+Solver 1 :: Reference Norm = 2.99887008E+04
+

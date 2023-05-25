@@ -102,7 +102,9 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
      CASE ('ssabasalflow') 
         SSA = .TRUE.
      END SELECT
-     write(*,*)FlowSolverName, SSA
+     WRITE(Message,*)&
+          'Flow Solver Name:', TRIM(FlowSolverName),' SSA:',SSA
+     CALL INFO('Sliding_Weertman',Message,Level=3)
   END IF
   
   !Read the coefficients C and m in the sif file
@@ -450,7 +452,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 
   REAL (KIND=dp) :: Bdrag 
  
-  REAL (KIND=dp), ALLOCATABLE :: normal(:), velo(:)
+  REAL (KIND=dp), ALLOCATABLE :: normal(:), velo(:), BuddFrictionCoeff(:)
   TYPE(ValueList_t), POINTER  :: BC, ParentMaterial
   TYPE(Variable_t), POINTER   :: NormalVar, FlowVariable, Hvar
   TYPE(Element_t), POINTER    :: parentElement, BoundaryElement
@@ -459,15 +461,15 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   REAL(KIND=dp), POINTER      :: coefValues(:)
   INTEGER, POINTER            :: coefPerm(:)
   INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:), WeertCoefPerm(:)
-  INTEGER          :: DIM, i, body_id, other_body_id, material_id
-  REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
-  REAL (KIND=dp)   :: ut, un, ut0, WeertExp, Cw
+  INTEGER          :: DIM, i, body_id, other_body_id, material_id, elementNbNodes,elementNodeNumber
+  REAL (KIND=dp)   :: m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
+  REAL (KIND=dp)   :: C, ut, un, ut0, WeertExp, Cw
   LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE., H_scaling
   LOGICAL          :: UnFoundFatal=.TRUE., ConvertWeertman
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName, CoefName, WeertCoefName, WeertForm
 
   SAVE :: normal, velo, DIM, SSA, FirstTime, FlowSolverName, UseFloatation
-  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman
+  SAVE :: WeertCoefName, WeertExp, WeertForm, ConvertWeertman, BuddFrictionCoeff
 
 
   USF_name = "Sliding_Budd"
@@ -485,6 +487,8 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         CALL FATAL(USF_name, 'Bad dimension of the problem')
      END IF
+
+     ALLOCATE(BuddFrictionCoeff(Model % MaxElementNodes))
      
      FlowSolverName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )    
      IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
@@ -514,6 +518,13 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   ! get some information upon active boundary element and its parent
   !-----------------------------------------------------------------
   BoundaryElement => Model % CurrentElement
+  elementNbNodes = GetElementNOFNodes(BoundaryElement)
+  
+  ! get number of node in element
+  DO elementNodeNumber=1,elementNbNodes
+    IF (BoundaryElement % NodeIndexes(elementNodeNumber) == nodenumber) EXIT
+  END DO
+  
   IF ( .NOT. ASSOCIATED(BoundaryElement) ) THEN
      CALL FATAL(USF_Name,'No boundary element found')
   END IF
@@ -545,10 +556,16 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 !     CALL FATAL(USF_name, 'Need Ice Density for the Budd sliding law')
 !  END IF
 
-  C = GetConstReal( BC, 'Budd Friction Coefficient', GotIt )
+  !C = GetConstReal( BC, 'Budd Friction Coefficient', GotIt )
+
+  BuddFrictionCoeff(1:elementNbNodes) = &
+       ListGetReal(BC, 'Budd Friction Coefficient', elementNbNodes, BoundaryElement % Nodeindexes, GotIt)
+  
   IF (.NOT. GotIt) THEN
-     CALL FATAL(USF_name, 'Need a Friction Coefficient for the Budd sliding law')
+    CALL FATAL(USF_name, 'Need a Friction Coefficient for the Budd sliding law')
   END IF
+
+  C = BuddFrictionCoeff(elementNodeNumber)
   
   m = GetConstReal( BC, 'Budd Velocity Exponent', GotIt )
   IF (.NOT. GotIt) THEN
@@ -831,7 +848,7 @@ END FUNCTION Sliding_Budd
 !> USF_Sliding.f90, function FreeSlipShelves
 !> 
 !> Sets the basal drag to zero according to a grounded mask.  Intended for use 
-!> when aplying inverse methods in the presence of floating ice shelves.
+!> when applying inverse methods in the presence of floating ice shelves.
 !> 
 !> For the .sif (bottom boundary):
 !>  Slip Coefficient 2  = Variable beta
@@ -914,4 +931,3 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
   END IF
     
 END FUNCTION FreeSlipShelves
-

@@ -18,7 +18,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -50,7 +50,7 @@ Solver 1
   ! With "Mixed Formulation = True" & "Neo-Hookean Material = True"
   ! the following three keyword commands are used automatically in
   ! 2-D simulations (thus, use the components of "Disp" to specify
-  ! the diplacement on a boundary):
+  ! the displacement on a boundary):
   ! ----------------------------------------------------------------
   !  Variable = MixedSol[Disp:2 Pres:1]
   !  Variable DOFs = 3

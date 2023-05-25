@@ -435,7 +435,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
 
    if (ParEnv % MyPE .ne.0) then
-             call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
+             call MPI_SEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
    else
            NodePerm(1:NActiveNodes)=LocalToGlobalPerm(1:NActiveNodes)
            ni=1+NActiveNodes
@@ -481,6 +481,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   END IF
 
   Do i=1,NActiveNodes
+     IF (BetaPerm(ActiveNodes(i))==0) CALL FATAL(SolverName,'Optimized Variable is not defined on this node')
+     IF (GradPerm(ActiveNodes(i))==0) CALL FATAL(SolverName,'Gradient Variable is not defined on this node')
      Do j=1,VarDOFs
           x(VarDOFs*(i-1)+j)=BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)
           g(VarDOFs*(i-1)+j)=GradValues(VarDOFs*(GradPerm(ActiveNodes(i))-1)+j)

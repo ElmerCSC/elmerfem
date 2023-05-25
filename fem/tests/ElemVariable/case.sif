@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -25,7 +25,7 @@ Simulation
 
   Post File = "case.vtu"
   vtu: Reference Norm = Real 1.0
-  vtu: Reference Sums(6) = Real 37 4 764 1139 71860 121.0 
+  vtu: Reference Values(6) = Real 37 4 764 1139 71860 121.0 
 !  vtu: ascii output = Logical True
 !  vtu: Save Bulk Only = Logical True
 End

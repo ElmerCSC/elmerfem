@@ -46,7 +46,7 @@ Getting the derivative of the cost function with respect to the direct solver in
 
 ### Keywords
 
-Bellow is the sequence and related keywords in the *.sif* file:  
+Below is the sequence and related keywords in the *.sif* file:  
 
 ```
 !## Direct solver
@@ -103,11 +103,11 @@ Bellow is the sequence and related keywords in the *.sif* file:
     Direct Solver Equation Name = String "NameOfEquation"
       
  !# Keywords to solve the linear system
-    Linear Sytem Solver = 
+    Linear System Solver = 
       
  End
 ```
-### Limitations and possible improvments
+### Limitations and possible improvements
  
 - No support for periodic boundary conditions.
 

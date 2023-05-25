@@ -106,7 +106,7 @@ SUBROUTINE OdeSolver( Model,Solver,dt,TransientSimulation )
 
   DO iter = 1, MaxIter 
     IF( MaxIter > 1 ) THEN
-      CALL Info('OdeSolver','Nonlinear iteration: '//TRIM(I2S(iter)),Level=5)
+      CALL Info('OdeSolver','Nonlinear iteration: '//I2S(iter),Level=5)
     END IF
 
     CALL DefaultInitialize()
@@ -159,7 +159,7 @@ CONTAINS
         CALL Fatal('OdeSolver','Active Component index out of range')
       END IF
       OdeList => CurrentModel % Components(i) % Values 
-      CALL Info('OdeSolver','Using active component: '//TRIM(I2S(i)),Level=10)
+      CALL Info('OdeSolver','Using active component: '//I2S(i),Level=10)
     ELSE
       OdeList => Params
       CALL Info('OdeSolver','Using solver section',Level=10)
@@ -185,7 +185,7 @@ CONTAINS
     ! Set stiffness matrix values
     DO i=1,Dofs
       DO j=1,Dofs
-        str = 'Stiffness Matrix '//TRIM(I2S(i))//TRIM(I2S(j))
+        str = 'Stiffness Matrix '//I2S(i)//I2S(j)
         val = ListGetCReal( OdeList, str, Found ) 
         CALL CRS_SetMatrixElement( A,i,j,val )
       END DO
@@ -201,9 +201,9 @@ CONTAINS
         ! Even for 1st order PDEs. However, in this solver we like to call the coefficients
         ! mass, damping and spring.
         IF( TimeOrder >= 2 ) THEN
-          str = 'Mass Matrix '//TRIM(I2S(i))//TRIM(I2S(j))
+          str = 'Mass Matrix '//I2S(i)//I2S(j)
         ELSE
-          str = 'Damping Matrix '//TRIM(I2S(i))//TRIM(I2S(j))
+          str = 'Damping Matrix '//I2S(i)//I2S(j)
         END IF
         val = ListGetCReal( OdeList, str, Found ) 
         CALL CRS_SetMatrixElement( A,i,j,val )
@@ -217,7 +217,7 @@ CONTAINS
       A % Values => A % DampValues
       DO i=1,Dofs
         DO j=1,Dofs
-          str = 'Damping Matrix '//TRIM(I2S(i))//TRIM(I2S(j))
+          str = 'Damping Matrix '//I2S(i)//I2S(j)
           val = ListGetCReal( OdeList, str, Found ) 
           CALL CRS_SetMatrixElement( A,i,j,val )
         END DO
@@ -226,7 +226,7 @@ CONTAINS
     END IF
 
     DO i=1,Dofs
-      str = 'Force '//TRIM(I2S(i))
+      str = 'Force '//I2S(i)
       val = ListGetCReal( OdeList, str, Found ) 
       A % Rhs(i) = val
     END DO

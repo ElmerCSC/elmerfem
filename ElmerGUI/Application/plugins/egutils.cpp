@@ -114,12 +114,12 @@ int *ivector(int nl,int nh)
 }
 
 
-unsigned char *cvector(int nl,int nh)
-/* allocate an unsigned char vector with subscript range v[nl..nh] */
+char *cvector(int nl,int nh)
+/* allocate an char vector with subscript range v[nl..nh] */
 {
-  unsigned char *v;
+  char *v;
   
-  v=(unsigned char *)malloc((size_t) (nh-nl+1+1)*sizeof(unsigned char));
+  v=(char *)malloc((size_t) (nh-nl+1+1)*sizeof(char));
   if (!v) nrerror("allocation failure in cvector()");
   return(v-nl+1);
 }
@@ -334,7 +334,7 @@ void free_ivector(int *v,int nl,int nh)
   free((FREE_ARG) (v+nl-1));
 } 
 
-void free_cvector(unsigned char *v,int nl,int nh)
+void free_cvector(char *v,int nl,int nh)
 {
   free((FREE_ARG) (v+nl-1));
 }
@@ -485,18 +485,17 @@ void timer_show()
 
 void bigerror(const char error_text[])
 {
-  fprintf(stderr,"The program encountered a major error...\n");
-  fprintf(stderr,"%s\n",error_text);
-  fprintf(stderr,"...now exiting to system...\n");
+  fprintf(stderr,"***** ERROR: We cannot continue with this! *****\n");
+  fprintf(stderr,"***** %s\n",error_text);
+  fprintf(stderr,"***** ...now exiting to system!\n");
   exit(1);
 }
 
 
 void smallerror(const char error_text[])
 {
-  fprintf(stderr,"The program encountered a minor error...\n");
-  fprintf(stderr,"%s\n",error_text);
-  fprintf(stderr,"...we'll try to continue...\n");
+  fprintf(stderr,"***** WARNING: This should not happen but we try to continue! *****\n");
+  fprintf(stderr,"***** %s\n",error_text);
 }
 
 

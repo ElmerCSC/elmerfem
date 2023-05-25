@@ -1,0 +1,125 @@
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "eighth"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real $1.0/3.0
+ Youngs Modulus = Real 7.0e+10
+ Shell Thickness = Real 0.1
+
+  Convection Velocity 1 = 0
+  Convection Velocity 2 = 0
+
+  diffusion coefficient = 1.0
+  convection coefficient = 0.0
+  time derivative coefficient = 0.0
+End
+
+Body Force 1 
+  Field Source = Real 1
+  !
+  ! The solver code has a hard-coded load that is equivalent to the following
+  ! specification in order to avoid FE errors from presenting the load.
+  !
+  Normal Pressure = Variable Coordinate
+     Real MATC "1.0e-1 * 1.0e+9 * cos(2.0*tx(0))"
+End
+
+Equation 1 
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Shell equation"
+
+  Variable = "U"
+  Variable DOFs = 5
+  Procedure = "BenchmarkShell" "ShellSolver"
+
+  Element = p:4
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-7
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Element = "p:2"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+End
+
+! Symmetry at y2 = 0:
+! --------------------
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  U 5 = Real 0
+End
+
+! Symmetry at y1 = pi/2:
+! --------------------
+Boundary Condition 2
+  Target Boundaries(2) = 2 3
+  U 1 = Real 0
+  U 4 = Real 0
+End
+
+! Fixed end at y2 = L:
+! --------------------
+Boundary Condition 3
+  Target Boundaries(1) = 4
+  Field = 0
+  U 1 = Real 0
+  U 2 = Real 0
+  U 3 = Real 0
+  U 4 = Real 0
+  U 5 = Real 0 
+End
+
+! Symmetry at y1 = 0:
+! --------------------
+Boundary Condition 4
+  Target Boundaries(2) = 5 6
+  U 1 = Real 0
+  U 4 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.14521020E-01
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
+
+Solver 2 :: Reference Norm = Real 1.95078332E-01
+Solver 2 :: Reference Norm Tolerance = Real 1.0E-5

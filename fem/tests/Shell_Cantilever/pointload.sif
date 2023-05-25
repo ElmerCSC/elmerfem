@@ -7,7 +7,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady
 !  Simulation Type = Scanning
@@ -101,5 +101,5 @@ Boundary Condition 2
     Real MATC "0.2*tx"
 End
 
-Solver 1 :: Reference Norm = Real 1.39593665E-01
+Solver 1 :: Reference Norm = Real 1.39293663E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

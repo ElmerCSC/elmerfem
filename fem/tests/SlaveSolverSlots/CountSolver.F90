@@ -17,7 +17,7 @@ SUBROUTINE CountSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, SAVE :: VisitedTimes = 0
 
   VisitedTimes = VisitedTimes + 1
-  CALL Info('CountSolver','Solver visited times: '//TRIM(I2S(VisitedTimes)))
+  CALL Info('CountSolver','Solver visited times: '//I2S(VisitedTimes))
 
   Solver % variable % values = 1.0_dp * VisitedTimes
   Solver % variable % norm = 1.0_dp * VisitedTimes

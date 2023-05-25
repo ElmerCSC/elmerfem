@@ -23,6 +23,7 @@
 MODULE VtuXMLFile
   USE DefUtils 
   USE MeshUtils
+  USE SolverUtils
   USE SaveUtils
   USE MainUtils
   USE ElementDescription
@@ -85,13 +86,25 @@ CONTAINS
     
     TYPE(Mesh_t), POINTER :: Mesh
 
-    TYPE(Variable_t), POINTER :: Var
-    INTEGER :: NoAve
-    LOGICAL :: BodySum 
+    TYPE(Variable_t), POINTER :: Var, Var1
+    INTEGER :: NoAve, i
+    LOGICAL :: BodySum    
+    
+    ! The variables may have been averaged already in vector form. 
+    ! Inherit the DgAveraged flag to the components. 
+    Var => Mesh % Variables    
+    DO WHILE( ASSOCIATED( Var ) )       
+      IF ( Var % DOfs > 1 .AND. Var % TYPE == Variable_on_nodes_on_elements ) THEN        
+        DO i=1,Var % Dofs
+          Var1 => VariableGet( Mesh % Variables,ComponentName(Var % Name,i), ThisOnly = .TRUE.)
+          IF( ASSOCIATED(Var1)) Var1 % DgAveraged = Var % DgAveraged 
+        END DO
+      END IF
+      Var => Var % Next
+    END DO
 
     NoAve = 0
-    Var => Mesh % Variables
-    
+    Var => Mesh % Variables    
     DO WHILE( ASSOCIATED( Var ) ) 
       
       ! Skip if variable is not active for saving       
@@ -119,185 +132,11 @@ CONTAINS
       Var => Var % Next
     END DO
 
-    CALL Info('AverageBodyFields','Reduced '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
+    CALL Info('AverageBodyFields','Reduced '//I2S(NoAve)//' elemental fields',Level=7)
 
   END SUBROUTINE AverageBodyFields
 
   
-  ! When we have a field defined on IP points we may temporarily swap it to be a field
-  ! defined on DG points. This is done by solving small linear system for each element.
-  !------------------------------------------------------------------------------------
-  SUBROUTINE Ip2DgField( Element, nip, fip, ndg, fdg )
-    !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: nip, ndg
-    REAL(KIND=dp) :: fip(:), fdg(:)
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Weight, DetJ
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q,n
-    TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t) :: Nodes
-    TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
-
-    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
-!------------------------------------------------------------------------------
-
-    Mesh => GetMesh()
-    IF( .NOT. AllocationsDone ) THEN
-      n = Mesh % MaxElementNodes
-      ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
-      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
-          CurrentCoordinateSystem() == CylindricSymmetric
-      AllocationsDone = .TRUE.
-    END IF
-    
-    n = GetElementNOFNodes( Element ) 
-    IF( n /= ndg ) CALL Fatal('Ip2DgField','Mismatch in sizes!')
-
-    CALL GetElementNodes( Nodes, Element )
-    MASS  = 0._dp
-    LOAD = 0._dp
-
-    ! Numerical integration:
-    !-----------------------
-    IP = GaussPoints( Element, nip )
-
-    DO t=1,IP % n
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
-      Weight = IP % s(t) * DetJ
-
-      IF( CSymmetry ) THEN
-        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
-      END IF
-      
-      DO p=1,n
-        LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
-        DO q=1,n
-          MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
-        END DO
-      END DO
-    END DO
-
-    CALL LuSolve(n,MASS,LOAD) 
-    
-    fdg(1:n) = LOAD(1:n)
-    
-  END SUBROUTINE Ip2DgField
-
-
-  ! This routine changes the IP field to DG field just while the results are being written.
-  !---------------------------------------------------------------------------------------
-  SUBROUTINE Ip2DgSwapper( Mesh, Var ) 
-
-    TYPE( Mesh_t), POINTER :: Mesh
-    TYPE( Variable_t), POINTER :: Var
-
-    TYPE( Variable_t), TARGET :: TmpVar
-    INTEGER :: dgsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
-    TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: fip(32),fdg(32)
-    
-    SAVE TmpVar
-
-    IF( Var % TYPE /= Variable_on_gauss_points ) RETURN
-
-    CALL Info('Ip2DgSwapper','Swapping variable from ip to dg:'//TRIM(Var % Name),Level=8)
-    
-    dofs = Var % Dofs
-    n = SIZE( Var % Values ) 
-
-    ! Inherit stuff from the primary field to temporal field
-    TmpVar % Name = Var % Name
-    TmpVar % Dofs = Var % Dofs
-    TmpVar % Type = Variable_on_nodes_on_elements
-    
-    ! Calculate the sizes
-    dgsize = 0
-    ipsize = 0
-    varsize = 0
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes
-      dgsize = dgsize + n 
-
-      j = Element % ElementIndex
-      m = Var % Perm(j+1) - Var % Perm(j)
-      ipsize = ipsize + m
-
-      IF( m > 0 ) varsize = varsize + n
-    END DO
-
-    CALL Info('Ip2DgSwapper','Sizes for dg, ip and var: '&
-        //TRIM(I2S(dgsize))//', '//TRIM(I2S(ipsize))//', '//TRIM(I2S(varsize)),Level=20)
-   
-    IF(ASSOCIATED( TmpVar % Perm ) ) THEN
-      IF( SIZE( TmpVar % Perm ) < dgsize ) DEALLOCATE( TmpVar % Perm )
-    END IF
-    IF(.NOT. ASSOCIATED( TmpVar % Perm ) ) THEN
-      ALLOCATE( TmpVar % Perm(dgsize), STAT=allocstat )
-      IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Perm')
-    END IF
-    TmpVar % Perm = 0 
-
-    IF(ASSOCIATED( TmpVar % Values ) ) THEN
-      IF( SIZE( TmpVar % Values ) < varsize * dofs ) DEALLOCATE( TmpVar % Values )
-    END IF
-    IF(.NOT. ASSOCIATED( TmpVar % Values ) ) THEN
-      ALLOCATE( TmpVar % Values(varsize * dofs), STAT=allocstat)
-      IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Values')      
-    END IF
-    TmpVar % Values = 0 
-
-    ! Number the permutation in the temporal variable
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes            
-      e = Element % ElementIndex
-      m = Var % Perm(e+1) - Var % Perm(e)
-
-      IF( m == 0 ) CYCLE
-      TmpVar % Perm( Element % DgIndexes ) = 1
-    END DO
-
-    j = 0
-    DO i = 1, dgsize
-      IF( TmpVar % Perm( i ) == 0 ) CYCLE
-      j = j + 1
-      TmpVar % Perm( i ) = j
-    END DO
-    IF( j /= varsize ) CALL Fatal('Ip2DgSwapper','Inconsistent sizes in numbering')
-        
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes            
-      e = Element % ElementIndex
-      m = Var % Perm(e+1) - Var % Perm(e)
-
-      IF( m == 0 ) CYCLE 
-
-      DO k=1,dofs
-        DO i=1,m        
-          j = Var % Perm(t) + i 
-          fip(i) = Var % Values(dofs*(j-1)+k)
-        END DO
-        
-        CALL Ip2DgField( Element, m, fip, n, fdg )
-        
-        DO i=1,n        
-          j = TmpVar % Perm( Element % DgIndexes(i) )
-          TmpVar % Values(dofs*(j-1)+k) = fdg(i)
-        END DO
-      END DO
-    END DO
-
-    Var => TmpVar
-
-    CALL Info('Ip2DgSwapper','Swapping variable from ip to dg done',Level=20)
-    
-  END SUBROUTINE Ip2DgSwapper
-    
   
   ! Write the filename for saving .vtu, .pvd, and .pvtu files.
   ! Partname, partition and timestep may be added to the name.
@@ -312,14 +151,16 @@ CONTAINS
 
     CHARACTER(MAX_NAME_LEN) :: GroupName
     INTEGER :: i,j,NameOrder(3),PEs
-    LOGICAL :: LegacyMode, ParallelBaseName
+    LOGICAL :: LegacyMode, ParallelBaseName, NoFileindex, Found 
 
     
     NameOrder = [1,2,3]
     LegacyMode = .FALSE.
     ParallelBaseName = .FALSE.
     IF( PRESENT( ParallelBase ) ) ParallelBaseName = ParallelBase
-    
+
+    NoFileindex = ListGetLogical( CurrentModel % Solver % Values,'No Fileindex',Found )  
+
     
     VtuFile = BaseFile
 
@@ -332,10 +173,12 @@ CONTAINS
         ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
-            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name", Found)
+            IF(.NOT. Found) GroupName = 'Body'//I2S(GroupId)
           ELSE
             i = GroupId - CurrentModel % NumberOfBodies
-            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name",Found)
+            IF(.NOT. Found) GroupName = 'BC'//I2S(i)
           END IF
           VtuFile = TRIM(VtuFile)//"_"//TRIM(GroupName)
         END IF
@@ -361,7 +204,7 @@ CONTAINS
             END IF
           END IF
         ELSE
-          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! Also add number to the wrapper files as it is difficult otherwise
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
@@ -378,7 +221,7 @@ CONTAINS
           
       CASE( 3 )         
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
-        IF( FileIndex > 0 ) THEN
+        IF( FileIndex > 0 .AND. .NOT. NoFileindex ) THEN
           IF( FileIndex < 10000 ) THEN        
             WRITE(VtuFile,'(A,A,I4.4)') TRIM((VtuFile)),"_t",FileIndex
           ELSE
@@ -421,13 +264,13 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN
+  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
   CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
-  CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   LOGICAL :: Visited = .FALSE.
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
@@ -439,7 +282,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), POINTER :: CurrentElement
   TYPE(ValueList_t),POINTER :: Params
   INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, &
-      OutputMeshes, ParallelDofsNodes
+      OutputMeshes, ParallelDofsNodes, LagN
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, &
       WriteIds, SaveLinear, &
@@ -476,10 +319,16 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ! Sometimes we have a request to save in DG format even though no equation has been solved as dg.
       ! Then we need to create the Element % DgIndexes for the saving only. If already done this does nothing.
       CALL CheckAndCreateDGIndexes( Mesh )
-      IF( DN ) CALL AverageBodyFields( Mesh )  
+
+      DoAve = GetLogical( Params,'Average Within Materials', GotIt)
+      IF(.NOT. GotIt) DoAve = .TRUE. 
+      
+      IF( DoAve ) CALL AverageBodyFields( Mesh )  
     END IF
   END IF
   
+  LagN = GetInteger( Params,'Lagrange Element Degree',GotIt) 
+
   ExtCount = GetInteger( Params,'Output Count',GotIt)
   IF( GotIt ) THEN
     nTime = ExtCount
@@ -490,6 +339,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   FileIndexOffset = GetInteger( Params,'Fileindex offset',GotIt)
   FileIndex = nTime + FileIndexOffset
 
+  i = GetInteger( Params, 'Output File cycle',GotIt)
+  IF(GotIt) FileIndex = MODULO(FileIndex-1,i)+1
+  
   BinaryOutput = GetLogical( Params,'Binary Output',GotIt)
   IF( GotIt ) THEN
     AsciiOutput = .NOT. BinaryOutput
@@ -551,7 +403,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   IF ( nTime == 1 ) THEN
     CALL Info(Caller,'Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
-    CALL Info(Caller, 'Saving number of partitions: '//TRIM(I2S(Partitions)))
+    CALL Info(Caller, 'Saving number of partitions: '//I2S(Partitions))
   END IF
 
   BaseFile = FilePrefix
@@ -581,7 +433,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 200 CONTINUE
   IF( GroupCollection ) THEN
     GroupId = GroupId + 1
-    CALL Info(Caller,'Saving group '//TRIM(I2S(GroupId)),Level=8)
+    CALL Info(Caller,'Saving group '//I2S(GroupId),Level=8)
   END IF
 
   !------------------------------------------------------------------------------
@@ -595,7 +447,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! If we have a discontinuous mesh then create the permutation vectors to deal
   ! with the discontinuities.
   !------------------------------------------------------------------------------
-  CALL GenerateSavePermutation(Mesh,DG,DN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
+  CALL GenerateSavePermutation(Mesh,DG,DN,LagN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
       NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
   
   ! The partition is active for saving if there are any nodes 
@@ -603,17 +455,22 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL ParallelActive( NumberOfDofNodes > 0 )
 
   IF( nTime == 1 ) THEN
-    ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfGeomNodes ) )
-    CALL Info(Caller, 'Total number of geometry nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
+    ParallelElements = ParallelReduction( NumberOfElements ) 
 
-    ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfDofNodes ) )
-    CALL Info(Caller, 'Total number of dof nodes to save: '&
-        //TRIM(I2S(ParallelNodes)),Level=6)
-
-    ParallelElements = NINT( ParallelReduction( 1.0_dp * NumberOfElements ) )
-    CALL Info(Caller, 'Total number of elements to save: '&
-        //TRIM(I2S(ParallelElements)),Level=6)
+    IF( ParallelElements == 0 ) THEN
+      CALL Info(Caller, 'Nothing to save for this selection: ',Level=8)
+    ELSE
+      CALL Info(Caller, 'Total number of elements to save: '&
+          //I2S(ParallelElements),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
+      CALL Info(Caller, 'Total number of geometry nodes to save: '&
+          //I2S(ParallelNodes),Level=8)
+      
+      ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
+      CALL Info(Caller, 'Total number of dof nodes to save: '&
+          //I2S(ParallelNodes),Level=8)
+    END IF
   END IF
 
   !------------------------------------------------------------------------------
@@ -640,7 +497,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
-    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
+    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
     IF( GotIt ) THEN
       IF( Str == 're') THEN
@@ -649,12 +506,14 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
         EigenVectorMode = 1
       ELSE IF( Str == 'abs' ) THEN
         EigenVectorMode = 2
+      ELSE IF( Str == 'complex' ) THEN
+        EigenVectorMode = 3
       ELSE
         CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
+      CALL Info(Caller,'Using eigen vector mode: '//I2S(EigenVectorMode),Level=7)
     END IF
   END IF
-
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
   IF( GotActiveModes2 ) THEN
@@ -668,7 +527,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
-    CALL Info(Caller,'Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
+    CALL Info(Caller,'Maximum number of constraint modes: '//I2S(MaxModes2),Level=7)
   END IF
 
   ! This activates the solution of the modes one for each file
@@ -718,7 +577,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
             BCOffset = 10 * BCOffset
           END DO
           CALL Info(Caller,'Setting offset for boundary entities: '&
-              //TRIM(I2S(BCOffset)),Level=6)
+              //I2S(BCOffset),Level=6)
         END IF
       END IF
       DO i=1,CurrentModel % NumberOfBCs
@@ -737,7 +596,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! We may need to jump here to write a new eigenmode
 100 CONTINUE
 
-  ParallelDofsNodes = NINT( ParallelReduction( 1.0_dp * NumberOfDofNodes ) )
+  ParallelDofsNodes = ParallelReduction( NumberOfDofNodes ) 
   
   IF(Parallel) THEN
     ! Generate the filename for saving
@@ -758,7 +617,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Finished writing vtu file',Level=12)
   END IF
 
-  ! For transient simulation or group collections write a holder for indivisual files
+  ! For transient simulation or group collections write a holder for individual files
   !-----------------------------------------------------------------------------------
   IF( TimeCollection .OR. GroupCollection ) THEN
     CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex, ParallelBase = ParallelBase )    
@@ -803,6 +662,23 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+
+  FUNCTION PickComplex(zval,zmode) RESULT( val ) 
+    COMPLEX(KIND=dp) :: zval
+    INTEGER :: zmode
+    REAL(KIND=dp) :: val
+    
+    SELECT CASE( zmode ) 
+    CASE(0,3) 
+      val = REAL( zval )
+    CASE(1,4) 
+      val = AIMAG( zval ) 
+    CASE(2) 
+      val = ABS( zval ) 
+    END SELECT
+  END FUNCTION PickComplex
+    
+  
   
   ! Writes a single VTU file that can be read by Paraview, ViSiT etc.
   !---------------------------------------------------------------------------------------
@@ -812,20 +688,25 @@ CONTAINS
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, cumn
+        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, &
+        cumn, iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
-    LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
+    CHARACTER(*), PARAMETER :: Caller = 'WriteVtuFile'
+    LOGICAL :: ScalarsExist, VectorsExist, Found, &
+        ComponentVector, ComponentVectorB, ComplementExists, &
+        Use2, IsHarmonic, FlipActive
+    INTEGER :: DoIm
     LOGICAL :: WriteData, WriteXML, L, Buffered
-    TYPE(Variable_t), POINTER :: Solution
+    TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
     REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
-    INTEGER :: TmpIndexes(27), VarType
+    INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
+    INTEGER :: TmpIndexes(MAX_LAGRANGE_NODES), VarType
     
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:), EigenVectors2(:,:), EigenVectors3(:,:)
     COMPLEX(KIND=dp), POINTER :: EigenVectorsB(:,:), EigenVectorsB2(:,:), EigenVectorsB3(:,:)
@@ -835,7 +716,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
     REAL(KIND=dp), POINTER :: TmpArray(:,:)
-    REAL(KIND=dp) :: CoordScale(3)
+    REAL(KIND=dp) :: CoordScale(3), CoordOffset(3)
+    TYPE(Variable_t), POINTER, SAVE :: LagVarX=>NULL(), LagVarY=>NULL(), LagVarZ=>NULL()
     
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
@@ -851,24 +733,20 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
     FlipActive = .FALSE.
+    TmpSolDg => NULL()
+    TmpSolDg2 => NULL()
+    TmpSolDg3 => NULL()
     
-
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
 
-    ! This is a hack to ensure that the streamed saving will cover the whole file
-    !----------------------------------------------------------------------------
-    IF(.TRUE.) THEN
-      OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'formatted', STATUS='unknown' )
-      WRITE( VtuUnit,'(A)') ' '
-      CLOSE( VtuUnit ) 
-    END IF
-
-
     ! This format works both for ascii and binary output
     !-------------------------------------------------------------------------
-    OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='unknown' )
-
+    OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='replace', IOStat=iostat)
+    IF( iostat /= 0 ) THEN
+      CALL Fatal(Caller,'Opening of file failed: '//TRIM(VtuFile))
+    END IF
+        
     Solver => Model % Solver
 
     ! VTU seemingly only works with 3D cases, so enforce it
@@ -895,7 +773,7 @@ CONTAINS
     ScalarFieldName = GetString( Params,'Scalar Field 1',ScalarsExist)
     VectorFieldName = GetString( Params,'Vector Field 1',VectorsExist)
     IF( .NOT. ( ScalarsExist .OR. VectorsExist) ) THEN
-      CALL Warn('WriteVtuFile','Are there really no scalars or vectors?')
+      CALL Warn(Caller,'Are there really no scalars or vectors?')
     END IF
 
     WRITE( OutStr,'(A)') '      <PointData>'//lf
@@ -935,7 +813,19 @@ CONTAINS
         END DO
       END IF
     END IF
-      
+
+    CoordOffset = 0.0_dp
+    TmpArray => ListGetConstRealArray( Params,'Mesh Translate',Found )    
+    IF( Found ) THEN            
+      DO i=1,MIN( 3, SIZE(TmpArray,1) )
+        CoordOffset(i) = TmpArray(i,1)
+      END DO
+    ELSE
+      DO i=1,3
+        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//I2S(i),Found )
+      END DO
+    END IF
+    
 
     ! When the data is 'appended' two loops will be taken and the data will be written
     ! on the second loop. Offset is the position in the appended data after the '_' mark.
@@ -962,14 +852,26 @@ CONTAINS
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
+
           ComponentVector = .FALSE.
-          IF(.NOT. ASSOCIATED(Solution)) THEN
+          IF(ASSOCIATED(Solution)) THEN
+            dofs = Solution % DOFs
+            NULLIFY(Solution2)
+            NULLIFY(Solution3)
+          ELSE 
+            !---------------------------------------------------------------------
+            ! Some vectors are defined by a set of components (either 2 or 3 is possible!)
+            !---------------------------------------------------------------------            
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
-              ComponentVector = .TRUE.
+              dofs = 1
+              Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+              IF(ASSOCIATED(Solution2)) dofs = 2
+              Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+              IF(ASSOCIATED(Solution3)) dofs = 3
+              ComponentVector = .TRUE.              
             ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
+              CALL Warn(Caller,'Nonexistent variable: '//TRIM(FieldName)) 
               CYCLE
             END IF
           END IF
@@ -978,26 +880,61 @@ CONTAINS
           
           VarType = Solution % Type
 
-          IF ( VarType == Variable_on_nodes_on_elements ) THEN
-            IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
+          IF( LagN > 0 ) THEN
+            ! Let us create a L-field on-the-fly and have the solution vector point to that.
+            IF(.NOT. ASSOCIATED(TmpSolDg)) THEN
+              ALLOCATE(TmpSolDg,TmpSolDg2,TmpSolDg3)
+            END IF
+            CALL p2LagrangeSwapper( Mesh, Solution, TmpSolDg, LagN, DgPerm, NumberOfDofNodes )
+            Solution => TmpSolDg
+            IF( ASSOCIATED(Solution2) ) THEN              
+              CALL p2LagrangeSwapper( Mesh, Solution2, TmpSolDg2, LagN, DgPerm, NumberOfDofNodes )
+              Solution2 => TmpSolDg2
+            END IF
+            IF( ASSOCIATED(Solution3) ) THEN              
+              CALL p2LagrangeSwapper( Mesh, Solution3, TmpSolDg3, LagN, DgPerm, NumberOfDofNodes )
+              Solution3 => TmpSolDg3
+            END IF            
+          ELSE IF ( VarType == Variable_on_nodes_on_elements ) THEN
+            IF( .NOT. ( DG .OR. DN ) ) CYCLE
+            IF( .NOT. SaveElemental ) CYCLE
           ELSE IF( VarType == Variable_on_elements ) THEN
             CYCLE
           ELSE IF( VarType == Variable_on_gauss_points ) THEN
-            IF ( DG ) THEN
-              CALL Ip2DgSwapper( Mesh, Solution )
-            ELSE
-              CYCLE
+            IF ( .NOT. ( DG .OR. DN ) ) CYCLE                       
+
+            CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
+            IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg, .FALSE. )
+
+            Solution => TmpSolDg 
+            IF(ASSOCIATED(Solution2)) THEN
+              CALL Ip2DgSwapper( Mesh, Solution2, TmpSolDg2, Variable_on_nodes_on_elements )
+              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg2, .FALSE. )
+              Solution2 => TmpSolDg2 
+            END IF
+            IF(ASSOCIATED(Solution3)) THEN
+              CALL Ip2DgSwapper( Mesh, Solution3, TmpSolDg3, Variable_on_nodes_on_elements )
+              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg3, .FALSE. )
+              Solution3 => TmpSolDg3 
             END IF
           END IF
-            
+
+          VarType = Solution % TYPE
+          Values => Solution % Values
+          IF ( ASSOCIATED(Solution2) ) Values2 => Solution2 % Values
+          IF ( ASSOCIATED(Solution3) ) Values3 => Solution3 % Values
+          
+          EigenVectors => Solution % EigenVectors
+          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          
+          ConstraintModes => Solution % ConstraintModes
+         
           ! Default is to save the field only once
           NoFields = 0
           NoFields2 = 0
           NoModes = 0
           NoModes2 = 0
-
-          EigenVectors => Solution % EigenVectors
-          ConstraintModes => Solution % ConstraintModes
 
           IsHarmonic = .FALSE.
           IF( ASSOCIATED( Solution % Solver ) ) THEN
@@ -1008,7 +945,7 @@ CONTAINS
           IF( EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
                 ASSOCIATED(EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenValues )
+              NoModes = SIZE( Solution % EigenVectors, 1 )
 
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
@@ -1018,7 +955,7 @@ CONTAINS
               IF( IndField > NoModes ) THEN
                 WRITE( Message,'(A,I0,A,I0,A)') 'Too few eigenmodes (',&
                     IndField,',',NoModes,') in '//TRIM(FieldName)       
-                CALL Warn('WriteVtuXMLFile',Message)
+                CALL Warn(Caller,Message)
                 CYCLE
               END IF
               NoModes = 1
@@ -1035,7 +972,7 @@ CONTAINS
               IF( IndField > NoModes2 ) THEN
                 WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
                     IndField,',',NoModes,') in '//TRIM(FieldName)       
-                CALL Warn('WriteVtuXMLFile',Message)
+                CALL Warn(Caller,Message)
                 CYCLE
               END IF
               NoModes2 = 1
@@ -1043,7 +980,7 @@ CONTAINS
             END IF
           ELSE
             IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-              NoModes = SIZE( Solution % EigenValues )
+              NoModes = SIZE( Solution % EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
               NoFields = NoModes
             END IF
@@ -1058,33 +995,7 @@ CONTAINS
           END IF
           
           Perm => Solution % Perm
-          dofs = Solution % DOFs
-          Values => Solution % Values
-          VarType = Solution % Type
           FlipActive = Solution % PeriodicFlipActive 
-          
-          !---------------------------------------------------------------------
-          ! Some vectors are defined by a set of components (either 2 or 3)
-          !---------------------------------------------------------------------
-          IF( ComponentVector ) THEN
-            IF( VarType == Variable_on_gauss_points ) THEN
-              CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
-              CYCLE
-            END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
-              EigenVectors2 => Solution % EigenVectors
-              dofs = 2
-            END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
-              EigenVectors3 => Solution % EigenVectors
-              dofs = 3
-            END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
-          END IF
           
           !---------------------------------------------------------------------
           ! There may be special complementary variables such as 
@@ -1123,7 +1034,7 @@ CONTAINS
                 END IF
                 ComplementExists = .TRUE.
               ELSE
-                CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldNameB))
+                CALL Warn(Caller,'Complement does not exist:'//TRIM(FieldNameB))
               END IF
             END IF
           END IF
@@ -1137,13 +1048,14 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Finally save the field values 
           !---------------------------------------------------------------------
-          DO iField = 1, NoFields + NoFields2          
+          DoIm = 0
+300       DO iField = 1, NoFields + NoFields2          
 
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
-              CALL Info('WriteVTUFile','Setting field type to discontinuous',Level=12)
+              CALL Info(Caller,'Setting field type to discontinuous',Level=12)
               InvFieldPerm => InvDgPerm
             ELSE IF( ALLOCATED( InvNodePerm ) ) THEN
-              CALL Info('WriteVTUFile','Setting field type to nodal',Level=14)
+              CALL Info(Caller,'Setting field type to nodal',Level=14)
               InvFieldPerm => InvNodePerm
             ELSE
               InvFieldPerm => NULL()
@@ -1168,7 +1080,7 @@ CONTAINS
                 END IF
               END IF
             END IF
-
+            
             IF( WriteXML ) THEN
               NoFieldsWritten = NoFieldsWritten + 1
 
@@ -1226,7 +1138,7 @@ CONTAINS
                   i = InvFieldPerm(ii) 
                 END IF
 
-                IF( ASSOCIATED( Perm ) ) THEN
+                IF( ASSOCIATED( Perm ) .AND. LagN == 0 ) THEN
                   j = Perm(i)
                 ELSE
                   j = i
@@ -1261,14 +1173,8 @@ CONTAINS
                         zval = EigenVectors(IndField,dofs*(j-1)+k) 
                       END IF
                     END IF
-                    
-                    IF( EigenVectorMode == 0 ) THEN
-                      val = REAL( zval )
-                    ELSE IF( EigenVectorMode == 1 ) THEN
-                      val = AIMAG( zval ) 
-                    ELSE
-                      val = ABS( zval ) 
-                    END IF                    
+                    val = PickComplex(zval,EigenVectorMode+DoIm) 
+
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
@@ -1286,6 +1192,10 @@ CONTAINS
                         IF( k == 2 ) val = Values2(j)
                         IF( k == 3 ) val = Values3(j)
                       ELSE
+                        IF(dofs*(j-1)+k > SIZE(Values) .OR. dofs*(j-1)+k < 1 ) THEN
+                          PRINT *,'vtu:',dofs,j,k,SIZE(values),dofs*(j-1)+k
+                          call flush(6)
+                        END IF
                         val = Values(dofs*(j-1)+k)              
                       END IF
                     END IF
@@ -1308,12 +1218,24 @@ CONTAINS
               CALL AscBinStrWrite( OutStr ) 
             END IF
           END DO
+
+          IF( NoModes > 0 ) THEN !.AND. iField <= NoFields ) THEN
+            ! We have chosen to save both real and imaginary components.
+            ! We have done real, now redo with im. This is later patch, hence the dirty GOTO. 
+            IF(EigenVectorMode == 3 .AND. DoIm == 0 ) THEN
+              DoIm = 1 
+              CALL Info(Caller,'Doing the imaginary component of: '//TRIM(FieldName),Level=25)
+              FieldName = TRIM(FieldName)//' Im'
+              GOTO 300 
+            END IF
+          END IF
+          
         END DO
       END DO
     END IF ! IF( SaveNodal )
 
     IF( WriteXML ) THEN
-      CALL Info(Caller,'Number of nodal fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+      CALL Info(Caller,'Number of nodal fields written: '//I2S(NoFieldsWritten),Level=10)
       WRITE( OutStr,'(A)') '      </PointData>'//lf
       CALL AscBinStrWrite( OutStr ) 
     END IF
@@ -1330,24 +1252,13 @@ CONTAINS
       NoFieldsWritten = 0
       DO Rank = 0,1
         DO Vari = 1, 999
-
+          
           IF( Rank == 0 ) THEN
-            WRITE(Txt,'(A,I0)') 'Scalar Field Elemental ',Vari
+            WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
           ELSE
-            WRITE(Txt,'(A,I0)') 'Vector Field Elemental ',Vari
+            WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
           END IF
           FieldName = GetString( Params, TRIM(Txt), Found )
-          L = Found
-
-          IF(.NOT. Found) THEN
-            IF( Rank == 0 ) THEN
-              WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-            ELSE
-              WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-            END IF
-            FieldName = GetString( Params, TRIM(Txt), Found )
-          END IF
-
           IF(.NOT. Found) EXIT
 
           !---------------------------------------------------------------------
@@ -1367,10 +1278,7 @@ CONTAINS
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE 
-              IF( L ) THEN
-                WRITE(Txt, '(A,A)') 'Nonexistent elemental variable: ',TRIM(FieldName)
-                CALL Warn(Caller, Txt)
-              END IF
+              CALL Warn(Caller,'Nonexistent variable: '//TRIM(FieldName))
               CYCLE
             END IF
           END IF
@@ -1398,16 +1306,81 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
+            dofs = 1 
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) THEN
+              Values2 => Solution2 % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) THEN
+              Values3 => Solution3 % Values
               dofs = 3
             END IF
+          END IF
+          
+          EigenVectors => Solution % EigenVectors
+          IF(ASSOCIATED(Solution2) ) EigenVectors2 => Solution2 % EigenVectors
+          IF(ASSOCIATED(Solution3) ) EigenVectors3 => Solution3 % EigenVectors
+          
+          ConstraintModes => Solution % ConstraintModes
+         
+          ! Default is to save the field only once
+          NoFields = 0
+          NoFields2 = 0
+          NoModes = 0
+          NoModes2 = 0
+          
+          IF( EigenAnalysis ) THEN
+            IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
+                ASSOCIATED(EigenVectors) ) THEN  
+              NoModes = SIZE( Solution % EigenVectors, 1 )
+              
+              IF( GotActiveModes ) THEN
+                IndField = ActiveModes( FileIndex ) 
+              ELSE
+                IndField = FileIndex
+              END IF
+              IF( IndField > NoModes ) THEN
+                WRITE( Message,'(A,I0,A,I0,A)') 'Too few eigenmodes (',&
+                    IndField,',',NoModes,') in '//TRIM(FieldName)       
+                CALL Warn(Caller,Message)
+                CYCLE
+              END IF
+              NoModes = 1
+              NoFields = 1
+            ELSE IF( FileIndex > MaxModes .AND. &
+                ASSOCIATED(ConstraintModes) ) THEN
+              
+              NoModes2 = Solution % NumberOfConstraintModes
+              IF( GotActiveModes2 ) THEN
+                IndField = ActiveModes2( FileIndex - MaxModes ) 
+              ELSE
+                IndField = FileIndex - MaxModes 
+              END IF
+              IF( IndField > NoModes2 ) THEN
+                WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
+                    IndField,',',NoModes,') in '//TRIM(FieldName)       
+                CALL Warn(Caller,Message)
+                CYCLE
+              END IF
+              NoModes2 = 1
+              NoFields2 = 1
+            END IF
+          ELSE
+            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+              NoModes = SIZE( Solution % EigenVectors, 1 )
+              IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
+              NoFields = NoModes
+            END IF
+            
+            IF( MaxModes2 > 0 .AND. ASSOCIATED(ConstraintModes) ) THEN
+              NoModes2 = Solution % NumberOfConstraintModes
+              IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )
+              NoFields2 = NoModes2
+            END IF
+            
+            IF( NoModes + NoModes2 == 0 ) NoFields = 1
           END IF
 
           IF( dofs > 1 ) THEN
@@ -1419,186 +1392,206 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Finally save the field values 
           !---------------------------------------------------------------------
-          IF( WriteXML ) THEN
-            CALL Info('WriteVtuFile','Writing variable: '//TRIM(FieldName) )
-            WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
-            CALL AscBinStrWrite( OutStr )
+          DoIm = 0
+400       DO iField = 1, NoFields + NoFields2          
 
-            WRITE( OutStr,'(A,I0,A)') '" NumberOfComponents="',sdofs,'"'          
-            CALL AscBinStrWrite( OutStr ) 
-
-            IF( AsciiOutput ) THEN
-              WRITE( OutStr,'(A)') ' format="ascii">'//lf
-              CALL AscBinStrWrite( OutStr ) 
-            ELSE
-              WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-              CALL AscBinStrWrite( OutStr ) 
-            END IF
-            NoFieldsWritten = NoFieldsWritten + 1
-          END IF
-          
-          IF( BinaryOutput ) THEN
-            k = PrecSize * sdofs * NumberOfElements
-            Offset = Offset + IntSize + k
-          END IF
-
-
-          IF( WriteData ) THEN
-            IF( BinaryOutput ) WRITE( VtuUnit ) k
-
-            DO i = ElemFirst, ElemLast
-              IF( .NOT. ActiveElem(i) ) CYCLE
-              CurrentElement => Model % Elements(i)
-
-              ElemVectVal = 0._dp
-              ElemInd = 0
-              
-              IF( VarType == Variable_on_nodes_on_elements ) THEN
-
-                IF( SaveLinear ) THEN
-                  n = GetElementCorners( CurrentElement )
-                ELSE
-                  n = GetElementNOFNodes( CurrentElement )
-                END IF
-
-                IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
-                    ASSOCIATED(CurrentElement % DGIndexes) ) THEN
-
-                  Parent => CurrentElement % BoundaryInfo % Left
-                  IF (.NOT.ASSOCIATED(Parent) ) &
-                      Parent => CurrentElement % BoundaryInfo % Right
-
-                  IF ( ASSOCIATED(Parent) ) THEN
-                    IF (ASSOCIATED(Parent % DGIndexes) ) THEN
-                      DO j=1,n
-                        DO k=1,Parent % TYPE % NumberOfNodes
-                          IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
-                              ElemInd(j) = Perm( Parent % DGIndexes(k) )
-                        END DO
-                      END DO
-                    END IF
-                  END IF
-                ELSE
-                  ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
-                END IF
-
-                IF ( ALL(ElemInd(1:n) > 0)) THEN
-                  IF( sdofs == 1 ) THEN
-                    ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
+            IF(.NOT. EigenAnalysis ) THEN
+              IF( iField <= NoFields ) THEN
+                IF( Nomodes > 0 ) THEN
+                  IF( GotActiveModes ) THEN
+                    IndField = ActiveModes( iField ) 
                   ELSE
-                    DO k=1,sdofs
-                      IF( k > dofs ) THEN
-                        ElemVectVal(k) = 0.0_dp
-                      ELSE IF(ComponentVector) THEN
-                        IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
-                        IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
-                        IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
-                      ELSE
-                        ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
-                      END IF
-                    END DO
+                    IndField = iField
                   END IF
-                END IF 
-                
-              ELSE IF( VarType == Variable_on_gauss_points ) THEN
-
-                m = CurrentElement % ElementIndex
-                IF( m < SIZE( Perm ) ) THEN
-                  n = Perm(m+1)-Perm(m)
-                ELSE
-                  n = 0
                 END IF
+              ELSE
+                IF( Nomodes2 > 0 ) THEN
+                  IF( GotActiveModes2 ) THEN
+                    IndField = ActiveModes2( iField - NoFields ) 
+                  ELSE
+                    IndField = iField - NoFields
+                  END IF
+                END IF
+              END IF
+            END IF
 
-                IF( n == 0 ) THEN
-                  ElemVectVal(1:sdofs) = 0.0_dp
+            IF( WriteXML ) THEN
+              NoFieldsWritten = NoFieldsWritten + 1
+
+              CALL Info(Caller,'Writing variable: '//TRIM(FieldName),Level=20)
+              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
+                WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
+              ELSE IF( iField <= NoFields ) THEN
+                IF( IsHarmonic ) THEN
+                  WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                      TRIM(FieldName)//' HarmonicMode',IndField
                 ELSE
+                  WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                      TRIM(FieldName)//' EigenMode',IndField
+                END IF
+              ELSE
+                WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                    TRIM(FieldName)//' ConstraintMode',IndField
+              END IF
+              CALL AscBinStrWrite( OutStr )
+
+              WRITE( OutStr,'(A,I0,A)') '" NumberOfComponents="',sdofs,'"'          
+              CALL AscBinStrWrite( OutStr ) 
+
+              IF( AsciiOutput ) THEN
+                WRITE( OutStr,'(A)') ' format="ascii">'//lf
+                CALL AscBinStrWrite( OutStr ) 
+              ELSE
+                WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+                CALL AscBinStrWrite( OutStr ) 
+              END IF
+            END IF
+            
+            IF( BinaryOutput ) THEN
+              k = PrecSize * sdofs * NumberOfElements
+              Offset = Offset + IntSize + k
+            END IF
+                        
+            IF( WriteData ) THEN
+              IF( BinaryOutput ) WRITE( VtuUnit ) k
+
+              DO i = ElemFirst, ElemLast
+                IF( .NOT. ActiveElem(i) ) CYCLE
+                CurrentElement => Model % Elements(i)
+
+                ElemVectVal = 0._dp
+                ElemInd = 0
+
+                IF( VarType == Variable_on_nodes_on_elements ) THEN
+
+                  IF( SaveLinear ) THEN
+                    n = GetElementCorners( CurrentElement )
+                  ELSE
+                    n = GetElementNOFNodes( CurrentElement )
+                  END IF
+
+                  IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
+                      ASSOCIATED(CurrentElement % DGIndexes) ) THEN
+
+                    Parent => CurrentElement % BoundaryInfo % Left
+                    IF (.NOT.ASSOCIATED(Parent) ) &
+                        Parent => CurrentElement % BoundaryInfo % Right
+
+                    IF ( ASSOCIATED(Parent) ) THEN
+                      IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+                        DO j=1,n
+                          DO k=1,Parent % TYPE % NumberOfNodes
+                            IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
+                                ElemInd(j) = Perm( Parent % DGIndexes(k) )
+                          END DO
+                        END DO
+                      END IF
+                    END IF
+                  ELSE
+                    ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
+                  END IF
+
+                ELSE IF( VarType == Variable_on_gauss_points ) THEN
+
+                  m = CurrentElement % ElementIndex
+                  IF( m < SIZE( Perm ) ) THEN
+                    n = Perm(m+1)-Perm(m)
+                  ELSE
+                    n = 0
+                  END IF
+
                   DO j=1,n
                     ElemInd(j) = Perm(m)+j
                   END DO
-                  
-                  IF( sdofs == 1 ) THEN
-                    ! Temporal test for visualizing the number of IP points!
-                    !ElemVectVal(1) = 1.0_dp * n
-                    ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
-                  ELSE
-                    DO k=1,sdofs
-                      IF( k > dofs ) THEN
-                        ElemVectVal(k) = 0.0_dp
-                      ELSE IF(ComponentVector) THEN
-                        IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
-                        IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
-                        IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
-                      ELSE
-                        ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
-                      END IF
-                    END DO
-                  END IF
-                END IF
-                
 
-              ELSE IF( VarType == Variable_on_elements ) THEN
-                
-                m = CurrentElement % ElementIndex
-                
-                IF( ASSOCIATED( Perm ) ) THEN                  
-                  IF( m>SIZE( Perm ) ) THEN
-                    j = 0
-                    IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN                                            
-                      IF( ASSOCIATED( CurrentElement % BoundaryInfo % Left ) ) THEN
-                        j = CurrentElement % BoundaryInfo % Left % ElementIndex
-                      END IF
-                      IF( j <= 0 ) THEN
-                        IF( ASSOCIATED( CurrentElement % BoundaryInfo % Right ) ) THEN
-                          j = CurrentElement % BoundaryInfo % Right % ElementIndex
+                ELSE IF( VarType == Variable_on_elements ) THEN
+
+                  m = CurrentElement % ElementIndex
+                  n = 1
+                  ElemInd(1) = 0
+
+                  IF( ASSOCIATED( Perm ) ) THEN                  
+                    IF( m>SIZE( Perm ) ) THEN
+                      j = 0
+                      IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN                                            
+                        IF( ASSOCIATED( CurrentElement % BoundaryInfo % Left ) ) THEN
+                          j = CurrentElement % BoundaryInfo % Left % ElementIndex
+                        END IF
+                        IF( j <= 0 ) THEN
+                          IF( ASSOCIATED( CurrentElement % BoundaryInfo % Right ) ) THEN
+                            j = CurrentElement % BoundaryInfo % Right % ElementIndex
+                          END IF
                         END IF
                       END IF
-                    END IF
 
-                    IF( j == 0 ) THEN
-                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//TRIM(I2S(m)))
+                      IF( j == 0 ) THEN
+                        CALL Fatal(Caller,'Cannot define parent cell index for element: '//I2S(m))
+                      END IF
+                      m = j
                     END IF
-                    m = j
+                    ElemInd(1) = Perm( m ) 
                   END IF
- 
-                  m = Perm( m ) 
                 END IF
-                
-                IF(m==0) THEN
-                  ElemVectVal(1:dofs) = 0.0_dp
-                ELSE IF( sdofs == 1 ) THEN
-                  ElemVectVal(1) = Values(m) 
-                ELSE
+
+                IF ( ALL(ElemInd(1:n) > 0)) THEN                    
                   DO k=1,sdofs
                     IF( k > dofs ) THEN
-                      ElemVectVal(k) = 0.0_dp
-                    ELSE IF(ComponentVector) THEN
-                      IF (k==1) ElemVectVal(k) = Values(m)
-                      IF (k==2) ElemVectVal(k) = Values2(m)
-                      IF (k==3) ElemVectVal(k) = Values3(m)
+                      val = 0.0_dp
+
+                    ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) zval = SUM(EigenVectors(IndField,ElemInd(1:n)))/n
+                        IF( k == 2 ) zval = SUM(EigenVectors2(IndField,ElemInd(1:n)))/n
+                        IF( k == 3 ) zval = SUM(EigenVectors3(IndField,ElemInd(1:n)))/n
+                      ELSE
+                        zval = SUM(EigenVectors(IndField,dofs*(ElemInd(1:n)-1)+k))/n
+                      END IF
+                      val = PickComplex(zval,EigenVectorMode+DoIm) 
+
+                    ELSE IF( NoModes2 > 0 ) THEN
+                      val = ConstraintModes(IndField,dofs*(j-1)+k)
+
                     ELSE
-                      ElemVectVal(k) = Values(dofs*(m-1)+k)
+                      IF(ComponentVector) THEN
+                        IF (k==1) val = SUM(Values(ElemInd(1:n)))/n
+                        IF (k==2) val = SUM(Values2(ElemInd(1:n)))/n
+                        IF (k==3) val = SUM(Values3(ElemInd(1:n)))/n
+                      ELSE
+                        val = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                      END IF
                     END IF
+                    ElemVectVal(k) = val
                   END DO
                 END IF
                 
-              END IF
-                            
-              DO k=1,sdofs
-                CALL AscBinRealWrite( ElemVectVal(k) )
+                DO k=1,sdofs
+                  CALL AscBinRealWrite( ElemVectVal(k) )
+                END DO
               END DO
-            END DO
+              
+              CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
-            CALL AscBinRealWrite( 0.0_dp, .TRUE. )
-          END IF
+            END IF
+            
+            IF( AsciiOutput ) THEN
+              WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+              CALL AscBinStrWrite( OutStr ) 
+            END IF
 
-          IF( AsciiOutput ) THEN
-            WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-            CALL AscBinStrWrite( OutStr ) 
+          END DO
+            
+          IF( NoModes > 0 ) THEN
+            IF(EigenVectorMode == 3 .AND. DoIm == 0 ) THEN
+              DoIm = 1 
+              FieldName = TRIM(FieldName)//' Im'
+              GOTO 400 
+            END IF
           END IF
+          
         END DO
       END DO
       IF( WriteXML ) THEN
-        CALL Info(Caller,'Number of elemental fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+        CALL Info(Caller,'Number of elemental fields written: '//I2S(NoFieldsWritten),Level=10)
       END IF
     END IF  ! IF( SaveElemental )
 
@@ -1635,8 +1628,8 @@ CONTAINS
           CurrentElement => Model % Elements(i)
 
           IF( i <= Mesh % NumberOfBulkElements ) THEN
-            j = CurrentElement % BodyId 
-            j = GeometryBodyMap( j )
+            j = CurrentElement % BodyId
+            IF (j>=1 .AND. j<= SIZE(GeometryBodyMap)) j = GeometryBodyMap( j )     
           ELSE
             j = GetBCId( CurrentElement )
             IF ( j>=1 .AND. j<= SIZE(GeometryBCMap)) THEN
@@ -1688,6 +1681,27 @@ CONTAINS
       Offset = Offset + IntSize + k
     END IF
 
+    ! For higher order L-elemenet we need to create also the coordinates on-the-fly.
+    ! It would be convenient if the coordinate would be available as a 3-component variable.
+    ! If the coordinates change this should be modified...
+    IF( LagN > 0 ) THEN
+      GotIt = .FALSE.
+      IF(.NOT. ASSOCIATED(LagVarX) ) THEN
+        ALLOCATE( LagVarX, LagVarY, LagVarZ )
+        GotIt = .TRUE.
+      END IF
+      ! We need to redo coordinates, if they are new or if they are displaced
+      IF( ListGetLogicalAnySolver(Model,'Displace Mesh') ) GotIt = .TRUE.
+      IF(GotIt) THEN      
+        Solution => VariableGet( Mesh % Variables,'Coordinate 1')
+        CALL p2LagrangeSwapper( Mesh, Solution, LagVarX, LagN, DgPerm, NumberOfDofNodes )
+        Solution2 => VariableGet( Mesh % Variables,'Coordinate 2')
+        CALL p2LagrangeSwapper( Mesh, Solution2, LagVarY, LagN, DgPerm, NumberOfDofNodes )
+        Solution3 => VariableGet( Mesh % Variables,'Coordinate 3')
+        CALL p2LagrangeSwapper( Mesh, Solution3, LagVarZ, LagN, DgPerm, NumberOfDofNodes )
+      END IF
+    END IF
+    
     IF( WriteData ) THEN
       IF( BinaryOutput ) WRITE( VtuUnit ) k 
 
@@ -1698,10 +1712,16 @@ CONTAINS
           i = InvNodePerm(ii)
         END IF
 
-        x = Model % Mesh % Nodes % x( i )
-        y = Model % Mesh % Nodes % y( i )
-        z = Model % Mesh % Nodes % z( i )
-
+        IF( LagN > 0 ) THEN
+          x = LagVarX % Values(i)
+          y = LagVarY % Values(i)
+          z = LagVarZ % Values(i)
+        ELSE          
+          x = Model % Mesh % Nodes % x( i )
+          y = Model % Mesh % Nodes % y( i )
+          z = Model % Mesh % Nodes % z( i )
+        END IF
+          
         ! If displacement field is active remove the displacement from the coordinates
         IF( dispdofs > 0 .OR. dispBdofs > 0) THEN
           j = 0
@@ -1723,9 +1743,9 @@ CONTAINS
           END IF
         END IF
 
-        x = CoordScale(1) * x
-        y = CoordScale(2) * y
-        z = CoordScale(3) * z
+        x = CoordScale(1) * x + CoordOffset(1)
+        y = CoordScale(2) * y + CoordOffset(2)
+        z = CoordScale(3) * z + CoordOffset(3)
         
         CALL AscBinRealWrite( x )
         CALL AscBinRealWrite( y )
@@ -1770,7 +1790,10 @@ CONTAINS
         IF( .NOT. ActiveElem(i) ) CYCLE
 
         CurrentElement => Model % Elements(i)
-        IF( SaveLinear ) THEN
+        IF( LagN > 0 ) THEN
+          ! When we call without the indexes argument, we just get number of elemental dofs
+          n = GetLagrangeIndexes( Mesh, LagN, CurrentElement )
+        ELSE IF( SaveLinear ) THEN
           n = GetElementCorners( CurrentElement ) 
         ELSE
           n = GetElementNOFNodes( CurrentElement )
@@ -1788,17 +1811,20 @@ CONTAINS
         IF(.NOT. ActiveElem(i) ) CYCLE
 
         CurrentElement => Model % Elements(i)
-
-        CALL Elmer2VtkIndexes( CurrentElement, DG .OR. DN, SaveLinear, TmpIndexes )
-
-        IF( SaveLinear ) THEN
-          n = GetElementCorners( CurrentElement ) 
-        ELSE
-          n = GetElementNOFNodes( CurrentElement )
+        
+        IF( LagN > 0 ) THEN
+          n = GetLagrangeIndexes( Mesh, LagN, CurrentElement, TmpIndexes ) 
+        ELSE          
+          CALL Elmer2VtkIndexes( CurrentElement, DG .OR. DN, SaveLinear, TmpIndexes )          
+          IF( SaveLinear ) THEN
+            n = GetElementCorners( CurrentElement ) 
+          ELSE
+            n = GetElementNOFNodes( CurrentElement )
+          END IF
         END IF
-
+          
         DO j=1,n
-          IF( DN .OR. DG ) THEN
+          IF( DN .OR. DG .OR. LagN > 0 ) THEN
             jj = DgPerm( TmpIndexes(j) )
           ELSE IF( NoPermutation ) THEN
             jj = TmpIndexes(j)
@@ -1847,7 +1873,9 @@ CONTAINS
         IF( .NOT. ActiveElem(i) ) CYCLE
 
         CurrentElement => Model % Elements(i)
-        IF( SaveLinear ) THEN
+        IF( LagN > 0 ) THEN
+          n = GetLagrangeIndexes( Mesh, LagN, CurrentElement )
+        ELSE IF( SaveLinear ) THEN
           n = GetElementCorners( CurrentElement ) 
         ELSE
           n = GetElementNOFNodes( CurrentElement )
@@ -1892,7 +1920,18 @@ CONTAINS
         IF( .NOT. ActiveElem(i) ) CYCLE
 
         CurrentElement => Model % Elements(i)
-        n = Elmer2VTKElement(CurrentElement % TYPE % ElementCode, SaveLinear )
+        j = CurrentElement % TYPE % ElementCode 
+        ! If we have higher order Lagrange elements then the family remains the same but
+        ! number of nodes increases. 
+        IF( LagN > 0 ) THEN
+          n = GetLagrangeIndexes( Mesh, LagN, CurrentElement )
+          IF (n > 100) THEN
+            j = 1000 * ( j / 100 ) + n
+          ELSE
+            j = 100 * ( j / 100 ) + n
+          END IF
+        END IF
+        n = Elmer2VTKElement(j, SaveLinear )
 
         CALL AscBinIntegerWrite( n )
       END DO
@@ -1939,8 +1978,14 @@ CONTAINS
     CALL AscBinWriteFree()
 
     IF( ALLOCATED( ElemInd ) ) DEALLOCATE(ElemInd)
+
+    IF( ASSOCIATED( TmpSolDg ) ) THEN
+      CALL ReleaseVariableList( TmpSolDg )
+      IF(ASSOCIATED(TmpSolDg2)) CALL ReleaseVariableList( TmpSolDg2 )
+      IF(ASSOCIATED(TmpSolDg3)) CALL ReleaseVariableList( TmpSolDg3 )      
+    END IF
     
-    CALL Info('WriteVtuFile','Finished writing file',Level=15)
+    CALL Info(Caller,'Finished writing file',Level=15)
     
   END SUBROUTINE WriteVtuFile
 
@@ -1952,7 +1997,7 @@ CONTAINS
     INTEGER :: nTime, RecLen = 0
     TYPE(Model_t) :: Model     
     INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: n, nLine = 0
+    INTEGER :: n, nLine = 0, iostat
     REAL(KIND=dp) :: time
     CHARACTER :: lf
     CHARACTER(LEN=MAX_NAME_LEN) :: Str
@@ -1983,8 +2028,11 @@ CONTAINS
       RecLen = ((n/4)+5)*4
       
       OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='REPLACE', &
-          ACCESS='DIRECT', ACTION='WRITE', RECL=RecLen)
-
+          ACCESS='DIRECT', ACTION='WRITE', RECL=RecLen, IOSTAT=iostat)
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
+      END IF
+          
       IF ( LittleEndian() ) THEN
         WRITE( VtuUnit,'(A)',REC=1) '<VTKFile type="Collection" version="0.1" byte_order="LittleEndian"><Collection>'
       ELSE
@@ -1993,7 +2041,10 @@ CONTAINS
       nLine = 1
     ELSE
       OPEN( UNIT=VtuUnit, FILE=PvdFile, form = 'formatted', STATUS='OLD', &
-          ACCESS='DIRECT', ACTION='READWRITE', RECL=RecLen)     
+          ACCESS='DIRECT', ACTION='READWRITE', RECL=RecLen, IOSTAT=iostat)     
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('WritePvdFile','Opening of file failed: '//TRIM(PvdFile))
+      END IF
     END IF
 
     nLine = nLine + 1
@@ -2014,14 +2065,13 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 
     INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs
+    INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs,iostat
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FullName
-    LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, &
-               AllActive, ThisActive, L
+    LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
-    TYPE(Variable_t), POINTER :: Solution
-    INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
+    TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2030,9 +2080,9 @@ CONTAINS
     Active = 0
     IF( ThisActive ) Active = 1    	
 
-    NoActive = NINT( ParallelReduction( 1.0_dp * Active ) )
+    NoActive = ParallelReduction( Active ) 
     IF( NoActive == 0 ) THEN
-      CALL Warn('WritePvtuFile','No active partitions for saving')
+      CALL Info('WritePvtuFile','No active partitions for saving',Level=12)
     END IF
     AllActive = ( NoActive == Partitions )
     
@@ -2062,7 +2112,11 @@ CONTAINS
     IF( Part > 0 ) RETURN
     CALL Info('WritePvtuFile','List of active partitions was composed',Level=12)
 
-    OPEN( UNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='UNKNOWN' )
+    OPEN( UNIT=VtuUnit, FILE=PvtuFile, form = 'formatted', STATUS='REPLACE', IOSTAT=iostat)
+    IF( iostat /= 0 ) THEN
+      CALL Fatal('WritePvtuFile','Opening of file failed: '//TRIM(PvtuFile))
+    END IF
+        
     dim = 3
 
     IF ( LittleEndian() ) THEN
@@ -2112,8 +2166,7 @@ CONTAINS
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable 2: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
+              CALL Warn('WritePvtuFile','Nonexistent variable: '//TRIM(FieldName)) 
               CYCLE
             END IF
           END IF
@@ -2132,35 +2185,28 @@ CONTAINS
             END IF
           END IF
 
-          IF( ASSOCIATED(Solution % EigenVectors)) THEN
-            NoModes = SIZE( Solution % EigenValues )
-            IF( EigenAnalysis ) THEN
-              IF( GotActiveModes ) THEN
-                IndField = ActiveModes( FileIndex ) 
-              ELSE
-                IndField = FileIndex
-              END IF
-              IF( IndField > NoModes ) THEN
-                CALL Warn('WriteVtuXMLFile','Too few eigenmodes!')
-                CYCLE
-              END IF
-              NoModes = 1
-              NoFields = 1
-            ELSE	  
+          ! Maybe we have some eigenmodes or constraint modes? 
+          NoModes = 0
+          NoModes2 = 0          
+          IF( .NOT. EigenAnalysis ) THEN
+            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+              NoModes = SIZE( Solution % EigenVectors, 1 )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-              NoFields = NoModes
             END IF
-          ELSE
-            NoModes = 0 
-            NoFields = 1
-          END IF
 
+            IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+              NoModes2 = Solution % NumberOfConstraintModes
+              IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
+            END IF
+          END IF
+          NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
+            
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 2
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-            IF( ASSOCIATED(Solution)) dofs = 3
+            Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution2)) dofs = 2
+            Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+            IF( ASSOCIATED(Solution3)) dofs = 3
           END IF
 
           IF( dofs > 1 ) THEN
@@ -2168,10 +2214,9 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
-
-          DO iField = 1, NoFields
-
-            IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+          
+          DO iField = 1, NoFields 
+            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2179,10 +2224,14 @@ CONTAINS
               ELSE
                 IndField = iField
               END IF
-              WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
 
-              ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
-              ! now the .pvtu file for these vectors is not correct!
+              IF( NoModes > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+              ELSE IF( NoModes2 > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
+              ELSE
+                CALL Fatal('WritePvtuFile','Unknown case!')
+              END IF
             END IF
 
             IF( AsciiOutput ) THEN
@@ -2212,36 +2261,37 @@ CONTAINS
       IF( ScalarsExist .OR. VectorsExist ) THEN
         DO Rank = 0,2
           DO Vari = 1, 999
-
-            IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field Elemental ',Vari
-            IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field Elemental ',Vari
+            IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+            IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
             FieldName = GetString( Params, TRIM(Txt), Found )
-            L = Found 
-
-            IF(.NOT. Found) THEN          
-              IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-              IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-              FieldName = GetString( Params, TRIM(Txt), Found )
-            END IF
             IF(.NOT. Found ) EXIT
 
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
             ComponentVector = .FALSE.
 
-            IF(.NOT. ASSOCIATED(Solution)) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) THEN 
-                ComponentVector = .TRUE.
-              ELSE 
-                IF( L ) THEN
-                  WRITE(Txt, '(A,A)') 'Nonexistent elemental variable 2: ',TRIM(FieldName)
-                  CALL Warn('WriteVtuXMLFile', Txt)
-                END IF
+            IF(ASSOCIATED(Solution)) THEN
+              dofs = Solution % DOFs
+            ELSE
+              IF( Rank == 0 ) THEN
+                CALL Warn('WritePvtuFile','Nonexistent scalar variable: '//TRIM(FieldName))
                 CYCLE
+              ELSE
+                Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
+                IF( ASSOCIATED(Solution)) THEN 
+                  ComponentVector = .TRUE.
+                  dofs = 1
+                  Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution2)) dofs = 2
+                  Solution3 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution3)) dofs = 3                  
+                ELSE 
+                  CALL Warn('WritePvtuFile','Nonexistent vector variable: '//TRIM(FieldName))
+                  CYCLE
+                END IF
               END IF
             END IF
 
-            VarType = Solution % Type
+            VarType = Solution % TYPE
 
             IF( DG .OR. DN ) THEN
               Found = ( VarType == Variable_on_elements )
@@ -2252,36 +2302,21 @@ CONTAINS
             END IF
             IF (.NOT. Found ) CYCLE
 
-            IF( ASSOCIATED(Solution % EigenVectors)) THEN
-              NoModes = SIZE( Solution % EigenValues )
-              IF( EigenAnalysis ) THEN
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( FileIndex ) 
-                ELSE
-                  IndField = FileIndex
-                END IF
-                IF( IndField > NoModes ) THEN
-                  CALL Warn('WriteVtuXMLFile','Too few eigenmodes!')
-                  CYCLE
-                END IF
-                NoModes = 1
-                NoFields = 1
-              ELSE	  
+            ! Maybe we have some eigenmodes or constraint modes? 
+            NoModes = 0
+            NoModes2 = 0          
+            IF( .NOT. EigenAnalysis ) THEN
+              IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+                NoModes = SIZE( Solution % EigenVectors, 1 )
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-                NoFields = NoModes
               END IF
-            ELSE
-              NoModes = 0 
-              NoFields = 1
-            END IF
 
-            dofs = Solution % DOFs
-            IF( ComponentVector ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) dofs = 2
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
-              IF( ASSOCIATED(Solution)) dofs = 3
+              IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+                NoModes2 = Solution % NumberOfConstraintModes
+                IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
+              END IF
             END IF
+            NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
 
             IF( dofs > 1 ) THEN
               sdofs = MAX(dofs,3)
@@ -2289,18 +2324,17 @@ CONTAINS
               sdofs = 1
             END IF
 
-
             DO iField = 1, NoFields
-
-              IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( iField ) 
+                IF( NoModes > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+                ELSE IF( NoModes2 > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
                 ELSE
-                  IndField = iField
+                  CALL Fatal('WritePvtuFile','Unknown case!')
                 END IF
-                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' mode',IndField
               END IF
 
               IF( AsciiOutput ) THEN

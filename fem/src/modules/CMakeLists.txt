@@ -11,3 +11,15 @@ ENDIF(WITH_CONTRIB)
 ADD_DEPENDENCIES(EliminatePeriodic EliminateDirichlet)
 ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
 TARGET_LINK_LIBRARIES(EliminatePeriodic EliminateDirichlet)
+
+#IF(HAVE_NETCDF)
+#  TARGET_LINK_LIBRARIES(SaveGridData ${NETCDF_LIBRARY})
+#  TARGET_LINK_LIBRARIES(SaveGridData ${NETCDFF_LIBRARY})
+#  #TODO - add to RPath
+#ENDIF()
+#
+#IF(HAVE_HDF5)
+#  TARGET_LINK_LIBRARIES(SaveGridData ${PHDF5_LIBRARY})
+#  TARGET_LINK_LIBRARIES(SaveGridData ${PHDF5HL_LIBRARY})
+#  #TODO - add to RPath
+#ENDIF()

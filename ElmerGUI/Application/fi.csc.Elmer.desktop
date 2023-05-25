@@ -1,0 +1,10 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Type=Application
+Exec=ElmerGUI
+#MimeType=
+Comment=A finite element software for multiphysical problems
+Icon=fi.csc.Elmer
+Terminal=false
+Name=ElmerGUI
+Categories=Science

@@ -1,0 +1,46 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: ElmerFEM
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Juha
+    family-names: Ruokolainen
+    email: juha.ruokolainen@csc.fi
+    affiliation: 'CSC-IT Center for Science Ltd. '
+  - given-names: Peter
+    family-names: Råback
+    email: peter.raback@csc.fi
+    affiliation: CSC-IT Center for Science Ltd.
+    orcid: 'https://orcid.org/0000-0002-3243-6314'
+  - given-names: Mika
+    family-names: Malinen
+    email: mika.malinen@csc.fi
+    affiliation: CSC-IT Center for Science Ltd.
+  - given-names: Thomas
+    family-names: Zwinger
+    email: thomas.zwinger@csc.fi
+    affiliation: CSC-IT Center for Science Ltd.
+    orcid: 'https://orcid.org/0000-0003-3360-4401'
+identifiers:
+  - type: url
+    value: 'https://doi.org/10.5281/zenodo.7892181'
+    description: Zenodo Repository of Elmer Release 9.0
+repository-code: 'https://github.com/ElmerCSC/elmerfem'
+url: 'http://www.elmerfem.org'
+abstract: >-
+  Elmer is a tool that can solve a large number of partial
+  differential equations making it an ideal tool for
+  multi-physical problems. It includes models for structural
+  mechanics, fluid dynamics, heat transfer, electromagnetics
+  and beyond. Elmer can be used from PCs to massively
+  parallel HPC platforms.
+keywords:
+  - Finite Element Method
+  - Elmer/Ice
+  - multi-physics
+license: GPL-2.0-or-later

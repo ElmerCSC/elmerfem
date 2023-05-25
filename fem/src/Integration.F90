@@ -384,6 +384,9 @@ MODULE Integration
           0.183673469387755d0, 0.183673469387755d0 /)
 !------------------------------------------------------------------------------
 ! Quadrilateral - 12-point rule for complete polynomials of order p<=7
+! NOTE: It seems that this rule may give somehow faulty results at least
+!       for some serendipity polynomials of degree 3. Therefore
+!       we never use it. 
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(12), PRIVATE :: UPQuad12 = &
        (/ 0.925820099772551d0, -0.925820099772551d0,  0.000000000000000d0, &
@@ -2487,15 +2490,24 @@ CONTAINS
 !       p => IntegStuff(thread)
       p => IntegStuff
 
-      n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
-
-      IF ( n < 1 .OR. n > MAXN ) THEN
-        p % n = 0
-        WRITE( Message, * ) 'Invalid number of points: ', n
-        CALL Error( 'GaussPointsBrick', Message )
-        RETURN
-      END IF
-
+      SELECT CASE( np )
+      CASE( 8 )
+        n = 2
+      CASE( 27 )
+        n = 3
+      CASE( 64 )
+        n = 4
+      CASE DEFAULT
+        n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
+        
+        IF ( n < 1 .OR. n > MAXN ) THEN
+          p % n = 0
+          WRITE( Message, * ) 'Invalid number of points: ', n
+          CALL Error( 'GaussPointsBrick', Message )
+          RETURN
+        END IF
+      END SELECT
+        
       t = 0
       DO i=1,n
         DO j=1,n
@@ -2572,7 +2584,7 @@ CONTAINS
 
            ! Take into account the case of economic integration. Map a tensor
            ! product rule to a corresponding economic rule.
-           IF (elmt % ElementCode / 100 == 4) THEN
+           IF (elm % PDefs % Serendipity .AND. elmt % ElementCode / 100 == 4) THEN
              SELECT CASE(n)
              CASE(9)
                n = 8
@@ -2634,12 +2646,21 @@ CONTAINS
      CASE (4)
        IF (pElement .AND. ASSOCIATED( elm % pdefs ) ) THEN
          Economic = .FALSE.
-         ! For certain polynomial orders, economic quadratures may be used:
-         IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 8) Economic = .TRUE.
-         ! An explicit bubble augmentation with lower-order methods switches to
-         ! the standard rule:
-         IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
-         IntegStuff = GaussPointsQuad(n, Economic)
+         IF(elm % pdefs % Serendipity) THEN
+           ! For certain polynomial orders, economic quadratures may be used:
+           IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 7) Economic = .TRUE.
+           ! An explicit bubble augmentation with lower-order methods switches to
+           ! the standard rule:
+           IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
+           ! The economic 12-point rule appears to be somehow faulty, so we 
+           ! shall never call it
+         END IF
+
+         IF (Economic .AND. n==12) THEN
+           IntegStuff = GaussPointsQuad(16)
+         ELSE
+           IntegStuff = GaussPointsQuad(n, Economic)
+         END IF
        ELSE
          IntegStuff = GaussPointsQuad(n)
        END IF
@@ -2695,20 +2716,190 @@ CONTAINS
             RETURN
           END IF
         END IF
-
+        
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
         ELSE
            IntegStuff = GaussPointsWedge(n)
         END IF
 
-     CASE (8)
-        IntegStuff = GaussPointsBrick(n)
+     CASE (8)       
+       IntegStuff = GaussPointsBrick(n)
+       
      END SELECT
-
+       
    END FUNCTION GaussPoints
 
 
+
+!------------------------------------------------------------------------------
+!>  Given element structure return Gauss integration points at the element corners.
+!----------------------------------------------------------------------------------------------
+   FUNCTION CornerGaussPoints( elm, EdgeBasis, PReferenceElement ) RESULT(CornerStuff)
+!---------------------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE( Element_t ) :: elm
+     LOGICAL, OPTIONAL :: EdgeBasis
+     LOGICAL, OPTIONAL :: PReferenceElement 
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+!------------------------------------------------------------------------------
+     LOGICAL :: pElement
+     INTEGER :: n, i, j, k, t, ecode
+     TYPE( GaussIntegrationPoints_t), POINTER :: ip
+!------------------------------------------------------------------------------
+     ecode = elm % TYPE % ElementCode
+
+     IF (PRESENT(PReferenceElement)) THEN
+       pElement = PReferenceElement
+     ELSE IF (PRESENT(EdgeBasis)) THEN
+       pElement = .TRUE.
+     ELSE
+       pElement = isActivePElement(elm)
+     END IF
+
+     IF(.NOT. Ginit) CALL GaussPointsInit()
+     ip => IntegStuff
+     
+     ! Compute the number of corner nodes
+     n = ecode / 100
+     IF( n >= 5 .AND. n <= 7 ) n = n-1 
+     ip % n = n
+     ip % s(1:n) = 1.0_dp / n
+     
+     SELECT CASE( ecode  / 100 )
+
+     CASE( 3 )
+       ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp
+       ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp
+       ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp
+       
+     CASE( 4 )
+       t = 0
+       DO i=1,2
+         DO j=1,2
+           t = t+1
+           ip % u(t) = (-1.0_dp)**i
+           ip % v(t) = (-1.0_dp)**j
+         END DO
+       END DO
+
+     CASE( 5 )
+       ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp; ip % w(1) = 0.0_dp
+       ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp; ip % w(2) = 0.0_dp
+       ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp; ip % w(3) = 0.0_dp
+       ip % u(4) = 0.0_dp; ip % v(4) = 0.0_dp; ip % w(4) = 1.0_dp
+       
+     CASE( 8 )
+       t = 0
+       DO i=1,2
+         DO j=1,2
+           DO k=1,2
+             t = t+1
+             ip % u(t) = (-1.0_dp)**i
+             ip % v(t) = (-1.0_dp)**j
+             ip % w(t) = (-1.0_dp)**k
+           END DO
+         END DO
+       END DO
+
+     CASE DEFAULT
+       WRITE(Message,'(A,I0)') 'Not implemented for element type: ', ecode
+       CALL Fatal('CornerGaussPoints',Message)
+     END SELECT
+
+     IF( pElement ) THEN
+       DO i=1,n
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+       END DO
+     END IF
+     
+#if 0
+     PRINT *,'Corner Gauss Points:',n
+     PRINT *,'u:',IP % u(1:n)
+     PRINT *,'v:',IP % v(1:n)
+     IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
+#endif
+     
+     CornerStuff = ip
+     
+   END FUNCTION CornerGaussPoints
+
+
+!------------------------------------------------------------------------------
+!>  Given element structure return integration points at the element center only.
+!----------------------------------------------------------------------------------------------
+   FUNCTION CenterGaussPoints( elm, EdgeBasis, PReferenceElement ) RESULT(CornerStuff)
+!---------------------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE( Element_t ) :: elm
+     LOGICAL, OPTIONAL :: EdgeBasis
+     LOGICAL, OPTIONAL :: PReferenceElement 
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+!------------------------------------------------------------------------------
+     LOGICAL :: pElement
+     INTEGER :: n, i, j, k, t, ecode
+     TYPE( GaussIntegrationPoints_t), POINTER :: ip
+!------------------------------------------------------------------------------
+     ecode = elm % TYPE % ElementCode
+
+     IF (PRESENT(PReferenceElement)) THEN
+       pElement = PReferenceElement
+     ELSE IF (PRESENT(EdgeBasis)) THEN
+       pElement = .TRUE.
+     ELSE
+       pElement = isActivePElement(elm)
+     END IF
+
+     IF(.NOT. Ginit) CALL GaussPointsInit()
+     ip => IntegStuff
+     
+     ! Compute the number of corner nodes
+     n = ecode / 100
+     IF( n >= 5 .AND. n <= 7 ) n = n-1 
+     ip % n = 1
+     ip % s(1:n) = 1.0_dp
+     
+     SELECT CASE( ecode  / 100 )
+
+     CASE( 3 )
+       ip % u(1) = 1.0_dp/3.0_dp; ip % v(1) = 1.0_dp/3.0_dp
+       
+     CASE( 4 )
+       ip % u(1) = 0.0_dp
+       ip % v(1) = 0.0_dp
+
+     CASE( 5 )
+       ip % u(1) = 1.0_dp/4.0_dp; ip % v(1) = 1.0_dp/4.0_dp; ip % w(1) = 1.0_dp/4.0_dp
+       
+     CASE( 8 )
+       ip % u(1) = 0.0_dp
+       ip % v(1) = 0.0_dp
+       ip % w(1) = 0.0_dp
+
+     CASE DEFAULT
+       WRITE(Message,'(A,I0)') 'Not implemented for element type: ', ecode
+       CALL Fatal('CornerGaussPoints',Message)
+     END SELECT
+
+     IF( pElement ) THEN
+       DO i=1,n
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+       END DO
+     END IF
+     
+#if 0
+     PRINT *,'Corner Gauss Points:',n
+     PRINT *,'u:',IP % u(1:n)
+     PRINT *,'v:',IP % v(1:n)
+     IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
+#endif
+     
+     CornerStuff = ip
+     
+   END FUNCTION CenterGaussPoints
+
+   
+   
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
 !>  H(curl)-conforming finite elements. The default here is that the edge basis
@@ -2781,6 +2972,48 @@ CONTAINS
    END FUNCTION EdgeElementGaussPoints
 !------------------------------------------------------------------------------
 
+   SUBROUTINE ConvertToPReference(ElementCode,u,v,w,s)
+     INTEGER :: ElementCode
+     REAL(KIND=dp) :: u,v,w
+     REAL(KIND=dp), OPTIONAL :: s
+          
+     
+     SELECT CASE( ElementCode / 100 )
+
+     CASE(1,2,4,8)
+       ! Nothing to do, reference element is the same
+       
+     CASE(3)
+       ! triangle
+       u = 2*u + v - 1
+       v = SQRT(3.0_dp)*v
+       IF( PRESENT(s) ) s = SQRT(3.0_dp)*2*s
+        
+     CASE(5)
+       ! tetrahedron
+       u = 2*u + v + w - 1
+       v = SQRT(3._dp)*v + 1/SQRT(3._dp)*w
+       w = 2*SQRT(2/3._dp)*w
+       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s       
+
+     CASE(6) 
+       ! pyramid
+       w = SQRT(2._dp)*w
+       ! scaling of s??
+       
+     CASE(7)
+       ! wedge / prism
+       u = 2*u + v - 1
+       v = SQRT(3._dp)*v
+       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s       
+
+     CASE DEFAULT
+       CALL Fatal('Integration::ConvertToPReference','Unsupported element type')
+     END SELECT
+            
+     
+   END SUBROUTINE ConvertToPReference
+   
 
 !---------------------------------------------------------------------------
 END MODULE Integration

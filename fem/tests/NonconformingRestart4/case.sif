@@ -16,7 +16,7 @@ End
 Simulation
   Coordinate System = Cartesian
 
-  Max Output Level = 7
+  Max Output Level = 5
 
   Simulation Type = Steady
   Steady State Max Iterations = 1
@@ -103,7 +103,7 @@ End
 Solver 2
   Equation = "Init Guess"
 
-! Dummy solver is execued never
+! Dummy solver is executed never
   Exec Solver = Never
   Procedure = "AllocateSolver" "AllocateSolver"
 

@@ -488,7 +488,7 @@ void geo_vertex_normals( geometry_t *geometry, double Ang )
         v = t[i].Fu[1];
         w = t[i].Fu[2];
 
-        for( j=0; j<3; j++ )                   /* trough face vertices */
+        for( j=0; j<3; j++ )                   /* through face vertices */
         {
             t[i].u[j][0] = u;
             t[i].u[j][1] = v;
@@ -497,7 +497,7 @@ void geo_vertex_normals( geometry_t *geometry, double Ang )
             vertex = &p[t[i].v[j]];
 
             /*
-             * loop trough faces connected to a vertex
+             * loop through faces connected to a vertex
              */
             for( Faces=vertex->Faces; Faces != NULL; Faces=Faces->Next )
             {

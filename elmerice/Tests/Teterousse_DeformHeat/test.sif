@@ -8,6 +8,7 @@
 ! Updated January 2014: comment Solver 5 (top freesurface)
 !    because of implementation problems when using 2 of
 !    the same solvers without recompiling one of them
+! Updated Sept 2020 for making it faster and some cleaning
 
 check keywords warn
 echo on
@@ -37,19 +38,17 @@ Simulation
   Coordinate System  =  Cartesian 3D 
   Simulation Type = Transient     
 
-  Extruded Mesh Levels = Integer 16
+  Extruded Mesh Levels = Integer 5 
 
   Timestepping Method = "bdf"
   BDF Order = 1
-  TimeStep intervals = 2
+  TimeStep intervals = 1
   Timestep Sizes =  $10.0/365.            
   Output Intervals = 1 
 
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Output File = "test.result"
-  Post File = "test.vtu"
   max output level = 4
 End
 
@@ -298,36 +297,10 @@ Solver 7
    Normal Flux = Logical False
 End
 
-Solver 8
-  Exec Solver = After TimeStep
-  Equation = SaveScalars
-  Procedure = File "SaveData" "SaveScalars"
-  Filename = "results.dat"
-
-  Variable 1 = String "Time"
-
-  Variable 2 = String "Stress"
-  Operator 2 = String "max"
-
-  Variable 3 = String "Stress"
-  Operator 3 = String "mean"
-
-  Variable 4 = String "W"
-  Operator 4 = String "min"
-
-  Variable 5 = String "W"
-  Operator 5 = String "max"
-
-  Variable 6 = String "W"
-  Operator 6 = String "mean"
-
-  Operator 7 = String "cpu time"
-End
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Volume
 Equation 1
-  Active Solvers(6) = 1 2 3 4 5 8
+  Active Solvers(5) = 1 2 3 4 5
 End
 ! Top surface
 Equation 2
@@ -381,5 +354,5 @@ Boundary Condition 3
 End
 
 
-Solver 5 :: Reference Norm = Real 0.11262090E-01
+Solver 5 :: Reference Norm = Real  1.18445654E-02
 Solver 5 :: Reference Norm Tolerance = Real 1E-06

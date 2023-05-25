@@ -110,15 +110,16 @@ public:
 
   void parseCmdLine();
 
-  QVariant settings_value(const QString &key,
-                          const QVariant &defaultValue = QVariant()) const;
-  void settings_setValue(const QString &key, const QVariant &value);
+  static QVariant settings_value(const QString &key,
+                          const QVariant &defaultValue = QVariant());
+  static void settings_setValue(const QString &key, const QVariant &value);
   void saveAndRun(bool generateSif);
+  void showContextMenu(QPoint);
 
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
   void closeEvent(QCloseEvent *event);
-
+  
 private slots:
   // menu slots:
   void openSlot();                      // File -> Open...
@@ -172,6 +173,7 @@ private slots:
   void edgeColorSlot();             // View -> Colors -> Edges
   void surfaceMeshColorSlot();      // View -> Colors -> Surface mesh
   void sharpEdgeColorSlot();        // View -> Colors -> Sharp edges
+  void selectionColorSlot();        // View -> Colors -> Selection
   void colorizeBoundarySlot();      // View -> Colors -> Boundaries
   void colorizeBodySlot();          // View -> Colors -> Bodies
   void selectDefinedSurfacesSlot(); // View -> Select defined surfaces
@@ -195,6 +197,7 @@ private slots:
   void killresultsSlot();           // Solver -> Kill post process
   void compileSolverSlot();         // Solver -> Compile...
   void showaboutSlot();             // Help -> About...
+  void getStartedSlot();            // Help -> Get Started...
   void generateAndSaveAndRunSlot();
 
   // other private slots:
@@ -265,6 +268,11 @@ private slots:
   void loadRecentProject2Slot();
   void loadRecentProject3Slot();
   void loadRecentProject4Slot();
+  void loadRecentProject5Slot();
+  void loadRecentProject6Slot();
+  void loadRecentProject7Slot();
+  void loadRecentProject8Slot();
+  void loadRecentProject9Slot();
 
   void selectElmerPostSlot();
   void selectVtkPostSlot();  
@@ -338,6 +346,11 @@ private:
   QAction *recentProject2Act;
   QAction *recentProject3Act;
   QAction *recentProject4Act;
+  QAction *recentProject5Act;
+  QAction *recentProject6Act;
+  QAction *recentProject7Act;
+  QAction *recentProject8Act;
+  QAction *recentProject9Act;
   QAction *saveAct;                      // File -> Save...
   QAction *saveAsAct;                    // File -> Save As...
   QAction *saveProjectAct;               // File -> Save project
@@ -377,6 +390,7 @@ private:
   QAction *chooseSurfaceMeshColorAct; // View -> Colors -> Surface mesh
   QAction *chooseSharpEdgeColorAct;   // View -> Colors -> Sharp edges
   QAction *chooseEdgeColorAct;        // View -> Colors -> Edge color
+  QAction *chooseSelectionColorAct;   // View -> Colors -> Selection
   QAction *showBoundaryColorAct;      // View -> Colors -> Boundaries
   QAction *showBodyColorAct;          // View -> Colors -> Body
   QAction *hideselectedAct;           // View -> Show selected
@@ -407,6 +421,7 @@ private:
   QAction *paraviewAct;               // Solver -> Launch Paraview
   QAction *compileSolverAct;          // Solver -> Compile...
   QAction *aboutAct;                  // Help -> About...
+  QAction *getStartedAct;             // Help -> Get Started...
   QAction *generateAndSaveAndRunAct;
   QAction *runPostProcessorAct;  
   QAction *selectElmerPostAct;
@@ -548,6 +563,13 @@ private:
 
 
   ObjectBrowser *objectBrowser;
+
+public:  
+  /*
+  rebuildGLLists() is assumed to be called from ObjectBrowser to avoid a problem of 3D surface 
+  mesh not shown correctly when project loading (typically, TemperatureGeneric sample)
+  */
+  void rebuildGLLists();
 };
 
 #endif // MAINWINDOW_H

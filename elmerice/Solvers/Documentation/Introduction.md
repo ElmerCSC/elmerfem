@@ -21,7 +21,7 @@ In general the workflow of an optimisation problem in Elmer/Ice is as follow:
 $$ \boldsymbol{K(p)}.\boldsymbol{x} = \boldsymbol{F(p)} $$  
 with $\boldsymbol{x}$ the solution depending on the input parameters $p$, $\boldsymbol{K}$ the stiffness matrix and
 $\boldsymbol{F}$ the force vector. If the problem is non-linear this is not properly taken into account, however
-if the solver is equiped with a Newton method, the gradients should be relatively accurate.
+if the solver is equipped with a Newton method, the gradients should be relatively accurate.
 2. Compare the solution $\boldsymbol{x}$ with some observations, and evaluate a *cost function* $J(p)$.
 3. Solve the adjoint of the linear system (step 1).
 4. Compute the derivatives of $J$ with respect to $p$ from the solutions of the direct and adjoint problems in steps 1 and 3.
@@ -40,18 +40,18 @@ Some solvers are model specific.
 
 The following chapters describe solvers specific to compute the gradients (4), and are model specific.
 
-The adjoint codes have been derived by hand as usually the stucture of Elmer is too complex
-to use  automatic differentiation softwares.
+The adjoint codes have been derived by hand as usually the structure of Elmer is too complex
+to use automatic differentiation software.
 
 The solvers have been designed to be as generic as possible. A strength of Elmer is its modularity,
-however it means that the configuration can be complex, and it is possible that when writting the code
-whe have not taken into account all the possibilities offered by Elmer.
+however it means that the configuration can be complex, and it is possible that when writing the code
+we have not taken into account all the possibilities offered by Elmer.
 
 We have done the maximum to test the solvers and they should be accurate for standard simulations. However, it will
-be to the user responsability to check that his configuarations leads to accurate gradients and smooth optimisation. 
+be to the user responsibility to check that his configuarations leads to accurate gradients and smooth optimisation. 
 A cost which is not decreasing is often the sign the the gradients are not accurates.
 
 **Please contribute to improve this documentation and Elmer/Ice capabilities** by reporting errors or inaccuracies,
-and contribute in developping new test cases and functionnalities.
+and contribute in developing new test cases and functionalities.
 
 

@@ -1,0 +1,121 @@
+! Test case for radiatior heat sources
+! - two symmetric radiators
+! - test comes with and without "diffuse grey" radiation (this is without)
+!
+! P.R. 5.4.2022
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "box_full"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = full.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 300.0
+End
+
+
+Material 1
+   Density = 1.0
+   Heat Conductivity = 1.0
+   Emissivity = 1.0
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU
+
+  Nonlinear System Newton After Tolerance = 1.0e-9
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Viewfactor raytrace tolerance = 0.001
+  Viewfactor area tolerance = 0.01
+  Viewfactor factor tolerance = 0.001
+  Viewfactor number Of Rays = 8
+!  Viewfactor Symmetry x = Logical True
+  Viewfactor Binary Output = Logical True
+
+  Gebhart Factors Solver Iterative = False
+  radiation: Linear System Symmetric = True
+  radiation: Linear System Positive Definite = Logical True
+  radiation: Linear System Direct Method = umfpack
+
+!  Optimize Bandwidth = False
+  Calculate Loads = True
+End
+
+
+
+Equation 1
+  Active Solvers = 1
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(3) = 1 3 6
+
+  External Temperature = 300.0
+  Heat Transfer Coefficient = 1.0
+End
+
+Boundary Condition 2
+  Name = "Internal"
+  Target Boundaries(3) = 2 4 5
+
+  Radiator BC = Logical True
+  Radiation Target Body = -1 
+
+! Commented out, much faster like this. 
+!  Radiation = Diffuse Gray
+End
+
+
+Body Force 1
+  Name = "Radiate"
+
+  Radiator Coordinates(2,3) = Real \
+           0.0 0.75 0.25 \
+           0.0 -0.75 0.75 
+
+  Radiator Power 1 = Real 1.0e2
+  Radiator Power 2 = Real 2.0e2
+End
+
+
+Solver 1 :: Reference Norm = 3.10994700E+02
+Solver 1 :: Reference Norm Tolerance = 1.0e-4

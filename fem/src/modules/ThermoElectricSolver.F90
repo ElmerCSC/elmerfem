@@ -377,7 +377,7 @@ CONTAINS
 
       HF = SUM(HF_n*Basis(1:n)) ! heat flux
       ET = SUM(ET_n*Basis(1:n)) ! external temperature
-      HT = SUM(HT_n*Basis(1:n)) ! heat transfer coeffiecient
+      HT = SUM(HT_n*Basis(1:n)) ! heat transfer coefficient
 
       EF = SUM(EF_n*Basis(1:n)) ! electric flux
 
@@ -433,7 +433,7 @@ CONTAINS
       ELSE
         IF ( SIZE(Hwrk,1) == 1 ) THEN
            DO i=1,MIN(3,SIZE(HWrk,2) )
-              Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
+              Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
            END DO
         ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
            DO i=1,MIN(3,SIZE(Hwrk,1))

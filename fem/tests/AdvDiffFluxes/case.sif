@@ -8,7 +8,10 @@
 !
 ! P.R. 20.6.2018 
 
+
+
 Header
+  check keywords warn
   Mesh DB "." "angle_long"
   Include Path ""
   Results Directory ""
@@ -16,7 +19,7 @@ End
 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System =  Cartesian
   Coordinate Mapping(3) = 1 2 3
 

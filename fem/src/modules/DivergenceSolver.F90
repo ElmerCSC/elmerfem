@@ -58,7 +58,7 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CondName
   INTEGER :: i,j,dim,DOFs
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
-  LOGICAL :: GotIt, GotCoeff, Visited = .FALSE.
+  LOGICAL :: GotIt, GotCoeff, Relative, Visited = .FALSE.
   REAL(KIND=dp) :: Norm
   REAL(KIND=dp) :: at0,at1,at2
   TYPE(Variable_t), POINTER :: DivergenceSol
@@ -87,9 +87,9 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
       RETURN
     END IF
     Dofs = DivergenceSol % DOFs
-    IF(Dofs /= 1) CALL Fatal('DivergenceSolver','Divergence should have 1 component in 2D')
+    IF(Dofs /= 1) CALL Fatal('DivergenceSolver','Divergence should have 1 component')
   ELSE
-     CALL Fatal('DivergenceSolver','Variable does not exist or its size is zero!')      
+     CALL Fatal('DivergenceSolver','Variable does not exist!')      
   END IF
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -97,7 +97,7 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
 
   VarName = GetString(SolverParams,'Divergence Variable',GotIt )
   IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
-  IF(.NOT. gotIt) VarName = TRIM('Velocity')
+  IF(.NOT. gotIt) VarName = 'Velocity'
 
   ! For future use
   CondName = ListGetString(SolverParams,'Divergence Coefficient',GotCoeff )
@@ -107,19 +107,16 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
+
+  Relative = ListGetLogical(SolverParams,'Relative Divergence',GotIt)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % RHS = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   CALL BulkAssembly()
-  IF( ConstantBulkMatrix ) THEN
-    IF(.NOT. ConstantBulkMatrixInUse ) THEN
-      CALL DefaultFinishBulkAssembly( BulkUpdate = .TRUE.)
-    END IF
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
   END IF
 
   CALL DefaultFinishAssembly()
@@ -154,7 +151,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: weight,grad(3),C(3,3),detJ,Source,x
+    REAL(KIND=dp) :: weight,detJ,Source,x,vabs,velo(3)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Vx(:), Vy(:), Vz(:), Coeff(:)
     LOGICAL :: Found
@@ -181,14 +178,16 @@ CONTAINS
       CALL GetScalarLocalSolution( Vy, ComponentName(VarName,2) )
       IF(dim == 3) CALL GetScalarLocalSolution( Vz, ComponentName(VarName,3) )
 
+      IF( Relative ) THEN        
+        Velo(1) = SUM( Vx(1:nd) ) / nd
+        Velo(2) = SUM( Vy(1:nd) ) / nd
+        IF(dim==3) Velo(3) = SUM( Vz(1:nd) ) / nd
+        Vabs = MAX( SQRT( SUM( Velo(1:dim)**2 ) ), EPSILON( Vabs ) )
+      END IF
+        
       IntegStuff = GaussPoints( Element )
       STIFF  = 0.0_dp
       FORCE  = 0.0_dp
-
-!      C = 0.0_dp
-!      DO i=1,dim
-!        C(i,i) = 1.0_dp
-!      END DO
       
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
@@ -215,6 +214,7 @@ CONTAINS
 	IF( CSymmetry ) THEN
           Source = Source + SUM( Basis(1:nd) * Vx(1:nd) ) / x
         END IF
+        IF( Relative ) Source = Source / vabs
 
         FORCE(1:nd) = FORCE(1:nd) + Basis(1:nd) * Weight * Source
       END DO

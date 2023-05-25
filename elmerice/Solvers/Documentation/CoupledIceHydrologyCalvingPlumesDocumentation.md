@@ -29,14 +29,14 @@ You should also avoid, if possible, having more than two different timestep size
 ## Restarting runs
 If you need to restart from fully coupled model runs, set up the restart machinery as normal, but then include the HydroRestart solver (see below) as a solver that is executed ‘Before Simulation’. This will allow all the ice and hydrology variables to be restarted properly. If calving has been going on, you’ll also need to make sure you use the right ice mesh – this will be the mesh found in the directory you’ve listed under ‘Remesh Move Mesh Dir’ in the Remesh solver. You’ll find one folder created in that directory for every time the model remeshed, so make sure you pick the right one (usually, this will be the one from the latest timestep, but if you’re restarting from a crashed run, you want to pick the one that lines up with the last result output timestep).
 
-##Meshes
+## Meshes
 The main issue with coupling calving and hydrology within Elmer/Ice is that of meshing. The calving solvers rely on modifying the existing ice mesh, creating a new one, and interpolating all the variables between the two. With GlaDS, this doesn’t work, because the channel variables are defined on the edge elements of the mesh itself so i) modifying the mesh causes problems and ii) the channel variables are not obviously interpolatable. To get round this, this setup makes use of two meshes: the standard 3D, internally extruded ice mesh, on which all the usual ice and calving stuff happens, and a second 2D plane hydrology mesh that the GlaDS solvers work on.
 As such, you need to create a secondary mesh that the model can use. Ideally, this should be the same footprint as your ice mesh, except you probably want it to extend a bit past the frontal boundary of your ice mesh. The calving model could see the glacier advance or retreat, so the hydrology mesh needs to have a footprint that covers the entire potential area that the calving front could reach. Resolution-wise, things tend to work best if the two meshes are as similar as possible – large differences in resolution will lead to lots of interpolation artefacts (discussed more fully under CalvingHydroInterp.F90 below) that will most likely mess up your simulation eventually. But, you do want the hydrology mesh to be at a finer resolution than the ice, so try a few things and see what works best.
-Once you have got your 2D footprint hydrology mesh, you need to get it into Elmer format in the usual way (whatever that might be for you). When you do this, you’ll want to use the -bcoffset option to increment the boundary condition numbers on the new mesh so that they follow on from the boundaries on the ice mesh (so, if you have 4 boundaries on your ice mesh, plus a surface and basal boundary once it’s extruded, you’ll want to offset the hydrology mesh boundaries by 6 so that they start at 7). Once you’ve done that (and before you partition it), you need to edit the mesh.elements file and ensure the **second** column is exclusively populated with the number 2, rather than 1, which is what it’ll be by default. This tells Elmer that this is a different body to the main ice mesh. I find the awk command the easiest way to perform this replacement (awk ‘$2=”2”’). Once you’ve done that, you can partition the mesh as usual. You also need to copy the new mesh directory to create a renamed version that will be used by solvers that need the hydrology mesh, but that you don’t want to create results files from (this is something that may get fixed, but, as it stands, the results output solver will try to output vtu files from every individual solver mesh – if they’re all using the same mesh, all the vtu files will have the same name and will overwrite each other).
+Once you have got your 2D footprint hydrology mesh, you need to get it into Elmer format in the usual way (whatever that might be for you). When you do this, you’ll want to use the -bcoffset option to increment the boundary condition numbers on the new mesh so that they follow on from the boundaries on the ice mesh (so, if you have 4 boundaries on your ice mesh, plus a surface and basal boundary once it’s extruded, you’ll want to offset the hydrology mesh boundaries by 6 so that they start at 7). Once you’ve done that (and before you partition it), you need to edit the mesh.elements file and ensure the **second** column is exclusively populated with the number 2, rather than 1, which is what it’ll be by default. This tells Elmer that this is a different body to the main ice mesh. I find the awk command the easiest way to perform this replacement (awk ‘$2=”2”’). Once you’ve done that, you can partition the mesh as usual.
 When you’ve done all this, there are a couple of things you need to do in the SIF:
 * In the Simulation section of the SIF, put `Need Edges 2D = Logical True` and `Need Edges 3D = Logical False` – this will ensure edges are generated on all the 2D hydrology meshes, but not on the 3D ice mesh (edges are important for channel variables)
 * In the solver section for GlaDSCoupledSolver, put `Mesh = “.” “<pathtoyourprimaryhydrologymesh>"` (assuming your mesh directory is some subdirectory of the working directory the SIF lives in)
-* In the solver section for the other two GlaDS solvers (the thickness and channel output ones), and for any solvers where you’re reading in a variable that you want to be applied to the hydrology mesh (say, an expanded basal DEM covering the larger footprint area), put the same line, but replace the path with the equivalent for your renamed secondary hydrology mesh directory
+* In the solver section for the other two GlaDS solvers (the thickness and channel output ones), and for any solvers where you’re reading in a variable that you want to be applied to the hydrology mesh (say, an expanded basal DEM covering the larger footprint area), put the same line
 * You need to use the Target Bodies feature to differentiate the ice and hydrology meshes. Assuming Body 1 is your main ice body, put the line `Target Bodies(1) = 1` in the Body 1 section of the SIF
 * Then, you need to create a new Body 2 for the hydrology mesh (in theory, this can be any number – you could make it Body 7, if you already have Bodies 2-6, say, I think). This needs the line `Target Bodies(1) = 2` in it, though you could replace the ‘2’ with whatever number you substituted into the mesh.elements file earlier. Though I reckon Elmer would be angry if you, say, used Target Bodies(1) = 3 if there isn’t a Target Bodies(1) = 2 somewhere else. This body will have the same material, but a different equation, body force and initial condition to the ice, just as if you were defining a basal boundary body for the hydrology on a standard 3D mesh
 * You can then list all the other bodies you’re going to need to define on the boundaries of the ice mesh in the usual way without needing to put in any more Target Bodies statements
@@ -115,17 +115,10 @@ Known issues:
 * None yet
 
 ### CalvingHydroInterp.F90
-This represents the other major block of new code written as part of this suite. It handles the interpolation of necessary variables between the ice and hydrology meshes, but also moves read-in variables (using GridDataReader or similar) from their solver-specific secondary hydrology meshes to the primary hydrology mesh associated with GlaDSCoupledSolver. It also corrects interpolation artefacts that will otherwise nix your simulation sooner or later, and ensures conservation of the temperature residual (one of the interpolated variables) to stop the glacier accidentally destroying or creating some energy….
-The file contains two main subroutines, imaginatively titled “IceToHydroInterp” and “HydroToIceInterp”. Make sure you get them the right way round. IceToHydroInterp interpolates the ice normal stress, velocity, grounded mask and temperature residual over to the hydrology mesh and then spends a lot of time clearing up artefacts and conserving the temperature residual. HydroToIceInterp is much simpler, as the hydrology mesh is usually finer than the ice mesh, so the interpolation routine doesn’t create anywhere near as many artefacts in problematic locations. Therefore, it pretty much just interpolates the water pressure, effective pressure and sheet discharge onto the ice mesh.
+This represents the other major block of new code written as part of this suite. It handles the interpolation of necessary variables between the ice and hydrology meshes. It also corrects interpolation artefacts that will otherwise nix your simulation sooner or later, and ensures conservation of the temperature residual (one of the interpolated variables) to stop the glacier accidentally destroying or creating some energy….
+The file contains two main subroutines, imaginatively titled “IceToHydroInterp” and “HydroToIceInterp”. Make sure you get them the right way round. IceToHydroInterp interpolates the ice normal stress, velocity, grounded mask and temperature residual over to the hydrology mesh and then spends a lot of time clearing up artefacts and conserving the temperature residual. HydroToIceInterp is much simpler, as the hydrology mesh is usually finer than the ice mesh, so the interpolation routine doesn’t create anywhere near as many artefacts in problematic locations. Therefore, it pretty much just interpolates the water pressure and effective pressure onto the ice mesh.
 There are also two small subroutines: “HydroWeightsSolver” and “IceWeightsSolver”. These calculate the boundary weights used in the main routines (the reason this happens in a separate solver is complicated – suffice to say it does exist). These need to be called as solvers before the relevant interpolation routines (IceToHydro or HydroToIce) are called, otherwise they’ll crash. IceWeightsSolver needs to run every time the ice mesh is updated (probably every n timesteps); HydroWeightsSolver every time the hydrology mesh is updated (probably never, so it can just run once at the start of the simulation).
 Solver options and inputs (for IceToHydroInterp; others have nothing fancy):
-* `Load Reader Variables = Logical True/False`
-  * Set this option to true if you’ve got variables read onto secondary hydrology meshes (say, a basal DEM or a runoff raster) that need to be transferred to the main hydrology mesh
-* `Number of Variables To Read = Integer n`
-  * If you are loading read-in variables, say how many there are. Note: the solver is currently only set up to deal with a maximum of 10 variables; if you have more than that, you’ll need to modify the source code
-* `Reader Solver 1 = Integer n` and `Reader V1 = String “name”`
-  * If loading variables, say which solver number the reader solver is and what the name of the variable is
-  * You should provide as many `Reader Solver` and `Reader V` entries as the number you’ve defined under `Number Of Variables To Read`, numbered sequentially
 * `Reference Node(3) = Integer x y z` and `Threshold Distance = Real n`
   * These are used as part of the artefact correction for the grounded mask – if specified, all nodes on the hydrology mesh greater than the Threshold Distance from the Reference Node will be automatically set to grounded. This can be useful if dealing with artefacts a long way inland
 * `Side = Logical True/False`
@@ -134,7 +127,7 @@ Known issues:
 * None, though the artefact correction could probably be improved
 
 ### HydroRestart.F90
-Largely a direct copy of the Restart() subroutine within the Elmer source code, with a few modifications to disentangle it from all the other restart machinery and to make it pick up the right variables from the right place and send them to the right place.
+Largely a direct copy of the Restart() subroutine within the Elmer source code, with a few modifications to disentangle it from all the other restart machinery and to make it pick up the right variables from the right place and send them to the right place. Assumes the hydraulic potential, channel area and sheet thickness variables are all called by those default names, so don't change them. Uses the namespace feature in Elmer.
 Solver options and inputs:
 * `hp: Restart Variable 1 = String “Name”`
   * All the variables that should be restarted on the primary hydrology mesh (i.e. all those that are normally calculated by or associated with GlaDSCoupledSolver) should be listed like this – just number the entries consecutively
@@ -147,7 +140,7 @@ Known issues:
 * None
 
 ### USF_SourceCalcCalving.F90
-This is a USF that calculates the Hydraulic Potential Volume Source term required in the Body Force section of the SIF for GlaDS. If provided with a surface runoff variable (I usually load it in from a raster) and the temperature residual variable, it will calculate the resulting internal melt and add on the surface melt for each node on the hydrology mesh (or, at the base of your 3D ice mesh, if you’re using GlaDS without all the other bells and whistles), so you can easily vary the source term spatially across your domain.
+This is a USF that calculates the Hydraulic Potential Volume Source term required in the Body Force section of the SIF for GlaDS. If provided with a surface runoff variable (I usually load it in from a raster) and the temperature residual variable (for internal/basal melt), it will calculate the resulting internal melt and add on the surface melt for each node on the hydrology mesh (or, at the base of your 3D ice mesh, if you’re using GlaDS without all the other bells and whistles), so you can easily vary the source term spatially across your domain. The USF also assumes the name of the hydraulic potential variable calculated by GlaDS is 'hydraulic potential', so don't change it.
 USF options and inputs:
 * These all go in the same Body Force section as where you define the source term
 * `Internal Melt = Logical True/False`
@@ -161,7 +154,7 @@ USF options and inputs:
 * Finally, when defining the source term, you call this USF just like any other, and it does not matter what variable you use in the call – the USF will ignore it.
 
 ### BasalMelt3D.F90
-This is a very simple solver written by Joe Todd that applies a specified basal melt rate to any ungrounded parts of the glacier base.
+This is a very simple solver written by Joe Todd that applies a specified basal melt rate to any ungrounded parts of the glacier base. You need to specify `Calving Front Mask = Logical True` in the relevant boundary condition.
 Solver options and inputs:
 * `Basal Melt Stats File = String …`
   * The path to write a file containing some basal melt stats to.
@@ -176,12 +169,12 @@ Solver options and inputs:
 * `Basal Melt Summer Start = Real …`
   * The time in the simulation to begin using summer melt rates (expressed as a number between 0 and 1)
 * `Basal Melt Summer Stop = Real …`
-  * The time in the simulation to begin using summer melt rates (expressed as a number between 0 and 1)
+  * The time in the simulation to stop using summer melt rates (expressed as a number between 0 and 1)
 
 ### GMValid.F90
-This is a very simple solver that’s more-or-less just a stripped-down copy of BasalMelt3D.F90 and exists to set up a mask variable for which ungrounded areas are connected to the fjord and which aren’t.
+This is a very simple solver that’s more-or-less just a stripped-down copy of BasalMelt3D.F90 and exists to set up a mask variable for which ungrounded areas are connected to the fjord and which aren’t. You need to specify `Calving Front Mask = Logical True` in the relevant boundary condition.
 Solver options and inputs:
-* None – just the usual lines to define the equation, etc.
+* `GroundedMask Variable = String ...` (defaults to GroundedMask)
 
 ## Problems
 If you find something that doesn’t work or you can’t easily fix or isn’t listed here, email Samuel Cook (samuel.cook@univ-grenoble-alpes.fr)

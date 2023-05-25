@@ -8,11 +8,6 @@
             <Name> Procedure </Name>
             <DefaultValue> "StressSolve" "StressSolver" </DefaultValue>
          </Parameter>
-         <Parameter Widget="Edit" Enabled="False" >
-            <Name> Variable </Name>
-            <DefaultValue> Displacement(cdim) </DefaultValue>
-         </Parameter>
-
 
          <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
          <Parameter Widget="Edit">
@@ -129,7 +124,7 @@ stress. </Whatis>
 
         <Parameter Widget="CheckBox" Enabled="False"> 
             <Name> Fix Displacements </Name>
-            <Whatis> This keyword defined if the displacements or forces are set and thereby chooces the model lumping algorhitm.</Whatis>
+            <Whatis> This keyword defined if the displacements or forces are set and thereby chooces the model lumping algorithm.</Whatis>
         </Parameter>
 
         <Parameter Widget="Label"> <Name> More Options </Name> </Parameter>
@@ -165,7 +160,7 @@ stress. </Whatis>
 
          <Parameter Widget="CheckBox">
             <Name> Plane Stress </Name>
-            <Whatis> If checked, compute the solution according to the plane stress situtation zz = 0, otherwise plane strain model is assumed. Applies only in 2D.  </Whatis> 
+            <Whatis> If checked, compute the solution according to the plane stress situation zz = 0, otherwise plane strain model is assumed. Applies only in 2D.  </Whatis> 
          </Parameter>
         <Parameter Widget="Label" > <Name> This and that </Name> </Parameter>
         <Parameter Widget="Edit">
@@ -307,7 +302,7 @@ stress. </Whatis>
          <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
          <Parameter Widget="Edit" >
             <Name>Youngs modulus</Name>
-            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 × 6 (3D) or 4 × 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
+            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 ï¿½ 6 (3D) or 4 ï¿½ 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
          </Parameter>
 
          <Parameter Widget="Edit" >
@@ -324,16 +319,16 @@ stress. </Whatis>
          <Parameter Widget="CheckBox">
            <Name> Rayleigh Damping </Name>
            <Whatis> Damping proportional to linear combination of stiffness and mass. </Whatis>
-           <Activate> /Linear elasticity/Material/Rayleigh alpha </Activate>
-           <Activate> /Linear elasticity/Material/Rayleigh beta </Activate>
+           <Activate> /Linear elasticity/Material/Rayleigh Damping Alpha </Activate>
+           <Activate> /Linear elasticity/Material/Rayleigh Damping Beta </Activate>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="False">
-           <Name> Rayleigh alpha </Name>
+           <Name> Rayleigh Damping Alpha </Name>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="False">
-           <Name> Rayleigh beta </Name>
+           <Name> Rayleigh Damping Beta </Name>
          </Parameter>
 
           <Parameter Widget="Edit">
@@ -348,7 +343,7 @@ stress. </Whatis>
              <Whatis> Strain engineering 6-vector corresponding to a prestressed state. This is converted to the corresponding stress and added to the load case in buckling and/or geometric stiffness analysis. </Whatis>
           </Parameter>
  
-        <Parameter Widget="Label"> <Name> Material pricipal directions </Name> </Parameter>
+        <Parameter Widget="Label"> <Name> Material principal directions </Name> </Parameter>
         <Parameter Widget="CheckBox">
           <Name> Rotate Elasticity Tensor </Name>
           <Whatis> For anisotropic materials the principal directions of anisotropy do not always correspond to the coordinate axes. Setting this keyord to True enables the user to input Youngs Modulus matrix with respect to the principal directions of anisotropy. Otherwise Youngs Modulus should be given with respect to the coordinate axis directions. </Whatis>

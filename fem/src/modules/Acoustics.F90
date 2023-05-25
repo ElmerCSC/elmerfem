@@ -322,7 +322,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
       IP = GaussPoints( CurrentElement, RelOrder = RelOrder )
       j = IP % n 
       CALL Info('AcousticsSolver','Number of Gauss Points: '&
-          //TRIM(I2S(j))//' (vs. '//TRIM(I2S(i))//')',Level=6)
+          //I2S(j)//' (vs. '//I2S(i)//')',Level=6)
     END IF
   END IF
 
@@ -4395,7 +4395,7 @@ CONTAINS
 !   The computation of a specific matrix-vector product needed in preconditioning.
 !   The subroutine computes the matrix-vector product v = Au where A is
 !   the coefficient matrix for unknown velocities occupying
-!   the (1,1) block of the coeffiecient matrix K. 
+!   the (1,1) block of the coefficient matrix K. 
 !
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), DIMENSION(*) :: u, v

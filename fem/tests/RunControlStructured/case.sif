@@ -1,7 +1,7 @@
 !--------------------------------------------------------------------
-! A test case for combined Run Control and Stuctured mesh mapper.
+! A test case for combined Run Control and Structured mesh mapper.
 ! The combination is used to repetitively run through several
-! sequencies such that the previous end results acts as start conditions
+! sequences such that the previous end results acts as start conditions
 ! for the next simulation.
 !
 ! P.R. 25.5.2020

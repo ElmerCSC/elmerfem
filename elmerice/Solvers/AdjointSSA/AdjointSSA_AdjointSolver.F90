@@ -104,6 +104,15 @@
    LOGICAL, SAVE :: Firsttime=.TRUE.
 
 
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   Adjoint_LinearSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
+   
+
    DIM = CoordinateSystemDimension()
 
    StiffMatrix => Solver % Matrix
@@ -237,7 +246,7 @@
    !forcing of the adjoint system comes from the Velocityb variable computed
    !with the cost function
 
-   !! Vb is expressed in the model coodinate system => Rotate to NT
+   !! Vb is expressed in the model coordinate system => Rotate to NT
    CALL RotateNTSystemAll( Vb, VbPerm, NSDOFs )
 
    c = NSDOFs

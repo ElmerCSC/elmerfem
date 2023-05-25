@@ -605,7 +605,7 @@ END ELEMENT
 
 !-------------------------------------------------------------------------------
 
-ELEMENT 8 Node Octahedron
+ELEMENT 8 Node Hexahedron
 !
 Dimension 3
 Topology  Brick
@@ -644,7 +644,7 @@ END ELEMENT
 
 !-------------------------------------------------------------------------------
 
-ELEMENT 20 Node Octahedron
+ELEMENT 20 Node Hexahedron
 !
 Dimension 3
 Topology  Brick
@@ -686,7 +686,7 @@ END ELEMENT
 
 !-------------------------------------------------------------------------------
 
-ELEMENT 27 Node Octahedron
+ELEMENT 27 Node Hexahedron
 !
 Dimension 3
 Topology  Brick

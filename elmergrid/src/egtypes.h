@@ -5,12 +5,12 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 4000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
 #define LONGLINESIZE 1201  
-#define MAXNAMESIZE 30      /* maximum size of the variablename */
+#define MAXNAMESIZE 50      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
 #define MAXVARS 20          /* maximum number of variables at the sides */
 #define MAXNODESD3 64       /* maximum number of 3D nodes */ 
@@ -18,7 +18,7 @@
 #define MAXNODESD1 9        /* maximum number of 1D nodes */
 #define MAXMAPPINGS 20      /* maximum number of geometry mappings */
 #define MAXCONNECTIONS 500  /* maximum number of connections in nodal or dual graph */
-#define MAXBCS 1000         /* maximum number of BCs in naming */
+#define MAXBCS 4000         /* maximum number of BCs in naming */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 #define MAXHALOMODES 10
@@ -225,8 +225,8 @@ struct FemType {
       *times;
   Real *dofs[MAXDOFS];  /* degrees of freedom in the mesh */
   char dofname[MAXDOFS][MAXNAMESIZE]; 
-  char bodyname[MAXBODIES][MAXNAMESIZE];
-  char boundaryname[MAXBCS][MAXNAMESIZE];
+  char *bodyname[MAXBODIES]; 
+  char *boundaryname[MAXBCS]; 
   int noboundaries,              /* number of boundaries */
       boundint[MAXBOUNDARIES],   /* internal material in the boundary */
       boundext[MAXBOUNDARIES],   /* external material in the boundary */
@@ -310,8 +310,11 @@ struct ElmergridType {
     layernumber[MAXBOUNDARIES], 
     layermove,  /* map the created layer to the original geometry */
     metis,      /* number of Metis partitions */
-    metiscontig,  /* is Metis partitioning contiguous */
-    metisseed,   /* seed for Metis partitioning routines */
+    metis_contig,  /* is Metis partitioning contiguous */
+    metis_minconn,  /* is Metis partitioning contiguous */
+    metis_seed,   /* seed for Metis partitioning routines */
+    metis_volcut, /* minimize edgecut (default) or total cummunication volume when true */
+    metis_ncuts,  /* Number of different partitionings that Metis will compute. */
     partopt,    /* free parameter for optimization */
     partoptim,  /* apply aggressive optimization to node sharing on bulk */
     partbcoptim,  /* apply aggressive optimization to node sharing on bcs */
@@ -341,6 +344,7 @@ struct ElmergridType {
     cylinder,
     unitemeshes,
     reduce,
+    multidim, 
     removelowdim,
     removeunused,
     removeintbcs,

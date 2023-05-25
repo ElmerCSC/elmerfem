@@ -81,6 +81,18 @@ MaterialLibrary::MaterialLibrary(QWidget *parent)
   connect(list, SIGNAL(itemDoubleClicked(QListWidgetItem*)), this, SLOT(itemDoubleClicked(QListWidgetItem*)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+
+  appendFileToComboBox("/edf/egmaterials.xml");  
+  addExtraMaterialLibraryFilesToComboBox();
+  
+  connect(ui.fileComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(fileChanged(int)) );
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  ui.appendButton->setIcon(QIcon::fromTheme("list-add"));
+  ui.clearButton->setIcon(QIcon::fromTheme("edit-clear"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  
 }
 
 MaterialLibrary::~MaterialLibrary()
@@ -125,9 +137,9 @@ void MaterialLibrary::okButtonClicked()
       QString propertyValue = property.text().trimmed();
 
 #if 0
-      cout << string(materialName.toAscii()) << ": " 
-	   << string(propertyName.toAscii()) << ": " 
-	   << string(propertyValue.toAscii()) << endl;
+      cout << string(materialName.toLatin1()) << ": " 
+	   << string(propertyName.toLatin1()) << ": " 
+	   << string(propertyValue.toLatin1()) << endl;
 #endif
 
       // Copy the parameter value into material editor:
@@ -144,6 +156,10 @@ void MaterialLibrary::okButtonClicked()
 	  if(propertyName == widgetName) {
 	    match = true;
 	    lineEdit->setText(propertyValue);
+#if 0 	    
+	    cout << "Material loader: found match for parameter: "
+	     << string(propertyName.toLatin1()) << endl;
+#endif
 	  }
 	}
 
@@ -158,12 +174,15 @@ void MaterialLibrary::okButtonClicked()
 	    match = true;
 	  }
 	}
+	// Without this check there will be multiple instances same material parameter
+	// in case there are multiple Solvers where it fits!
+	if(match) break;
       }
       
 #if 0
       if(!match) 
 	cout << "Material loader: no match for parameter: "
-	     << string(propertyName.toAscii()) << endl;
+	     << string(propertyName.toLatin1()) << endl;
 #endif
     }
   }
@@ -245,3 +264,82 @@ void MaterialLibrary::appendDocument(QString matFileName)
   }
   list->sortItems();
 }
+
+void MaterialLibrary::fileChanged(int index)
+{
+  ui.materialListWidget->clear();
+  materialDoc.clear();
+  appendDocument(ui.fileComboBox->itemData(index).toString());
+}
+
+void MaterialLibrary::appendFileToComboBox(QString fileName)
+{
+  // CAUTION: The argument fileName should be like "/edf/egmaterials.xls"
+
+#ifdef __APPLE__DONTGOHERE_TODO
+  //QString matFileName = this->homePath +  fileName;          
+  QString matFileName = QDir::homePath() +  fileName;          
+#else
+  QString matFileName = QCoreApplication::applicationDirPath()
+    + "/../share/ElmerGUI" + fileName;  // @TODO: fix path to share/ElmerGUI/edf
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if(!elmerGuiHome.isEmpty()) 
+    matFileName = elmerGuiHome + fileName;  
+#endif
+
+  QString errStr;
+  int errRow;
+  int errCol;
+  QFile materialFile(matFileName);
+  QDomDocument doc;
+  
+  if(!materialFile.exists()) {
+    return;
+
+  } else {  
+
+    if(!doc.setContent(&materialFile, true, &errStr, &errRow, &errCol)) {
+      materialFile.close();
+      return;
+    }
+  }
+
+  materialFile.close();	
+  
+  if(doc.documentElement().tagName() != "materiallibrary") {
+    return;
+  }
+  
+  ui.fileComboBox->addItem(fileName, QVariant(matFileName));
+}
+
+
+void MaterialLibrary::addExtraMaterialLibraryFilesToComboBox()
+{
+  
+#ifdef __APPLE__DONTGOHERE_TODO
+  //QString extraDirName = this->homePath + "/edf-extra";          
+  QString extraDirName = QDir::homePath() + "/edf-extra";          
+#else
+  QString extraDirName = QCoreApplication::applicationDirPath()
+    + "/../share/ElmerGUI/edf-extra";  
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if(!elmerGuiHome.isEmpty()) 
+    extraDirName = elmerGuiHome + "/edf-extra";  
+#endif
+
+  QStringList nameFilters;
+  nameFilters << "*.xml";  
+  QDir extraDir(extraDirName);
+  QStringList fileNameList = extraDir.entryList(nameFilters, QDir::Files | QDir::Readable);
+  for(int i=0; i < fileNameList.size(); i++)
+  {
+	appendFileToComboBox("/edf-extra/" + fileNameList.at(i));  	
+  }
+  
+}
+

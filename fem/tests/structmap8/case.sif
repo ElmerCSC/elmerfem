@@ -1,11 +1,11 @@
 !--------------------------------------------------------------------
-! A test case for Stuctured mesh mapper with a mask.
+! A test case for Structured mesh mapper with a mask.
 ! The extruded structure and related operations are only covered where
 ! the mask name is true.
 !
 ! This one with reduced basis dg. 
 !
-! Peter Råback / 24.8.2020
+! Peter Rï¿½back / 24.8.2020
 !--------------------------------------------------------------------
 
 Header
@@ -16,7 +16,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 

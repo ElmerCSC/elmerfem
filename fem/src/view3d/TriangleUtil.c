@@ -337,7 +337,7 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
    double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
-    double F,R,cosA,cosB;
+    double F,R,Rs,cosA,cosB;
 
     double *BX  = GB->Triangle->PolyFactors[0];
     double *BY  = GB->Triangle->PolyFactors[1];
@@ -349,23 +349,22 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
 
     int i,j;
 
-    U = V = 1.0 / 3.0;
-    NTX = TriangleValue( U,V,NBX );
-    NTY = TriangleValue( U,V,NBY );
-    NTZ = TriangleValue( U,V,NBZ );
 
-    R = NFX*NFX + NFY*NFY + NFZ*NFZ;
-
-    if ( ABS(1-R) > 1.0E-8 )
+    Rs = NFX*NFX + NFY*NFY + NFZ*NFZ;
+    if ( Rs != 0 && ABS(1-R) > 1.0E-8 )
     {
-        R = 1.0/sqrt(R);
-        NFX *= R;
-        NFY *= R;
-        NFZ *= R;
+        R = 1.0/sqrt(Rs);
+        NFX *= Rs;
+        NFY *= Rs;
+        NFZ *= Rs;
     }
 
-    R = NTX*NTX + NTY*NTY + NTZ*NTZ;
+    U = V = 1.0 / 3.0;
+    NTX = TriangleValue(U,V,NBX);
+    NTY = TriangleValue(U,V,NBY);
+    NTZ = TriangleValue(U,V,NBZ);
 
+    R = NTX*NTX + NTY*NTY + NTZ*NTZ;
     if ( ABS(1-R) > 1.0E-8 )
     {
         R = 1.0/sqrt(R);
@@ -375,6 +374,7 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
     }
 
     F  = 0.0;
+    cosA = 1;
     for( i=0; i<N_Integ3; i++ )
     {
        U = U_Integ3[i];
@@ -383,18 +383,18 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB,
        DX  = TriangleValue(U,V,BX) - FX;
        DY  = TriangleValue(U,V,BY) - FY;
        DZ  = TriangleValue(U,V,BZ) - FZ;
+       R = sqrt(DX*DX + DY*DY + DZ*DZ);
 
-       cosA =  DX*NFX + DY*NFY + DZ*NFZ;
-       if ( cosA < 1.0E-8 ) continue;
+       if ( Rs != 0 ) {
+         cosA = (DX*NFX + DY*NFY + DZ*NFZ) / R;
+         if ( cosA < 1.0E-8 ) continue;
+       }
 
-       cosB = -DX*NTX - DY*NTY - DZ*NTZ;
+       cosB = (-DX*NTX - DY*NTY - DZ*NTZ) / R;
        if ( cosB < 1.0E-8 ) continue;
 
-       R = DX*DX + DY*DY + DZ*DZ;
-
-       F += 2*GB->Area*cosA*cosB*S_Integ3[i]/(R*R);
+       F += 2*GB->Area*cosA*cosB*S_Integ3[i] / (R*R);
     }
-
     return F;
 }
 
@@ -592,4 +592,101 @@ subdivide:
         TriangleComputeViewFactors( GA->Left,GB,LevelA+1,LevelB );
         TriangleComputeViewFactors( GA->Right,GB,LevelA+1,LevelB );
     }
+}
+
+
+
+
+/*******************************************************************************
+
+Compute  differential view factor for linear surface elements by subdivision
+and direct numerical integration when the differential viewfactors match given
+magnitude criterion or areas of the elements are small enough. Blocking of the
+view between the elements is resolved by ray tracing.
+
+24 Aug 1995
+
+*******************************************************************************/
+void
+TriangleComputeRadiatorFactors (Geometry_t * GA, double dx, double dy,
+			      double dz, int LevelA)
+{
+  double R, FX, FY, FZ, GX, GY, GZ, U, V, Hit;
+  double F, Fa, Fb, EA, PI = 2 * acos (0.0);
+
+  double *X = GA->Triangle->PolyFactors[0];
+  double *Y = GA->Triangle->PolyFactors[1];
+  double *Z = GA->Triangle->PolyFactors[2];
+
+  int i, j;
+
+  if (LevelA & 1)
+    {
+      Fa = 0;
+      Fb = 0;
+      goto subdivide;
+    }
+
+    Fa = Fb = TriangleIntegrateDiffToArea( GA,dx,dy,dz,0.0,0.0,0.0);
+    if ( Fa < 1.0e-10 ) return;
+
+    if ( Fa<FactorEPS || GA->Area<AreaEPS )
+    {
+       GeometryList_t *Link;
+
+       Hit = Nrays;
+       for( i=0; i<Nrays; i++ )
+       {
+          U = drand48();
+          V = drand48();
+          while( U+V>1.0 ) { U = drand48(); V = drand48(); }
+
+          FX = TriangleValue(U,V,X);
+          FY = TriangleValue(U,V,Y);
+          FZ = TriangleValue(U,V,Z);
+
+          GX = dx - FX;
+          GY = dy - FY;
+          GZ = dz - FZ;
+
+           if ( RayHitGeometry( FX,FY,FZ,GX,GY,GZ ) ) Hit-=1.0;
+        }
+
+        if ( Hit == 0 ) return;
+
+        if ( Hit == Nrays || Fa<FactorEPS/2 || GA->Area < AreaEPS/2 )
+        {
+            F = Hit*Fa/(1.0*Nrays);
+            Fa = Fb = F / GA->Area / (4*PI);
+
+            Link = (GeometryList_t *)calloc(sizeof(GeometryList_t),1);
+            Link->Next = GA->Link;
+            GA->Link = Link;
+
+            Link->Entry = GA;
+            Link->ViewFactor = Fa;
+
+            return;
+        }
+    }
+
+subdivide:
+
+        if ( !GA->Left ) TriangleSubdivide( GA, LevelA,1 );
+
+        if ( GA->Flags & GEOMETRY_FLAG_LEAF )
+        {
+            GA->Flags &= ~GEOMETRY_FLAG_LEAF;
+            GA->Left->Flags  |= GEOMETRY_FLAG_LEAF;
+            GA->Right->Flags |= GEOMETRY_FLAG_LEAF;
+
+            if ( !GA->Left->Area )
+            {
+                GA->Left->Area  = TriangleArea(GA->Left);
+                GA->Right->Area = TriangleArea(GA->Right);
+            }
+        }
+
+        TriangleComputeRadiatorFactors( GA->Left,dx,dy,dz,LevelA+1 );
+        TriangleComputeRadiatorFactors( GA->Right,dx,dy,dz,LevelA+1 );
 }

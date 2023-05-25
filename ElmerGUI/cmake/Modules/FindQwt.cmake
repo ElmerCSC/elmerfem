@@ -24,17 +24,24 @@ ELSE(Qwt_INCLUDE_DIRS)
   FIND_PATH(QWT_INCLUDE_DIR qwt.h 
     PATHS
     /usr/include/qwt
+    /usr/include/qwt6
     /usr/local/include/qwt
     /sw/include/qwt
     HINTS /usr/local/opt/qwt-qt4/lib/
     HINTS /usr/local/Cellar/qwt-qt4/6.1.3_1/lib
+    HINTS /usr/include/qt5/qwt6
+    HINTS /msys64/mingw64/include/qwt
+    HINTS /msys64/mingw64/include/qwt-qt5
     )
-  FIND_LIBRARY(QWT_LIBRARY qwt 
+  FIND_LIBRARY(QWT_LIBRARY NAMES qwt qwt6-qt5 qwt-qt5
     /usr/lib
+    /usr/lib64
     /usr/local/lib
     /sw/lib
     HINTS /usr/local/opt/qwt-qt4/lib/
     HINTS /usr/local/Cellar/qwt-qt4/6.1.3_1/lib
+    HINTS /usr/lib/qwt-qt5
+    HINTS /msys64/mingw64/lib
     )
 
 ENDIF(Qwt_INCLUDE_DIRS)
@@ -51,5 +58,6 @@ MARK_AS_ADVANCED(
   QWT_INCLUDE_DIR
   QWT_LIBRARY
   FOUND_QWT
+  Qwt_FOUND
   )
 

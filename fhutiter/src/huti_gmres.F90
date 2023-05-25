@@ -49,7 +49,7 @@ module huti_gmres
   ! work(:,4) = r
   !
   ! Definitions to make the code more understandable and to make it look
-  ! like the pseudo code (these are commond to all precisions)
+  ! like the pseudo code (these are common to all precisions)
   !
 
 #define  X  xvec 
@@ -370,6 +370,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -810,6 +812,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -1118,6 +1122,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution
@@ -1427,6 +1433,8 @@ contains
     end if
 
     HUTI_ITERS = iter_count
+    call pcondrsubr( T1V, X, ipar )
+    X = T1V
     return
 
     ! End of execution

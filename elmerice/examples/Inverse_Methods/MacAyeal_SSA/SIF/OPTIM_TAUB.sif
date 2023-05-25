@@ -78,7 +78,7 @@ Material 1
   SSA Mean Viscosity = Real $ 1.8e8*1.0e-6*(2.0*yearinsec)^(-1.0/3.0)
 
   SSA Friction Law = String "linear"
-  ! The friction parameter is the square of the optimised variable to insure > 0
+  ! The friction parameter is the square of the optimised variable to ensure > 0
   SSA Friction Parameter = Variable alpha
       REAL procedure "ElmerIceUSF" "Asquare"
 
@@ -142,7 +142,7 @@ end
 !!   where beta is the friction parameter
 !!   and fm the friction exponent (equal to 1 for linear friction)
 !!   !! has to be computed here as it introduvce derivatives w.r.t. the velocity
-!!   !! set Reset DJDBeta = Logical False in AdjointSSA_GradientSolver as this fonction already introduces a derivative
+!!   !! set Reset DJDBeta = Logical False in AdjointSSA_GradientSolver as this function already introduces a derivative
 Solver 3
   Equation = "DJDTau_Reg"
     procedure = "ElmerIceSolvers" "AdjointSSA_CostTaubSolver"

@@ -1,0 +1,147 @@
+!##########################################################
+! #### NAMES
+!##########################################################
+!name of the RUN : 
+$name="SaveGridDataNetCDFTest"
+! the name of the mesh directory
+$MESH="Syn1Mesh"
+
+Header
+  Mesh DB "." "$MESH$"
+End
+!#######################################################
+!#######################################################
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "$name$.result"
+  Post File = "$name$.vtu"
+  max output level = 100
+
+  Extruded Mesh Levels = 10
+End
+!#######################################################
+!#######################################################
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 1
+  Initial Condition = 1
+End
+!#######################################################
+Initial Condition 1
+End
+!#######################################################
+Material 1
+End
+!#######################################################
+!#######################################################
+Solver 1
+  Equation = "SurfReader"
+  Exec Solver = "Before simulation"
+  Procedure = "GridDataReader" "GridDataReader"
+
+  Filename = File "./Syn1Surface.nc"
+
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+  X Var Name = String "x"
+  Y Var Name = String "y"
+
+  X Epsilon = Real 1.0E-2
+  Y Epsilon = Real 1.0E-2
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+
+  Variable 1 = Zs
+
+  Enable Scaling = Logical False
+End
+
+Solver 2
+   Exec Solver = "Never"
+   Equation = "Free Surface"
+   Variable = String "Zs"
+   Variable DOFs =  1
+   ! needed for evaluating the contact pressure
+   Exported Variable 1 = -dofs 1 "Zs Residual"
+   ! needed for storing the initial shape (needed for updates)
+   Exported Variable 2 = -dofs 1 "RefZs"
+   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  ! This would take the constrained points out of solution
+  ! Use in serial run, only
+  ! Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU4
+   Linear System Convergence Tolerance = Real 1.0e-7
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1
+   Nonlinear System Max Iterations = 100
+   Nonlinear System Min Iterations = 2
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 0.60
+   Steady State Convergence Tolerance = 1.0e-03
+   Stabilization Method = Stabilize
+   ! Apply contact problem    
+   Apply Dirichlet = Logical True
+   Maximum Displacement = Real 10.0
+   Update Exported Variables = Logical True
+   Nonlinear Update Exported Variables = Logical True
+
+! How much the free surface is relaxed
+  Relaxation Factor = Real 0.90      
+End
+
+Solver 3
+  Exec Solver = "After Timestep"
+  Procedure = "SaveGridData" "SaveGridData"
+!  NetCDF Format = Logical True
+  Output Format = netcdf 
+  Filename Prefix = File "NetCDFTest"
+  Grid dx = Real 100.0
+  Check for Duplicates = Logical True
+  Grid Origin At Corner = Logical True
+
+  Mask Name = String "Surface Mask"
+  Suppress Extra Dimension = Logical True  
+
+  Scalar Field 1 = "zs"
+End
+!#######################################################
+!#######################################################
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Equation 2
+  Active Solvers(2) = 2 3
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "side"
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "base"
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "surface"
+  Body ID = 2
+  Surface Mask = Logical True
+End
+

@@ -244,9 +244,12 @@
                      ReferenceTemperature, &
                      LocalTemperature,     &
                      LocalFlowWidth,	   &
-                     LocalVelo,            &
+                     K1,K2,E1,E2,E3,       &
                      LocalForce,           &
                      RefD, RefS, RefSpin,  &
+                     LocalVelo,            &
+                     Basis,ddBasisddx,dBasisdx, &
+                     TimeForce, &
                      LocalMassMatrix,      &
                      LocalStiffMatrix,     &
                      LoadVector, Alpha, Beta, &
@@ -433,7 +436,7 @@
 !------------------------------------------------------------------------------
          CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
       END DO
-
+      CALL DefaultFinishBulkAssembly()
       CALL Info( 'AIFlowSolve', 'Assembly done', Level=4 )
 
 !------------------------------------------------------------------------------
@@ -516,7 +519,7 @@
          END IF
       END DO
 !------------------------------------------------------------------------------
-
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------

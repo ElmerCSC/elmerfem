@@ -20,24 +20,19 @@
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
-! * This is a (3D) improvement of FrontalMelt (USF_Frontal) with basic plume shape etc
-! * Plume locations are defined by a point in (x,y). When the front moves,
-! * plumes are assumed to move normal to the average front parallel.
-!
-! * Plumes are defined in BC section, e.g.:
-! * Plume Count = 1
-! * Plume 1 X = 10550.0
-! * Plume 1 Y = -96651.0
+! * An improved version of the routine to calculate basal melt rates on
+! * ungrounded ice, producing a validity mask instead (1 = ungrounded area
+! * connected to the ice front; 0 = isolated patch).
 ! ******************************************************************************
 ! *
-! *  Authors: Joe Todd
-! *  Email:   jat71@cam.ac.uk
+! *  Authors: Samuel Cook
+! *  Email:   samuel.cook@univ-grenoble-alpes.fr
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland
 ! *
-! *  Original Date: 19.01.2016
+! *  Original Date: 08.2019
 ! *
 ! ****************************************************************************/
 
@@ -86,15 +81,6 @@
    DIM = CoordinateSystemDimension()
    IF(DIM /= 3) CALL Fatal(SolverName, "This solver only works in 3D!")
 
-   !t = GetTime()
-   !season = t - FLOOR(t)
-
-   !mode = ListGetString( Params, 'Basal Melt Mode', Found, UnfoundFatal=.TRUE.)
-   !mode = TRIM(mode)
-
-   !Get output file name for stats
-   !OutfileName = ListGetString(Params,"Basal Melt Stats File", OutputStats, UnfoundFatal=.TRUE.)
-
    !Identify nodes on the front
    FrontMaskName = "Calving Front Mask"
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
@@ -114,31 +100,8 @@
    IF(.NOT. Found) GMaskVarName = "GroundedMask"
    GroundedVar => VariableGet(Mesh % Variables, GMaskVarName, .TRUE., UnfoundFatal=.TRUE.)
 
-   !SELECT CASE(mode)
-   !CASE("seasonal")
-     !SMeltRate = ListGetConstReal(Params, "Basal Melt Summer Rate", UnfoundFatal=.TRUE.)
-     !WMeltRate = ListGetConstReal(Params, "Basal Melt Winter Rate", UnfoundFatal=.TRUE.)
-     !SStart = ListGetConstReal(Params, "Basal Melt Summer Start", UnfoundFatal=.TRUE.)
-     !SStop = ListGetConstReal(Params, "Basal Melt Summer Stop", UnfoundFatal=.TRUE.)
-
-     !Summer = .FALSE.
-     !IF(SStop > SStart) THEN
-     !  IF(season > SStart .AND. season < SStop) Summer = .TRUE.
-     !ELSE
-     !  IF(season > SStart .OR. season < SStop) Summer = .TRUE.
-     !END IF
-
-     !IF(Summer) THEN
-     !  MeltRate = SMeltRate
-     !ELSE
-     !  MeltRate = WMeltRate
-     !END IF
-   !CASE("off")
-     GMCheck = 1.0_dp
-   !CASE DEFAULT
-     !CALL Fatal(SolverName, "Unknown basal melt mode, valid options are 'seasonal' and 'off'.")
-   !END SELECT
-
+   GMCheck = 1.0_dp
+  
    !Set up inverse perm for FindNodeNeighbours
    InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
    ALLOCATE(Neighbours(Mesh % NumberOfNodes, 10), NoNeighbours(Mesh % NumberOfNodes))
@@ -251,103 +214,6 @@
      END IF
      CurrentGroup => CurrentGroup % Next
    END DO
-
-   !IF(OutputStats) THEN
-
-   !   IF ( CurrentCoordinateSystem() /= Cartesian ) &
-   !        CALL Fatal(SolverName, "Only cartesian coordinate system supported.")
-
-   !   n = Mesh % MaxElementNodes
-   !   ALLOCATE(ElementNodes % x(n),&
-   !        ElementNodes % y(n),&
-   !        ElementNodes % z(n))
-
-      !Integrate melt rate and area
-   !   TotalBMelt = 0.0_dp
-   !   TotalArea = 0.0_dp
-
-   !   Active = GetNOFActive()
-   !   DO i=1,Active
-
-   !      Element => GetActiveElement(i)
-   !      ElemBMelt = 0.0_dp
-
-   !      n = Element % TYPE % NumberOfNodes
-   !      NodeIndexes => Element % NodeIndexes
-
-         !Not interested in area/melt calcs for grounded elements
-   !      IF(ALL(GroundedVar % Values(GroundedVar % Perm(NodeIndexes)) >= 0)) CYCLE
-
-   !      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
-   !      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
-   !      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-
-   !      IntegStuff = GaussPoints( Element )
-
-   !      DO j=1,IntegStuff % n
-
-   !         U = IntegStuff % u(j)
-   !         V = IntegStuff % v(j)
-   !         W = IntegStuff % w(j)
-
-            !------------------------------------------------------------------------------
-            !        Basis function values at the integration point
-            !------------------------------------------------------------------------------
-   !         stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
-   !              Basis )
-
-            !assume cartesian here
-   !         s = SqrtElementMetric * IntegStuff % s(j)
-
-            !Check here for grounded
-   !         ElemBMelt = ElemBMelt + s * SUM(Var % Values(Var % Perm(NodeIndexes)) * Basis(1:n))
-   !         TotalArea = TotalArea + s
-   !      END DO
-
-   !      TotalBMelt = TotalBMelt + ElemBMelt
-   !   END DO
-   !   DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-
-   !   IF(Debug) THEN
-   !      PRINT *, 'BasalMelt3D: total submarine area: ',TotalArea
-   !      PRINT *, 'BasalMelt3D: total background melt: ',TotalBMelt
-   !   END IF
-
-   !   CALL MPI_AllReduce(MPI_IN_PLACE, TotalArea, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-   !   CALL MPI_AllReduce(MPI_IN_PLACE, TotalBMelt, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-
-   !   IF(ParEnv % MyPE == 0) THEN
-   !     IF(.NOT. Visited) THEN
-   !       Visited = .TRUE.
-   !       OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN')
-   !       WRITE(FileUnit, '(A)') "Timestep, Time, Ungrounded Area, &
-   !            &Total Basal Melt (m^3)"
-   !     ELSE
-   !       OPEN( UNIT=FileUnit, File=OutfileName, STATUS='UNKNOWN', ACCESS='APPEND' )
-   !     END IF
-
-   !     WRITE(FileUnit, '(I0,ES20.11,ES20.11,ES20.11)') &
-   !          GetTimestep(), GetTime(), TotalArea, TotalBMelt
-
-   !     CLOSE( FileUnit )
-   !   END IF
-
-      ! IF(AverageMelt) THEN
-      !   scale = Target_BMelt_Average / BMelt_Average
-      !   BMeltRate = BMeltRate * scale
-      !   !Also scale total value for output
-      !   TotalBMelt = TotalBMelt * scale
-
-      !   IF(Debug) PRINT *,'Plume, Scaling background melt by factor: ', scale
-
-      !   scale = Target_PMelt_Average / PMelt_Average
-      !   PMeltRate = PMeltRate * scale
-      !   !Also scale total value for output
-      !   TotalPMelt = TotalPMelt * scale
-
-      !   IF(Debug) PRINT *,'Plume, Scaling plume melt by factor: ', scale
-      ! END IF
-   ! END IF
 
     !Deallocate floatgroups linked list
     CurrentGroup => FloatGroups

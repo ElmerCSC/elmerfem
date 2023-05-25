@@ -3,7 +3,7 @@ Header
   Mesh DB "." "box"
 End
 Simulation 1
-  Max Output Level = 10
+  Max Output Level = 5
   Simulation type = transient
   timestep intervals(1) = 7
   ! timestep sizes(1) = 1
@@ -59,7 +59,9 @@ material 2 ! steel material
   ! init to zero = logical false ! this is for debugging
   ! zirka init sequence(1,1) = real
   ! 1.8
-  zirka init sequence(18, 1) = real 1.8 -1.0 0.5555555555555556 -0.30864197530864196 0.17146776406035666 -0.09525986892242036 0.05292214940134464 -0.029401194111858136 0.016333996728810075 -0.009074442627116708 0.005041357015064837 -0.002800753897258243 0.0015559743873656904 -0.0008644302152031613 0.00048023900844620075 -0.0002667994491367782 0.00014822191618709898 -8.234550899283277e-5 4.57475049960182e-5 
+  zirka init sequence(18, 1) = real 1.8 -1.0 0.5555555555555556 -0.30864197530864196 0.17146776406035666 -0.09525986892242036 0.05292214940134464 -0.029401194111858136 0.016333996728810075 -0.009074442627116708 0.005041357015064837 -0.002800753897258243 0.0015559743873656904 -0.0008644302152031613 0.00048023900844620075 -0.0002667994491367782 0.00014822191618709898 -8.234550899283277e-5
+
+! This is the 19th entry: 4.57475049960182e-5 
   zirka model coeffs(4,1) = real 7.73 2.76 -28.63 28.36 ! From the paper [1]
   zirka model b multiplier = real 0.22 ! From the paper [1]
   zirka model c multiplier = real 0.125 ! From the paper [1]
@@ -98,7 +100,7 @@ Solver 1
     6.0 -0.25
     7.0 0.0
     end
-
+  reference norm = 3.13063444E-05
 End
 Solver 2
   Equation = "calcfields"
@@ -115,6 +117,9 @@ Solver 2
   calculate elemental fields = true
   calculate magnetic field strength = logical true
   calculate magnetic flux density = logical true
+
+  show norm index = 2
+  reference norm = 7.69073332E-05
 End
 Solver 3
   exec solver = "never"
@@ -139,17 +144,24 @@ solver 4
  operator 4 = body int
  filename = "scalars_a.dat"
  output directory = "./"
+ 
  show norm index = integer 4
+ reference norm = 4.34617946E+01
 end
+
 solver 5
+  ! This testing depends on the outputted file and has been eliminated.
   exec solver = after all
   Equation = "zirkatest"
   Procedure = "ZirkaTest" "ZirkaTest"
   variable = -global testvar
   test number = integer 3
-  zirka init sequence(18, 1) = real 1.8 -1.0 0.5555555555555556 -0.30864197530864196 0.17146776406035666 -0.09525986892242036 0.05292214940134464 -0.029401194111858136 0.016333996728810075 -0.009074442627116708 0.005041357015064837 -0.002800753897258243 0.0015559743873656904 -0.0008644302152031613 0.00048023900844620075 -0.0002667994491367782 0.00014822191618709898 -8.234550899283277e-5 4.57475049960182e-5 
-  reference norm = real 0.0
-  reference norm tolerance = 1e-4
+  zirka init sequence(18, 1) = real 1.8 -1.0 0.5555555555555556 -0.30864197530864196 0.17146776406035666 -0.09525986892242036 0.05292214940134464 -0.029401194111858136 0.016333996728810075 -0.009074442627116708 0.005041357015064837 -0.002800753897258243 0.0015559743873656904 -0.0008644302152031613 0.00048023900844620075 -0.0002667994491367782 0.00014822191618709898 -8.234550899283277e-5
+  !4.57475049960182e-5 
+!  reference norm = real 0.0
+!  reference norm tolerance = 1e-4
+
+  exec solver = never
 End
 equation 1
   active solvers(4) = 1 2 3 5

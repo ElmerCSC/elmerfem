@@ -1,6 +1,6 @@
 !---------------------------------------------------------
 ! Test case for the consistency of partitioning.
-! This case is partitoned exactly using uniform geometric partition
+! This case is partitioned exactly using uniform geometric partition
 ! into 4 partitions. The number of 
 ! partitions can not be freely chosen here.
 !

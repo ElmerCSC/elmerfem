@@ -28,6 +28,10 @@
  USE DefUtils
  IMPLICIT NONE
 
+ INTERFACE GetPermittivity
+   MODULE PROCEDURE GetPermittivityR, GetPermittivityC
+ END INTERFACE
+
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
@@ -39,7 +43,7 @@
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: Tcoef(3,3,n)
-    CHARACTER(LEN=MAX_NAME_LEN):: CoilType
+    CHARACTER(LEN=*):: CoilType
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
@@ -56,21 +60,27 @@
              'Electric Conductivity im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,3
-               Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,3
+            Tcoef(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(3, SIZE(Cwrk,2))
+              Tcoef( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
+              Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               DO j=1,MIN(3,SIZE(Cwrk,2))
-                  Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(3,SIZE(Cwrk,2))
+                Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 
@@ -98,7 +108,7 @@
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     LOGICAL :: CoilBody
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    CHARACTER(LEN=*) :: CoilType
     
     TCoef=0._dp
     TCoefRe=0._dp
@@ -140,21 +150,27 @@
              'Relative Permeability im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,3
-               mu( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,3
+            mu(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(3, SIZE(Cwrk,2))
+              mu( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               mu(i,i,1:n) = Cwrk(i,1,1:n)
+              mu(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               DO j=1,MIN(3,SIZE(Cwrk,2))
-                  mu( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(3,SIZE(Cwrk,2))
+                mu( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -189,21 +205,27 @@
           varname(1:slen)//' im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,tsize
-               T( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,tsize
+            T(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(tsize, SIZE(Cwrk,2))
+              T( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(tsize,SIZE(Cwrk,1))
-               T(i,i,1:n) = Cwrk(i,1,1:n)
+              T(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(tsize,SIZE(Cwrk,1))
-               DO j=1,MIN(tsize,SIZE(Cwrk,2))
-                  T( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(tsize,SIZE(Cwrk,2))
+                T( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -461,6 +483,87 @@
        
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityR(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    REAL(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityC(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    COMPLEX(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, Found_im, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+    REAL(KIND=dp), PARAMETER :: im  = (0._dp, 1._dp)
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+      Acoef(1:n) = Acoef(1:n) + im * Pvacuum * & 
+              GetReal(Material,'Relative Permittivity  im', Found_im )
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+      Acoef(1:n) = Acoef(1:n) + im * &
+                 GetReal(Material,'Permittivity  im', Found_im )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

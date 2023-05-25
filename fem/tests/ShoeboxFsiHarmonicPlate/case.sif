@@ -23,7 +23,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -95,10 +95,6 @@ Solver 1
   Linear System Residual Output = 10
   Steady State Convergence Tolerance = 1.0e-05
 
-! The index of the fluid and structure solver must be given now
-  Fluid Solver Index = Integer 1
-  Plate Solver Index = Integer 2
-
 ! Enforces the block mode when solving the system
   Linear System Block Mode = Logical True
 
@@ -106,7 +102,9 @@ Solver 1
 ! Block system can also be created from components of one solver but not in this case.
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot.
+  Structure Solver Index = 2
+
+! Call the assembly for the 2nd solver using the pre-solvers slot.
 ! Could probably be called also otherwise as far as before. 
   Pre Solvers(1) = 2
   

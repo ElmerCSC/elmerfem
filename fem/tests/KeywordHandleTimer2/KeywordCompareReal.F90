@@ -66,7 +66,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
 
   DO key = 1, 10
     PRINT *,'Testing keyword number:',key
-    KeywordName = 'Float Value '//TRIM(I2S(key))
+    KeywordName = 'Float Value '//I2S(key)
     
     OldTimes(key) = RealTime()  
     DO i=1,TimeSweeps

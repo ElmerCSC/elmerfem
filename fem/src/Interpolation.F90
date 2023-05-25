@@ -84,7 +84,7 @@ MODULE Interpolation
      REAL(KIND=dp) :: BBox(6), eps3
      REAL(KIND=dp), PARAMETER :: eps2=0.0_dp !!!!!!! *** !!!!!!
 !------------------------------------------------------------------------------
-
+     
 !    Loop over ChildQuadrants:
 !    -------------------------
      DO i=1, 2**dim
@@ -134,7 +134,8 @@ MODULE Interpolation
 !------------------------------------------------------------------------------
      FUNCTION PointInElement( Element, ElementNodes, Point, &
 	  LocalCoordinates, GlobalEps, LocalEps, NumericEps, &
-          GlobalDistance, LocalDistance, EdgeBasis ) RESULT(IsInElement)
+          GlobalDistance, LocalDistance, EdgeBasis, &
+          USolver ) RESULT(IsInElement)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element  !< Bulk element we are checking
     TYPE(Nodes_t) :: ElementNodes        !< The nodal points of the bulk element
@@ -147,6 +148,7 @@ MODULE Interpolation
     REAL(KIND=dp), OPTIONAL :: GlobalDistance !< Returns the distance from the element in global coordinates.
     REAL(KIND=dp), OPTIONAL :: LocalDistance  !< Returns the distance from the element in local coordinates.
     LOGICAL, OPTIONAL :: EdgeBasis
+    TYPE(Solver_t), POINTER, OPTIONAL :: USolver 
 !------------------------------------------------------------------------------
     INTEGER :: n
     INTEGER :: i
@@ -286,7 +288,7 @@ MODULE Interpolation
 
     trans = PRESENT(EdgeBasis)
     IF(trans) trans=EdgeBasis
-    trans = trans .OR. isActivePElement(Element)
+    trans = trans .OR. isActivePElement(Element,USolver)
 
     IF (trans) THEN
       SELECT CASE(Element % Type % ElementCode/100)
@@ -329,8 +331,8 @@ MODULE Interpolation
     TYPE(Quadrant_t), POINTER :: MotherQuadrant
     INTEGER :: MaxLeafElems
 
-    dim = CoordinateSystemDimension()
-
+    dim = MAX( Mesh % MeshDim, CoordinateSystemDimension() )
+        
     IF ( dim == 3 ) THEN
       MaxLeafElems = 16
     ELSE

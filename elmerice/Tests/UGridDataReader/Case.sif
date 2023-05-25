@@ -1,0 +1,150 @@
+Header
+  Mesh DB "." "rectangle"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+   Simulation Type = Transient
+   Timestepping Method = "bdf"
+   BDF Order = 2
+
+   Timestep Intervals =  20
+   Timestep Sizes = 0.25
+   Output Intervals = 4
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!  Post File = "Case.vtu"
+
+  max output level = 5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+! PS compare to the sourec file (src/CaseXIOS.sif) we need to shift time by 3*dt
+!  a 1st output was for t=1, etc...
+  VarNode = Variable time, Coordinate 1, Coordinate 2
+   REAL MATC "((tx[0]+0.75)*(tx[0]+0.75)+(tx[1]*tx[1]+tx[2]*tx[2])^0.5)/2"
+
+  VarElem = Variable time, Coordinate 1, Coordinate 2
+   REAL MATC "(tx[0]+0.75)*(tx[0]+0.75)+(tx[1]*tx[1]+tx[2]*tx[2])^0.5"
+
+  dV = Variable VarNode,NodeVar
+    REAL MATC "tx[0]-tx[1]"
+
+  dE = Variable VarElem,ElemVar
+    REAL MATC "tx[0]-tx[1]"
+
+  dx 1 = Variable x, Coordinate 1
+    REAL MATC "tx[0]-tx[1]"
+
+  dx 2 = Variable y, Coordinate 2
+    REAL MATC "tx[0]-tx[1]"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!#######################################################
+! PreProcessing
+!   Read output_ugrid.nc
+!#######################################################
+Solver 1
+   Exec Solver = Before TimeStep
+   Exec Interval = 4
+
+   Equation = "UGridDataReader"
+   Procedure = "ElmerIceSolvers" "UGridDataReader"
+
+   File Name = File "output_ugrid.nc"
+
+ ! a time-dependent nodal var
+   Variable Name 1 = File "MyNodalVar"
+   Target Variable 1 = string "NodeVar"
+
+ ! time-independent nodal vars
+   Variable Name 2 = File "x"
+   Target Variable 2 = string "x"
+
+   Variable Name 3 = File "y"
+   Target Variable 3 = string "y"
+
+ ! a time dependent elem var
+   Variable Name 4 = File "MyElemVar"
+   Target Variable 4 = string "ElemVar"
+
+   Exported Variable 1 = NodeVar
+   Exported Variable 2 = x
+   Exported Variable 3 = y
+   Exported Variable 4 = -elem "ElemVar"
+End
+
+!! Compute the equivalent analytical solutions
+Solver 2
+   Equation = "UpdateEx"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+
+
+  Exported Variable 1 = VarNode
+  Exported Variable 2 = dV
+  Exported Variable 3 = -dofs 2 "dx"
+  Exported Variable 4 = -elem "VarElem"
+  Exported Variable 5 = -elem "dE"
+End
+
+!! check
+Solver 3
+  Exec Solver = After TimeStep
+  Exec Interval = 4
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  File Append = Logical False
+
+  Time Point = Variable Time 
+    REAL MATC "tx[0]"
+
+  Show Norm = True
+  
+  Variable 1 = Time
+
+  Variable 2 = "dV"
+  Operator 2= rms
+
+  Variable 3 = "dE"
+  Operator 3= rms
+
+  Variable 4 = "dx"
+  Operator 4 = rms
+
+End
+
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1 :: Is Time Counter = Logical True
+
+Solver 3 ::  Filename = f1.dat
+Solver 3 :: Show Norm Index = 4
+Solver 3 :: Reference Norm = Real 0.0
+Solver 3 :: Reference Norm Tolerance = Real 1E-04
+RUN
+
+Solver 1 :: Is Time Counter = Logical false
+
+Solver 3 ::  Filename = f2.dat
+Solver 3 :: Show Norm Index = 2
+Solver 3 :: Reference Norm = Real 0.0
+Solver 3 :: Reference Norm Tolerance = Real 1E-04
+RUN
+

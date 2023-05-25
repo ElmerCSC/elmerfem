@@ -31,7 +31,7 @@ Solver 1
 
   Variable = "Potential"
   Variable DOFs = 1
-  Procedure = "Poisson" "PoissonSolver"
+  Procedure = "./Poisson" "PoissonSolver"
 
   Linear System Symmetric = True
   Linear System Solver = "Iterative"

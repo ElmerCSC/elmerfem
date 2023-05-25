@@ -1,0 +1,206 @@
+! Simple case for testing the stranded coil in transient 3D simulation.
+! This case is the first ever to use the coil solver to connect a full
+! coil to circuits. The wire density vector is given via wire vector instead 
+! of wire potential using "Coil Use W Vector = Logical True" keyword in 
+! the component section. Why this option? -You can compute your wires 
+! in a full coil without cuts which you cannot do using wire potential. 
+!
+! Test case authors: Eelis Takala, Frederic Trillaud
+! Original date: October 2020
+! eelis.takala@gmail.com, ftrillaudp@gmail.com
+INCLUDE sif/coil-circuits.definitions
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "coil"
+  Results Directory "res"
+End
+Simulation
+  Coordinate System = String "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = String "Transient"
+  Steady State Max Iterations = 1 
+  TimeStepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes(1) = Real 0.1
+  TimeStep Intervals(1) = Integer 3
+  Output Intervals(1) = Integer 1
+  Max Output Level = 7
+End
+Constants
+  Gravity(4) = 0 0 -1 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Permeability of Vacuum = 1.256e-6
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+Body 1
+  Name = "coil"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+Body 2
+  Name = "air"
+  Target Bodies(1) = 2
+  Equation = 2
+  Material = 1
+  Initial Condition = 1
+End
+Component 1    !---- Coil
+  Name = String "Coil"
+  Master Bodies(1) = Integer 1
+  Desired Current Density = Real 1
+  Coil Type = String stranded
+  Coil Use W Vector = Logical True
+  W Vector Variable Name = String "CoilCurrent e"
+  Number of Turns = Real 1
+  Electrode Area = Real 1
+  Resistance = Real 0
+  Coil Normal(3) = Real 0.0 0.0 1.0
+End
+Material 1     !---- Dummy
+  Name = "Dummy"
+  Relative Permeability = Real 1.0
+  Relative Permittivity = Real 1.0
+End
+Body Force 1   !---- Source and circuit
+  Name = "Source and circuit"
+!  Current Density 1 = Equals "CoilCurrent e 1"
+!  Current Density 2 = Equals "CoilCurrent e 2"
+!  Current Density 3 = Equals "CoilCurrent e 3"
+  S1 = Variable time
+    Real MATC "1e6*tx"
+End
+Boundary Condition 1
+  Name = "Air boundary"
+  Target Boundaries(1) = 4
+  A {e} = real 0
+  A = real 0
+  Jfix = real 0.0
+End
+Initial Condition 1
+  Name = "Initial state: magnetodynamics"
+  A {e} = real 0
+  A = real 0
+  Jfix = real 0.0
+End
+Solver 1  !---- CoilSolver, CoilSolver
+  Exec Solver = Before All
+  Equation = "CoilSolver"
+  Procedure = "CoilSolver" "CoilSolver"
+  
+  Steady State Convergence Tolerance = 1e-06 ! related to the Steady State Iterations (see Simulation)
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabl
+  Linear System Residual Output = 20
+
+  Normalize Coil Current = Logical True
+  Fix Input Current Density = True
+  Nonlinear System Consistent Norm = True
+  Coil Closed = Logical True
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+  
+!  Coil Normal(3) = Real 0. 0. 1.
+End
+
+Solver 2  !---- CircuitsAndDynamics, CircuitsAndDynamics
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
+End
+
+Solver 3  !---- MagnetoDynamics, WhitneyAVSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A"
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GCR
+   Linear System Preconditioning = Circuit
+   Linear System Residual Output = 20
+   Linear System Max Iterations = 100
+   Linear System Convergence Tolerance = 1.e-10
+
+   Steady State Convergence Tolerance = 1e-08
+End
+
+Solver 4  !---- MagnetoAndDynamics, MagnetoDynamicsCalcFields
+  Exec Solver = Always
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  
+  Potential Variable = String "A"
+  Steady State Convergence Tolerance = 1.0e-6
+  
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+  Discontinuous Bodies = Logical True
+  
+  Calculate Elemental Fields = Logical True
+End
+Solver 5  !---- CircuitsAndDynamics, CircuitsOutput
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 6  !---- ResultOuputSolve, ResultOuputSolver
+!   Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   
+   Vtu Format = Logical True
+   Binary Output = Logical True
+!   Discontinuous Bodies = Logical True
+   
+   Output File Name = File "coil"
+   
+   Save Geometry Ids = Logical True 
+End
+Solver 7  !---- SaveData, SaveScalars (Write circuit variables to file)
+   !Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = dat/coil.dat
+End
+Equation 1
+  Name = "MagnetoDynamic for coil"
+  Active Solvers(4) = 1 2 3 4
+End
+Equation 2
+  Name = "MagnetoDynamic for air"
+  Active Solvers(2) = 3 4
+End
+Solver 1 :: Reference Norm = 5.75316763E-01
+Solver 2 :: Reference Norm = 1.41421356E+05
+! This is very sensitive, let us just check for the derived field
+!Solver 3 :: Reference Norm = 2.32419663E+00
+Solver 4 :: Reference Norm = 3.119368e-3
+
+Solver 1 :: Reference Norm Tolerance = 1e-04
+Solver 2 :: Reference Norm Tolerance = 1e-04
+!Solver 3 :: Reference Norm Tolerance = 1e-04
+Solver 4 :: Reference Norm Tolerance = 1e-04

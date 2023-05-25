@@ -538,11 +538,11 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------------------
-    RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
+    RECURSIVE SUBROUTINE C_rpcond(u,v,ipar,pcondrsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
       IMPLICIT NONE
-      PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
+      PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
 
@@ -551,10 +551,10 @@ CONTAINS
 !-----------------------------------------------------------------------------------
       ndim = HUTI_NDIM
       IF(Constrained) HUTI_NDIM = ndim+nc
-      CALL pcondlsubr(u,v,ipar)
+      CALL pcondrsubr(u,v,ipar)
       IF(Constrained) HUTI_NDIM = ndim
 !-----------------------------------------------------------------------------------
-    END SUBROUTINE C_lpcond
+    END SUBROUTINE C_rpcond
 !-----------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -592,7 +592,7 @@ CONTAINS
 
     ! Variables related to robust mode
     LOGICAL :: Robust 
-    INTEGER :: BestIter,BadIterCount,MaxBadIter
+    INTEGER :: BestIter,BadIterCount,MaxBadIter, RobustStart
     REAL(KIND=dp) :: BestNorm,RobustStep,RobustTol,RobustMaxTol
     REAL(KIND=dp), ALLOCATABLE :: Bestx(:)
 
@@ -638,6 +638,7 @@ CONTAINS
       RobustStep = HUTI_ROBUST_STEPSIZE
       RobustMaxTol = HUTI_ROBUST_MAXTOLERANCE
       MaxBadIter = HUTI_ROBUST_MAXBADIT
+      RobustStart = HUTI_ROBUST_START
       BestNorm = SQRT(HUGE(BestNorm))
       BadIterCount = 0
       BestIter = 0      
@@ -677,7 +678,7 @@ CONTAINS
 !> copyright notice of the subroutine has been removed accordingly.  
 !-----------------------------------------------------------------------------------
     SUBROUTINE RealBiCGStabl( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-        Diverged, Halted, OutputInterval, l, StoppingCriterionType )
+        Diverged, Halted, OutputInterval, l)
 !----------------------------------------------------------------------------------- 
       INTEGER :: l   ! polynomial degree
       INTEGER :: n, MaxRounds, OutputInterval   
@@ -685,7 +686,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: zero, one, t(n), kappa0, kappal 
       REAL(KIND=dp) :: dnrm2, rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
@@ -694,7 +694,6 @@ CONTAINS
           IluOrder
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
@@ -829,8 +828,8 @@ CONTAINS
           ENDDO
           !$OMP END PARALLEL
 
-          ! CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
-          CALL C_lpcond( t, work(1,u+k-1), ipar, pcondlsubr )
+          ! CALL C_rpcond( t, work(:,u+k-1), ipar, pcondrsubr )
+          CALL C_rpcond( t, work(1,u+k-1), ipar, pcondrsubr )
           ! CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
           CALL C_matvec( t, work(1,u+k), ipar, matvecsubr )
           ! sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
@@ -862,9 +861,9 @@ CONTAINS
           ENDDO
           !$OMP END PARALLEL
 
-          ! CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
+          ! CALL C_rpcond( t, work(:,r+k-1), ipar,pcondrsubr )
           ! CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
-          CALL C_lpcond( t, work(1,r+k-1), ipar,pcondlsubr )
+          CALL C_rpcond( t, work(1,r+k-1), ipar,pcondrsubr )
           CALL C_matvec( t, work(1,r+k), ipar, matvecsubr )
 
           ! rnrm = normfun(n, work(1:n,r), 1 )
@@ -1040,7 +1039,7 @@ CONTAINS
         rcmp = ((rnrm < delta*mxnrmr .AND. rnrm0 < mxnrmr) .OR. xpdt)
         IF (rcmp) THEN
           ! PRINT *, 'Performing residual update...'
-          CALL C_lpcond( t, x, ipar,pcondlsubr )
+          CALL C_rpcond( t, x, ipar,pcondrsubr )
           ! CALL C_matvec( t, work(:,r), ipar, matvecsubr )
           CALL C_matvec( t, work(1,r), ipar, matvecsubr )
 
@@ -1079,7 +1078,7 @@ CONTAINS
              !$OMP END PARALLEL DO
           END IF
         ELSE
-          CALL C_lpcond( t, x, ipar,pcondlsubr )
+          CALL C_rpcond( t, x, ipar,pcondrsubr )
           !$OMP PARALLEL DO
           DO i=1,n
              t(i) = t(i)+work(i,xp)
@@ -1094,18 +1093,20 @@ CONTAINS
         END IF
         
         IF( Robust ) THEN
-          IF( errorInd < RobustStep * BestNorm ) THEN
-            BestIter = Round
-            BestNorm = errorInd
-            Bestx = x
-            BadIterCount = 0
-          ELSE
-            BadIterCount = BadIterCount + 1
-          END IF
+          IF (Round>=RobustStart ) THEN
+            IF( errorInd < RobustStep * BestNorm ) THEN
+              BestIter = Round
+              BestNorm = errorInd
+              Bestx = x
+              BadIterCount = 0
+            ELSE
+              BadIterCount = BadIterCount + 1
+            END IF
 
-          IF( BestNorm <  RobustTol .AND. &
-              ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
-            EXIT
+            IF( BestNorm <  RobustTol .AND. &
+                  ( errorInd > RobustMaxTol .OR. BadIterCount > MaxBadIter ) ) THEN
+              EXIT
+            END IF
           END IF
         END IF
                
@@ -1114,18 +1115,20 @@ CONTAINS
         IF( Converged .OR. Diverged) EXIT    
       END DO
 
-100   IF(OutputInterval /= HUGE(OutputInterval)) THEN
-        WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
-      END IF
-      
-      IF( Robust ) THEN
+100   IF( Robust ) THEN
         IF( BestNorm < RobustTol ) THEN
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,Round
           x = Bestx
+        END IF
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,2E11.4)') 'BiCGStabl robust: ',&
+              MIN(MaxRounds,Round), BestNorm, BestIter, rnrm, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE (*, '(A, I8, 2E11.4)') 'BiCGStabl: ', MIN(MaxRounds,Round), rnrm, errorind
         END IF
       END IF
             
@@ -1138,7 +1141,7 @@ CONTAINS
          t(i) = x(i)
       END DO
       !$OMP END PARALLEL DO
-      CALL C_lpcond( x, t, ipar,pcondlsubr )
+      CALL C_rpcond( x, t, ipar,pcondrsubr )
       !$OMP PARALLEL DO
       DO i=1,n
          x(i) = x(i) + work(i,xp)
@@ -1252,7 +1255,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: S(:,:), V(:,:), T1(:), T2(:)
 
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k
+      INTEGER :: i,j,k,ksum=0
       REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
       REAL(KIND=dp) :: beta_im
 !------------------------------------------------------------------------------
@@ -1260,14 +1263,14 @@ CONTAINS
         
       ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+        CALL Fatal('GCR','Failed to allocate memory of size: '//I2S(n))
       END IF
 
       IF ( m > 1 ) THEN
         ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
         IF( allocstat /= 0 ) THEN
           CALL Fatal('GCR','Failed to allocate memory of size: '&
-              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+              //I2S(n)//' x '//I2S(m))
         END IF
         
          V(1:n,1:m-1) = 0.0d0	
@@ -1309,7 +1312,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar,pcondlsubr )
+         CALL C_rpcond( T1, r, ipar, pcondrsubr )
          CALL C_matvec( T1, T2, ipar, matvecsubr )
 
          !--------------------------------------------------------------
@@ -1403,17 +1406,27 @@ CONTAINS
          ! the iterated residual:
          !-----------------------------------------------------------------
          IF (Converged ) THEN
-            CALL C_matvec( x, trueres, ipar, matvecsubr )
-            trueres(1:n) = b(1:n) - trueres(1:n)
-            TrueResNorm = normfun(n, trueres, 1)
-            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
-            IF ( NormErr > 1.0d-1 ) THEN
-               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
-               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
-               CALL Info('WARNING', Message, Level=2)
-               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
-               CALL Info('WARNING', Message, Level=2)   
-            END IF
+           CALL C_matvec( x, trueres, ipar, matvecsubr )
+           trueres(1:n) = b(1:n) - trueres(1:n)
+           TrueResNorm = normfun(n, trueres, 1)
+           NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
+           
+           IF ( NormErr > 1.0d-1 ) THEN
+             CALL Warn('IterMethod_GCR','Iterated GCR solution may not be accurate')
+             i = 4
+           ELSE
+             i = 8
+           END IF
+           WRITE( Message,'(A,I0,A,ES12.3)') 'Iterated residual norm after ',k,' iters:', rnorm
+           CALL Info('IterMethod_GCR', Message, Level=i)
+           WRITE( Message,'(A,ES12.3)') 'True residual norm::', TrueResNOrm
+           CALL Info('IterMethod_GCR', Message, Level=i)            
+
+           IF( InfoActive(20) ) THEN
+             ksum = ksum + k
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//I2S(ksum))           
+           END IF
+           
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
@@ -1545,7 +1558,7 @@ CONTAINS
 !   The subroutine RealIDRS has been written by M.B. van Gijzen
 !----------------------------------------------------------------------------------- 
     SUBROUTINE RealIDRS( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-        Diverged, OutputInterval, s, StoppingCriterionType )
+        Diverged, OutputInterval, s)
 !----------------------------------------------------------------------------------- 
       INTEGER :: s   ! IDR parameter
       INTEGER :: n, MaxRounds, OutputInterval   
@@ -1553,7 +1566,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       REAL(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
 
       ! Local arrays:
       REAL(kind=dp) :: P(n,s)
@@ -1577,35 +1589,35 @@ CONTAINS
       REAL(kind=dp) :: normb, normr, errorind ! for tolerance check
       INTEGER :: i,j,k,l                      ! loop counters
 !----------------------------------------------------------------------------------- 
-      U = 0.0d0
-
-
       
-      ! Compute initial residual, set absolute tolerance
+      ! Compute initial residual
       normb = normfun(n,b,1)
       CALL C_matvec( x, t, ipar, matvecsubr )
       r = b - t
-      normr = normfun(n,r,1)
-      
-      IF( Smoothing ) THEN
-        ALLOCATE( r_s(n), x_s(n) )
-        x_s = x
-        r_s = r 
-      END IF
-
       
       !-------------------------------------------------------------------
       ! Check whether the initial guess satisfies the stopping criterion
       !--------------------------------------------------------------------
-      errorind = normr / normb
+      IF (UseStopCFun) THEN
+        errorind = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        normr = normfun(n,r,1)
+        errorind = normr / normb
+      END IF
       Converged = (errorind < Tol)
       Diverged = (errorind > MaxTol) .OR. (errorind /= errorind)
 
       IF ( Converged .OR. Diverged ) RETURN
 
+      U = 0.0d0
+      IF ( Smoothing ) THEN
+        ALLOCATE( r_s(n), x_s(n) )
+        x_s = x
+        r_s = r 
+      END IF
+
       ! Define P(n,s) and kappa
 #if 1
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(P)
 #else
       ! this is alternative generation of initial basis vectors
@@ -1672,7 +1684,7 @@ CONTAINS
             END DO
 
             ! Compute new U(:,k)
-            CALL C_lpcond( t, v, ipar, pcondlsubr ) 
+            CALL C_rpcond( t, v, ipar, pcondrsubr ) 
             t = om*t
             DO i = k,s
               t = t + gamma(i)*U(:,i)
@@ -1682,7 +1694,7 @@ CONTAINS
           ELSE
 
             ! Updates for the first s iterations (in G_0):
-            CALL C_lpcond( U(:,k), v, ipar, pcondlsubr )
+            CALL C_rpcond( U(:,k), v, ipar, pcondrsubr )
 
           END IF
 
@@ -1721,9 +1733,7 @@ CONTAINS
             f(k+1:s)   = f(k+1:s) - beta(k)*M(k+1:s,k)
           END IF
 
-          IF( .NOT. Smoothing ) THEN
-            normr = normfun(n,r,1)
-          ELSE
+          IF (Smoothing) THEN
             t = r_s - r
             tr_s = dotprodfun(n, t, 1, r_s, 1 )
             tt = dotprodfun(n, t, 1, t, 1 )
@@ -1731,12 +1741,24 @@ CONTAINS
             
             r_s = r_s - theta * t
             x_s = x_s - theta * (x_s - x)
-            normr = normfun(n,r_s,1)
           END IF
 
           ! Check for convergence
           iter = iter + 1
-          errorind = normr/normb
+          IF (UseStopCFun) THEN
+            IF (Smoothing) THEN
+              errorind = stopcfun(x_s,b,r_s,ipar,dpar)
+            ELSE
+              errorind = stopcfun(x,b,r,ipar,dpar)
+            END IF
+          ELSE
+            IF (Smoothing) THEN
+              normr = normfun(n,r_s,1)  
+            ELSE
+              normr = normfun(n,r,1)
+            END IF
+            errorind = normr/normb
+          END IF
 
           IF( MOD(iter,OutputInterval) == 0) THEN
             WRITE (*, '(I8, E11.4)') iter, errorind
@@ -1763,7 +1785,7 @@ CONTAINS
         ! Note: r is already perpendicular to P so v = r
 
         ! Preconditioning:
-        CALL C_lpcond( v, r, ipar, pcondlsubr )
+        CALL C_rpcond( v, r, ipar, pcondrsubr )
         ! Matrix-vector multiplication:
         CALL C_matvec( v, t, ipar, matvecsubr )
 
@@ -1787,22 +1809,31 @@ CONTAINS
         r = r - om*t
         x = x + om*v
         
-        IF( .NOT. Smoothing ) THEN
-          normr = normfun(n,r,1)
-        ELSE
+        IF (Smoothing) THEN
           t = r_s - r
           tr_s = dotprodfun(n, t, 1, r_s, 1 )
           tt = dotprodfun(n, t, 1, t, 1 )
           theta = tr_s / tt
           r_s = r_s - theta * t
           x_s = x_s - theta * (x_s - x)
-          normr = normfun(n,r_s,1)
         END IF
 
         ! Check for convergence
         iter = iter + 1
-        errorind = normr/normb
-
+        IF (UseStopCFun) THEN
+          IF (Smoothing) THEN
+            errorind = stopcfun(x_s,b,r_s,ipar,dpar)
+          ELSE
+            errorind = stopcfun(x,b,r,ipar,dpar)
+          END IF
+        ELSE
+          IF (Smoothing) THEN
+            normr = normfun(n,r_s,1)  
+          ELSE
+            normr = normfun(n,r,1)
+          END IF
+          errorind = normr/normb
+        END IF
         
         IF( MOD(iter,OutputInterval) == 0) THEN
           WRITE (*, '(I8, E11.4)') iter, errorind
@@ -1813,7 +1844,11 @@ CONTAINS
           IF( errorInd < RobustStep * BestNorm ) THEN
             BestIter = iter
             BestNorm = errorInd
-            Bestx = x
+            IF (Smoothing) THEN
+              Bestx = x_s
+            ELSE
+              Bestx = x
+            END IF
             BadIterCount = 0
           ELSE
             BadIterCount = BadIterCount + 1
@@ -1839,9 +1874,16 @@ CONTAINS
           Converged = .TRUE.
         END IF
         IF( BestNorm < errorInd ) THEN
-          WRITE(*,*) 'Best norm better than final one: ',&
-              BestIter,BestNorm,errorInd,iter
           x = Bestx
+        END IF        
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4,I8,E11.4)') 'Idrs robust: ',&
+              iter, BestNorm, BestIter, errorind
+        END IF
+      ELSE
+        IF(OutputInterval /= HUGE(OutputInterval)) THEN
+          WRITE(*,'(A,I8,E11.4)') 'Idrs: ',&
+              iter, errorind
         END IF
       END IF
       
@@ -1973,7 +2015,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL pcondlsubr( T1, r, ipar )         
+         CALL pcondrsubr( T1, r, ipar )         
          CALL matvecsubr( T1, T2, ipar )
          !--------------------------------------------------------------
          ! Perform the orthogonalization of the search directions....
@@ -2102,7 +2144,7 @@ CONTAINS
 
     !-----------------------------------------------------------------------------------
     SUBROUTINE ComplexBiCGStabl( n, A, x, b, MaxRounds, Tol, MaxTol, Converged, &
-         Diverged, OutputInterval, l, StoppingCriterionType )
+         Diverged, OutputInterval, l)
     !-----------------------------------------------------------------------------------
     !   This subroutine solves complex linear systems Ax = b by using the BiCGStab(l) algorithm 
     !   with l >= 2 and the right-oriented preconditioning. 
@@ -2119,7 +2161,6 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
       COMPLEX(KIND=dp) :: x(n), b(n)
       REAL(KIND=dp) :: Tol, MaxTol
-      INTEGER, OPTIONAL :: StoppingCriterionType 
       !------------------------------------------------------------------------------
       COMPLEX(KIND=dp) :: zzero, zone, t(n), kappa0, kappal 
       REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
@@ -2197,7 +2238,7 @@ CONTAINS
             DO j=0,k-1
                work(1:n,u+j) = work(1:n,r+j) - beta*work(1:n,u+j)
             ENDDO
-            CALL pcondlsubr( t, work(1:n,u+k-1), ipar )
+            CALL pcondrsubr( t, work(1:n,u+k-1), ipar )
             CALL matvecsubr( t, work(1:n,u+k),   ipar )
 
             sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1)
@@ -2209,7 +2250,7 @@ CONTAINS
             DO j=0,k-1
                work(1:n,r+j) = work(1:n,r+j) - alpha * work(1:n,u+j+1)
             ENDDO
-            CALL pcondlsubr( t, work(1:n,r+k-1), ipar )
+            CALL pcondrsubr( t, work(1:n,r+k-1), ipar )
             CALL matvecsubr( t, work(1:n,r+k),   ipar )
             rnrm = normfun(n, work(1:n,r), 1)
             mxnrmx = MAX (mxnrmx, rnrm)
@@ -2300,7 +2341,7 @@ CONTAINS
          rcmp = ((rnrm < delta*mxnrmr .AND. rnrm0 < mxnrmr) .OR. xpdt)
          IF (rcmp) THEN
             ! PRINT *, 'Performing residual update...'
-            CALL pcondlsubr( t, x, ipar )
+            CALL pcondrsubr( t, x, ipar )
             CALL matvecsubr( t, work(1:n,r), ipar )
             work(1:n,r) = work(1:n,bp) - work(1:n,r)
             mxnrmr = rnrm
@@ -2320,7 +2361,7 @@ CONTAINS
                t(1:n) = t(1:n) + work(1:n,xp)  
             END IF
          ELSE
-            CALL pcondlsubr( t, x, ipar )
+            CALL pcondrsubr( t, x, ipar )
             t(1:n) = t(1:n)+work(1:n,xp)
          END IF
 
@@ -2342,7 +2383,7 @@ CONTAINS
       ! We have solved z = P*x, so finally solve the true unknown x
       !------------------------------------------------------------
       t(1:n) = x(1:n)
-      CALL pcondlsubr( x, t, ipar )
+      CALL pcondrsubr( x, t, ipar )
       x(1:n) = x(1:n) + work(1:n,xp)      
 
     !----------------------------------------------------------
@@ -2464,7 +2505,6 @@ CONTAINS
       IF ( Converged .OR. Diverged ) RETURN
 
       ! Define P and kappa 
-      CALL RANDOM_SEED
       CALL RANDOM_NUMBER(Pr)
       CALL RANDOM_NUMBER(Pi)
       P = Pr + (0.,1.)*Pi
@@ -2519,7 +2559,7 @@ CONTAINS
             END DO
 
             ! Compute new U(:,k)
-            CALL pcondlsubr( t, v, ipar )
+            CALL pcondrsubr( t, v, ipar )
             t = om*t
             DO i = k,s
               t = t + gamma(i)*U(:,i)
@@ -2529,7 +2569,7 @@ CONTAINS
           ELSE 
 
             ! Updates for the first s iterations (in G_0):
-            CALL pcondlsubr( U(:,k), v, ipar )
+            CALL pcondrsubr( U(:,k), v, ipar )
 
           END IF
 
@@ -2596,7 +2636,7 @@ CONTAINS
         ! Note: r is already perpendicular to P so v = r
 
         ! Preconditioning:
-        CALL pcondlsubr( v, r, ipar )
+        CALL pcondrsubr( v, r, ipar )
         ! Matrix-vector multiplication:
         CALL matvecsubr( v, t, ipar )
 

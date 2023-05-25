@@ -6,4 +6,4 @@ CONFIGURE_FILE( discont.sif discont.sif COPYONLY)
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(DisContBoundaryMortarJumpB NPROCS 1 2 4 8 LABELS heateq)
-ADD_ELMER_LABEL(DisContBoundaryMortarJumpB quick)
+ADD_ELMER_LABEL(DisContBoundaryMortarJumpB mortar quick)

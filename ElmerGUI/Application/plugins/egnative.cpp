@@ -189,6 +189,7 @@ void Instructions()
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
   printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-multidim            : keep lower order entities even if they are not boundaries\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
@@ -215,7 +216,10 @@ void Instructions()
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisvol            : minimize total communication volume in Metis\n");
+  printf("-metisminconn        : minimize the maximum connectivity count in Metis\n");
   printf("-metisseed int       : random number generator seed for Metis algorithms\n");
+  printf("-metisncuts int      : number of competing partitions to generate\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
@@ -3575,8 +3579,10 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
-  eg->metiscontig = FALSE;
-  eg->metisseed = 0;
+  eg->metis_contig = FALSE;
+  eg->metis_volcut = FALSE;
+  eg->metis_seed = 0;
+  eg->metis_ncuts = 1;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
@@ -3587,6 +3593,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->increase = FALSE;
   eg->translate = FALSE;
   eg->isoparam = FALSE;
+  eg->multidim = FALSE;
   eg->removelowdim = FALSE;
   eg->removeintbcs = FALSE;
   eg->removeunused = FALSE;
@@ -3924,6 +3931,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
       printf("Names will be omitted even if they would exist\n");
     }   
 
+    if(strcmp(argv[arg],"-multidim") == 0) {
+      eg->multidim = TRUE;
+      printf("Lower dimensional entities may be bulk too!\n");
+    }   
+
     if(strcmp(argv[arg],"-removelowdim") == 0) {
       eg->removelowdim = TRUE;
       printf("Lower dimensional boundaries will be removed\n");
@@ -4081,8 +4093,19 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	return(15);
       }
       else {
-	eg->metisseed = atoi(argv[arg+1]);
-	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+	eg->metis_seed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metis_seed);
+      }
+    }
+
+    if(strcmp(argv[arg],"-metisncuts") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of parameters is required as parameter for -metisncuts!\n");
+	return(15);
+      }
+      else {
+	eg->metis_ncuts = atoi(argv[arg+1]);
+	printf("Number of competing partitions to generate : %d\n",eg->metis_ncuts);
       }
     }
     
@@ -4131,7 +4154,13 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     }
 
     if(strcmp(argv[arg],"-metiscontig") == 0 ) {
-      eg->metiscontig = TRUE;
+      eg->metis_contig = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisvol") == 0 ) {
+      eg->metis_volcut = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisminconn") == 0 ) {
+      eg->metis_minconn = TRUE;
     }
     
     if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
@@ -4862,7 +4891,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
 end:
   printf("Read commands from a file\n");
-
+  fclose(in);
   return(0);
 }
 
@@ -5424,6 +5453,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  nameproblem = TRUE;
 	}
 	else {
+	  if(!data->bodyname[j]) data->bodyname[j] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[j],line2);	
 	  data->bodynamesexist = TRUE;
 	}
@@ -5434,6 +5464,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  nameproblem = TRUE;
 	}
 	else {
+	  if(!data->boundaryname[j]) data->boundaryname[j] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->boundaryname[j],line2);	
 	  data->boundarynamesexist = TRUE;
 	}
@@ -5463,7 +5494,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
    in Elmer calculations. 
    */
 {
-  int noknots,noelements,material,sumsides,elemtype,fail,cdstat;
+  int noknots,noelements,material,sumsides,elemtype,fail,cdstat,bcdim;
   int sideelemtype,conelemtype,nodesd1,nodesd2,newtype;
   int i,j,k,l,bulktypes[MAXELEMENTTYPE+1],sidetypes[MAXELEMENTTYPE+1];
   int alltypes[MAXELEMENTTYPE+1],tottypes;
@@ -5582,9 +5613,13 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
       fprintf(out,"%d %d %d %d ",
 	      sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i]);
       fprintf(out,"%d",sideelemtype);
-      
-      if(bound[j].types[i] < MAXBCS) usedbc[bound[j].types[i]] += 1;
 
+      k = bound[j].types[i];
+      if(k < MAXBCS) {	
+	bcdim = GetElementDimension(sideelemtype);
+	usedbc[k] = MAX(usedbc[k],bcdim+1);
+      }
+	
       sidetypes[sideelemtype] += 1;
       nodesd1 = sideelemtype%100;
       for(l=0;l<nodesd1;l++)
@@ -5635,13 +5670,31 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     
     if(data->bodynamesexist) {
       fprintf(out,"! ----- names for bodies -----\n");
-      for(i=1;i<MAXBODIES;i++) 
-	if(usedbody[i]) fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+      for(i=1;i<MAXBODIES;i++)
+	if(usedbody[i]) {
+	  if(data->bodyname[i])
+	    fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+	  else
+	    fprintf(out,"$ body%d = %d\n",i,i);	    
+	}
     }     
     if(data->boundarynamesexist) {
       fprintf(out,"! ----- names for boundaries -----\n");
-      for(i=1;i<MAXBCS;i++) 
-	if(usedbc[i]) fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
+      for(i=1;i<MAXBCS;i++) 	
+	if(usedbc[i]) {
+	  bcdim = usedbc[i]-1;
+	  if(data->boundaryname[i]) 
+	    fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
+	  else if(bcdim == 2) { 
+	    fprintf(out,"$ surf_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 1) {
+	    fprintf(out,"$ line_bc%d = %d\n",i,i);
+	  }
+	  else if(bcdim == 0) {
+	    fprintf(out,"$ node_bc%d = %d\n",i,i);
+	  }
+	}
     }
     fclose(out);
 
@@ -5660,7 +5713,10 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if(usedbody[i]) {
 	  j = j + 1;
 	  fprintf(out,"Body %d\n",j);
-	  fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  if(data->bodyname[i])
+	    fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  else
+	    fprintf(out,"  Name = body%d\n",i);	    
 	  fprintf(out,"End\n\n");
 	}
       }
@@ -5673,7 +5729,10 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if(usedbc[i]) {
 	  j = j + 1;
 	  fprintf(out,"Boundary Condition %d\n",j);
-	  fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  if(data->boundaryname[i])
+	    fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  else
+	    fprintf(out,"  Name = bc%d\n",i);	    
 	  fprintf(out,"End\n\n");
 	}
       }

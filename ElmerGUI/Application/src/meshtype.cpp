@@ -515,7 +515,7 @@ bool mesh_t::load(char* dirName)
       elements_three_d += ntype;
       break;
     default:
-      cout << "Unknown element family (possibly not implamented)" << endl;
+      cout << "Unknown element family (possibly not implemented)" << endl;
       cout.flush();
       return false;
       // exit(0);

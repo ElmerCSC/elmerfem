@@ -83,8 +83,7 @@ MODULE ComponentUtils
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
      INTEGER :: FirstElem, LastElem
-     LOGICAL :: BcMode 
-
+     LOGICAL :: BcMode, isParallel
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -98,6 +97,8 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
+     isParallel = CurrentModel % Solver % Parallel
+     
      BcMode = .FALSE.
      MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
      IF( .NOT. Found ) THEN
@@ -198,10 +199,15 @@ MODULE ComponentUtils
          globalnode = NodeIndexes(i)
 
          ! Only compute the parallel reduction once
-         IF( ParEnv % PEs > 1 ) THEN
-           IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-         END IF
+         IF( isParallel ) THEN
+           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
+! This is (probably) not correct, the "nodal forces"-array is partial and should be summed --> comment out.
+!          IF( VisitNodeOnlyOnce ) THEN           
+!            IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+!          END IF
+         END IF
+           
          F(1) = NF % Values( dofs*(k-1) + 1)
          F(2) = NF % Values( dofs*(k-1) + 2)
          IF( dofs == 3 ) THEN 
@@ -227,7 +233,8 @@ MODULE ComponentUtils
 
            ! Calculate torque around an axis
            IF( PRESENT( Torque ) ) THEN
-             v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             !v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+             v1 = v1 - SUM(Axis*v1)*Axis
              v2 = CrossProduct(v1,F)
              Torque = Torque + SUM(Axis*v2)        
            END IF
@@ -236,22 +243,24 @@ MODULE ComponentUtils
        END DO
      END DO
 
-     IF( PRESENT( Force ) ) THEN
-       DO i=1,3
-         Force(i) = ParallelReduction(Force(i))
-       END DO
+     IF( isParallel ) THEN
+       IF( PRESENT( Force ) ) THEN
+         DO i=1,3
+           Force(i) = ParallelReduction(Force(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Moment ) ) THEN
+         DO i=1,3
+           Moment(i) = ParallelReduction(Moment(i))
+         END DO
+       END IF
+       
+       IF( PRESENT( Torque ) ) THEN
+         Torque = ParallelReduction(Torque)
+       END IF
      END IF
-
-     IF( PRESENT( Moment ) ) THEN
-       DO i=1,3
-         Moment(i) = ParallelReduction(Moment(i))
-       END DO
-     END IF
-
-     IF( PRESENT( Torque ) ) THEN
-       Torque = ParallelReduction(Torque)
-     END IF
-
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE ComponentNodalForceReduction
 !------------------------------------------------------------------------------
@@ -269,8 +278,8 @@ MODULE ComponentUtils
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams
      TYPE(Variable_t), POINTER :: Var
-     CHARACTER(LEN=MAX_NAME_LEN) :: OperName
      REAL(KIND=dp) :: OperX
+     CHARACTER(LEN=*) :: OperName
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
@@ -401,7 +410,7 @@ MODULE ComponentUtils
     END DO
     
     
-    sumi = NINT( ParallelReduction(1.0_dp * sumi) )
+    sumi = ParallelReduction(sumi) 
     IF( sumi == 0 ) THEN
       CALL Warn('ComponentNodalReduction','No active nodes to reduced!')
       RETURN
@@ -475,7 +484,7 @@ MODULE ComponentUtils
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(ValueList_t), POINTER :: CompParams 
      TYPE(Variable_t), POINTER :: Var 
-     CHARACTER(LEN=MAX_NAME_LEN) :: OperName, CoeffName
+     CHARACTER(LEN=*) :: OperName, CoeffName
      LOGICAL :: GotCoeff
      REAL(KIND=dp) :: OperX
 !------------------------------------------------------------------------------
@@ -691,7 +700,7 @@ MODULE ComponentUtils
     INTEGER, POINTER :: ComponentList(:)
 
     INTEGER :: i,j,NoVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName, TmpOper
+    CHARACTER(:), ALLOCATABLE :: OperName, VarName, CoeffName, TmpOper
     LOGICAL :: GotVar, GotOper, GotCoeff, VectorResult
     TYPE(ValueList_t), POINTER :: CompParams
     REAL(KIND=dp) :: ScalarVal, VectorVal(3), Power, Voltage
@@ -703,16 +712,16 @@ MODULE ComponentUtils
 
       IF( ALL( ComponentList /= j ) ) CYCLE
 
-      CALL Info('UpdateDepedentComponents','Updating component: '//TRIM(I2S(j)))
+      CALL Info('UpdateDepedentComponents','Updating component: '//I2S(j))
       CompParams => CurrentModel % Components(j) % Values
 
 
       NoVar = 0
       DO WHILE( .TRUE. )
         NoVar = NoVar + 1
-        OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
-        VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
-        CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        OperName = ListGetString( CompParams,'Operator '//I2S(NoVar), GotOper)
+        VarName = ListGetString( CompParams,'Variable '//I2S(NoVar), GotVar)
+        CoeffName = ListGetString( CompParams,'Coefficient '//I2S(NoVar), GotCoeff)
         
         IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
           VarName = 'Potential'
@@ -779,17 +788,17 @@ MODULE ComponentUtils
         IF( VectorResult ) THEN
           DO i=1,3
             WRITE( Message,'(A,ES15.6)') TRIM(OperName)//': '//TRIM(VarName)//' '&
-                //TRIM(I2S(i))//': ',ScalarVal
+                //I2S(i)//': ',ScalarVal
             CALL Info('UpdateDependentComponents',Message,Level=5)
             CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName)//': '&
-                //TRIM(VarName)//' '//TRIM(I2S(i)),VectorVal(i) )                        
+                //TRIM(VarName)//' '//I2S(i),VectorVal(i) )                        
           END DO
         ELSE          
           WRITE( Message,'(A,ES15.6)') &
-              'comp '//TRIM(I2S(j))//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
+              'comp '//I2S(j)//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
           CALL Info('UpdateDependentComponents',Message,Level=5)
           CALL ListAddConstReal( CurrentModel % Simulation, &
-              'res: comp '//TRIM(I2S(j))//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
+              'res: comp '//I2S(j)//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
         END IF
 
       END DO

@@ -1,0 +1,16 @@
+[Icon Theme]
+Name=TangoElmerGUI
+Comment=ElmerGUI iconset made by remixing Tango Icon Theme
+Inherits=default
+
+# Directory list
+Directories=22x22,32x32,48x48
+
+[22x22]
+Size=22
+
+[32x32]
+Size=32
+
+[48x48]
+Size=48

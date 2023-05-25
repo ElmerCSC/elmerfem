@@ -19,6 +19,7 @@ Simulation
   
   Output Intervals = 0
   Simulation Timing = Logical True
+  Desired Mesh Pieces = Integer 2
 End 
 
 Constants

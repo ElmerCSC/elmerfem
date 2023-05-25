@@ -1,5 +1,5 @@
 Check Keywords "Warn"
-$refnorm = 3.35439380E+00
+$refnorm = 3.03677250E+00
 
 !---LUA BEGIN
 ! loadfile('defaults.lua')()
@@ -14,7 +14,7 @@ $refnorm = 3.35439380E+00
 Header :: Mesh DB "." "square"
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
@@ -53,7 +53,7 @@ end
 
 Solver 1
   Equation = "ModelPDEhandle"
-  Variable = "Field_a"
+  Variable = "Fielda"
   Procedure = "ModelPDEthreaded" "AdvDiffSolver"
   ! Procedure = "ModelPDEhandle" "AdvDiffSolver"
   Linear System Solver = iterative
@@ -67,7 +67,7 @@ End
 
 Solver 2
   Equation = "ModelPDEevol"
-  Variable = "Field_b"
+  Variable = "Fieldb"
   Procedure = "ModelPDEevol" "AdvDiffSolver_evol"
   Linear System Solver = iterative
   linear system preconditioning = ilu0
@@ -83,8 +83,8 @@ End
 
 Boundary Condition 1
   Target Boundaries(1) = 1
-  Field_a = real 0.0
-  Field_b = real 0.0
+  Fielda = real 0.0
+  Fieldb = real 0.0
 End
 
 Boundary Condition 2
@@ -104,4 +104,4 @@ Solver 1 :: Reference Norm = Real $refnorm$
 Solver 2 :: Reference Norm = Real $refnorm$
 Solver 1 :: Reference Norm Tolerance = Real 1e-5
 Solver 2 :: Reference Norm Tolerance = Real 1e-5
-RUN
+

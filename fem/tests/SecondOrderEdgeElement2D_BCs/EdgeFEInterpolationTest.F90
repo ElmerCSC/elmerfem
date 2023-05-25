@@ -40,10 +40,10 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 !  Solve the best approximation of the vector field
 ! 
 !              U = (1,1,1), or              (Test Mode = Integer 1)   
-!              U = (1+z-y,1-z+x,1-x+y), or  (Test Mode = Integer 2)
+!              U = (1+z-y,1-z+x,1-x+y)      (Test Mode = Integer 2)
 !              U = (0,0,-1/2(yx^2+xy^2))    (Test Mode = Integer 3)
-!              U = (xy^2,x^2y,0) in 2D      (Test Mode = Integer 4)   
-!              U = (-xy^2,x^2y,0) in 2D     (Test Mode = Integer 5)
+!              U = (xy^2,x^2y,0)            (Test Mode = Integer 4)   
+!              U = (-xy^2,x^2y,0)           (Test Mode = Integer 5)
 !
 !  with respect to the L2 norm (the default) or an energy norm using 
 !  H(curl)-conforming basis functions. Here the energy norm corresponds to 
@@ -290,7 +290,10 @@ CONTAINS
               (yq*xq**2)* EBasis(p,2) * detJ * IP % s(t)
         CASE(5)
           FORCE(i) = FORCE(i) +  (-xq*yq**2) * EBasis(p,1) * detJ * IP % s(t) + &
-              (yq*xq**2)* EBasis(p,2) * detJ * IP % s(t)
+              (yq*xq**2)* EBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
+              MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
+              MatPar * (4.0d0*xq*yq) * CurlEBasis(p,3) * detJ * IP % s(t)
  
         END SELECT
       END DO

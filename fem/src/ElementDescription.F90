@@ -312,9 +312,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       SELECT CASE( Element % ElementCode / 100 )
+        CASE(2) 
+           Element % NumberOfEdges = 1
         CASE(3) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 3
         CASE(4) 
+           Element % NumberOfFaces = 1
            Element % NumberOfEdges = 4
         CASE(5) 
            Element % NumberOfFaces = 4
@@ -424,8 +428,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Local variables
 !------------------------------------------------------------------------------
-      CHARACTER(LEN=:), ALLOCATABLE :: str
-      CHARACTER(LEN=MAX_STRING_LEN) :: tstr,elmer_home
+      CHARACTER(LEN=:), ALLOCATABLE :: tstr, str,elmer_home
 
       INTEGER :: k, n
       INTEGER, DIMENSION(MaxDeg3) :: BasisTerms
@@ -455,37 +458,35 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
+      ALLOCATE(CHARACTER(MAX_STRING_LEN)::elmer_home)
+
       tstr = 'ELMER_LIB'
       CALL envir( tstr,elmer_home,k ) 
       
       fexist = .FALSE.
       IF (  k > 0 ) THEN
-         WRITE( tstr, '(a,a)' ) elmer_home(1:k),'/elements.def'
+         tstr = elmer_home(1:k) // '/elements.def'
 	 INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
       END IF
       IF (.NOT. fexist) THEN
         tstr = 'ELMER_HOME'
         CALL envir( tstr,elmer_home,k ) 
         IF ( k > 0 ) THEN
-           WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
-'/share/elmersolver/lib/elements.def'
+           tstr = elmer_home(1:k)//'/share/elmersolver/lib/elements.def'
            INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
         END IF
         IF ((.NOT. fexist) .AND. k > 0) THEN
-           WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
-                '/elements.def'
+           tstr = elmer_home(1:k)//'/elements.def'
            INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
         END IF
      END IF
      IF (.NOT. fexist) THEN
         CALL GetSolverHome(elmer_home, n)
-        WRITE(tstr, '(a,a)') elmer_home(1:n), &
-                             '/lib/elements.def'
+        tstr = elmer_home(1:n)//'/lib/elements.def'
         INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
      END IF
      IF (.NOT. fexist) THEN
-        CALL Fatal('InitializeElementDescriptions', &
-             'elements.def not found')
+        CALL Fatal('InitializeElementDescriptions','elements.def not found')
      END IF
 
       OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )
@@ -1074,7 +1075,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       TYPE(Element_t) :: element        !< element structure
       REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
       REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1121,7 +1122,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1213,17 +1214,16 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the second partial derivatives with
-!>   respect to local coordinates of a quantity x given at element nodes at local
-!>   coordinate point u,v inside the element. Element basis functions are used to
-!>   compute the value. 
+!>   Given an element structure return the second partial derivatives of 
+!>   a quantity x given at the element nodes with respect to the local coordinates
+!>   u,v of the element. The element basis functions are used to compute the value. 
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
-     TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
-     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< value of the quantity ddx = @^2x(u,v)/@v^2
+     TYPE(Element_t) :: element        !< Element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivatives
+     REAL(KIND=dp), DIMENSION(:) :: x  !< The nodal values of the quantity to differentiate
+     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< The second partial derivatives of x
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1240,7 +1240,6 @@ CONTAINS
       BasisFunctions => elt % BasisFunctions
 
       ddx = 0.0d0
-
       DO n = 1,k
         IF ( x(n) /= 0.0d0 ) THEN
           p => BasisFunctions(n) % p
@@ -1299,7 +1298,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
      REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to differentiate
      REAL(KIND=dp) :: y                !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
@@ -1322,30 +1321,58 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
-        y = y + x(2) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
-        y = y + x(3) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
-        y = y + x(4) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
-        y = y + x(5) * w
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)*((1-u)*(1-v) - w + u*v*w * s) / 4
+          CASE(2)
+            y = y + x(2)*((1+u)*(1-v) - w - u*v*w * s) / 4
+          CASE(3)
+            y = y + x(3)*((1+u)*(1+v) - w + u*v*w * s) / 4
+          CASE(4)
+            y = y + x(4)*((1-u)*(1+v) - w - u*v*w * s) / 4
+          CASE(5)
+            y = y + x(5)*w
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * (-u-v-1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
-        y = y + x(2)  * ( u-v-1) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
-        y = y + x(3)  * ( u+v-1) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
-        y = y + x(4)  * (-u+v-1) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
-        y = y + x(5)  * w*(2*w-1)
-        y = y + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * s / 2
-        y = y + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * s / 2
-        y = y + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * s / 2
-        y = y + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * s / 2
-        y = y + x(10) * w * (1-u-w) * (1-v-w) * s
-        y = y + x(11) * w * (1+u-w) * (1-v-w) * s
-        y = y + x(12) * w * (1+u-w) * (1+v-w) * s
-        y = y + x(13) * w * (1-u-w) * (1+v-w) * s
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * (-u-v-1) * ( (1-u) * (1-v) - w + u*v*w * s ) / 4
+          CASE(2)
+            y = y + x(2)  * ( u-v-1) * ( (1+u) * (1-v) - w - u*v*w * s ) / 4
+          CASE(3)
+            y = y + x(3)  * ( u+v-1) * ( (1+u) * (1+v) - w + u*v*w * s ) / 4
+          CASE(4)
+            y = y + x(4)  * (-u+v-1) * ( (1-u) * (1+v) - w - u*v*w * s ) / 4
+          CASE(5)
+            y = y + x(5)  * w*(2*w-1)
+          CASE(6)
+            y = y + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * s / 2
+          CASE(7)
+            y = y + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * s / 2
+          CASE(8)
+            y = y + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * s / 2
+          CASE(9)
+            y = y + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * s / 2
+          CASE(10)
+            y = y + x(10) * w * (1-u-w) * (1-v-w) * s
+          CASE(11)
+            y = y + x(11) * w * (1+u-w) * (1-v-w) * s
+          CASE(12)
+            y = y + x(12) * w * (1+u-w) * (1+v-w) * s
+          CASE(13)
+            y = y + x(13) * w * (1-u-w) * (1+v-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1455,40 +1482,59 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -(1-v) + v*w * s ) / 4
-        y = y + x(2) * (  (1-v) - v*w * s ) / 4
-        y = y + x(3) * (  (1+v) + v*w * s ) / 4
-        y = y + x(4) * ( -(1+v) - v*w * s ) / 4
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -(1-v) + v*w * s ) / 4
+          CASE(2)
+            y = y + x(2) * (  (1-v) - v*w * s ) / 4
+          CASE(3)
+            y = y + x(3) * (  (1+v) + v*w * s ) / 4
+          CASE(4)
+            y = y + x(4) * ( -(1+v) - v*w * s ) / 4
+          CASE(5)
+            CONTINUE
+          END SELECT
+        END DO
         RETURN
+
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) + &
-            (-u-v-1) * ( -(1-v) + v*w * s ) ) / 4
-
-        y = y + x(2)  * (  ( (1+u) * (1-v) - w - u*v*w * s ) + &
-            ( u-v-1) * (  (1-v) - v*w * s ) ) / 4
-
-        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-            ( u+v-1) * (  (1+v) + v*w * s ) ) / 4
-
-        y = y + x(4)  * ( -( (1-u) * (1+v) - w - u*v*w * s ) + &
-            (-u+v-1) * ( -(1+v) - v*w * s ) ) / 4
-
-        y = y + x(5)  * 0.0d0
-
-        y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
-        y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
-        y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
-        y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
-
-        y = y - x(10) * w * (1-v-w) * s
-        y = y + x(11) * w * (1-v-w) * s
-        y = y + x(12) * w * (1+v-w) * s
-        y = y - x(13) * w * (1+v-w) * s
-
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+             y = y + x(1) * (-((1-u)*(1-v)-w+u*v*w*s)+(-u-v-1) * (-(1-v)+v*w*s))/4
+          CASE(2)
+             y = y + x(2)  * ( ((1+u)*(1-v)-w-u*v*w*s)+( u-v-1) * ( (1-v)-v*w*s))/4
+          CASE(3)
+             y = y + x(3)  * ( ((1+u)*(1+v)-w+u*v*w*s)+( u+v-1) * ( (1+v)+v*w*s))/4
+          CASE(4)
+             y = y + x(4)  * (-((1-u)*(1+v)-w-u*v*w*s)+(-u+v-1) * (-(1+v)-v*w*s))/4
+          CASE(5)
+             CONTINUE
+          CASE(6)
+             y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
+          CASE(7)
+             y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
+          CASE(8)
+             y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
+          CASE(9)
+             y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
+          CASE(10)
+             y = y - x(10) * w * (1-v-w) * s
+          CASE(11)
+             y = y + x(11) * w * (1-v-w) * s
+          CASE(12)
+             y = y + x(12) * w * (1+v-w) * s
+          CASE(13)
+             y = y - x(13) * w * (1+v-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1546,40 +1592,62 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -(1-u) + u*w * s ) / 4
-        y = y + x(2) * ( -(1+u) - u*w * s ) / 4
-        y = y + x(3) * (  (1+u) + u*w * s ) / 4
-        y = y + x(4) * (  (1-u) - u*w * s ) / 4
-
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -(1-u) + u*w * s ) / 4
+          CASE(2)
+            y = y + x(2) * ( -(1+u) - u*w * s ) / 4
+          CASE(3)
+            y = y + x(3) * (  (1+u) + u*w * s ) / 4
+          CASE(4)
+            y = y + x(4) * (  (1-u) - u*w * s ) / 4
+          CASE(5)
+            CONTINUE
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
-            (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
-
-        y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
-            ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
-
-        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-            ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
-
-        y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
-            (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
-
-        y = y + x(5)  * 0.0d0
-
-        y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
-        y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
-        y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
-        y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
-
-        y = y - x(10) *  w * (1-u-w) * s
-        y = y - x(11) *  w * (1+u-w) * s
-        y = y + x(12) *  w * (1+u-w) * s
-        y = y + x(13) *  w * (1-u-w) * s
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
+                (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
+          CASE(2)
+            y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
+                ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
+          CASE(3)
+            y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
+                ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
+          CASE(4)
+            y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
+                (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
+          CASE(7)
+            y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
+          CASE(8)
+            y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
+          CASE(9)
+            y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
+          CASE(10)
+            y = y - x(10) *  w * (1-u-w) * s
+          CASE(11)
+            y = y - x(11) *  w * (1+u-w) * s
+          CASE(12)
+            y = y + x(12) *  w * (1+u-w) * s
+          CASE(13)
+            y = y + x(13) *  w * (1-u-w) * s
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1636,47 +1704,66 @@ CONTAINS
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(2) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(3) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(4) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(5)
+        DO n=1,5
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1) * ( -1 + u*v*s**2 ) / 4
+          CASE(2)
+            y = y + x(2) * ( -1 - u*v*s**2 ) / 4
+          CASE(3)
+            y = y + x(3) * ( -1 + u*v*s**2 ) / 4
+          CASE(4)
+            y = y + x(4) * ( -1 - u*v*s**2 ) / 4
+          CASE(5)
+            y = y + x(5)
+          END SELECT
+        END DO
         RETURN
       ELSE IF ( Elt % ElementCode == 613 ) THEN
         IF ( w == 1 ) w = 1.0d0-1.0d-12
         s = 1.0d0 / (1-w)
 
         y = 0.0d0
-        y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
-        y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
-        y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
-
-        y = y + x(5)  * (4*w-1)
-
-        y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
-            ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
-
-        y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
-            ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
-
-        y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
-            ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
-
-        y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
-            ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
-
-        y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
-            w * (1-u-w) * (1-v-w) * s**2 )
-
-        y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
-            w * (1+u-w) * (1-v-w) * s**2 )
-
-        y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
-            w * (1+u-w) * (1+v-w) * s**2 )
-
-        y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
-            w * (1-u-w) * (1+v-w) * s**2 )
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+          SELECT CASE(n)
+          CASE(1)
+            y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
+          CASE(2)
+            y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
+          CASE(3)
+            y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
+          CASE(4)
+            y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
+          CASE(5)
+            y = y + x(5)  * (4*w-1)
+          CASE(6)
+            y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
+                ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
+          CASE(7)
+            y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
+                ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
+          CASE(8)
+            y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
+                ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
+          CASE(9)
+            y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
+                ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
+          CASE(10)
+            y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
+                w * (1-u-w) * (1-v-w) * s**2 )
+          CASE(11)
+            y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
+                w * (1+u-w) * (1-v-w) * s**2 )
+          CASE(12)
+            y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
+                w * (1+u-w) * (1+v-w) * s**2 )
+          CASE(13)
+            y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
+                w * (1-u-w) * (1+v-w) * s**2 )
+          END SELECT
+        END DO
         RETURN
       END IF
 
@@ -1806,7 +1893,7 @@ CONTAINS
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:), q(:), r(:)
 
-      REAL(KIND=dp) :: s
+      REAL(KIND=dp) :: s,t
       INTEGER :: i,j,k,l,n,m
 
 !------------------------------------------------------------------------------
@@ -1815,6 +1902,323 @@ CONTAINS
       BasisFunctions => elt % BasisFunctions
 
       ddx = 0.0d0
+      IF ( Elt % ElementCode == 605 ) THEN
+        s = 0.0d0
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
+
+        ddx(1,2) = (x(1)-x(2)+x(3)-x(4))*(1+w*s)
+        ddx(2,1) = ddx(1,2)
+
+        ddx(1,3) = (x(1)-x(2)+x(3)-x(4))*v*s**2
+        ddx(3,1) = ddx(1,3)
+
+        ddx(2,3) = (x(1)-x(2)+x(3)-x(4))*u*s**2
+        ddx(3,2) = ddx(2,3)
+        ddx = ddx/4
+
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        s = 0.0d0
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
+
+        DO n=1,13
+          IF(x(n)==0) CYCLE
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-(1-v) + v*w*s)/2
+          CASE(2)
+            t = t + x(2)  * ( (1-v) - v*w*s)/2
+          CASE(3)
+            t = t + x(3)  * ( (1+v) + v*w*s)/2
+          CASE(4)
+            t = t - x(4)  * (-(1+v) - v*w*s)/2
+          CASE(6)
+            t = t - x(6)  *  (1-v-w) * s
+          CASE(8)
+            t = t - x(8)  *  (1+v-w) * s
+          END SELECT
+          ddx(1,1) = ddx(1,1) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t + x(1)  * -(-(1-u) + u*w*s)/4
+            t = t + x(1)  * -(-(1-v) + v*w*s)/4
+            t = t + x(1)  *  (-u-v-1)*(1+w*s)/4
+          CASE(2)
+            t = t + x(2)  *  (-(1+u) - u*w*s)/4
+            t = t + x(2)  * -( (1-v) - v*w*s)/4
+            t = t + x(2)  *  ( u-v-1)*(-1-w*s)/4
+          CASE(3)
+            t = t + x(3)  *  ( (1+u) + u*w*s)/4
+            t = t + x(3)  *  ( (1+v) + v*w*s)/4
+            t = t + x(3)  *  ( u+v-1)*(1+w*s)/4
+          CASE(4)
+            t = t + x(4)  * -( (1-u) - u*w*s)/4
+            t = t + x(4)  *  (-(1+v) - v*w*s)/4
+            t = t + x(4)  *  (-u+v-1)*(-1-w*s)/4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t - x(6)  * (1-u-w)*s/2
+            t = t + x(6)  * (1+u-w)*s/2
+          CASE(7)
+            t = t + x(7)  * (1-v-w)*s/2
+            t = t - x(7)  * (1+v-w)*s/2
+          CASE(8)
+            t = t + x(8)  * (1-u-w)*s/2
+            t = t - x(8)  * (1+u-w)*s/2
+          CASE(9)
+            t = t - x(9)  * (1-v-w)*s/2
+            t = t + x(9)  * (1+v-w)*s/2
+          CASE(10)
+            t = t + x(10) *  w*s
+          CASE(11)
+            t = t - x(11) *  w*s
+          CASE(12)
+            t = t + x(12) *  w*s
+          CASE(13)
+            t = t - x(13) *  w*s
+          END SELECT
+          ddx(1,2) = ddx(1,2) + t
+
+          t = 0
+          SELECT CASE(n) 
+          CASE(1)
+            t = t - x(1)  * (-1 + u*v*s**2) / 4
+            t = t + x(1)  * (-u-v-1) * (v*s**2) / 4
+          CASE(2)
+            t = t + x(2)  * (-1 - u*v*s**2) / 4
+            t = t + x(2)  * ( u-v-1) * (-v*s**2) / 4
+          CASE(3)
+            t = t + x(3)  * (-1 + u*v*s**2) / 4
+            t = t + x(3)  * ( u+v-1) * (v*s**2) / 4
+          CASE(4)
+            t = t - x(4)  * (-1 - u*v*s**2) / 4
+            t = t + x(4)  * (-u+v-1) * (-v*s**2) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t - x(6)  * (1-v-w) * s / 2
+            t = t - x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+          CASE(7)
+            t = t - x(7)  * (1-v-w) * s / 2
+            t = t - x(7)  * (1+v-w) * s / 2
+            t = t + x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+          CASE(8)
+            t = t - x(8)  * (1+v-w) * s / 2
+            t = t - x(8)  * (1-u-w) * s / 2
+            t = t + x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+          CASE(9)
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-v-w) * s**2
+          CASE(11)
+            t = t - x(11) * w * s
+            t = t + x(11) * (1-v-w) * s**2
+          CASE(12)
+            t = t - x(12) * w * s
+            t = t + x(12) * (1+v-w) * s**2
+          CASE(13)
+            t = t + x(13) * w * s
+            t = t - x(13) * (1+v-w) * s**2
+          END SELECT
+          ddx(1,3) = ddx(1,3) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-(1-u) + u*w*s)/2
+          CASE(2)
+            t = t - x(2)  * (-(1+u) - u*w*s)/2
+          CASE(3)
+            t = t + x(3)  * ( (1+u) + u*w*s)/2
+          CASE(4)
+            t = t + x(4)  * ( (1-u) - u*w*s)/2
+          CASE(7)
+            t = t - x(7)  * (1+u-w)*s
+          CASE(9)
+            t = t - x(9)  * (1-u-w)*s
+          CASE(6,8,10,11,12,13)
+          END SELECT
+          ddx(2,2) = ddx(2,2) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t - x(1)  * (-1 + u*v*s**2) / 4
+            t = t + x(1)  * (-u-v-1) * (u*s**2) / 4
+          CASE(2)
+            t = t - x(2)  * (-1 - u*v*s**2) / 4
+            t = t + x(2)  * ( u-v-1) * (-u*s**2) / 4
+          CASE(3)
+            t = t + x(3)  * (-1 + u*v*s**2) / 4
+            t = t + x(3)  * ( u+v-1) * (u*s**2) / 4
+          CASE(4)
+            t = t + x(4)  * (-1 - u*v*s**2) / 4
+            t = t + x(4)  * (-u+v-1) * (-u*s**2) / 4
+          CASE(5)
+            CONTINUE
+          CASE(6)
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+          CASE(7)
+            t = t - x(7)  * (1+u-w) * s / 2
+            t = t - x(7)  * (1-v-w) * s / 2
+            t = t + x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+          CASE(8)
+            t = t - x(8)  * (1-u-w) * s / 2
+            t = t - x(8)  * (1+u-w) * s / 2
+            t = t + x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+          CASE(9)
+            t = t - x(9)  * (1-u-w) * s / 2
+            t = t - x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-u-w) * s**2
+          CASE(11)
+            t = t + x(11) * w * s
+            t = t - x(11) * (1+u-w) * s**2
+          CASE(12)
+            t = t - x(12) * w * s
+            t = t + x(12) * (1+u-w) * s**2
+          CASE(13)
+            t = t - x(13) * w * s
+            t = t + x(13) * (1-u-w) * s**2
+          END SELECT
+          ddx(2,3) = ddx(2,3) + t
+
+          t = 0
+          SELECT CASE(n)
+          CASE(1)
+            t = t + x(1)  * (-u-v-1) * ( u*v*2*s**3) / 4
+          CASE(2)
+            t = t + x(2)  * ( u-v-1) * (-u*v*2*s**3) / 4
+          CASE(3)
+            t = t + x(3)  * ( u+v-1) * ( u*v*2*s**3) / 4
+          CASE(4)
+            t = t + x(4)  * (-u+v-1) * (-u*v*2*s**3) / 4
+          CASE(5)
+            t = t + x(5) * 4
+          CASE(6)
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t - x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-v-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+            t = t + x(6)  * (1-u-w) * s / 2
+            t = t + x(6)  * (1+u-w) * s / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t - x(6)  * (1-u-w)*(1-v-w) * s**2 / 2
+            t = t - x(6)  * (1+u-w)*(1-v-w) * s**2 / 2
+            t = t - x(6)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t + x(6)  * (1+u-w)*(1-u-w)*(1-v-w) * 2*s**3 / 2
+          CASE(7)
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1-v-w) * s / 2
+            t = t - x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1+u-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+            t = t + x(7)  * (1-v-w) * s / 2
+            t = t + x(7)  * (1+v-w) * s / 2
+            t = t - x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t - x(7)  * (1-v-w)*(1+u-w) * s**2 / 2
+            t = t - x(7)  * (1+v-w)*(1+u-w) * s**2 / 2
+            t = t - x(7)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t + x(7)  * (1+v-w)*(1-v-w)*(1+u-w) * 2*s**3 / 2
+          CASE(8)
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1-u-w) * s / 2
+            t = t - x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1+v-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+            t = t + x(8)  * (1-u-w) * s / 2
+            t = t + x(8)  * (1+u-w) * s / 2
+            t = t - x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t - x(8)  * (1-u-w)*(1+v-w) * s**2 / 2
+            t = t - x(8)  * (1+u-w)*(1+v-w) * s**2 / 2
+            t = t - x(8)  * (1+u-w)*(1-u-w) * s**2 / 2
+            t = t + x(8)  * (1+u-w)*(1-u-w)*(1+v-w) * 2*s**3 / 2
+          CASE(9)
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t - x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-u-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+            t = t + x(9)  * (1-v-w) * s / 2
+            t = t + x(9)  * (1+v-w) * s / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t - x(9)  * (1-v-w)*(1-u-w) * s**2 / 2
+            t = t - x(9)  * (1+v-w)*(1-u-w) * s**2 / 2
+            t = t - x(9)  * (1+v-w)*(1-v-w) * s**2 / 2
+            t = t + x(9)  * (1+v-w)*(1-v-w)*(1-u-w) * 2*s**3 / 2
+          CASE(10)
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-v-w) * s**2
+            t = t + x(10) * w * s
+            t = t - x(10) * (1-u-w) * s**2
+            t = t - x(10) * (1-v-w) * s**2
+            t = t - x(10) * (1-u-w) * s**2
+            t = t + x(10) * (1-u-w) * (1-v-w) * 2*s**3
+          CASE(11)
+            t = t + x(11) * w * s
+            t = t - x(11) * (1-v-w) * s**2
+            t = t + x(11) * w * s
+            t = t - x(11) * (1+u-w) * s**2
+            t = t - x(11) * (1-v-w) * s**2
+            t = t - x(11) * (1+u-w) * s**2
+            t = t + x(11) * (1+u-w) * (1-v-w) * 2*s**3
+          CASE(12)
+            t = t + x(12) * w * s
+            t = t - x(12) * (1+v-w) * s**2
+            t = t + x(12) * w * s
+            t = t - x(12) * (1+u-w) * s**2
+            t = t - x(12) * (1+v-w) * s**2
+            t = t - x(12) * (1+u-w) * s**2
+            t = t + x(12) * (1+u-w) * (1+v-w) * 2*s**3
+          CASE(13)
+            t = t + x(13) * w*s
+            t = t - x(13) * (1+v-w) * s**2
+            t = t + x(13) * w*s
+            t = t - x(13) * (1-u-w) * s**2
+            t = t - x(13) * (1+v-w) * s**2
+            t = t - x(13) * (1-u-w) * s**2
+            t = t + x(13) * (1-u-w) * (1+v-w) * 2*s**3
+          END SELECT
+          ddx(3,3) = ddx(3,3) + t
+        END DO
+        ddx(2,1) = ddx(1,2)
+        ddx(3,1) = ddx(1,3)
+        ddx(3,2) = ddx(2,3)
+        RETURN
+
+      END IF
 
       DO n = 1,k
         IF ( x(n) /= 0.0d0 ) THEN
@@ -1898,55 +2302,91 @@ CONTAINS
    END FUNCTION SecondDerivatives3D
 !------------------------------------------------------------------------------
 
+! This is a test version where all nodes are obtained at once. 
+#define ALLNODES 1
 !------------------------------------------------------------------------------
 !>  Return the values of the reference element basis functions. In the case of
 !>  p-element, the values of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w)
+   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w, USolver)
 !------------------------------------------------------------------------------
      INTEGER :: n                 !< The number of (background) element nodes
      REAL(KIND=dp) :: Basis(:)    !< The values of reference element basis
      TYPE(Element_t) :: element   !< The element structure
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
-
+     LOGICAL :: pElem
+     
      dim = Element % TYPE % DIMENSION
-
-     IF ( isActivePElement(Element) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalBasisFunctions1D( Basis, element, u )
+     elemcode = element % Type % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL LineNodalPBasisAll(u, Basis )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL TriangleNodalPBasisAll(u, v, Basis)
+         ELSE
+           CALL TriangleNodalLBasisAll(u, v, Basis)
+         END IF
+       CASE( 4 ) 
+         CALL QuadNodalPBasisAll(u, v, Basis )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL TetraNodalPBasisAll(u, v, w, Basis)
+         ELSE
+           CALL TetraNodalLBasisAll(u, v, w, Basis)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL WedgeNodalPBasisAll(u, v, w, Basis) 
+         ELSE
+           CALL WedgeNodalLBasisAll(u, v, w, Basis) 
+         END IF
+       CASE( 8 ) 
+         CALL BrickNodalPBasisAll(u,v,w,Basis)
+       END SELECT
+       RETURN
+     END IF
+#endif    
+     
+     IF ( pElem ) THEN
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             Basis(q) = TriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             Basis(q) = QuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalBasisFunctions1D( Basis, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             Basis(q) = TetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             Basis(q) = WedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             Basis(q) = PyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             Basis(q) = BrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           Basis(q) = TriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4) 
+         DO q=1,n
+           Basis(q) = QuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           Basis(q) = TetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE(6) 
+         DO q=1,n
+           Basis(q) = PyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE(7)
+         DO q=1,n
+           Basis(q) = WedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE(8) 
+         DO q=1,n
+           Basis(q) = BrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE( dim )
@@ -1955,7 +2395,7 @@ CONTAINS
        CASE(2)
          CALL NodalBasisFunctions2D( Basis, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode/100==6 ) THEN
+         IF ( elemcode/100==6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
@@ -1977,50 +2417,84 @@ CONTAINS
 !>  of p-element, the gradients of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
+   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w, USolver )
 !------------------------------------------------------------------------------
      INTEGER :: n                    !< The number of (background) element nodes
      REAL(KIND=dp) :: dLBasisdx(:,:) !< The gradient of reference element basis functions
      TYPE(Element_t) :: element      !< The element structure
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
-     INTEGER   :: i, q, dim
+     INTEGER   :: i, q, dim, elemcode
      REAL(KIND=dp) :: NodalBasis(n)
+     LOGICAL :: pElem
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
-
-     IF ( IsActivePElement(Element) ) THEN
-       SELECT CASE(dim)
-       CASE(1)
-         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
+     elemcode = element % TYPE % ElementCode
+     pElem = isActivePElement( Element, USolver ) 
+     
+#if ALLNODES
+     ! Speedier nodal basis for p-elements and lowest order lagrange elements
+     ! except for the pyramid which is a different kind of beast. 
+     IF( elemcode/100 /= 6 .AND. ( pelem .OR. elemcode/100 >= MODULO(elemcode,100) ) ) THEN
+       SELECT CASE(elemcode/100)
+       CASE( 2 )
+         CALL dLineNodalPBasisAll(u, dLBasisdx )
+       CASE( 3 ) 
+         IF( pElem ) THEN
+           CALL dTriangleNodalPBasisAll(u, v, dLBasisdx)
+         ELSE
+           CALL dTriangleNodalLBasisAll(u, v, dLBasisdx)
+         END IF
+       CASE( 4 ) 
+         CALL dQuadNodalPBasisAll(u, v, dLBasisdx )
+       CASE( 5 )
+         IF( pElem ) THEN
+           CALL dTetraNodalPBasisAll(u, v, w, dLBasisdx)
+         ELSE
+           CALL dTetraNodalLBasisAll(u, v, w, dLBasisdx)
+         END IF
+       CASE( 7 ) 
+         IF( pElem ) THEN
+           CALL dWedgeNodalPBasisAll(u, v, w, dLBasisdx) 
+         ELSE
+           CALL dWedgeNodalLBasisAll(u, v, w, dLBasisdx) 
+         END IF
+       CASE( 8 ) 
+         CALL dBrickNodalPBasisAll(u,v,w,dLBasisdx)
+       END SELECT
+       RETURN
+     END IF
+#endif         
+     
+     IF ( IsActivePElement(Element, USolver ) ) THEN
+       SELECT CASE(elemcode / 100 )
        CASE(2)
-         IF (isPTriangle(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
-           END DO
-         ELSE IF (isPQuad(Element)) THEN
-           DO q=1,n
-             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
-           END DO
-         END IF
+         CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
        CASE(3)
-         IF (isPTetra( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPWedge( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPPyramid( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
-           END DO
-         ELSE IF (isPBrick( Element )) THEN
-           DO q=1,n
-             dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
-           END DO
-         END IF
+         DO q=1,n
+           dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v)
+         END DO
+       CASE(4)
+         DO q=1,n
+           dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v)
+         END DO
+       CASE(5)
+         DO q=1,n
+           dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 6 )
+         DO q=1,n
+           dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 7 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
+         END DO
+       CASE( 8 ) 
+         DO q=1,n
+           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+         END DO
        END SELECT
      ELSE
        SELECT CASE(dim)
@@ -2029,7 +2503,7 @@ CONTAINS
        CASE(2)
          CALL NodalFirstDerivatives2D( dLBasisdx, element, u,v )
        CASE(3)
-         IF ( Element % TYPE % ElementCode / 100 == 6 ) THEN
+         IF ( elemcode / 100 == 6 ) THEN
            NodalBasis=0
            DO q=1,n
              NodalBasis(q)  = 1.0d0
@@ -2051,12 +2525,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>  Return basis function degrees
 !------------------------------------------------------------------------------
-   SUBROUTINE ElementBasisDegree( Element, BasisDegree )
+   SUBROUTINE ElementBasisDegree( Element, BasisDegree, USolver )
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
      TYPE(Element_t), TARGET :: Element   !< Element structure
      INTEGER :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
+     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -2064,20 +2539,41 @@ CONTAINS
      REAL(KIND=dp) :: t,s
      LOGICAL :: invert, degrees
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
-          tmp(4), direction(4)
+          tmp(4), direction(4), BDOFs, BodyId
+
+     TYPE(Solver_t), POINTER :: pSolver
+
+     LOGICAL :: SerendipityPBasis
 
      TYPE(Element_t) :: Bubble
-     TYPE(Element_t), POINTER :: Edge, Face
+     TYPE(Element_t), POINTER :: Edge, Face, Parent
 !------------------------------------------------------------------------------
+
+     IF( PRESENT( USolver ) ) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
 
      n    = Element % TYPE % NumberOfNodes
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
+
      BasisDegree = 0
      BasisDegree(1:n) = Element % Type % BasisFunctionDegree
 
      IF ( isActivePElement(element) ) THEN
+
+       BodyId = Element % BodyId
+       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+         Parent => Element % PDefs % LocalParent
+         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+       END IF
+       IF (BodyId==0) THEN
+         CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
+         BodyId = 1
+       END IF
 
        ! Check for need of P basis degrees and set degree of
        ! linear basis if vector asked:
@@ -2085,6 +2581,7 @@ CONTAINS
        BasisDegree(1:n) = 1
        q = n
 
+       SerendipityPBasis = Element % PDefs % Serendipity
 !------------------------------------------------------------------------------
      SELECT CASE( Element % TYPE % ElementCode ) 
 !------------------------------------------------------------------------------
@@ -2093,9 +2590,14 @@ CONTAINS
      ! --------------------------------
      CASE(202)
         ! Bubbles of line element
-        IF (Element % BDOFs > 0) THEN
+        p = pSolver % Def_Dofs(2,BodyId,6)
+        nb = pSolver % Def_Dofs(2,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+        IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
            ! For each bubble in line element get value of basis function
-           DO i=1, Element % BDOFs
+           DO i=1, BDOFs
              IF (q >= SIZE(BasisDegree)) CYCLE
              q = q + 1
              BasisDegree(q) = 1+i
@@ -2121,13 +2623,14 @@ CONTAINS
         END IF
 
         ! Bubbles of p triangle      
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get element p
-           p = Element % PDefs % P
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
-           
+        p = pSolver % Def_Dofs(3,BodyId,6)
+        nb = pSolver % Def_Dofs(3,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF ( BDOFs > 0 ) THEN
+           ! Get element p
+           p = getEffectiveBubbleP(element,p,bdofs)
+
            DO i = 0,p-3
               DO j = 0,p-i-3
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
@@ -2154,20 +2657,30 @@ CONTAINS
         END IF
 
         ! Bubbles of p quadrilateral
-        IF ( Element % BDOFs > 0 ) THEN
+        p = pSolver % Def_Dofs(4,BodyId,6)
+        nb = pSolver % Def_Dofs(4,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF ( BDOFs > 0 ) THEN
           ! Get element P
-           p = Element % PDefs % P
-
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+           p = getEffectiveBubbleP(element,p,bdofs)
           
-           DO i=2,(p-2)
-              DO j=2,(p-i)
-                 IF ( q >= SIZE(BasisDegree) ) CYCLE
-                 q = q + 1
-                 BasisDegree(q) = i+j
-              END DO
-           END DO
+           IF(SerendipityPBasis) THEN
+             DO i=2,(p-2)
+               DO j=2,(p-i)
+                  IF ( q >= SIZE(BasisDegree) ) CYCLE
+                  q = q + 1
+                  BasisDegree(q) = i+j
+               END DO
+             END DO
+           ELSE
+             DO i=0,p-2
+                DO j=0,p-2
+                   IF ( q >= SIZE(BasisDegree) ) CYCLE
+                   q = q + 1
+                   BasisDegree(q) = 2+i+j
+                END DO
+             END DO
+           END IF
         END IF
 !------------------------------------------------------------------------------
 ! P element code for tetrahedron edges, faces and bubbles
@@ -2217,12 +2730,11 @@ CONTAINS
         END IF
 
         ! Bubbles of p tetrahedron
-        IF ( Element % BDOFs > 0 ) THEN
-           p = Element % PDefs % P
-
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
+        p = pSolver % Def_Dofs(5,BodyId,6)
+        nb = pSolver % Def_Dofs(5,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF ( BDOFs > 0 ) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
 
            DO i=0,p-4
               DO j=0,p-i-4
@@ -2274,11 +2786,13 @@ CONTAINS
               CASE (1)
                  ! For each face calculate values of functions from index
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
-                 DO i=2,p-2
-                    DO j=2,p-i
+!                DO i=2,p-2
+!                   DO j=2,p-i
+                 DO i=0,p-2
+                    DO j=0,p-2
                        IF ( q >= SIZE(BasisDegree) ) CYCLE
                        q = q + 1
-                       BasisDegree(q) = i+j
+                       BasisDegree(q) = 2+i+j
                     END DO
                  END DO
 
@@ -2297,21 +2811,21 @@ CONTAINS
         END IF
 
         ! Bubbles of P Pyramid
-        IF (Element % BDOFs > 0) THEN 
+        p = pSolver % Def_Dofs(6,BodyId,6)
+        nb = pSolver % Def_Dofs(6,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF (BDOFs > 0) THEN 
            ! Get element p
-           p = Element % PDefs % p
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
+           p = getEffectiveBubbleP(element,p,bdofs)
 
            ! Calculate value of bubble functions from indexes
-           ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           DO i=0,p-4
-              DO j=0,p-i-4
-                 DO k=0,p-i-j-4
+           ! i,j,k=0,..,p-3 i+j+k=0,..,p-3
+           DO i=0,p-3
+              DO j=0,p-i-3
+                 DO k=0,p-i-j-3
                     IF ( q >= SIZE(BasisDegree)) CYCLE
                     q = q + 1
-                    BasisDegree(q) = 4+i+j+k
+                    BasisDegree(q) = 3+i+j+k
                  END DO
               END DO
            END DO
@@ -2334,12 +2848,6 @@ CONTAINS
               DO k=1,Edge % BDOFs
                  IF ( q >= SIZE(BasisDegree) ) CYCLE
                  q = q + 1
-
-                 ! Use basis compatible with pyramid if necessary
-                 ! @todo Correct this!
-                 IF (Edge % PDefs % pyramidQuadEdge) THEN
-                    CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
-                 END IF
                  BasisDegree(q) = 1+k
               END DO
            END DO
@@ -2371,37 +2879,59 @@ CONTAINS
               CASE (3,4,5)
                  ! For each face calculate values of functions from index
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
-                 DO i=2,p-2
-                    DO j=2,p-i
-                       IF ( q >= SIZE(BasisDegree) ) CYCLE
-                       q = q + 1
-                       BasisDegree(q) = i+j
-                    END DO
-                 END DO
+                 IF(SerendipityPBasis) THEN
+                   DO i=2,p-2
+                      DO j=2,p-i
+                         IF ( q >= SIZE(BasisDegree) ) CYCLE
+                         q = q + 1
+                         BasisDegree(q) = i+j
+                      END DO
+                   END DO
+                 ELSE
+                   DO i=0,p-2
+                      DO j=0,p-2
+                         IF ( q >= SIZE(BasisDegree) ) CYCLE
+                         q = q + 1
+                         BasisDegree(q) = 2+i+j
+                      END DO
+                   END DO
+                 END IF
               END SELECT
                            
            END DO
         END IF
 
         ! Bubbles of P Wedge
-        IF ( Element % BDOFs > 0 ) THEN
+        p = pSolver % Def_Dofs(7,BodyId,6)
+        nb = pSolver % Def_Dofs(7,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF ( BDOFs > 0 ) THEN
            ! Get p from element
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
-           
+           p = getEffectiveBubbleP(element,p,bdofs)
+
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
-           DO i=0,p-5
-              DO j=0,p-5-i
-                 DO k=2,p-3-i-j
-                    IF ( q >= SIZE(BasisDegree) ) CYCLE
-                    q = q + 1
-                    BasisDegree(q) = 3+i+j+k
-                 END DO
-              END DO
-           END DO
+           IF(SerendipityPBasis) THEN
+             DO i=0,p-5
+                DO j=0,p-5-i
+                   DO k=2,p-3-i-j
+                      IF ( q >= SIZE(BasisDegree) ) CYCLE
+                      q = q + 1
+                      BasisDegree(q) = 3+i+j+k
+                   END DO
+                END DO
+             END DO
+           ELSE
+             DO i=0,p-3
+                DO j=0,p-i-3
+                   DO k=0,p-2
+                      IF ( q >= SIZE(BasisDegree) ) CYCLE
+                      q = q + 1
+                      BasisDegree(q) = 3+i+j+k
+                   END DO
+                END DO
+             END DO
+           END IF
         END IF
 
 !------------------------------------------------------------------------------
@@ -2440,35 +2970,57 @@ CONTAINS
 
               ! For each face calculate values of functions from index
               ! pairs i,j=2,..,p-2 i+j=4,..,p
-              DO i=2,p-2
-                 DO j=2,p-i
-                    IF ( q >= SIZE(BasisDegree) ) CYCLE
-                    q = q + 1
-                    BasisDegree(q) = i+j
+              IF(SerendipityPBasis) THEN
+                DO i=2,p-2
+                   DO j=2,p-i
+                      IF ( q >= SIZE(BasisDegree) ) CYCLE
+                      q = q + 1
+                      BasisDegree(q) = i+j
+                   END DO
                  END DO
-              END DO
+              ELSE
+                DO i=0,p-2
+                   DO j=0,p-2
+                      IF ( q >= SIZE(BasisDegree) ) CYCLE
+                      q = q + 1
+                      BasisDegree(q) = 2+i+j
+                   END DO
+                END DO
+              END IF
            END DO
         END IF
 
         ! Bubbles of p brick
-        IF ( Element % BDOFs > 0 ) THEN
+        p = pSolver % Def_Dofs(7,BodyId,6)
+        nb = pSolver % Def_Dofs(7,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+        IF ( BDOFs > 0 ) THEN
            ! Get p from bubble DOFs 
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
+           p = getEffectiveBubbleP(element,p,bdofs)
 
            ! For each bubble calculate value of basis function and its derivative
            ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
-           DO i=2,p-4
-              DO j=2,p-i-2
+           IF(SerendipityPBasis) THEN
+             DO i=2,p-4
+               DO j=2,p-i-2
                  DO k=2,p-i-j
-                    IF ( q >= SIZE(BasisDegree) ) CYCLE
-                    q = q + 1
-                    BasisDegree(q) = i+j+k
+                   IF ( q >= SIZE(BasisDegree) ) CYCLE
+                   q = q + 1
+                   BasisDegree(q) = i+j+k
                  END DO
-              END DO
-           END DO
+               END DO
+             END DO
+           ELSE
+             DO i=0,p-2
+                DO j=0,p-2
+                   DO k=0,p-2
+                      IF ( q >= SIZE(BasisDegree) ) CYCLE
+                      q = q + 1
+                      BasisDegree(q) = 2+i+j+k
+                   END DO
+                END DO
+             END DO
+           END IF
         END IF
 
      END SELECT
@@ -2501,49 +3053,54 @@ CONTAINS
      REAL(KIND=dp) :: Basis(:)                      !< Basis function values at p=(u,v,w)
      REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)       !< Global first derivatives of basis functions at (u,v,w)
      REAL(KIND=dp), OPTIONAL :: ddBasisddx(:,:,:)   !< Global second derivatives of basis functions at (u,v,w) if requested
+     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
+     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      INTEGER, OPTIONAL :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 	                                                !! May be used with P element basis functions
-     LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
-     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
-     LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be evaluated.
      REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:)      !< If present, the values of H(curl)-conforming basis functions B(f(p))
      REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)       !< The referential description of the spatial curl of B
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver   !< The solver used to call the basis functions.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: PSolver => NULL()
+     TYPE(Solver_t), POINTER :: PSolver => NULL(), PrevSolver => NULL()
      REAL(KIND=dp) :: BubbleValue, dBubbledx(3), t, s, LtoGMap(3,3)
-     LOGICAL :: invert, degrees
+     LOGICAL :: invert, degrees, Compute2ndDerivatives
      INTEGER :: i, j, k, l, q, p, f, n, nb, dim, cdim, locali, localj,  &
-          tmp(4), direction(4)
+          tmp(4), direction(4), Indexes(Element % Type % NumberOfNodes)
+     INTEGER :: BodyId, EDOFs, BDOFs, Deg_Bubble, tetraType
      REAL(KIND=dp) :: LinBasis(8), dLinBasisdx(8,3), ElmMetric(3,3)
 
      REAL(KIND=dp) :: NodalBasis(Element % TYPE % NumberOfNodes), &
              dLBasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
 
+     REAL(KIND=dp), ALLOCATABLE :: ddlBasisddx(:,:,:)
+
      TYPE(Element_t) :: Bubble
-     TYPE(Element_t), POINTER :: Edge, Face
+     TYPE(Element_t), POINTER :: Parent, Edge, Face
      INTEGER :: EdgeBasisDegree
-     LOGICAL :: PerformPiolaTransform, Found
+     LOGICAL :: PerformPiolaTransform, Found, DesignedBubbles, SerendipityPBasis
      
-     SAVE PSolver, EdgeBasisDegree, PerformPiolaTransform
+     SAVE PrevSolver, EdgeBasisDegree, PerformPiolaTransform
 !------------------------------------------------------------------------------
+
+     IF( PRESENT( USolver ) ) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+     
      IF(PRESENT(EdgeBasis)) THEN       
-       IF( PRESENT( USolver ) ) THEN
-         IF( .NOT. ASSOCIATED( USolver, PSolver ) ) THEN
-           IF( ListGetLogical(USolver % Values,'Quadratic Approximation', Found ) ) THEN
-             EdgeBasisDegree = 2
-             PerformPiolaTransform = .TRUE.
-           ELSE
-             EdgeBasisDegree = 1
-             PerformPiolaTransform = ListGetLogical(USolver % Values,'Use Piola Transform', Found )
-           END IF
-           PSolver => USolver 
+       IF( .NOT. ASSOCIATED( PrevSolver, PSolver ) ) THEN
+         PrevSolver => pSolver          
+         IF( ListGetLogical(pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+           EdgeBasisDegree = 2
+           PerformPiolaTransform = .TRUE.
+         ELSE
+           EdgeBasisDegree = 1
+           PerformPiolaTransform = ListGetLogical(pSolver % Values,'Use Piola Transform', Found )
          END IF
-       ELSE
-         EdgeBasisDegree = 1
-         PerformPiolaTransform = .TRUE.        
        END IF
        IF( PerformPiolaTransform ) THEN       
          stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
@@ -2569,20 +3126,60 @@ CONTAINS
         RETURN
      END IF
 
-     Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w)
+     Compute2ndDerivatives = PRESENT(SecondDerivatives) .AND. PRESENT(ddBasisddx)
+     IF(Compute2ndDerivatives) Compute2ndDerivatives = SecondDerivatives
 
+     IF(Compute2ndDerivatives) THEN
+       ALLOCATE(ddLBasisddx(MAX(SIZE(Nodes % x),SIZE(ddBasisddx)),3,3))
+       Basis = 0
+       ddLBasisddx = 0._dp
+       DO i=1,n
+         Basis(i) = 1
+         SELECT CASE(dim)
+         CASE(1)
+           ddLBasisddx(i,1,1) = SecondDerivatives1D(element,basis,u)
+         CASE(2)
+           ddLBasisddx(i,1:2,1:2) = SecondDerivatives2D(element,basis,u,v)
+         CASE(3)
+           SELECT CASE(Element % Type % ElementCode)
+           CASE(605)
+             IF(isPElement(Element)) THEN
+               ddLBasisddx(i,:,:) = ddPyramidNodalPBasis(i,u,v,w)
+             ELSE
+               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+             END IF
+           CASE(706)
+             IF(isPElement(element)) THEN
+               ddLBasisddx(i,:,:) = ddWedgeNodalPBasis(i,u,v,w)
+             ELSE
+               ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+             END IF
+           CASE DEFAULT
+             ddLBasisddx(i,:,:) = SecondDerivatives3D(element,basis,u,v,w)
+           END SELECT
+         END SELECT
+         Basis(i) = 0
+       END DO
+     END IF
+
+     Basis = 0.0d0
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
      q = n
 
+!	dbasisdx(1:n,:) = dlbasisdx(1:n,:)
+!	if (compute2ndderivatives) ddbasisddx(1:n,:,:) = ddlbasisddx(1:n,:,:)
+!	detj = 1
+!	return
+
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element) ) THEN
-
-      ! Check for need of P basis degrees and set degree of
-      ! linear basis if vector asked:
+     IF ( isActivePElement(element,pSolver) ) THEN
+      !
+      ! Check whether the polynomial degree of each basis functions is asked
+      ! and, if so, initialize by the degree of linear basis:
       ! ---------------------------------------------------
       degrees = .FALSE.
       IF ( PRESENT(BasisDegree)) THEN 
@@ -2591,6 +3188,23 @@ CONTAINS
         BasisDegree(1:n) = 1
       END IF
 
+      BodyId = Element % BodyId
+      IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+        Parent => Element % PDefs % LocalParent
+        IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+      END IF
+      IF (BodyId==0) THEN
+        CALL Warn('ElementInfo', 'Element has no body index, assuming the index 1')
+        BodyId = 1
+      END IF
+
+      ! If running in parallel use global indexing in orienting degrees of freedom
+      Indexes = Element % NodeIndexes
+      IF (ASSOCIATED(pSolver % Mesh % ParallelInfo % GlobalDOFs)) &
+        Indexes = pSolver % Mesh % ParallelInfo % GlobalDOFs(Indexes)
+
+      SerendipityPBasis = Element % PDefs % Serendipity
+
 !------------------------------------------------------------------------------
      SELECT CASE( Element % TYPE % ElementCode ) 
 !------------------------------------------------------------------------------
@@ -2598,20 +3212,27 @@ CONTAINS
      ! P element code for line element:
      ! --------------------------------
      CASE(202)
+        ! Get element p
+        p = pSolver % Def_Dofs(2,BodyId,6)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), pSolver % Def_Dofs(2,BodyId,5))
+
         ! Bubbles of line element
-        IF (Element % BDOFs > 0) THEN
+        IF (BDOFs > 0) THEN
            ! For boundary element integration check direction
            invert = .FALSE.
            IF ( Element % PDefs % isEdge .AND. &
-                Element % NodeIndexes(1)>Element % NodeIndexes(2) ) invert = .TRUE.
+                   Indexes(1)>Indexes(2) ) invert = .TRUE.
 
-           ! For each bubble in line element get value of basis function
-           DO i=1, Element % BDOFs
-              IF (q >= SIZE(Basis)) CYCLE
+           ! For each bubble get the value of basis function
+           DO i=1, BDOFs
+              IF (q >= SIZE(Basis)) EXIT
               q = q + 1
               
               Basis(q) = LineBubblePBasis(i+1,u,invert)
               dLBasisdx(q,1) = dLineBubblePBasis(i+1,u,invert)
+              IF(Compute2ndDerivatives) THEN
+                ddLBasisddx(q,1,1) = ddLineBubblePBasis(i+1,u,invert)
+              END IF
               
               ! Polynomial degree of basis function to vector
               IF (degrees) BasisDegree(q) = 1+i
@@ -2619,13 +3240,15 @@ CONTAINS
         END IF
 
 !------------------------------------------------------------------------------
-! P element code for edges and bubbles of triangle
+     ! P element code for triangles:
      CASE(303)
+        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(3,BodyId,6))
         ! Edges of triangle
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           
            ! For each edge calculate the value of edge basis function
-           DO i=1,3
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+           edges_triangle: DO i=1,3
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Get local number of edge start and endpoint nodes
               tmp(1:2) = getTriangleEdgeMap(i)
@@ -2634,42 +3257,50 @@ CONTAINS
 
               ! Invert edge for parity if needed
               invert = .FALSE.
-              IF ( Element % NodeIndexes(locali)>Element % NodeIndexes(localj) ) invert=.TRUE.
+              IF ( Indexes(locali)>Indexes(localj) ) invert=.TRUE.
 
-              ! For each dof in edge get value of p basis function 
-              DO k=1,Edge % BDOFs
-                 IF (q >= SIZE(Basis)) CYCLE
+              ! For each edge DOF get the value of p-basis function
+              ! NOTE: Edges may not have correct information about the count of DOFs
+              !        per edge, so the following would not work:
+              !       EDOFs = GetEdgeDOFs(Edge, pSolver % Def_Dofs(2,BodyId,6))
+              !
+              DO k=1,EDOFs
+                 IF (q >= SIZE(Basis)) EXIT edges_triangle
                  q = q + 1
                  
                  ! Value of basis functions for edge=i and i=k+1 by parity
                  Basis(q) = TriangleEdgePBasis(i, k+1, u, v, invert)
-                 ! Value of derivative of basis function
                  dLBasisdx(q,1:2) = dTriangleEdgePBasis(i, k+1, u, v, invert)
+                 IF(Compute2ndDerivatives) THEN
+                   ddLBasisddx(q,1:2,1:2) = ddTriangleEdgePBasis(i,k+1,u,v,invert)
+                 END IF
                  
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO edges_triangle
         END IF
 
         ! Bubbles of p triangle      
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get element p
-           p = Element % PDefs % P
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+        ! Get element p
+        p = pSolver % Def_Dofs(3,BodyId,6)
+        nb = pSolver % Def_Dofs(3,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+        IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
            
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
               direction = 0
               ! Get direction of this face (mask for face = boundary element nodes)
-              direction(1:3) = getTriangleFaceDirection(Element, [ 1,2,3 ])
+              direction(1:3) = getTriangleFaceDirection(Element, [ 1,2,3 ], Indexes)
            END IF
 
-           DO i = 0,p-3
+           bubbles_triangle: DO i = 0,p-3
               DO j = 0,p-i-3
-                 IF ( q >= SIZE(Basis) ) CYCLE
+                 IF ( q >= SIZE(Basis) ) EXIT bubbles_triangle
                  q = q + 1
 
                  ! Get bubble basis functions and their derivatives
@@ -2677,25 +3308,34 @@ CONTAINS
                  IF (Element % PDefs % isEdge) THEN
                     Basis(q) = TriangleEBubblePBasis(i,j,u,v,direction) 
                     dLBasisdx(q,1:2) = dTriangleEBubblePBasis(i,j,u,v,direction)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleEBubblePBasis(i,j,u,v,direction)
+                    END IF
                  ELSE
                  ! 2d element bubbles have no direction
                     Basis(q) = TriangleBubblePBasis(i,j,u,v) 
                     dLBasisdx(q,1:2) = dTriangleBubblePBasis(i,j,u,v)
+
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddTriangleBubblePBasis(i,j,u,v)
+                    END IF
                  END IF
                  
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 3+i+j
               END DO
-           END DO
+           END DO bubbles_triangle
         END IF
 !------------------------------------------------------------------------------
-! P element code for quadrilateral edges and bubbles 
+     ! P element code for quads:
      CASE(404)
         ! Edges of p quadrilateral
+        EDOFs = GetEdgeDOFs(Element, pSolver % Def_Dofs(4,BodyId,6))
         IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge begin node calculate values of edge functions 
-           DO i=1,4
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
+           ! For each edge calculate the values of edge basis functions 
+           edges_quad: DO i=1,4
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
 
               ! Choose correct parity by global edge dofs
               tmp(1:2) = getQuadEdgeMap(i)
@@ -2704,164 +3344,220 @@ CONTAINS
               
               ! Invert parity if needed
               invert = .FALSE.
-              IF (Element % NodeIndexes(locali) > Element % NodeIndexes(localj)) invert = .TRUE. 
+              IF (Indexes(locali) > Indexes(localj)) invert = .TRUE. 
 
-              ! For each DOF in edge calculate value of p basis function
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each DOF in edge calculate the value of p-basis function
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_quad
                  q = q + 1
 
-                 ! For pyramid square face edges use different basis
-                 IF (Edge % PDefs % pyramidQuadEdge) THEN
-                    Basis(q) = QuadPyraEdgePBasis(i,k+1,u,v,invert)
-                    dLBasisdx(q,1:2) = dQuadPyraEdgePBasis(i,k+1,u,v,invert)
-                 ! Normal case, use basis of quadrilateral
+                 ! Get values of basis functions for edge=i and i=k+1 by parity
+                 IF (SerendipityPBasis) THEN
+                   Basis(q) = SD_QuadEdgePBasis(i,k+1,u,v,invert)
+                   ! Get value of derivatives of basis functions
+                   dLBasisdx(q,1:2) = SD_dQuadEdgePBasis(i,k+1,u,v,invert)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,1:2,1:2) = SD_ddQuadEdgePBasis(i,k+1,u,v,invert)
+                   END IF
                  ELSE
-                    ! Get values of basis functions for edge=i and i=k+1 by parity
-                    Basis(q) = QuadEdgePBasis(i,k+1,u,v,invert)
-                    ! Get value of derivatives of basis functions
-                    dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
+                   Basis(q) = QuadEdgePBasis(i,k+1,u,v,invert)
+                   ! Get value of derivatives of basis functions
+                   dLBasisdx(q,1:2) = dQuadEdgePBasis(i,k+1,u,v,invert)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,1:2,1:2) = ddQuadEdgePBasis(i,k+1,u,v,invert)
+                   END IF
                  END IF
                  
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO              
-           END DO         
+           END DO edges_quad
         END IF
 
-        ! Bubbles of p quadrilateral
-        IF ( Element % BDOFs > 0 ) THEN
-          ! Get element P
-           p = Element % PDefs % P
+        ! Bubbles of p quadrilateral, the number of which may have been defined explicitly or
+        ! be determined by the specified degree of approximation. However, we never omit bubbles
+        ! which are part of the FE space of the specified degree
+  
+        ! Get the specified element P:
+        p = pSolver % Def_Dofs(4,BodyId,6)
+        nb = pSolver % Def_Dofs(4,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
 
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
+        IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
 
            ! For boundary element direction needs to be calculated
            IF (Element % PDefs % isEdge) THEN
-              direction = 0
-              direction = getSquareFaceDirection(Element, [ 1,2,3,4 ])
+              direction = getSquareFaceDirection(Element, [ 1,2,3,4 ], Indexes )
            END IF
           
-           ! For each bubble calculate value of p basis function
-           ! and their derivatives for index pairs i,j>=2, i+j=4,...,p
-           DO i=2,(p-2)
-              DO j=2,(p-i)
-                 IF ( q >= SIZE(Basis) ) CYCLE
-                 q = q + 1
+           ! For each bubble calculate the value of p basis function
+           ! and its derivatives for index pairs i,j>=2, i+j=4,...,p
+           IF(SerendipityPBasis) THEN
+             SD_bubbles_quad: DO i=2,p-2
+                DO j=2,p-i
+                  IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_quad
+                  q = q + 1
                  
-                 ! Get values of bubble functions
-                 ! 3D boundary elements have a direction
-                 IF (Element % PDefs % isEdge) THEN
+                  ! Get values of bubble functions
+                  ! 3D boundary elements have a direction
+                  IF (Element % PDefs % isEdge) THEN
+                    Basis(q) = SD_QuadBubblePBasis(i,j,u,v,direction)
+                    dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v,direction)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
+                    END IF
+                  ELSE
+                    ! 2d element bubbles have no direction
+                    Basis(q) = SD_QuadBubblePBasis(i,j,u,v)
+                    dLBasisdx(q,1:2) = SD_dQuadBubblePBasis(i,j,u,v)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = SD_ddQuadBubblePBasis(i,j,u,v)
+                    END IF
+                  END IF
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = i+j
+                END DO
+             END DO SD_bubbles_quad
+           ELSE
+             bubbles_quad: DO i=0,p-2
+                DO j=0,p-2
+                  IF ( q >= SIZE(Basis) ) EXIT bubbles_quad
+                  q = q + 1
+                 
+                  ! Get values of bubble functions
+                  ! 3D boundary elements have a direction
+                  IF (Element % PDefs % isEdge) THEN
                     Basis(q) = QuadBubblePBasis(i,j,u,v,direction)
                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v,direction)
-                 ELSE
-                 ! 2d element bubbles have no direction
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
+                    END IF
+                  ELSE
+                    ! 2d element bubbles have no direction
                     Basis(q) = QuadBubblePBasis(i,j,u,v)
                     dLBasisdx(q,1:2) = dQuadBubblePBasis(i,j,u,v)
-                 END IF
-
-                 ! Polynomial degree of basis function to vector
-                 IF (degrees) BasisDegree(q) = i+j
-              END DO
-           END DO
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,1:2,1:2) = ddQuadBubblePBasis(i,j,u,v)
+                    END IF
+                  END IF
+                  ! Polynomial degree of basis function to vector
+                  IF (degrees) BasisDegree(q) = 2+i+j
+                END DO
+             END DO bubbles_quad
+           END IF
         END IF
 !------------------------------------------------------------------------------
-! P element code for tetrahedron edges, faces and bubbles
-     CASE(504) 
+     ! P element code for tetrahedra:
+     CASE(504)
+        p = pSolver % Def_Dofs(5,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
+        tetraType = Element % PDefs % TetraType
+
         ! Edges of p tetrahedron
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN   
-           ! For each edge calculate value of edge functions
-           DO i=1,6
-              Edge => CurrentModel % Solver % Mesh % Edges (Element % EdgeIndexes(i))
-
-              ! Do not solve edge DOFS if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
-
-              ! For each DOF in edge calculate value of edge functions 
-              ! and their derivatives for edge=i, i=k+1
-              DO k=1, Edge % BDOFs
-                 IF (q >= SIZE(Basis)) CYCLE
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN   
+           ! For each edge i calculate the values of edge functions
+           edges_tetrahedron: DO i=1,6
+              Edge => pSolver % Mesh % Edges (Element % EdgeIndexes(i))
+              
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1, EDOFs
+                 IF (q >= SIZE(Basis)) EXIT edges_tetrahedron
                  q = q + 1
 
-                 Basis(q) = TetraEdgePBasis(i,k+1,u,v,w, Element % PDefs % TetraType)
-                 dLBasisdx(q,1:3) = dTetraEdgePBasis(i,k+1,u,v,w, Element % PDefs % TetraType)
+                 Basis(q) = TetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                 dLBasisdx(q,:) = dTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                 IF(Compute2ndDerivatives) THEN
+                    ddLBasisddx(q,:,:) = ddTetraEdgePBasis(i,k+1,u,v,w,tetraType)
+                 END IF
 
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_tetrahedron
         END IF
 
         ! Faces of p tetrahedron
         IF ( ASSOCIATED( Element % FaceIndexes )) THEN
-           ! For each face calculate value of face functions
-           DO F=1,4
-              Face => CurrentModel % Solver % Mesh % Faces (Element % FaceIndexes(F))
-
-              ! Do not solve face DOFs if there is not any
-              IF (Face % BDOFs <= 0) CYCLE
+           ! For each face calculate values of face functions
+           faces_tetrahedron: DO F=1,4
+              Face => pSolver % Mesh % Faces (Element % FaceIndexes(F))
 
               ! Get face p 
-              p = Face % PDefs % P
+              !p = MAX(pSolver % Def_Dofs(5,BodyId,6), Face % PDefs % P)
 
-              ! For each DOF in face calculate value of face functions and 
-              ! their derivatives for face=F and index pairs 
+              ! Do not solve face DOFs if there is not any
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
+
+              tmp(1:3) = getTetraFaceMap(F,tetraType)
+              direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), Indexes )
+
+              ! For each DOF in face calculate values of face function and 
+              ! its derivatives for index pairs 
               ! i,j=0,..,p-3, i+j=0,..,p-3
               DO i=0,p-3
                  DO j=0,p-i-3
-                    IF (q >= SIZE(Basis)) CYCLE
+                    IF (q >= SIZE(Basis)) EXIT faces_tetrahedron
                     q = q + 1 
-                    
-                    Basis(q) = TetraFacePBasis(F,i,j,u,v,w, Element % PDefs % TetraType)
-                    dLBasisdx(q,1:3) = dTetraFacePBasis(F,i,j,u,v,w, Element % PDefs % TetraType)
+                  
+                    Basis(q) = TetraFacePBasis(F,i,j,u,v,w, tetraType )
+                    dLBasisdx(q,:) = dTetraFacePBasis(F,i,j,u,v,w, tetraType )
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddTetraFacePBasis(F,i,j,u,v,w,tetraType )
+                    END IF
 
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 3+i+j
                  END DO
               END DO
-           END DO
+           END DO faces_tetrahedron
         END IF
 
         ! Bubbles of p tetrahedron
-        IF ( Element % BDOFs > 0 ) THEN
-           p = Element % PDefs % P
+        nb = pSolver % Def_Dofs(5,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
 
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
-
-           ! For each DOF in bubbles calculate value of bubble functions
-           ! and their derivatives for index pairs
+           ! For each bubble DOF calculate the value of bubble function
+           ! and its derivatives for index pairs
            ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           DO i=0,p-4
+           bubbles_tetrahedron: DO i=0,p-4
               DO j=0,p-i-4
                  DO k=0,p-i-j-4
-                    IF (q >= SIZE(Basis)) CYCLE
+                    IF (q >= SIZE(Basis)) EXIT bubbles_tetrahedron
                     q = q + 1
 
                     Basis(q) = TetraBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,1:3) = dTetraBubblePBasis(i,j,k,u,v,w)
-
+                    dLBasisdx(q,:) = dTetraBubblePBasis(i,j,k,u,v,w)
+                    IF(Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddTetraBubblePBasis(i,j,k,u,v,w)
+                    END IF
                     ! Polynomial degree of basis function to vector
                     IF (degrees) BasisDegree(q) = 4+i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_tetrahedron
            
         END IF
 !------------------------------------------------------------------------------
-! P element code for pyramid edges, faces and bubbles
+     ! P element code for pyramids:
      CASE(605)
-        ! Edges of P Pyramid
-        IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in wedge, calculate values of edge functions
-           DO i=1,8
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
 
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
-              
+        IF(SerendipityPBasis) THEN
+          CALL Fatal('ElementInfo', 'p-Pyramid not implented for serendipity scheme, ' // &
+                      'please use the full scheme instead.')
+        END IF
+
+        ! Edges of P Pyramid
+        p = pSolver % Def_Dofs(6,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
+        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge calculate values of edge functions
+           edges_pyramid: DO i=1,8
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
+
               ! Get local indexes of current edge
               tmp(1:2) = getPyramidEdgeMap(i)
               locali = tmp(1)
@@ -2871,56 +3567,65 @@ CONTAINS
               invert = .FALSE.
               
               ! Invert edge if local first node has greater global index than second one
-              IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
+              IF ( Indexes(locali) > Indexes(localj) ) invert = .TRUE.
 
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_pyramid
                  q = q + 1
 
                  ! Get values of edge basis functions and their derivatives
                  Basis(q) = PyramidEdgePBasis(i,k+1,u,v,w,invert)
-                 dLBasisdx(q,1:3) = dPyramidEdgePBasis(i,k+1,u,v,w,invert)
-
+                 dLBasisdx(q,:) = dPyramidEdgePBasis(i,k+1,u,v,w,invert)
+                 IF (Compute2ndDerivatives) THEN
+                   ddLBasisddx(q,:,:) = ddPyramidEdgePBasis(i,k+1,u,v,w,invert)
+                 END IF
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_pyramid
         END IF
+
         
         ! Faces of P Pyramid
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in pyramid, calculate values of face functions
-           DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
-
-              ! Do not solve face dofs, if there is not any
-              IF ( Face % BDOFs <= 0) CYCLE
+           ! For each face in pyramid, calculate the values of face functions
+           faces_pyramid: DO F=1,5
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
               
               ! Get face p
-              p = Face % PDefs % P 
+              !p = MAX(pSolver % Def_Dofs(6,BodyId,6), Face % PDefs % P) 
+
+              ! Do not solve face dofs, if there is not any
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
               
               ! Handle triangle and square faces separately
               SELECT CASE(F)
               CASE (1)
-                 direction = 0
+                 direction = 0; invert=.FALSE.
                  ! Get global direction vector for enforcing parity
                  tmp(1:4) = getPyramidFaceMap(F)
-                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4) )
-                 
-                 ! For each face calculate values of functions from index
+                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), Indexes )
+
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
-                 DO i=2,p-2
-                    DO j=2,p-i
-                       IF ( q >= SIZE(Basis) ) CYCLE
+
+!                DO i=0,p-2
+!                   DO j=0,p-i-2
+                 DO i=0,p-2
+                    DO j=0,p-2
+                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
                        q = q + 1
                        
                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
                        dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
+                       IF (Compute2ndDerivatives) THEN
+                         ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
+                       END IF
                        
                        ! Polynomial degree of basis function to vector
-                       IF (degrees) BasisDegree(q) = i+j
+                       IF (degrees) BasisDegree(q) = 2+i+j
                     END DO
                  END DO
 
@@ -2928,63 +3633,66 @@ CONTAINS
                  direction = 0
                  ! Get global direction vector for enforcing parity
                  tmp(1:4) = getPyramidFaceMap(F) 
-                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3) )
-                 
-                 ! For each face calculate values of functions from index
+                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), Indexes )
+
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
                  DO i=0,p-3
                     DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_pyramid
                        q = q + 1
 
                        Basis(q) = PyramidFacePBasis(F,i,j,u,v,w,direction)
                        dLBasisdx(q,:) = dPyramidFacePBasis(F,i,j,u,v,w,direction)
+                       IF (Compute2ndDerivatives) THEN
+                         ddLBasisddx(q,:,:) = ddPyramidFacePBasis(F,i,j,u,v,w,direction)
+                       END IF
 
                        ! Polynomial degree of basis function to vector
                        IF (degrees) BasisDegree(q) = 3+i+j
                     END DO
                  END DO
               END SELECT    
-           END DO
+           END DO faces_pyramid
         END IF
 
         ! Bubbles of P Pyramid
-        IF (Element % BDOFs > 0) THEN 
-           ! Get element p
-           p = Element % PDefs % p
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
-
-           ! Calculate value of bubble functions from indexes
-           ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-           DO i=0,p-4
-              DO j=0,p-i-4
-                 DO k=0,p-i-j-4
-                    IF ( q >= SIZE(Basis)) CYCLE
+        nb = pSolver % Def_Dofs(6,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+ 
+           ! Calculate the values of bubble functions for indexes
+           ! i,j,k=0,..,p-3 i+j+k=0,..,p-3
+           bubbles_pyramid: DO i=0,p-3
+              DO j=0,p-i-3
+                 DO k=0,p-i-j-3
+                    IF ( q >= SIZE(Basis)) EXIT bubbles_pyramid
                     q = q + 1
 
                     Basis(q) = PyramidBubblePBasis(i,j,k,u,v,w)
                     dLBasisdx(q,:) = dPyramidBubblePBasis(i,j,k,u,v,w)
+                    IF (Compute2ndDerivatives) THEN
+                      ddLBasisddx(q,:,:) = ddPyramidBubblePBasis(i,j,k,u,v,w)
+                    END IF
                     
                     ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = 4+i+j+k
+                    IF (degrees) BasisDegree(q) = 3+i+j+k
                  END DO
               END DO
-           END DO
+           END DO bubbles_pyramid
         END IF
         
 !------------------------------------------------------------------------------
-! P element code for wedge edges, faces and bubbles
+     ! P element code wedges:
      CASE(706)
+        p = pSolver % Def_Dofs(7,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
         ! Edges of P Wedge
-        IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in wedge, calculate values of edge functions
-           DO i=1,9
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
+        IF (ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge i calculate the values of edge functions
+           edges_prism: DO i=1,9
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
               
               ! Get local indexes of current edge
               tmp(1:2) = getWedgeEdgeMap(i)
@@ -2994,40 +3702,45 @@ CONTAINS
               ! Determine edge direction
               invert = .FALSE.
               ! Invert edge if local first node has greater global index than second one
-              IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
+              IF ( Indexes(locali) > Indexes(localj) ) invert = .TRUE.
        
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the value of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_prism
                  q = q + 1
 
-                 ! Use basis compatible with pyramid if necessary
-                 ! @todo Correct this!
-                 IF (Edge % PDefs % pyramidQuadEdge) THEN
-                    CALL Fatal('ElementInfo','Pyramid compatible wedge edge basis NIY!')
-                 END IF
-
                  ! Get values of edge basis functions and their derivatives
-                 Basis(q) = WedgeEdgePBasis(i,k+1,u,v,w,invert)
-                 dLBasisdx(q,1:3) = dWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                 IF(SerendipityPBasis) THEN
+                   Basis(q) = SD_WedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   dLBasisdx(q,:) = SD_dWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   IF(Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = SD_ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   END IF
+                 ELSE
+                   Basis(q) = WedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   dLBasisdx(q,:) = dWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   IF(Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = ddWedgeEdgePBasis(i,k+1,u,v,w,invert)
+                   END IF
+                 END IF
 
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO
+           END DO edges_prism
         END IF
 
-        ! Faces of P Wedge 
+        ! The faces of p-wedge 
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in wedge, calculate values of face functions
-           DO F=1,5
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+           ! For each face in wedge, calculate the values of face functions
+           faces_prism: DO F=1,5
+              Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
+
+              !p = MAX(pSolver % Def_Dofs(7,BodyId,6), Face % PDefs % P) 
 
               ! Do not solve face dofs, if there is not any
-              IF ( Face % BDOFs <= 0) CYCLE
-
-              p = Face % PDefs % P 
+              !IF (GetFaceDOFs(Element, p, F) <= 0) CYCLE
               
               ! Handle triangle and square faces separately
               SELECT CASE(F)
@@ -3035,17 +3748,28 @@ CONTAINS
                  direction = 0
                  ! Get global direction vector for enforcing parity
                  tmp(1:4) = getWedgeFaceMap(F) 
-                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3) )
+                 direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3), Indexes )
                  
-                 ! For each face calculate values of functions from index
+                 ! For each face calculate the values of functions for index
                  ! pairs i,j=0,..,p-3 i+j=0,..,p-3
                  DO i=0,p-3
                     DO j=0,p-i-3
-                       IF ( q >= SIZE(Basis) ) CYCLE
+                       IF ( q >= SIZE(Basis) ) EXIT faces_prism
                        q = q + 1
 
-                       Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
-                       dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                       IF(SerendipityPBasis) THEN
+                         Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
+                         dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         IF(Compute2ndDerivatives) THEN
+                            ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         END IF
+                       ELSE
+                         Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
+                         dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         IF(Compute2ndDerivatives) THEN
+                            ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         END IF
+                       END IF
 
                        ! Polynomial degree of basis function to vector
                        IF (degrees) BasisDegree(q) = 3+i+j
@@ -3056,7 +3780,7 @@ CONTAINS
                  ! Get global direction vector for enforcing parity
                  invert = .FALSE.
                  tmp(1:4) = getWedgeFaceMap(F)
-                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4) )
+                 direction(1:4) = getSquareFaceDirection( Element, tmp(1:4), Indexes )
                  
                  ! First and second node must form a face in upper or lower triangle
                  IF (.NOT. wedgeOrdering(direction)) THEN
@@ -3068,65 +3792,108 @@ CONTAINS
 
                  ! For each face calculate values of functions from index
                  ! pairs i,j=2,..,p-2 i+j=4,..,p
-                 DO i=2,p-2
-                    DO j=2,p-i
-                       IF ( q >= SIZE(Basis) ) CYCLE
-                       q = q + 1
+                 IF(SerendipityPBasis) THEN
+                   DO i=2,p-2
+                      DO j=2,p-i
+                         IF ( q >= SIZE(Basis) ) EXIT faces_prism
+                         q = q + 1
 
-                       IF (.NOT. invert) THEN
-                          Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
-                          dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
-                       ELSE
-                          Basis(q) = WedgeFacePBasis(F,j,i,u,v,w,direction)
-                          dLBasisdx(q,:) = dWedgeFacePBasis(F,j,i,u,v,w,direction)
-                       END IF
+                         IF (.NOT. invert) THEN
+                            Basis(q) = SD_WedgeFacePBasis(F,i,j,u,v,w,direction)
+                            dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                            IF(Compute2ndDerivatives) THEN
+                               ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                            END IF
+                         ELSE
+                            Basis(q) = SD_WedgeFacePBasis(F,j,i,u,v,w,direction)
+                            dLBasisdx(q,:) = SD_dWedgeFacePBasis(F,j,i,u,v,w,direction)
+                            IF(Compute2ndDerivatives) THEN
+                               ddLBasisddx(q,:,:) = SD_ddWedgeFacePBasis(F,j,i,u,v,w,direction)
+                            END IF
+                         END IF
+                         ! Polynomial degree of basis function to vector
+                         IF (degrees) BasisDegree(q) = i+j
+                      END DO
+                   END DO
+                 ELSE
+                   DO i=0,p-2
+                      DO j=0,p-2
+                         IF ( q >= SIZE(Basis) ) EXIT faces_prism
+                         q = q + 1
 
-                       ! Polynomial degree of basis function to vector
-                       IF (degrees) BasisDegree(q) = i+j
-                    END DO
-                 END DO
+                         Basis(q) = WedgeFacePBasis(F,i,j,u,v,w,direction)
+                         dLBasisdx(q,:) = dWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         IF(Compute2ndDerivatives) THEN
+                            ddLBasisddx(q,:,:) = ddWedgeFacePBasis(F,i,j,u,v,w,direction)
+                         END IF
+  
+                         ! Polynomial degree of basis function to vector
+                         IF (degrees) BasisDegree(q) = 2+i+j
+                      END DO
+                   END DO
+                 END IF
               END SELECT
-                           
-           END DO
+           END DO faces_prism
         END IF
 
         ! Bubbles of P Wedge
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get p from element
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs( Element, p ), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS)
+        nb = pSolver % Def_Dofs(7,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
+
+           p = getEffectiveBubbleP(element,p,bdofs)
            
-           ! For each bubble calculate value of basis function and its derivative
-           ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
-           DO i=0,p-5
-              DO j=0,p-5-i
-                 DO k=2,p-3-i-j
-                    IF ( q >= SIZE(Basis) ) CYCLE
-                    q = q + 1
+           IF(SerendipityPBasis) THEN
+             ! For each bubble calculate the value of basis function and its derivative
+             ! for index pairs i,j=0,..,p-5 k=2,..,p-3 i+j+k=2,..,p-3
+             SD_bubbles_prism: DO i=0,p-5
+                DO j=0,p-5-i
+                   DO k=2,p-3-i-j
+                      IF ( q >= SIZE(Basis) ) EXIT SD_bubbles_prism
+                      q = q + 1
 
-                    Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,:) = dWedgeBubblePBasis(i,j,k,u,v,w)
+                      Basis(q) = SD_WedgeBubblePBasis(i,j,k,u,v,w)
+                      dLBasisdx(q,:) = SD_dWedgeBubblePBasis(i,j,k,u,v,w)
+                      IF(Compute2ndDerivatives) THEN
+                        ddLBasisddx(q,:,:) = SD_ddWedgeBubblePBasis(i,j,k,u,v,w)
+                      END IF
 
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = 3+i+j+k
-                 END DO
-              END DO
-           END DO
+                      ! Polynomial degree of basis function to vector
+                      IF (degrees) BasisDegree(q) = 3+i+j+k
+                   END DO
+                END DO
+             END DO SD_bubbles_prism
+           ELSE
+             bubbles_prism: DO i=0,p-3
+                DO j=0,p-i-3
+                   DO k=0,p-2
+                      IF ( q >= SIZE(Basis) ) EXIT bubbles_prism
+                      q = q + 1
+
+                      Basis(q) = WedgeBubblePBasis(i,j,k,u,v,w)
+                      dLBasisdx(q,:) = dWedgeBubblePBasis(i,j,k,u,v,w)
+                      IF(Compute2ndDerivatives) THEN
+                        ddLBasisddx(q,:,:) = ddWedgeBubblePBasis(i,j,k,u,v,w)
+                      END IF
+
+                      ! Polynomial degree of basis function to vector
+                      IF (degrees) BasisDegree(q) = 2+i+j+k
+                   END DO
+                END DO
+             END DO bubbles_prism
+           END IF
         END IF
 
 !------------------------------------------------------------------------------
-! P element code for brick edges, faces and bubbles
+     ! P element code for bricks:
      CASE(808) 
+        p = pSolver % Def_Dofs(8,BodyId,6)
+        EDOFs = GetEdgeDOFs(Element, p)
         ! Edges of P brick
-        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
-           ! For each edge in brick, calculate values of edge functions 
-           DO i=1,12
-              Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
-
-              ! Do not solve edge dofs, if there is not any
-              IF (Edge % BDOFs <= 0) CYCLE
+        IF ( ASSOCIATED( Element % EdgeIndexes ) .AND. EDOFs > 0) THEN
+           ! For each edge i calculate the values of edge functions 
+           edges_brick: DO i=1,12
+              Edge => pSolver % Mesh % Edges( Element % EdgeIndexes(i) )
               
               ! Get local indexes of current edge
               tmp(1:2) = getBrickEdgeMap(i)
@@ -3137,96 +3904,149 @@ CONTAINS
               invert = .FALSE.
               
               ! Invert edge if local first node has greater global index than second one
-              IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
+              IF (Indexes(locali)>Indexes(localj)) invert = .TRUE.
               
-              ! For each DOF in edge calculate values of edge functions
-              ! and their derivatives for edge=i and i=k+1
-              DO k=1,Edge % BDOFs
-                 IF ( q >= SIZE(Basis) ) CYCLE
+              ! For each edge DOF k calculate the values of edge function
+              ! and its derivatives
+              DO k=1,EDOFs
+                 IF ( q >= SIZE(Basis) ) EXIT edges_brick
                  q = q + 1
 
-                 ! For edges connected to pyramid square face, use different basis
-                 IF (Edge % PDefs % pyramidQuadEdge) THEN
-                    ! Get values of edge basis functions and their derivatives
-                    Basis(q) = BrickPyraEdgePBasis(i,k+1,u,v,w,invert)
-                    dLBasisdx(q,1:3) = dBrickPyraEdgePBasis(i,k+1,u,v,w,invert)
-                 ! Normal case. Use standard brick edge functions
+                 ! Get values of edge basis functions and their derivatives
+                 IF(SerendipityPBasis) THEN
+                   Basis(q) = SD_BrickEdgePBasis(i,k+1,u,v,w,invert)
+                   dLBasisdx(q,:) = SD_dBrickEdgePBasis(i,k+1,u,v,w,invert)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = SD_ddBrickEdgePBasis(i,k+1,u,v,w,invert)
+                   END IF
                  ELSE
-                    ! Get values of edge basis functions and their derivatives
-                    Basis(q) = BrickEdgePBasis(i,k+1,u,v,w,invert)
-                    dLBasisdx(q,1:3) = dBrickEdgePBasis(i,k+1,u,v,w,invert)
+                   Basis(q) = BrickEdgePBasis(i,k+1,u,v,w,invert)
+                   dLBasisdx(q,:) = dBrickEdgePBasis(i,k+1,u,v,w,invert)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = ddBrickEdgePBasis(i,k+1,u,v,w,invert)
+                   END IF
                  END IF
 
                  ! Polynomial degree of basis function to vector
                  IF (degrees) BasisDegree(q) = 1+k
               END DO
-           END DO 
+           END DO edges_brick
         END IF
 
         ! Faces of P brick
         IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-           ! For each face in brick, calculate values of face functions
-           DO F=1,6
-              Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
-                          
-              ! Do not calculate face values if no dofs
-              IF (Face % BDOFs <= 0) CYCLE
-              
-              ! Get p for face
-              p = Face % PDefs % P
-              
-              ! Generate direction vector for this face
-              tmp(1:4) = getBrickFaceMap(F)
-              direction(1:4) = getSquareFaceDirection(Element, tmp)
-              
-              ! For each face calculate values of functions from index
-              ! pairs i,j=2,..,p-2 i+j=4,..,p
-              DO i=2,p-2
-                 DO j=2,p-i
-                    IF ( q >= SIZE(Basis) ) CYCLE
-                    q = q + 1
-                    Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
-                    dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
+          ! For each face in brick, calculate values of face functions
+          faces_brick: DO F=1,6
+             Face => pSolver % Mesh % Faces( Element % FaceIndexes(F) )
 
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = i+j
+             ! Get p for face
+             !p = MAX(pSolver % Def_Dofs(8,BodyId,6), Face % PDefs % P)
+                          
+             ! Do not calculate face values if no dofs
+             !IF (GetFaceDOFs(Element, p, F)<= 0) CYCLE
+              
+             ! Generate direction vector for this face
+             tmp(1:4) = getBrickFaceMap(F)
+             direction(1:4) = getSquareFaceDirection(Element, tmp, Indexes)
+
+             ! For each face calculate the values of functions for index
+             ! pairs i,j=2,..,p-2 i+j=4,..,p
+             IF(SerendipityPBasis) THEN
+               DO i=2,p-2
+                 DO j=2,p-i
+                   IF ( q >= SIZE(Basis) ) EXIT faces_brick
+
+                   q = q + 1
+                   Basis(q) = SD_BrickFacePBasis(F,i,j,u,v,w,direction)
+                   dLBasisdx(q,:) = SD_dBrickFacePBasis(F,i,j,u,v,w,direction)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = SD_ddBrickFacePBasis(F,i,j,u,v,w,direction)
+                   END IF
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = i+j
+                  END DO
+               END DO
+             ELSE
+               DO i=0,p-2
+                 DO j=0,p-2
+                   IF ( q >= SIZE(Basis) ) EXIT faces_brick
+ 
+                   q = q + 1
+                   Basis(q) = BrickFacePBasis(F,i,j,u,v,w,direction)
+                   dLBasisdx(q,:) = dBrickFacePBasis(F,i,j,u,v,w,direction)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = ddBrickFacePBasis(F,i,j,u,v,w,direction)
+                   END IF
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = 2+i+j
                  END DO
-              END DO
-           END DO
+               END DO
+             END IF
+          END DO faces_brick
         END IF
 
         ! Bubbles of p brick
-        IF ( Element % BDOFs > 0 ) THEN
-           ! Get p from bubble DOFs 
-           p = Element % PDefs % P
-           nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-           p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                   (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS)
+        nb = pSolver % Def_Dofs(8,BodyId,5)
+        BDOFs = MAX(GetBubbleDOFs(Element, p), nb) 
+        IF ( BDOFs > 0 ) THEN
+          p = getEffectiveBubbleP(element,p,bdofs)
 
-           
-           ! For each bubble calculate value of basis function and its derivative
-           ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
-           DO i=2,p-4
+          IF(SerendipityPBasis) THEN
+            SD_bubbles_brick: DO i=2,p-4
               DO j=2,p-i-2
-                 DO k=2,p-i-j
-                    IF ( q >= SIZE(Basis) ) CYCLE
-                    q = q + 1
-                    Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
+                DO k=2,p-i-j
+                   IF ( q >= SIZE(Basis)) EXIT SD_bubbles_brick
+                   q = q + 1
 
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = i+j+k
-                 END DO
+                   Basis(q) = SD_BrickBubblePBasis(i,j,k,u,v,w)
+                   dLBasisdx(q,:) = SD_dBrickBubblePBasis(i,j,k,u,v,w)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = SD_ddBrickBubblePBasis(i,j,k,u,v,w)
+                   END IF
+                    
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = i+j+k
+                END DO
               END DO
-           END DO
+            END DO SD_bubbles_brick
+          ELSE 
+            bubbles_brick: DO i=0,p-2
+              DO j=0,p-2
+                DO k=0,p-2
+                  IF ( q >= SIZE(Basis)) EXIT bubbles_brick
+                  q = q + 1
+
+                   Basis(q) = BrickBubblePBasis(i,j,k,u,v,w)
+                   dLBasisdx(q,:) = dBrickBubblePBasis(i,j,k,u,v,w)
+                   IF (Compute2ndDerivatives) THEN
+                     ddLBasisddx(q,:,:) = ddBrickBubblePBasis(i,j,k,u,v,w)
+                   END IF
+                    
+                   ! Polynomial degree of basis function to vector
+                   IF (degrees) BasisDegree(q) = 2+i+j+k
+                END DO
+              END DO
+            END DO bubbles_brick
+          END IF
         END IF
 
      END SELECT
      END IF ! P element flag check
 !------------------------------------------------------------------------------
 
+
      ! Element (contravariant) metric and square root of determinant
      !--------------------------------------------------------------
+     IF(Element % Status==0) THEN
+       stat = CheckMetric(q, Element, Nodes, dLBasisdx)
+       IF (stat) THEN
+         Element % Status = 1 ! good!!
+       ELSE
+         Element % Status = 2 ! bad !!
+       END IF
+     END IF
+
+     stat = .TRUE.
      IF ( .NOT. ElementMetric( q, Element, Nodes, &
            ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
         stat = .FALSE.
@@ -3248,17 +4068,9 @@ CONTAINS
 
      ! Get matrix of second derivatives, if needed:
      !---------------------------------------------
-     IF ( PRESENT(ddBasisddx) .AND. PRESENT(SecondDerivatives) ) THEN
-       IF ( SecondDerivatives ) THEN
-         NodalBasis = 0.0d0
-         ddBasisddx(1:n,:,:) = 0.0d0
-         DO q=1,n
-           NodalBasis(q) = 1.0d0
-           CALL GlobalSecondDerivatives(Element,Nodes,NodalBasis, &
-               ddBasisddx(q,:,:),u,v,w,ElmMetric,dLBasisdx )
-           NodalBasis(q) = 0.0d0
-         END DO
-       END IF
+     IF ( Compute2ndDerivatives ) THEN
+       CALL GlobalSecondDerivatives(Element,Nodes, &
+           ddBasisddx,u,v,w,ElmMetric,dLBasisdx,ddLBasisddx,q )
      END IF
 
 !------------------------------------------------------------------------------
@@ -3269,7 +4081,7 @@ CONTAINS
 !    and product of two diagonally opposed nodal basisfunctions of the
 !    corresponding (bi-,tri-)linear element for 1d-elements, quads and hexas.
 !------------------------------------------------------------------------------
-     IF ( PRESENT( Bubbles ) ) THEN
+     IF ( PRESENT( Bubbles ) .AND. .NOT. isActivePElement(Element,pSolver)) THEN
        Bubble % BDOFs = 0
        NULLIFY( Bubble % PDefs )
        NULLIFY( Bubble % EdgeIndexes )
@@ -3472,11 +4284,10 @@ CONTAINS
    !   END IF
    ! END SUBROUTINE ElementInfoVec_FreeWork
 
-! ElementInfoVec currently uses only P element definitions for basis
-! functions, even for purely nodal elements. Support for standard nodal elements
-! will be implemented in the future. 
+!
 !------------------------------------------------------------------------------
-   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, Basis, dBasisdx ) RESULT(retval)
+   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, nbmax, &
+               Basis, dBasisdx, USolver ) RESULT(retval)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -3490,6 +4301,7 @@ CONTAINS
      INTEGER, INTENT(IN) :: nbmax          !< Maximum number of basis functions to compute
      REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
      REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
+     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
      LOGICAL :: retval                             !< If .FALSE. element is degenerate. or if local storage allocation fails
 
      ! Internal work arrays (always needed)
@@ -3498,6 +4310,8 @@ CONTAINS
      REAL(KIND=dp) :: dBasisdxWrk(VECTOR_BLOCK_LENGTH,nbmax,3)
      REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
      REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
+
+     TYPE(Solver_t), POINTER :: pSolver
      
      INTEGER :: i, l, n, dim, cdim, ll, ncl, lln
      LOGICAL :: elem
@@ -3526,9 +4340,9 @@ CONTAINS
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     IF(ASSOCIATED(Element % PDefs) .OR. Element % Type % BasisFunctionDegree<2) THEN
+     IF( isPelement(Element) ) THEN
        retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
-             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx,USolver)
      ELSE
        retval = .TRUE.
        n    = Element % TYPE % NumberOfNodes
@@ -3581,7 +4395,7 @@ CONTAINS
    END FUNCTION ElementInfoVec
      
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
-      uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
+      uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx, USolver) RESULT(retval)
      IMPLICIT NONE
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
@@ -3599,7 +4413,8 @@ CONTAINS
      REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
      REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
      REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
-     LOGICAL :: retval                             !< If .FALSE. element is degenerate. or if local storage allocation fails
+     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
+     LOGICAL :: retval                    !< If .FALSE. element is degenerate. or if local storage allocation fails
 
 
      !------------------------------------------------------------------------------
@@ -3610,15 +4425,42 @@ CONTAINS
            EdgeDirection(H1Basis_MaxPElementEdgeNodes,H1Basis_MaxPElementEdges), &
            FaceDirection(H1Basis_MaxPElementFaceNodes,H1Basis_MaxPElementFaces)
 
-     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, nb, &
-           nbp, nbq, nbdxp, allocstat, ncpad, EdgeMaxDegree, FaceMaxDegree
+     INTEGER :: cdim, dim, i, j, k, l, ll, lln, ncl, ip, n, p, nb, bdofs, &
+           nbp, nbq, nbdxp, allocstat, ncpad, EdgeMaxDegree, FaceMaxDegree, BodyId
 
+     TYPE(Solver_t), POINTER :: pSolver
+     TYPE(Element_t), POINTER :: Parent
 
-     LOGICAL :: invertBubble, elem
+     LOGICAL :: invertBubble, elem, SerendipityPBasis
  
 !DIR$ ATTRIBUTES ALIGN:64::EdgeDegree, FaceDegree
 !DIR$ ATTRIBUTES ALIGN:64::EdgeDirection, FaceDirection
 !DIR$ ASSUME_ALIGNED uWrk:64, vWrk:64, wWrk:64, BasisWrk:64, dBasisdxWrk:64, DetJWrk:64, LtoGMapsWrk:64
+
+     IF( PRESENT( USolver ) ) THEN
+       pSolver => USolver
+     ELSE
+       pSolver => CurrentModel % Solver
+     END IF
+
+     BodyId = Element % BodyId
+     IF( isActivePElement(Element)) THEN
+       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+         Parent => Element % PDefs % LocalParent
+         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+       END IF
+       SerendipityPBasis = Element % PDefs % Serendipity
+     ELSE
+       IF (BodyId==0 .AND. ASSOCIATED(Element % BoundaryInfo)) THEN
+         Parent => Element % BoundaryInfo % Left
+         IF(ASSOCIATED(Parent)) BodyId = Parent % BodyId
+       END IF
+     END IF
+
+     IF (BodyId==0) THEN
+       CALL Warn('ElementBasisDegree', 'Element has no body index, assuming the index 1')
+       BodyId = 1
+     END IF
 
      retval = .TRUE.
      n    = Element % TYPE % NumberOfNodes
@@ -3655,12 +4497,15 @@ CONTAINS
          CALL H1Basis_dLineNodal(ncl, uWrk, nbmax, dBasisdxWrk, nbdxp)
 
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
+         p = pSolver % Def_Dofs(2,BodyId,6)
+         nb = pSolver % Def_Dofs(2,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+
            ! For first round of blocked loop, compute edge direction
            IF (ll==1) THEN
-             ! Compute P from bubble dofs
-             P = Element % BDOFS + 1
-
              IF (Element % PDefs % isEdge .AND. &
                    Element % NodeIndexes(1)> Element % NodeIndexes(2)) THEN
                invertBubble = .TRUE.
@@ -3701,19 +4546,20 @@ CONTAINS
          END IF
 
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
+         p = pSolver % Def_Dofs(3,BodyId,6)
+         nb = pSolver % Def_Dofs(3,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
-             ! Compute P from bubble dofs
-             P = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 - AEPS)
-
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
                CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
-                     1, &
-                     Element % NodeIndexes, &
-                     FaceDirection)
+                     1, Element % NodeIndexes, FaceDirection)
              END IF
            END IF
            IF (Element % PDefs % isEdge) THEN
@@ -3746,39 +4592,64 @@ CONTAINS
            IF (EdgeMaxDegree > 1) THEN
              nbq = nbp + SUM(EdgeDegree(1:4)-1)
              IF(nbmax >= nbq) THEN
-               CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
-                     EdgeDirection)
-               CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
-                     EdgeDirection)
+               IF(SerendipityPBasis) THEN
+                 CALL H1Basis_SD_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_SD_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+               ELSE
+                 CALL H1Basis_QuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_dQuadEdgeP(ncl, uWrk, vWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+               END IF
              END IF
            END IF
          END IF
 
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
+         p = pSolver % Def_Dofs(4,BodyId,6)
+         nb = pSolver % Def_Dofs(4,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+
+           IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
+             CALL Fatal("ElementInfoVec", &
+               "Quad bubble scheme has changed, number of bubbles is now (p-1)^2 (0,1,4,9,16,25,...)")
+           END IF
+
            ! For first round of blocked loop, compute polynomial degrees and 
            ! edge directions
            IF (ll==1) THEN
-             ! Compute P from bubble dofs
-             P = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 - AEPS )
-
              IF (Element % PDefs % isEdge) THEN
                ! Get 2D face direction
                CALL H1Basis_GetFaceDirection(Element % Type % ElementCode, &
-                     1, &
-                     Element % NodeIndexes, &
-                     FaceDirection)
+                     1,  Element % NodeIndexes,  FaceDirection)
              END IF
            END IF
 
            IF (Element % PDefs % isEdge) THEN
-             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp, &
-                   FaceDirection(1:4,1))
-             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp, &
-                   FaceDirection(1:4,1))
+             IF(SerendipityPBasis) THEN
+               CALL H1Basis_SD_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp, &
+                     FaceDirection(1:4,1))
+               CALL H1Basis_SD_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp, &
+                     FaceDirection(1:4,1))
+             ELSE
+               CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp, &
+                     FaceDirection(1:4,1))
+               CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp, &
+                     FaceDirection(1:4,1))
+             END IF
            ELSE
-             CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp)
-             CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp)
+             IF(SerendipityPBasis) THEN
+               CALL H1Basis_SD_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp)
+               CALL H1Basis_SD_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp)
+             ELSE
+               CALL H1Basis_QuadBubbleP(ncl, uWrk, vWrk, P, nbmax, BasisWrk, nbp)
+               CALL H1Basis_dQuadBubbleP(ncl, uWrk, vWrk, P, nbmax, dBasisdxWrk, nbdxp)
+             END IF
            END IF
          END IF
 
@@ -3786,6 +4657,7 @@ CONTAINS
        CASE (504)
          ! Compute nodal basis
          CALL H1Basis_TetraNodalP(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
+
          ! Compute local first derivatives
          CALL H1Basis_dTetraNodalP(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbdxp)
 
@@ -3797,10 +4669,6 @@ CONTAINS
              EdgeMaxDegree = 0
              IF( CurrentModel % Solver % Mesh % MaxEdgeDofs == 0 ) THEN
                CONTINUE             
-             ELSE IF (CurrentModel % Solver % Mesh % MinEdgeDOFs == &
-                   CurrentModel % Solver % Mesh % MaxEdgeDOFs) THEN
-               EdgeMaxDegree = Element % BDOFs+1
-               EdgeDegree(1:Element % Type % NumberOfFaces) = EdgeMaxDegree
              ELSE
                DO i=1,6
                  EdgeDegree(i) = CurrentModel % Solver % &
@@ -3877,144 +4745,92 @@ CONTAINS
          END IF
 
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
-           ! Compute P based on bubble dofs
-           nb = Element % BDOFs
-           p = CEILING( 1/3._dp*(81*nb+3*SQRT(-3._dp+729*nb**2))**(1/3._dp) + &
-                   1d0/(81*nb+3*SQRT(-3._dp+729*nb**2))**(1/3._dp)+2 - AEPS )
-
+         p = pSolver % Def_Dofs(5,BodyId,6)
+         nb = pSolver % Def_Dofs(5,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
            CALL H1Basis_TetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
            CALL H1Basis_dTetraBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
          END IF
 
-         ! TEMPORARY NONVECTORIZED PYRAMID
+       ! Pyramid
        CASE (605)
-BLOCK
-         INTEGER ::  F, locali, localj, nb, q, tmp(4), direction(4)
-         LOGICAL :: invert
-         TYPE(Element_t), POINTER :: Face, Edge
+         IF(SerendipityPBasis) THEN
+           CALL Fatal('ElementInfoVec', 'p-Pyramid not available for serendipity scheme, ' // &
+                  'please use full polynomial scheme instead.' )
+         END IF
 
-         dBasisdxWrk(1:ncl,:,:) = 0.0d0
-         BasisWrk(1:ncl,:) = 0.0d0
-         DO l=1,ncl
-           CALL NodalBasisFunctions(5, BasisWrk(l,:), element, uWrk(l), vWrk(l), wWrk(l))
-           CALL NodalFirstDerivatives(5, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l) )
+         ! Compute nodal basis
+         CALL H1Basis_PyramidNodalP(ncl, uWrk, vWrk, wWrk, nbmax, BasisWrk, nbp)
+         ! Compute local first derivatives
+         CALL H1Basis_dPYramidNodalP(ncl, uWrk, vWrk, wWrk, nbmax, dBasisdxWrk, nbdxp)
 
-           q = 5
+         IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! edge directions
+           IF (ll==1) THEN
+             CALL GetElementMeshEdgeInfo(CurrentModel % Solver % Mesh, &
+                   Element, EdgeDegree, EdgeDirection, EdgeMaxDegree)
+           END IF
 
-           ! Edges of P Pyramid
-           IF (ASSOCIATED( Element % EdgeIndexes ) ) THEN
-             ! For each edge in wedge, calculate values of edge functions
-             DO i=1,8
-                Edge => CurrentModel % Solver % Mesh % Edges( Element % EdgeIndexes(i) )
- 
-                ! Do not solve edge dofs, if there is not any
-                IF (Edge % BDOFs <= 0) CYCLE
-              
-                ! Get local indexes of current edge
-                tmp(1:2) = getPyramidEdgeMap(i)
-                locali = tmp(1)
-                localj = tmp(2)
+           ! Compute basis function values
+           IF (EdgeMaxDegree > 1)THEN
+             nbq = nbp+SUM(EdgeDegree(1:8)-1)
+             IF(nbmax >= nbq) THEN
+               CALL H1Basis_PyramidEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                     EdgeDirection)
 
-                ! Determine edge direction
-                invert = .FALSE.
-              
-                ! Invert edge if local first node has greater global index than second one
-                IF ( Element % NodeIndexes(locali) > Element % NodeIndexes(localj) ) invert = .TRUE.
+               CALL H1Basis_dPyramidEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                     EdgeDirection)
+             END IF
+           END IF
+         END IF
 
-                ! For each DOF in edge calculate values of edge functions
-                ! and their derivatives for edge=i and i=k+1
-                DO k=1,Edge % BDOFs
-                   IF ( q >= SIZE(BasisWrk,2) ) CYCLE
-                   q = q + 1
+         IF (ASSOCIATED( Element % FaceIndexes )) THEN
+           ! For first round of blocked loop, compute polynomial degrees and 
+           ! face directions
+           IF (ll==1) THEN
+             CALL GetElementMeshFaceInfo(CurrentModel % Solver % Mesh, &
+                   Element, FaceDegree, FaceDirection, FaceMaxDegree)
+           END IF
 
-                   ! Get values of edge basis functions and their derivatives
-                   BasisWrk(l,q) = PyramidEdgePBasis(i,k+1,uwrk(l),vwrk(l),wwrk(l),invert)
-                   dBasisdxWrk(l,q,1:3) = dPyramidEdgePBasis(i,k+1,uwrk(l),vwrk(l),wwrk(l),invert)
-                END DO
+           ! Compute basis function values
+           IF (FaceMaxDegree > 1 ) THEN
+             nbq = nbp
+             ! Square faces
+             DO i=1,1
+               DO j=0,FaceDegree(i)-2
+                 nbq = nbq + MAX(FaceDegree(i)-1,0)
+               END DO
              END DO
+
+             ! Triangle faces
+             DO i=2,5
+               DO j=0,FaceDegree(i)-3
+                 nbq = nbq + MAX(FaceDegree(i)-j-2,0)
+               END DO
+             END DO
+             
+             IF(nbmax >= nbq) THEN
+               CALL H1Basis_PyramidFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
+                     FaceDirection)
+               CALL H1Basis_dPyramidFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
+                     FaceDirection)
+             END IF
            END IF
-        
-           ! Faces of P Pyramid
-           IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
-              ! For each face in pyramid, calculate values of face functions
-              DO F=1,5
-                 Face => CurrentModel % Solver % Mesh % Faces( Element % FaceIndexes(F) )
+         END IF
 
-                 ! Do not solve face dofs, if there is not any
-                 IF ( Face % BDOFs <= 0) CYCLE
-              
-                 ! Get face p
-                 p = Face % PDefs % P 
-              
-                 ! Handle triangle and square faces separately
-                 SELECT CASE(F)
-                 CASE (1)
-                    direction = 0
-                    ! Get global direction vector for enforcing parity
-                    tmp(1:4) = getPyramidFaceMap(F)
-                    direction(1:4) = getSquareFaceDirection( Element, tmp(1:4) )
-                 
-                    ! For each face calculate values of functions from index
-                    ! pairs i,j=2,..,p-2 i+j=4,..,p
-                    DO i=2,p-2
-                       DO j=2,p-i
-                          IF ( q >= SIZE(BasisWrk,2) ) CYCLE
-                          q = q + 1
-                       
-                          BasisWrk(l,q) = PyramidFacePBasis(F,i,j,uwrk(l),vwrk(l),wwrk(l),direction)
-                          dBasisdxWrk(l,q,:) = dPyramidFacePBasis(F,i,j,uwrk(l),vwrk(l),wwrk(l),direction)
-                       END DO
-                    END DO
+         ! Element bubble functions
+         p = pSolver % Def_Dofs(6,BodyId,6)
+         nb = pSolver % Def_Dofs(6,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
 
-                 CASE (2,3,4,5)
-                    direction = 0
-                    ! Get global direction vector for enforcing parity
-                    tmp(1:4) = getPyramidFaceMap(F) 
-                    direction(1:3) = getTriangleFaceDirection( Element, tmp(1:3) )
-                 
-                    ! For each face calculate values of functions from index
-                    ! pairs i,j=0,..,p-3 i+j=0,..,p-3
-                    DO i=0,p-3
-                       DO j=0,p-i-3
-                          IF ( q >= SIZE(BasisWrk,2) ) CYCLE
-                          q = q + 1
-
-                          BasisWrk(l,q) = PyramidFacePBasis(F,i,j,uwrk(l),vwrk(l),wwrk(l),direction)
-                          dBasisdxWrk(l,q,:) = dPyramidFacePBasis(F,i,j,uwrk(l),vwrk(l),wwrk(l),direction)
-                       END DO
-                    END DO
-                 END SELECT    
-              END DO
-           END IF
-
-           ! Bubbles of P Pyramid
-           IF (Element % BDOFs > 0) THEN 
-              ! Get element p
-              p = Element % PDefs % p
-              nb = MAX( GetBubbleDOFs(Element, p), Element % BDOFs )
-              p=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0/ &
-                      (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
-
-              ! Calculate value of bubble functions from indexes
-              ! i,j,k=0,..,p-4 i+j+k=0,..,p-4
-              DO i=0,p-4
-                 DO j=0,p-i-4
-                    DO k=0,p-i-j-4
-                       IF ( q >= SIZE(BasisWrk,2)) CYCLE
-                       q = q + 1
- 
-                       BasisWrk(l,q) = PyramidBubblePBasis(i,j,k,uwrk(l),vwrk(l),wwrk(l))
-                       dBasisdxWrk(l,q,:) = dPyramidBubblePBasis(i,j,k,uwrk(l),vwrk(l),wwrk(l))
-                    END DO
-                 END DO
-              END DO
-           END IF
-         END DO
-         
-         nbp = q
-!------------------------------------------------------------------------------
-END BLOCK
+           CALL H1Basis_PyramidBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+           CALL H1Basis_dPyramidBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+         END IF
 
 
          ! WEDGE
@@ -4036,10 +4852,17 @@ END BLOCK
            IF (EdgeMaxDegree > 1)THEN
              nbq = nbp+SUM(EdgeDegree(1:9)-1)
              IF(nbmax >= nbq) THEN
-               CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
-                     EdgeDirection)
-               CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
-                     EdgeDirection)
+               IF(SerendipityPBasis) THEN
+                 CALL H1Basis_SD_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_SD_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+               ELSE
+                 CALL H1Basis_WedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_dWedgeEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+               END IF
              END IF
            END IF
          END IF
@@ -4063,30 +4886,46 @@ END BLOCK
              END DO
              ! Square faces
              DO i=3,5
-               DO j=2,FaceDegree(i)-2
-                 nbq = nbq + MAX(FaceDegree(i)-j-1,0)
-               END DO
+               IF(SerendipityPBasis) THEN
+                 DO j=2,FaceDegree(i)-2
+                   nbq = nbq + MAX(FaceDegree(i)-j-1,0)
+                 END DO
+               ELSE
+                 DO j=0,FaceDegree(i)-2
+                   nbq = nbq + MAX(FaceDegree(i)-1,0)
+                 END DO
+               END IF
              END DO
              
              IF(nbmax >= nbq) THEN
-               CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
-                     FaceDirection)
-               CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
-                     FaceDirection)
+               IF(SerendipityPBasis) THEN
+                 CALL H1Basis_SD_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
+                       FaceDirection)
+                 CALL H1Basis_SD_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       FaceDirection)
+               ELSE
+                 CALL H1Basis_WedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
+                       FaceDirection)
+                 CALL H1Basis_dWedgeFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       FaceDirection)
+               END IF
              END IF
            END IF
          END IF
 
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
-           ! Compute P from bubble dofs
-           P=CEILING(1/3d0*(81*(Element % BDOFS) + &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
-                 1d0/(81*(Element % BDOFS)+ &
-                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3 - AEPS)
-
-           CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
-           CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+         p = pSolver % Def_Dofs(7,BodyId,6)
+         nb = pSolver % Def_Dofs(7,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+           IF(SerendipityPBasis) THEN
+             CALL H1Basis_SD_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_SD_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+           ELSE
+             CALL H1Basis_WedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_dWedgeBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+           END IF
          END IF
 
          ! HEXAHEDRON
@@ -4108,10 +4947,17 @@ END BLOCK
            IF (EdgeMaxDegree > 1) THEN
              nbq = nbp + SUM(EdgeDegree(1:12)-1)
              IF(nbmax >= nbq) THEN
-               CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
-                     EdgeDirection)
-               CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
-                     EdgeDirection)
+               IF(SerendipityPBasis) THEN
+                 CALL H1Basis_SD_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_SD_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+               ELSE
+                 CALL H1Basis_BrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, BasisWrk, nbp, &
+                       EdgeDirection)
+                 CALL H1Basis_dBrickEdgeP(ncl, uWrk, vWrk, wWrk, EdgeDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       EdgeDirection)
+              END IF
              END IF
            END IF
          END IF
@@ -4135,23 +4981,41 @@ END BLOCK
              END DO
 
              IF(nbmax >= nbq) THEN
-               CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
-                     FaceDirection)
-               CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
-                     FaceDirection)
+               IF(SerendipityPBasis) THEN
+                 CALL H1Basis_SD_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
+                       FaceDirection)
+                 CALL H1Basis_SD_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       FaceDirection)
+               ELSE
+                 CALL H1Basis_BrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, BasisWrk, nbp, &
+                       FaceDirection)
+                 CALL H1Basis_dBrickFaceP(ncl, uWrk, vWrk, wWrk, FaceDegree, nbmax, dBasisdxWrk, nbdxp, &
+                       FaceDirection)
+               END IF
              END IF
            END IF
          END IF
 
          
          ! Element bubble functions
-         IF (Element % BDOFS > 0) THEN 
-           ! Compute P from bubble dofs
-           P=CEILING(1/3d0*(81*Element % BDOFS + &
-                 3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0) + &
-                 1d0/(81*Element % BDOFS+3*SQRT(-3d0+729*Element % BDOFS**2))**(1/3d0)+4 - AEPS)
-           CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
-           CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+         p = pSolver % Def_Dofs(8,BodyId,6)
+         nb = pSolver % Def_Dofs(8,BodyId,5)
+         BDOFs = MAX(GetBubbleDOFs(Element, p), nb)
+         IF (BDOFs > 0) THEN
+           p = getEffectiveBubbleP(element,p,bdofs)
+
+           IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
+             CALL Fatal("ElementInfoVec", &
+                "Brick bubble scheme has changed, number of bubbles is now (p-1)^3 (1,8,27,64,125,...)")
+           END IF
+
+           IF(SerendipityPBasis) THEN
+             CALL H1Basis_SD_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_SD_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+           ELSE
+             CALL H1Basis_BrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, BasisWrk, nbp)
+             CALL H1Basis_dBrickBubbleP(ncl, uWrk, vWrk, wWrk, P, nbmax, dBasisdxWrk, nbdxp)
+           END IF
          END IF
 
          
@@ -4354,28 +5218,38 @@ END BLOCK
 
      SELECT CASE ( family )
        
-       CASE ( 1 )
+       CASE ( 1 ) ! node
          DetJ = 1.0_dp
          RETURN
 
-       CASE ( 2 )
+       CASE ( 2 ) ! line
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 3 )
+       CASE ( 3 ) ! tri
          u = 0.5_dp
          v = 0.5_dp
          
-       CASE ( 4 )
+       CASE ( 4 ) ! quad
          u = 0.0_dp
          v = 0.0_dp
 
-       CASE ( 5 )
+       CASE ( 5 ) ! tet
          u = 0.5_dp
          v = 0.5_dp
          w = 0.5_dp
 
-       CASE ( 8 ) 
+       CASE ( 6 ) ! pyramid
+         u = 0.0_dp
+         v = 0.0_dp
+         w = 0.0_dp
+
+       CASE ( 7 ) ! wedge
+         u = 0.5_dp
+         v = 0.5_dp
+         w = 0.0_dp
+
+       CASE ( 8 ) ! hex
          u = 0.0_dp
          v = 0.0_dp
          w = 0.0_dp
@@ -4430,23 +5304,25 @@ END BLOCK
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
+       INTEGER, PARAMETER :: MaxDOFs = 48 ! The largest DOF count handled, revise when new elements are added
+
        TYPE(Mesh_t), POINTER :: Mesh
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
        INTEGER :: SquareFaceMap(4)
        INTEGER :: DOFs
        INTEGER :: n, dim, q, i, j, k, ni, nj, nk, I1, I2
-       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndices(4)
+       INTEGER :: FDofMap(6,4), DofsPerFace, FaceIndices(4)
        REAL(KIND=dp) :: LF(3,3)
-       REAL(KIND=dp) :: DivBasis(12) ! Note the hard-coded size, alter if new elements are added
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2
-       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)
+       REAL(KIND=dp) :: DivBasis(MaxDOFs)
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2, fun, dfun
+       REAL(KIND=dp) :: WorkBasis(24,3), WorkDivBasis(24)
 
-       LOGICAL :: RevertSign(4), CreateBDMBasis, Parallel
+       LOGICAL :: ReverseSign(6), CreateBDMBasis, Parallel
        LOGICAL :: CreateDualBasis
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        !--------------------------------------------------------------------
        ! Check whether BDM or dual basis functions should be created and 
@@ -4500,6 +5376,11 @@ END BLOCK
              Basis(q) = TetraNodalPBasis(q, u, v, w)
              dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
           END DO
+       CASE(8)
+         DO q=1,n
+           Basis(q) = BrickNodalPBasis(q, u, v, w)
+           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+         END DO
        CASE DEFAULT
           CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT          
@@ -4539,7 +5420,7 @@ END BLOCK
           !-----------------------------------------------------------------------------------
           ! Check first whether a sign reversion will be needed as face dofs have orientation.
           !-----------------------------------------------------------------------------------
-          CALL FaceElementOrientation(Element, RevertSign)
+          CALL FaceElementOrientation(Element, ReverseSign)
 
           IF (CreateBDMBasis) THEN
              !----------------------------------------------------------------------------
@@ -4585,7 +5466,7 @@ END BLOCK
              ! Now do the reordering and sign reversion:
              !-----------------------------------------------------
              DO q=1,3
-               IF (RevertSign(q)) THEN
+               IF (ReverseSign(q)) THEN
                  DO j=1,DofsPerFace
                    i = (q-1)*DofsPerFace + j
                    WorkBasis(j,1:2) = FBasis(i,1:2)
@@ -4606,7 +5487,7 @@ END BLOCK
              FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
              FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
              DivBasis(1) =  SQRT(3.0d0)/3.0d0
-             IF (RevertSign(1)) THEN
+             IF (ReverseSign(1)) THEN
                FBasis(1,:) = -FBasis(1,:)
                DivBasis(1) = -DivBasis(1)
              END IF
@@ -4614,7 +5495,7 @@ END BLOCK
              FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
              FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(2) =  SQRT(3.0d0)/3.0d0        
-             IF (RevertSign(2)) THEN
+             IF (ReverseSign(2)) THEN
                FBasis(2,:) = -FBasis(2,:)
                DivBasis(2) = -DivBasis(2)
              END IF
@@ -4622,7 +5503,7 @@ END BLOCK
              FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
              FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(3) =  SQRT(3.0d0)/3.0d0          
-             IF (RevertSign(3)) THEN
+             IF (ReverseSign(3)) THEN
                FBasis(3,:) = -FBasis(3,:)
                DivBasis(3) = -DivBasis(3)
              END IF
@@ -4826,10 +5707,10 @@ END BLOCK
           ! This branch is for handling tetrahedra
           !-----------------------------------------------------------------------------------
           ! Check first whether a sign reversion will be needed as face dofs have orientation.
-          ! If the sign is not reverted, the positive value of the degree of freedom produces
+          ! If the sign is not reversed, the positive value of the degree of freedom produces
           ! positive outward flux from the element through the face handled.
           !-----------------------------------------------------------------------------------
-          CALL FaceElementOrientation(Element, RevertSign)
+          CALL FaceElementOrientation(Element, ReverseSign)
 
           IF (CreateBDMBasis) THEN
              DOFs = 12
@@ -4838,62 +5719,62 @@ END BLOCK
              ! Create a table of BDM basis functions in the default order
              !----------------------------------------------------------------------------
              ! Face {213}:
-             BDMBasis(1,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(1,2) = (-2*Sqrt(2.0d0) - 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
-             BDMBasis(1,3) = (-8 - 12*u + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(1,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(1,2) = (-2*Sqrt(2.0d0) - 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
+             WorkBasis(1,3) = (-8 - 12*u + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
-             BDMBasis(2,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
-             BDMBasis(2,2) = (-2*Sqrt(2.0d0) + 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
-             BDMBasis(2,3) = u + (-8 + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(2,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
+             WorkBasis(2,2) = (-2*Sqrt(2.0d0) + 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
+             WorkBasis(2,3) = u + (-8 + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
-             BDMBasis(3,1) = -u/(2.0*Sqrt(6.0d0))
-             BDMBasis(3,2) = (Sqrt(2.0d0) + 3*Sqrt(6.0d0)*v - 2*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(3,3) = (4 - 8*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(3,1) = -u/(2.0*Sqrt(6.0d0))
+             WorkBasis(3,2) = (Sqrt(2.0d0) + 3*Sqrt(6.0d0)*v - 2*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(3,3) = (4 - 8*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
              ! Face {124}:
-             BDMBasis(4,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
-             BDMBasis(4,2) = (-6*Sqrt(2.0d0) + 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(4,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(5,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(5,2) = (-6*Sqrt(2.0d0) - 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(5,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(6,1) = -u/(2.0*Sqrt(6.0d0))
-             BDMBasis(6,2) = (3*Sqrt(2.0d0) - Sqrt(6.0d0)*v - 6*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(6,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(4,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
+             WorkBasis(4,2) = (-6*Sqrt(2.0d0) + 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(4,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(5,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(5,2) = (-6*Sqrt(2.0d0) - 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(5,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(6,1) = -u/(2.0*Sqrt(6.0d0))
+             WorkBasis(6,2) = (3*Sqrt(2.0d0) - Sqrt(6.0d0)*v - 6*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(6,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              ! Face {234}:
-             BDMBasis(7,1) = (5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v - 6*w)/12.0
-             BDMBasis(7,2) = -v/(2.0*Sqrt(6.0d0))
-             BDMBasis(7,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(8,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(8,2) = (5*Sqrt(6.0)*v - 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(8,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(9,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 9*w)/12.0
-             BDMBasis(9,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(9,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(7,1) = (5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v - 6*w)/12.0
+             WorkBasis(7,2) = -v/(2.0*Sqrt(6.0d0))
+             WorkBasis(7,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(8,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(8,2) = (5*Sqrt(6.0)*v - 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(8,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(9,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 9*w)/12.0
+             WorkBasis(9,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(9,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              ! Face {314}:             
-             BDMBasis(10,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v + 3*w)/12.0
-             BDMBasis(10,2) = (5*Sqrt(6.0d0)*v - 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(10,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(11,1) = (-5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v + 6*w)/12.0
-             BDMBasis(11,2) = -v/(2.0*Sqrt(6.0d0))
-             BDMBasis(11,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(12,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 9*w)/12.0
-             BDMBasis(12,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(12,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(10,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v + 3*w)/12.0
+             WorkBasis(10,2) = (5*Sqrt(6.0d0)*v - 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(10,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(11,1) = (-5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v + 6*w)/12.0
+             WorkBasis(11,2) = -v/(2.0*Sqrt(6.0d0))
+             WorkBasis(11,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(12,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 9*w)/12.0
+             WorkBasis(12,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(12,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              !----------------------------------------------------------------------
              ! Find out how face basis functions must be ordered so that the global
              ! indexing convention is respected. 
              !-----------------------------------------------------------------------
-             CALL FaceElementBasisOrdering(Element, FDofMap)
+             CALL FaceElementBasisOrdering(Element, FDofMap(1:4,1:3))
 
              !-----------------------------------------------------
              ! Now do the actual reordering and sign reversion
              !-----------------------------------------------------
              DO q=1,4
-                IF (RevertSign(q)) THEN
+                IF (ReverseSign(q)) THEN
                    S = -1.0d0
                 ELSE
                    S = 1.0d0
@@ -4902,7 +5783,7 @@ END BLOCK
                 DO j=1,DofsPerFace
                    k = FDofMap(q,j)
                    i = (q-1)*DofsPerFace + j
-                   FBasis(i,:) = S * BDMBasis((q-1)*DofsPerFace+k,:)
+                   FBasis(i,:) = S * WorkBasis((q-1)*DofsPerFace+k,:)
                    DivBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
                 END DO
              END DO
@@ -4916,7 +5797,7 @@ END BLOCK
              FBasis(1,2) = -SQRT(6.0d0)/12.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(1,3) = -1.0d0/SQRT(3.0d0) + SQRT(2.0d0)/4.0d0 * w
              DivBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(1) ) THEN
+             IF ( ReverseSign(1) ) THEN
                 FBasis(1,:) = -FBasis(1,:)
                 DivBasis(1) = -DivBasis(1)
              END IF
@@ -4925,7 +5806,7 @@ END BLOCK
              FBasis(2,2) = -SQRT(6.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(2,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(2) ) THEN
+             IF ( ReverseSign(2) ) THEN
                 FBasis(2,:) = -FBasis(2,:)
                 DivBasis(2) = -DivBasis(2)
              END IF
@@ -4934,7 +5815,7 @@ END BLOCK
              FBasis(3,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(3,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(3) ) THEN
+             IF ( ReverseSign(3) ) THEN
                 FBasis(3,:) = -FBasis(3,:)
                 DivBasis(3) = -DivBasis(3)
              END IF
@@ -4943,11 +5824,158 @@ END BLOCK
              FBasis(4,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(4,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(4) ) THEN
+             IF ( ReverseSign(4) ) THEN
                 FBasis(4,:) = -FBasis(4,:)
                 DivBasis(4) = -DivBasis(4)
              END IF
           END IF
+       CASE(8)
+         !--------------------------------------------------------------
+         ! This branch is for handling brick elements
+         !--------------------------------------------------------------  
+         ! Check first whether a sign reverse will be needed.
+         ! If the sign is not reversed, the positive value of the degree of freedom produces
+         ! positive outward flux from the element through the face handled.
+         !-----------------------------------------------------------------------------------
+         CALL FaceElementOrientation(Element, ReverseSign)
+
+         DOFs = 48   ! 4 DOFs per face and 24 elementwise DOFs
+         DofsPerFace = 4
+         WorkBasis = 0.0d0
+
+         !
+         ! Face 2143:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(q,3) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), u, v) * LineNodalPBasis(1, w)
+           WorkDivBasis(q) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), u, v) * dLineNodalPBasis(1, w)
+         END DO
+
+         !
+         ! Face 5678:
+         !
+         DO q=1,4
+           WorkBasis(4+q,3) = QuadNodalPBasis(q, u, v) * LineNodalPBasis(2, w)
+           WorkDivBasis(4+q) = QuadNodalPBasis(q, u, v) * dLineNodalPBasis(2, w)
+         END DO
+         
+         !
+         ! Face 1265:
+         !         
+         DO q=1,4
+           WorkBasis(8+q,2) = -1.0d0 * QuadNodalPBasis(q, u, w) * LineNodalPBasis(1, v)
+           WorkDivBasis(8+q) = -1.0d0 * QuadNodalPBasis(q, u, w) * dLineNodalPBasis(1, v)
+         END DO
+
+         !
+         ! Face 2376:
+         !         
+         DO q=1,4
+           WorkBasis(12+q,1) = QuadNodalPBasis(q, v, w) * LineNodalPBasis(2, u)
+           WorkDivBasis(12+q) = QuadNodalPBasis(q, v, w) * dLineNodalPBasis(2, u)
+         END DO
+
+         !
+         ! Face 3487:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(16+q,2) = QuadNodalPBasis(SquareFaceMap(q), u, w) * LineNodalPBasis(2, v)
+           WorkDivBasis(16+q) = QuadNodalPBasis(SquareFaceMap(q), u, w) * dLineNodalPBasis(2, v)
+         END DO
+
+         !
+         ! Face 4152:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(20+q,1) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), v, w) * LineNodalPBasis(1, u)
+           WorkDivBasis(20+q) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), v, w) * dLineNodalPBasis(1, u)
+         END DO
+
+         !----------------------------------------------------------------------
+         ! Find out how face basis functions must be ordered so that the global
+         ! indexing convention is respected. 
+         !-----------------------------------------------------------------------
+         CALL FaceElementBasisOrdering(Element, FDofMap(1:6,1:4))
+
+         !-----------------------------------------------------
+         ! Now do the actual reordering and sign reverses
+         !-----------------------------------------------------
+         DO q=1,6
+           IF (ReverseSign(q)) THEN
+             S = -1.0d0
+           ELSE
+             S = 1.0d0
+           END IF
+
+           DO j=1,DofsPerFace
+             k = FDofMap(q,j)
+             i = (q-1)*DofsPerFace + j
+             FBasis(i,:) = S * WorkBasis((q-1)*DofsPerFace+k,:)
+             DivBasis(i) = S * WorkDivBasis((q-1)*DofsPerFace+k)
+           END DO
+         END DO
+
+         !
+         ! 24 interior basis functions (8 per coordinate direction)
+         !
+         k = 24
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * u
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,1) = QuadNodalPBasis(q, v, w) * LineNodalPBasis(1, u) * LineNodalPBasis(2, u) * fun
+             DivBasis(k) = QuadNodalPBasis(q, v, w) * ( dLineNodalPBasis(1, u) * LineNodalPBasis(2, u) * fun + &
+                 LineNodalPBasis(1, u) * dLineNodalPBasis(2, u) * fun + &
+                 LineNodalPBasis(1, u) * LineNodalPBasis(2, u) * dfun )
+           END DO
+         END DO
+
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * v
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,2) = QuadNodalPBasis(q, u, w) * LineNodalPBasis(1, v) * LineNodalPBasis(2, v) * fun
+             DivBasis(k) = QuadNodalPBasis(q, u, w) * ( dLineNodalPBasis(1, v) * LineNodalPBasis(2, v) * fun + &
+                 LineNodalPBasis(1, v) * dLineNodalPBasis(2, v) * fun + &
+                 LineNodalPBasis(1, v) * LineNodalPBasis(2, v) * dfun )
+           END DO
+         END DO
+
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * w
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,3) = QuadNodalPBasis(q, u, v) * LineNodalPBasis(1, w) * LineNodalPBasis(2, w) * fun
+             DivBasis(k) = QuadNodalPBasis(q, u, v) * ( dLineNodalPBasis(1, w) * LineNodalPBasis(2, w) * fun + &
+                 LineNodalPBasis(1, w) * dLineNodalPBasis(2, w) * fun + &
+                 LineNodalPBasis(1, w) * LineNodalPBasis(2, w) * dfun )
+           END DO
+         END DO
+
        CASE DEFAULT
           CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT
@@ -5028,16 +6056,16 @@ END BLOCK
 
 !-----------------------------------------------------------------------------------
 !> Get information about whether a sign reversion will be needed to obtain right
-!> DOFs for face (vector) elements. If the sign is not reverted, the positive value of 
+!> DOFs for face (vector) elements. If the sign is not reversed, the positive value of 
 !> the degree of freedom produces positive outward flux from the element through 
 !> the face handled.
 !-----------------------------------------------------------------------------------
-SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
+SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D/2-D element having 2-D/1-D faces 
-  LOGICAL, INTENT(OUT) :: RevertSign(:)        !< Face-wise information about the sign reversions
+  LOGICAL, INTENT(OUT) :: ReverseSign(:)       !< Face-wise information about the sign reversions
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
   TYPE(Nodes_t), OPTIONAL :: Nodes             !< An inactive variable related to code verification
 !-----------------------------------------------------------------------------------
@@ -5045,16 +6073,16 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
   LOGICAL :: Parallel
   
   INTEGER, POINTER :: FaceMap(:,:), Ind(:)
-  INTEGER, TARGET :: TetraFaceMap(4,3)
+  INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4)
   INTEGER :: FaceIndices(4)
   INTEGER :: j, q, first_face, last_face
 
   ! Some inactive variables that were used in the code verification
-  LOGICAL :: RevertSign2(4), CheckSignReversions
-  INTEGER :: i, k, A, B, C, D
-  REAL(KIND=dp) :: t1(3), t2(3), m(3), e(3)
+  LOGICAL :: ReverseSign2(4), CheckSignReversions
+  INTEGER :: i, k, A, B, C, D, I1, I2
+  REAL(KIND=dp) :: t1(3), t2(3), m(3), e(3), D1, D2
 !-----------------------------------------------------------------------------------
-  RevertSign(:) = .FALSE.
+  ReverseSign(:) = .FALSE.
 
   IF (PRESENT(FaceIndex)) THEN
     first_face = FaceIndex
@@ -5064,7 +6092,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
@@ -5072,7 +6100,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     FaceMap => GetEdgeMap(3) 
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 3
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
     
     DO q=first_face,last_face
@@ -5085,14 +6113,14 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         END DO
       END IF
 
-      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+      IF (FaceIndices(2) < FaceIndices(1)) ReverseSign(q) = .TRUE.
     END DO
 
   CASE(4)
     FaceMap => GetEdgeMap(4)
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 4
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
     
     DO q=first_face,last_face
@@ -5105,7 +6133,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         END DO
       END IF
 
-      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+      IF (FaceIndices(2) < FaceIndices(1)) ReverseSign(q) = .TRUE.
     END DO
 
   CASE(5)
@@ -5117,7 +6145,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     FaceMap => TetraFaceMap
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 4
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
 
     DO q=first_face,last_face
@@ -5132,15 +6160,15 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
              
       IF ( (FaceIndices(1) < FaceIndices(2)) .AND. (FaceIndices(1) < FaceIndices(3)) ) THEN
         IF (FaceIndices(3) < FaceIndices(2)) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       ELSE IF ( ( FaceIndices(2) < FaceIndices(1) ) .AND. ( FaceIndices(2) < FaceIndices(3) ) ) THEN
         IF ( FaceIndices(1) < FaceIndices(3) ) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       ELSE  
         IF ( FaceIndices(2) < FaceIndices(1) ) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       END IF
     END DO
@@ -5152,7 +6180,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     CheckSignReversions = .FALSE.
     IF (CheckSignReversions) THEN
       DO q=1,4
-        RevertSign2(q) = .FALSE.
+        ReverseSign2(q) = .FALSE.
         i = FaceMap(q,1)
         j = FaceMap(q,2)
         k = FaceMap(q,3)
@@ -5211,17 +6239,48 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         e(2) = Nodes % y(D) - Nodes % y(A)                
         e(3) = Nodes % z(D) - Nodes % z(A)  
 
-        IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) RevertSign2(q) = .TRUE.
+        IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) ReverseSign2(q) = .TRUE.
 
       END DO
 
-      IF ( ANY(RevertSign(1:4) .NEQV. RevertSign2(1:4)) ) THEN
+      IF ( ANY(ReverseSign(1:4) .NEQV. ReverseSign2(1:4)) ) THEN
         PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
-        PRINT *, RevertSign(1:4)
-        PRINT *, RevertSign2(1:4)
+        PRINT *, ReverseSign(1:4)
+        PRINT *, ReverseSign2(1:4)
         STOP EXIT_ERROR
       END IF
     END IF
+
+  CASE(8)
+    !
+    ! Write the face map such that by default the normal points outwards
+    ! from the brick:
+    !
+    BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+    BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+    BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+    BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+    BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+    BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+    FaceMap => BrickFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 6
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
+        'Too small array for listing element faces')
+
+    DO q=first_face,last_face
+      DO j=1,4
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,4
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+    
+      CALL SquareFaceDofsOrdering(I1, I2, D1, D2, FaceIndices(1:4), ReverseSign(q))
+    END DO
 
   CASE DEFAULT
     CALL Fatal('FaceElementOrientation', 'Unsupported element family')
@@ -5233,23 +6292,25 @@ END SUBROUTINE FaceElementOrientation
 !-----------------------------------------------------------------------------------
 !> This subroutine produces information about how the basis functions of face (vector)
 !> elements have to be reordered to conform with the global ordering convention.
-!> Currently this can handle only the tetrahedron of Nedelec's second family.
 !-----------------------------------------------------------------------------------
-SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
+SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces
-  INTEGER, INTENT(OUT) :: FDofMap(4,3)         !< Face-wise information for the basis permutation  
+  INTEGER, INTENT(OUT) :: FDofMap(:,:)         !< Face-wise information for the basis permutation  
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
+  LOGICAL, OPTIONAL, INTENT(OUT) :: ReverseSign(:) !< For bricks face-wise information about the sign reversions
 !-----------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh 
   LOGICAL :: Parallel
+  LOGICAL :: ReverseNormal(6)
   INTEGER, POINTER :: FaceMap(:,:), Ind(:)
-  INTEGER, TARGET :: TetraFaceMap(4,3), FaceIndices(4)
-  INTEGER :: j, q, first_face, last_face
+  INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4), FaceIndices(4)
+  INTEGER :: i, j, k, l, q, first_face, last_face
 !-----------------------------------------------------------------------------------
-  FDofMap(4,3) = 0
+  FDofMap = 0
+  ReverseNormal(:) = .FALSE.
 
   IF (PRESENT(FaceIndex)) THEN
     first_face = FaceIndex
@@ -5259,11 +6320,14 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
   END IF
 
   Mesh => CurrentModel % Solver % Mesh
-  Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+  Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
   Ind => Element % NodeIndexes
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
   CASE(5)
+    !
+    ! This handles the tetrahedron of Nedelec's second family
+    !
     TetraFaceMap(1,:) = (/ 2, 1, 3 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4 /)
     TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
@@ -5312,6 +6376,106 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
         END IF
       END IF
     END DO
+
+  CASE(8)
+    !
+    ! Write the face map such that by default the normal points outwards
+    ! from the brick:
+    !
+    BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+    BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+    BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+    BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+    BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+    BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+    FaceMap => BrickFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 6
+
+    DO q=first_face,last_face
+      DO j=1,4
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,4
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+    
+!      CALL SquareFaceDofsOrdering(I1, I2, D1, D2, FaceIndices(1:4), ReverseSign(q))
+
+      i = 1
+      j = 2
+      IF ( FaceIndices(i) < FaceIndices(j) ) THEN
+        k = i
+      ELSE
+        k = j
+      END IF
+      i = 4
+      j = 3 
+      IF ( FaceIndices(i) < FaceIndices(j) ) THEN
+        l = i
+      ELSE
+        l = j
+      END IF
+      IF ( FaceIndices(k) > FaceIndices(l) ) THEN
+        k = l
+      END IF
+!      A = k
+
+      SELECT CASE(k)
+      CASE(1)
+        FDofMap(q,1) = 1
+        FDofMap(q,3) = 3
+        IF ( FaceIndices(2) < FaceIndices(4) ) THEN
+          FDofMap(q,2) = 2
+          FDofMap(q,4) = 4
+        ELSE
+          FDofMap(q,2) = 4
+          FDofMap(q,4) = 2
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(2)
+        FDofMap(q,2) = 1
+        FDofMap(q,4) = 3
+        IF ( FaceIndices(3) < FaceIndices(1) ) THEN
+          FDofMap(q,1) = 4
+          FDofMap(q,3) = 2
+        ELSE
+          FDofMap(q,1) = 2
+          FDofMap(q,3) = 4
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(3)
+        FDofMap(q,3) = 1
+        FDofMap(q,1) = 3
+        IF ( FaceIndices(4) < FaceIndices(2) ) THEN
+          FDofMap(q,2) = 4
+          FDofMap(q,4) = 2
+        ELSE
+          FDofMap(q,2) = 2
+          FDofMap(q,4) = 4
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(4)
+        FDofMap(q,4) = 1
+        FDofMap(q,2) = 3
+        IF ( FaceIndices(1) < FaceIndices(3) ) THEN
+          FDofMap(q,1) = 2
+          FDofMap(q,3) = 4
+        ELSE
+          FDofMap(q,1) = 4
+          FDofMap(q,3) = 2
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE DEFAULT
+        CALL Fatal('ElementDescription::FaceElementBasisOrdering','Erratic square face Indices')
+      END SELECT
+
+    END DO
+
+    IF (PRESENT(ReverseSign)) ReverseSign(1:6) = ReverseNormal(1:6)
 
   CASE DEFAULT
     CALL Fatal('FaceElementBasisOrdering', 'Unsupported element family')
@@ -5465,14 +6629,14 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
-       LOGICAL :: RevertSign(4)
+       LOGICAL :: ReverseSign(4)
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
        INTEGER :: ActiveFaceId
 !----------------------------------------------------------------------------------------------------------
 
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        stat = .TRUE.
        Basis = 0.0d0
@@ -5880,7 +7044,11 @@ END SUBROUTINE PickActiveFace
            IF (.NOT. ASSOCIATED(Parent)) THEN
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF (.NOT. ASSOCIATED(Parent)) RETURN
+
+           IF (.NOT. ASSOCIATED(Parent)) THEN
+             CALL Warn('EdgeElementInfo', 'cannot create curl-conforming basis functions, zeros returned')
+             RETURN
+           END IF
            !
            ! Identify the edge representing the element among the edges of 
            ! the parent element:
@@ -5891,9 +7059,9 @@ END SUBROUTINE PickActiveFace
            !
            ! Use the parent element to check whether sign reversions are needed:
            !
-           CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+           CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
            
-           IF (RevertSign(ActiveFaceId)) THEN
+           IF (ReverseSign(ActiveFaceId)) THEN
              EdgeBasis(1,1) = -0.5d0
            ELSE
              EdgeBasis(1,1) = 0.5d0
@@ -5923,7 +7091,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(1,1) = -(3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
                EdgeBasis(1,2) = -(3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
@@ -5956,7 +7124,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(3,1) = ((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
                EdgeBasis(3,2) = -(-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
@@ -5987,7 +7155,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
                EdgeBasis(5,2) = -(-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
@@ -6344,7 +7512,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(1,1) = -(6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
                EdgeBasis(1,2) = -(6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
@@ -6391,7 +7559,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(3,1) = (3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
                EdgeBasis(3,2) = -(4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
@@ -6440,7 +7608,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
                EdgeBasis(5,2) = -(4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
@@ -6491,7 +7659,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(7,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
                EdgeBasis(7,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
@@ -6538,7 +7706,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(9,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
                EdgeBasis(9,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
@@ -6585,7 +7753,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(11,1) = 0.0d0
                EdgeBasis(11,2) = ((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
@@ -8855,7 +10023,7 @@ END SUBROUTINE PickActiveFace
              ! The lowest-order element from the optimal family. The optimal
              ! accuracy is obtained also for non-affine meshes.
              ! -------------------------------------------------------------
-             ! First twelwe basis functions associated with the edges
+             ! First twelve basis functions associated with the edges
              ! -------------------------------------------------------------
              i = EdgeMap(1,1)
              j = EdgeMap(1,2)
@@ -9062,7 +10230,7 @@ END SUBROUTINE PickActiveFace
              END IF
 
              ! ---------------------------------------------------------------------
-             ! Additional twelwe basis functions on the square faces (two per face).
+             ! Additional twelve basis functions on the square faces (two per face).
              ! ---------------------------------------------------------------------         
              BrickFaceMap(1,:) = (/ 1,2,3,4 /)          
              BrickFaceMap(2,:) = (/ 5,6,7,8 /)
@@ -9457,7 +10625,7 @@ END SUBROUTINE PickActiveFace
           D1 = -1.0d0
           D2 = -1.0d0          
        CASE DEFAULT
-          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face Indices')
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic triangular face Indices')
        END SELECT
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering
@@ -9535,14 +10703,24 @@ END SUBROUTINE PickActiveFace
      END SUBROUTINE TriangleFaceDofsOrdering2
 !-----------------------------------------------------------
 
-
 !---------------------------------------------------------
-     SUBROUTINE SquareFaceDofsOrdering(I1,I2,D1,D2,Ind)       
-!-----------------------------------------------------------
-       INTEGER ::  I1, I2, Ind(4)
-       REAL(KIND=dp) :: D1, D2
+!> This subroutine can be used to create a unique parametrization of
+!> quadrilateral faces so that different elements sharing the same
+!> face can list the basis functions associated with the face in
+!> a unique order. If the face of the reference element is represented
+!> by default using two basis vectors e(1,:) and e(2,:), the unique
+!> parametrization uses the basis E1 = D1 * e(I1,:) and 
+!> E2 = D2 * e(I2,:). 
+!----------------------------------------------------------------------
+     SUBROUTINE SquareFaceDofsOrdering(I1, I2, D1, D2, Ind, ReverseSign)       
+!----------------------------------------------------------------------
+       INTEGER, INTENT(OUT) ::  I1, I2      !< Permutation info about coordinate directions
+       REAL(KIND=dp), INTENT(OUT) :: D1, D2 !< Sign reversion info related to coordinate directions  
+       INTEGER, INTENT(IN) :: Ind(4)        !< The global indices of quadrilateral face
+       LOGICAL, OPTIONAL, INTENT(OUT) :: ReverseSign   ! Is e(1,:) x e(2,:) /=  E1 x E2
 !----------------------------------------------------------
        INTEGER ::  i, j, k, l, A
+       LOGICAL :: ReverseNormal
 ! -------------------------------------------------------------------
 !  Find input for applying an order change and sign reversions to two
 !  basis functions associated with a square face. To this end, 
@@ -9573,6 +10751,8 @@ END SUBROUTINE PickActiveFace
        END IF
        A = k
 
+       ReverseNormal = .FALSE.
+       
        SELECT CASE(A)
        CASE(1)
           IF ( Ind(2) < Ind(4) ) THEN
@@ -9584,7 +10764,8 @@ END SUBROUTINE PickActiveFace
              I1 = 2
              I2 = 1
              D1 = 1.0d0
-             D2 = 1.0d0 
+             D2 = 1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(2)
           IF ( Ind(3) < Ind(1) ) THEN
@@ -9597,6 +10778,7 @@ END SUBROUTINE PickActiveFace
              I2 = 2
              D1 = -1.0d0
              D2 = 1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(3)
           IF ( Ind(4) < Ind(2) ) THEN
@@ -9609,6 +10791,7 @@ END SUBROUTINE PickActiveFace
              I2 = 1
              D1 = -1.0d0
              D2 = -1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(4)
           IF ( Ind(1) < Ind(3) ) THEN
@@ -9621,10 +10804,13 @@ END SUBROUTINE PickActiveFace
              I2 = 2
              D1 = 1.0d0
              D2 = -1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE DEFAULT
           CALL Fatal('ElementDescription::SquareFaceDofsOrdering','Erratic square face Indices')
        END SELECT
+
+       IF (PRESENT(ReverseSign)) ReverseSign = ReverseNormal
 !----------------------------------------------------------
      END SUBROUTINE SquareFaceDofsOrdering
 !----------------------------------------------------------
@@ -9655,7 +10841,7 @@ END SUBROUTINE PickActiveFace
 !---------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1       
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
        SignVec = 1.0d0
        Ind => Element % Nodeindexes
@@ -9759,7 +10945,7 @@ END SUBROUTINE PickActiveFace
              PermVec(k) = k
           END DO
           ! ---------------------------------------------------------------------
-          ! Additional twelwe basis functions on the square faces (two per face).
+          ! Additional twelve basis functions on the square faces (two per face).
           ! ---------------------------------------------------------------------         
           BrickFaceMap(1,:) = (/ 1,2,3,4 /)          
           BrickFaceMap(2,:) = (/ 5,6,7,8 /)
@@ -9817,7 +11003,7 @@ END SUBROUTINE PickActiveFace
      INTEGER, POINTER :: EdgeMap(:,:)
 !------------------------------------------------------------------------
      Mesh => CurrentModel % Solver % Mesh
-     Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % GInterface)
 
      IF (Element % TYPE % BasisFunctionDegree>1) THEN
        CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
@@ -10072,6 +11258,104 @@ END SUBROUTINE PickActiveFace
    END SUBROUTINE GetEdgeBasis
 !------------------------------------------------------------------------------
 
+   
+!------------------------------------------------------------------------------
+!>    Check element by comparing determinants of the metric tensor computed
+!>    in double and quad precision.
+!------------------------------------------------------------------------------
+   FUNCTION CheckMetric(nDOFs,Elm,Nodes,dLBasisdx) RESULT(Success)
+!------------------------------------------------------------------------------
+     INTEGER :: nDOFs                !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm         !< Element structure
+     TYPE(Nodes_t)    :: Nodes       !< Element nodal coordinates
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
+     LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n,imin,jmin
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
+
+     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+
+     REAL(KIND=qp) :: dp_dx(3,3),dp_G(3,3),dp_GI(3,3),dp_s, dp_DetG
+     REAL(KIND=dp) :: qp_dx(3,3),qp_G(3,3),qp_GI(3,3),qp_s, qp_DetG, eps
+!------------------------------------------------------------------------------
+     success = .TRUE.
+
+     x => Nodes % x
+     y => Nodes % y
+     z => Nodes % z
+
+     cdim = CoordinateSystemDimension()
+     n = MIN( SIZE(x), nDOFs )
+     dim  = elm % TYPE % DIMENSION
+
+     eps = 1.0d-6
+!------------------------------------------------------------------------------
+!    Partial derivatives of global coordinates with respect to local coordinates
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       dp_dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       dp_dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       dp_dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+
+       qp_dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       qp_dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       qp_dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+     END DO
+!------------------------------------------------------------------------------
+!    Compute the covariant metric tensor of the element coordinate system
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       DO j=1,dim
+         dp_s = 0.0_dp
+         qp_s = 0.0_dp
+         DO k=1,cdim
+           dp_s = dp_s + dp_dx(k,i)*dp_dx(k,j)
+           qp_s = qp_s + qp_dx(k,i)*qp_dx(k,j)
+         END DO
+         dp_G(i,j) = dp_s
+         qp_G(i,j) = qp_s
+       END DO
+     END DO
+
+!------------------------------------------------------------------------------
+!    Convert the metric to contravariant base, and compute the SQRT(DetG)
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+!------------------------------------------------------------------------------
+!      Line elements
+!------------------------------------------------------------------------------
+     CASE (1)
+       dp_DetG  = dp_G(1,1)
+       qp_DetG  = qp_G(1,1)
+
+!------------------------------------------------------------------------------
+!      Surface elements
+!------------------------------------------------------------------------------
+     CASE (2)
+       dp_DetG = ( dp_G(1,1)*dp_G(2,2) - dp_G(1,2)*dp_G(2,1) )
+       qp_DetG = ( qp_G(1,1)*qp_G(2,2) - qp_G(1,2)*qp_G(2,1) )
+
+!------------------------------------------------------------------------------
+!      Volume elements
+!------------------------------------------------------------------------------
+     CASE (3)
+       dp_DetG = dp_G(1,1) * ( dp_G(2,2)*dp_G(3,3) - dp_G(2,3)*dp_G(3,2) ) + &
+           dp_G(1,2) * ( dp_G(2,3)*dp_G(3,1) - dp_G(2,1)*dp_G(3,3) ) + &
+           dp_G(1,3) * ( dp_G(2,1)*dp_G(3,2) - dp_G(2,2)*dp_G(3,1) )
+
+       qp_DetG = qp_G(1,1) * ( qp_G(2,2)*qp_G(3,3) - qp_G(2,3)*qp_G(3,2) ) + &
+           qp_G(1,2) * ( qp_G(2,3)*qp_G(3,1) - qp_G(2,1)*qp_G(3,3) ) + &
+           qp_G(1,3) * ( qp_G(2,1)*qp_G(3,2) - qp_G(2,2)*qp_G(3,1) )
+     END SELECT
+     
+     Success = ABS(dp_detG-qp_detG) <= eps*ABS(qp_DetG)
+!------------------------------------------------------------------------------
+   END FUNCTION CheckMetric
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !>    Compute contravariant metric tensor (=J^TJ)^-1 of element coordinate
@@ -10091,12 +11375,10 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s
+     REAL(KIND=dp) :: dx(3,3),G(3,3),GI(3,3),s,smin,eps=0
      REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
-     INTEGER :: GeomId
-     
-     INTEGER :: cdim,dim,i,j,k,n
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n,imin,jmin
 !------------------------------------------------------------------------------
      success = .TRUE.
 
@@ -10107,7 +11389,13 @@ END SUBROUTINE PickActiveFace
      cdim = CoordinateSystemDimension()
      n = MIN( SIZE(x), nDOFs )
      dim  = elm % TYPE % DIMENSION
+     
+     IF(Elm % Status == 2) THEN
+       IF (ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap)) RETURN
+       GOTO 100
+     END IF
 
+     eps = (EPSILON(eps))**dim
 !------------------------------------------------------------------------------
 !    Partial derivatives of global coordinates with respect to local coordinates
 !------------------------------------------------------------------------------
@@ -10120,13 +11408,13 @@ END SUBROUTINE PickActiveFace
 !    Compute the covariant metric tensor of the element coordinate system
 !------------------------------------------------------------------------------
      DO i=1,dim
-        DO j=1,dim
-           s = 0.0d0
-           DO k=1,cdim
-             s = s + dx(k,i)*dx(k,j)
-           END DO
-           G(i,j) = s
-        END DO
+       DO j=1,dim
+         s = 0.0_dp
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
      END DO
 !------------------------------------------------------------------------------
 !    Convert the metric to contravariant base, and compute the SQRT(DetG)
@@ -10135,43 +11423,43 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !      Line elements
 !------------------------------------------------------------------------------
-       CASE (1)
-         DetG  = G(1,1)
+     CASE (1)
+       DetG  = G(1,1)
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) = 1.0d0 / DetG
-         DetG  = SQRT( DetG )
+       Metric(1,1) = 1.0d0 / DetG
+       DetG  = SQRT( DetG )
 
 !------------------------------------------------------------------------------
 !      Surface elements
 !------------------------------------------------------------------------------
-       CASE (2)
-         DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+     CASE (2)
+       DetG = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         Metric(1,1) =  G(2,2) / DetG
-         Metric(1,2) = -G(1,2) / DetG
-         Metric(2,1) = -G(2,1) / DetG
-         Metric(2,2) =  G(1,1) / DetG
-         DetG = SQRT(DetG)
+       Metric(1,1) =  G(2,2) / DetG
+       Metric(1,2) = -G(1,2) / DetG
+       Metric(2,1) = -G(2,1) / DetG
+       Metric(2,2) =  G(1,1) / DetG
+       DetG = SQRT(DetG)
 
 !------------------------------------------------------------------------------
 !      Volume elements
 !------------------------------------------------------------------------------
-       CASE (3)
-         DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
-                G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
-                G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+     CASE (3)
+       DetG = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
 
-         IF ( DetG <= TINY( DetG ) ) GOTO 100
+       IF ( DetG <= eps ) GOTO 100
 
-         CALL InvertMatrix3x3( G,GI,detG )
-         Metric = GI
-         DetG = SQRT(DetG)
+       CALL InvertMatrix3x3( G,GI,detG )
+       Metric = GI
+       DetG = SQRT(DetG)
      END SELECT
-
+     
 !--------------------------------------------------------------------------------------
 !    Construct a transformation X = LtoGMap such that (grad B)(f(p)) = X(p) Grad b(p),
 !    with Grad the gradient with respect to the reference element coordinates p and 
@@ -10189,39 +11477,177 @@ END SUBROUTINE PickActiveFace
        END DO
      END DO
 
-! Return here also implies success = .TRUE.
+     ! Return here also implies success = .TRUE.
      RETURN
-  
 
-100  Success = .FALSE.
+100  CONTINUE
+
+     ! Try recursively with quadratic precision.
+     ! With just double precision for very flat elements the DetJ may be poorly evaluated. 
+     IF( Elm % Status /= 2) THEN
+       Success = ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) 
+       IF( Success ) RETURN
+     END IF
+     
      WRITE( Message,'(A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex
      CALL Error( 'ElementMetric', Message )
      
      IF( ASSOCIATED( Elm % BoundaryInfo ) ) THEN
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Boundary Id: ',Elm % BoundaryInfo % Constraint,' DetG:',DetG
      ELSE
-       WRITE( Message,'(A,I0,A,ES12.3)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
+       WRITE( Message,'(A,I0,A,ES14.6)') 'Body Id: ',Elm % BodyId,' DetG:',DetG
      END IF
      CALL Info( 'ElementMetric', Message, Level=3 )
 
      DO i=1,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
+       WRITE( Message,'(A,I0,A,3ES14.6)') 'Node: ',i,' Coord:',x(i),y(i),z(i)       
        CALL Info( 'ElementMetric', Message, Level=3 )
      END DO
-     DO i=2,n
-       WRITE( Message,'(A,I0,A,3ES12.3)') 'Node: ',i,' dCoord:',&
-           x(i)-x(1),y(i)-y(1),z(i)-z(1)       
-       CALL Info( 'ElementMetric', Message, Level=3 )
+
+     ! Find the two nodes closest to each other:
+     smin = HUGE(smin)
+     DO i=1,n
+       DO j=i+1,n
+         s = (x(i)-x(j))**2 + (y(i)-y(j))**2 + (z(i)-z(j))**2
+         IF( s < smin ) THEN
+           imin = i
+           jmin = j
+           smin = s           
+         END IF
+       END DO
      END DO
+     smin = SQRT(smin)
+
+     WRITE( Message,'(A,I0,A,I0,A,I0,A,I0,A,ES14.6)') 'Closest distance: ',imin,'-',jmin,&
+         ' (',Elm % NodeIndexes(imin),'-',Elm % NodeIndexes(jmin),') |dCoord|:',smin
+     CALL Info( 'ElementMetric', Message, Level=3 )
+
      IF ( cdim < dim ) THEN
        WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
        CALL Info( 'ElementMetric', Message, Level=3 )
      END IF
-     
+
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous that is called when the DetJ appear
+! to be close to zero or negative. 
+!------------------------------------------------------------------------------
+   FUNCTION ElementMetricQP(nDOFs,Elm,Nodes,Metric,DetG,dLBasisdx,LtoGMap) RESULT(Success)
+!------------------------------------------------------------------------------
+     INTEGER :: nDOFs                !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm         !< Element structure
+     TYPE(Nodes_t)    :: Nodes       !< Element nodal coordinates
+     REAL(KIND=dp) :: Metric(:,:)    !< Contravariant metric tensor
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< Derivatives of element basis function with respect to local coordinates
+     REAL(KIND=dp) :: DetG           !< SQRT of determinant of metric tensor
+     REAL(KIND=dp) :: LtoGMap(3,3)   !< Transformation to obtain the referential description of the spatial gradient
+     LOGICAL :: Success              !< Returns .FALSE. if element is degenerate
+!------------------------------------------------------------------------------
+!    Local variables
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
+     INTEGER :: GeomId     
+     INTEGER :: cdim,dim,i,j,k,n
+
+! Local Quadratic precision variables     
+     INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+     REAL(KIND=qp) :: dx(3,3),G(3,3),GI(3,3),s,DetGqp
+!------------------------------------------------------------------------------
+     success = .FALSE.
+
+     x => Nodes % x
+     y => Nodes % y
+     z => Nodes % z
+
+     cdim = CoordinateSystemDimension()
+     n = MIN( SIZE(x), nDOFs )
+     dim  = elm % TYPE % DIMENSION
+     DetG = 0.0_dp
+
+!------------------------------------------------------------------------------
+!    Partial derivatives of global coordinates with respect to local coordinates
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       dx(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
+       dx(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
+       dx(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+     END DO
+!------------------------------------------------------------------------------
+!    Compute the covariant metric tensor of the element coordinate system
+!------------------------------------------------------------------------------
+     DO i=1,dim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,cdim
+           s = s + dx(k,i)*dx(k,j)
+         END DO
+         G(i,j) = s
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+!    Convert the metric to contravariant base, and compute the SQRT(DetG)
+!------------------------------------------------------------------------------
+     SELECT CASE( dim )
+!------------------------------------------------------------------------------
+!      Line elements
+!------------------------------------------------------------------------------
+     CASE (1)
+       DetGqp  = G(1,1)
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) = 1.0d0 / DetGqp
+
+!------------------------------------------------------------------------------
+!      Surface elements
+!------------------------------------------------------------------------------
+     CASE (2)
+       DetGqp = ( G(1,1)*G(2,2) - G(1,2)*G(2,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       Metric(1,1) =  G(2,2) / DetGqp
+       Metric(1,2) = -G(1,2) / DetGqp
+       Metric(2,1) = -G(2,1) / DetGqp
+       Metric(2,2) =  G(1,1) / DetGqp
+
+!------------------------------------------------------------------------------
+!      Volume elements
+!------------------------------------------------------------------------------
+     CASE (3)
+       DetGqp = G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+           G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+           G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+
+       IF ( DetGqp <= TINY( DetG ) ) RETURN
+
+       CALL InvertMatrix3x3QP( G,GI,detGqp )
+       Metric = GI
+     END SELECT
+
+     DetG = SQRT(DetGqp)     
+     Success = .TRUE.
+     
+!--------------------------------------------------------------------------------------
+     DO i=1,cdim
+       DO j=1,dim
+         s = 0.0d0
+         DO k=1,dim
+           s = s + dx(i,k) * Metric(k,j)
+         END DO
+         LtoGMap(i,j) = s
+       END DO
+     END DO
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ElementMetricQP
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
    FUNCTION ElementMetricVec( Elm, Nodes, nc, ndof, DetJ, nbmax, dLBasisdx, LtoGMap) RESULT(AllSuccess)
 !------------------------------------------------------------------------------
@@ -10692,7 +12118,7 @@ END SUBROUTINE PickActiveFace
 !>   used to compute the value. This is just a wrapper routine and will call the
 !>   real function according to element dimension.   
 !------------------------------------------------------------------------------
-   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(VALUE)
+   FUNCTION InterpolateInElement( elm,f,u,v,w,Basis ) RESULT(val)
 !------------------------------------------------------------------------------
 !
 !  DESCRIPTION:
@@ -10725,7 +12151,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: VALUE
+     REAL(KIND=dp) :: val
      INTEGER :: n
 
      IF ( PRESENT( Basis ) ) THEN
@@ -10733,20 +12159,20 @@ END SUBROUTINE PickActiveFace
 !      Basis function values given, just sum the result ...
 !------------------------------------------------------------------------------
        n = elm % TYPE % NumberOfNodes
-       VALUE = SUM( f(1:n)*Basis(1:n) )
+       val = SUM( f(1:n)*Basis(1:n) )
      ELSE
 !------------------------------------------------------------------------------
 !      ... otherwise compute from the definition.
 !------------------------------------------------------------------------------
        SELECT CASE (elm % TYPE % DIMENSION)
          CASE (0)
-           VALUE = f(1)
+           val = f(1)
          CASE (1)
-           VALUE = InterpolateInElement1D( elm,f,u )
+           val = InterpolateInElement1D( elm,f,u )
          CASE (2)
-           VALUE = InterpolateInElement2D( elm,f,u,v )
+           val = InterpolateInElement2D( elm,f,u,v )
          CASE (3)
-           VALUE = InterpolateInElement3D( elm,f,u,v,w )
+           val = InterpolateInElement3D( elm,f,u,v,w )
        END SELECT
      END IF
   
@@ -10759,7 +12185,8 @@ END SUBROUTINE PickActiveFace
 !>          Compute elementwise matrix of second partial derivatives
 !>          at given point u,v,w in global coordinates.
 !------------------------------------------------------------------------------
-   SUBROUTINE GlobalSecondDerivatives(elm,nodes,f,values,u,v,w,Metric,dBasisdx)
+   SUBROUTINE GlobalSecondDerivatives(elm,nodes,values,u,v,w,Metric,&
+                     dBasisdx,ddLBasisddx,nd)
 !------------------------------------------------------------------------------
 !  
 !       Parameters:
@@ -10775,25 +12202,25 @@ END SUBROUTINE PickActiveFace
 
      TYPE(Nodes_t)   :: nodes
      TYPE(Element_t) :: elm
+
+     INTEGER :: nd
  
      REAL(KIND=dp) :: u,v,w
-     REAL(KIND=dp) ::  f(:),Metric(:,:)
-     REAL(KIND=dp) ::  values(:,:)
-     REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)
+     REAL(KIND=dp) ::  Metric(:,:)
+     REAL(KIND=dp) ::  values(:,:,:)
+     REAL(KIND=dp) :: dBasisdx(:,:), ddLBasisddx(:,:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,l,dim,cdim
+     INTEGER :: i,j,k,l,n,q,dim,cdim
 
      REAL(KIND=dp), DIMENSION(3,3,3) :: C1,C2,ddx
-     REAL(KIND=dp), DIMENSION(3)     :: df
-     REAL(KIND=dp), DIMENSION(3,3)   :: cddf,ddf,dx
+     REAL(KIND=dp) :: df(3), cddf(3,3),ddf(3,3),dx(3,3)
 
-     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
      REAL(KIND=dp) :: s
-
-     INTEGER :: n
+     REAL(KIND=dp), DIMENSION(:), POINTER :: x,y,z
 !------------------------------------------------------------------------------
+#if 0
 #if 1
 !
 ! This is actually not quite correct...
@@ -10807,6 +12234,7 @@ END SUBROUTINE PickActiveFace
           elm % TYPE % ElementCode == 303 .OR. &
           elm % TYPE % ElementCode == 504 ) RETURN
 #endif
+#endif
 
      n  = elm % TYPE % NumberOfNodes
      x => nodes % x
@@ -10816,62 +12244,41 @@ END SUBROUTINE PickActiveFace
      dim  = elm % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
+
 !------------------------------------------------------------------------------
 !    Partial derivatives of the basis functions are given, just
 !    sum for the first partial derivatives...
 !------------------------------------------------------------------------------
      dx = 0.0d0
-     df = 0.0d0
      SELECT CASE( cdim )
        CASE(1)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
          END DO
 
        CASE(2)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           dx(2,i) = SUM( y(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
+           dx(2,i) = SUM( y(1:nd)*dBasisdx(1:nd,i) )
          END DO
 
        CASE(3)
          DO i=1,dim
-           dx(1,i) = SUM( x(1:n)*dBasisdx(1:n,i) )
-           dx(2,i) = SUM( y(1:n)*dBasisdx(1:n,i) )
-           dx(3,i) = SUM( z(1:n)*dBasisdx(1:n,i) )
-           df(i)   = SUM( f(1:n)*dBasisdx(1:n,i) )
+           dx(1,i) = SUM( x(1:nd)*dBasisdx(1:nd,i) )
+           dx(2,i) = SUM( y(1:nd)*dBasisdx(1:nd,i) )
+           dx(3,i) = SUM( z(1:nd)*dBasisdx(1:nd,i) )
          END DO
      END SELECT
 !------------------------------------------------------------------------------
 !     Get second partial derivatives with respect to local coordinates
 !------------------------------------------------------------------------------
-     SELECT CASE( dim )
-       CASE(1)
-!------------------------------------------------------------------------------
-!        Line elements
-!------------------------------------------------------------------------------
-         ddx(1,1,1) = SecondDerivatives1D( elm,x,u )
-         ddx(2,1,1) = SecondDerivatives1D( elm,y,u )
-         ddx(3,1,1) = SecondDerivatives1D( elm,z,u )
-
-       CASE(2)
-!------------------------------------------------------------------------------
-!        Surface elements
-!------------------------------------------------------------------------------
-         ddx(1,1:2,1:2) = SecondDerivatives2D( elm,x,u,v )
-         ddx(2,1:2,1:2) = SecondDerivatives2D( elm,y,u,v )
-         ddx(3,1:2,1:2) = SecondDerivatives2D( elm,z,u,v )
-
-       CASE(3)
-!------------------------------------------------------------------------------
-!        Volume elements
-!------------------------------------------------------------------------------
-         ddx(1,1:3,1:3) = SecondDerivatives3D( elm,x,u,v,w )
-         ddx(2,1:3,1:3) = SecondDerivatives3D( elm,y,u,v,w )
-         ddx(3,1:3,1:3) = SecondDerivatives3D( elm,z,u,v,w )
-      END SELECT
+     DO i=1,dim
+       DO j=1,dim
+         ddx(1,i,j) = SUM(ddLBasisddx(1:nd,i,j)*x(1:nd) )
+         ddx(2,i,j) = SUM(ddLBasisddx(1:nd,i,j)*y(1:nd) )
+         ddx(3,i,j) = SUM(ddLBasisddx(1:nd,i,j)*z(1:nd) )
+       END DO
+     END DO
 !
 !------------------------------------------------------------------------------
 !    Christoffel symbols of the second kind of the element coordinate system
@@ -10904,55 +12311,50 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 !     First add ordinary partials (change of the quantity with coordinates)...
 !------------------------------------------------------------------------------
-      SELECT CASE(dim)
-        CASE(1)
-          ddf(1,1) = SecondDerivatives1D( elm,f,u )
+     Values = 0.0d0
+     DO q=1,nd
+       df  = dBasisdx(q,:)
+       ddf = ddLBasisddx(q,:,:)
 
-        CASE(2)
-          ddf(1:2,1:2) = SecondDerivatives2D( elm,f,u,v )
-
-        CASE(3)
-          ddf(1:3,1:3) = SecondDerivatives3D( elm,f,u,v,w )
-      END SELECT
 !------------------------------------------------------------------------------
 !     ... then add change of coordinates
 !------------------------------------------------------------------------------
-      DO i=1,dim
-        DO j=1,dim
-          s = 0.0d0
-          DO k=1,dim
-            s = s - C1(i,j,k)*df(k)
-          END DO
-          ddf(i,j) = ddf(i,j) + s
-        END DO
-      END DO
-!------------------------------------------------------------------------------
-!     Convert to contravariant base
-!------------------------------------------------------------------------------
-      DO i=1,dim
-        DO j=1,dim
-          s = 0.0d0
-          DO k=1,dim
-            DO l=1,dim
-              s = s + Metric(i,k)*Metric(j,l)*ddf(k,l)
+        DO i=1,dim
+          DO j=1,dim
+            s = 0.0d0
+            DO k=1,dim
+              s = s - C1(i,j,k)*df(k)
             END DO
+            ddf(i,j) = ddf(i,j) + s
           END DO
-          cddf(i,j) = s
         END DO
-      END DO
 !------------------------------------------------------------------------------
-!    And finally transform to global coordinates 
+!       Convert to contravariant base
 !------------------------------------------------------------------------------
-      Values = 0.0d0
-      DO i=1,cdim
-        DO j=1,cdim
-          s = 0.0d0
-          DO k=1,dim
-            DO l=1,dim
-              s = s + dx(i,k)*dx(j,l)*cddf(k,l)    
+        DO i=1,dim
+          DO j=1,dim
+            s = 0.0d0
+            DO k=1,dim
+              DO l=1,dim
+                s = s + Metric(i,k)*Metric(j,l)*ddf(k,l)
+              END DO
             END DO
+            cddf(i,j) = s
           END DO
-          Values(i,j) = s
+        END DO
+!------------------------------------------------------------------------------
+!      And finally transform to global coordinates 
+!------------------------------------------------------------------------------
+        DO i=1,cdim
+          DO j=1,cdim
+            s = 0.0d0
+            DO k=1,dim
+              DO l=1,dim
+                s = s + dx(i,k)*dx(j,l)*cddf(k,l)    
+              END DO
+            END DO
+            Values(q,i,j) = s
+          END DO
         END DO
       END DO
 !------------------------------------------------------------------------------
@@ -11166,6 +12568,7 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
 
 
+  
 
 !------------------------------------------------------------------------------
 !>     Figure out if given point x,y,z is inside a triangle, whose node
@@ -11435,11 +12838,11 @@ END SUBROUTINE PickActiveFace
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     LOGICAL :: IsPassive
     !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element,tmp
     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
     LOGICAL :: Found
-    CHARACTER(LEN=MAX_NAME_LEN) :: PassName
+    CHARACTER(:), ALLOCATABLE :: PassName
     LOGICAL :: NoPassiveElements = .FALSE.
     TYPE(Solver_t), POINTER :: pSolver, PrevSolver => NULL()
     
@@ -11453,13 +12856,15 @@ END SUBROUTINE PickActiveFace
       PrevSolver => pSolver          
       nlen = CurrentModel % Solver % Variable % NameLen
       PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'     
-      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce( CurrentModel, PassName )
+      NoPassiveElements = .NOT. ListCheckPresentAnyBodyForce(CurrentModel, PassName)
     END IF
     
     IF( NoPassiveElements ) RETURN       
 
     IF (PRESENT(UElement)) THEN
+      tmp => CurrentModel % CurrentElement
       Element => UElement
+      CurrentModel % CurrentElement => Element
     ELSE
 #ifdef _OPENMP
       IF (omp_in_parallel()) THEN
@@ -11516,13 +12921,16 @@ END SUBROUTINE PickActiveFace
       END IF
     END IF
 
+    IF (PRESENT(UElement)) THEN
+       CurrentModel % CurrentElement => tmp
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION CheckPassiveElement
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>   Normal will point from more dense material to less dense
-!>   or outwards, if no elements on the other side.
+!> Normal will point into body with lower body ID.
+!> or outwards, if no elements on the other side.
 !------------------------------------------------------------------------------
   SUBROUTINE CheckNormalDirection( Boundary,Normal,x,y,z,turn )
 !------------------------------------------------------------------------------
@@ -11537,7 +12945,7 @@ END SUBROUTINE PickActiveFace
 
     INTEGER :: LMat,RMat,n,k
 
-    REAL(KIND=dp) :: x1,y1,z1
+    REAL(KIND=dp) :: u,v,w,dCoord(3)
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
     LOGICAL :: LPassive
 !------------------------------------------------------------------------------
@@ -11592,35 +13000,36 @@ END SUBROUTINE PickActiveFace
     SELECT CASE( Element % TYPE % ElementCode / 100 )
 
     CASE(2,4,8)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 0.0d0 )
+      u = 0.0_dp
+      v = 0.0_dp
+      w = 0.0_dp
     CASE(3)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE(5)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      u = 1.0d0/4
+      v = 1.0d0/4
+      w = 1.0d0/4
     CASE(6)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 1.0d0/3 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 1.0d0/3 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 1.0d0/3 )
+      u = 0.0
+      v = 0.0
+      w = 1.0d0/3
     CASE(7)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE DEFAULT
-       CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
-
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
+      
     END SELECT
-    x1 = x1 - x
-    y1 = y1 - y
-    z1 = z1 - z
 
+    dCoord(1) = InterpolateInElement( Element, nx, u, v, w ) - x
+    dCoord(2) = InterpolateInElement( Element, ny, u, v, w ) - y
+    dCoord(3) = InterpolateInElement( Element, nz, u, v, w ) - z
+  
     IF ( PRESENT(turn) ) turn = .FALSE.
-    IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
+    IF ( SUM( dCoord * Normal ) > 0 ) THEN
        IF ( Element % BodyId /= k ) THEN
           Normal = -Normal
           IF ( PRESENT(turn) ) turn = .TRUE.
@@ -11716,7 +13125,7 @@ END SUBROUTINE PickActiveFace
 !> do not have the luxury of knowing the local coordinates and hence the center
 !> point is used as default.
 !------------------------------------------------------------------------------
-  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
+  RECURSIVE FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
@@ -11731,7 +13140,11 @@ END SUBROUTINE PickActiveFace
     REAL(KIND=dp) :: u,v,Auu,Auv,Avu,Avv,detA,x,y,z
     REAL(KIND=dp) :: dxdu,dxdv,dydu,dydv,dzdu,dzdv
     REAL(KIND=dp), DIMENSION(:), POINTER :: nx,ny,nz
-
+    REAL(KIND=dp) :: Tangent1(3), Tangent2(3)
+    TYPE(Nodes_t) :: ParentNodes
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: n
+    
 !------------------------------------------------------------------------------
 
     nx => BoundaryNodes % x
@@ -11744,26 +13157,71 @@ END SUBROUTINE PickActiveFace
       Normal(1) = 1.0_dp
       Normal(2:3) = 0.0_dp
 
-    CASE ( 1 ) 
-      IF( PRESENT( u0 ) ) THEN
-        u = u0
-      ELSE
-        u = 0.0_dp
-      END IF
+    CASE ( 1 )
+      IF( CurrentModel % Mesh % MeshDim == 3 ) THEN
+        ! We have 1D element but 3D mesh
+        ! Define the normal in the plane defined by the 2D parent element.
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
 
-      dxdu = FirstDerivative1D( Boundary,nx,u )
-      dydu = FirstDerivative1D( Boundary,ny,u )
- 
-      detA = dxdu*dxdu + dydu*dydu
-      IF ( detA <= 0._dp ) THEN
-        Normal = 0._dp
-        RETURN
+        ! 1st tangent vector is defined by the edge direction
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+        dzdu = FirstDerivative1D( Boundary,nz,u )
+        
+        detA = dxdu*dxdu + dydu*dydu + dzdu*dzdu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Tangent1(1) = dxdu * detA
+        Tangent1(2) = dydu * detA
+        Tangent1(3) = dzdu * detA
+
+        ! The 2nd tangent element is the normal vector of the parent element
+        IF( PRESENT( Parent ) ) THEN
+          pParent => Parent
+        ELSE
+          pParent => Boundary % BoundaryInfo % Left
+          IF(.NOT. ASSOCIATED(pParent) ) THEN
+            pParent => Boundary % BoundaryInfo % Right
+          END IF          
+        END IF
+
+        n = pParent % TYPE % NumberOfNodes
+        ALLOCATE( ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n) )        
+        ParentNodes % x(1:n) = CurrentModel % Nodes % x(pParent % NodeIndexes)
+        ParentNodes % y(1:n) = CurrentModel % Nodes % y(pParent % NodeIndexes)
+        ParentNodes % z(1:n) = CurrentModel % Nodes % z(pParent % NodeIndexes)
+        Tangent2 = NormalVector( pParent, ParentNodes) 
+        DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z)
+        
+        Normal = CrossProduct( Tangent1, Tangent2 )         
+      ELSE        
+        IF( PRESENT( u0 ) ) THEN
+          u = u0
+        ELSE
+          u = 0.0_dp
+        END IF
+
+        dxdu = FirstDerivative1D( Boundary,nx,u )
+        dydu = FirstDerivative1D( Boundary,ny,u )
+
+        detA = dxdu*dxdu + dydu*dydu
+        IF ( detA <= 0._dp ) THEN
+          Normal = 0._dp
+          RETURN
+        END IF
+        detA = 1.0_dp / SQRT(detA)
+        Normal(1) = -dydu * detA
+        Normal(2) =  dxdu * detA
+        Normal(3) =  0.0d0
       END IF
-      detA = 1.0_dp / SQRT(detA)
-      Normal(1) = -dydu * detA
-      Normal(2) =  dxdu * detA
-      Normal(3) =  0.0d0
-    
+        
     CASE ( 2 ) 
       IF( PRESENT( u0 ) ) THEN
         u = u0
@@ -11838,6 +13296,204 @@ END SUBROUTINE PickActiveFace
   END FUNCTION NormalVector
 !------------------------------------------------------------------------------
 
+#if 0
+!------------------------------------------------------------------------------
+!> More economical normal vector computation assuming linear geometry description.
+!------------------------------------------------------------------------------
+  RECURSIVE FUNCTION NormalVectorLinear( Boundary,BoundaryNodes,Parent) RESULT(Normal)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Boundary
+    TYPE(Nodes_t) :: BoundaryNodes
+    TYPE(Element_t), POINTER, OPTIONAL :: Parent
+    REAL(KIND=dp) :: Normal(3)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    REAL(KIND=dp) :: vec0(3), vec1(3), vec2(3), vec3(3) 
+    TYPE(Element_t), POINTER :: pParent
+    INTEGER :: i,i1,i2,i3,i4,n,m,ElemDim,MeshDim
+    
+!------------------------------------------------------------------------------
+
+    x => CurrentModel % Nodes % x
+    y => CurrentModel % Nodes % y
+    z => CurrentModel % Nodes % z
+
+    IF( PRESENT( Parent ) ) THEN
+      pParent => Parent
+    ELSE IF( ASSOCIATED( Boundary % BoundaryInfo ) ) THEN
+      pParent => Boundary % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(pParent) ) THEN
+        pParent => Boundary % BoundaryInfo % Right
+      END IF
+    END IF
+
+    ElemDim = Boundary % Type % Dimension 
+    MeshDim = CurrentModel % Mesh % MeshDim 
+    
+    IF(ElemDim <= MeshDim-1 .OR. .NOT. (ASSOCIATED(pParent)) ) THEN
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 ) 
+        Normal(1) = 1.0_dp
+        Normal(2:3) = 0.0_dp
+
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i2) - x(i1)
+        vec1(2) = y(i2) - y(i1)
+        vec1(3) = 0.0_dp
+
+        Normal(1) = -vec1(2)
+        Normal(2) = vec1(1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+        
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+
+      END SELECT
+      
+    ELSE 
+
+      SELECT CASE ( ElemDim ) 
+        
+      CASE ( 0 )                
+        i1 = pParent % NodeIndexes(1)
+        i2 = pParent % NodeIndexes(2)
+        
+        Normal(1) = x(i2) - x(i1)
+        Normal(2) = y(i2) - y(i1)
+        Normal(3) = 0.0_dp
+
+        Normal = Normal / SQRT(SUM(Normal**2))
+        IF( i1 == Boundary % NodeIndexes(1) ) THEN
+          Normal = -Normal
+        END IF
+                       
+      CASE ( 1 )
+        i1 = Boundary % NodeIndexes(1)
+        i2 = Boundary % NodeIndexes(2)
+
+        vec1(1) = x(i1)
+        vec1(2) = y(i1)
+        vec1(3) = z(i1)
+
+        vec2(1) = x(i2)
+        vec2(2) = y(i2)
+        vec2(3) = z(i2)
+               
+        vec0 = vec1-vec2
+        vec0 = vec0 / SQRT(SUM(vec0**2))
+        
+        n = pParent % TYPE % ElementCode / 100 
+
+        vec2 = 0.0_dp
+        DO i=1,n
+          i3 = pParent % NodeIndexes(i)
+          IF(i3 == i1 .OR. i3 == i2 ) CYCLE
+
+          ! Vector stretching from edge center to the other nodes
+          ! of the parent element. 
+          vec2(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+          vec3(1) = vec3(1) + x(i3) 
+        END DO
+        ! Subtract the average 
+        vec3 = vec3 - (n-2)*(vec1+vec2)/2 
+        
+        ! Remove projection in the direction of the line
+        Normal = vec3 - SUM(vec0*vec3)*vec0
+        Normal = -Normal / SQRT(SUM(Normal**2))
+
+      CASE( 2 ) 
+        n = Boundary % TYPE % ElementCode / 100 
+        
+        i1 = Boundary % NodeIndexes(1)
+        IF(n==4) THEN
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = Boundary % NodeIndexes(4)
+        ELSE
+          i2 = Boundary % NodeIndexes(2)
+          i3 = Boundary % NodeIndexes(3)
+          i4 = i1
+        END IF
+          
+        vec1(1) = x(i3) - x(i1)
+        vec1(2) = y(i3) - y(i1)
+        vec1(3) = z(i3) - z(i1)
+        
+        vec2(1) = x(i4) - x(i2)
+        vec2(2) = y(i4) - y(i2)
+        vec2(3) = z(i4) - z(i2)
+          
+        Normal = CrossProduct( vec1, vec2 )
+        Normal = Normal / SQRT(SUM(Normal**2))
+
+        m = pParent % TYPE % ElementCode / 100 
+        vec1 = 0.0_dp
+        vec2 = 0.0_dp
+        DO i=1,m
+          i1 = pParent % NodeIndexes(i)
+          IF( ANY( Boundary % NodeIndexes == i1 ) ) THEN
+            vec1(1) = vec1(1) + x(i1)
+            vec1(2) = vec1(2) + y(i1)
+            vec1(3) = vec1(3) + z(i1)            
+          ELSE
+            vec2(1) = vec2(1) + x(i1)
+            vec2(2) = vec2(2) + y(i1)
+            vec2(3) = vec2(3) + z(i1)
+          END IF
+        END DO
+
+        vec1 = vec1 / n
+        vec2 = vec2 / (m-n)
+
+        IF( SUM( (vec1-vec2)*Normal ) < 0.0_dp ) THEN
+          Normal = -Normal
+        END IF
+        
+      CASE DEFAULT
+        CALL Fatal('NormalVector','Invalid dimension for determining normal!')
+        
+      END SELECT
+    END IF
+      
+!------------------------------------------------------------------------------
+  END FUNCTION NormalVectorLinear
+!------------------------------------------------------------------------------
+#endif
+
+
+  
 !------------------------------------------------------------------------------
 !> Returns a point that is most importantly supposed to be on the surface
 !> For noncurved elements this may simply be the mean while otherwise
@@ -11950,7 +13606,7 @@ END SUBROUTINE PickActiveFace
       Lambda = SUM( ( Surface - Rinit ) * Normal ) / Rproj
     END IF
 
-    IF( FaceElement % NDofs == 4 ) THEN
+    IF( FaceElement % Type % NumberOfNodes == 4 ) THEN
       IF( third == 3 ) THEN
         third = 4
 	Lambda0 = Lambda
@@ -11989,7 +13645,7 @@ END SUBROUTINE PickActiveFace
     ! Then solve the exact points of intersection from a 3x3 or 2x2 linear system
     !--------------------------------------------------------------------------
     IF( ElemDim == 2 ) THEN
-      n = FaceElement % NDofs
+      n = FaceElement % Type % NumberOfNodes
       ! In 3D rectangular faces are treated as two triangles
       IF( n == 4 .OR. n == 8 .OR. n == 9 ) THEN
         notriangles = 2
@@ -12280,7 +13936,6 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE GlobalToLocal
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3( G,GI,detG )
 !------------------------------------------------------------------------------
@@ -12304,36 +13959,63 @@ END FUNCTION PointFaceDistance
   END SUBROUTINE InvertMatrix3x3
 !------------------------------------------------------------------------------
 
+  
+!------------------------------------------------------------------------------
+! Quadratic precision version of the previous routine!
+!------------------------------------------------------------------------------
+  SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
+!------------------------------------------------------------------------------
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    REAL(KIND=qp) :: G(3,3),GI(3,3)
+    REAL(KIND=qp) :: detG, s
+!------------------------------------------------------------------------------
+    s = 1.0 / DetG
+    
+    GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
+    GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
+    GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
+    
+    GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
+    GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
+    GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
 
+    GI(1,3) =  s * (G(1,2)*G(2,3) - G(2,2)*G(1,3));
+    GI(2,3) = -s * (G(1,1)*G(2,3) - G(2,1)*G(1,3));
+    GI(3,3) =  s * (G(1,1)*G(2,2) - G(2,1)*G(1,2));
+!------------------------------------------------------------------------------
+  END SUBROUTINE InvertMatrix3x3QP
+!------------------------------------------------------------------------------
+
+  
 !------------------------------------------------------------------------------
 !>     Given element and its face map (for some triangular face of element ), 
 !>     this routine returns global direction of triangle face so that 
 !>     functions are continuous over element boundaries
 !------------------------------------------------------------------------------
-  FUNCTION getTriangleFaceDirection( Element, FaceMap ) RESULT(globalDir)
+  FUNCTION getTriangleFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t) :: Element   !< Element to get direction to
     INTEGER :: FaceMap(3)        !< Element triangular face map
+    INTEGER :: Indexes(:)
     INTEGER :: globalDir(3)      !< Global direction of triangular face as local node numbers.
 !------------------------------------------------------------------------------
     INTEGER :: i, nodes(3)  
-    nodes = 0
     
     ! Put global nodes of face into sorted order
-    nodes(1:3) = Element % NodeIndexes( FaceMap )
+    nodes(1:3) = Indexes( FaceMap )
     CALL sort(3, nodes)
     
     globalDir = 0
     ! Find local numbers of sorted nodes. These local nodes 
     ! span continuous functions over element boundaries
     DO i=1,Element % TYPE % NumberOfNodes
-       IF (nodes(1) == Element % NodeIndexes(i)) THEN
+       IF (nodes(1) == Indexes(i)) THEN
           globalDir(1) = i
-       ELSE IF (nodes(2) == Element % NodeIndexes(i)) THEN
+       ELSE IF (nodes(2) == Indexes(i)) THEN
           globalDir(2) = i
-       ELSE IF (nodes(3) == Element % NodeIndexes(i)) THEN
+       ELSE IF (nodes(3) == Indexes(i)) THEN
           globalDir(3) = i
        END IF
     END DO
@@ -12345,17 +14027,19 @@ END FUNCTION PointFaceDistance
 !>     this routine returns global direction of square face so that 
 !>     functions are continuous over element boundaries
 !------------------------------------------------------------------------------
-  FUNCTION getSquareFaceDirection( Element, FaceMap ) RESULT(globalDir)
+  FUNCTION getSquareFaceDirection( Element, FaceMap, Indexes ) RESULT(globalDir)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element   !< Element to get direction to
-    INTEGER :: FaceMap(4)        !< Element square face map
+    INTEGER :: FaceMap(:)        !< Element square face map
+    INTEGER :: Indexes(:)
     INTEGER :: globalDir(4)      !< Global direction of square face as local node numbers.
 !------------------------------------------------------------------------------
     INTEGER :: i, A,B,C,D, nodes(4), minGlobal
 
     ! Get global nodes 
-    nodes(1:4) = Element % NodeIndexes( FaceMap )
+    nodes(1:4) = Indexes( FaceMap )
+
     ! Find min global node
     minGlobal = nodes(1)
     A = 1
@@ -12383,13 +14067,13 @@ END FUNCTION PointFaceDistance
     ! over element boundaries
     globalDir = 0
     DO i=1,Element % TYPE % NumberOfNodes
-       IF (nodes(A) == Element % NodeIndexes(i)) THEN
+       IF (nodes(A) == Indexes(i)) THEN
           globalDir(1) = i
-       ELSE IF (nodes(B) == Element % NodeIndexes(i)) THEN
+       ELSE IF (nodes(B) == Indexes(i)) THEN
           globalDir(2) = i
-       ELSE IF (nodes(C) == Element % NodeIndexes(i)) THEN
+       ELSE IF (nodes(C) == Indexes(i)) THEN
           globalDir(4) = i
-       ELSE IF (nodes(D) == Element % NodeIndexes(i)) THEN
+       ELSE IF (nodes(D) == Indexes(i)) THEN
           globalDir(3) = i
        END IF
     END DO

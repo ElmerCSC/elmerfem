@@ -387,7 +387,7 @@ CONTAINS
                                                                         
 !                                                                       
 !     Perdew & Wang (1992) correlation energy (Energies are in hartree) 
-!     Exhange energy is added                                           
+!     Exchange energy is added                                           
 !     J. P. Perdew and Y. Wang, Phys. Rev. B 45,13244 (1992).           
 !                                                                       
       FUNCTION excpw (n, s) 

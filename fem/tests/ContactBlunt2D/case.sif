@@ -65,6 +65,7 @@ Solver 1
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
   Linear System Iterative Method = GCR !Bicgstab
+  Linear System GCR Restart = 500
   Linear System Convergence Tolerance = 1.0e-8
 
   Calculate Stresses = Logical True
@@ -143,6 +144,8 @@ Boundary Condition 1
 ! Use N-T conditions which allow friction for generic cases be set
   Normal-Tangential Displacement = Logical True
   Mass Consistent Normals = Logical True
+
+  Initial Slip Contact = Logical True
 
 !  Use Biorthogonal Basis = Logical True
 

@@ -50,6 +50,12 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion, SecondOrder
+  CHARACTER(:), ALLOCATABLE :: ElemType
+
+  TYPE(Solver_t), POINTER :: Solvers(:)
+  INTEGER :: i,j,k,n
+  CHARACTER(:), ALLOCATABLE :: eq
+  INTEGER, POINTER :: ActiveSolvers(:)
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -60,16 +66,17 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
     END IF
 
-    IF (PiolaVersion) THEN    
-       IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
-       ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-       END IF
+    IF (PiolaVersion) THEN          
+      IF (SecondOrder) THEN
+        ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
+      ELSE
+        ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
+      END IF
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      ElemType = "n:1 e:1"
     END IF
+    CALL Info('WhitneyHarmonicSolver_Init0','Setting element type to: "'//TRIM(ElemType)//'"',Level=6)
+    CALL ListAddString( SolverParams, "Element", TRIM(ElemType) )
   END IF
 
   CALL ListAddNewLogical( SolverParams, 'Linear System Complex', .TRUE. )
@@ -78,6 +85,63 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
   CALL ListAddNewString( SolverParams,'Variable','AV[AV re:1 AV im:1]')
+
+  IF(ListGetLogical(SolverParams, 'Helmholtz Projection', Found)) THEN
+    Solvers => Model % Solvers
+    n = Model % NumberOfSolvers
+    Model % NumberOfSolvers = n+2
+
+    ALLOCATE(Model % Solvers(Model % NumberOfSolvers))
+    Model % Solvers(1:n) = Solvers
+
+    DO i=n+1,n+2
+      Model % Solvers(i) % PROCEDURE = 0
+      NULLIFY( Model % Solvers(i) % Matrix )
+      NULLIFY( Model % Solvers(i) % Mesh )
+      NULLIFY( Model % Solvers(i) % Variable )
+      NULLIFY( Model % Solvers(i) % ActiveElements )
+      Model % Solvers(i) % NumberOfActiveElements = 0
+    END DO
+
+    DO i=1,Model % NumberOfSolvers
+      IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
+         Model % Solvers(i) % Values => ListAllocate()
+    END DO
+
+    Eq =  ListGetString( SolverParams, 'Equation' )
+
+    CALL ListAddIntegerArray( SolverParams, 'Post Solvers', 2, [n+1,n+2] )
+
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Procedure', &
+              'MagnetoDynamics HelmholtzProjector', CaseConversion=.FALSE. )
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Equation', 'HP' )
+    CALL ListAddString( Model % Solvers(n+1) % Values, 'Exec Solver', 'Never' )
+
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Procedure', &
+              'MagnetoDynamics RemoveKernelComponent',CaseConversion=.FALSE. )
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Equation', 'RMC' )
+    CALL ListAddString( Model % Solvers(n+2) % Values, 'Exec Solver', 'Never' )
+
+    DO i=1,Model % NumberOFEquations
+      IF ( ListGetLogical( Model % Equations(i) % Values, Eq, Found ) ) THEN
+        CALL ListAddLogical( Model % Equations(i) % Values, 'HP', .TRUE. )
+        CALL ListAddLogical( Model % Equations(i) % Values, 'RMC' , .TRUE.)
+      ELSE
+        ActiveSolvers => ListGetIntegerArray( CurrentModel % Equations(i) % Values, &
+                              'Active Solvers', Found )
+        IF ( Found ) THEN
+          DO k=1,SIZE(ActiveSolvers)
+            IF ( ActiveSolvers(k) == Solver % SolverId ) THEN
+              CALL ListAddLogical( Model % Equations(i) % Values, 'HP', .TRUE. )
+              CALL ListAddLogical( Model % Equations(i) % Values, 'RMC', .TRUE. )
+              EXIT
+            END IF
+          END DO
+        END IF
+      END IF
+    END DO
+  END IF
+
     
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
@@ -95,12 +159,29 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh
-
+  LOGICAL :: Found 
+  
   Mesh => GetMesh()
   IF( Mesh % MeshDim /= 3 ) THEN
     CALL Fatal('WhitneyAVHarmonicSolver_Init','Solver requires 3D mesh!')
   END IF
-    
+
+  ! Historically a real array could be used for H-B Curve.
+  ! This dirty piece of code makes things backward compatible.
+  BLOCK
+    INTEGER :: i
+    LOGICAL :: Cubic
+    TYPE(ValueList_t), POINTER :: Material
+    DO i=1,Model % NumberOfMaterials
+      Material => Model % Materials(i) % Values
+      IF( ListCheckPresent( Material, 'H-B Curve') ) THEN
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        CALL ListRealArrayToDepReal(Material,'H-B Curve','dummy',&
+            CubicTable=Cubic) !Monotone=.TRUE.)         
+      END IF
+    END DO
+  END BLOCK
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init
 !------------------------------------------------------------------------------
@@ -132,7 +213,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
   LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
-  LOGICAL :: ExtNewton
+  LOGICAL :: ExtNewton, StrandedHomogenization
   LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
@@ -142,17 +223,17 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
   REAL(KIND=dp) :: Norm, Omega
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:), ReLoad(:,:)
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   REAL(KIND=dp) :: NewtonTol
-
+  
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -163,14 +244,24 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
   TYPE(ValueList_t), POINTER :: CompParams
 
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
-       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM, &
-       GapLength, MuParameter, SkinCond
+  CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
+  TYPE(Variable_t), POINTER :: CoilCurrentVar
+  REAL(KIND=dp) :: CurrAmp
+  LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
+  
+  SAVE MASS, STIFF, LOAD, FORCE, Tcoef, JFixVec, JFixFORCE, Acoef, Acoef_t, &
+     Cwrk, Cwrk_im, LamCond, LamThick, AllocationsDone, RotM, GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+  CALL Info('WhitneyAVHarmonicSolver','',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','------------------------------------------------',Level=6 )
+  CALL Info('WhitneyAVHarmonicSolver','Solving harmonic AV equations with edge elements',Level=5 )
+   
   SolverParams => GetSolverParams()
+
+  EigenSystem = GetLogical( SolverParams, 'Eigen Analysis', Found )
+  ElectroDynamics = GetLogical( SolverParams, 'Electrodynamics Model', Found )
   
   SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF( SecondOrder ) THEN
@@ -186,6 +277,33 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'The option > Use Tree Gauge < is not available',Level=4)
   END IF
 
+  CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
+  IF(.NOT. UseCoilCurrent ) THEN
+    UseCoilCurrent = GetLogical(SolverParams,'Use Nodal CoilCurrent',Found )
+    IF(UseCoilCurrent) THEN
+      CoilCurrentName = 'CoilCurrent'
+    ELSE
+      UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
+      IF(UseCoilCurrent) CoilCurrentName = 'CoilCurrent e'
+    END IF
+  END IF
+  ElemCurrent = .FALSE.
+
+  IF( UseCoilCurrent ) THEN
+    CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
+    IF( ASSOCIATED( CoilCurrentVar ) ) THEN
+      CALL Info('WhitneyAVHarmonicSolver','Using precomputed field for current density: '//TRIM(CoilCurrentName),Level=5)
+      IF( CoilCurrentVar % TYPE == Variable_on_nodes_on_elements ) THEN
+        ElemCurrent = .TRUE.
+      ELSE
+        CALL Warn('WhitneyAVHarmonicSolver','Precomputed CoilCurrent is not an elemental field!')
+      END IF
+    ELSE
+      CALL Fatal('WhitneyAVHarmonicSolver','Elemental current requested but not found:'//TRIM(CoilCurrentName))
+    END IF
+  END IF
+
+  
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
@@ -200,8 +318,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
          'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
+     ALLOCATE( FORCE(N), LOAD(7,N), ReLOAD(3,N), STIFF(N,N), MASS(n,n), &
+          JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -215,7 +333,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
   
   Omega = GetAngularFrequency(Found=Found)
-  IF(.NOT. Found ) THEN
+  IF(.NOT. Found .AND. .NOT. EigenSystem ) THEN
     CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
   END IF
     
@@ -250,9 +368,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
           //TRIM(HbCurveVarName))
     END IF
   END IF
-
     
-  !
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
@@ -303,14 +419,15 @@ CONTAINS
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Norm, PrevNorm, TOL
-    INTEGER :: i,j,k,n,nd,t
+    INTEGER :: i,j,k,n,nd,t,ComponentId
     REAL(KIND=dp), ALLOCATABLE :: Diag(:)
-    LOGICAL  :: FoundMagnetization, Found
+    LOGICAL  :: FoundMagnetization, Found, ConstraintActive, GotCoil, CircuitDrivenBC
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
     CALL DefaultInitialize()
     Active = GetNOFActive()
+
     DO t=1,active
        Element => GetActiveElement(t)
        n  = GetElementNOFNodes() ! vertices
@@ -324,14 +441,32 @@ CONTAINS
        LOAD = 0.0d0
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
-       IF ( ASSOCIATED(BodyForce) ) THEN
-          CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
-          CALL GetComplexVector( BodyForce, Load(4:6,1:n), &
-                 'Magnetization', FoundMagnetization )
 
-          Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
-          Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
-              GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
+       ! If the coil current field is elemental it is discontinuous and need not be limited
+       ! to the body force. For nodal ones we don't have the same luxury.
+       GotCoil = .FALSE.
+       IF( UseCoilCurrent ) THEN
+         IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
+           CALL GetVectorLocalSolution( ReLoad,UElement=Element,UVariable=CoilCurrentVar,Found=GotCoil)       
+           LOAD(1:3,1:n) = ReLoad(1:3,1:n)
+         END IF
+       END IF
+              
+       IF ( ASSOCIATED(BodyForce) ) THEN
+         ! If not already given by CoilCurrent, request for current density
+         IF( .NOT. GotCoil ) THEN           
+           CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+         END IF
+
+         CurrAmp = ListGetCReal( BodyForce,'Current Density Multiplier',Found ) 
+         IF(Found) Load(1:3,1:n) = CurrAmp * Load(1:3,1:n)
+                    
+         CALL GetComplexVector( BodyForce, Load(4:6,1:n), &
+             'Magnetization', FoundMagnetization )
+
+         Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
+         Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
+             GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
        END IF
 
        Material => GetMaterial( Element )
@@ -345,13 +480,17 @@ CONTAINS
        CompParams => GetComponentParams( Element )
        CoilType = ''
        RotM = 0._dp
+       ConstraintActive = .TRUE.
        IF (ASSOCIATED(CompParams)) THEN
          CoilType = GetString(CompParams, 'Coil Type', Found)
          IF (Found) THEN
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
-              CALL GetElementRotM(Element, RotM, n)
+              StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+              IF( StrandedHomogenization ) THEN
+                CALL GetElementRotM(Element, RotM, n)
+              END IF
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -361,22 +500,29 @@ CONTAINS
               CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
            END SELECT
          END IF
+         ConstraintActive = GetLogical( CompParams, 'Activate Constraint', Found)
+!        IF(.NOT.Found .AND. CoilType /= 'stranded') ConstraintActive = .TRUE.
+         IF(.NOT.Found ) ConstraintActive = .FALSE.
        END IF
+
+       LaminateStack = .FALSE.
+       LaminateStackModel = ''
+       HasTensorReluctivity = .FALSE.
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
-       Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
-         HasTensorReluctivity = .FALSE.
-         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-         IF (HasTensorReluctivity) THEN
-           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
-             Acoef(1:n) = Acoef_t(1,1,1:n) 
-             HasTensorReluctivity = .FALSE.
-           ELSE IF (size(Acoef_t,1)/=3) THEN
-             CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+         IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+           CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+           IF (HasTensorReluctivity) THEN
+             IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+               Acoef(1:n) = Acoef_t(1,1,1:n) 
+               HasTensorReluctivity = .FALSE.
+             ELSE IF (size(Acoef_t,1)/=3) THEN
+               CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+             END IF
+           ELSE
+             CALL GetReluctivity(Material,Acoef,n)
            END IF
-         ELSE
-           CALL GetReluctivity(Material,Acoef,n)
          END IF
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
@@ -384,7 +530,6 @@ CONTAINS
          Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-         IF (.NOT. LaminateStack) LaminateStackModel = ''
        END IF
 
        LamThick=0d0
@@ -418,11 +563,12 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
+          LamCond, CoilBody, CoilType, RotM, ConstraintActive, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
+       IF (EigenSystem) CALL DefaultUpdateMass(MASS)
        
        ! Memorize stuff for the fixing potential
        ! 1) Divergence of the source term
@@ -503,21 +649,33 @@ CONTAINS
        IF (Found) THEN
          MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
          IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
+         CALL LocalMatrixAirGapBC(MASS,STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
          SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
-           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           MuParameter = GetConstReal( BC, 'Layer Relative Permeability', Found)
+           ComponentId=GetInteger( BC, 'Component', CircuitDrivenBC)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
+           CALL LocalMatrixSkinBC(MASS,STIFF,FORCE,SkinCond,MuParameter,Element,CircuitDrivenBC,n,nd)
          ELSE         
-           CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+           IF (Found) THEN
+             MuParameter=GetConstReal( BC, 'Thin Sheet Relative Permeability', Found)
+             IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+             ! Technically, there is no skin but why create yet another conductivity variable?
+             SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
+             IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
+             CALL LocalMatrixThinSheet( MASS, STIFF, FORCE, LOAD, GapLength, MuParameter, &
+                                            SkinCond, Element, n, nd )
+           ELSE
+             CALL LocalMatrixBC(MASS,STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           END IF
          END IF
        END IF
-       
-       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
-    END DO
 
+       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+       IF(EigenSystem) CALL DefaultUpdateMass(MASS,Element)
+    END DO
 
     CALL DefaultFinishAssembly()
 
@@ -536,6 +694,70 @@ CONTAINS
       CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
 
+
+BLOCK
+! Automatic BC for massive,foil coils outer boundaries, when "Activate Constraint" on!!
+
+    TYPE(Element_t), POINTER :: Parent
+    LOGICAL :: AutomaticBC
+    INTEGER, POINTER :: Electrodes(:)
+
+    A => GetMatrix()
+
+    IF (.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
+      ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
+      A % ConstrainedDOF = .FALSE.
+    END IF
+
+    IF(.NOT.ALLOCATED(A % DValues)) THEN
+      ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+
+    Active = GetNOFBoundaryElements()
+    DO t = 1, Active
+      Element => GetBoundaryElement(t)
+
+      Parent => Element % BoundaryInfo % Right
+      IF(ASSOCIATED(Parent)) CYCLE
+
+      IF(ParEnv % PEs>1) THEN
+        ! Assuming here that this is an internal boundary, if all elements nodes are
+        ! interface nodes. Not foolproof i guess, but quite safe (?)
+        IF (ALL(Solver % Mesh % ParallelInfo % GInterface(Element % NodeIndexes))) CYCLE
+      END IF
+ 
+      Parent => Element % BoundaryInfo % Left
+      IF(.NOT.ASSOCIATED(Parent)) CYCLE
+
+      CompParams => GetComponentParams(Parent)
+      IF (.NOT. ASSOCIATED(CompParams)) CYCLE
+
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF(CoilType/='massive' .AND. CoilType/='foil winding') CYCLE
+
+      ConstraintActive = GetLogical(CompParams,'Activate Constraint',Found )
+      IF( .NOT. ConstraintActive ) CYCLE
+
+      AutomaticBC = GetLogical( CompParams, 'Automatic electrode BC', Found )
+      IF(.NOT.Found) AutomaticBC = .TRUE.
+
+      IF(.NOT.AutomaticBC) CYCLE
+
+      Electrodes =>  ListGetIntegerArray( CompParams, &
+             'Electrode Boundaries', Found )
+
+      IF(ASSOCIATED(Electrodes)) THEN
+        IF(ALL(Electrodes/=Element % BoundaryInfo % Constraint)) CYCLE
+      END IF
+
+      DO i=1,Element % Type % NumberOfNodes
+        j = 2*(Solver % Variable % Perm(Element % NodeIndexes(i))-1)+1
+        A % ConstrainedDOF(j:j+1) = .TRUE.
+      END DO
+    END DO
+END BLOCK
+
     CALL DefaultDirichletBCs()
 
     !
@@ -550,7 +772,7 @@ CONTAINS
          CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
 
       WRITE(Message,*) 'Volume tree edges: ', &
-          TRIM(i2s(COUNT(TreeEdges))),     &
+          i2s(COUNT(TreeEdges)),     &
           ' of total: ',Mesh % NumberOfEdges
       CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
 
@@ -697,11 +919,11 @@ CONTAINS
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
-             //TRIM(i2s(i)),REAL(u(i))/a(i))
+             //i2s(i),REAL(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
-             //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+             //i2s(i),AIMAG(u(i))/a(i))
          CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
-             //TRIM(i2s(i)),a(i))
+             //i2s(i),a(i))
        END IF
      END DO
    END IF
@@ -1044,42 +1266,40 @@ CONTAINS
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
-            Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
-            PiolaVersion, SecondOrder )
+      Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
+      LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
+      Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody, ConstraintActive
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     RotMLoc(3,3), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
 
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum
+          CVelo(3), CVeloSum, Permittivity(nd), P_ip, DAMP(nd,nd)
 
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
+    LOGICAL :: Stat, Newton, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    LOGICAL :: StrandedHomogenization, FoundIm
+    LOGICAL :: StrandedHomogenization, UseRotM, FoundIm
 
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+    INTEGER :: t, i, j, p, q, np, EdgeBasisDegree
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
@@ -1091,9 +1311,10 @@ CONTAINS
 
     CALL GetElementNodes( Nodes )
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     IF( Jfix ) THEN
       IF( JfixSolve ) THEN
@@ -1114,32 +1335,9 @@ CONTAINS
       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
-
-    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
-    siz = 0
-    IF ( HBCurve ) THEN
-      siz = SIZE(HB,1)
-      IF(siz>1) THEN
-        Bval=>HB(:,1)
-        Hval=>HB(:,2)
-        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-          ALLOCATE(Cval(siz))
-          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
-        END IF
-        Cval=>CubicCoeff
-        HBCurve = .TRUE.
-      END IF
-    END IF
-
-    IF(siz<=1) THEN
-      Lst => ListFind(Material,'H-B Curve',HBcurve)
-      IF(HBcurve) THEN
-        Cval => Lst % CubicCoeff
-        Bval => Lst % TValues
-        Hval => Lst % FValues(1,1,:)
-      END IF
-    END IF
+    
+    CALL GetPermittivity(GetMaterial(), Permittivity, n)
+    HBCurve = ListCheckPresent(Material,'H-B Curve')
 
     IF(HBCurve) THEN
       Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
@@ -1155,25 +1353,30 @@ CONTAINS
     END IF
 
     StrandedHomogenization = .FALSE.
-    IF (CoilType == 'stranded') THEN 
-       CompParams => GetComponentParams( Element )
-       StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-       IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
-         
-       IF ( StrandedHomogenization ) THEN
-         nu_11 = 0._dp
-         nuim_11 = 0._dp
-         nu_11 = GetReal(CompParams, 'nu 11', Found)
-         nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
-         nu_22 = 0._dp
-         nuim_22 = 0._dp
-         nu_22 = GetReal(CompParams, 'nu 22', Found)
-         nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
-         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
-       END IF
-    END IF
+    UseRotM = .FALSE.
+    IF(CoilBody) THEN
+      IF (CoilType == 'stranded') THEN 
+        CompParams => GetComponentParams( Element )
+        StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
 
+        IF ( StrandedHomogenization ) THEN
+          nu_11 = 0._dp
+          nuim_11 = 0._dp
+          nu_11 = GetReal(CompParams, 'nu 11', Found)
+          nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+          nu_22 = 0._dp
+          nuim_22 = 0._dp
+          nu_22 = GetReal(CompParams, 'nu 22', Found)
+          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+          UseRotM = .TRUE.
+        END IF
+      ELSE IF( CoilType == 'foil winding') THEN
+        UseRotM = .TRUE.
+      END IF
+    END IF
+      
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1220,21 +1423,31 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') &
-                   RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
+       P_ip = SUM( Permittivity(1:n) * Basis(1:n) )
+
        ! Transform the conductivity tensor (in case of a foil winding):
-       ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       ! --------------------------------------------------------------       
+       IF ( UseRotM ) THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(ABS(B_ip)**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/babs
-         IF ( Newton ) THEN
-           muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+
+         IF( Newton ) THEN
+           mu = ListGetFun( Material,'h-b curve',babs,dFdx=muder) / Babs
+           muder = (muder-mu)/babs
+         ELSE
+           mu = ListGetFun( Material,'h-b curve',babs) / Babs
          END IF
        ELSE
          mu = SUM( Basis(1:n) * Acoef(1:n) )
@@ -1274,7 +1487,7 @@ CONTAINS
          Nu(2,2) = mu
          Nu(3,3) = mu
 
-         IF (CoilBody .AND. StrandedHomogenization) THEN
+         IF (StrandedHomogenization) THEN
            nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
            nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
            Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
@@ -1309,23 +1522,23 @@ CONTAINS
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       ! If we calculate a coil, the nodal degrees of freedom are not used:
-       ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
+       ! If we calculate a coil, user can request that the the nodal degrees of freedom are not used
+       ! --------------------------------------------------------------------------------------------
+       NONCOIL_CONDUCTOR: IF (ConstraintActive .AND. (SUM(ABS(C)) > AEPS .OR. ElectroDynamics) ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
           DO i=1,np
             p = i
-            DO j=1,np
-              q = j
+            DO q=1,np
 
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-              IF ( SUM(C) /= 0._dp ) THEN
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+              IF(ElectroDynamics) THEN             
+                DAMP(p,q) = DAMP(p,q) + P_ip*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t)
               END IF
+              STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1333,16 +1546,25 @@ CONTAINS
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+              DAMP(p,q) = DAMP(p,q) + &
                   SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
+
+              IF(ElectroDynamics) THEN             
+                MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+              END IF
 
               ! Compute the conductivity term <C grad V, eta> for 
               ! stiffness matrix (anisotropy taken into account)
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+
+              IF(ElectroDynamics) THEN             
+                DAMP(q,p) = DAMP(q,p) + &
+                       P_ip * SUM( WBasis(j,:)*dBasisdx(i,:) )*detJ*IP % s(t)
+              END IF
             END DO
           END DO
-       END IF ! (.NOT. CoilBody)
+       END IF NONCOIL_CONDUCTOR
 
        IF ( HasVelocity ) THEN
          DO i=1,np
@@ -1390,8 +1612,13 @@ CONTAINS
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
-                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+           IF (CoilType /= 'stranded') DAMP(p,q) = DAMP(p,q) + &
+                SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+
+           IF(ElectroDynamics ) THEN
+             MASS(p,q) = MASS(p,q) + &
+                P_ip*SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END IF
          END DO
        END DO
 
@@ -1400,6 +1627,13 @@ CONTAINS
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+    END IF
+
+    IF(EigenSystem) THEN
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -Omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
     END IF
 
 !------------------------------------------------------------------------------
@@ -1475,18 +1709,18 @@ CONTAINS
  
   
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
+  SUBROUTINE LocalMatrixBC(  MASS, STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3),w1(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), NormalSign
-    LOGICAL :: Stat
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    LOGICAL :: Stat, LineElem
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
@@ -1501,34 +1735,36 @@ CONTAINS
 
     CALL GetElementNodes( Nodes )
 
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
+    ! We may have line elements that define BC for the conductive layers, for example.
+    ! However, line elements do not have all the features of edge elements. Only
+    ! certains BCs are possible. 
+    LineElem = ( Element % TYPE % ElementCode / 100 <= 2 ) 
+        
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree)
-
+    IF( LineElem ) THEN
+      IP = GaussPoints(Element)
+    ELSE
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    END IF
+      
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-
-       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
-
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+       IF( LineElem ) THEN        
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), detJ, Basis, dBasisdx )        
+       ELSE IF ( PiolaVersion ) THEN
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE., &
-               TangentialTrMapping=.TRUE.)
-
-          NormalSign = 1.0d0
-          w0 = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.FALSE.)
-          IF (SUM(w0*Normal) < 0.0d0) NormalSign = -1.0d0
-
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE       
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
-
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
@@ -1538,6 +1774,28 @@ CONTAINS
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
 
+
+       ! Experimental so far...
+       !
+       ! After integration over the layer the surface current Lambda_S is expressed as
+       !
+       !    Lambda_S = sigma*delta/(1+i)E_S = -inv(Z)E_S. 
+       !
+       ! In order to maintain the relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S] we multiply 
+       ! the given surface current with (1-i) and then consider instead
+       !
+       !   (1-i) Lambda_S = sigma*delta/(1+i)E_S 
+       !
+       ! which gives Lambda_S = sigma*delta/2 E_S = Re[-inv(Z)] E_S and also
+       ! the desired relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S]. This modification of
+       ! the input surface current is done in the following.
+       !   
+       IF( LineElem ) THEN
+         F = F * (1-im)
+         TC = TC * (1-im)
+       END IF
+
+       
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
@@ -1548,23 +1806,16 @@ CONTAINS
          END DO
        END DO
 
+       ! We cannot do the following for line elements
+       IF( LineElem ) CYCLE
+       
        DO i = 1,nd-np
-         IF (PiolaVersion) THEN
-           w0 = NormalSign * Wbasis(i,:)
-         ELSE         
-           w0 = CrossProduct(Wbasis(i,:),Normal)
-         END IF
          p = i+np
-         FORCE(p) = FORCE(p) - SUM(L*w0)*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) - SUM(L*Wbasis(i,:))*detJ*IP%s(t)
          DO j = 1,nd-np
-           IF (PiolaVersion) THEN
-             w1 = NormalSign * Wbasis(j,:)
-           ELSE           
-             w1 = CrossProduct(Wbasis(j,:),Normal)
-           END IF
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(w1*w0)*detJ*IP%s(t)
+              SUM(Wbasis(i,:)*Wbasis(j,:))*detJ*IP%s(t)
          END DO
        END DO
     END DO
@@ -1573,11 +1824,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
+  SUBROUTINE LocalMatrixAirGapBC(MASS, STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
@@ -1596,9 +1847,9 @@ CONTAINS
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
 
@@ -1636,22 +1887,145 @@ CONTAINS
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
+  SUBROUTINE LocalMatrixThinSheet(  MASS, STIFF, FORCE, LOAD, Thickness, Permeability, &
+                                          Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+
+    COMPLEX(KIND=dp) :: DAMP(nd,nd)
+    
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       sheetThickness  = SUM(Basis(1:n) * Thickness(1:n))
+       mu  = SUM(Basis(1:n) * Permeability(1:n))
+       C  = SUM(Basis(1:n) * Conductivity(1:n))
+
+       CONDUCTOR: IF ( C > AEPS ) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO q=1,np
+
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+            END DO
+            DO j=1,nd-np
+              q = j+np
+              
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              DAMP(p,q) = DAMP(p,q) + &
+                  sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF CONDUCTOR
+
+       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
+       !        J + curl(M) - C*grad(P'):
+       ! ----------------------------------------------------
+       DO i = 1,nd-np
+         p = i+np
+       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
+       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
+
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+
+           ! Compute the conductivity term <j * omega * C A,eta> 
+           ! for stiffness matrix (anisotropy taken into account)
+           ! ----------------------------------------------------
+           DAMP(p,q) = DAMP(p,q) + sheetThickness * &
+              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+         END DO
+       END DO
+    END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixThinSheet
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixSkinBC( MASS, STIFF, FORCE, SkinCond, SkinMu, &
+                 Element, CircuitDrivenBC, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
     TYPE(Element_t), POINTER :: Element
+    LOGICAL :: CircuitDrivenBC
     INTEGER :: n, nd
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp) :: invZs, DAMP(nd,nd)
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
-    COMPLEX(KIND=dp) :: imu, invZs
     
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -1660,11 +2034,12 @@ CONTAINS
     EdgeBasisDegree = 1
     IF (SecondOrder) EdgeBasisDegree = 2
 
+    MASS  = 0.0_dp
+    DAMP  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
     
     ! Numerical integration:
     !-----------------------
@@ -1688,7 +2063,7 @@ CONTAINS
       cond = SUM(Basis(1:n) * SkinCond(1:n))
       mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
       delta = SQRT( 2.0_dp/(cond*omega*mu))      
-      invZs = (cond*delta)/(1.0_dp+imu)
+      invZs = (cond*delta)/(1.0_dp+im)
       !PRINT *,'skin:',cond,delta,omega,invZs
       !PRINT *,'elem:',Element % NodeIndexes
 
@@ -1704,19 +2079,22 @@ CONTAINS
           ! the edge basis functions returned by the function EdgeElementInfo are automatically 
           ! tangential and hence the normal doesn't appear in the expression.
           !
-          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
+          DAMP(p,q) = DAMP(p,q) + invZs * &
               SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
         END DO
 
-        DO q = 1,np
-          !
-          ! The term 1/Z < grad V x n, v x n> : 
-          ! Some tensor calculation shows that the component form of this term is analogous to 
-          ! the case < A x n, v x n>. 
-          !
-          STIFF(p,q) = STIFF(p,q) + invZs * &
-              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO q = 1,np
+            !
+            ! The term 1/Z < grad V x n, v x n> : 
+            ! Some tensor calculation shows that the component form of this term is analogous to 
+            ! the case < A x n, v x n>. 
+            !
+            STIFF(p,q) = STIFF(p,q) + invZs * &
+                        SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+        END IF
+
       END DO
 
       !
@@ -1726,20 +2104,28 @@ CONTAINS
       ! surface via giving a current BC (the conducting skin must be either insulated over its
       ! boundary or constrained by a Dirichlet condition for the scalar potential).
       !
-      DO p = 1,np
-        DO q = 1,np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * &
-              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-        END DO
+        IF (.NOT. CircuitDrivenBC) THEN
+          DO p = 1,np
+            DO q = 1,np
+              STIFF(p,q) = STIFF(p,q) + delta * cond * &
+                  SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+            END DO
 
-        DO j = 1,nd-np
-          q = j+np
-          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
-              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
-        END DO
-      END DO
-
+            DO j = 1,nd-np
+              q = j+np
+              DAMP(p,q) = DAMP(p,q) + delta * cond * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+            END DO
+          END DO
+        END IF
     END DO
+
+    IF(EigenSystem) THEN 
+      MASS(1:nd,1:nd) = MASS(1:nd,1:nd) + im*DAMP(1:nd,1:nd)
+    ELSE
+      STIFF(1:nd,1:nd) = -omega**2 * MASS(1:nd,1:nd) + &
+        im*Omega*DAMP(1:nd,1:nd) + STIFF(1:nd,1:nd)
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixSkinBC
 !------------------------------------------------------------------------------
@@ -1882,8 +2268,8 @@ CONTAINS
     CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
     WRITE(Message,*) 'Boundary tree edges: ', &
-      TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
-             ' of total: ',TRIM(i2s(FluxCount))
+      i2s(COUNT(TreeEdges(FluxMap))),   &
+             ' of total: ',i2s(FluxCount)
     CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
 
     ! Get (B,n) for BC faces:
@@ -2142,3 +2528,738 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE WhitneyAVHarmonicSolver
 !------------------------------------------------------------------------------
+
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+! *
+! *  Utilities written as solvers to compute the Helmholtz projection P(A)
+! *  of a curl-conforming vector field A. The projection can be obtained as 
+! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
+! *  grad Phi, with Phi being a H1-regular scalar field.
+! * 
+! *  This file contains harmonic version of the transformation and also applies the
+! *  correction to the V field within conducting regions.
+! *
+! *
+! *  Authors: Mika Malinen, Juha Ruokolainen
+! *  Email:   mika.malinen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: March 20, 2020
+! *  Last Modified: June 18, 2021, Juha
+! *
+!******************************************************************************
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  DO i=1,Model % NumberOfSolvers
+    IF (ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'HelmholtzProjector:')
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  LOGICAL :: Found
+  INTEGER :: i,j
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+  SolverParams => GetSolverParams()
+  CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+  CALL ListAddString( SolverParams, 'Variable', 'pd' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  CALL ListAddString( SolverParams, 'Potential Variable', GetVarName(Model % Solvers(i) % Variable))
+
+  ! Solver is using a single linear system to solve complex components,
+  ! assign storage for final complex result.
+  ! -------------------------------------------------------------------
+  CALL ListAddString( SolverParams, 'Exported Variable 1', 'P[P re:1 P im:1]' )
+
+  CALL ListAddLogical( SolverParams, 'Linear System Symmetric', .TRUE. )
+  CALL ListAddString(  SolverParams, 'Linear System Solver', 'Iterative' )
+  CALL ListAddString(  SolverParams, 'Linear System Preconditioning', 'ILU' )
+  CALL ListAddInteger( SolverParams, 'Linear System Residual Output', 25 )
+  CALL ListAddInteger( SolverParams, 'Linear System Max Iterations', 2000 )
+  CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
+  CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+
+  DO j=1,Model % NumberOfBCs
+    IF ( ListCheckPrefix( Model % BCs(j) % Values, &
+               TRIM(GetVarName(Model % Solvers(i) % Variable)) // ' re {e}' ) ) THEN
+      CALL ListAddConstReal( Model % BCs(j) % Values, 'Pd', 0._dp )
+    END IF
+  END DO
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Compute a H1-regular scalar field to obtain the Helmholtz projection P(A)
+!> of a curl-conforming vector field A. Given the solution field Phi of this 
+!> solver, the projection can be evaluated as P(A) = A - grad Phi.
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables:
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: SolverPtr
+  TYPE(Element_t), POINTER :: Element
+
+  LOGICAL :: AllocationsDone = .FALSE.
+  LOGICAL :: Found
+  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix
+
+  INTEGER :: i, j,k,l,n, n_pot, nd_pot, t
+  INTEGER :: dim, PotDOFs
+  INTEGER :: istat, active
+
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: Stiff(:,:), Force(:,:), PotSol(:,:), F(:,:)
+  REAL(KIND=dp) :: Norm, Omega
+  REAL(KIND=dp), POINTER :: SaveRHS(:), SOL(:)
+  CHARACTER(LEN=MAX_NAME_LEN) :: PotName
+
+  TYPE(Variable_t), POINTER :: v
+
+  SAVE Stiff, Force, PotSol, AllocationsDone
+!------------------------------------------------------------------------------
+  CALL DefaultStart()
+
+  dim = CoordinateSystemDimension()
+  SolverParams => GetSolverParams()
+  Mesh => GetMesh()
+
+  ! Allocate some permanent storage, this is done first time only:
+  !---------------------------------------------------------------
+  IF (.NOT. AllocationsDone) THEN
+    n = Mesh % MaxElementDOFs
+
+    ALLOCATE( FORCE(2,n), STIFF(n,n), PotSol(2,n), STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'HelmholtzProjector', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
+
+  !
+  ! Find the variable which is projected:
+  !
+  PotName = GetString(SolverParams, 'Potential Variable', Found)
+  IF (.NOT. Found ) PotName = 'av'
+  Found = .FALSE.
+  DO i=1,Model % NumberOfSolvers
+    SolverPtr => Model % Solvers(i)
+    IF (PotName == GetVarName(SolverPtr % Variable)) THEN
+      Found = .TRUE.
+      EXIT
+    END IF
+  END DO
+
+  IF (.NOT. Found ) THEN
+    CALL Fatal('HelmholtzProjector', 'Solver associated with potential variable > '&
+        //TRIM(PotName)//' < not found!')
+  END IF
+
+  !
+  ! Find some parameters to inherit the vector FE basis as defined in 
+  ! the primary solver:
+  !
+  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
+
+  IF (SecondOrder) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
+  END IF
+
+  IF (PiolaVersion) CALL Info('HelmholtzProjector', &
+      'Using Piola-transformed finite elements', Level=5)
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(F(n,2)); F=0
+
+  !-----------------------
+  ! System assembly:
+  !----------------------
+  active = GetNOFActive()
+  CALL DefaultInitialize(Solver)
+
+  SaveRHS => Solver % Matrix % RHS
+
+  DO t=1,active
+    Element => GetActiveElement(t)
+    !
+    ! This solver relies on getting basis functions by calling a routine
+    ! which returns a curl-conforming basis. It is thus assumed that
+    ! the background mesh defines the number of Lagrange basis functions.
+    !
+    n = GetElementNOFNodes()
+   
+    ! The DOF counts for the potential (target) variable: 
+    n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
+    nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
+
+    CALL GetVectorLocalSolution(PotSol, PotName, USolver=SolverPtr)
+
+    ! Get element local matrix and rhs vector:
+    !----------------------------------------
+    CALL LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
+        SecondOrder, n_pot, nd_pot, PotSol )
+    
+    ! Update global matrix and rhs vector from local matrix & vector:
+    !---------------------------------------------------------------
+    Solver % Matrix % RHS => F(:,1)
+    CALL DefaultUpdateForce(FORCE(1,:))
+
+    Solver % Matrix % RHS => F(:,2)
+    CALL DefaultUpdateEquations(STIFF, FORCE(2,:))
+  END DO
+
+  CALL DefaultFinishBulkAssembly()
+  CALL DefaultDirichletBCs()
+
+  v => VariableGet( Mesh % Variables, 'P'  )
+  SOL => v % Values
+
+  Solver % Matrix % RHS => F(:,1)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(1::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => F(:,2)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(2::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => SaveRHS
+
+
+  omega = GetAngularFrequency()
+
+  !
+  ! Finally, redefine the potential variable:
+  ! -----------------------------------------
+  DO i=1,Solver % Mesh % NumberOfNodes
+    j = Solver % Variable % Perm(i)
+    IF(j==0) CYCLE
+
+    k = SolverPtr % Variable % Perm(i)
+    IF (k == 0) THEN
+      CALL Fatal('HelmholtzProjector', &
+        'The variable and potential permutations are nonmatching?')
+    END IF
+
+    SolverPtr % Variable % Values(2*k-1) = SolverPtr % Variable % Values(2*k-1) - &
+        omega * SOL(2*j)
+
+    SolverPtr % Variable % Values(2*k) = SolverPtr % Variable % Values(2*k) + &
+        omega * SOL(2*j-1)
+  END DO
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
+               SecondOrder, n_pot, nd_pot, PotSol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Stiff(:,:), Force(:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n   ! The number of background element nodes
+    INTEGER :: dim
+    LOGICAL :: PiolaVersion, SecondOrder
+    INTEGER :: n_pot, nd_pot      ! The size parameters of target field
+    REAL(KIND=dp) :: PotSol(:,:)  ! The values of target field DOFS
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    LOGICAL :: Stat
+
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
+    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: WBasis(nd_pot-n_pot,3), CurlWBasis(nd_pot-n_pot,3)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes)
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2  
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      EdgeBasisDegree = 1
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+
+    DO t=1,IP % n
+
+      u = IP % U(t)
+      v = IP % V(t)
+      w = IP % W(t)
+
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
+            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
+        IF( dim == 3 ) THEN
+          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
+        ELSE
+          CALL Fatal('HelmholtzProjector', 'Use Piola Transform = True needed in 2D')
+        END IF
+      END IF
+      s = detJ * IP % s(t)
+
+      A = MATMUL(PotSol(:,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,:))
+
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(q,1:dim) * dBasisdx(p,1:dim)) * s
+        END DO
+      END DO
+
+      DO p=1,n
+        FORCE(1,p) = FORCE(1,p) + SUM(A(1,:) * dBasisdx(p,:)) * s
+        FORCE(2,p) = FORCE(2,p) + SUM(A(2,:) * dBasisdx(p,:)) * s
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  INTEGER :: i,j
+  CHARACTER(LEN=MAX_NAME_LEN) :: Avname
+  LOGICAL :: Found, PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+
+! ! Solver is using a single linear system to solve complex components,
+! ! the final result is the (Hcurl) imaginary component...
+! ! -------------------------------------------------------------------
+
+! Linear System Symmetric = True
+! Linear System Solver = "Iterative"
+! Linear System Preconditioning = None
+! Linear System Residual Output = 25
+! Linear System Max Iterations = 2000
+! Linear System Iterative Method = CG
+! Linear System Convergence Tolerance = 1.0e-9
+
+  CALL ListAddString( SolverParams, 'Variable', 'avm' )
+  CALL ListAddLogical( SolverParams, 'Variable Output',.FALSE. )
+  
+  DO i=1,Model % NumberOfSolvers
+    IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
+  END DO
+  AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
+  
+  j = index(AVname, '[')
+  IF(j>0) AVname = AVname(1:j-1)
+  CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
+
+  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
+    PiolaVersion = ListGetLogical(Model % Solvers(i) % Values, 'Use Piola Transform', Found)
+    SecondOrder = ListGetLogical(Model % Solvers(i) % Values, 'Quadratic Approximation', Found)
+
+    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
+      CALL Warn("RemoveKernelComponent_Init0", &
+           "Quadratic Approximation requested without Use Piola Transform " &
+           //"Setting Use Piola Transform = True.")
+      PiolaVersion = .TRUE.
+      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
+    END IF
+
+    IF (SecondOrder) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE
+      IF (PiolaVersion) THEN
+        CALL ListAddString(SolverParams, "Element", &
+            "n:0 e:1 -brick b:3 -quad_face b:2")
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
+      END IF
+    END IF
+  END IF
+
+  ! Solver is using a single linear system to solve complex components,
+  ! assign storage for final complex result.
+  ! -------------------------------------------------------------------
+  CALL ListAddString( SolverParams, 'Kernel Variable', 'P' )
+
+  CALL ListAddLogical( SolverParams, 'Linear System Symmetric', .TRUE. )
+  CALL ListAddString(  SolverParams, 'Linear System Solver', 'Iterative' )
+  CALL ListAddString(  SolverParams, 'Linear System Preconditioning', 'ILU' )
+  CALL ListAddInteger( SolverParams, 'Linear System Residual Output', 25 )
+  CALL ListAddInteger( SolverParams, 'Linear System Max Iterations', 2000 )
+  CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
+  CALL ListAddConstReal( SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+  CALL ListAddLogical( SolverParams,"Hcurl Basis",.TRUE.)
+
+  CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'RemoveKernelComponent:')
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE RemoveKernelComponent_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!>  Apply the Helmholtz projection on a curl-conforming vector field A
+!>  when the kernel component grad phi of A (with respect to the curl operator)
+!>  has been computed by using the subroutine HelmholtzProjector. This solver
+!>  generates the representation W of grad phi in terms of the curl-conforming
+!>  basis and finally redefines A := A - W, with W = grad phi. 
+!------------------------------------------------------------------------------
+SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables:
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: SolverPtr, KerSolverPtr
+  TYPE(Element_t), POINTER :: Element
+
+  LOGICAL :: AllocationsDone = .FALSE.
+  LOGICAL :: Found
+! LOGICAL :: SecondFamily
+  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix
+
+  INTEGER :: dim, PotDOFs
+  INTEGER :: i, j, k, n, nd, n_pot, nd_pot, t
+  INTEGER :: istat, active
+
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: Stiff(:,:), Force(:,:), PhiSol(:,:), &
+                    SOL(:), F(:,:)
+  REAL(KIND=dp) :: Norm
+  CHARACTER(LEN=MAX_NAME_LEN) :: PotName, Name
+
+  REAL(KIND=dp), POINTER :: SaveRHS(:)
+
+
+  TYPE(Variable_t), POINTER :: v
+
+  SAVE Stiff, Force, PhiSol, AllocationsDone
+!------------------------------------------------------------------------------
+  CALL DefaultStart()
+
+  dim = CoordinateSystemDimension()
+  SolverParams => GetSolverParams()
+  Mesh => GetMesh()
+
+  ! Allocate some permanent storage, this is done first time only:
+  !---------------------------------------------------------------
+  IF (.NOT. AllocationsDone) THEN
+    n = Mesh % MaxElementDOFs
+    ALLOCATE(FORCE(2,n),STIFF(n,n),PhiSol(2,n),STAT=istat)
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'RemoveKernelComponent', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
+
+  !
+  ! Find the variable which is projected:
+  !
+  PotName = GetString(SolverParams, 'Potential Variable', Found)
+  IF (.NOT. Found ) PotName = 'av'
+
+  Found = .FALSE.
+  DO i=1,Model % NumberOfSolvers
+    SolverPtr => Model % Solvers(i)
+    IF (PotName == GetVarName(SolverPtr % Variable)) THEN
+      Found = .TRUE.
+      EXIT
+    END IF
+  END DO
+
+  IF (.NOT. Found ) THEN
+    CALL Fatal('RemoveKernelComponent', 'Solver associated with potential variable > '&
+        //TRIM(PotName)//' < not found!')
+  END IF
+
+  PotDOFs = SolverPtr % Variable % DOFs
+  IF (PotDOFs < 2) CALL Fatal('RemoveKernelComponent', 'A complex-valued potential expected')
+
+  !
+  ! Find the variable which defines the kernel component:
+  !
+  Name = GetString(SolverParams, 'Kernel Variable', Found)
+  IF (.NOT. Found ) Name = 'phi'
+  V => VariableGet( Mesh % Variables, Name )
+
+  Found = ASSOCIATED(v)
+   
+  IF (.NOT. Found ) THEN
+    CALL Fatal('RemoveKernelComponent', 'Solver associated with kernel variable > '&
+        //TRIM(Name)//' < not found!')
+  END IF
+  
+  !
+  ! Find some parameters to inherit the vector FE basis as defined in the primary solver:
+  !
+  SecondOrder = GetLogical(SolverPtr % Values, 'Quadratic Approximation', Found)  
+
+  IF (SecondOrder) THEN
+    PiolaVersion = .TRUE.
+  ELSE
+    PiolaVersion = GetLogical(SolverPtr % Values, 'Use Piola Transform', Found) 
+  END IF
+
+  IF (PiolaVersion) CALL Info('RemoveKernelComponent', &
+      'Using Piola-transformed finite elements', Level=5)
+
+!  SecondFamily = GetLogical(SolverPtr % Values, 'Second Kind Basis', Found)
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(F(n,2)); F=0
+  SaveRHS => Solver % Matrix % RHS
+
+  !-----------------------
+  ! System assembly:
+  !----------------------
+  active = GetNOFActive()
+  CALL DefaultInitialize(Solver)
+
+  DO t=1,active
+    Element => GetActiveElement(t)
+
+    n = GetElementNOFNodes()
+    nd = GetElementNOFDOFs()
+   
+    ! The DOF counts for the potential variable: 
+    n_pot = n*SolverPtr % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
+    nd_pot = GetElementNOFDOFs(USolver=SolverPtr)
+
+    IF (nd /= nd_pot-n_pot) CALL Fatal('RemoveKernelComponent', &
+     'Potential variable DOFs count /= the solver DOFs count')
+
+    CALL GetLocalSolution(PhiSol, Name)
+
+    ! Get element local matrix and rhs vector:
+    !----------------------------------------
+    CALL LocalMatrix( STIFF, FORCE, Element, n, nd, dim, PiolaVersion, &
+                SecondOrder, PhiSol )
+    
+    ! Update global matrix and rhs vector from local matrix & vector:
+    !---------------------------------------------------------------
+    Solver % Matrix % RHS => F(:,1)
+    CALL DefaultUpdateForce(FORCE(1,:))
+
+    Solver % Matrix % RHS => F(:,2)
+    CALL DefaultUpdateEquations(STIFF, FORCE(2,:))
+  END DO
+
+  n = Solver % Matrix % NumberOfRows
+  ALLOCATE(SOL(2*n))
+
+  Solver % Matrix % RHS => F(:,1)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(1::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => F(:,2)
+  CALL DefaultDirichletBCs()
+  Norm = DefaultSolve()  
+  SOL(2::2) = Solver % Variable % Values
+
+  Solver % Matrix % RHS => SaveRHS
+
+  !
+  ! Finally, redefine the potential variable:
+  !
+  n = SIZE(Solver % Variable % Perm(:))
+  IF (n ==  SIZE(SolverPtr % Variable % Perm(:))) THEN
+    DO i=Solver % Mesh % NumberOfNodes+1,n
+      j = Solver % Variable % Perm(i)
+      IF (j<=0) CYCLE
+
+      k = SolverPtr % Variable % Perm(i)
+      IF (k<=0) THEN
+        CALL Fatal('RemoveKernelComponent', &
+          'The variable and potential permutations are nonmatching?')
+      END IF
+
+      SolverPtr % Variable % Values(2*k-1) = SolverPtr % Variable % Values(2*k-1) - &
+          SOL(2*j-1)
+
+      SolverPtr % Variable % Values(2*k) = SolverPtr % Variable % Values(2*k) - &
+          SOL(2*j)
+    END DO
+  ELSE
+    CALL Fatal('RemoveKernelComponent', 'The variable and potential permutations differ')  
+  END IF
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
+              SecondOrder, PhiSol )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd, dim
+    REAL(KIND=dp) :: PhiSol(:,:)
+    LOGICAL :: PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    LOGICAL :: Stat
+
+    INTEGER :: i, j, p, q, t, EdgeBasisDegree 
+
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), A(2,3)
+    REAL(KIND=dp) :: u, v, w, s, DetJ
+    REAL(KIND=dp) :: WBasis(nd,3), CurlWBasis(nd,3)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes(Nodes)
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2  
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+          EdgeBasisDegree=EdgeBasisDegree)
+    ELSE
+      EdgeBasisDegree = 1
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    END IF
+
+    DO t=1,IP % n
+      u = IP % U(t)
+      v = IP % V(t)
+      w = IP % W(t)
+
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo(Element, Nodes, u, v, w, DetF=DetJ, &
+            Basis=Basis, EdgeBasis=WBasis, dBasisdx=dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis, dBasisdx)
+        IF( dim == 3 ) THEN
+          CALL GetEdgeBasis(Element, WBasis, CurlWBasis, Basis, dBasisdx)
+        ELSE
+          CALL Fatal('RemoveKernelComponent', 'Use Piola Transform = True needed in 2D')
+        END IF
+      END IF
+
+      s = detJ * IP % s(t)
+      DO p=1,nd
+        DO q=1,nd
+          STIFF(p,q) = STIFF(p,q) + s * SUM(WBasis(q,:) * WBasis(p,:))
+        END DO
+      END DO
+
+      A = MATMUL( PhiSol(:,1:n), dBasisdx(1:n,:) )
+      DO q=1,nd
+        FORCE(1,q) = FORCE(1,q) + s * SUM(A(1,:) * WBasis(q,:))
+        FORCE(2,q) = FORCE(2,q) + s * SUM(A(2,:) * WBasis(q,:))
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+END SUBROUTINE RemoveKernelComponent
+!------------------------------------------------------------------------------
+

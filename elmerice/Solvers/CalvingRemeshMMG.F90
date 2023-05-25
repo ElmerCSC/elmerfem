@@ -62,6 +62,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IMPLICIT NONE
 
 #include "mmg/mmg3d/libmmgtypesf.h"
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -84,7 +87,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
-  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
+  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE., Success
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -373,6 +376,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgSol  = 0
+      mmgMet  = 0
 
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -429,7 +433,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
+#if MMG_VERSION_LT(5,5) 
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+#else
+      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
+#endif
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
@@ -482,7 +490,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           gdofs = NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:NELNodes))
           DO j=1,GatheredMesh % NumberOfNodes
             IF(ANY(gdofs == GatheredMesh % ParallelInfo % GlobalDOFs(j)) .AND. &
-                 GatheredMesh % ParallelInfo % INTERFACE(j)) THEN
+                 GatheredMesh % ParallelInfo % GInterface(j)) THEN
               isolated = .FALSE.
               EXIT
             END IF
@@ -615,7 +623,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       target_length(:,2) = 300.0
       target_length(:,3) = 50.0
 
-      CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+      CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR, nodefixed=new_fixed_node, &
+          elemfixed=new_fixed_elem, Success=Success)
 
       !Update parallel info from old mesh nodes (shared node neighbours)
       CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
@@ -644,7 +653,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !Some checks on the new mesh
    !----------------------------
    DO i=1,GatheredMesh % NumberOfNodes
-     IF(GatheredMesh % ParallelInfo % INTERFACE(i)) THEN
+     IF(GatheredMesh % ParallelInfo % GInterface(i)) THEN
        IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
             CALL Fatal(SolverName, "Neighbourlist not associated!")
        IF(SIZE(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours) < 2) &

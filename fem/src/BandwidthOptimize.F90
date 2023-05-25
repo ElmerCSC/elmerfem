@@ -115,6 +115,65 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
+#if 0
+   SUBROUTINE OrderPermByMortars(Mesh,Perm)
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: Perm(:)
+     
+     INTEGER :: SlaveTag, MasterTag, DefaultTag, i,j,k,n
+     INTEGER, ALLOCATABLE :: NodeTag(:)
+     LOGICAL, ALLOCATABLE :: SlaveBC(:), MasterBC(:)
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Found
+     
+     n = CurrentModel % NumberOfBCs
+     ALLOCATE(SlaveBC(n), MasterBC(n) )
+     SlaveBC = .FALSE.; MasterBC = .FALSE.
+
+     DO i=1,CurrentModel % NumberOfBCs
+       j = ListGetInteger( Currentmodel % BCs(i) % Values,'Mortar BC', Found )
+       IF(Found ) THEN
+         SlaveBC(i) = .TRUE.
+         MasterBC(j) = .TRUE.
+       END IF
+     END DO
+
+     IF(.NOT. ANY(SlaveBC)) RETURN
+
+     ! Tags should have values 1,2,3
+     SlaveTag = ListGetInteger( CurrentModel % Solver % Values,'Slave Tag',UnfoundFatal=.TRUE.)
+     MasterTag = ListGetInteger( CurrentModel % Solver % Values,'Master Tag',UnfoundFatal=.TRUE.)     
+     DefaultTag = 6 - SlaveTag - MasterTag
+
+     ALLOCATE( NodeTag( Mesh % NumberOfNodes ) )
+     NodeTag = DefaultTag     
+     
+     DO i=Mesh % NumberOfBulkElements+1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+       Element => Mesh % Elements(i)
+       IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
+       j = Element % BoundaryInfo % Constraint
+       
+       IF(SlaveBC(j)) NodeTag(Element % NodeIndexes) = SlaveTag
+       IF(MasterBC(j)) NodeTag(Element % NodeIndexes) = MasterTag
+     END DO
+     
+     k = 0
+     ! Here we go through cases 1,2,3
+     DO j=1,3
+       DO i=1, Mesh % NumberOfNodes
+         IF(Perm(i)==0) CYCLE
+         IF(NodeTag(i) == j) THEN
+           k = k + 1
+           Perm(i) = k
+         END IF
+       END DO
+     END DO
+     
+   END SUBROUTINE OrderPermByMortars
+#endif
+
+   
 !-------------------------------------------------------------------------------
 !> Subroutine for reordering variables for bandwidth and/or gaussian elimination
 !> fillin optimization. Also computes node to element connections (which
@@ -144,27 +203,23 @@ use spariterglobals
 !-------------------------------------------------------------------------------
 
      CALL Info( 'OptimizeBandwidth', &
-               '---------------------------------------------------------', Level=4 )
-     CALL Info( 'OptimizeBandwidth', 'Computing matrix structure for: ' &
-                 // TRIM(Equation) //  '...', .TRUE., Level=4)
+               '---------------------------------------------------------', Level=6 )
+     CALL Info( 'OptimizeBandwidth', 'Computing matrix structure for: '// TRIM(Equation) , Level=6)
 
      HalfBandwidth = ComputeBandWidth( LocalNodes, ListMatrix )+1
 
-     CALL Info( 'OptimizeBandwidth', 'done.', Level=4 )
-     WRITE( Message,'(A,I0)' ) 'Half bandwidth without optimization: ', HalfBandwidth
-     CALL Info( 'OptimizeBandwidth', Message, Level=4 )
+     CALL Info( 'OptimizeBandwidth','Initial bandwidth for '&
+         //TRIM(Equation)//': '//I2S(HalfBandwidth),Level=4)
 
      IF ( .NOT.Optimize ) THEN
        CALL Info( 'OptimizeBandwidth', &
-               '---------------------------------------------------------', Level=4 )
+               '---------------------------------------------------------', Level=6 )
        RETURN
      END IF
 
 !-------------------------------------------------------------------------------
      HalfBandWidthBefore = HalfBandWidth
 
-     CALL Info( 'OptimizeBandwidth', ' ', Level=4 )
-     CALL Info( 'OptimizeBandwidth', 'Bandwidth Optimization ...', .TRUE.,Level=4 )
 !-------------------------------------------------------------------------------
 !    Search for node to start
 !-------------------------------------------------------------------------------
@@ -181,7 +236,7 @@ use spariterglobals
      ALLOCATE(DoneAlready(LocalNodes),STAT=istat)
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for DoneAlready of size: '&
-           //TRIM(I2S(LocalNodes)))
+           //I2S(LocalNodes))
      END IF
 
      MaxLevel = 0
@@ -221,14 +276,14 @@ use spariterglobals
      ALLOCATE( PermLocal(SIZE(Perm)), STAT=istat )
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for PermLocal: '//&
-           TRIM(I2S(SIZE(Perm))))
+           I2S(SIZE(Perm)))
      END IF
      PermLocal = 0
 
      ALLOCATE( DoneIndex(LocalNodes), STAT=istat )
      IF( istat /= 0 ) THEN
        CALL Fatal('OptimizeBandwidth','Allocation error for DoneIndex: '&
-           //TRIM(I2S(LocalNodes)))
+           //I2S(LocalNodes))
      END IF
      DoneIndex = 0
 !-------------------------------------------------------------------------------
@@ -271,10 +326,10 @@ use spariterglobals
 
      HalfBandWidthAfter = ComputeBandwidth( LocalNodes, &
            ListMatrix,Perm,InvInitialReorder )+1
-     CALL Info( 'OptimizeBandwidth', 'done.', Level=4 )
 
-     WRITE( Message,'(A,I0)') 'Half bandwidth after optimization: ', HalfBandwidthAfter
-     CALL Info( 'OptimizeBandwidth', Message, Level=4 )
+     CALL Info( 'OptimizeBandwidth','Optimized bandwidth for '&
+         //TRIM(Equation)//': '//I2S(HalfBandwidthAfter),Level=4)
+
      HalfBandWidth = HalfBandWidthAfter
 
      IF ( HalfBandWidthBefore < HalfBandWidth .AND. .NOT. UseOptimized ) THEN
@@ -283,8 +338,8 @@ use spariterglobals
        HalfBandWidth = HalfBandWidthBefore
        Perm = PermLocal
      END IF
-     CALL Info( 'OptimizeBandwidth', &
-             '---------------------------------------------------------',Level=4 )
+     CALL Info( 'OptimizeBandwidth',&
+         '---------------------------------------------------------',Level=6 )
 
      DEALLOCATE( PermLocal,DoneAlready )
 !-------------------------------------------------------------------------------
@@ -389,351 +444,6 @@ use spariterglobals
 !-------------------------------------------------------------------------------
    END FUNCTION OptimizeBandwidth
 !-------------------------------------------------------------------------------
-
-!> \deprecated The LexiographicSearch for bandwidth optimization is not in use. Can it be removed? 
-#if 0
-NOT CURRENT AT THE MOMENT...
-   FUNCTION LexiographicSearch(Model,Perm) RESULT(HalfBandWidth)
-     TYPE(Model_t), POINTER :: Model
-     INTEGER :: Perm(:)
-
-     INTEGER :: HalfBandWidth
-
-     TYPE(LabelPointer_t), POINTER :: Label(:)
-     TYPE(Label_t), POINTER :: Lptr1,Lptr2, CurrentLabel
-
-     TYPE(Element_t), POINTER :: Element,Element1
-     TYPE(ElementList_t), POINTER :: p,q
-     TYPE(ElementListPointer_t), POINTER :: List(:)
-
-     LOGICAL(KIND=1), ALLOCATABLE :: DoneAlready(:)
-
-     INTEGER :: i,j,k,l,m,n,k1,k2,CurrentVertex
-
-     PRINT*,' '
-     PRINT*,'Lexiographic search for fillin optimization: '
-     PRINT*,'---------------------------------------------------------'
-
-     HalfBandWidth = 0
-     DO i=1,Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
-       Element => Model % Elements(i)
-       DO j=1,Element % Type % NumberOfNodes
-         k1 = Element % NodeIndexes(j)
-         DO k=j+1,Element % Type % NumberOfNodes
-           k2 = Element % NodeIndexes(k)
-           HalfBandWidth = MAX(HalfBandWidth,ABS(k1-k2+1))
-         END DO
-       END DO
-     END DO
-
-     PRINT*,'Half bandwidth before optimizing: ',HalfBandWidth
-
-!    CALL NodeToElementList(Model,List)
-
-     n = Model % NumberOfNodes
-
-     ALLOCATE( Label(n) )
-     DO i=1,N
-       NULLIFY( Label(i) % ListHead )
-     END DO
-
-
-     ALLOCATE( DoneAlready(Model % NumberOfNodes) )
-     DoneAlready = .FALSE.
- 
-     Perm = 0
-
-     DO i=N,1,-1
-       NULLIFY( CurrentLabel )
-       CurrentVertex = 1
-
-       DO j=1,N
-         IF ( .NOT.DoneAlready(j) ) THEN
-           IF ( LabelCompare(Label(j) % ListHead, CurrentLabel) > 0 ) THEN
-             CurrentLabel => Label(j) % ListHead
-             CurrentVertex = j 
-           END IF
-         END IF
-       END DO
-
-       Perm(CurrentVertex) = i
-       DoneAlready(CurrentVertex) = .TRUE.
-
-       Lptr1 => Label(CurrentVertex) % ListHead
-       DO WHILE( ASSOCIATED(Lptr1) )
-         Lptr2 => Lptr1
-         DEALLOCATE(Lptr1)
-         Lptr1 => Lptr2 % Next
-       END DO
-      
-       p => List(CurrentVertex) % ListHead
-       DO WHILE( ASSOCIATED(p) )
-         Element => p % Element
-
-         DO j=1,Element % Type % NumberOfNodes
-           k = Element % NodeIndexes(j)
-           IF ( .NOT.DoneAlready(k) ) THEN
-             CALL LabelAdd( Label(k), i )
-           END IF
-           CALL AddPath( k,i,0 )
-         END DO
-
-         p => p % Next
-       END DO
-     END DO
-
-!
-!  WARNING:: Node to element list deallocated here
-!
-     CALL FreeNodeToElementList( Model % NumberOfNodes,List )
-!
-!
-!
-     HalfBandWidth = 0
-     DO i=1,Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
-       Element => Model % Elements(i)
-       DO j=1,Element % Type % NumberOfNodes
-         k1 = Perm(Element % NodeIndexes(j))
-         DO k=j+1,Element % Type % NumberOfNodes
-           k2 = Perm(Element % NodeIndexes(k))
-           HalfBandWidth = MAX(HalfBandWidth,ABS(k1-k2)+1)
-         END DO
-       END DO
-     END DO
-
-     PRINT*,'Half bandwidth is:                ',HalfBandWidth
-     PRINT*,'---------------------------------------------------------'
-
-     DEALLOCATE( DoneAllready,Label )
-
-     CONTAINS
-
-       RECURSIVE SUBROUTINE AddPath(n,i,Level)
-         INTEGER :: n,i,Level
-
-         INTEGER :: j,k
-         TYPE(ElementList_t), POINTER :: p
-
-         p => List(n) % ListHead
-         DO WHILE( ASSOCIATED(p) ) 
-           DO j=1,Element % Type % NumberOfNodes
-             k = Element % NodeIndexes(j)
-
-             IF ( .NOT.DoneAlready(k) ) THEN
-               IF ( LabelCompare( Label(k) % ListHead, Label(n) % ListHead ) > 0 ) THEN
-                 CALL AddPath( k,i,Level+1 )
-               ELSE IF ( Level /= 0 )  THEN
-                 CALL LabelAdd( Label(n),i )
-               END IF
-             END IF
-
-           END DO
-           p => p % Next
-         END DO
-       END SUBROUTINE AddPath
-
-
-       SUBROUTINE LabelAdd(Label,Value)
-         TYPE(LabelPointer_t) :: Label
-         INTEGER :: Value
-
-         TYPE(Label_t), POINTER :: tmp,prev,p
-
-         NULLIFY(prev)
-         p => Label % ListHead
- 
-         NULLIFY(prev)
-         DO WHILE( ASSOCIATED(p) )
-           IF ( p % Value  < Value ) EXIT
-           IF ( p % Value == Value ) RETURN
-           prev => p
-           p => p % Next
-         END DO
- 
-         ALLOCATE( tmp )
-         tmp % Value = Value
- 
-         NULLIFY( tmp % Next )
-         IF ( ASSOCIATED(p) ) tmp % Next => p
- 
-         IF ( ASSOCIATED(prev) ) THEN
-           prev % Next => tmp
-         ELSE
-           Label % ListHead => tmp
-         END IF
-       END SUBROUTINE LabelAdd
-
-
-       FUNCTION LabelCompare(Label1,Label2) RESULT(res)
-         TYPE(Label_t), POINTER :: Label1,Label2
-         INTEGER :: Res
-
-         TYPE(Label_t), POINTER :: p,q
-
-         p => Label1
-         q => Label2
-
-         DO WHILE( ASSOCIATED(p) .AND. ASSOCIATED(q) )
-           IF ( p % Value == q % Value ) THEN
-             p => p % Next
-             q => q % Next
-           ELSE
-             IF ( p % Value > q % Value ) THEN
-               res =  1
-             ELSE
-               res = -1
-             END IF
-             RETURN
-           END IF
-         END DO
-
-         IF ( .NOT.ASSOCIATED(q) .AND. .NOT.ASSOCIATED(p) ) THEN
-           res =  0
-         ELSE IF ( ASSOCIATED(p) ) THEN
-           res =  1 
-         ELSE IF ( ASSOCIATED(q) ) THEN
-           res = -1
-         END IF
-       END FUNCTION LabelCompare
-
-   END FUNCTION LexiographicSearch
-
-
-
-   FUNCTION DepthFirstSearch(Model,Perm) RESULT(HalfBandWidth)
-     TYPE(Model_t), POINTER :: Model
-     INTEGER, DIMENSION(:) :: Perm
-
-     INTEGER :: HalfBandWidth
-
-     LOGICAL(KIND=1), ALLOCATABLE :: DoneAlready(:)
-     INTEGER :: MaxDegree,StartNode
-     INTEGER :: Indx,i,j,k,n,k1,k2
-
-     TYPE(Element_t),POINTER :: Element
-     TYPE(ElementListPointer_t), DIMENSION(:), POINTER :: List
-
-     N = Model % NumberOfNodes
-
-!    CALL NodeToElementList(Model,List)
-
-     MaxDegree = List(1) % Degree
-     StartNode = 1
-     DO i=1,N
-       IF ( List(i) % Degree >= MaxDegree ) THEN
-         StartNode = i
-         MaxDegree = List(i) % Degree
-       END IF
-     END DO
-
-     ALLOCATE( DoneAlready(Model % NumberOfNodes) )
-
-     DoneAlready = .FALSE.
-     DoneAlready(StartNode) = .TRUE.
-
-     Perm = 0
-     Perm(StartNode) = N
-
-     Indx = N-1
-     CALL Renumber(List(StartNode) % ListHead)
-
-!
-!  WARNING:: Node to element list deallocated here
-!
-     CALL FreeNodeToElementList( Model % NumberOfNodes,List )
-!
-!
-!
-     HalfBandWidth = 0
-     DO i=1,Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
-       Element => Model % Elements(i)
-       DO j=1,Element % Type % NumberOfNodes
-         k1 = Perm(Element % NodeIndexes(j))
-         DO k=j+1,Element % Type % NumberOfNodes
-           k2 = Perm(Element % NodeIndexes(k))
-           HalfBandWidth = MAX(HalfBandWidth,ABS(k1-k2))
-         END DO
-       END DO
-     END DO
-
-     DEALLOCATE( DoneAlready )
-
-     CONTAINS
-
-       RECURSIVE SUBROUTINE Renumber(Current)
-         TYPE(ElementList_t), POINTER :: Current
-
-         TYPE(ElementList_t), POINTER :: p
-         TYPE(Element_t),POINTER :: Element
-         INTEGER :: i,j,k,l,n,Ind(500),Deg(500)
-
-         p => Current
-         n = 0
-         DO WHILE( ASSOCIATED(p) )
-           Element => p % Element
-           DO i=1,Element % Type % NumberOfNodes
-             k = Element % NodeIndexes(i)
-             IF ( .NOT.DoneAlready(k) ) THEN
-               n = n + 1
-               Ind(n) = k
-               Deg(n) = List(k) % Degree
-             END IF
-           END DO
-           p => p % Next
-         END DO
-
-         CALL SortI(n,Deg,Ind) 
-
-         DO i=n,1,-1
-           k = Ind(i)
-           IF ( .NOT.DoneAlready(k) ) THEN
-             DO j=i-1,1,-1
-               IF ( .NOT.DoneAlready(Ind(j)) ) THEN
-                 IF ( List(k) % Degree == List(Ind(j)) % Degree ) THEN
-                   l = NumberVisited(List(k) % ListHead)
-                   IF ( NumberVisited(List(Ind(j)) % ListHead) < l ) THEN
-                     l = Ind(j)
-                     Ind(j) = k
-                     k = l
-                   END IF
-                 ELSE
-                   EXIT
-                 END IF
-               END IF
-             END DO
-
-             Perm(k) = Indx
-             Indx = Indx - 1
-             DoneAlready(k) = .TRUE.
-             CALL Renumber( List(k) % ListHead )
-           END IF
-         END DO
-
-       END SUBROUTINE Renumber
-
-
-       FUNCTION NumberVisited(Current) RESULT(n)
-
-         TYPE(ElementList_t),POINTER :: Current
-         INTEGER :: n
-
-         TYPE(ElementList_t),POINTER :: p
-
-          n = 0
-          p => Current
-          DO WHILE( ASSOCIATED(p) )
-            Element => p % Element
-            DO i=1,Element % Type % NumberOfNodes
-              k = Element % NodeIndexes(i)
-              IF ( .NOT.DoneAlready(k) ) n = n + 1
-            END DO
-            p => p % Next
-          END DO
-
-       END FUNCTION NumberVisited
- 
-   END FUNCTION DepthFirstSearch
-#endif
 
 END MODULE BandwidthOptimize
 

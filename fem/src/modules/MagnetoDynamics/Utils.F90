@@ -129,80 +129,6 @@ CONTAINS
     END IF
   END FUNCTION AddConstraintFromBulk
 
-!------------------------------------------------------------------------------
-  FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER :: n,nedge
-    TYPE(Element_t) :: Boundary
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,jb1,jb2,je1,je2
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Edge, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    n = 0
-    SELECT CASE(GetElementFamily(Boundary))
-    CASE(1)
-      RETURN
-    CASE(2)
-      IF ( nedge==1 ) THEN
-        Parent => Boundary % BoundaryInfo % Left
-        IF ( .NOT. ASSOCIATED(Parent) ) &
-            Parent => Boundary % BoundaryInfo % Right
- 
-        jb1 = Boundary % NodeIndexes(1)
-        jb2 = Boundary % NodeIndexes(2)
-        DO i=1,Parent % TYPE % NumberOfEdges
-          Edge => Mesh % Edges(Parent % EdgeIndexes(i))
-          je1 = Edge % NodeIndexes(1)
-          je2 = Edge % NodeIndexes(2)
-          IF ( jb1==je1.AND.jb2==je2 .OR. jb1==je2.AND.jb2==je1) EXIT
-        END DO
-        n = Parent % EdgeIndexes(i)
-      END IF
-    CASE(3,4)
-      j = GetBoundaryFaceIndex(Boundary)
-      Face => Mesh % Faces(j)
-      IF ( nedge>0.AND.nedge<=Face % TYPE % NumberOfEdges ) &
-        n = Face % EdgeIndexes(nedge) 
-    END SELECT
-!------------------------------------------------------------------------------
-  END FUNCTION GetBoundaryEdgeIndex
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER :: n
-    TYPE(Element_t) :: Boundary
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,m
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    Parent => Boundary % BoundaryInfo % Left
-    IF ( .NOT. ASSOCIATED(Parent) ) &
-       Parent => Boundary % BoundaryInfo % Right
-
-    DO i=1,Parent % TYPE % NumberOfFaces
-      Face => Mesh % Faces(Parent % FaceIndexes(i))
-      m = 0
-      DO j=1,Face % TYPE % NumberOfNodes
-        DO k=1,Boundary % TYPE % NumberOfNodes
-          IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
-        END DO
-      END DO
-      IF ( m==Face % TYPE % NumberOfNodes) EXIT
-    END DO
-    n = Parent % FaceIndexes(i)
-!------------------------------------------------------------------------------
-  END FUNCTION GetBoundaryFaceIndex
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE SetDOFToValueR(Solver,k,VALUE)
@@ -413,43 +339,6 @@ CONTAINS
   END SUBROUTINE GetReluctivityTensorC
 !-------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
- SUBROUTINE GetPermittivity(Material,Acoef,n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-!------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
-    REAL(KIND=dp) :: Pvacuum = 0._dp
-    SAVE FirstTime, Warned, Pvacuum
-!------------------------------------------------------------------------------
-
-    IF ( FirstTime ) THEN
-      Pvacuum = GetConstReal( CurrentModel % Constants, &
-              'Permittivity of Vacuum', Found )
-      FirstTime = .FALSE.
-    END IF
-
-    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
-    IF ( Found ) THEN
-      Acoef(1:n) = Pvacuum * Acoef(1:n)
-    ELSE
-      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
-    END IF
-
-    IF( .NOT. Found ) THEN
-      IF(.NOT. Warned ) THEN
-        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
-        Warned = .TRUE.
-      END IF
-      Acoef(1:n) = Pvacuum
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetPermittivity
-!------------------------------------------------------------------------------
-
   !-------------------------------------------------------------------------------
   !> Packs rows associated with edge dofs from constraint matrix and
   !> adds ColOffset to column indices of (1,1) block.
@@ -580,7 +469,7 @@ CONTAINS
                r_e(Mesh % NUmberOfNodes) )
      ii = 0
      DO i=1,Mesh % NumberOfNodes
-       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+       IF(.NOT.CondReg(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k== ParEnv % MyPE ) CYCLE
@@ -703,7 +592,7 @@ CONTAINS
 
       ii = 0
       DO i=1,Mesh % NumberOfNodes
-        IF ( Done(i) .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+        IF ( Done(i) .AND. Mesh % ParallelInfo % GInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k>ParEnv % myPE ) THEN
@@ -731,7 +620,7 @@ CONTAINS
 
   
   !-------------------------------------------------------------------------------
-  ! Mark nodes that are on outher boundary using face elements and node parmutation.
+  ! Mark nodes that are on outer boundary using face elements and node parmutation.
   !-------------------------------------------------------------------------------
   SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
 
@@ -791,7 +680,7 @@ CONTAINS
         END IF
       END IF
 
-      ! We have either none or both parents as actice.
+      ! We have either none or both parents as active.
       ! The BCs will be set only to outer boundaries of the domain. 
       IF( ActParents /= 1 ) CYCLE
       
@@ -813,7 +702,7 @@ CONTAINS
       END DO
 
       snodes0 = COUNT( SurfacePerm > 0 )
-      snodes0 = NINT( ParallelReduction(1.0_dp * snodes0) ) 
+      snodes0 = ParallelReduction(snodes0) 
 
       !DO i=1,n
       !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
@@ -834,13 +723,13 @@ CONTAINS
       END IF
     END DO     
     
-    snodes = NINT( ParallelReduction(1.0_dp * snodes) ) 
-    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+    snodes = ParallelReduction(snodes) 
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//I2S(snodes),Level=6)
 
     IF( EnsureBC ) THEN
       IF( snodes0 > snodes ) THEN
         CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
-            //TRIM(I2S(snodes0-snodes)),Level=6)
+            //I2S(snodes0-snodes),Level=6)
       END IF
     END IF
 

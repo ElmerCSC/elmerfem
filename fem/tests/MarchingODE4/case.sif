@@ -19,7 +19,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
 
@@ -28,7 +28,7 @@ Simulation
 
   Post File = "case.vtu"
   vtu: discontinuous bodies = Logical True
-  vtu: Reference Sums(6) = Real 37 4 924 1153 109354 93.5
+  vtu: Reference Values(6) = Real 37 4 924 1153 109354 93.5
   vtu: Reference Norm = Real 1.0
 
 

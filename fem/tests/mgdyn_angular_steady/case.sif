@@ -27,7 +27,7 @@ Solver 1
   Linear System Solver = iterative
   Linear System Direct Method = mumps
   Linear System Preconditioning = ilu0
-  Linear System Iterative Method = bicgstab  !
+  Linear System Iterative Method = bicgstab2
   bicgstabl polynomial degree = 4
 
   Linear System Residual Output = 20
@@ -37,7 +37,7 @@ Solver 1
   Linear System Abort Not Converged = False
 
   Steady State Convergence Tolerance = 1e-9
-  Linear System Normwise Backward Error = Logical false
+  Linear System Componentwise Backward Error = True
 
   Edge Basis = Logical True
   Apply Mortar BCs = Logical False

@@ -250,14 +250,14 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
         Nn = Permutation(Element % NodeIndexes(i))
         IF (Nn==0) CYCLE
         MSum = MSum + VariableValues(Nn)
-        IF (VariableValues(Nn) == 0.0_dp) ZSum = ZSum + 1.0_dp
+        IF (ABS(VariableValues(Nn))<AEPS) ZSum = ZSum + 1.0_dp
      END DO
      
      IF (MSum + ZSum < n) THEN
         DO i = 1, n
            Nn = Permutation(Element % NodeIndexes(i))
            IF (Nn==0) CYCLE
-           IF (VariableValues(Nn) == 1.0_dp) THEN
+           IF (ABS(VariableValues(Nn)-1.0_dp)<AEPS) THEN
               VariableValues(Nn) = 0.0_dp
               IF (DIM==2) PRINT *, 'Grounding Line, x', Nodes % x( i )
               IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
@@ -275,7 +275,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
          IF(Nn==0) CYCLE
          Nn = Permutation(Element % NodeIndexes(i))
          IF(Nn==0) CYCLE
-         IF (VariableValues(Nn) == 1.0_dp) VariableValues(Nn) = 0.0_dp
+         IF (VariableValues(Nn) > 0.0) VariableValues(Nn) = 0.0_dp
        END DO
      END IF
   END DO

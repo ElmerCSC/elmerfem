@@ -1,6 +1,6 @@
-# 
+#
 # CMake configuration script for Elmer
-# 
+#
 # Authors:
 #  Sami Ilvonen, CSC - IT Center for Science, Ltd.
 #  Phil Weir, NUMA Engineering Services, Ltd.
@@ -15,13 +15,53 @@ IF(NOT CMAKE_BUILD_TYPE)
 ENDIF()
 
 PROJECT(Elmer Fortran C CXX)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
+
+# CMAKE_VERSION seems to require this in minimum
+CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
 ENDIF()
 
-SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
+#shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
+# For building on OS X
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+  # If the user doesn't tell us which package manager they're using
+  if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+    # Try to find MacPorts path
+    find_program(MACPORTS_EXECUTABLE port)
+    if(EXISTS ${MACPORTS_EXECUTABLE})
+      string(REPLACE "/bin/port" ""
+      MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
+      message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
+    endif(EXISTS ${MACPORTS_EXECUTABLE})
+
+    # Try to find Homebrew path
+    find_program(HOMEBREW_EXECUTABLE brew)
+    if(EXISTS ${HOMEBREW_EXECUTABLE})
+      string(REPLACE "/bin/brew" ""
+      HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
+      message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+    endif()
+
+  endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+  # In case someone tries to shoot themselves in the foot
+  if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "Multiple package management systems detected - ")
+    message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
+
+  # No package manager
+  elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
+  endif()
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+
+# SET(CMAKE_MODULE_PATH "${CMAKE_ROOT}/Modules;${PROJECT_SOURCE_DIR}/cmake/Modules")
+SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules;${CMAKE_ROOT}/Modules")
 
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
@@ -36,6 +76,7 @@ SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
+SET(WITH_XIOS FALSE CACHE BOOL "Include XIOS")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
@@ -45,6 +86,7 @@ SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+SET(WITH_MMG FALSE CACHE BOOL "Compile with MMG library.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -57,12 +99,17 @@ MARK_AS_ADVANCED(WITH_ELMERPOST)
 #   CMAKE_POLICY(SET CMP0022 OLD)
 # ENDIF()
 
+OPTION (USE_NEW_POLICY_CMP0057 "Option to enable new policy CMP0057" ON)
+IF (USE_NEW_POLICY_CMP0057)
+  CMAKE_POLICY(SET CMP0057 NEW)
+ENDIF()
+
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 ENABLE_TESTING()
 
-SET(ELMER_FEM_MAJOR_VERSION 8)
-SET(ELMER_FEM_MINOR_VERSION 4)
+SET(ELMER_FEM_MAJOR_VERSION 9)
+SET(ELMER_FEM_MINOR_VERSION 0)
 
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
@@ -83,18 +130,18 @@ IF(RESET_ELMER_REVISION)
     MARK_AS_ADVANCED(ELMER_FEM_REVISION)
   ENDIF()
 ENDIF()
-    
+
 SET(VERSION ${ELMER_FEM_VERSION})
 SET(REVISION ${ELMER_FEM_REVISION})
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 STRING(TIMESTAMP ELMER_FEM_COMPILATIONDATE "%Y-%m-%d")
 SET(COMPILATIONDATE ${ELMER_FEM_COMPILATIONDATE})
 
-# Check that the gfortran version is >= 4.8
+# Check that the gfortran version is >= 7
 IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   INCLUDE(testGFortranVersion)
   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
-    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+    MESSAGE(FATAL_ERROR "GNU Fortran major version is too old, should be at least 7")
   ENDIF()
 ENDIF()
 
@@ -110,6 +157,10 @@ IF(WITH_LUA)
   MARK_AS_ADVANCED(HAVE_LUA)
 ENDIF()
 
+IF(WITH_EXTOPTIM)
+  SET(HAVE_EXTOPTIM TRUE)
+ENDIF()
+
 IF(WITH_OpenMP)
   # Advanced properties
   MARK_AS_ADVANCED(
@@ -117,8 +168,8 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
-  
   FIND_PACKAGE(OpenMP REQUIRED)
+
   # Add OpenMP flags to compilation flags
   # if(APPLE)
   #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -240,7 +291,7 @@ ENDIF()
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
-  FIND_PACKAGE(ML REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/ML ${TRILINOS_PATH}) 
+  FIND_PACKAGE(ML REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/ML ${TRILINOS_PATH})
   FIND_PACKAGE(Trilinos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Trilinos ${TRILINOS_PATH})
   FIND_PACKAGE(Belos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Belos ${TRILINOS_PATH})
   IF(ML_DIR)
@@ -256,7 +307,7 @@ IF(WITH_Zoltan)
   IF(NOT ${USE_SYSTEM_ZOLTAN})
     MESSAGE(STATUS "Building Zoltan mesh repartitioner")
     ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
-    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
     MARK_AS_ADVANCED(HAVE_ZOLTAN)
     MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
     MESSAGE(STATUS "------------------------------------------------")
@@ -286,45 +337,160 @@ IF(WITH_Zoltan)
   ENDIF()
 ENDIF(WITH_Zoltan)
 
+
+IF(WITH_NETCDF)
+  # ---------------------- #
+  # -- NETCDF libraries -- #
+  #----------------------- #
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Elmer/Ice package: Looking for [NETCDF] & [NETCDF Fortran] libraries")
+  
+  
+  FIND_PACKAGE(NETCDF)
+  
+  IF(NETCDF_FOUND)
+  
+    SET(HAVE_NETCDF TRUE CACHE BOOL "Has NETCDF for Elmer/Ice Output" )
+    GET_FILENAME_COMPONENT(NETCDF_LIBDIR ${NETCDF_LIBRARY} DIRECTORY)
+    GET_FILENAME_COMPONENT(NETCDFF_LIBDIR ${NETCDFF_LIBRARY} DIRECTORY)
+  
+    MARK_AS_ADVANCED(HAVE_NETCDF)
+    INCLUDE_DIRECTORIES(${NETCDF_INCLUDE_DIR})
+    ADD_DEFINITIONS(-DHAVE_NETCDF)
+  
+    MESSAGE(STATUS "  NETCDF:           " "${NETCDF_FOUND}")
+    MESSAGE(STATUS "  NETCDF_INC:       " "${NETCDF_INCLUDE_DIR}")
+    MESSAGE(STATUS "  NETCDF_LIBS:     " "${NETCDF_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "Library not found: >NETCDF_FOUND< ")
+    MESSAGE(WARNING "  \n Missing: >NETCDF_INCLUDE_DIR< , >NETCDF_LIBRARY<,  >NETCDFF_LIBRARY< \n some functionalities will be disabled")
+  ENDIF(NETCDF_FOUND)
+  
+  IF(NETCDF_FOUND)
+    # ---------------------- #
+    # -- HDF5 libraries -- #
+    #----------------------- #
+    MESSAGE(STATUS "------------------------------------------------")
+    MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+  
+    FIND_PACKAGE(PHDF5)
+    
+    IF(PHDF5_FOUND)
+    
+      SET(HAVE_HDF5 TRUE CACHE BOOL "Has HDF5 for Elmer/Ice Output" )
+      GET_FILENAME_COMPONENT(PHDF5_LIBDIR ${PHDF5_LIBRARY} DIRECTORY)
+      GET_FILENAME_COMPONENT(PHDF5HL_LIBDIR ${PHDF5HL_LIBRARY} DIRECTORY)
+    
+      MARK_AS_ADVANCED(HAVE_HDF5)
+      INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+      ADD_DEFINITIONS(-DHAVE_HDF5)
+    
+      MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+      MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+      MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+    ELSE()
+      MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+      MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+    ENDIF(PHDF5_FOUND)
+  ENDIF(NETCDF_FOUND)
+  
+ENDIF(WITH_NETCDF)
+
 # MMG Remeshing
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+IF(WITH_MMG)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+  FIND_PACKAGE(MMG)
+  # INCLUDE("cmake/Modules/FindMMG.cmake")
+  # INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+  IF(MMG_FOUND)
 
-FIND_PACKAGE(MMG)
-# INCLUDE("cmake/Modules/FindMMG.cmake")
-# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
-# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+    SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
+    GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
 
+    MARK_AS_ADVANCED(HAVE_MMG)
+    MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
+    MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
+    MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
+    MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
+    MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+    ADD_DEFINITIONS(-DHAVE_MMG)
 
-IF(MMG_FOUND)
+    INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+    MESSAGE(STATUS "------------------------------------------------")
 
-  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
-  GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
+  ELSE()
+    MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
+    MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
+  ENDIF(MMG_FOUND)
 
-  MARK_AS_ADVANCED(HAVE_MMG)
-  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
-  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
-  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
-  MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
-  MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
-  ADD_DEFINITIONS(-DHAVE_MMG)
-
-  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
   MESSAGE(STATUS "------------------------------------------------")
 
+  IF (WITH_PARMMG) 
+    FIND_PACKAGE(PARMMG)
+    IF(PARMMG_FOUND)
+
+      SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
+      GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
+      
+      MARK_AS_ADVANCED(HAVE_PARMMG)
+      MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
+      MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
+      MESSAGE(STATUS "  ParMmg_LIB:      " "${PARMMG_LIBRARY}")
+      MESSAGE(STATUS "  ParMmg_LIBDIR:      " "${PARMMG_LIBDIR}")
+      #MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+      ADD_DEFINITIONS(-DHAVE_PARMMG)
+
+      INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
+      MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
+    ENDIF(PARMMG_FOUND)
+  ELSE()
+    SET(PARMMG_FOUND FALSE)
+    MESSAGE(STATUS "  Skipping ParMMG")
+  # INCLUDE("cmake/Modules/FindParMMG.cmake")
+  # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+  # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
+  #  SET(HAVE_PARMMG FALSE)
+  ENDIF(WITH_PARMMG) 
 ELSE()
-  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
-  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
-ENDIF(MMG_FOUND)
+  SET(HAVE_MMG FALSE)
+  SET(HAVE_PARMMG FALSE)
+ENDIF()
+
+# XIOS
+IF (WITH_XIOS)
+  MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Looking for XIOS ")
+
+  FIND_PACKAGE(XIOS)
+
+  IF(XIOS_FOUND)
+    SET(HAVE_XIOS TRUE)
+    MARK_AS_ADVANCED(HAVE_XIOS)
+    INCLUDE_DIRECTORIES(${XIOS_INCLUDE_DIR})
+    LINK_DIRECTORIES(${XIOS_LIBRARIES})
+    ADD_DEFINITIONS(-DHAVE_XIOS)
+    MESSAGE(STATUS "  XIOS:           " "${XIOS_FOUND}")
+    MESSAGE(STATUS "  XIOS_INC:       " "${XIOS_INCLUDE_DIR}")
+    MESSAGE(STATUS "  XIOS_LIB :      " "${XIOS_LIBRARIES}")
+  ELSE()
+    MESSAGE(STATUS "  XIOS not found ")
+  ENDIF()
+
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 
 MESSAGE(STATUS "------------------------------------------------")
-
 
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
 # BLAS and LAPACK libraries may be needed for testing
-SET(CMAKE_REQUIRED_LIBRARIES 
+SET(CMAKE_REQUIRED_LIBRARIES
   ${CMAKE_REQUIRED_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 IF(MPI_FOUND)
@@ -384,7 +550,7 @@ ELSE()
   ADD_DEFINITIONS(-DCONTIG=)
 ENDIF()
 
-# Check if this is mingw toolchain. 
+# Check if this is mingw toolchain.
 IF(MINGW)
   ADD_DEFINITIONS(-DMINGW32)
 ENDIF()
@@ -393,7 +559,7 @@ IF(WIN32)
   ADD_DEFINITIONS(-DWIN32)
 ENDIF()
 
-# Check if Fortran compiler supports execute_command_line 
+# Check if Fortran compiler supports execute_command_line
 INCLUDE(testExecutecommand)
 IF(CMAKE_Fortran_COMPILER_SUPPORTS_EXECUTECOMMANDLINE)
   ADD_DEFINITIONS(-DHAVE_EXECUTECOMMANDLINE)
@@ -404,8 +570,8 @@ SET(FC_STDCALLBULL " ")
 SET(ELMER_LINKTYP 1)
 #SET(FC_FUNC FC_GLOBAL)
 #SET(FC_FUNC_ FC_GLOBAL_)
- 
-# Add support for arpack 
+
+# Add support for arpack
 ADD_DEFINITIONS(-DUSE_ARPACK)
 
 #INCLUDE(FortranCInterface)
@@ -413,16 +579,16 @@ ADD_DEFINITIONS(-DUSE_ARPACK)
 #FortranCInterface_VERIFY(CXX)
 
 # Set up rpaths to point ELMER_INSTALL_LIB_DIR
-IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")   
+IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
   SET(ELMERSOLVER_RPATH_STRING "\$ORIGIN/../${ELMER_INSTALL_LIB_DIR}")
   SET(ELMERLIB_RPATH_STRING "\$ORIGIN/")
-ELSEIF(APPLE)                               
+ELSEIF(APPLE)
   SET(ELMERSOLVER_RPATH_STRING "@loader_path/../${ELMER_INSTALL_LIB_DIR}")
   SET(ELMERLIB_RPATH_STRING "@loader_path/")
 ENDIF()
 
 # Uncomment these to use rpath with linked libraries
-# SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE) 
+# SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 # Remove system directories (from the CMake guide)
 # LIST(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
@@ -466,7 +632,7 @@ ENDIF(WITH_ELMERGUILOGGER)
 #  VAR enabledFeaturesText)
 #MESSAGE(STATUS "${enabledFeaturesText}")
 
-# 
+#
 IF(CMAKE_BUILD_TYPE)
   STRING(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPCASE)
   MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
@@ -546,6 +712,13 @@ IF(HAVE_LUA)
   MESSAGE(STATUS "  Building Lua")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(HAVE_LUA)
+
+IF(HAVE_EXTOPTIM)
+  MESSAGE(STATUS "  Building with external optimization routines")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_EXTOPTIM)
+
+
 
 # Packaging
 if(NOT BYPASS_CPACK)

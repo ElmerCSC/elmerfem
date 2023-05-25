@@ -16,7 +16,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 15
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -81,17 +81,13 @@ Solver 1
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
 
-! The index of master structure is assumed to "1" and the
-! other solver is defined here:
-  Shell Solver Index = Integer 2
-
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
 ! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot:
+! Call the assembly for the 2nd solver using the pre-solvers slot:
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
@@ -112,6 +108,8 @@ Solver 1
 !  Eigen System Shift = Real 1.0e3
 !  Eigen System Normalize To Unity = Logical True
 !  Save EigenValues = Logical True
+
+!Save EigenValues = Logical True
 End
  
 
@@ -151,8 +149,8 @@ Solver 3
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
   
-  Filename = f.dat
-  File Append = Logical True
+!  Filename = f.dat
+!  File Append = Logical True
   Parallel Reduce = Logical True
 
   Variable 1 = Displacement
@@ -162,6 +160,11 @@ Solver 3
   Operator 4 = norm
   Operator 5 = min
   Operator 6 = max
+
+  Show Norm = True
+  Show Norm Index = 1
+
+  Save EigenValues = Logical True
 End 
 
 

@@ -17,14 +17,14 @@ Constants
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Steady State Min Iterations = 1
   Output Intervals = 1
 ! Output File = "elasticity.result"
-!  Post File = "mixed.vtu"
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -51,7 +51,7 @@ Solver 1
   ! With "Mixed Formulation = True" & "Neo-Hookean Material = True"
   ! the following three keyword commands are used automatically in
   ! 3-D simulations (thus, use the components of "Disp" to specify
-  ! the diplacement on a boundary):
+  ! the displacement on a boundary):
   ! ----------------------------------------------------------------
   !  Variable = MixedSol[Disp:3 Pres:1]
   !  Variable DOFs = 4
@@ -87,6 +87,22 @@ Solver 2
   Save Coordinates(1,3) = 48.0 60.0 0.0
 End
 
+Solver 3
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = mixed
+  Vtu Format = Logical True
+!  Ascii Output = True
+  !
+  ! The following keyword enables the visualization of the p-solution by using 
+  ! the second-order Lagrange element basis:
+  !
+  Lagrange Element Degree = Integer 2
+  Save Geometry Ids = True
+!  Save Bulk Only = True
+End
+
 Equation 1
   Active Solvers(2) = 1 2
 End
@@ -109,6 +125,6 @@ Boundary Condition 3
   Disp 3 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.38203205
+Solver 1 :: Reference Norm = Real 3.13153153E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
 

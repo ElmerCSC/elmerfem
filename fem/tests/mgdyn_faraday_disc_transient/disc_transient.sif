@@ -60,7 +60,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Simulation Type = Transient
 !  Timestepping Method = crank-nicolson
   Timestepping Method = BDF
@@ -90,6 +90,15 @@ Solver 2
 
   Fix Input Current Density = False
   Use Piola Transform = True
+
+  ! Apply the following three commands to impose the gauge 
+  ! condition div A = 0 in an iterated manner. This leads to the same
+  ! solution as the file with_projection.sif, which was created before
+  ! "Helmholtz Projection = True" within the AV-solver was enabled
+  !
+  ! Helmholtz Projection = True
+  ! Nonlinear System Max Iterations = 10
+  ! Nonlinear System Convergence Tolerance = 1e-6
 
   Linear System Solver = Iterative
   Linear System Preconditioning = Diagonal

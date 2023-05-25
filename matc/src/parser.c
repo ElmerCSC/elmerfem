@@ -376,7 +376,7 @@ TREE *nameorvar()
       scan(); LEFT(treeptr) = equation();
       if (symbol != rightpar)
       {
-        error("Right paranthesis missing.\n");
+        error("Right parenthesis missing.\n");
       }
       ETYPE(treeptr) = ETYPE_EQUAT;
       break;

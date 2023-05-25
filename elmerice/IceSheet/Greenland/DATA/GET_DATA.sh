@@ -10,7 +10,7 @@ function usage {
  echo "requirement: "
  echo "  1- An account to download data from nsidc (https://nsidc.org/nsidc/register) "
  echo "  2- curl and wget to download the data files"
- echo "      (optionnally you will get the link to download teh files from your webbrowser)"
+ echo "      (optionally you will get the link to download teh files from your webbrowser)"
  echo "  3- http://www.gdal.org/   to convert from .tif to netcdf and reproject"
  echo "  4- nco to manipulate netcdf files (http://nco.sourceforge.net/)"
  echo

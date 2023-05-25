@@ -65,6 +65,8 @@ Parallel::Parallel(QWidget *parent)
   defaultsButtonClicked();
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
 }
 
 Parallel::~Parallel()
@@ -88,15 +90,15 @@ void Parallel::defaultsButtonClicked()
   ui.nofProcessorsSpinBox->setValue(2);
   
 #ifdef WIN32
-  ui.parallelExecLineEdit->setText("C:/Program Files/MPICH2/bin/mpiexec.exe");
-  ui.parallelArgsLineEdit->setText("-localonly %n -genvlist PATH,ELMER_HOME ElmerSolver_mpi.exe");
+  ui.parallelExecLineEdit->setText("mpiexec.exe");
+  ui.parallelArgsLineEdit->setText("-n %n ElmerSolver_mpi.exe");
 #else
   ui.parallelExecLineEdit->setText("mpirun");
   ui.parallelArgsLineEdit->setText("-np %n ElmerSolver_mpi");
 #endif
 
-  ui.divideLineEdit->setText("ElmerGrid 2 2 %msh -metis %n");
-  ui.mergeLineEdit->setText("ElmerGrid 15 3 %ep -partjoin %n");
+  ui.divideLineEdit->setText("ElmerGrid 2 2 %msh -partdual -metiskway %n");
+  ui.mergeLineEdit->setText("echo 'No need to merge VTU files!'");
 }
 
 void Parallel::okButtonClicked()

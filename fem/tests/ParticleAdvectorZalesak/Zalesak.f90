@@ -3,8 +3,7 @@
 !------------------------------------------------------
 
   FUNCTION InitZalesak( Model, n, t ) RESULT(f)
-    USE Types
-    USE SolverUtils
+    USE DefUtils
     IMPLICIT NONE
     
     TYPE(Model_t) :: Model
@@ -16,10 +15,16 @@
     
     IF(.NOT. Visited) THEN
       Lx = ListGetConstReal(Model % Simulation,'Zalesak Lx',GotIt)
-      IF(.NOT. GotIt) Lx = MAXVAL( Model % Nodes % x ) 
+      IF(.NOT. GotIt) THEN
+        Lx = MAXVAL( Model % Nodes % x )
+        Lx = ParallelReduction( Lx ) 
+      END IF
       Ly = ListGetConstReal(Model % Simulation,'Zalesak Ly',GotIt)
-      IF(.NOT. GotIt) Ly = MAXVAL( Model % Nodes % y ) 
-
+      IF(.NOT. GotIt) THEN
+        Ly = MAXVAL( Model % Nodes % y ) 
+        Ly = ParallelReduction( Ly )
+      END IF
+      
       x0 = 0.5 * Lx
       y0 = 0.75 * Ly
       r0 = (3.0/20.0) * Lx
@@ -103,10 +108,15 @@
     
     IF(.NOT. Visited) THEN
       Lx = ListGetConstReal(Model % Simulation,'Zalesak Lx',GotIt)
-      IF(.NOT. GotIt) Lx = MAXVAL( Model % Nodes % x ) 
+      IF(.NOT. GotIt) THEN
+        Lx = MAXVAL( Model % Nodes % x )
+        Lx = ParallelReduction( Lx ) 
+      END IF
       Ly = ListGetConstReal(Model % Simulation,'Zalesak Ly',GotIt)
-      IF(.NOT. GotIt) Ly = MAXVAL( Model % Nodes % y )
-
+      IF(.NOT. GotIt) THEN
+        Ly = MAXVAL( Model % Nodes % y ) 
+        Ly = ParallelReduction( Ly )
+      END IF
       x0 = Lx / 2.0
       y0 = Ly / 2.0
       Visited = .TRUE.
@@ -134,10 +144,15 @@
     
     IF(.NOT. Visited) THEN
       Lx = ListGetConstReal(Model % Simulation,'Zalesak Lx',GotIt)
-      IF(.NOT. GotIt) Lx = MAXVAL( Model % Nodes % x ) 
+      IF(.NOT. GotIt) THEN
+        Lx = MAXVAL( Model % Nodes % x )
+        Lx = ParallelReduction( Lx ) 
+      END IF
       Ly = ListGetConstReal(Model % Simulation,'Zalesak Ly',GotIt)
-      IF(.NOT. GotIt) Ly = MAXVAL( Model % Nodes % y ) 
-
+      IF(.NOT. GotIt) THEN
+        Ly = MAXVAL( Model % Nodes % y ) 
+        Ly = ParallelReduction( Ly )
+      END IF
       x0 = Lx / 2.0
       y0 = Ly / 2.0
       Visited = .TRUE.

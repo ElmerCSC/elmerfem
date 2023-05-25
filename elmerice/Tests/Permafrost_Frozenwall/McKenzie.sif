@@ -26,7 +26,7 @@ Simulation
   BDF Order = 1
   Timestep Sizes(1) = #10.0*24.0 * 3600
   TimeStep Intervals(1) =  4
-  Output Intervals(1) = 1
+  Output Intervals(1) = 1 !only applies to result output, if there is
   Steady State Max Iterations = 10
   !Output File = "McKenzie.result"
   Initialize Dirichlet Conditions = Logical False
@@ -52,7 +52,7 @@ End
 
 Material 1
    Density = 1.0 ! Just a dummy
-   Rock Material File = File "McKenzie.dat"
+   Rock Material File = File "McKenzie.db"
    Rock Material ID = Integer 1
    Conductivity Arithmetic Mean Weight = Real 0.5
    Temperature Variable = Equals "PFTemp"
@@ -62,7 +62,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(4) = 1 2 3 4
+  Active Solvers(5) = 1 2 3 4 5
 End
 
 !==============================================================================
@@ -88,11 +88,10 @@ Solver 2
   Nonlinear System Max Iterations = 10
   Nonlinear System Convergence Tolerance = 1e-05
   Steady State Convergence Tolerance = 1e-03
-  Exported Variable 1 = -IP "Groundwater Flux 1"
-  Exported Variable 2 = -IP "Groundwater Flux 2"	
+  Exported Variable 1 = -IP -dofs 2 "Groundwater Flux"	
   Linear System Nullify Guess = Logical True
   Compute Time Derivatives = Logical False
-  Exported Variable 3 = -dofs 1 Salinity
+  Exported Variable 2 = -dofs 1 Salinity
 End
 
 Solver 3
@@ -114,16 +113,26 @@ Solver 3
 End
 
 Solver 4
+  Equation = "Output IP parameter"
+  Procedure = "ElmerIceSolvers" "PermafrostIPOutput"
+  Element = $elmntstrng
+  Export rhogw = Logical True
+  Export mugw = Logical True
+End
+
+Solver 5
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Exec Solver = "After Timestep"
   Exec Interval = 4
   VTU Format = True
   Output File Name = "McKenzie_.vtu"
-  Scalar Field 1 = "PFTemp"
-  Scalar Field 2 = File "Groundwater Flux 1"
-  Scalar Field 3 = File "Groundwater Flux 2"
-  Scalar Field 4 = "Xi"
+  Scalar Field 1 = File "PFTemp"
+  Scalar Field 2 = File "GWPressure"
+  Scalar Field 3 = File "rhogw"
+  Scalar Field 4 = File "mugw"
+  Scalar Field 5 = File "Xi"
+  Vector Field 1 = File "Groundwater Flux"
   Save Geometry Ids = Logical True
   !Discontinuous Galerkin = Logical True
   !Discontinuous Bodies = Logical True

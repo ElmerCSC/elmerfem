@@ -43,15 +43,36 @@
 !-------------------------------------------------------------------------------
 MODULE Messages
 
+  ! In Fortran standard 2003 this should work, else activate the 2nd
+#if 1
+   USE, INTRINSIC :: iso_fortran_env, ONLY : stdout=>output_unit
+#else
+#define stdout 6
+#endif
+
+
+#ifdef HAVE_XIOS
+  USE XIOS
+#endif
+
    IMPLICIT NONE
+   
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
    LOGICAL :: OutputLevelMask(0:31) = .TRUE.
    INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
-
+   INTEGER :: InfoOutUnit = stdout
+   INTEGER, PARAMETER :: InfoToFileUnit = 33   
+   LOGICAL :: InfoToFile = .FALSE.
+   
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
+
+#ifdef HAVE_XIOS
+   LOGICAL :: USE_XIOS = .FALSE. 
+#endif
+
 
 CONTAINS
 
@@ -61,18 +82,29 @@ CONTAINS
 !-----------------------------------------------------------------------
    SUBROUTINE Info( Caller, String, noAdvance, Level )
 !-----------------------------------------------------------------------
+#define MEMDEBUG 0     
+#if MEMDEBUG
+     INTERFACE
+       FUNCTION cpumemory() RESULT(dbl) BIND(C,name='cpumemory')
+         USE, INTRINSIC :: ISO_C_BINDING
+         REAL(C_DOUBLE) :: dbl
+       END FUNCTION cpumemory
+     END INTERFACE
+     INTEGER(KIND=8) :: CurrUse
+#endif
+     
      CHARACTER(LEN=*) :: Caller, String
      INTEGER, OPTIONAL :: Level
      LOGICAL, OPTIONAL :: noAdvance
 !-----------------------------------------------------------------------
-
      LOGICAL :: nadv, nadv1 = .FALSE.
      INTEGER :: n
      INTEGER, PARAMETER :: DefLevel = 4
+     LOGICAL :: StdoutSet = .FALSE.
+    
      SAVE nadv1
 
-!-----------------------------------------------------------------------
-
+!-----------------------------------------------------------------------          
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
@@ -84,37 +116,53 @@ CONTAINS
        IF( .NOT. OutputLevelMask(DefLevel) ) RETURN
      END IF
 
+     IF(.NOT. StdoutSet ) THEN
+       StdoutSet = .TRUE.
+     END IF
+     
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
-
+     
      IF(.NOT. nadv1 ) THEN
        IF ( OutputPrefix ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) 'INFO:: '
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) 'INFO:: '
        END IF
 
        IF ( OutputCaller ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
      END IF
 
 
      IF ( nadv ) THEN
        ! If there are several partitions to be saved than plot the partition too
-       IF( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
+         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE         
-         WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
        END IF
      ELSE
-       IF( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+#if MEMDEBUG
+       CurrUse = NINT( CPUMemory() ) 
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
+         WRITE( InfoOutUnit,'(A,I0,A,A,T50,A,I0)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String), &
+             'MEM: ',CurrUse
        ELSE
-         WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+         WRITE( InfoOutUnit,'(A,T50,A,I0)', ADVANCE = 'YES' ) TRIM(String),'MEM: ',CurrUse
        END IF
+#else
+       IF( MaxOutputPE > 0 .AND. .NOT. InfoToFile ) THEN
+         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       END IF
+#endif
      END IF
      nadv1 = nadv
 
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
+
+          
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -141,7 +189,6 @@ CONTAINS
 !-----------------------------------------------------------------------
 
 
-
 !-----------------------------------------------------------------------
 !> When a suspicious incident takes place this subroutine may be used
 !> to inform the user.
@@ -163,27 +210,27 @@ CONTAINS
 
      IF ( nadv ) THEN
        IF ( MaxOutputPE > 0 ) THEN
-         WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
+         WRITE( InfoOutUnit, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
        ELSE
-         WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+         WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
        END IF
      ELSE
        IF ( .NOT. nadv1 ) THEN
          IF( MaxOutputPE > 0 ) THEN
-           WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
                'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
          ELSE
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
                'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
          END IF
        ELSE
-         WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+         WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
        END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Warn
 !-----------------------------------------------------------------------
@@ -209,18 +256,18 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Error
 !-----------------------------------------------------------------------
@@ -238,29 +285,71 @@ CONTAINS
      SAVE nadv1
 
 !-----------------------------------------------------------------------
+
+#ifdef HAVE_XIOS
+     IF (USE_XIOS) THEN
+       CALL xios_context_finalize()
+       CALL xios_finalize()
+     ENDIF
+#endif 
      IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
         STOP EXIT_ERROR
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------
 
+!-----------------------------------------------------------------------
+!> This routine may be used to terminate the program in the case of an error.
+!-----------------------------------------------------------------------
+   SUBROUTINE Assert(Condition, Caller, ErrorMessage)
+!-----------------------------------------------------------------------
+     CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
+     LOGICAL :: Condition
+!-----------------------------------------------------------------------
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
+
+     IF(Condition) RETURN !Assertion passed
+
+     WRITE( Message, '(A)') 'ASSERTION ERROR'
+
+     IF(PRESENT(Caller)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(Caller)
+     END IF
+
+     IF(PRESENT(ErrorMessage)) THEN
+       WRITE( Message, '(A,A,A)') TRIM(Message),': ',TRIM(ErrorMessage)
+     END IF
+
+     WRITE( *, '(A)', ADVANCE='YES' ) Message
+
+     !Provide a stack trace if no caller info provided
+#ifdef __GFORTRAN__
+     IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
+#endif
+
+     STOP EXIT_ERROR
+!-----------------------------------------------------------------------
+   END SUBROUTINE Assert
+!-----------------------------------------------------------------------
+
+   
 END MODULE Messages
 
 !> \}
