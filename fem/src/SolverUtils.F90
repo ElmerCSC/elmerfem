@@ -13678,10 +13678,6 @@ END FUNCTION SearchNodeL
 
 #ifdef HAVE_AMGX
     nonlin_update = 0
-    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) THEN
-      nonlin_update = 1;
-    END IF
-
     CALL AMGXmv( A % AMGXMV, A % NumberOfRows, A % Rows-1, A % Cols-1, &
                   A % Values, u, v, nonlin_update )
 #else
@@ -13729,9 +13725,9 @@ END FUNCTION SearchNodeL
     INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
 
 #ifdef HAVE_AMGX
-    nonlin_update = 0
-    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
-      nonlin_update = 1;
+    nonlin_update = 1
+    IF ( .NOT. ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 0;
 
     config = ListGetString( Solver % Values, 'AMGX Config')
     DO i=1,LEN_TRIM(config)
