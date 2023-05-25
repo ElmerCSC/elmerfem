@@ -4115,6 +4115,8 @@ CONTAINS
     Mesh => Solver % Mesh
     PSolver => Solver
 
+    SolverRef => Solver
+
     isParallel = ParEnv % PEs > 1
     
          
