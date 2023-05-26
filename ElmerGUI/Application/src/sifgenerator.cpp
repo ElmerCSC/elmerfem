@@ -206,6 +206,11 @@ void SifGenerator::makeSimulationBlock()
   addSifLine("  Post File = ", 
 	     ui.postFileEdit->text().trimmed());
 
+  if(ui.calculateMeshPiecesCheck->isChecked())
+       te->append("  Calculate Mesh Pieces = True");
+  addSifLine("  Desired Mesh Pieces = ", 
+	     ui.desiredMeshPiecesEdit->text().trimmed());
+
   qs = ui.simulationFreeTextEdit->toPlainText();
 
   if(!qs.isEmpty())
@@ -900,7 +905,7 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
       if( entry.elem.attribute("Widget", "") != "Edit") continue;
 
       QLineEdit *l = static_cast<QLineEdit*>(entry.widget);
-      QString varName = l->text().trimmed();
+      QString varName = l->text().simplified();
 
       if ( varName == "" ) continue;
 
@@ -924,8 +929,12 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
           if (i>1) varName = varName + " ";
           varName = varName + subVarName + ":" + QString::number(dofs);
 
-          if ( subDofSplit.count() > 1 )
+          if ( subDofSplit.count() > 1 ) {
             subVarName = subDofSplit.at(1).trimmed();
+            if ( subDofSplit.count() > 2 ) {
+               subVarName = subVarName + " " + subDofSplit.at(2);
+            }
+          }
         }
         varName = varName + "]";
         addSifLine( "  " + labelName + " = ", varName );
@@ -1217,7 +1226,19 @@ void SifGenerator::handleLineEdit(const QDomElement &elem, QWidget *widget)
 
   QLineEdit *lineEdit = static_cast<QLineEdit*>(widget);
   QString value = lineEdit->text().trimmed();
-  addSifLine("  " + name + " = ", value);
+  
+  // Adjust array parameters, i.e.:
+  // eliminate the first '=' in "Save Coordinates = (2,3) = 1.2 2.3 3.4 4.5 5.6 6.7"
+  QRegularExpression qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
+  QRegularExpressionMatch match = qre.match(value);
+  if(match.hasMatch()){
+    addSifLine("  " + name, value);
+	cout << " [SifGenerator] array parameter adjusted: '" 
+	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
+	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
+  }else{
+    addSifLine("  " + name + " = ", value);
+  }
 }
 
 void SifGenerator::handleTextEdit(const QDomElement &elem, QWidget *widget)

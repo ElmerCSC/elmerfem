@@ -90,7 +90,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     SolverParams => GetSolverParams()
 
     dim = CoordinateSystemDimension()   
-    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//TRIM(I2S(dim))//' Displacement' )
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//I2S(dim)//' Displacement' )
 
     MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
     IF (.NOT.MaxwellMaterial) THEN
@@ -109,7 +109,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
       CALL ListAddString( SolverParams, &
           NextFreeKeyword('Exported Variable ',SolverParams), &
-          '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
+          '-dofs '//i2s(dim**2)//' -ip ve_stress' )
 
       i = GetInteger( SolverParams, 'Nonlinear System Min Iterations', Found )
       CALL ListAddInteger( SolverParams, 'Nonlinear System Min Iterations', MAX(i,2) )
@@ -185,7 +185,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF (CalcVelocities) THEN
       CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
-            '-dofs '//TRIM(I2S(dim))//' Displacement Velocity')
+            '-dofs '//I2S(dim)//' Displacement Velocity')
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
@@ -667,7 +667,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        at0 = RealTime()
 
        IF( MaxIter > 1 ) THEN
-         CALL Info( 'StressSolve','Displacement iteration: '//TRIM(I2S(iter)),Level=4)
+         CALL Info( 'StressSolve','Displacement iteration: '//I2S(iter),Level=4)
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
@@ -703,6 +703,12 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
 3000   IF ( Transient .AND.(ConstantBulkMatrix .OR. &
            ConstantBulkSystem .OR. ConstantSystem) ) CALL AddGlobalTime()
+
+       ! This is a matrix level routine for setting friction such that tangential
+       ! traction is the normal traction multiplied by a coefficient.
+       CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+           'Friction Direction')
+    
        CALL DefaultFinishAssembly()
 
        IF( ModelLumping .AND. FixDisplacement) THEN
@@ -773,6 +779,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      END DO ! of nonlinear iter
 !------------------------------------------------------------------------------
 
+     IF (CalcVelocities) THEN
+       CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
+           DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
+     END IF     
+     
      IF ( CalcStressAll .AND. .NOT. StabilityAnalysis ) THEN
          
        IF ( EigenAnalysis ) THEN
@@ -974,11 +985,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
              VonMises, DisplPerm, StressPerm, &
              NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle, &
              EvaluateAtIP=EvaluateAtIP, EvaluateLoadAtIP=EvaluateLoadAtIP)
-
-         IF (CalcVelocities) THEN
-           CALL ComputeDisplacementVelocity(Displacement,StressSol % PrevValues,DisplPerm,&
-               DisplacementVel,DisplacementVelPerm,StressSol % DOFs, DisplacementVelDOFs, dt)
-         END IF
        END IF
 
        CALL InvalidateVariable( Model % Meshes, Mesh, 'Stress' )
@@ -1434,8 +1440,8 @@ CONTAINS
 
             DO i=1,dim
               DO j=1,dim
-                IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), Found)
+                IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                  SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), Found)
               END DO
             END DO
           END IF
@@ -1625,13 +1631,14 @@ CONTAINS
     INTEGER, POINTER :: DisplPerm(:),DisplVeloPerm(:)
     INTEGER :: DispDofs, VeloDofs
     !---------------------------------
-    INTEGER :: i, j, k
+    INTEGER :: i, di, j, k
     
     DO i=1,SIZE( DisplPerm )
-      IF ( DisplPerm(i) <= 0 ) CYCLE
+      di = DisplPerm(i) 
+      IF(di==0) CYCLE
       DO j=1,VeloDofs
-        k = DispDofs*(DisplPerm(i)-1)+j
-        DisplVelo(VeloDofs*(DisplVeloPerm(i)-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
+        k = DispDofs*(di-1)+j
+        DisplVelo(VeloDofs*(di-1)+j) = (Displ(k) - PrevDispl(k,1))/dt
       END DO
     END DO
     
@@ -1951,7 +1958,7 @@ CONTAINS
               IF ( Permutation(l) <= 0 ) CYCLE
               StSolver % Variable % Values(Permutation(l)) = NodalStrain(6*(StressPerm(l)-1)+k)            
             END DO
-            ! this solves some convergence problems at the expence of bad convergence      
+            ! this solves some convergence problems at the expense of bad convergence      
             ! StSolver % Variable % Values = 0
 
             WRITE( Message,'(A,I0,A,I0,A)') 'Solving for Strain(',i,',',j,')'
@@ -2555,7 +2562,7 @@ CONTAINS
            END IF
            
            ! The plane  elements only include the  derivatives in the direction
-           ! of the plane. Therefore compute the derivatives of the displacemnt
+           ! of the plane. Therefore compute the derivatives of the displacement
            ! field from the parent element:
            ! -------------------------------------------------------------------
            Up = SUM( xp(1:n) * Basis(1:n) )

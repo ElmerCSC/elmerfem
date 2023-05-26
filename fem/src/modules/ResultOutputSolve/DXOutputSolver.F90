@@ -446,7 +446,7 @@
           ! Here's a bunch of routines to deal with ELMER -> DX element
           ! translations.
           
-          ! nElem is the number of DX elements, and nVertix is the numbe of
+          ! nElem is the number of DX elements, and nVertix is the number of
           ! vertices per element (either 3 for triangle or 4 for tetrahedra).
           
           SUBROUTINE GetNElem( Model, nElem, nVertix )

@@ -984,7 +984,7 @@ CONTAINS
     HasNeighbours = NoNeighbours > 0
 
     IF(HasNeighbours) THEN
-      ! given the complexity of shared point problems put in seperate subroutine
+      ! given the complexity of shared point problems put in separate subroutine
       CALL FATAL('InterpolateUnfoundPoint', 'Use InterpolateUnfoundsharedPoint for shared nodes!')
     END IF
 
@@ -1420,7 +1420,7 @@ CONTAINS
         CALL MPI_BSEND( SuppNodeMask, NoSuppNodes*MaskCount, MPI_LOGICAL, proc, &
           4001, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring proc has supp nodes
         counter=counter+1
         CALL MPI_RECV( PartSuppNodeMask(counter+1,:PartNoSuppNodes(i+1),: ) , &
           PartNoSuppNodes(i+1)*MaskCount, MPI_LOGICAL, proc, &
@@ -1438,7 +1438,7 @@ CONTAINS
         CALL MPI_BSEND( InterpedValue, MaskCount, MPI_DOUBLE_PRECISION, proc, &
           4002, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring prco has supp nodes
         counter=counter+1
         CALL MPI_RECV( PartInterpedValues(counter+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
           4002, ELMER_COMM_WORLD, status, ierr )
@@ -1456,7 +1456,7 @@ CONTAINS
         CALL MPI_BSEND( SuppNodeWeights, NoSuppNodes, MPI_DOUBLE_PRECISION, proc, &
           4003, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+      IF(UseProc(i+1)) THEN !neighbouring prco has supp nodes
         counter=counter+1
         CALL MPI_RECV( PartSuppNodeWeights(counter+1,1:PartNoSuppNodes(i+1)), &
           PartNoSuppNodes(i+1), MPI_DOUBLE_PRECISION, proc, &

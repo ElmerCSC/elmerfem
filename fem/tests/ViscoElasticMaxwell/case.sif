@@ -15,8 +15,6 @@ Simulation
   Timestep size = 1
   Timestep Intervals = 20
   Timestepping Method = BDF
-
-! Post File = File "esim1.ep"
 End
 
 Body 1
@@ -66,7 +64,7 @@ Solver 2
   Output Format = vtu
   Discontinuous Galerkin = True
 
-  Reference Sums(6) = Real 44 8 89100 1388 43973415 512.62222222229627
+  Reference Values(6) = Real 44 8 89100 1388 43973415 512.62222222229627
   Reference Norm = 1.0
 End
 

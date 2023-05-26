@@ -163,8 +163,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
-    CALL INFO( SolverName,'Nonlinear iteration '//TRIM(I2S(iter))//&
-        ' out of '//TRIM(I2S(maxiter)), Level=4)
+    CALL INFO( SolverName,'Nonlinear iteration '//I2S(iter)//&
+        ' out of '//I2S(maxiter), Level=4)
     ! System assembly:
     !----------------
     CALL DefaultInitialize()
@@ -312,7 +312,7 @@ CONTAINS
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP, & ! material properties at IP
          CcYcTAtIP, CcYcPAtIP, CcYcYcAtIP, rhocPAtIP, rhocYcAtIP, rhocTAtIP,& ! material properties at IP
          DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3), fcAtIP(3), extforceFlux(3),&
-         DispersionCoefficient, MolecularDiffusionCoefficent ! material properties at IP
+         DispersionCoefficient, MolecularDiffusionCoefficient ! material properties at IP
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          StiffPQ, meanfactor
@@ -380,8 +380,8 @@ CONTAINS
          MinKgw = 1.0D-14
 
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
-    MolecularDiffusionCoefficent = &
-         GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
+    MolecularDiffusionCoefficient = &
+         GetConstReal(Material,"Molecular Diffusion Coefficient", ConstantDiffusion)
     
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
     !      PRINT *,"Here0"
@@ -390,9 +390,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
-      CALL Info(FunctionName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=7)
+          //I2S(IP % n),Level=7)
+      CALL Info(FunctionName,'Elemental n:'//I2S(n)//' nd:'&
+          //I2S(nd)//' nd:'//I2S(nb),Level=7)
     END IF
 
     DO t=1,IP % n
@@ -516,7 +516,7 @@ CONTAINS
         !PRINT *,"DispersionCoefficient",KcAtIP
       ELSE
         IF (ConstantDiffusion) THEN
-          DmAtIP = MolecularDiffusionCoefficent
+          DmAtIP = MolecularDiffusionCoefficient
         ELSE
           DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,CurrentSoluteMaterial % rhoc0,&
                CurrentSolventMaterial % muw0,TemperatureAtIP)
@@ -642,7 +642,7 @@ CONTAINS
     IF (other_body_id < 1) THEN ! only one body in calculation
       ParentElement => Element % BoundaryInfo % Right
       IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => Element % BoundaryInfo % Left
-    ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+    ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
       ParentElement => Element % BoundaryInfo % Right
       IF (ParentElement % BodyId == other_body_id) ParentElement => Element % BoundaryInfo % Left
     END IF
@@ -691,7 +691,7 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
+          //I2S(IP % n),Level=7)
     END IF
     
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)

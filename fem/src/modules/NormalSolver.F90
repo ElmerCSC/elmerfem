@@ -147,7 +147,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
     IF ( SetD ) THEN
       ! We compute the normals component-wise hence the Dirichlet condition also must be given so.
-      Solver % Variable % Name = TRIM(VarName) // ' ' // TRIM(I2S(i))
+      Solver % Variable % Name = TRIM(VarName) // ' ' // I2S(i)
       Solver % Matrix % Values = Values
       CALL DefaultDirichletBCs()
       Solver % Variable % Name = Vname
@@ -208,7 +208,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Projecting field "'//TRIM(Vname)//'" to normal direction',Level=5)
 
       ! We deal with displacement or velocity field with component-wise since
-      ! otherwise we should deal with the 'flow solution' vector separetely.
+      ! otherwise we should deal with the 'flow solution' vector separately.
       Var1 => VariableGet( Mesh % Variables,TRIM(Vname)//' 1')
       IF(.NOT. ASSOCIATED(Var1) ) CALL Fatal(Caller,'Vector field component 1 does not exist: '//TRIM(Vname))
       Var2 => VariableGet( Mesh % Variables,TRIM(Vname)//' 2')
@@ -416,7 +416,7 @@ CONTAINS
       END IF
     END DO
 
-    CALL Info(Caller,'Enforced axial symmetry in nodes: '//TRIM(I2S(m)),Level=5)
+    CALL Info(Caller,'Enforced axial symmetry in nodes: '//I2S(m),Level=5)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE EnforceSymmetry
@@ -455,7 +455,7 @@ END SUBROUTINE NormalSolver
     VarName = GetString(SolverParams,'Normals Result Variable', Found )
     IF( .NOT. Found ) THEN
       CALL ListAddString( SolverParams,'Normals Result Variable','Normals')
-      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:'//TRIM(I2S(dim))//']' )
+      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:'//I2S(dim)//']' )
     END IF
 
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )

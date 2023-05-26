@@ -97,7 +97,7 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
 
   VarName = GetString(SolverParams,'Divergence Variable',GotIt )
   IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
-  IF(.NOT. gotIt) VarName = TRIM('Velocity')
+  IF(.NOT. gotIt) VarName = 'Velocity'
 
   ! For future use
   CondName = ListGetString(SolverParams,'Divergence Coefficient',GotCoeff )

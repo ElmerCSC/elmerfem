@@ -538,11 +538,11 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------------------
-    RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
+    RECURSIVE SUBROUTINE C_rpcond(u,v,ipar,pcondrsubr)
 !-----------------------------------------------------------------------------------
       USE huti_interfaces
       IMPLICIT NONE
-      PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
+      PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
 
@@ -551,10 +551,10 @@ CONTAINS
 !-----------------------------------------------------------------------------------
       ndim = HUTI_NDIM
       IF(Constrained) HUTI_NDIM = ndim+nc
-      CALL pcondlsubr(u,v,ipar)
+      CALL pcondrsubr(u,v,ipar)
       IF(Constrained) HUTI_NDIM = ndim
 !-----------------------------------------------------------------------------------
-    END SUBROUTINE C_lpcond
+    END SUBROUTINE C_rpcond
 !-----------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -694,7 +694,6 @@ CONTAINS
           IluOrder
       REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
       REAL(KIND=dp) :: rwork(l+1,3+2*(l+1))
       REAL(KIND=dp) :: tmpmtr(l-1,l-1), tmpvec(l-1)
@@ -829,8 +828,8 @@ CONTAINS
           ENDDO
           !$OMP END PARALLEL
 
-          ! CALL C_lpcond( t, work(:,u+k-1), ipar, pcondlsubr )
-          CALL C_lpcond( t, work(1,u+k-1), ipar, pcondlsubr )
+          ! CALL C_rpcond( t, work(:,u+k-1), ipar, pcondrsubr )
+          CALL C_rpcond( t, work(1,u+k-1), ipar, pcondrsubr )
           ! CALL C_matvec( t, work(:,u+k), ipar, matvecsubr )
           CALL C_matvec( t, work(1,u+k), ipar, matvecsubr )
           ! sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1 )
@@ -862,9 +861,9 @@ CONTAINS
           ENDDO
           !$OMP END PARALLEL
 
-          ! CALL C_lpcond( t, work(:,r+k-1), ipar,pcondlsubr )
+          ! CALL C_rpcond( t, work(:,r+k-1), ipar,pcondrsubr )
           ! CALL C_matvec( t, work(:,r+k), ipar, matvecsubr )
-          CALL C_lpcond( t, work(1,r+k-1), ipar,pcondlsubr )
+          CALL C_rpcond( t, work(1,r+k-1), ipar,pcondrsubr )
           CALL C_matvec( t, work(1,r+k), ipar, matvecsubr )
 
           ! rnrm = normfun(n, work(1:n,r), 1 )
@@ -1040,7 +1039,7 @@ CONTAINS
         rcmp = ((rnrm < delta*mxnrmr .AND. rnrm0 < mxnrmr) .OR. xpdt)
         IF (rcmp) THEN
           ! PRINT *, 'Performing residual update...'
-          CALL C_lpcond( t, x, ipar,pcondlsubr )
+          CALL C_rpcond( t, x, ipar,pcondrsubr )
           ! CALL C_matvec( t, work(:,r), ipar, matvecsubr )
           CALL C_matvec( t, work(1,r), ipar, matvecsubr )
 
@@ -1079,7 +1078,7 @@ CONTAINS
              !$OMP END PARALLEL DO
           END IF
         ELSE
-          CALL C_lpcond( t, x, ipar,pcondlsubr )
+          CALL C_rpcond( t, x, ipar,pcondrsubr )
           !$OMP PARALLEL DO
           DO i=1,n
              t(i) = t(i)+work(i,xp)
@@ -1142,7 +1141,7 @@ CONTAINS
          t(i) = x(i)
       END DO
       !$OMP END PARALLEL DO
-      CALL C_lpcond( x, t, ipar,pcondlsubr )
+      CALL C_rpcond( x, t, ipar,pcondrsubr )
       !$OMP PARALLEL DO
       DO i=1,n
          x(i) = x(i) + work(i,xp)
@@ -1264,14 +1263,14 @@ CONTAINS
         
       ALLOCATE( R(n), T1(n), T2(n), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal('GCR','Failed to allocate memory of size: '//TRIM(I2S(n)))
+        CALL Fatal('GCR','Failed to allocate memory of size: '//I2S(n))
       END IF
 
       IF ( m > 1 ) THEN
         ALLOCATE( S(n,m-1), V(n,m-1), STAT=allocstat )
         IF( allocstat /= 0 ) THEN
           CALL Fatal('GCR','Failed to allocate memory of size: '&
-              //TRIM(I2S(n))//' x '//TRIM(I2S(m)))
+              //I2S(n)//' x '//I2S(m))
         END IF
         
          V(1:n,1:m-1) = 0.0d0	
@@ -1313,7 +1312,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar, pcondlsubr )
+         CALL C_rpcond( T1, r, ipar, pcondrsubr )
          CALL C_matvec( T1, T2, ipar, matvecsubr )
 
          !--------------------------------------------------------------
@@ -1425,7 +1424,7 @@ CONTAINS
 
            IF( InfoActive(20) ) THEN
              ksum = ksum + k
-             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//TRIM(I2S(ksum)))           
+             CALL Info('IterMethod_GCR','Total number of GCR iterations: '//I2S(ksum))           
            END IF
            
          END IF
@@ -1685,7 +1684,7 @@ CONTAINS
             END DO
 
             ! Compute new U(:,k)
-            CALL C_lpcond( t, v, ipar, pcondlsubr ) 
+            CALL C_rpcond( t, v, ipar, pcondrsubr ) 
             t = om*t
             DO i = k,s
               t = t + gamma(i)*U(:,i)
@@ -1695,7 +1694,7 @@ CONTAINS
           ELSE
 
             ! Updates for the first s iterations (in G_0):
-            CALL C_lpcond( U(:,k), v, ipar, pcondlsubr )
+            CALL C_rpcond( U(:,k), v, ipar, pcondrsubr )
 
           END IF
 
@@ -1786,7 +1785,7 @@ CONTAINS
         ! Note: r is already perpendicular to P so v = r
 
         ! Preconditioning:
-        CALL C_lpcond( v, r, ipar, pcondlsubr )
+        CALL C_rpcond( v, r, ipar, pcondrsubr )
         ! Matrix-vector multiplication:
         CALL C_matvec( v, t, ipar, matvecsubr )
 
@@ -2016,7 +2015,7 @@ CONTAINS
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL pcondlsubr( T1, r, ipar )         
+         CALL pcondrsubr( T1, r, ipar )         
          CALL matvecsubr( T1, T2, ipar )
          !--------------------------------------------------------------
          ! Perform the orthogonalization of the search directions....
@@ -2239,7 +2238,7 @@ CONTAINS
             DO j=0,k-1
                work(1:n,u+j) = work(1:n,r+j) - beta*work(1:n,u+j)
             ENDDO
-            CALL pcondlsubr( t, work(1:n,u+k-1), ipar )
+            CALL pcondrsubr( t, work(1:n,u+k-1), ipar )
             CALL matvecsubr( t, work(1:n,u+k),   ipar )
 
             sigma = dotprodfun(n, work(1:n,rr), 1, work(1:n,u+k), 1)
@@ -2251,7 +2250,7 @@ CONTAINS
             DO j=0,k-1
                work(1:n,r+j) = work(1:n,r+j) - alpha * work(1:n,u+j+1)
             ENDDO
-            CALL pcondlsubr( t, work(1:n,r+k-1), ipar )
+            CALL pcondrsubr( t, work(1:n,r+k-1), ipar )
             CALL matvecsubr( t, work(1:n,r+k),   ipar )
             rnrm = normfun(n, work(1:n,r), 1)
             mxnrmx = MAX (mxnrmx, rnrm)
@@ -2342,7 +2341,7 @@ CONTAINS
          rcmp = ((rnrm < delta*mxnrmr .AND. rnrm0 < mxnrmr) .OR. xpdt)
          IF (rcmp) THEN
             ! PRINT *, 'Performing residual update...'
-            CALL pcondlsubr( t, x, ipar )
+            CALL pcondrsubr( t, x, ipar )
             CALL matvecsubr( t, work(1:n,r), ipar )
             work(1:n,r) = work(1:n,bp) - work(1:n,r)
             mxnrmr = rnrm
@@ -2362,7 +2361,7 @@ CONTAINS
                t(1:n) = t(1:n) + work(1:n,xp)  
             END IF
          ELSE
-            CALL pcondlsubr( t, x, ipar )
+            CALL pcondrsubr( t, x, ipar )
             t(1:n) = t(1:n)+work(1:n,xp)
          END IF
 
@@ -2384,7 +2383,7 @@ CONTAINS
       ! We have solved z = P*x, so finally solve the true unknown x
       !------------------------------------------------------------
       t(1:n) = x(1:n)
-      CALL pcondlsubr( x, t, ipar )
+      CALL pcondrsubr( x, t, ipar )
       x(1:n) = x(1:n) + work(1:n,xp)      
 
     !----------------------------------------------------------
@@ -2560,7 +2559,7 @@ CONTAINS
             END DO
 
             ! Compute new U(:,k)
-            CALL pcondlsubr( t, v, ipar )
+            CALL pcondrsubr( t, v, ipar )
             t = om*t
             DO i = k,s
               t = t + gamma(i)*U(:,i)
@@ -2570,7 +2569,7 @@ CONTAINS
           ELSE 
 
             ! Updates for the first s iterations (in G_0):
-            CALL pcondlsubr( U(:,k), v, ipar )
+            CALL pcondrsubr( U(:,k), v, ipar )
 
           END IF
 
@@ -2637,7 +2636,7 @@ CONTAINS
         ! Note: r is already perpendicular to P so v = r
 
         ! Preconditioning:
-        CALL pcondlsubr( v, r, ipar )
+        CALL pcondrsubr( v, r, ipar )
         ! Matrix-vector multiplication:
         CALL matvecsubr( v, t, ipar )
 

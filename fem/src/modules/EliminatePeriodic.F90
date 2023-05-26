@@ -422,7 +422,7 @@ CONTAINS
     INTEGER :: R(:,:), n, NOFRows, d(:), Perm(:), IDC 
  
     INTEGER :: i, j, k, CountChanges 
-    LOGICAL :: ChangesOccured 
+    LOGICAL :: ChangesOccurred 
 
     DO i = 1, NOFRows
        d(i) = i 
@@ -434,14 +434,14 @@ CONTAINS
        d(j) = d(k)
     END DO 
 
-    ChangesOccured = .TRUE. 
-    DO WHILE( ChangesOccured ) 
-       ChangesOccured = .FALSE. 
+    ChangesOccurred = .TRUE. 
+    DO WHILE( ChangesOccurred ) 
+       ChangesOccurred = .FALSE. 
        CountChanges = 0 
        DO i = 1,NOFRows
           IF( d(i) /= d(d(i)) ) THEN 
              d(i) = d(d(i)) 
-             ChangesOccured = .TRUE. 
+             ChangesOccurred = .TRUE. 
              CountChanges = CountChanges+1 
           END IF 
        END DO 

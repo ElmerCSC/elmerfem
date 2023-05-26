@@ -214,7 +214,7 @@
 
          IF(.NOT. Found ) CYCLE
 
-         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         CALL Info(Caller,'Duplicating mesh in coordinate direction: '//I2S((i+1)/2))
 
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
@@ -222,7 +222,7 @@
 
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( Caller,'Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
+     CALL Info( Caller,'Number of nodes in mesh: '//I2S(Mesh % NumberOfNodes),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -283,6 +283,7 @@
 ! Check the maximum radiation body
      MaxRadiationBody = 0
 
+#if 0
      DO t= 1, Mesh % NumberOfBoundaryElements
 
        Element => GetBoundaryElement(t)
@@ -297,13 +298,10 @@
          MaxRadiationBody = MAX(i, MaxRadiationBody)
        END IF
      END DO
+#else
+     MaxRadiationBody = 1
+#endif
 
-     IF( Mesh % NumberOfBoundaryElements == 0) THEN
-       CALL Warn(Caller,'There are no radiation boundary elements!')
-       STOP
-     END IF
-
-     RadiationBody = 0
      DO RadiationBody = 1, MaxRadiationBody
        WRITE( LMessage,'(A,I2)') 'Computing view factors for radiation body',RadiationBody
        CALL Info(Caller,LMessage,Level=3)
@@ -328,6 +326,7 @@
          
          RadiationFlag = GetLogical( BC, 'Radiator BC', GotIt )
          IF ( RadiationFlag ) THEN
+#if 0
            i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ))
            IF(i == RadiationBody) THEN
              RadiationOpen = RadiationOpen .OR. GetLogical( BC, 'Radiation Boundary Open', GotIt )
@@ -335,6 +334,12 @@
              j = t + Mesh % NumberOFBulkElements
              RadElements(RadiationSurfaces) = Mesh % Elements(j)
            END IF
+#else
+           RadiationOpen = RadiationOpen .OR. GetLogical(BC,'Radiation Boundary Open', GotIt)
+           RadiationSurfaces = RadiationSurfaces + 1
+           j = t + Mesh % NumberOFBulkElements
+           RadElements(RadiationSurfaces) = Mesh % Elements(j)
+#endif
          END IF
        END DO
        
@@ -351,7 +356,7 @@
          END IF
        END IF
        
-       CALL Info(Caller,'Number of surfaces participating in radiation: '//TRIM(I2S(N)))
+       CALL Info(Caller,'Number of surfaces participating in radiation: '//I2S(N))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -553,7 +558,7 @@
 
            IF(.NOT.Found) CYCLE
 
-           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           CALL Info(Caller,'Symmetry reduction in coordinate direction: '//I2S((l+1)/2))
            
            k = 0
            DO i=1,NofRadiators
@@ -593,7 +598,7 @@
        WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
        CALL Info( Caller, Message )
        IF(nprob>0) CALL info( Caller, 'Number of rowsums below 0.5 is: '&
-           //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
+           //I2S(nprob)//' (out of '//I2S(n)//')')
        
        IF( .NOT. RadiationOpen ) THEN 
          at0 = CPUTime()

@@ -7,7 +7,7 @@
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) asny later version.
+! *  of the License, or (at your option) any later version.
 ! * 
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -191,7 +191,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
     IF (.NOT.Found) FluxOutput = .FALSE.
     IF (FluxOutput) THEN
       DO I=1,DIM
-        DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//TRIM(I2S(i)))
+        DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//I2S(i))
         FluxOutput = ASSOCIATED(DummyGWfluxVar)
         IF (.NOT.FluxOutput) EXIT
       END DO
@@ -206,7 +206,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   !--------------------------
   DO iter=1,maxiter
     CALL INFO( SolverName, "Nonlinear iteration "&
-        //TRIM(I2S(iter))//" out of "//TRIM(I2S(maxiter)),Level=4)
+        //I2S(iter)//" out of "//I2S(maxiter),Level=4)
     
     ! System assembly:
     !----------------
@@ -402,9 +402,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
-      CALL Info(FunctionName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=7)
+          //I2S(IP % n),Level=7)
+      CALL Info(FunctionName,'Elemental n:'//I2S(n)//' nd:'&
+          //I2S(nd)//' nd:'//I2S(nb),Level=7)
     END IF
 
     DO t=1,IP % n

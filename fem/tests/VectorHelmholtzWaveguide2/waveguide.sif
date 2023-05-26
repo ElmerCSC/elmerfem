@@ -3,7 +3,7 @@
 Check Keywords "Warn"
 
 Header
-Mesh DB "." "shoebox_hexas"
+  Mesh DB "." "shoebox_hexas"
 End
 
 Simulation
@@ -53,13 +53,11 @@ End
 
 Solver 1
   Equation = "VectorHelmholtz"
-  Variable = E[E re:1 E im:1]
   Use Piola Transform = Logical False
-  Optimize Bandwidth = True
-  Linear System Symmetric = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
-  Linear System Scaling = True
+  Linear System Row Equilibration = True
+  Linear System Symmetric = False
 
   !Linear System Use Hypre = Logical True
   !Linear System Use Trilinos = Logical True
@@ -67,8 +65,8 @@ Solver 1
 
   Linear System Solver = String "Iterative"
   !Linear System Solver = String "Direct"
-  Linear System Iterative Method = String "gmres" !bicgstabl"
-  BiCGstabl polynomial degree = Integer 4
+  Linear System Iterative Method = String IDRS
+  !BiCGstabl polynomial degree = Integer 2
   
   Linear System Preconditioning Damp Coefficient = Real 0.0
   Linear System Preconditioning Damp Coefficient im = Real 1
@@ -91,10 +89,8 @@ End
 Solver 2
   Equation = "calcfields"
 
-  Use Piola Transform = Logical True
   Optimize Bandwidth = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
-  Linear System Symmetric = False
 
   Calculate Elemental Fields = Logical False
   

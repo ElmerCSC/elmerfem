@@ -606,7 +606,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -640,7 +640,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -674,7 +674,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -708,7 +708,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -742,7 +742,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -810,7 +810,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -845,7 +845,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2
@@ -880,7 +880,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2
@@ -915,7 +915,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2
@@ -950,7 +950,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2
@@ -985,7 +985,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2
@@ -1055,7 +1055,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2

@@ -1,0 +1,109 @@
+! This a test case for a system that depends on values of a control point.
+! The control point is used explicitly. This takes use of some of the
+! same routines as the implicite control but due to the explicit nature
+! the user is left in full control how to use the control points coming
+! from previous timesteps. Maybe a little bit different logic would have
+! been ideal starting from scratch. Here we use the synergies of the previous
+! control utilities.
+!
+! P.R. 1.8.2022
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Timestep Intervals = 100
+  Timestep Sizes = 0.01
+  Timestepping Method = BDF
+  BDF Order = 1
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+! Our function may depend on control value and time
+  Heat Source = Variable "cpar, time"
+    Real Procedure "AlternatingSource" "AlternatingSource"
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+  Density = 1.0
+End 
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+
+! Create an control value on-the-fly at the center point of the square.
+! The control parameter will be available as a global variable "cpar".
+  Apply Explicit Control = Logical True
+  Number Of Controls = Integer 1
+! This is properly done also in parallel within the library. 
+  Control Node Coordinates(1,2) = Real 0.5 0.5
+End 
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Parallel Reduce = Logical True
+
+! Save the control value
+  Variable 1 = cpar
+
+  Variable 2 = Temperature
+  Operator 2 = min
+
+  Variable 3 = Temperature
+  Operator 3 = max
+
+  Filename = f.dat
+  Show Norm Index = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 3.69063604E-02
+Solver 2 :: Reference Norm = 6.86000303E-02
+
+

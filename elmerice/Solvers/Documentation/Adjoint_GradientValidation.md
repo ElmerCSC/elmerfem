@@ -11,7 +11,7 @@
 
 This solver is an utility to check the accuracy of the gradients computed from the adjoint solvers.
 
-We have tried to validate each solver independently; however as the model is continuously under developpement,
+We have tried to validate each solver independently; however as the model is continuously under development,
 and the Elmer configuration sometimes complex it might be interesting to check that your derivatives used for
 the minimisation are correct.
 
@@ -49,7 +49,7 @@ If your set-up is correct, $\epsilon$ should tend to $0$.
 
 ### Keywords
 
-Bellow is the sequence and related keywords in the *.sif* file:  
+Below is the sequence and related keywords in the *.sif* file:  
 
 - First set your number of iterations in the simulation section:
 ```

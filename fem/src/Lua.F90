@@ -33,6 +33,9 @@
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
+
+#include <../config.h>
+
 #define lua_upvalueindex(i)	(LUA_GLOBALSINDEX-(i))
 #define LUA_GLOBALSINDEX	(-10002)
 !-------------------------------------------------------------------------------
@@ -54,6 +57,7 @@ end type
 type(LuaState_t), PUBLIC :: LuaState
 !$OMP THREADPRIVATE(LuaState)
 
+#ifdef HAVE_LUA
 public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, &
     lua_pushnumber, luafun, lua_runfile, lua_dostring, &
     luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, &
@@ -408,6 +412,7 @@ function lua_popstring(L, slen) result(s)
   s => lua_tolstring(L%L, -1, slen)
   call lua_pop(L%L, 1)
 end function
+#endif
 
 !-------------------------------------------------------------------------------
 end module ! Lua }}}

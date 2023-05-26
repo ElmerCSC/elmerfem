@@ -212,7 +212,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
       dim = MAX( dim, 3 ) 
     END IF
   END DO
-  CALL Info('IsosurfaceSolver','Leading element dimension is '//TRIM(I2S(dim)) )
+  CALL Info('IsosurfaceSolver','Leading element dimension is '//I2S(dim) )
 
 
   IF( dim == 2 ) THEN
@@ -329,7 +329,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
     CALL Warn('IsosurfaceSolver','No potential elements found for isosurface solver!')
     RETURN
   ELSE
-    CALL Info('IsosurfaceSolver','Found '//TRIM(I2S(NoNewElements))//' potential elements') 
+    CALL Info('IsosurfaceSolver','Found '//I2S(NoNewElements)//' potential elements') 
   END IF
 
   Mesh % NumberOfBulkElements = NoNewElements
@@ -390,7 +390,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   !----------------------------------------------------------------
   IF( GetLogical(Params,'Mesh Numbering',Found) ) THEN
     Calls = Calls + 1
-    Isomesh % name = TRIM(Isomesh % name) // TRIM(i2s(calls))
+    Isomesh % name = TRIM(Isomesh % name) // i2s(calls)
   END IF
   CALL MakeDirectory( TRIM(Isomesh % name) // CHAR(0) )
   
@@ -622,7 +622,7 @@ CONTAINS
       
 
       IF( IsAllocated == 0 ) THEN
-        CALL Info('IsosurfaceSolver','Creating '//TRIM(I2S(j))//' nodes for isosurface')
+        CALL Info('IsosurfaceSolver','Creating '//I2S(j)//' nodes for isosurface')
 
         NoIsoNodes = j
         ALLOCATE( IsoMesh % Nodes )
@@ -1028,7 +1028,7 @@ CONTAINS
 
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('SaveGsmhGeo2D','Not implemented yet in parallel')
+      CALL Warn('SaveGmshGeo2D','Not implemented yet in parallel')
     END IF
     
     Filename = ListGetString(Params,'Geo Filename',Found)
@@ -1058,7 +1058,7 @@ CONTAINS
       
       IF( i1 == 0 .OR. i2 == 0 ) THEN
         CALL Warn('SaveGmshGeo2D','Invalid indexes: '&
-            //TRIM(I2S(i1))//' and '//TRIM(I2S(i2)) )
+            //I2S(i1)//' and '//I2S(i2) )
       END IF
       
       IF( Neighbours(i1,1) == 0 ) THEN
@@ -1114,7 +1114,7 @@ CONTAINS
       IF( .NOT. NewLoop ) THEN
         Dist = SUM( (Coord-PrevCoord)**2)
         IF( Dist < NodeEps**2 ) THEN
-          WRITE(Message,'(A,ES12.4)') 'Skipping node '//TRIM(I2S(j))//' too close: ',&
+          WRITE(Message,'(A,ES12.4)') 'Skipping node '//I2S(j)//' too close: ',&
               SQRT(Dist)
           CALL Info('IsosurfaceSolver',Message,Level=12)
           SaveNode = .FALSE.
@@ -1139,7 +1139,7 @@ CONTAINS
         Found = .FALSE.
         DO j = 1, Mesh % NumberOfNodes
           IF( .NOT. NodeUsed(j) ) THEN
-            CALL Info('IsosurfaceSolver','Found a new start at node: '//TRIM(I2S(j)),Level=10)
+            CALL Info('IsosurfaceSolver','Found a new start at node: '//I2S(j),Level=10)
             
             Found = .TRUE.
             EXIT
@@ -1149,7 +1149,7 @@ CONTAINS
           NoLoop = NoLoop + 1 
           IF( NoLoop > MaxLoops ) THEN
             CALL Warn('IsosurfaceSolver','The static max number of loops ('&
-                //TRIM(I2S(MaxLoops))//') is too small!')
+                //I2S(MaxLoops)//') is too small!')
           END IF
 
           NewLoop = .TRUE.
@@ -1166,10 +1166,10 @@ CONTAINS
     IF( UsedNodes == Mesh % NumberOfNodes ) THEN
       CALL Info('IsosurfaceSolver','All nodes used')
     ELSE
-      CALL Info('IsosurfaceSolver',TRIM(I2S(UsedNodes))//' nodes used')
+      CALL Info('IsosurfaceSolver',I2S(UsedNodes)//' nodes used')
     END IF
 
-    CALL Info('IsoSurfaceSolver','Number of loops found: '//TRIM(I2S(NoLoop)))
+    CALL Info('IsoSurfaceSolver','Number of loops found: '//I2S(NoLoop))
 
     CALL Info('IsosurfaceSolver','Writing points in geo file',Level=10)
 
@@ -1189,7 +1189,7 @@ CONTAINS
       END DO
 
       CALL Info('IsosurfaceSolver','Size of spline: '&
-          //TRIM(I2S(LoopSize(j))),Level=10)
+          //I2S(LoopSize(j)),Level=10)
 
       DO i=1,LoopSize(j)
         NodeIndex = NodeIndex + 1
@@ -1227,8 +1227,8 @@ CONTAINS
       END DO
 
       CALL Info('IsosurfaceSolver','Size of spline: '&
-          //TRIM(I2S(LoopSize(j))),Level=10)
-      WRITE( GeoUnit,'(A)', ADVANCE='NO') 'Spline('//TRIM(I2S(l))//') = {'
+          //I2S(LoopSize(j)),Level=10)
+      WRITE( GeoUnit,'(A)', ADVANCE='NO') 'Spline('//I2S(l)//') = {'
       DO i=1,LoopSize(j)
         WRITE( GeoUnit,'(I0,A)', ADVANCE='NO') NodeIndex+i,', '
       END DO
@@ -1241,10 +1241,10 @@ CONTAINS
 
     DO j=1,SaveLoops
       k = SaveLoops+2*(j-1)
-      WRITE( GeoUnit,'(A)') 'Line Loop('//TRIM(I2S(k+1))//&
-          ') = {'//TRIM(I2S(j))//'};'
-      WRITE( GeoUnit,'(A)') 'Plane Surface('//TRIM(I2S(k+2))//&
-          ') = {'//TRIM(I2S(k+1))//'};'
+      WRITE( GeoUnit,'(A)') 'Line Loop('//I2S(k+1)//&
+          ') = {'//I2S(j)//'};'
+      WRITE( GeoUnit,'(A)') 'Plane Surface('//I2S(k+2)//&
+          ') = {'//I2S(k+1)//'};'
     END DO
 
 

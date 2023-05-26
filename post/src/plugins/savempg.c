@@ -260,7 +260,7 @@ static int SaveMPG( ClientData cl,Tcl_Interp *interp,int argc,char **argv ) {
       return TCL_ERROR;
     }
 
-    // Detemine output file name:
+    // Determine output file name:
     //---------------------------
     if( argc < 3 ) {
       strcpy( fname, "elmerpost.es" );

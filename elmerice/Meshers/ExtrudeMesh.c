@@ -1092,7 +1092,7 @@ int main(int argc, char *argv[])
     printf("      wexp  ... (optional, but mandatory if previous was given)\n");
     printf("                  exponent of weight for interpolation w=1/r^wexp\n");
     printf("      noval  ... (optional, but mandatory if previous was given)\n");
-    printf("                  value indicating void/unvalid entry in DEM (e.g. -999.99)\n");
+    printf("                  value indicating void/invalid entry in DEM (e.g. -999.99)\n");
     printf("     corrbed ... (optional) value: 1 or any other number\n");
     printf("                 corrections induced by minimum flowdpeth are by default applied\n");
     printf("                 correctiong the side of the free surface, only of value 1 is defined\n");
@@ -1148,7 +1148,7 @@ int main(int argc, char *argv[])
   printf("    ... percentage: %10.4f\n",percentage);
   printf("    ... ratio: %10.4f\n",ratio);
   if (partitions < 1){
-    printf("(%s) Wrong number of paritions %i\n",argv[0],partitions);
+    printf("(%s) Wrong number of partitions %i\n",argv[0],partitions);
     printf("(%s) Assuming serial mesh (N=1)\n",argv[0]);
     partitions=1;
   }
@@ -1358,7 +1358,7 @@ int main(int argc, char *argv[])
     fprintf(infofid,"    ... corrbed: %1i\n\n",corrbed);
   }
 
-  fprintf(infofid,"    ... total poitns in 2d mesh: %i \n",pointsinlevel);
+  fprintf(infofid,"    ... total points in 2d mesh: %i \n",pointsinlevel);
   fprintf(infofid,"    ... total elements in 2d mesh: %i \n",elementsinlevel);
   fprintf(infofid,"    ... total boundary elements in 2d mesh: %i \n",belementsinlevel);
   fprintf(infofid,"    ... no of element type 101: %i \n",points);

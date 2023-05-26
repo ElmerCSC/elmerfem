@@ -79,7 +79,7 @@ if __name__=='__main__':
 	if nbpartition >1:
 		mesh_dir = '%s/partitioning.%s'%(mesh,np.str(nbpartition))
 		if file_donot_exists(mesh_dir):
-			exit_error("Directory %s does not exit: Please use the  ElmerGrid command for mesh partitionning"%(mesh_dir))
+			exit_error("Directory %s does not exit: Please use the  ElmerGrid command for mesh partitioning"%(mesh_dir))
 	else:
 		mesh_dir = '%s'%(mesh)
 		if file_donot_exists(mesh_dir):

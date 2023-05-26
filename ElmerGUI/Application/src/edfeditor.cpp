@@ -50,15 +50,15 @@ using namespace std;
 EdfEditor::EdfEditor(QWidget *parent)
   : QWidget(parent)
 {
-  addIcon = QIcon(":/icons/list-add.png");
-  removeIcon = QIcon(":/icons/list-remove.png");
-  collapseIcon = QIcon(":/icons/arrow-up.png");
-  expandIcon = QIcon(":/icons/arrow-down.png");
-  openIcon = QIcon(":/icons/document-open.png");
-  appendIcon = QIcon(":/icons/tab-new-background.png"); // todo
-  saveAsIcon = QIcon(":/icons/document-save.png");
-  applyIcon = QIcon(":/icons/dialog-close.png");
-  previewIcon = QIcon(":/icons/document-preview.png");
+  addIcon = QIcon::fromTheme("list-add");
+  removeIcon = QIcon::fromTheme("list-remove");
+  collapseIcon = QIcon::fromTheme("triangle-up");
+  expandIcon = QIcon::fromTheme("triangle-down");
+  openIcon = QIcon::fromTheme("document-open");
+  appendIcon = QIcon::fromTheme("tab-new"); // todo
+  saveAsIcon = QIcon::fromTheme("document-save");
+  applyIcon = QIcon::fromTheme("dialog-error-round");
+  previewIcon = QIcon::fromTheme("edit-find");
 
   lastActiveItem = NULL;
   ctrlPressed = false;

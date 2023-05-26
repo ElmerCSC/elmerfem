@@ -240,13 +240,13 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   !--------------------------------------------------------------
   IF (FirstTime) THEN
     DO I=1,DIM
-      DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//TRIM(I2S(i)))
+      DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux '//I2S(i))
       FluxOutput = ASSOCIATED(DummyGWfluxVar)
       IF (.NOT.FluxOutput) EXIT
     END DO
     IF (FluxOutput) THEN
       CALL INFO(SolverName,'Groundwater flow will be written to: Groundwater Flux {1..'&
-          //TRIM(I2S(DIM))//'}',Level=4)
+          //I2S(DIM)//'}',Level=4)
     END IF
   END IF
   
@@ -371,7 +371,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       CALL MakePermUsingMask( Model, Solver, Solver % Mesh,'Salinity',.FALSE.,&
           BCFluxPerm, BCFluxNodes )
       CALL Info(SolverName,'Creating variable for boundary flux of size: '&
-          //TRIM(I2S(BCFluxNodes)),Level=12)
+          //I2S(BCFluxNodes),Level=12)
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver,&
           'BC Flux', DummyGWFluxVar % DOFs, Perm = BCFluxPerm )
     END IF
@@ -403,7 +403,7 @@ CONTAINS
     REAL(KIND=dp) :: CgwppAtIP,CgwpTAtIP,CgwpYcAtIP,CgwpI1AtIP,KgwAtIP(3,3),KgwppAtIP(3,3),KgwpTAtIP(3,3),&
          meanfactor,MinKgw,gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3),fluxTAtIP(3),fluxgAtIP(3),vstarAtIP(3) ! needed in equation
     REAL(KIND=dp) :: JgwDAtIP(3),JcFAtIP(3), DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3),&
-         fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficent ! from salinity transport
+         fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficient ! from salinity transport
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,ksthAtIP  ! function values needed for KGTT  XiAtIP,
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP,bijAtIP(2,2),bijYctIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
@@ -512,7 +512,7 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
-    MolecularDiffusionCoefficent = GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
+    MolecularDiffusionCoefficient = GetConstReal(Material,"Molecular Diffusion Coefficient", ConstantDiffusion)
     CryogenicSuction = GetLogical(Material,"Compute Cryogenic Suction", Found)
 
     ! check, whether we have globally or element-wise defined values of rock-material parameters
@@ -529,9 +529,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )   
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=31)
-      CALL Info(SolverName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=31)
+          //I2S(IP % n),Level=31)
+      CALL Info(SolverName,'Elemental n:'//I2S(n)//' nd:'&
+          //I2S(nd)//' nd:'//I2S(nb),Level=31)
     END IF
 
     
@@ -606,7 +606,7 @@ CONTAINS
 
       ! unfrozen pore-water content at IP
       SELECT CASE(PhaseChangeModel)
-      CASE('anderson') ! classic simpified Anderson model
+      CASE('anderson') ! classic simplified Anderson model
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
              CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
@@ -771,7 +771,7 @@ CONTAINS
           KcAtIP = GetConstKC(DispersionCoefficient)
         ELSE
           IF (ConstantDiffusion) THEN
-            DmAtIP = MolecularDiffusionCoefficent
+            DmAtIP = MolecularDiffusionCoefficient
           ELSE
             DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,rhocAtIP,mugwAtIP,TemperatureAtIP)
           END IF
@@ -951,7 +951,7 @@ CONTAINS
         IF (other_body_id < 1) THEN ! only one body in calculation
           ParentElement => Element % BoundaryInfo % Right
           IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => Element % BoundaryInfo % Left
-        ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+        ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
           ParentElement => Element % BoundaryInfo % Right
           IF (ParentElement % BodyId == other_body_id) ParentElement => Element % BoundaryInfo % Left
         END IF

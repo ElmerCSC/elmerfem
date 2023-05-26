@@ -718,7 +718,7 @@ CONTAINS
         END IF
       END IF
 
-      ! We have either none or both parents as actice.
+      ! We have either none or both parents as active.
       ! The BCs will be set only to outer boundaries of the domain. 
       IF( ActParents /= 1 ) CYCLE
       
@@ -762,12 +762,12 @@ CONTAINS
     END DO     
     
     snodes = ParallelReduction(snodes) 
-    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//I2S(snodes),Level=6)
 
     IF( EnsureBC ) THEN
       IF( snodes0 > snodes ) THEN
         CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
-            //TRIM(I2S(snodes0-snodes)),Level=6)
+            //I2S(snodes0-snodes),Level=6)
       END IF
     END IF
 

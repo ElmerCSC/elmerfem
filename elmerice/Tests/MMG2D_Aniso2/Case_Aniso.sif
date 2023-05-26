@@ -130,10 +130,9 @@ Solver 7
   Metric Variable Name = String "M1M2" !optimise using the 2 metrics (example sec 2.3)
   !Metric Variable Name = String "M1"  !optimise using M1 (example sec 2.2)
 
-  hausd = Real 1000.0
-  hgrad = Real 1.3
-
-  verbosity = Integer 10
+  mmg hausd = Real 1000.0
+  mmg hgrad = Real 1.3
+  mmg verbosity = Integer 10
 
 End
 

@@ -98,13 +98,13 @@ SUBROUTINE ElectrolyteCons( Model,Solver,dt,Transient )
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
-    IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//TRIM(I2S(iter)),Level=5)
+    IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//I2S(iter),Level=5)
 
     CALL VariableRange( CeVar, 7 )
 
     n = COUNT( CeVar % Values < 0 )
     IF( n > 0 ) THEN
-      CALL Fatal(Caller,'Number of negative concentrations: '//TRIM(I2S(n)))
+      CALL Fatal(Caller,'Number of negative concentrations: '//I2S(n))
     END IF
       
     CALL ButlerVolmerUpdate(Solver)

@@ -1,0 +1,68 @@
+$ Circuits = 1
+
+! ------------------------ Circuit 1 ------------------------
+! Define variable count and initialize circuit matrices.
+$ C.1.perm = zeros(8)
+$ C.1.perm(0) = 0
+$ C.1.perm(1) = 1
+$ C.1.perm(2) = 2
+$ C.1.perm(3) = 3
+$ C.1.perm(4) = 4
+$ C.1.perm(5) = 5
+$ C.1.perm(6) = 6
+$ C.1.perm(7) = 7
+
+$ C.1.variables = 8
+$ C.1.A = zeros(8,8)
+$ C.1.B = zeros(8,8)
+$ C.1.Mre = zeros(8,8)
+$ C.1.Mim = zeros(8,8)
+
+! Define variables.
+$ C.1.name.1 = "i_testsource"
+$ C.1.name.2 = "v_testsource"
+$ C.1.name.3 = "i_component(1)"
+$ C.1.name.4 = "phi_component(1)" ! If London equations are activated, this takes the role and place of v_component(1)
+$ C.1.name.5 = "i_component(2)"
+$ C.1.name.6 = "phi_component(2)" ! If London equations are activated, this takes the role and place of v_component(2)
+$ C.1.name.7 = "v_component(1)" ! If London equations are activated, this is nothing but a conventional circuit variables
+				! and the user has to write d_t phi = v if he wishes to drive the SC with voltage.
+$ C.1.name.8 = "v_component(2)" ! Same thing here
+
+! 1st eq
+!------------------
+$ C.1.B(0,1) = 1
+$ C.1.source.1 = "testsource"
+
+! 2nd eq
+!------------------
+! v_testsource + v_component(1) = 0
+$ C.1.B(1,1) = 1
+$ C.1.B(1,6) = 1 
+
+! 3rd eq
+!------------------
+! i_testsource - i_component(1) = 0
+$ C.1.B(2,0) = 1
+$ C.1.B(2,2) = -1
+
+! 4th eq
+!------------------
+! v_component(2) = 0
+$ C.1.B(4,7) = 1
+
+! 5th eq
+!------------------
+! d_t phi_component(1) - v_component(1) = 0
+$ C.1.A(6,3) = 1
+$ C.1.B(6,6) = -1
+
+! 6th eq
+!------------------
+! d_t phi_component(1) - v_component(1) = 0
+$ C.1.A(7,5) = 1
+$ C.1.B(7,7) = -1
+
+! 2 component equations, linking phi and i of the two components, written by elmer
+! (beta a, phi') + phi_component(1) (beta grad phi_0, grad phi') = i_component(1)
+! (beta a, phi') + phi_component(2) (beta grad phi_0, grad phi') = i_component(2)

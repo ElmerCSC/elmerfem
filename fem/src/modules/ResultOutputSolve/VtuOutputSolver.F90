@@ -86,13 +86,25 @@ CONTAINS
     
     TYPE(Mesh_t), POINTER :: Mesh
 
-    TYPE(Variable_t), POINTER :: Var
-    INTEGER :: NoAve
-    LOGICAL :: BodySum 
+    TYPE(Variable_t), POINTER :: Var, Var1
+    INTEGER :: NoAve, i
+    LOGICAL :: BodySum    
+    
+    ! The variables may have been averaged already in vector form. 
+    ! Inherit the DgAveraged flag to the components. 
+    Var => Mesh % Variables    
+    DO WHILE( ASSOCIATED( Var ) )       
+      IF ( Var % DOfs > 1 .AND. Var % TYPE == Variable_on_nodes_on_elements ) THEN        
+        DO i=1,Var % Dofs
+          Var1 => VariableGet( Mesh % Variables,ComponentName(Var % Name,i), ThisOnly = .TRUE.)
+          IF( ASSOCIATED(Var1)) Var1 % DgAveraged = Var % DgAveraged 
+        END DO
+      END IF
+      Var => Var % Next
+    END DO
 
     NoAve = 0
-    Var => Mesh % Variables
-    
+    Var => Mesh % Variables    
     DO WHILE( ASSOCIATED( Var ) ) 
       
       ! Skip if variable is not active for saving       
@@ -120,7 +132,7 @@ CONTAINS
       Var => Var % Next
     END DO
 
-    CALL Info('AverageBodyFields','Reduced '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
+    CALL Info('AverageBodyFields','Reduced '//I2S(NoAve)//' elemental fields',Level=7)
 
   END SUBROUTINE AverageBodyFields
 
@@ -161,10 +173,12 @@ CONTAINS
         ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
-            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name", Found)
+            IF(.NOT. Found) GroupName = 'Body'//I2S(GroupId)
           ELSE
             i = GroupId - CurrentModel % NumberOfBodies
-            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name")
+            GroupName = ListGetString( CurrentModel % BCs(i) % Values,"Name",Found)
+            IF(.NOT. Found) GroupName = 'BC'//I2S(i)
           END IF
           VtuFile = TRIM(VtuFile)//"_"//TRIM(GroupName)
         END IF
@@ -190,7 +204,7 @@ CONTAINS
             END IF
           END IF
         ELSE
-          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! Also add number to the wrapper files as it is difficult otherwise
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
@@ -250,13 +264,13 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN
+  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN, DoAve
   CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
-  CHARACTER(MAX_NAME_LEN) :: OutputDirectory
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   LOGICAL :: Visited = .FALSE.
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
@@ -305,7 +319,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ! Sometimes we have a request to save in DG format even though no equation has been solved as dg.
       ! Then we need to create the Element % DgIndexes for the saving only. If already done this does nothing.
       CALL CheckAndCreateDGIndexes( Mesh )
-      IF( DN ) CALL AverageBodyFields( Mesh )  
+
+      DoAve = GetLogical( Params,'Average Within Materials', GotIt)
+      IF(.NOT. GotIt) DoAve = .TRUE. 
+      
+      IF( DoAve ) CALL AverageBodyFields( Mesh )  
     END IF
   END IF
   
@@ -385,7 +403,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   IF ( nTime == 1 ) THEN
     CALL Info(Caller,'Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
-    CALL Info(Caller, 'Saving number of partitions: '//TRIM(I2S(Partitions)))
+    CALL Info(Caller, 'Saving number of partitions: '//I2S(Partitions))
   END IF
 
   BaseFile = FilePrefix
@@ -415,7 +433,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 200 CONTINUE
   IF( GroupCollection ) THEN
     GroupId = GroupId + 1
-    CALL Info(Caller,'Saving group '//TRIM(I2S(GroupId)),Level=8)
+    CALL Info(Caller,'Saving group '//I2S(GroupId),Level=8)
   END IF
 
   !------------------------------------------------------------------------------
@@ -443,15 +461,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       CALL Info(Caller, 'Nothing to save for this selection: ',Level=8)
     ELSE
       CALL Info(Caller, 'Total number of elements to save: '&
-          //TRIM(I2S(ParallelElements)),Level=8)
+          //I2S(ParallelElements),Level=8)
       
       ParallelNodes = ParallelReduction( NumberOfGeomNodes ) 
       CALL Info(Caller, 'Total number of geometry nodes to save: '&
-          //TRIM(I2S(ParallelNodes)),Level=8)
+          //I2S(ParallelNodes),Level=8)
       
       ParallelNodes = ParallelReduction( NumberOfDofNodes ) 
       CALL Info(Caller, 'Total number of dof nodes to save: '&
-          //TRIM(I2S(ParallelNodes)),Level=8)
+          //I2S(ParallelNodes),Level=8)
     END IF
   END IF
 
@@ -479,7 +497,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
-    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
+    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//I2S(MaxModes),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
     IF( GotIt ) THEN
       IF( Str == 're') THEN
@@ -493,7 +511,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ELSE
         CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
-      CALL Info(Caller,'Using eigen vector mode: '//TRIM(I2S(EigenVectorMode)),Level=7)
+      CALL Info(Caller,'Using eigen vector mode: '//I2S(EigenVectorMode),Level=7)
     END IF
   END IF
 
@@ -509,7 +527,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
-    CALL Info(Caller,'Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
+    CALL Info(Caller,'Maximum number of constraint modes: '//I2S(MaxModes2),Level=7)
   END IF
 
   ! This activates the solution of the modes one for each file
@@ -559,7 +577,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
             BCOffset = 10 * BCOffset
           END DO
           CALL Info(Caller,'Setting offset for boundary entities: '&
-              //TRIM(I2S(BCOffset)),Level=6)
+              //I2S(BCOffset),Level=6)
         END IF
       END IF
       DO i=1,CurrentModel % NumberOfBCs
@@ -786,7 +804,7 @@ CONTAINS
       END DO
     ELSE
       DO i=1,3
-        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//TRIM(I2S(i)),Found )
+        CoordOffset(i) = ListGetCReal( Params,'Mesh Translate '//I2S(i),Found )
       END DO
     END IF
     
@@ -1209,7 +1227,7 @@ CONTAINS
     END IF ! IF( SaveNodal )
 
     IF( WriteXML ) THEN
-      CALL Info(Caller,'Number of nodal fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+      CALL Info(Caller,'Number of nodal fields written: '//I2S(NoFieldsWritten),Level=10)
       WRITE( OutStr,'(A)') '      </PointData>'//lf
       CALL AscBinStrWrite( OutStr ) 
     END IF
@@ -1438,7 +1456,7 @@ CONTAINS
                     END IF
 
                     IF( j == 0 ) THEN
-                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//TRIM(I2S(m)))
+                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//I2S(m))
                     END IF
                     m = j
                   END IF
@@ -1481,7 +1499,7 @@ CONTAINS
         END DO
       END DO
       IF( WriteXML ) THEN
-        CALL Info(Caller,'Number of elemental fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+        CALL Info(Caller,'Number of elemental fields written: '//I2S(NoFieldsWritten),Level=10)
       END IF
     END IF  ! IF( SaveElemental )
 
@@ -1961,7 +1979,7 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, AllActive, ThisActive
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3
-    INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
+    INTEGER :: Active, NoActive, ierr, NoFields, NoFields2, NoModes, NoModes2, IndField, iField, VarType
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -1972,7 +1990,7 @@ CONTAINS
 
     NoActive = ParallelReduction( Active ) 
     IF( NoActive == 0 ) THEN
-      CALL Warn('WritePvtuFile','No active partitions for saving')
+      CALL Info('WritePvtuFile','No active partitions for saving',Level=12)
     END IF
     AllActive = ( NoActive == Partitions )
     
@@ -2075,30 +2093,22 @@ CONTAINS
             END IF
           END IF
 
+          ! Maybe we have some eigenmodes or constraint modes? 
           NoModes = 0
-          NoFields = 1
-          
-          ! Maybe we have some eigenmodes? 
-          IF( ASSOCIATED(Solution % EigenVectors)) THEN
-            NoModes = SIZE( Solution % EigenValues )
-            IF( EigenAnalysis ) THEN
-              IF( GotActiveModes ) THEN
-                IndField = ActiveModes( FileIndex ) 
-              ELSE
-                IndField = FileIndex
-              END IF
-              IF( IndField > NoModes ) THEN
-                CALL Warn('WritePvtuFile','Too few eigenmodes!')
-                CYCLE
-              END IF
-              NoModes = 1
-              NoFields = 1
-            ELSE	  
+          NoModes2 = 0          
+          IF( .NOT. EigenAnalysis ) THEN
+            IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+              NoModes = SIZE( Solution % EigenValues )
               IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-              NoFields = NoModes
+            END IF
+
+            IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+              NoModes2 = Solution % NumberOfConstraintModes
+              IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
             END IF
           END IF
-
+          NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
+            
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
             Solution2 => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
@@ -2112,10 +2122,9 @@ CONTAINS
           ELSE
             sdofs = 1
           END IF
-
-          DO iField = 1, NoFields
-
-            IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+          
+          DO iField = 1, NoFields 
+            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               FullName = TRIM( FieldName ) 
             ELSE          
               IF( GotActiveModes ) THEN
@@ -2123,10 +2132,14 @@ CONTAINS
               ELSE
                 IndField = iField
               END IF
-              WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
 
-              ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
-              ! now the .pvtu file for these vectors is not correct!
+              IF( NoModes > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+              ELSE IF( NoModes2 > 0 ) THEN
+                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
+              ELSE
+                CALL Fatal('WritePvtuFile','Unknown case!')
+              END IF
             END IF
 
             IF( AsciiOutput ) THEN
@@ -2197,28 +2210,21 @@ CONTAINS
             END IF
             IF (.NOT. Found ) CYCLE
 
-            NoModes = 0 
-            NoFields = 1
-            
-            IF( ASSOCIATED(Solution % EigenVectors)) THEN
-              NoModes = SIZE( Solution % EigenValues )
-              IF( EigenAnalysis ) THEN
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( FileIndex ) 
-                ELSE
-                  IndField = FileIndex
-                END IF
-                IF( IndField > NoModes ) THEN
-                  CALL Warn('WritePvtuFile','Too few eigenmodes!')
-                  CYCLE
-                END IF
-                NoModes = 1
-                NoFields = 1
-              ELSE	  
+            ! Maybe we have some eigenmodes or constraint modes? 
+            NoModes = 0
+            NoModes2 = 0          
+            IF( .NOT. EigenAnalysis ) THEN
+              IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+                NoModes = SIZE( Solution % EigenValues )
                 IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-                NoFields = NoModes
+              END IF
+
+              IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+                NoModes2 = Solution % NumberOfConstraintModes
+                IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )              
               END IF
             END IF
+            NoFields = MAX(1, MAX(NoModes, NoModes2 ) )
 
             IF( dofs > 1 ) THEN
               sdofs = MAX(dofs,3)
@@ -2227,15 +2233,16 @@ CONTAINS
             END IF
 
             DO iField = 1, NoFields
-              IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+              IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 FullName = TRIM( FieldName ) 
               ELSE          
-                IF( GotActiveModes ) THEN
-                  IndField = ActiveModes( iField ) 
+                IF( NoModes > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
+                ELSE IF( NoModes2 > 0 ) THEN
+                  WRITE( FullName,'(A,I0)') TRIM( FieldName )//' ConstraintMode',IndField
                 ELSE
-                  IndField = iField
+                  CALL Fatal('WritePvtuFile','Unknown case!')
                 END IF
-                WRITE( FullName,'(A,I0)') TRIM( FieldName )//' mode',IndField
               END IF
 
               IF( AsciiOutput ) THEN

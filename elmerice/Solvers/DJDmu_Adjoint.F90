@@ -44,7 +44,7 @@
 !     - Optimized Variable Name = String ;  ("Mu" default)
 !     - Gradient Variable Name = String ; t ("DJDMu" default)
 !     - SquareFormulation = Logical ; True if the viscosity ios defined as alpha^2
-!                                               and optimisation on alpha to insure Mu> 0
+!                                               and optimisation on alpha to ensure Mu> 0
 !
 !
 ! In the  Material Section:

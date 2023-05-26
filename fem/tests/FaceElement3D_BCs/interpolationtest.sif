@@ -54,8 +54,8 @@ Solver 1
 
   ! Element definition:
   !-------------------------------------------------------------------
-  Element = "n:0 f:1"      ! the Nedelec tetrahedra of the first kind
-  ! Element = "n:0 f:3"      ! the Nedelec tetrahedra of the second kind
+  Element = "n:0 -tri_face b:1"      ! the Nedelec tetrahedra of the first kind
+  ! Element = "n:0 -tri_face b:3"      ! the Nedelec tetrahedra of the second kind
 
   Optimize Bandwidth = True
   Bubbles in Global System = Logical True

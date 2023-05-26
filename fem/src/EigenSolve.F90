@@ -88,8 +88,8 @@ CONTAINS
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
+      CHARACTER(:), ALLOCATABLE :: Method
       REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: Method
 
 !
 !     %---------------%
@@ -522,9 +522,9 @@ CONTAINS
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
-         CALL Info( Caller,'Number of update iterations taken: '//TRIM(I2S(IPARAM(3))),Level=4)
-         CALL Info( Caller,'Computed '//TRIM(I2S(NEIG))//' Eigen Values',Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
+         CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1064,7 +1064,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
@@ -1155,7 +1155,7 @@ END SUBROUTINE CheckResiduals
       LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize,&
                        Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: DirectMethod, Method
+      CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
       COMPLEX(KIND=dp) :: Sigma = 0.0d0, s
       REAL(KIND=dp), TARGET :: x(2*n), b(2*n)
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, RWORK(N)
@@ -1516,7 +1516,7 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
@@ -1635,9 +1635,9 @@ END SUBROUTINE CheckResidualsComplex
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:), kMap(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
-      REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
+      CHARACTER(:), ALLOCATABLE :: str
       COMPLEX(KIND=dp) :: s, EigTemp(NEIG)
+      REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
 
 !     %---------------%
 !     | Local Scalars |
@@ -1821,9 +1821,9 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
       str = ListGetString( Solver % Values, 'Linear System Preconditioning', Stat )
 
+      ILU = 0
       IF ( .NOT. Stat ) THEN
          CALL Warn( Caller, 'Using ILU0 preconditioning' )
-         ILU = 0
       ELSE
          IF ( str == 'none' .OR. str == 'diagonal' .OR. &
               str == 'ilut' .OR. str == 'multigrid' ) THEN
@@ -1831,7 +1831,7 @@ END SUBROUTINE CheckResidualsComplex
            ILU = 0
            CALL Warn( Caller, 'Useing ILU0 preconditioning' )
          ELSE IF ( SEQL(str,'ilu') ) THEN
-           ILU = ICHAR(str(4:4)) - ICHAR('0')
+           IF(LEN(str)>=4) ILU = ICHAR(str(4:4)) - ICHAR('0')
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE
            ILU = 0
@@ -1997,7 +1997,7 @@ END SUBROUTINE CheckResidualsComplex
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info(Caller,'Number of converged Ritz values is: '//TRIM(I2S(IPARAM(5))),Level=4)
+         CALL Info(Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )

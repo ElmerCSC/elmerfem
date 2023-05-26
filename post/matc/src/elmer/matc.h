@@ -205,7 +205,7 @@ typedef struct function
 #define FUNCSIZE sizeof(FUNCTION)
 
 /*******************************************************************
-               MISC DEFINITONS FOR PARSER
+               MISC DEFINITIONS FOR PARSER
 *******************************************************************/
 
 typedef enum symbols {
@@ -478,6 +478,6 @@ extern void PrintOut( char *format, ... );
 #include "fnames.h"
 
 /*******************************************************************
-                  graphics package defitions
+                  graphics package definitions
 *******************************************************************/ 
 #include "gra.h"

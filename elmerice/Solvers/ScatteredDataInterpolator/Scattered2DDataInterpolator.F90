@@ -98,7 +98,7 @@
         INTEGER(C_INT) :: nout,nin,nppc,csak
         REAL(C_DOUBLE) :: W
 
-       CALL INFO(Trim(SolverName), &
+       CALL INFO(SolverName, &
            '-----Initialise Variables using nn Library----------',Level=5)
 
        Params => GetSolverParams()
@@ -161,9 +161,9 @@
             NETCDFFormat = ( k /= 0 )
 
             IF (NETCDFFormat) then
-              CALL INFO(Trim(SolverName),'Data File is in netcdf format', Level=5)
+              CALL INFO(SolverName,'Data File is in netcdf format', Level=5)
             Else
-               CALL INFO(Trim(SolverName),'Data File is in ascii', Level=5)
+              CALL INFO(SolverName,'Data File is in ascii', Level=5)
             Endif
             
 
@@ -205,7 +205,7 @@
 
                if(ok /= 0) then
                   write(message,'(A,A)') 'Unable to open file ',TRIM(DataF)
-                  CALL Fatal(Trim(SolverName),Trim(message))
+                  CALL Fatal(SolverName,Trim(message))
                end if
             
                nin=0
@@ -225,8 +225,8 @@
                end do 
 
                IF (nin.eq.0) then
-                   write(message,'(A,A)') 'No Data within BBox found in',TRIM(DataF)
-                   CALL Fatal(Trim(SolverName),Trim(message))
+                 WRITE(message,'(A,A)') 'No Data within BBox found in',TRIM(DataF)
+                 CALL Fatal(SolverName,TRIM(message))
                ENDIF
                                         
           
@@ -251,15 +251,13 @@
                    IF (HaveMin) pin(compt)%z=Max(MinMaxVals(1),pin(compt)%z)
                    IF (HAVEMax) pin(compt)%z=Min(MinMaxVals(2),pin(compt)%z)
                end do
-               IF (compt.NE.nin) &
-                 CALL Fatal(Trim(SolverName), &
-                                        'error in reading values')
+               IF (compt /= nin) &
+                   CALL Fatal(SolverName,'error in reading values')
                close(io)
            ELSE
                NetCDFstatus = NF90_OPEN(trim(DataF),NF90_NOWRITE,ncid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                       'Unable to open NETCDF File')
+                 CALL Fatal(SolverName,'Unable to open NETCDF File')
                END IF
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
                          NoVar,' x-dim Name'
@@ -267,13 +265,11 @@
                if (.NOT.Found) Xdim='x'
                NetCDFstatus = nf90_inq_dimid(ncid, trim(Xdim) , varid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                    CALL Fatal(Trim(SolverName), &
-                        'Unable to  get netcdf x-dim Id')
+                 CALL Fatal(SolverName,'Unable to  get netcdf x-dim Id')
                ENDIF
                NetCDFstatus = nf90_inquire_dimension(ncid,varid,len=nx)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                    CALL Fatal(Trim(SolverName), &
-                        'Unable to  get netcdf nx')
+                 CALL Fatal(SolverName,'Unable to  get netcdf nx')
                ENDIF
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
                          NoVar,' y-dim Name'
@@ -281,13 +277,11 @@
                if (.NOT.Found) Xdim='y'
                NetCDFstatus = nf90_inq_dimid(ncid, trim(Xdim) , varid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                    CALL Fatal(Trim(SolverName), &
-                        'Unable to  get netcdf y-dim Id')
+                 CALL Fatal(SolverName,'Unable to  get netcdf y-dim Id')
                ENDIF
                NetCDFstatus = nf90_inquire_dimension(ncid,varid,len=ny)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                    CALL Fatal(Trim(SolverName), &
-                        'Unable to  get netcdf ny')
+                 CALL Fatal(SolverName,'Unable to  get netcdf ny')
                ENDIF
 
                !! allocate good size
@@ -300,13 +294,11 @@
                if (.NOT.Found) Xdim='x'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf x-variable id')
+                 CALL Fatal(SolverName, 'Unable to get netcdf x-variable id')
                ENDIF
                NetCDFstatus = nf90_get_var(ncid, varid,xx)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf x-variable ')
+                 CALL Fatal(SolverName, 'Unable to get netcdf x-variable ')
                ENDIF
                !! Get Y variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
@@ -315,20 +307,17 @@
                if (.NOT.Found) Xdim='y'
                NetCDFstatus = nf90_inq_varid(ncid,trim(Xdim),varid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf y-variable id')
+                 CALL Fatal(SolverName,'Unable to get netcdf y-variable id')
                ENDIF
                NetCDFstatus = nf90_get_var(ncid, varid,yy)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf y-variable')
+                 CALL Fatal(SolverName,'Unable to get netcdf y-variable')
                ENDIF
 
                !! Check that there is data within the domain
                IF ((MAXVAL(xx).LT.xmin).OR.(MINVAL(xx).GT.xmax)&
                 .OR.(MAXVAL(yy).LT.ymin).OR.(MINVAL(yy).GT.ymax)) &
-                 CALL Fatal(Trim(SolverName), &
-                        'No data within model domain')
+                 CALL Fatal(SolverName,'No data within model domain')
 
                !! only get Vars within BBox
                IF (CheckBBox) THEN
@@ -345,28 +334,26 @@
 
                write(message,'(A,I0,A,I0,A)') 'NETCDF: reading nx=',nx,&
                      ' and ny=',ny,' data points'
-              CALL INFO(Trim(SolverName),Trim(message),Level=5)
+              CALL INFO(SolverName,Trim(message),Level=5)
                write(message,*) 'X Indexes: ',&
                 XMinIndex,XMaxIndex,xx(XMinIndex),xx(XMaxIndex)
-              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+              CALL INFO(SolverName,Trim(message),Level=10)
                write(message,*) 'Y Indexes: ', &
                 YMinIndex,YMaxIndex,yy(YMinIndex),yy(YMaxIndex)
-              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+              CALL INFO(SolverName,Trim(message),Level=10)
 
                allocate(DEM(nx,ny),mask(nx,ny))
 
                !! Get the variable
                NetCDFstatus = nf90_inq_varid(ncid,TRIM(VariableName),varid)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf variable id')
+                   CALL Fatal(SolverName,'Unable to get netcdf variable id')
                ENDIF
                NetCDFstatus = nf90_get_var(ncid, varid,DEM(:,:),&
                        start = (/ XMinIndex, YMinIndex /),     &
                        count = (/ nx,ny/))
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf variable')
+                   CALL Fatal(SolverName, 'Unable to get netcdf variable')
                ENDIF
                HaveFillV=.True.
                NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",fillv)
@@ -394,9 +381,9 @@
 
                write(message,'(A,I0,A,I0)') 'NETCDF: I Found ',nin,&
                      ' data points with non-missing  value over ',nx*ny
-              CALL INFO(Trim(SolverName),Trim(message),Level=5)
+              CALL INFO(SolverName,Trim(message),Level=5)
 
-               if (nin.eq.0) CALL Fatal(Trim(SolverName), &
+               if (nin == 0) CALL Fatal(SolverName, &
                                   'no data with non-missing value??')
 
                allocate(pin(nin))
@@ -413,7 +400,7 @@
                      if (GoodVal) then
                        compt=compt+1
                        IF (compt.GT.nin) then
-                          CALL Fatal(Trim(SolverName),&
+                          CALL Fatal(SolverName,&
                                'get more Non-Nan values than expected')
                        ENDIF
                        pin(compt)%x = xx(XMinIndex+i-1)
@@ -428,7 +415,7 @@
                   End do
                End do
                IF (DEBUG) close(10) !tmp
-               if (compt.ne.nin) CALL Fatal(Trim(SolverName),&
+               IF (compt /= nin) CALL Fatal(SolverName,&
                        'sorry I didn t found the good number of values')
                deallocate(xx,yy,DEM,mask)
            ENDIF
@@ -454,13 +441,13 @@
                        write(message,'(A,A,A)') 'Initialise ',&
                                                   Trim(TargetVariablename),&
                                      ' using cubic spline interpolation'
-                        CALL INFO(Trim(SolverName),Trim(message),Level=5)
+                        CALL INFO(SolverName,Trim(message),Level=5)
                         call csa_interpolate_points(nin, pin, nout, pout, nppc ,csak)
                   CASE ('l')
                       write(message,'(A,A,A)') 'Initialise ',&
                                                   Trim(TargetVariablename),&
                                     ' using Linear interpolation'
-                       CALL INFO(Trim(SolverName),Trim(message),Level=5)
+                       CALL INFO(SolverName,Trim(message),Level=5)
                       call lpi_interpolate_points(nin, pin, nout, pout)
                   CASE DEFAULT
                     SELECT CASE (method(2:2))
@@ -474,11 +461,11 @@
                                                   Trim(TargetVariablename),&
                        ' using Natural Neighbours Sibson interpolation'
                      END SELECT
-                   CALL INFO(Trim(SolverName),Trim(message), Level=5)
+                   CALL INFO(SolverName,Trim(message), Level=5)
                    call nnpi_interpolate_points(nin,pin,w,nout,pout)
            END SELECT
             
-             CALL INFO(Trim(SolverName),'-----Interpolation Done---', Level=5)
+             CALL INFO(SolverName,'-----Interpolation Done---', Level=5)
             !update variable value
             nNaN=0
             If (CheckNaN) Then
@@ -519,7 +506,7 @@
                                  ' values where NaN and have', &
                                  ' been replaced by nearest data value'
                 EndIf
-                CALL INFO(Trim(SolverName),Trim(message), Level=5)
+                CALL INFO(SolverName,Trim(message), Level=5)
              End If
              
              DO t=1,Model%Mesh%NumberOfBulkElements
@@ -545,8 +532,7 @@
 
         deallocate(pout)
 
-       CALL INFO(Trim(SolverName), &
-           '-----ALL DONE----------',Level=5)
+       CALL INFO(SolverName,'-----ALL DONE----------',Level=5)
 
        CONTAINS
 

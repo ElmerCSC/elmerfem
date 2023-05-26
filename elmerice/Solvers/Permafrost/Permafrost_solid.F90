@@ -280,7 +280,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
       IF (.NOT.FirstTime) DEALLOCATE(PrevStrainInvariant)
       ALLOCATE(PrevStrainInvariant(SIZE(StrainPerm)),stat=istat)
     ELSE
-      CALL FATAL(SolverName,'No "Strain Varaible" associated')
+      CALL FATAL(SolverName,'No "Strain Variable" associated')
     END IF
     ConstantTemp = GetLogical(SolverParams,'Constant Temperature',Found)
     TemperatureName = GetString(SolverParams,'Temperature Variable',Found)

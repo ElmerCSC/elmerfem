@@ -133,7 +133,7 @@ Solver 4
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 
-  Reference Sums(6) = Real 44 13 116875 1442 402220888.0 4.178146196905
+  Reference Values(6) = Real 44 13 116875 1442 402220888.0 4.178146196905
   Reference Norm = 1.0
 End
 

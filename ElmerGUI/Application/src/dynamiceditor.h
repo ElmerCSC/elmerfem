@@ -124,6 +124,7 @@ public:
   QGroupBox *spareBox;
   QScrollArea *spareScroll;
 
+  QPushButton *whatsThisButton;  
   QPushButton *okButton;
   QPushButton *newButton;
   QPushButton *applyButton;
@@ -145,6 +146,7 @@ signals:
   void dynamicEditorSpareButtonClicked(int, int);
 
 private slots:
+  void whatsThisButtonClicked();
   void okButtonClicked();
   void newButtonClicked();
   void applyButtonClicked();

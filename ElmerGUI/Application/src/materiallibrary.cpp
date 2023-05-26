@@ -87,6 +87,12 @@ MaterialLibrary::MaterialLibrary(QWidget *parent)
   addExtraMaterialLibraryFilesToComboBox();
   
   connect(ui.fileComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(fileChanged(int)) );
+  
+  ui.okButton->setIcon(QIcon::fromTheme("dialog-accept"));
+  ui.appendButton->setIcon(QIcon::fromTheme("list-add"));
+  ui.clearButton->setIcon(QIcon::fromTheme("edit-clear"));
+  ui.closeButton->setIcon(QIcon::fromTheme("dialog-error-round"));
+  
 }
 
 MaterialLibrary::~MaterialLibrary()

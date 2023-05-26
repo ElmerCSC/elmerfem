@@ -112,6 +112,12 @@ SUBROUTINE AdjointStokes_GradientBetaSolver( Model,Solver,dt,TransientSimulation
   LOGICAL, SAVE :: Firsttime=.true.
   LOGICAL,PARAMETER :: UnFoundFatal=.TRUE.
 
+  TYPE(ValueHandle_t), SAVE :: WeertmanCoeff_h,WeertmanExp_h,FrictionUt0_h,FrictionNormal_h
+  TYPE(VariableHandle_t), SAVE :: Velo_v
+  LOGICAL ::  HaveFrictionW
+  REAL(KIND=dp) :: wut0
+  LOGICAL :: FrictionNormal
+  REAL(KIND=dp) :: Velo(3),un,ut,TanFrictionCoeff,wexp, wcoeff
 
 
   SolverParams => GetSolverParams()
@@ -144,6 +150,15 @@ SUBROUTINE AdjointStokes_GradientBetaSolver( Model,Solver,dt,TransientSimulation
         CALL WARN(SolverName,'Taking default value >DJDB<')
         WRITE(GradSolName,'(A)') 'DJDB'
      END IF
+
+     !!!! Handles initialisation
+     CALL ListInitElementKeyword( WeertmanCoeff_h,'Boundary Condition','Weertman Friction Coefficient')
+     CALL ListInitElementKeyword( WeertmanExp_h,'Boundary Condition','Weertman Exponent')
+     CALL ListInitElementKeyword( FrictionUt0_h,'Boundary Condition','Friction Linear Velocity')
+     CALL ListInitElementKeyword( FrictionNormal_h,'Boundary Condition','Friction Normal Velocity Zero')
+     CALL ListInitElementVariable( Velo_v , NeumannSolName , Found=Found)
+     IF (.NOT.Found) &
+        CALL FATAL(SolverName,TRIM(NeumannSolName)//' Variable not found')
 
 !!! End of First visit
      Firsttime=.false.
@@ -196,7 +211,14 @@ SUBROUTINE AdjointStokes_GradientBetaSolver( Model,Solver,dt,TransientSimulation
         CALL FATAL(SolverName,Message)
      ENDIF
 
+     HaveFrictionW = ListCheckPresent( BC,'Weertman Friction Coefficient')
+     IF (HaveFrictionW) THEN
+       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
+       FrictionNormal = ListGetElementLogical( FrictionNormal_h, Element )
+     END IF
+
      NodalDer(1:n) = ListGetReal(BC,'Slip Coefficient derivative',n,NodeIndexes,Found=HaveDer)
+
      
      ! Compute Integrated Nodal Value of DJDBeta
      IntegStuff = GaussPoints( Element )
@@ -251,6 +273,27 @@ SUBROUTINE AdjointStokes_GradientBetaSolver( Model,Solver,dt,TransientSimulation
         ELSE
           NodalGrad(1:n)=Basis(1:n)
         ENDIF
+
+        IF( HaveFrictionW) THEN
+          ! Velocity at integration point for nonlinear friction laws
+          Velo = ListGetElementVectorSolution( Velo_v, Basis, Element, dofs = dim )
+           IF(.NOT. FrictionNormal ) THEN
+              un = SUM( Normal(1:dim) * Velo(1:dim) )
+              velo(1:dim) = velo(1:dim)-un*normal(1:dim)
+           END IF
+           ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
+
+           !TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
+           wcoeff = ListGetElementReal( WeertmanCoeff_h, Basis, Element, GaussPoint = t )
+           wexp = ListGetElementReal( WeertmanExp_h, Basis, Element, GaussPoint = t )
+           TanFrictionCoeff=wcoeff * ut**(wexp-1.0_dp)
+           IF (TanFrictionCoeff.GE.1.0e20) THEN
+              betab=0._dp
+           ELSE
+              betab=betab*ut**(wexp-1.0_dp)
+           END IF
+        END IF
+
         VariableValues(Permutation(NodeIndexes(1:n))) = VariableValues(Permutation(NodeIndexes(1:n))) &
                  + betab*NodalGrad(1:n)
         

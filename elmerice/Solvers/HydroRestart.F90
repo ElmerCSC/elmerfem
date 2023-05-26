@@ -103,7 +103,7 @@
                          minv=0 )
 
        IF ( ParEnv % PEs > 1 ) &
-         OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+         OutputName = TRIM(OutputName) // '.' // i2s(ParEnv % MyPe)
 
        CALL ListPushNameSpace('hp:')
        Mesh => HydroSolver % Mesh

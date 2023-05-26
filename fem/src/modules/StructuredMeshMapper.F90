@@ -175,13 +175,13 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       
       i = FixedLayers(1) 
       IF( i /= 1 ) THEN
-        CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//TRIM(I2S(i))//')')
+        CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//I2S(i)//')')
         FixedLayers(1) = 1
       END IF
       i = FixedLayers(NumberOfFixedLayers)
       IF( i /= NumberOfLayers ) THEN
         CALL Warn(Caller,'Enforcing last fixed layer to: '&
-            //TRIM(I2S(NumberOfLayers))//' (was '//TRIM(I2S(i))//')')
+            //I2S(NumberOfLayers)//' (was '//I2S(i)//')')
         FixedLayers(NumberOfFixedLayers) = NumberOfLayers
       END IF
     ELSE
@@ -314,12 +314,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   
   IF( LimitedCount > 0 ) THEN
     CALL Info(Caller,'There seems to be '&
-        //TRIM(I2S(LimitedCount))//' (out of '//TRIM(I2S(nsize))//&
+        //I2S(LimitedCount)//' (out of '//I2S(nsize)//&
         ') limited heights!',Level=6)
   END IF
   IF( TangledCount > 0 ) THEN
     CALL Info(Caller,'There seems to be '&
-        //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
+        //I2S(TangledCount)//' (out of '//I2S(nsize)//&
         ') tangled nodes!',Level=5)
   END IF    
  
@@ -731,7 +731,7 @@ CONTAINS
         
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
-    CALL Info(Caller,'Mapping using '//TRIM(I2S(NumberOfFixedLayers))//' fixed layers',Level=6)
+    CALL Info(Caller,'Mapping using '//I2S(NumberOfFixedLayers)//' fixed layers',Level=6)
 
     IF( MaskExists ) THEN
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
@@ -746,7 +746,7 @@ CONTAINS
     END IF
     IF( FixedVar % Dofs /= NumberOfFixedLayers ) THEN
       CALL Fatal(Caller,'Invalid number of components in fixed layer variable:'&
-          //TRIM(I2S(FixedVar % Dofs)))
+          //I2S(FixedVar % Dofs))
     END IF
 
     ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
@@ -790,7 +790,7 @@ CONTAINS
           IF( Hit ) EXIT
         END DO
         IF(.NOT. Hit ) THEN
-          CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(k)))
+          CALL Fatal(Caller,'Could not find mapping for layer: '//I2S(k))
         END IF
       END DO
       
@@ -865,7 +865,7 @@ CONTAINS
 
     dofs = BaseVar % Dofs
     IF( dofs /=2 .AND. dofs /= 3 ) THEN
-      CALL Fatal(Caller,'Invalid base displacement dimension: '//TRIM(I2S(dofs)))
+      CALL Fatal(Caller,'Invalid base displacement dimension: '//I2S(dofs))
     END IF
 
     DO i=1,nsize

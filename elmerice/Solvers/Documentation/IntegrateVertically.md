@@ -8,7 +8,7 @@
 - **Optional Input Variable(s):** None
 
 ## General Description
-This solver compute the depth integrated value of a variable (sum_zb^zs D dz) or the mean value (1/H sum_zb^zs D dz). The resulting integrated value or mean can be computed on the upper surface or on the lower one. If the mean value is computed (Compute Mean = Logical True), the depth (if On Surface = Logical False) or the height (if On Surface = Logical True) has to be calculated. If the integrated variable is calculated on the upper surface (On Surface = Logical True), a Dirichlet BC has to be given at the bottom surface, and vice versa.
+This solver computes the depth integrated value of a variable (sum_zb^zs D dz) or the mean value (1/H sum_zb^zs D dz). The output of resulting integrated value or mean can be done at the upper surface or the lower surface. If the mean value is computed (Compute Mean = Logical True), the depth (if On Surface = Logical False) or the height (if On Surface = Logical True) has to be calculated, too. If the integrated variable is calculated on the upper surface (On Surface = Logical True), a Dirichlet BC has to be given at the bottom surface, and vice versa.
 
 ## SIF contents
 ```

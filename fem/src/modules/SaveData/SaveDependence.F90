@@ -90,7 +90,8 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, Str, OutputDirectory
+  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, Str
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   REAL(KIND=dp) :: x1, x0, x, w, f, dfdx, Norm
   INTEGER :: i,j,n,NoPar,NormInd,IOUnit
   TYPE(ValueList_t), POINTER :: Params

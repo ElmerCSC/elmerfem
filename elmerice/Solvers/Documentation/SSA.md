@@ -100,7 +100,7 @@ The flotation condition can be tested directly at the integration points. The fr
 This scheme is activated with the Solver Keyword *Sub-Element GL parameterization = logical True*. The number of integration point for partially floating elements, i.e. where the scheme is used is set with the keyword
 *GL integration points number = N*
 
-:warning: if this scheme is not used it is to the user responsability to parameterised *beta* a a function of the grounded mask and set it to 0 for floating nodes.
+:warning: if this scheme is not used it is to the user responsibility to parameterised *beta* a a function of the grounded mask and set it to 0 for floating nodes.
 
 #### Post-processing variables
 
@@ -121,7 +121,7 @@ Solver 1
   !   Require: GroundedMask and Bedrork variables
   Sub-Element GL parameterization = logical True
   !# You can set the number of IP points to evaluated the friction in the
-  !   first floating elemnt
+  !   first floating element
   GL integration points number = Integer 20
 
   Linear System Solver = Direct

@@ -2,7 +2,7 @@
    <context id="elmerice">
 
     <variable_definition>
-      <!-- define the time unit system... should be lenght 2 -->
+      <!-- define the time unit system... should be length 2 -->
       <variable id="time_units" type="string">1y</variable>
     </variable_definition>
 
@@ -10,7 +10,7 @@
 
     <field_definition enabled=".TRUE." >
   
-     <!-- id corespond to var names and should be lower case!! -->
+     <!-- id correspond to var names and should be lower case!! -->
       <field id="varelem"  name="MyElemVar"   standard_name="elem_var"   unit="m" grid_ref="GridCells" prec="8" operation="instant" />
       <field id="varnode"  name="MyNodalVar"  standard_name="nodal_var"   unit="m" grid_ref="GridNodes" prec="8" operation="instant"> this/2 </field> 
       <field id="varnode velocity"  name="MyVelocity"  standard_name="nodal_var_velocity"   unit="m" grid_ref="GridNodes" operation="average" />

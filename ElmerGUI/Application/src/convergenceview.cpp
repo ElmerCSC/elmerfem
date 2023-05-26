@@ -91,7 +91,7 @@ const double *CurveData::y() const
 ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   : QMainWindow(parent)
 {
-  iconChecked = QIcon(":/icons/dialog-ok.png");
+  iconChecked = QIcon::fromTheme("dialog-accept");
 
   plot = new QwtPlot(this);
   plot->resize(200, 200);
@@ -266,7 +266,7 @@ void ConvergenceView::createActions()
   savePictureAct->setStatusTip("Save picture in jpg-format");
   connect(savePictureAct, SIGNAL(triggered()), this, SLOT(savePictureSlot())); 
 
-  exitAct = new QAction(QIcon(":/icons/application-exit.png"), tr("&Quit"), this);
+  exitAct = new QAction(QIcon::fromTheme("application-exit"), tr("&Quit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   exitAct->setStatusTip("Quit convergence monitor");
   connect(exitAct, SIGNAL(triggered()), this, SLOT(close()));

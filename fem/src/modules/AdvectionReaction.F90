@@ -48,9 +48,9 @@
      TYPE(ValueList_t), POINTER :: SolverParams
      LOGICAL :: Found 
      CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName
-   
+     
      SolverParams => GetSolverParams()
-
+     
      CALL ListAddLogical( SolverParams,'Discontinuous Galerkin',.TRUE.) 
      
      CALL ListAddNewString( SolverParams,'Variable','Tracer')     
@@ -59,6 +59,7 @@
      IF( ListGetLogical( SolverParams,'Calculate Nodal Average',Found ) ) THEN
        CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
            "-nodal "//TRIM(VariableName)//"_nodal" )
+       CALL ListAddLogical( SolverParams,'PostSolver Active',.TRUE.)
      END IF
        
    END SUBROUTINE AdvectionReactionSolver_init

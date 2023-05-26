@@ -89,7 +89,7 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   ELSE
     Ncomp = 0
     DO i=1,10
-      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//TRIM(I2S(i)) ) ) THEN
+      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
         Ncomp = i
       ELSE
         EXIT
@@ -106,7 +106,7 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
   ELSE
     CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',0.0_dp )
     DO i=1, Ncomp
-      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//TRIM(I2S(i)),0.0_dp )       
+      CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(i),0.0_dp )       
     END DO
   END IF
     
@@ -119,8 +119,8 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
       CALL Info(Caller,'Creating separate fields for each loss component',Level=10)
       CALL ListAddNewString( SolverParams,'Variable','Fourier Loss 1' )
       DO i=2, NComp
-        CALL ListAddNewString( SolverParams,'Exported Variable '//TRIM(I2S(i-1)),&
-            'Fourier Loss '//TRIM(I2S(i)) )
+        CALL ListAddNewString( SolverParams,'Exported Variable '//I2S(i-1),&
+            'Fourier Loss '//I2S(i) )
       END DO
     ELSE
       CALL Info(Caller,'Creating one field for total losses',Level=10)
@@ -190,8 +190,8 @@ SUBROUTINE FourierLossSolver_init0( Model,Solver,dt,Transient )
     IF( SeparateComponents ) THEN
       CALL ListAddString( DGSolverParams,'Variable','Fourier Loss 1e' )
       DO i=2, NComp
-        CALL ListAddString( DGSolverParams,'Exported Variable '//TRIM(I2S(i-1)),&
-            'Fourier Loss '//TRIM(I2S(i))//'e' )
+        CALL ListAddString( DGSolverParams,'Exported Variable '//I2S(i-1),&
+            'Fourier Loss '//I2S(i)//'e' )
       END DO
     ELSE
       CALL ListAddString( DGSolverParams,'Variable','Fourier Loss e' )
@@ -292,7 +292,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   ELSE
     Ncomp = 0
     DO i=1,10
-      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//TRIM(I2S(i)) ) ) THEN
+      IF( ListCheckPresentAnyMaterial( Model,'Harmonic Loss Coefficient '//I2S(i) ) ) THEN
         Ncomp = i
       ELSE
         EXIT
@@ -303,7 +303,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   IF( Ncomp == 0 ) THEN
     CALL Fatal(Caller,'Some material must have > Harmonic Loss Coefficient i <')
   END IF
-  CALL Info(Caller,'Considering number of components: '//TRIM(I2S(Ncomp)),Level=5)
+  CALL Info(Caller,'Considering number of components: '//I2S(Ncomp),Level=5)
   
   IF( OldKeywordStyle ) THEN
     SeparateComponents = .TRUE.
@@ -333,13 +333,13 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   ELSE
     DO icomp = 2, Nvar
       CompVars(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
-          'Fourier Loss '//TRIM(I2S(icomp)) )
+          'Fourier Loss '//I2S(icomp) )
     END DO
   END IF
 
   DO icomp = 1, NVar
     IF(.NOT. ASSOCIATED( CompVars(icomp) % Var ) )THEN
-      CALL Fatal(Caller,'Variable for component does not exist: '//TRIM(I2S(icomp)))
+      CALL Fatal(Caller,'Variable for component does not exist: '//I2S(icomp))
     END IF
   END DO
     
@@ -363,14 +363,14 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
       ELSE
         DO icomp = 1, Nvar
           CompVarsE(icomp) % Var => VariableGet( Solver % Mesh % Variables,&
-              'Fourier Loss '//TRIM(I2S(icomp))//'e' )        
+              'Fourier Loss '//I2S(icomp)//'e' )        
         END DO
       END IF
     END IF
 
     DO icomp = 1, NVar
       IF(.NOT. ASSOCIATED( CompVarsE(icomp) % Var ) )THEN
-        CALL Fatal(Caller,'Variable e for component does not exist: '//TRIM(I2S(icomp)))
+        CALL Fatal(Caller,'Variable e for component does not exist: '//I2S(icomp))
       END IF
     END DO
   END IF
@@ -410,7 +410,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   AvField = .FALSE.
   DirectField = ListGetLogical( SolverParams,'Target Variable Direct',Found)
   IF( DirectField ) THEN
-    CALL Info(Caller,'Using the target field with '//TRIM(I2S(tdofs))//' dofs directly!')
+    CALL Info(Caller,'Using the target field with '//I2S(tdofs)//' dofs directly!')
   ELSE
     IF( dim == 3 ) THEN
       ! Check whether the target field is an AV solution 
@@ -475,9 +475,9 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
       IF( i == 1 ) THEN
         FourierName = TRIM( VarName )//' Fourier 0'
       ELSE IF( MODULO(i,2) == 0 ) THEN
-        FourierName = TRIM(VarName)//' Fourier Cos'//TRIM(I2S(i/2))
+        FourierName = TRIM(VarName)//' Fourier Cos'//I2S(i/2)
       ELSE
-        FourierName = TRIM(VarName)//' Fourier Sin'//TRIM(I2S(i/2))
+        FourierName = TRIM(VarName)//' Fourier Sin'//I2S(i/2)
       END IF
         
       CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
@@ -865,7 +865,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
     INTEGER, ALLOCATABLE :: Indeces(:), Pivot(:)
-    LOGICAL :: DG
+    LOGICAL :: DG, Erroneous
     
     SAVE Nodes
     
@@ -908,7 +908,7 @@ CONTAINS
         FreqPower(1:Ncomp) = WrkArray(1:Ncomp,1)
       ELSE       
         DO icomp = 1, Ncomp
-          FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//TRIM(I2S(icomp)) )
+          FreqPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Frequency Exponent '//I2S(icomp) )
         END DO
       END IF
         
@@ -920,7 +920,7 @@ CONTAINS
         FieldPower(1:Ncomp) = WrkArray(1:Ncomp,1)        
       ELSE
         DO icomp = 1, Ncomp
-          FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//TRIM(I2S(icomp)) )
+          FieldPower(icomp) = GetCReal( SolverParams,'Harmonic Loss Field Exponent '//I2S(icomp) )
         END DO
       END IF
     END IF
@@ -1012,7 +1012,7 @@ CONTAINS
             Found2 = .FALSE.
             DO icomp = 1, Ncomp
               LossCoeff(icomp) = ListGetFun( Material,&
-                  'Harmonic Loss Coefficient '//TRIM(I2S(icomp)),FourierFreq, Found)      
+                  'Harmonic Loss Coefficient '//I2S(icomp),FourierFreq, Found)      
               IF( Found ) Found2 = .TRUE.
             END DO
             IF(.NOT. Found2 ) CYCLE
@@ -1114,8 +1114,9 @@ CONTAINS
       ! After this the STIFF and FORCE are corrupted 
       IF( ElementalField ) THEN
         EPerm => CompVarsE(1) % Var % Perm
+        CALL LUdecomp(STIFF,n,pivot,Erroneous)
+        IF (Erroneous) CALL Fatal('FourierLoss', 'LU-decomposition fails')
         DO icomp = 1, Nsum
-          CALL LUdecomp(STIFF,n,pivot)
           CALL LUSolve(n,STIFF,FORCE(icomp,:),pivot)
           CompVarsE(icomp) % Var % Values(EPerm(Element % DGIndexes(1:n))) = FORCE(icomp,1:n)
         END DO
@@ -1181,7 +1182,7 @@ CONTAINS
     ELSE
       CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss total',TotalLoss )
       DO k=1,Ncomp
-        CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//TRIM(I2S(k)),CompLoss(k) )
+        CALL ListAddConstReal( Model % Simulation,TRIM(Pref)//' fourier loss '//I2S(k),CompLoss(k) )
       END DO
     END IF
       
@@ -1195,7 +1196,7 @@ CONTAINS
           CALL Info(Caller,'Fourier loss quadratic by components',Level=6)
         END IF
       ELSE
-        CALL Info(Caller,'Wavewise Fourier loss for component: '//TRIM(I2S(k)),Level=6)
+        CALL Info(Caller,'Wavewise Fourier loss for component: '//I2S(k),Level=6)
       END IF
       
       DO j=1,FourierDofs 
@@ -1221,7 +1222,7 @@ CONTAINS
           CALL Info(Caller,'Fourier loss quadratic by bodies',Level=6)
         END IF
       ELSE
-        CALL Info(Caller,'Bodywise Fourier loss for component: '//TRIM(I2S(k)),Level=6)
+        CALL Info(Caller,'Bodywise Fourier loss for component: '//I2S(k),Level=6)
       END IF
 
       DO j=1,Model % NumberOfBodies
@@ -1230,7 +1231,7 @@ CONTAINS
         CALL Info(Caller, Message, Level=6 )
       END DO
 
-      WRITE( Message,'(A,ES12.3)') 'Total component '//TRIM(I2S(k))//' loss: ',CompLoss(k)
+      WRITE( Message,'(A,ES12.3)') 'Total component '//I2S(k)//' loss: ',CompLoss(k)
       CALL Info(Caller,Message, Level=5 )
     END DO
     
@@ -1261,13 +1262,13 @@ CONTAINS
       PRINT *,'Fourier components:'
       DO i=1,FourierDofs
         CALL VectorValuesRange(FourierVars(i) % Var % Values, &
-            SIZE(FourierVars(i) % Var % Values),'F'//TRIM(I2S(i)))
+            SIZE(FourierVars(i) % Var % Values),'F'//I2S(i))
       END DO
       
       PRINT *,'Loss components:'
       DO i=1,NComp
         CALL VectorValuesRange(CompVars(i) % Var % Values, &
-            SIZE(CompVars(i) % Var % Values),'L'//TRIM(I2S(i)))
+            SIZE(CompVars(i) % Var % Values),'L'//I2S(i))
       END DO
     END IF
 

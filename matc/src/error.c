@@ -69,7 +69,7 @@
 
 void sig_trap(int sig)
 /*======================================================================
-?  Interrupt or floating point exeption. Free all memory allocated 
+?  Interrupt or floating point exception. Free all memory allocated 
 |  after last call to doread, give an error message and
 |  longjump back to doread.
 &  longjmp, mem_free_all

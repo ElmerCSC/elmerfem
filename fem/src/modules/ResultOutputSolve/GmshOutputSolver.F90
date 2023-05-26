@@ -67,7 +67,8 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
-  CHARACTER(MAX_NAME_LEN) :: OutputFile, OutputDirectory
+  CHARACTER(MAX_NAME_LEN) :: OutputFile
+  CHARACTER(:), ALLOCATABLE :: OutputDirectory
   INTEGER :: GmshUnit
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputSolver'
     
@@ -148,7 +149,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
   ! Save the header
   !-------------------------------------------------
-  CALL Info('GsmhOutputSolver','Saving results to file: '//TRIM(OutputFile))
+  CALL Info('GmshOutputSolver','Saving results to file: '//TRIM(OutputFile))
   OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
   
   WRITE(GmshUnit,'(A)') '$MeshFormat'
@@ -443,7 +444,7 @@ CONTAINS
             END IF
           END IF
           IF( .NOT. ASSOCIATED(Solution)) THEN
-            CALL Warn('GsmhOutputSolver','Variable not present: '//TRIM(FieldName))
+            CALL Warn('GmshOutputSolver','Variable not present: '//TRIM(FieldName))
             CYCLE
           END IF
         END IF

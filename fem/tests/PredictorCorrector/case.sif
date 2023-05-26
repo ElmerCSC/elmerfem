@@ -159,7 +159,7 @@ Solver 2
   Mesh Velocity First Zero = Logical True
   Displacement Mode = Logical False 
 
-! The old slightly errorneous result can be restored with this flag
+! The old slightly erroneous result can be restored with this flag
 !  Recompute Stabilization = Logical False
 End
 

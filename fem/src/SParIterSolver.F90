@@ -690,23 +690,45 @@ st = realtime()
   !
   !----------------------------------------------------------------------
   sz = SIZE(A % Values)
-  CALL List_toListMatrix(A)
+
+  ! Check whether we need to create List matrix and add new column entries. 
+  GotNewCol = .FALSE.
   DO i=1,Parenv % PEs
     CurrIF => SplittedMatrix % IfMatrix(i)
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
- if ( rowind<=0 ) cycle
+      IF ( rowind<=0 ) CYCLE
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
- if ( colind<=0 ) cycle
-        CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
-      END DO
+        IF ( colind<=0 ) CYCLE
+        IF( .NOT. CRS_CheckMatrixElement(A,RowInd,ColInd) ) THEN
+          GotNewCol = .TRUE.
+          GOTO 1
+        END IF        
+      END DO      
     END DO
   END DO
-  CALL List_toCRSMatrix(A)
-!if ( parenv % mype==0 ) print*, 'ADD INTERFACE TO INSIDE: ', realtime()-st; st=realtime()
 
+1 IF(GotNewCol) THEN
+    CALL List_toListMatrix(A)
+    DO i=1,Parenv % PEs
+      CurrIF => SplittedMatrix % IfMatrix(i)
+      DO j = 1, CurrIf % NumberOfRows
+        IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
+        RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+        IF ( rowind<=0 ) CYCLE
+        DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
+          ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
+          IF ( colind<=0 ) CYCLE
+          l = l+1
+          CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
+        END DO
+      END DO
+    END DO
+    CALL List_toCRSMatrix(A)
+  END IF
+    
   !----------------------------------------------------------------------
   !
   ! If need be, rebuild the inside part of GlueTable (place in the parallel
@@ -1127,6 +1149,12 @@ END SUBROUTINE ZeroSplittedMatrix
     TmpXVec => SplittedMatrix % TmpXVec
     TmpRVec => SplittedMatrix % TmpRVec
 
+    IF(.NOT. ASSOCIATED(SourceMatrix % Rhs) ) THEN
+      CALL Info('SParUpdateResult','Rhs is not yet associated!?',Level=20)
+      ALLOCATE( SourceMatrix % Rhs(SourceMatrix % NumberOfRows) )
+      SourceMatrix % Rhs = 0.0_dp
+    END IF
+           
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
@@ -1409,8 +1437,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   TYPE (BasicMatrix_t), POINTER :: CurrIf
   TYPE (GlueTableT), POINTER :: GT
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: Prec, IterativeMethod
-  CHARACTER(LEN=MAX_NAME_LEN) :: XmlFile
+  CHARACTER(:), ALLOCATABLE :: Prec, IterativeMethod, XmlFile
   REAL(KIND=dp) :: TOL, hypre_dppara(5) = 0
   INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
       hypre_sol, hypre_pre, hypremethod,  &
@@ -1610,7 +1637,7 @@ INTEGER::inside
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
            Ilun = 0
-           READ( Prec(4:), *, END=10 ) ILUn
+           IF(LEN(Prec)>=4) READ( Prec(4:), *, END=10 ) ILUn
 10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
@@ -1629,7 +1656,7 @@ INTEGER::inside
       END IF
 
       hypremethod = hypre_sol * 10 + hypre_pre
-      CALL Info('SParIterSolver','Hypre method index: '//TRIM(I2S(hypremethod)),Level=8)
+      CALL Info('SParIterSolver','Hypre method index: '//I2S(hypremethod),Level=8)
       
       ! NB.: hypremethod = 0 ... BiCGStab + ILUn
       !                    1 ... BiCGStab + ParaSails
@@ -1699,8 +1726,7 @@ INTEGER::inside
               'BoomerAMG Cycle Type', Found )
          IF (.NOT.Found)  hypre_intpara(7) = 1
 
-         BPC = ListGetLogical( Params, &
-              'Block Preconditioner', Found )
+         BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
          IF (.NOT.Found) BPC=.FALSE.
          
          hypre_intpara(8) = ListGetInteger( Params, &
@@ -1796,12 +1822,13 @@ INTEGER::inside
 
         CALL ContinuousNumbering( Solver % Mesh % ParallelInfo, &
              NodePerm, BPerm, NodeOwner, nnd, Solver % Mesh)
+        bPerm = bPerm -1 ! at some point Hypre switched to zero based indexing
 
         GM => AllocateMatrix()
         GM % FORMAT = MATRIX_LIST
 
         DO i=Solver % Mesh % NumberofEdges,1,-1
-          ind=Solver % Mesh % Edges(i) % NodeIndexes
+          ind = Solver % Mesh % Edges(i) % NodeIndexes
           IF (Solver % Mesh % ParallelInfo % GlobalDOFs(ind(1))> &
               Solver % Mesh % ParallelInfo % GlobalDOFs(ind(2))) THEN
             k=ind(1); ind(1)=ind(2);ind(2)=k
@@ -1871,8 +1898,7 @@ INTEGER::inside
       ! which is their usual way of getting parameters. If no 
       ! file is given, we use default settings and issue a    
       ! warning.
-      xmlfile = ListGetString( Params, & 
-          'Trilinos Parameter File', Found )
+      xmlfile = ListGetString( Params, 'Trilinos Parameter File', Found )
       IF (.NOT. Found) THEN
         xmlfile = 'none'
       END IF
@@ -2134,7 +2160,6 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   EXTERNAL :: AddrFunc
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn
-  CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
   INTEGER, POINTER :: SPerm(:)

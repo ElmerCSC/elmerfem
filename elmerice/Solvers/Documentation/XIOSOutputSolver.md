@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** None  
 - **Optional Input Variable(s):** None
 - **Solver Keywords:** 
-  - Scalar Field i : Name of nodal and elemntal variables that can be requested by XIOS, i=1,...  
+  - Scalar Field i : Name of nodal and elemental variables that can be requested by XIOS, i=1,...  
   - Global Variable i: Name of a global variable that can be requested by XIOS, e.g. time
   
 ## General Description
@@ -24,7 +24,7 @@ svn co http://forge.ipsl.jussieu.fr/ioserver/svn/XIOS/trunk XIOS
 ```  
 
 2. Compile XIOS, see its documentation   
-   - You will have to add **-fPIC** for the *BASE_CFLAGS* and *BASE_FFLAGS* as we wil need a shared library
+   - You will have to add **-fPIC** for the *BASE_CFLAGS* and *BASE_FFLAGS* as we will need a shared library
    - To use the UGRID format we need to have netcdf with parallel I/O support
 
 
@@ -38,7 +38,7 @@ mpicc -shared *.o -o libxios.so
 #! remove the .o
 rm -f *.o
 ```   
-The directory where you store the shared libary should be in your *LD_LIBRABRY_PATH* environnement variable, if in a non standard location.
+The directory where you store the shared library should be in your *LD_LIBRABRY_PATH* environment variable, if in a non standard location.
 
 ### Compiling Elmer with XIOS   
 
@@ -89,11 +89,11 @@ mpirun -np N ElmerSolver_mpi : -np N2 xios_server
 
 ### Saving variables with XIOS
 
-- To use the UGRID format, geographical coordinates are required (Longitude/Latitude); They are computed using gerenic functionnalities in [ProjUtils](../../Utils/Documentation/ProjUtils.md). The projection description should be provided in the *Simulation* section (only south and north polar stereographic projections are supported by default at the moment). The projected coordinates can be saved by requesting to save the elmer coordinates.
+- To use the UGRID format, geographical coordinates are required (Longitude/Latitude); They are computed using generic functionalities in [ProjUtils](../../Utils/Documentation/ProjUtils.md). The projection description should be provided in the *Simulation* section (only south and north polar stereographic projections are supported by default at the moment). The projected coordinates can be saved by requesting to save the elmer coordinates.
 
 - Elmer variables that have to be transferred to XIOS are defined with the Solver keywords *Scalar Field i* for nodal and elemental variables and *Global Variable i* for global variables. The *id* in the XIOS configuration file should be the elmer variable name :warning: **in lower case**.
 
-- Nodal variables can be avaraged by element using the keyword *Scalar Field i compute cell average = Logical True*. In this case the corresponding *id* for XIOS shoudl be *varname_elem* (:warning: **in lower case**). Multiplying by the element area and summing over the elements will provide a conservative alternative to integrating nodal variables with elmer. 
+- Nodal variables can be avaraged by element using the keyword *Scalar Field i compute cell average = Logical True*. In this case the corresponding *id* for XIOS should be *varname_elem* (:warning: **in lower case**). Multiplying by the element area and summing over the elements will provide a conservative alternative to integrating nodal variables with elmer. 
 
 - Variables computed by the solver and that can be accessed by XIOS: 
 	- The element area can be accessed with the *id* *cell_area*.
@@ -130,7 +130,7 @@ Solver ..
 
  ! time-step: optional the duration of the tile step; other time_step=time_units*dt
    timestep=String "15d"
- ! for consitency check we check that taking 1/dt time_step leads 
+ ! for consistency check we check that taking 1/dt time_step leads 
  !  to the same duration than time_units with xx seconds
    timestep tolerance = Real 1.0
 
@@ -160,15 +160,15 @@ End
 
 For the XIOS xml configuration file, the context *id* should be **elmerice**.   
 
-- :warning: According to xios documentation: **Value of unit may be integer or floating (not recommended)**, so setting the time_step to dt*"1y" might lead to spurious effect. It is then possible to provide the time-setp in the solver as a duration; We will check that a full year give the same duration in seconds withon a given tolerance as in general an integer number of days will not lead to a finite fraction of year.... Might be better to move to units in days instead of years....?
-- :warning: **its is to the user responsability to check that the time step is constant and a finite fraction of the output frequency**   
+- :warning: According to xios documentation: **Value of unit may be integer or floating (not recommended)**, so setting the time_step to dt*"1y" might lead to spurious effect. It is then possible to provide the time-setp in the solver as a duration; We will check that a full year give the same duration in seconds within a given tolerance as in general an integer number of days will not lead to a finite fraction of year.... Might be better to move to units in days instead of years....?
+- :warning: **its is to the user responsibility to check that the time step is constant and a finite fraction of the output frequency**   
 - :warning: **id for the variable in the xml file should correspond to the Elmer variable name provided in the .sif file but in lower case**, i.e. in the .sif file "VarName" is case insensitive and should be referred as **id="varname"** for XIOS. There is a sanity check that a variable defined with the keywords *Global Variable* and *Scalar Field* are defined in the xios configuration file.
 
 ```
 <!-- mandatory context definition -->
 <context id="elmerice">
 
-<!-- id corespond to var names as defined in the .sif file and should be lower case!! -->
+<!-- id correspond to var names as defined in the .sif file and should be lower case!! -->
 <field id="varname"  name=... />
 
 <!-- if you want to compute element-averaged values from nodal values; add "_elem" to the var name -->
@@ -177,7 +177,7 @@ For the XIOS xml configuration file, the context *id* should be **elmerice**.
 <!-- setting elmer/ice version as a file global attribute -->
 <file id=... >
   <field ... />
-  <!-- global attribute definition ... All varaibles with this id will be updated to contain both rev. and vers. numbers -->
+  <!-- global attribute definition ... All variables with this id will be updated to contain both rev. and vers. numbers -->
   <variable id="elmerversion" name="model_version" type="string"> elmer ice v9.0</variable>
 </file>
 
@@ -212,7 +212,7 @@ For the XIOS xml configuration file, the context *id* should be **elmerice**.
 ### Hard coded definitions
 
 A *field_group* with **id="mesh_info"** will be automatically added is not already present, with the attribute *operation="once"*.
-If not already defined the following fields (related to mesh informations) will be added to the group:
+If not already defined the following fields (related to mesh information) will be added to the group:
 - node_x: node x coordinate  
 - node_y: node y coordinate  
 - cell_area: element area
@@ -252,7 +252,7 @@ UGRID Netcdf files can be visualized with:
 	```
 	ncks -v mesh2D,mesh2D_face_nodes,mesh2D_node_x,mesh2D_node_y,MyNodalVar,MyElemVar output_ugrid.nc tmp.nc
 	```
-	- As the coordinates are in lon/lat, it might be interesting to provide the projected coorinates and thus change the names of the coordinate in the mesh attributes? or improve the reader?
+	- As the coordinates are in lon/lat, it might be interesting to provide the projected coordinates and thus change the names of the coordinate in the mesh attributes? or improve the reader?
 
 - [psyplot](https://psyplot.github.io/)
 	- not adapted yet for nodal variable as it re-computes a delaunay triangulation?
@@ -280,12 +280,12 @@ UGRID Netcdf files can be visualized with:
 
 - should work with higher order elements, e.g. 306, as we will save only the corners?
 	- *To check how to get the max number of corners?*
-	- Might not be as simple as we rely on the  gloabl DOFs for the ordering...
+	- Might not be as simple as we rely on the global DOFs for the ordering...
 
 - XIOS automatically re-computes the connectivity tables, including edges. 
 	- *Can we directly provide this to XIOS?*
 
-- Edges: *Element="n:0 e:1"* is automatically added to the solver parameters so that elmer computes the edge table and ordering. :warning: Variables expoted in this solver will be defined by edges... To see how to define edge varaible in other solvers (e.g. grounding line flux) to send them to Xios...
+- Edges: *Element="n:0 e:1"* is automatically added to the solver parameters so that elmer computes the edge table and ordering. :warning: Variables expoted in this solver will be defined by edges... To see how to define edge variable in other solvers (e.g. grounding line flux) to send them to Xios...
 
 ## Examples
 

@@ -11,7 +11,7 @@
 
 !
 ! This version enforces Coulomb gauge (div(A)=0) as an afterthought. Automation
-! of the process actived.
+! of the process activated.
 !
 ! J.R. 7.9.2021
 !
@@ -121,7 +121,7 @@ Solver 3
   Output File Name = Wire
   Discontinuous Bodies = Logical True
 
-! Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
+! Reference Values(6) = Real 59 13 206250 2064 402220888 4.178146196
 ! Reference Norm = 1.0
 End
 

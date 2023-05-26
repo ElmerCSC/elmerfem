@@ -648,11 +648,11 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   PeriodicDir => ListGetIntegerArray( Params,'Periodic Directions',&
       DoPeriodic )
 
-  ! allow to define node coordinates from varaibles
+  ! allow to define node coordinates from variables
   CoordName = ListGetString( Params,'Elmer Coordinate 1',Found)
   IF (Found) THEN
      ElmerCoord1 => VariableGet(Mesh%Variables,TRIM(CoordName),UnFoundFatal=.TRUE.)
-     If (DEBUG) WRITE( Message, * ) 'using ',TRIM(CoordName),' as fisrt coordinate'
+     If (DEBUG) WRITE( Message, * ) 'using ',TRIM(CoordName),' as 1st coordinate'
      CALL Info('GridDataReader', Message, level=3)
   ENDIF
   CoordName = ListGetString( Params,'Elmer Coordinate 2',Found)
@@ -1203,7 +1203,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
 
   IF( maxfdofs > idof ) THEN
     idof = idof + 1
-    CALL Info('GridDataReader','Continuing to read timestep: '//TRIM(I2S(idof)))
+    CALL Info('GridDataReader','Continuing to read timestep: '//I2S(idof))
     GOTO 100
   END IF
 
@@ -1441,7 +1441,7 @@ CONTAINS
     dist = SQRT( (xe(1)-coordVar(1)%values(1:nx,1:ny,1))**2 + &
          (xe(2)-coordVar(2)%values(1:nx,1:ny,1) )**2 )
 
-    ! cumlative distance of four netcdf points (comprising a cell) from current ELmer node
+    ! cumulative distance of four netcdf points (comprising a cell) from current Elmer node
     distCum = dist(1:nx-1,1:ny-1) + dist(2:nx,1:ny-1)+ &
          dist(2:nx,2:ny) + dist(1:nx-1,2:ny)
 

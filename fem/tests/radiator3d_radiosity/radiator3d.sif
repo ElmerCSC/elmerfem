@@ -1,0 +1,170 @@
+! Test case for radiatior heat sources & radiosity
+! - four radiators within a box
+! - temperature registered at four locations outside
+! - test comes with and without "diffuse grey" radiation (this is with)
+! - this one uses alternative explicit way to compute radiation i.e. radiosity 
+!
+! P.R. 13.12.2022
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "box"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 300.0
+End
+
+
+Material 1
+   Density = 1.0
+   Heat Conductivity = 1.0
+   Emissivity = 0.9
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 0.3
+  Nonlinear System Convergence Tolerance = 1.0e-7
+
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Vierfactor Binary Output = Logical True
+
+  Viewfactor raytrace tolerance = 0.001
+  Viewfactor area tolerance = 0.01
+  Viewfactor factor tolerance = 0.001
+  Viewfactor number Of Rays = 8
+
+  radiation: Linear System Solver = Iterative
+  radiation: Linear System Residual Output = 0
+  radiation: Linear System Convergence Tolerance = 1.0e-8
+
+! Update View Factors = True
+! Update Gebhart Factors = True
+
+  Radiosity Model = Logical True
+!  Spectral Model = True
+!  Spectral dT = 50.0
+
+  Calculate Loads = True
+  Calculate Boundary Fluxes = True
+End
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Variable 1 = Temperature Loads
+  Operator 1 = boundary sum
+  Mask Name 1 = intflux 
+
+
+  Save Coordinates(4,3) = Real \
+          -1.0 0.0 -0.75 \
+           1.0 0.0 -0.25 \
+           0.0 1.0 0.25 \
+           0.0 -1.0 0.75 
+
+  Filename = f.dat
+  Show Norm Index = 1
+End
+
+
+
+Equation 1
+  Active Solvers = 1
+End
+
+
+Boundary Condition 1
+  Name = "Bot And Top"
+  Target Boundaries(2) = 3 6
+
+  Temperature = 300.0
+  intflux = Logical True
+End
+
+Boundary Condition 2
+  Name = "Sides"
+  Target Boundaries(1) = 1
+
+  External Temperature = 300.0
+  Heat Transfer Coefficient = 1.0
+  intflux = Logical True
+End
+
+Boundary Condition 3
+  Name = "Internal"
+  Target Boundaries(3) = 2 4 5
+
+  Radiator BC = Logical True
+  Radiation = Diffuse Gray
+  Radiation Target Body = -1
+End
+
+
+Body Force 1
+  Name = "Radiate"
+
+  Radiator Coordinates(4,3) = Real \
+          -0.75 0.0 -0.75 \
+           0.75 0.0 -0.25 \
+           0.0 0.75 0.25 \
+           0.0 -0.75 0.75 
+
+! sum of these is 1.0e3 and this should
+! be equal to the computed heating power excaping through external BCs.
+  Radiator Power 1 = Real 1.0e2
+  Radiator Power 2 = Real 2.0e2
+  Radiator Power 3 = Real 3.0e2
+  Radiator Power 4 = Real 4.0e2
+
+! Temperature only has an effect in spectral radiosity model 
+  Radiator Temperature 1 = Real 400.0
+  Radiator Temperature 2 = Real 440.0
+  Radiator Temperature 3 = Real 460.0
+  Radiator Temperature 4 = Real 500.0
+End
+
+
+Solver 1 :: Reference Norm = 3.09788867E+02
+Solver 1 :: Reference Norm Tolerance = 1.0e-6
+Solver 2 :: Reference Norm = 1000
+Solver 2 :: Reference Norm Tolerance = 1.0e-6

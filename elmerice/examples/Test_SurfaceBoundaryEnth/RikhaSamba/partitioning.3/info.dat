@@ -13,7 +13,7 @@ command line was: ExtrudeMesh mesh2D Rikha3Dini2 15     1.00 3 0 0   0.00 1.00  
 
     ... ratio:     1.0000
 
-    ... total poitns in 2d mesh: 1655 
+    ... total points in 2d mesh: 1655 
     ... total elements in 2d mesh: 2987 
     ... total boundary elements in 2d mesh: 321 
     ... no of element type 101: 0 
