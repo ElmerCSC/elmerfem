@@ -996,6 +996,7 @@ CONTAINS
      IF (Found) THEN
        AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
        IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
+       MASS = 0.0_dp
        CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
      ELSE IF(  FoundAny ) THEN
        CALL LocalMatrixBC(STIFF,MASS, FORCE,LOAD,Acoef,Element,n,nd )
@@ -2378,7 +2379,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3), Normal(3), t1(3), t2(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3), t1(3), t2(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC, c
     LOGICAL :: Stat, Found, PEC, OutFlow
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -2520,7 +2521,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), localGapLength, muAir, muVacuum
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
