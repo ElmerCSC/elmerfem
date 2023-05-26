@@ -1,0 +1,103 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+	<PDE Name="CoilSolver" >
+	<Name>CoilSolver</Name>
+
+	<Equation>
+		<Parameter Widget="Label">
+			<Name> Free text input </Name>
+		</Parameter>
+
+		<Parameter Widget="TextEdit" Enabled="True">
+			<Name> Free text </Name>
+			<Type> String </Type>
+			<Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+			<StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+		</Parameter>
+	</Equation>
+
+	<Solver>
+		<Parameter Widget="Label" > <Name> Coil solver </Name> </Parameter>
+		<Parameter Widget="Edit" Enabled="True">
+			<Name> Procedure </Name>
+			<DefaultValue> "CoilSolver" "CoilSolver" </DefaultValue>
+		</Parameter>
+		<Parameter Widget="CheckBox" >
+			<Parameter Widget="Label" > <Name> Options </Name> </Parameter>
+			<Name> Coil Closed </Name>
+			<Type> Logical </Type>
+			<Whatis> Is the coil closed. If it is then then the case will be computed in two parts. </Whatis>
+		</Parameter>
+		<Parameter Widget="Edit" >
+			<Name> Desired Coil Current </Name>
+			<Type> Real </Type>
+			<Whatis> The desired coil current J0 in the coil. The default is 1. </Whatis>
+		</Parameter>	
+		<Parameter Widget="Edit" >
+			<Name> Desired Current Density </Name>
+			<Type> Real </Type>
+			<Whatis> The desired coil current density j0 in the coil. The default is 1. </Whatis>
+		</Parameter>		
+		<Parameter Widget="Edit" >
+			<Name> Coil Cross Section </Name>
+			<Type> Real </Type>
+			<Whatis> Cross section (area) of the coil that may be used to related total current and current density. </Whatis>
+		</Parameter>	
+		<Parameter Widget="CheckBox" >
+			<Name> Normalize Coil Current </Name>
+			<Type> Logical </Type>
+			<Whatis> After the current has been computed normalize it to the desired magnitude if this flag is given. </Whatis>
+		</Parameter>
+		<Parameter Widget="Edit" >
+			<Name> Coil Normal (3-vector) </Name>
+			<SifName> Coil Normal(3)</SifName>
+			<Type> Real </Type>
+			<Whatis>Normal vector of the coild. If not given axis of maximum inertia of the coil. </Whatis>
+		</Parameter>
+		<Parameter Widget="Edit" >
+			<Name> Coil Center (3-vector) </Name>
+			<SifName> Coil Center(3)</SifName>
+			<Type> Real </Type>
+			<Whatis> Center of the coil. If not given center of volume of the coil. </Whatis>
+		</Parameter>
+		<Parameter Widget="CheckBox" >
+			<Name> Calculate Elemental Fields </Name>
+			<Type> Logical </Type>
+			<DefaultValue> True </DefaultValue>
+			<Whatis> Calculate elemental fields using Discontinuous Galerkin basis. </Whatis>
+		</Parameter>
+		<Parameter Widget="CheckBox" >
+			<Name> Calculate Nodal Fields </Name>
+			<Type> Logical </Type>
+			<Whatis> Calculate standard nodal fields. </Whatis>
+		</Parameter>
+		<Parameter Widget="CheckBox" >
+			<Name> Narrow Interface </Name>
+			<Type> Logical </Type>
+			<Whatis> For closed coil use narrow strategy to set the one/zero BCs. </Whatis>
+		</Parameter>
+                <Parameter Widget="CheckBox" >
+	           <Name> Fix Input Current Density </Name>
+	           <Type> Logical </Type>
+	           <Whatis> Fix the computed elemental current density to be divergence free. </Whatis>
+                </Parameter>
+	</Solver>	
+        <BoundaryCondition>
+           <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="CheckBox">
+             <Name>Coil Start </Name>
+             <Whatis> Defines a boundary where coil starts. Not needed if coil is closed. </Whatis>
+          </Parameter>
+          <Parameter Widget="CheckBox">
+             <Name>Coil End </Name>
+             <Whatis> Defines a boundary where coil ends. Not needed if coil is closed. </Whatis>
+          </Parameter>
+	</BoundaryCondition>
+	</PDE>
+</edf>
+
+
+
+
+

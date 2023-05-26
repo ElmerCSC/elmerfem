@@ -88,8 +88,8 @@ CONTAINS
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
+      CHARACTER(:), ALLOCATABLE :: Method
       REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: Method
 
 !
 !     %---------------%
@@ -324,9 +324,9 @@ CONTAINS
  
          IF (ido == -1 .OR. ido == 1) THEN
 
-           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
-           CALL Info( Caller, Message, Level=6 )
-!            CALL Info( Caller, '.', .TRUE., Level=5 )
+!           WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
+!           CALL Info( Caller, Message, Level=20 )
+            CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 
 !---------------------------------------------------------------------
@@ -521,15 +521,10 @@ CONTAINS
          CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message,'(A,I0)' ) 'Number of converged Ritz values is: ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message,'(A,I0)') 'Number of update iterations taken: ',  IPARAM(3)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message,'(A,I0,A)') 'Computed ',NEIG,' Eigen Values'
-         CALL Info( Caller,Message, Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
+         CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -949,7 +944,7 @@ END SUBROUTINE CheckResiduals
 
          IF( ido==-1 .OR. ido==1 ) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=5 )
+!           CALL Info( Caller, Message, Level=20 )
             CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
          END IF
@@ -1067,13 +1062,12 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
          k = 1
 
          DO i=1,NEIG
@@ -1161,7 +1155,7 @@ END SUBROUTINE CheckResiduals
       LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize,&
                        Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: DirectMethod, Method
+      CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
       COMPLEX(KIND=dp) :: Sigma = 0.0d0, s
       REAL(KIND=dp), TARGET :: x(2*n), b(2*n)
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, RWORK(N)
@@ -1355,7 +1349,7 @@ END SUBROUTINE CheckResiduals
 
          IF (ido == -1 .OR. ido == 1) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info(Caller, Message, Level=5 )
+!           CALL Info(Caller, Message, Level=20 )
             CALL Info(Caller, '.', .TRUE., Level=5 )
             Iter = Iter + 1
 !---------------------------------------------------------------------
@@ -1520,13 +1514,12 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-         WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1536,8 +1529,8 @@ END SUBROUTINE CheckResiduals
 
          EigVectors = -1.0_dp
 
-         PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
-             SIZE(V,1),SIZE(V,2)
+         !PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
+         !    SIZE(V,1),SIZE(V,2)
          
          k = 1
          DO i=1,NEIG
@@ -1642,9 +1635,9 @@ END SUBROUTINE CheckResidualsComplex
       INTEGER :: IPARAM(11), IPNTR(14)
       INTEGER, ALLOCATABLE :: Perm(:), kMap(:)
       LOGICAL, ALLOCATABLE :: Choose(:)
-      REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
-      CHARACTER(LEN=MAX_NAME_LEN) :: str
+      CHARACTER(:), ALLOCATABLE :: str
       COMPLEX(KIND=dp) :: s, EigTemp(NEIG)
+      REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
 
 !     %---------------%
 !     | Local Scalars |
@@ -1828,9 +1821,9 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
       str = ListGetString( Solver % Values, 'Linear System Preconditioning', Stat )
 
+      ILU = 0
       IF ( .NOT. Stat ) THEN
          CALL Warn( Caller, 'Using ILU0 preconditioning' )
-         ILU = 0
       ELSE
          IF ( str == 'none' .OR. str == 'diagonal' .OR. &
               str == 'ilut' .OR. str == 'multigrid' ) THEN
@@ -1838,7 +1831,7 @@ END SUBROUTINE CheckResidualsComplex
            ILU = 0
            CALL Warn( Caller, 'Useing ILU0 preconditioning' )
          ELSE IF ( SEQL(str,'ilu') ) THEN
-           ILU = ICHAR(str(4:4)) - ICHAR('0')
+           IF(LEN(str)>=4) ILU = ICHAR(str(4:4)) - ICHAR('0')
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE
            ILU = 0
@@ -1887,7 +1880,7 @@ END SUBROUTINE CheckResidualsComplex
             ! ido =-1 inv(A)*z:
             !--------------------------
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( Caller, Message, Level=5 )
+!           CALL Info( Caller, Message, Level=20 )
             CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 
@@ -2002,17 +1995,12 @@ END SUBROUTINE CheckResidualsComplex
          CALL Info( Caller, ' ', Level=4 )
          CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
          CALL Info( Caller, ' ', Level=4 )
-
-         WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( Caller, Message, Level=4 )
-
-         WRITE( Message, * ) ' The number of converged Ritz values is ', &
-              IPARAM(5)
-         CALL Info( Caller, Message, Level=4 )
-
-         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info(Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
-         CALL Info( Caller, '--------------------------------', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=7 )
 
 !------------------------------------------------------------------------------
 ! Extracting the right eigen values and vectors.

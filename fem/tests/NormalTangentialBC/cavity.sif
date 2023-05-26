@@ -82,6 +82,8 @@ Boundary Condition 2
   Periodic BC Pressure = Logical True
   Periodic BC Velocity 1 = Logical True
   Periodic BC Velocity 2 = Logical True
+
+  One Sided Normals = Logical True
 End
 
 !!! Top         
@@ -98,4 +100,3 @@ Boundary Condition 4
 End
 
 Solver 1 :: Reference Norm = Real 0.054621
-RUN

@@ -87,7 +87,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
-  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
+  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE., Success
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -490,7 +490,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           gdofs = NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:NELNodes))
           DO j=1,GatheredMesh % NumberOfNodes
             IF(ANY(gdofs == GatheredMesh % ParallelInfo % GlobalDOFs(j)) .AND. &
-                 GatheredMesh % ParallelInfo % INTERFACE(j)) THEN
+                 GatheredMesh % ParallelInfo % NodeInterface(j)) THEN
               isolated = .FALSE.
               EXIT
             END IF
@@ -623,7 +623,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       target_length(:,2) = 300.0
       target_length(:,3) = 50.0
 
-      CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+      CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR, nodefixed=new_fixed_node, &
+          elemfixed=new_fixed_elem, Success=Success)
 
       !Update parallel info from old mesh nodes (shared node neighbours)
       CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
@@ -652,7 +653,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !Some checks on the new mesh
    !----------------------------
    DO i=1,GatheredMesh % NumberOfNodes
-     IF(GatheredMesh % ParallelInfo % INTERFACE(i)) THEN
+     IF(GatheredMesh % ParallelInfo % NodeInterface(i)) THEN
        IF(.NOT. ASSOCIATED(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours)) &
             CALL Fatal(SolverName, "Neighbourlist not associated!")
        IF(SIZE(GatheredMesh % ParallelInfo % Neighbourlist(i) % Neighbours) < 2) &

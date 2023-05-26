@@ -50,15 +50,16 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
-  INTEGER :: i, j, t, t0, n, m, is_bc
-  INTEGER :: FirstElem, LastElem
+  INTEGER :: i, j, t, t0, n, m, is_bc, ierr
+  INTEGER :: FirstElem, LastElem, ElmntCnt, LocalElmntCnt
 
-  REAL(KIND=dp) :: WarnSize, MinF(3), MaxF(3), AveF(3), F, dF
+  REAL(KIND=dp) :: WarnSize, MinF(3), MaxF(3), AveF(3), F, dF, &
+       LocalMinF(3), LocalMaxF(3), LocalAveF(3)
   TYPE(ValueList_t), POINTER :: Params
-  INTEGER :: ElementCount(1000)
+  INTEGER :: ElementCount(1000), LocalElementCount(1000)
   CHARACTER(MAX_NAME_LEN) :: Str, OperName
-  LOGICAL :: Found, DoCohorts, DoingCohorts
-  INTEGER :: NoCohorts, OperNo
+  LOGICAL :: Found, DoCohorts, DoingCohorts, IsParallel, SkipBoundaries, ApplyWarn, WarnFatal
+  INTEGER :: NoCohorts, OperNo, bc_max
   INTEGER, ALLOCATABLE :: CohortCount(:,:)
 !------------------------------------------------------------------------------
   
@@ -67,7 +68,9 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
 
   Params => GetSolverParams()
   Mesh => GetMesh()
-
+  IsParallel = GetLogical( Params,'Reduce Parallel',Found)
+  IsParallel = IsParallel .AND. ( ParEnv % PEs > 1 )
+  
   ! Do cohorst only if requested
   DoCohorts = GetLogical( Params,'Create Histogram',Found ) 
   IF( DoCohorts ) THEN
@@ -77,8 +80,17 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     CohortCount = 0
   END IF
 
+  ! do we skip boundaries?
+  bc_max=1
+  SkipBoundaries= GetLogical( Params,'Skip Boundaries',Found )
+  IF (SkipBoundaries) bc_max=0
+
+  ! inquire warnsize
+  WarnSize = GetConstReal( Params,'Element Warn Size', ApplyWarn )
+  WarnFatal = GetLogical( Params,'Stop Below Warn Size', Found )
+  
   ! Go through bulk and boundary elements separately
-  DO is_bc = 0, 1
+  DO is_bc = 0, bc_max
 
     IF( is_bc == 0 ) THEN
       t0 = 0
@@ -97,13 +109,13 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     CALL Info('ElementStats','Going through '//TRIM(Str)//' elements')
     
     ! Initialize separately for bulk and boundary
-    WarnSize = EPSILON( WarnSize ) 
-    MinF = HUGE( MinF )
-    MaxF = -HUGE( MaxF ) 
-    AveF = 0.0_dp
+    !WarnSize = EPSILON( WarnSize ) 
+    LocalMinF = HUGE( LocalMinF )
+    LocalMaxF = -HUGE( LocalMaxF ) 
+    LocalAveF = 0.0_dp
     DoingCohorts = .FALSE.
+    LocalElementCount = 0
     ElementCount = 0
-
     
 100 DO t=FirstElem, LastElem
       
@@ -114,7 +126,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
       m = GetElementCode(Element)
 
       IF(.NOT. DoingCohorts ) THEN
-        ElementCount(m) = ElementCount(m) + 1
+        LocalElementCount(m) = LocalElementCount(m) + 1
       END IF
               
       DO OperNo = 1,3 
@@ -132,16 +144,34 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
         END SELECT
         
         IF( .NOT. DoingCohorts ) THEN        
-          MinF( OperNo ) = MIN( f, MinF( OperNo ) ) 
-          MaxF( OperNo ) = MAX( f, MaxF( OperNo ) )
-          AveF( OperNo ) = f + AveF( OperNo )         
+          LocalMinF( OperNo ) = MIN( f, LocalMinF( OperNo ) )
+          LocalMaxF( OperNo ) = MAX( f, LocalMaxF( OperNo ) )
+          LocalAveF( OperNo ) = f + LocalAveF( OperNo )          
         ELSE
-          i = CEILING( NoCohorts * (f-MinF(OperNo))/(MaxF(OperNo)-MinF(OperNo)) )
+          i = CEILING( NoCohorts * (f-LocalMinF(OperNo))/(LocalMaxF(OperNo)-LocalMinF(OperNo)) )
           i = MAX( 1, MIN( i, NoCohorts ) )
           CohortCount(i,OperNo) = CohortCount(i,OperNo) + 1
         END IF
       END DO
     END DO
+
+    LocalElmntCnt = LastElem - FirstElem + 1
+    
+    IF (IsParallel) THEN
+      CALL MPI_ALLREDUCE(LocalMinF,MinF,3,&
+           MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(LocalMaxF,MaxF,3,&
+           MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(LocalAveF,AveF,3,&
+           MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(LocalElmntCnt,ElmntCnt,1,&
+           MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+    ELSE
+      MinF = LocalMinf
+      MaxF = LocalMaxf
+      AveF = LocalAveF
+      ElmntCnt = LocalElmntCnt
+    END IF
 
     ! If we study cohorst we need a second sweep over the elements
     IF( DoCohorts .AND. .NOT. DoingCohorts ) THEN
@@ -150,7 +180,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF( LastElem > FirstElem ) THEN
-      AveF = AveF / ( LastElem - FirstElem + 1 ) 
+      AveF = AveF / ElmntCnt
     END IF
       
     
@@ -165,27 +195,39 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
       CASE(3)
         OperName = 'Element ratio'
       END SELECT
+      IF (ParEnv % MyPE == 0 .OR. .NOT.(IsParallel)) THEN
+        PRINT *,'Statistics for mesh operator: '//TRIM(OperName)//' on ',Str
+        PRINT *,'Minimum values '//TRIM(OperName)//': ',MinF(OperNo)
+        PRINT *,'Maximum values '//TRIM(OperName)//': ',MaxF(OperNo)
+        PRINT *,'Average values '//TRIM(OperName)//': ',AveF(OperNo)
+        
+        IF( OperNo == 1 ) THEN
+          PRINT *,'Ratio of element sizes: ',MaxF(OperNo) / MinF(OperNo)
+        END IF
+        
+        PRINT *,' '
 
-      PRINT *,'Statistics for mesh operator: '//TRIM(OperName)
-      PRINT *,'Minimum values: ',MinF(OperNo)
-      PRINT *,'Maximum values: ',MaxF(OperNo)
-      PRINT *,'Average values: ',AveF(OperNo)
-      
-      IF( OperNo == 1 ) THEN
-        PRINT *,'Ratio of element sizes: ',MaxF(OperNo) / MinF(OperNo)
-      END IF
-
-      IF( DoCohorts ) THEN        
-      PRINT *,'Histogram:'
-        dF = ( MaxF(OperNo) - MinF(OperNo) ) / NoCohorts
-        DO i=1,NoCohorts
-          IF( CohortCount(i,OperNo) > 0 ) THEN
-            PRINT *,i,': ',CohortCount(i,OperNo),' (',MinF(OperNo)+(i-1)*dF,' to ',MinF(OperNo)+i*dF,')'
-          END IF
-        END DO
+        IF( DoCohorts ) THEN        
+          PRINT *,'Histogram:'
+          dF = ( MaxF(OperNo) - MinF(OperNo) ) / NoCohorts
+          DO i=1,NoCohorts
+            IF( CohortCount(i,OperNo) > 0 ) THEN
+              PRINT *,i,': ',CohortCount(i,OperNo),' (',MinF(OperNo)+(i-1)*dF,' to ',MinF(OperNo)+i*dF,')'
+            END IF
+          END DO
+        END IF
       END IF
     END DO
-    
+
+    ! Warning/Stopping in case of Minf falling below threshold
+    IF (ApplyWarn .AND. (MinF(1) .LE. WarnSize) .AND. (ParEnv % MyPE == 0 .OR. .NOT.(IsParallel))) THEN
+      WRITE(Message,*) 'Minimum Element size ', Minf(1),' below given threshold', WarnSize
+      IF (WarnFatal) THEN        
+        CALL FATAL('ElementStats',Message)
+      ELSE
+        CALL WARN('ElementStats',Message)
+      END IF
+    END IF
   END DO
 
   CALL Info('ElementStats','------------------------------',Level=6)
@@ -320,7 +362,7 @@ CONTAINS
       EdgePairs(1:2*NoEdgePairs) = (/1,4,7,8,2,5,8,9,3,6,9,7/)
       
     CASE(8) ! hexas
-      EdgePairs = 12
+      NoEdgePairs = 12
       EdgePairs(1:2*NoEdgePairs) = &
           (/1,3,2,4,5,7,6,8,1,5,9,10,2,6,10,11,3,7,11,12,4,8,12,9/)      
 

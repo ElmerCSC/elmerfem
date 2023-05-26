@@ -203,7 +203,7 @@ CONTAINS
 
     !------------------------------------------------------------------------------
     ! Numerical integration over element: Use the same quadrature which 
-    ! would be used for the curl-conforming elemenents
+    ! would be used for the curl-conforming elements
     !------------------------------------------------------------------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=.TRUE., &
          EdgeBasisDegree=ElementOrder)    

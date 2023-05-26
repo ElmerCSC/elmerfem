@@ -32,7 +32,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Output Intervals = 1
@@ -102,9 +102,9 @@ Solver 1
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
 
-! The index of master structure is assumed to "1" and the
-! other solver is defined here:
-  Shell Solver Index = Integer 2
+! Define the mass matrix to have a block structure so that
+! the coupling block of the mass matrix can be assembled:
+  Block System Mass Lumping = Logical False
 
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
@@ -112,10 +112,11 @@ Solver 1
 ! Use linear system scalings in the solution of block system: 
 !  Block Scaling = true
 
-! Define the solvers that build the block system:
+! Define the solvers that build the block system. The first entry in the list
+! refers to this solver section in order to define the (1,1)-block:
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot:
+! Call the assembly for the 2nd solver using the pre-solvers slot:
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
@@ -124,6 +125,8 @@ Solver 1
 ! We don't want to displace the mesh in this test since only the solid would
 ! be displaced, not the shell. 
   Displace Mesh = False
+
+  Damped Eigen System = Logical False
 End
 
 Solver 2
@@ -204,4 +207,4 @@ Boundary Condition 8
 End
 
 
-Solver 3:: Reference Norm = 1.30285601E+06
+Solver 3:: Reference Norm = 1.30341479E+06

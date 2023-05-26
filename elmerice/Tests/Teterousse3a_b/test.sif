@@ -8,7 +8,7 @@
 ! Updated January 2014: comment Solver 5 (top freesurface)
 !    because of implementation problems when using 2 of
 !    the same solvers without recompiling one of them
-! Updated Septembre 2020 to make it faster and cleanning
+! Updated Septembre 2020 to make it faster and cleaning
 
 check keywords warn
 echo on
@@ -345,5 +345,5 @@ Boundary Condition 3
 End
 
 
-Solver 3 :: Reference Norm = Real 2.29810161E-02 
+Solver 3 :: Reference Norm = Real 2.08501523E-02
 Solver 3 :: Reference Norm Tolerance = Real 1E-06

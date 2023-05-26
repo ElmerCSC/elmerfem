@@ -5,7 +5,7 @@
 ! This is derived from a cononical benchmark test with the 
 ! simplest 3D rectangular structure. 
 !
-! This case is partitoned exactly to four cubes. The number 
+! This case is partitioned exactly to four cubes. The number 
 ! of partitions can not be freely chosen here.
 !------------------------------------------------------------
 

@@ -257,50 +257,44 @@ void ObjectBrowser::focusChangedSlot(QWidget *old, QWidget *now) {
 }
 
 void ObjectBrowser::treeItemClickedSlot(QTreeWidgetItem *item, int column) {
-  /*  Moved to treeItemDoubleClickedSlot(QTreeWidgetItem *item, int column)
-    MainWindow* mainwindow = (MainWindow*) mainWindow;
-    if(item == geometryParentTreeItem) return;
-
-    if(item == setupParentTreeItem){
-      mainwindow->modelSetupSlot();
-      return;
+  MainWindow* mainwindow = (MainWindow*) mainWindow;
+ 
+  // clicking [Add...] button
+  if (item == equationParentTreeItem) {
+    if (column == 1) {
+      mainwindow->addEquationSlot();
+      addEquationSlot();
     }
-    if(item == equationParentTreeItem){
-          if(column == 1){
-                  mainwindow->addEquationSlot();
-                  addEquationSlot();
-          }
-          return;
+    return;
+  }
+  if (item == materialParentTreeItem) {
+    if (column == 1) {
+      mainwindow->addMaterialSlot();
+      addMaterialSlot();
     }
-    if(item == materialParentTreeItem){
-          if(column == 1){
-                  mainwindow->addMaterialSlot();
-                  addMaterialSlot();
-          }
-          return;
+    return;
+  }
+  if (item == bodyForceParentTreeItem) {
+    if (column == 1) {
+      mainwindow->addBodyForceSlot();
+      addBodyForceSlot();
     }
-    if(item == bodyForceParentTreeItem){
-          if(column == 1){
-                  mainwindow->addBodyForceSlot();
-                  addBodyForceSlot();
-          }
-          return;
+    return;
+  }
+  if (item == initialConditionParentTreeItem) {
+    if (column == 1) {
+      mainwindow->addInitialConditionSlot();
+      addInitialConditionSlot();
     }
-    if(item == initialConditionParentTreeItem){
-          if(column == 1){
-                  mainwindow->addInitialConditionSlot();
-                  addInitialConditionSlot();
-          }
-          return;
+    return;
+  }
+  if (item == boundaryConditionParentTreeItem) {
+    if (column == 1) {
+      mainwindow->addBoundaryConditionSlot();
+      addBoundaryConditionSlot();
     }
-    if(item == boundaryConditionParentTreeItem){
-          if(column == 1){
-                  mainwindow->addBoundaryConditionSlot();
-                  addBoundaryConditionSlot();
-          }
-          return;
-    }
-  */
+    return;
+  }
 }
 
 void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
@@ -529,48 +523,6 @@ void ObjectBrowser::treeItemDoubleClickedSlot(QTreeWidgetItem *item,
     snap(pe);
     pe->show();
     pe->raise();
-    return;
-  }
-
-  // double clicking [Add...] button
-  if (item == equationParentTreeItem) {
-    if (column == 1) {
-      mainwindow->addEquationSlot();
-      addEquationSlot();
-      tree->collapseItem(equationParentTreeItem);
-    }
-    return;
-  }
-  if (item == materialParentTreeItem) {
-    if (column == 1) {
-      mainwindow->addMaterialSlot();
-      addMaterialSlot();
-      tree->collapseItem(materialParentTreeItem);
-    }
-    return;
-  }
-  if (item == bodyForceParentTreeItem) {
-    if (column == 1) {
-      mainwindow->addBodyForceSlot();
-      addBodyForceSlot();
-      tree->collapseItem(bodyForceParentTreeItem);
-    }
-    return;
-  }
-  if (item == initialConditionParentTreeItem) {
-    if (column == 1) {
-      mainwindow->addInitialConditionSlot();
-      addInitialConditionSlot();
-      tree->collapseItem(initialConditionParentTreeItem);
-    }
-    return;
-  }
-  if (item == boundaryConditionParentTreeItem) {
-    if (column == 1) {
-      mainwindow->addBoundaryConditionSlot();
-      addBoundaryConditionSlot();
-      tree->collapseItem(boundaryConditionParentTreeItem);
-    }
     return;
   }
 }
@@ -926,6 +878,10 @@ void ObjectBrowser::loadProjectSlot() {
 
   tree->resizeColumnToContents(0);
   tree->resizeColumnToContents(1);
+  
+  /* Call rebuildGLLists() to avoid a problem of 3D surface mesh not shown
+  correctly when project loading (typically, TemperatureGeneric sample) */
+  mainwindow->rebuildGLLists();
 }
 
 void ObjectBrowser::saveProjectSlot() {
@@ -978,7 +934,7 @@ void ObjectBrowser::treeItemExpandedSlot(
     updateBodyProperties();
     for (int i = 0; i < bodyPropertyParentTreeItem->childCount(); i++)
       bodyPropertyParentTreeItem->child(i)->setExpanded(true);
-    updateBoundaryProperties(); // This was added to avoid crushing when chosing
+    updateBoundaryProperties(); // This was added to avoid crushing when choosing
                                 // body property just after loading 3D mesh
                                 // without expanding boundary condition parent
                                 // item.
@@ -1418,7 +1374,9 @@ int ObjectBrowser::boundaryListToBodyIndex(list_t *l) {
       mainwindow->glWidget->currentlySelectedBody = found;
       ret = found;
       // cout << "*****boundary found: " << found << endl;
-    }
+    }else{
+	  ret = mainwindow->glWidget->mostVisibleBody(MAX_BULK_INDEX, tmp1);
+	}
     delete[] tmp1;
     delete[] tmp2;
   }

@@ -47,7 +47,8 @@ MODULE MeshPartition
 
   USE Types
   USE MeshUtils
-
+  USE ClusteringMethods
+  
 #ifdef HAVE_ZOLTAN
   USE Zoltan
 #endif
@@ -80,7 +81,8 @@ CONTAINS
   !> info in Mesh % Repartition (defined on elements)
   !> Dual-graph (element connectivity) is determined based on shared faces(3D)/edges(2D)
   !-------------------------------------------------------------------------------------
-  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand )
+  SUBROUTINE Zoltan_Interface( Model, Mesh, SerialMode, NoPartitions, PartitionCand, &
+                                StartImbalanceTol, TolChange, MinElems )
 
     USE MeshUtils
 
@@ -93,23 +95,26 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, OPTIONAL :: SerialMode
-    INTEGER, OPTIONAL :: NoPartitions 
+    INTEGER, OPTIONAL :: NoPartitions, MinElems
     LOGICAL, POINTER, OPTIONAL :: PartitionCand(:)
+    REAL(KIND=dp), OPTIONAL :: StartImbalanceTol, TolChange
     !------------------------
 
 #ifdef HAVE_ZOLTAN
     TYPE(Element_t), POINTER :: Element
     TYPE(Graph_t) :: LocalGraph
-    REAL(KIND=dp) :: t1,t2
+    REAL(KIND=dp) :: t1,t2, ImbalanceTol, ZTolChange
     INTEGER :: i,j,k,l,m,n,ierr,NNodes,NBulk,Ngraph,counter,DIM,&
-         max_elemno,NoPart
+         max_elemno,NoPart, ZMinElems
     INTEGER, ALLOCATABLE :: ElemAdj(:), ElemStart(:), ElemAdjProc(:), ParElemAdj(:), ParElemStart(:),&
          ParElemIdx(:),ParElemAdjProc(:),sharecount(:),&
          ParElemMap(:)
     INTEGER, ALLOCATABLE :: PartitionPerm(:), InvPerm(:)
-    LOGICAL :: UsePerm
+    LOGICAL :: UsePerm, Success, GotParMetis, DistributedMesh
+    LOGICAL, ALLOCATABLE :: PartSuccess(:), PartGotNodes(:)
     
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Zoltan_Interface"
+    CHARACTER(MAX_NAME_LEN) :: ImbTolStr
+    CHARACTER(*), PARAMETER :: FuncName="Zoltan_Interface"
 
     !Zoltan things
     TYPE(Zoltan_Struct), POINTER :: zz_obj
@@ -117,7 +122,7 @@ CONTAINS
     INTEGER(Zoltan_INT),DIMENSION(:), POINTER :: importGlobalGids, importLocalGids, importProcs, &
          importToPart,exportGlobalGids,exportLocalGids, exportProcs, exportToPart
     REAL(Zoltan_FLOAT) :: version
-    LOGICAL :: changes,Debug,Serial,Found
+    LOGICAL :: changes,Debug=.FALSE.,Serial,Found
 
     TYPE ElemTable_t
        INTEGER :: counter=0
@@ -128,8 +133,34 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: PartParams
     TYPE(ValueListEntry_t), POINTER :: ptr
     INTEGER :: ncopy
- 
-    
+
+#ifdef HAVE_PARMETIS
+    GotParMetis = .TRUE.
+#else
+    GotParMetis = .FALSE.
+#endif
+
+    IF(PRESENT(StartImbalanceTol)) THEN
+      ImbalanceTol = StartImbalanceTol
+    ELSE
+      CALL Info(FuncName, 'No imbalance tolerance given so starting with 1.1 (10%)')
+      ImbalanceTol = 1.1_dp
+    END IF
+
+    IF(PRESENT(TolChange)) THEN
+      ZTolChange = TolChange
+    ELSE
+      CALL Info(FuncName, 'No imbalance tolerance change given so using a 0.02 reduction')
+      ZTolChange = 0.02_dp
+    END IF
+
+    IF(PRESENT(MinElems)) THEN
+      ZMinElems = MinElems
+    ELSE
+      CALL Info(FuncName, 'No min elements required for every partition so setting to 0')
+      ZMinElems = 0
+    END IF
+
     CALL Info(FuncName,'Calling Zoltan for mesh partitioning',Level=10)
     PartParams => Model % Simulation
 
@@ -140,7 +171,7 @@ CONTAINS
       IF(.NOT. Found) NoPart = ParEnv % PEs
     END IF
 
-    CALL Info(FuncName,'Partitioning with Zoltan to '//TRIM(I2S(NoPart))//' partitions',Level=6)
+    CALL Info(FuncName,'Partitioning with Zoltan to '//I2S(NoPart)//' partitions',Level=6)
     
     IF( PRESENT( SerialMode ) ) THEN
       Serial = SerialMode
@@ -161,12 +192,26 @@ CONTAINS
     Ngraph = Nbulk
     DIM = CoordinateSystemDimension()
 
+    IF (.NOT. Serial) THEN
+      ALLOCATE(PartGotNodes(ParEnv % PEs))
+      CALL MPI_ALLGATHER(NNodes > 0, 1, MPI_LOGICAL, PartGotNodes, &
+          1, MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+      DistributedMesh = ALL(PartGotNodes)
+    ELSE
+      DistributedMesh = .FALSE.
+    END IF
+
+10  CONTINUE
+
     ! If we have a masked partitioning then make a reordering of the bulk elements
     UsePerm = PRESENT( PartitionCand ) 
     IF( UsePerm ) THEN
-      IF( ALL( PartitionCand(1:Nbulk) ) ) THEN
+      n = COUNT( PartitionCand(1:Nbulk) )
+      IF( n == Nbulk ) THEN
         UsePerm = .FALSE.
-        CALL Info(FuncName,'Candidate list is full, no need for permutation',Level=12)
+        CALL Info(FuncName,'Candidate list is full, no need for permutation',Level=10)
+      ELSE
+        CALL Info(FuncName,'Candidate list number of elements: '//I2S(n),Level=10)      
       END IF
     END IF
     
@@ -182,7 +227,7 @@ CONTAINS
         END IF
       END DO
       Ngraph = j
-      CALL Info(FuncName,'Number of active elements in partitioning:'//TRIM(I2S(Ngraph)),Level=8)
+      CALL Info(FuncName,'Number of active elements in partitioning:'//I2S(Ngraph),Level=8)
 
       ALLOCATE( InvPerm( nGraph ) )
       DO i=1,NBulk
@@ -206,24 +251,43 @@ CONTAINS
     END IF
 
     ! Set default values for keywords, if not given
-    CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
-    CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
-    CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
-    CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
-    CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
-    CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
-    CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+    IF(Debug) THEN
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
+    ELSE
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
+    END IF
+
+    IF(GotParMetis .AND. DistributedMesh) THEN
+      CALL Info(FuncName, 'Using ParMetis for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","parmetis")
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")
+      CALL ListAddNewString( PartParams,"zoltan: parmetis_method","adaptiverepart")
+    ELSE
+      CALL Info(FuncName, 'Not got ParMetis so using Zoltan phg for rebalancing')
+      CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
+      CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
+      CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: num_lid_entries","1")
+      CALL ListAddNewString( PartParams,"zoltan: obj_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
+      CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
+      CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+      IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    END IF
+
+    !CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
+    WRITE(ImbTolStr, '(F20.10)') ImbalanceTol
+    CALL ListAddNewString( PartParams,"zoltan: imbalance_tol",TRIM(ImbTolStr))
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
       CALL ListAddNewString( PartParams,"zoltan: return_lists","export part")    
       CALL ListAddNewString( PartParams,"zoltan: lb_approach","partition")  
-      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
+      CALL ListAddNewString( PartParams,"zoltan: num_global_parts",I2S(NoPart))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
@@ -255,7 +319,7 @@ CONTAINS
       ptr => ptr % Next
     END DO
     IF( ncopy > 0 ) THEN
-      CALL Info(FuncName,'Succefully set '//TRIM(I2S(ncopy))//' keywords in zoltan library',Level=8)
+      CALL Info(FuncName,'Succefully set '//I2S(ncopy)//' keywords in zoltan library',Level=8)
     END IF
         
     !Callback functions to query number of elements and the element data
@@ -286,7 +350,8 @@ CONTAINS
 
     IF( Serial ) THEN          
       IF( UsePerm ) THEN
-        CALL LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM, PartitionPerm )
+        CALL LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM, &
+            PartitionPerm )
       ELSE
         CALL LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM )
       END IF
@@ -302,6 +367,15 @@ CONTAINS
          numImport, importGlobalGids, importLocalGids, importProcs, importToPart, &
          numExport, exportGlobalGids, exportLocalGids, exportProcs, exportToPart)
     IF(zierr /= 0) CALL Fatal(FuncName,"Error computing partitioning in Zoltan")
+
+    ! need to check all partitions are given elements
+    Success = .TRUE.
+    IF(NBulk - numExport + numImport <= ZMinElems) THEN
+      WRITE(Message, '(i0,A)') ParEnv % MyPE,' Part not given any elements'
+      CALL WARN(FuncName, Message)
+      Success = .FALSE.
+    END IF
+
         
     IF(ASSOCIATED(Mesh % Repartition)) THEN
       IF( SIZE( Mesh % Repartition ) < NBulk ) DEALLOCATE(Mesh % Repartition)
@@ -327,7 +401,7 @@ CONTAINS
       i = MINVAL( exportLocalGids )
       j = MAXVAL( exportLocalGids )
       IF( i <= 0 .OR. j > NGraph ) THEN
-        CALL Fatal(FuncName,'Bad local ID range: '//TRIM(I2S(i))//' to '//TRIM(I2S(j)))
+        CALL Fatal(FuncName,'Bad local ID range: '//I2S(i)//' to '//I2S(j))
       END IF
     END IF
       
@@ -340,6 +414,22 @@ CONTAINS
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportToPart(1:numExport) + 1
     ELSE
       Mesh % Repartition(exportLocalGids(1:numExport)) = exportProcs(1:numExport) + 1
+    END IF
+
+    ! check the success of the rebalancing. Does every partition have nodes?
+    ! if not retry with stricter imbalance tolerance
+    IF(.NOT. Serial) THEN
+      ALLOCATE(PartSuccess(ParEnv % PEs))
+      CALL MPI_ALLGATHER(Success, 1, MPI_LOGICAL, PartSuccess, 1, MPI_LOGICAL,&
+          ELMER_COMM_WORLD, ierr)
+      IF(ANY(.NOT. PartSuccess)) THEN
+        ImbalanceTol = ImbalanceTol - ZTolChange
+        WRITE(Message, '(A,F10.2)') 'Retrying rebalancing using stricter imbalance tolerance: ', ImbalanceTol
+        CALL Info(FuncName, Message)
+        IF(ImbalanceTol < 1.0) CALL FATAL(FuncName, 'Unable to rebalance successfully')
+        DEALLOCATE(ElemAdj, ElemAdjProc, ElemStart, PartSuccess)
+        GOTO 10
+      END IF
     END IF
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
@@ -477,7 +567,7 @@ CONTAINS
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="GlobalElemAdjacency"
+    CHARACTER(*), PARAMETER :: FuncName="GlobalElemAdjacency"
     TYPE FaceShare_t
        INTEGER :: count
        INTEGER, ALLOCATABLE :: GFaceIDX(:), GParIDX(:),GParLIDX(:)
@@ -485,7 +575,7 @@ CONTAINS
     TYPE(FaceShare_t), ALLOCATABLE :: SendFaces(:),RecvFaces(:)
 
     NBulk = Mesh % NumberOfBulkElements
-
+    
     !Find and globally number mesh faces
     IF(DIM == 3) THEN
       CALL FindMeshFaces3D(Mesh)
@@ -495,6 +585,7 @@ CONTAINS
       MFaceIF => Mesh % ParallelInfo % FaceInterface
       MFaceIFList => Mesh % ParallelInfo % FaceNeighbourList
       NFaces = Mesh % NumberOfFaces
+      
     ELSEIF(DIM == 2) THEN
       CALL FindMeshEdges2D(Mesh)
       CALL SParEdgeNumbering(Mesh)
@@ -695,41 +786,76 @@ CONTAINS
     INTEGER :: DIM
     INTEGER, OPTIONAL, ALLOCATABLE :: PartitionPerm(:)
     !-------------------------------------
-    TYPE(Element_t), POINTER :: MFacePtr(:), Element
+    TYPE(Element_t), POINTER :: MFacePtr(:), Element, Left, Right
     INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,&
-         NBulk,Ngraph,NtotCon,NFaces,Sweep,NIFFaces
+         NBulk,Ngraph,NtotCon,NFaces,Sweep,NIFFaces,condim
     INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), status(:)
     INTEGER, POINTER :: ElFaceIdx(:)
     TYPE(NeighbourList_t), POINTER :: MFaceIFList(:)
     LOGICAL, POINTER :: MFaceIF(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="LocalElemAdjacency"
+    CHARACTER(*), PARAMETER :: FuncName="LocalElemAdjacency"
 
     NBulk = Mesh % NumberOfBulkElements
     IF( NBulk == 0 ) RETURN
     
     !Find and globally number mesh faces
-    IF(DIM == 3) THEN
-      CALL FindMeshFaces3D(Mesh)
-      CALL FindMeshEdges3D(Mesh)
-      MFacePtr => Mesh % Faces
-      NFaces = Mesh % NumberOfFaces
-    ELSEIF(DIM == 2) THEN
-      CALL FindMeshEdges2D(Mesh)
-      MFacePtr => Mesh % Edges
-      NFaces = Mesh % NumberOfEdges
+!   IF( .TRUE.) THEN
+!     CALL FindMeshEdges(Mesh)
+!   ELSE IF(DIM == 3) THEN
+!     CALL FindMeshFaces3D(Mesh)
+!     CALL FindMeshEdges2D(Mesh)
+!   ELSE IF(DIM == 2 ) THEN
+!     CALL FindMeshEdges2D(Mesh)
+!   ELSE
+!     CALL Fatal(FuncName,"Not implemented in 1D")
+!   END IF
+
+    ! Determine the dimension used for connections
+    IF( PRESENT( PartitionPerm ) ) THEN
+      condim = 2
+      DO i=1,NBulk
+        IF(PartitionPerm(i) == 0) CYCLE
+        Element => Mesh % Elements(i)
+        IF( Element % TYPE % ElementCode > 500 ) THEN
+          condim = 3
+          EXIT
+        END IF
+      END DO
+
+      IF (condim==2) THEN
+        CALL FindMeshEdges2D(Mesh, PartitionPerm/=0)
+      ELSE
+        CALL FindMeshFaces3D(Mesh, PartitionPerm/=0)
+      END IF
     ELSE
-      CALL Fatal(FuncName,"Not implemented in 1D")
+      condim = dim
+      CALL FindMeshEdges(Mesh)
     END IF
 
+    CALL Info(FuncName,'Dimension for connectivity matrix: '//I2S(condim))
+    
+    IF( condim == 3 ) THEN
+      MFacePtr => Mesh % Faces
+      NFaces = Mesh % NumberOfFaces
+    ELSE
+      MFacePtr => Mesh % Edges
+      NFaces = Mesh % NumberOfEdges
+    END IF
+    
     max_elfaces = 0
     DO i=1,NBulk
       Element => Mesh % Elements(i)
-      IF( dim == 3 ) THEN
+      IF( PRESENT( PartitionPerm) ) THEN
+        IF( PartitionPerm(i) == 0 ) CYCLE
+      END IF
+      IF( condim == 3 ) THEN
         max_elfaces = MAX(Element % TYPE % NumberOfFaces, max_elfaces)
       ELSE        
         max_elfaces = MAX(Element % TYPE % NumberOfEdges, max_elfaces)
       END IF
     END DO
+    CALL Info(FuncName,'Maximum connectivity count in graph: '&
+        //I2S(max_elfaces),Level=12)
 
     ! Graph will be smaller if not bulk elements will be included in partitioning
     IF( PRESENT( PartitionPerm ) ) THEN
@@ -739,7 +865,7 @@ CONTAINS
     END IF
             
     CALL Info(FuncName,'Total number of rows in graph: '&
-        //TRIM(I2S(Ngraph)),Level=12)
+        //I2S(Ngraph),Level=12)
     
     ALLOCATE(ElemConn(max_elfaces,Ngraph), &
         ElemConnPart(max_elfaces,Ngraph), &
@@ -748,23 +874,29 @@ CONTAINS
     ElemConnPart = 0
     NElConn = 0
 
-    !Compute local adjacency and gather interface faces
+    ! Compute local adjacency and gather interface faces
+
     DO i=1,NFaces
       !Populate the local graph using non-interface faces
-      IF(.NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Left) .OR. &
-          .NOT. ASSOCIATED(MFacePtr(i) % BoundaryInfo % Right)) CYCLE
-      
-      el1 = MFacePtr(i) % BoundaryInfo % Left % ElementIndex
-      el2 = MFacePtr(i) % BoundaryInfo % Right % ElementIndex
+      Left => MFacePtr(i) % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(Left) ) CYCLE
+
+      Right => MFacePtr(i) % BoundaryInfo % Right
+      IF(.NOT. ASSOCIATED(Right)) CYCLE
+
+      el1 = Left % ElementIndex
+      el2 = Right % ElementIndex
 
       ! If we do not make partitioning with all elements then skip the ones
       ! that are not candidantes
       IF( PRESENT( PartitionPerm ) ) THEN
+        IF( el1 > SIZE( PartitionPerm ) ) CYCLE
+        IF( el2 > SIZE( PartitionPerm ) ) CYCLE
         el1 = PartitionPerm(el1)
         el2 = PartitionPerm(el2)
         IF( el1 == 0 .OR. el2 == 0 ) CYCLE
       END IF
-      
+
       NElConn(el1) = NElConn(el1) + 1
       ElemConn(NElConn(el1),el1) = el2
       ElemConnPart(NElConn(el1),el1) = ParEnv % MyPE
@@ -773,13 +905,15 @@ CONTAINS
       ElemConn(NElConn(el2),el2) = el1
       ElemConnPart(NElConn(el2),el2) = Parenv % MyPE
     END DO
+
+    i = COUNT(NElConn == 0 ) 
     
-    IF(ANY(NElConn == 0)) CALL Warn(FuncName, 'Disconnected bulk element.')
+    IF(i>0) CALL Warn(FuncName, 'Number of disconnected bulk element: '//I2S(i))
     
     ! Put the data into CRS format
     NtotCon = SUM(NElConn)
     CALL Info(FuncName,'Total number of connections in graph: '&
-        //TRIM(I2S(NtotCon)),Level=10)
+        //I2S(NtotCon),Level=10)
     WRITE(Message,'(A,F6.2)') 'Average number of connections in graph:',&
         1.0_dp * NtotCon / Ngraph
     CALL Info(FuncName,Message,Level=8)
@@ -830,7 +964,7 @@ CONTAINS
     LOGICAL :: Debug
     LOGICAL, ALLOCATABLE :: IsNeighbour(:), keep_mask(:)
     LOGICAL, POINTER :: SharedNode(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="MeshParallelDualGraph"
+    CHARACTER(*), PARAMETER :: FuncName="MeshParallelDualGraph"
 
     TYPE PartShareList_t
        INTEGER, ALLOCATABLE :: GNodeNums(:), NodeNums(:), GElemNums(:),&
@@ -855,7 +989,7 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     NNodes = Mesh % NumberOfNodes
 
-    SharedNode => Mesh % ParallelInfo % Interface
+    SharedNode => Mesh % ParallelInfo % NodeInterface
     ALLOCATE(IsNeighbour(ParEnv % PEs),&
          NodeNeighs(NNodes*2),&
          NNcount(ParEnv % PEs)) !<- likely too big
@@ -1585,14 +1719,16 @@ CONTAINS
   !Cleanly removes elements & nodes from a mesh based on mask
   !Any element containing a removed node (RmNode) will be deleted
   !May optionally specify which elements to remove
-  !Not currently used
+  !If only RmElem is provided, no nodes are removed 
+  !(should this be changed? i.e. detect orphaned nodes?)
   SUBROUTINE CutMesh(Mesh, RmNode, RmElem)
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: RmNode(:)
+    LOGICAL, OPTIONAL :: RmNode(:)
     LOGICAL, OPTIONAL, TARGET :: RmElem(:)
     !--------------------------------
     TYPE(Element_t), POINTER :: Element, Work_Elements(:)
     TYPE(Nodes_t), POINTER :: Nodes
+    TYPE(BoundaryInfo_t), POINTER :: bInfo
     TYPE(NeighbourList_t), POINTER :: work_neighlist(:)
     REAL(KIND=dp), ALLOCATABLE :: work_xyz(:,:)
     REAL(KIND=dp), POINTER CONTIG :: work_x(:),work_y(:), work_z(:)
@@ -1601,10 +1737,13 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Nodeno_map(:),EIdx_map(:)
     INTEGER, POINTER :: NodeIndexes(:), work_pInt(:)
     LOGICAL, POINTER :: RmElement(:),work_logical(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CutMesh"
+    CHARACTER(*), PARAMETER :: FuncName="CutMesh"
     NNodes = Mesh % NumberOfNodes
     NBulk = Mesh % NumberOfBulkElements
     NBdry = Mesh % NumberOfBoundaryElements
+
+    IF(.NOT. (PRESENT(RmElem) .OR. PRESENT(RmNode))) &
+         CALL Fatal(FuncName,"Need to provide at least one of RmElem, RmNode!")
 
     IF(PRESENT(RmElem)) THEN
       RmElement => RmElem
@@ -1635,99 +1774,101 @@ CONTAINS
       END DO
     END IF
 
-    !Removing nodes implies shifting element nodeindexes
-    !Map pre -> post deletion node nums
-    ALLOCATE(Nodeno_map(NNodes))
-    Nodeno_map = 0
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      Nodeno_map(i) = counter
-    END DO
-
-    !Update the element nodeindexes
-    DO i=1,NBulk+NBdry
-      Element => Mesh % Elements(i)
-      IF(RmElement(i)) CYCLE
-      DO j=1,Element % TYPE % NumberOfNodes
-        Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
-        IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
-             "Programming error: mapped nodeno = 0")
-      END DO
-    END DO
-
-    !Clear out deleted nodes
-    Nodes => Mesh % Nodes
-    NewNNodes = COUNT(.NOT. RmNode)
-
-    ALLOCATE(work_x(NewNNodes),&
-         work_y(NewNNodes),&
-         work_z(NewNNodes))
-
-    counter = 0
-    DO i=1,NNodes
-      IF(RmNode(i)) CYCLE
-      counter = counter + 1
-      work_x(counter) = Nodes % x(i)
-      work_y(counter) = Nodes % y(i)
-      work_z(counter) = Nodes % z(i)
-    END DO
-
-    DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-    Nodes % x => work_x
-    Nodes % y => work_y
-    Nodes % z => work_z
-
-    Nodes % NumberOfNodes = NewNNodes
-    Mesh % NumberOfNodes = NewNNodes
-
-    !Clear out ParallelInfo
-    IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
-      ALLOCATE(work_pInt(NewNNodes))
+    IF(PRESENT(RmNode)) THEN
+      !Removing nodes implies shifting element nodeindexes
+      !Map pre -> post deletion node nums
+      ALLOCATE(Nodeno_map(NNodes))
+      Nodeno_map = 0
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        Nodeno_map(i) = counter
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
-      Mesh % ParallelInfo % GlobalDOFs => work_pInt
-      work_pInt => NULL()
-    END IF
 
-    !Get rid of NeighbourList
-    IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
-      ALLOCATE(work_neighlist(NewNNodes))
-      DO i=1,NNodes
-        IF(.NOT. RmNode(i)) CYCLE
-        IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-             DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+      !Update the element nodeindexes
+      DO i=1,NBulk+NBdry
+        Element => Mesh % Elements(i)
+        IF(RmElement(i)) CYCLE
+        DO j=1,Element % TYPE % NumberOfNodes
+          Element % NodeIndexes(j) = Nodeno_map(Element % NodeIndexes(j))
+          IF(Element % NodeIndexes(j) == 0) CALL Fatal(FuncName, &
+              "Programming error: mapped nodeno = 0")
+        END DO
       END DO
+
+      !Clear out deleted nodes
+      Nodes => Mesh % Nodes
+      NewNNodes = COUNT(.NOT. RmNode)
+
+      ALLOCATE(work_x(NewNNodes),&
+          work_y(NewNNodes),&
+          work_z(NewNNodes))
 
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        work_x(counter) = Nodes % x(i)
+        work_y(counter) = Nodes % y(i)
+        work_z(counter) = Nodes % z(i)
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
-      Mesh % ParallelInfo % NeighbourList => work_neighlist
-      work_neighlist => NULL()
-    END IF
 
-    !Get rid of ParallelInfo % INTERFACE
-    IF(ASSOCIATED(Mesh % ParallelInfo % INTERFACE)) THEN
-      ALLOCATE(work_logical(NewNNodes))
-      counter = 0
-      DO i=1,NNodes
-        IF(RmNode(i)) CYCLE
-        counter = counter + 1
-        work_logical(counter) = Mesh % ParallelInfo % INTERFACE(i)
-      END DO
-      DEALLOCATE(Mesh % ParallelInfo % INTERFACE)
-      Mesh % ParallelInfo % INTERFACE => work_logical
-      work_logical => NULL()
+      DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
+      Nodes % x => work_x
+      Nodes % y => work_y
+      Nodes % z => work_z
+
+      Nodes % NumberOfNodes = NewNNodes
+      Mesh % NumberOfNodes = NewNNodes
+
+      !Clear out ParallelInfo
+      IF(ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)) THEN
+        ALLOCATE(work_pInt(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_pInt(counter) = Mesh % ParallelInfo % GlobalDOFs(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % GlobalDOFs)
+        Mesh % ParallelInfo % GlobalDOFs => work_pInt
+        work_pInt => NULL()
+      END IF
+
+      !Get rid of NeighbourList
+      IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList)) THEN
+        ALLOCATE(work_neighlist(NewNNodes))
+        DO i=1,NNodes
+          IF(.NOT. RmNode(i)) CYCLE
+          IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+              DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+        END DO
+
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_neighlist(counter) % Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+        Mesh % ParallelInfo % NeighbourList => work_neighlist
+        work_neighlist => NULL()
+      END IF
+
+      !Get rid of ParallelInfo % NodeInterface
+      IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
+        ALLOCATE(work_logical(NewNNodes))
+        counter = 0
+        DO i=1,NNodes
+          IF(RmNode(i)) CYCLE
+          counter = counter + 1
+          work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
+        END DO
+        DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
+        Mesh % ParallelInfo % NodeInterface => work_logical
+        work_logical => NULL()
+      END IF
     END IF
 
     !TODO - Mesh % Edges - see ReleaseMeshEdgeTables
@@ -1767,18 +1908,16 @@ CONTAINS
       IF ( Mesh % Elements(i) % Copy ) CYCLE
 
       IF ( i > NBulk ) THEN
-        IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-          IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
-            IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                 GebhardtFactors % Elements ) ) THEN
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Elements )
-              DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                   GebhardtFactors % Factors )
+        bInfo => Mesh % Elements(i) % BoundaryInfo
+        IF ( ASSOCIATED(bInfo) ) THEN
+          IF (ASSOCIATED(bInfo % RadiationFactors)) THEN
+            IF ( ALLOCATED(bInfo % RadiationFactors % Elements ) ) THEN
+              DEALLOCATE(bInfo % RadiationFactors % Factors)
+              DEALLOCATE(bInfo % RadiationFactors % Elements)
             END IF
-            DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+            DEALLOCATE(bInfo % RadiationFactors )
           END IF
-          DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+          DEALLOCATE(bInfo)
         END IF
       END IF
 
@@ -1900,7 +2039,7 @@ CONTAINS
 
       n = MAXVAL( NewPart )
       IF( n > NoPartitions ) THEN
-        CALL Fatal(FuncName,'Partition number exceeds process number: '//TRIM(I2S(n)))
+        CALL Fatal(FuncName,'Partition number exceeds process number: '//I2S(n))
       END IF
     END IF
 
@@ -1922,7 +2061,7 @@ CONTAINS
          GlobalToLocal, newnodes, newnbulk, newnbdry, minind, maxind)
 
     NewMesh => AllocateMesh( newnbulk, newnbdry, newnodes, InitParallel = .TRUE.)    
-    
+
     ! 4) Finally unpack and glue the pieces on an existing mesh
     CALL UnpackMeshPieces(Model, Mesh, NewMesh, NewPart, minind, &
          maxind, RecPack, ParallelMesh, GlobalToLocal, dim)
@@ -2291,7 +2430,7 @@ CONTAINS
               PPack % rcount = PPack % rcount + dim
               
               PPack % lcount = PPack % lcount + 1
-              PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % Interface(i)
+              PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % NodeInterface(i)
             END IF
           END DO
 
@@ -2321,11 +2460,11 @@ CONTAINS
     CALL Info('CommunicateMeshPieces','communicating mesh pieces in parallel',Level=6)
 
     ni = SUM( SentPack(1:NoPartitions) % icount )
-    CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//TRIM(I2S(ni)),Level=8)
+    CALL Info('CommunicateMeshPieces','Number of integer values to sent: '//I2S(ni),Level=8)
     nr = SUM( SentPack(1:NoPartitions) % rcount )
-    CALL Info('CommunicateMeshPieces','Number of real values to sent: '//TRIM(I2S(nr)),Level=8)
+    CALL Info('CommunicateMeshPieces','Number of real values to sent: '//I2S(nr),Level=8)
     nl = SUM( SentPack(1:NoPartitions) % lcount )
-    CALL Info('CommunicateMeshPieces','Number of logical values to sent: '//TRIM(I2S(nl)),Level=8)
+    CALL Info('CommunicateMeshPieces','Number of logical values to sent: '//I2S(nl),Level=8)
 
     n = NoPartitions
     ALLOCATE( RecPack( n ) )
@@ -2385,22 +2524,22 @@ CONTAINS
       DO i = 1, NoPartitions
         IF( i-1 == ParEnv % MyPe ) CYCLE
         IF( SentPack(i) % icount > 5 ) THEN
-          PRINT *,'Mesh send sizes: '//TRIM(I2S(ParEnv % Mype))//'-'//TRIM(I2S(i-1)), &
+          PRINT *,'Mesh send sizes: '//I2S(ParEnv % Mype)//'-'//I2S(i-1), &
               SentPack(i) % icount, SentPack(i) % rcount, SentPack(i) % lcount
         END IF
         IF( RecPack(i) % icount > 5 ) THEN       
-          PRINT *,'Mesh recv sizes: '//TRIM(I2S(ParEnv % Mype))//'-'//TRIM(I2S(i-1)), &
+          PRINT *,'Mesh recv sizes: '//I2S(ParEnv % Mype)//'-'//I2S(i-1), &
               RecPack(i) % icount, RecPack(i) % rcount, RecPack(i) % lcount      
         END IF
       END DO
     END IF
         
     n = SUM( RecPack(1:NoPartitions) % icount )
-    CALL Info('PackDataToSend','Number of integer values to receive: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of integer values to receive: '//I2S(n),Level=8)
     n = SUM( RecPack(1:NoPartitions) % rcount )
-    CALL Info('PackDataToSend','Number of real values to receive: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of real values to receive: '//I2S(n),Level=8)
     n = SUM( RecPack(1:NoPartitions) % lcount )
-    CALL Info('PackDataToSend','Number of logical values to receive: '//TRIM(I2S(n)),Level=8)
+    CALL Info('PackDataToSend','Number of logical values to receive: '//I2S(n),Level=8)
 
     ! Allocate data sizes for receiving data
     !----------------------------------------
@@ -2501,11 +2640,11 @@ CONTAINS
       END IF
     END DO
     CALL Info('LocalNumberingMeshPieces','Number of staying elements: '&
-         //TRIM(I2S(newnbulk+newnbdry)),Level=15)
+         //I2S(newnbulk+newnbdry),Level=15)
 
     ! Add the number of elements coming from different partitions
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
@@ -2520,7 +2659,7 @@ CONTAINS
     END DO
 
     CALL Info('LocalNumberingMeshPieces','Number of combined elements: '&
-         //TRIM(I2S(newnbulk+newnbdry)),Level=8)
+         //I2S(newnbulk+newnbdry),Level=8)
 
 
     ! Find the range of initial global indeces
@@ -2541,7 +2680,7 @@ CONTAINS
 
     ! also check the imported global indexes
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
       i1 = PPack % indpos + 1
@@ -2550,8 +2689,10 @@ CONTAINS
       maxind = MAX( maxind, MAXVAL( PPack % idata(i1:i2) ) )
     END DO
 
-    CALL Info('LocalNumberingMeshPieces','Global index range '&
-         //TRIM(I2S(minind))//' to '//TRIM(I2S(maxind)),Level=12)
+    IF(minind == 0) RETURN
+
+    !CALL Info('LocalNumberingMeshPieces','Global index range '&
+    !     //I2S(minind)//' to '//I2S(maxind),Level=12)
 
     ! Allocate the vector for local renumbering
     ALLOCATE( GlobalToLocal(minind:maxind), STAT=allocstat)
@@ -2626,7 +2767,7 @@ CONTAINS
       END IF
     END DO
     
-    CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//TRIM(I2S(newnodes)),Level=8)
+    CALL Info('LocalNumberingMeshPieces','Combined number of nodes: '//I2S(newnodes),Level=8)
 
   END SUBROUTINE LocalNumberingMeshPieces
 
@@ -2652,7 +2793,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
-    LOGICAL :: IsBulk, Found
+    LOGICAL :: IsBulk, Found, HaveParent
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
@@ -2761,7 +2902,7 @@ CONTAINS
       NULLIFY( Element % NodeIndexes )
       ALLOCATE( Element % NodeIndexes(n), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
-        CALL Fatal(Caller,'Cannot allocate '//TRIM(I2S(n))//' node indexes?')
+        CALL Fatal(Caller,'Cannot allocate '//I2S(n)//' node indexes?')
       END IF
 
       DO j=1,n
@@ -2778,12 +2919,12 @@ CONTAINS
 
     CALL Info(Caller,'Copying staying nodes',Level=20)
 
-    IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % INTERFACE ) ) THEN
-      ALLOCATE( NewMesh % ParallelInfo % INTERFACE( NewMesh % NumberOfNodes ), STAT = allocstat )
+    IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % NodeInterface ) ) THEN
+      ALLOCATE( NewMesh % ParallelInfo % NodeInterface( NewMesh % NumberOfNodes ), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal(Caller,'Cannot allocate partition interface?')
       END IF
-      NewMesh % ParallelInfo % Interface = .FALSE.
+      NewMesh % ParallelInfo % NodeInterface = .FALSE.
     END IF
 
     
@@ -2804,7 +2945,7 @@ CONTAINS
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
       IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
 
-      NewMesh % ParallelInfo % Interface(k) = Mesh % ParallelInfo % Interface(i)
+      NewMesh % ParallelInfo % NodeInterface(k) = Mesh % ParallelInfo % NodeInterface(i)
     END DO
 
 
@@ -2815,8 +2956,8 @@ CONTAINS
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
-      CALL Info(Caller,'Unpacking piece '//TRIM(I2S(part))//' with '&
-           //TRIM(I2S(PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements))//&
+      CALL Info(Caller,'Unpacking piece '//I2S(part)//' with '&
+           //I2S(PPack % NumberOfBulkElements + PPack % NumberOfBoundaryElements)//&
            ' elements',Level=20)
 
       ! The five values upfront are used for size info
@@ -2849,7 +2990,7 @@ CONTAINS
 
         Element % TYPE => GetElementType( elemcode )
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
-          CALL Fatal(Caller,'Could not get element code: '//TRIM(I2S(elemcode)))
+          CALL Fatal(Caller,'Could not get element code: '//I2S(elemcode))
         END IF
 
         n = Element % Type % NumberOfNodes
@@ -2882,16 +3023,18 @@ CONTAINS
           END IF
 
           !Check geom id is legal
-          IF(geom_id <= 0 .OR. geom_id > Model % NumberOfBCs) THEN
+          IF(geom_id < 0 .OR. geom_id > Model % NumberOfBCs) THEN
             PRINT *, ParEnv % MyPE,'Received element ',i,' from part: ',&
                  part,' with constraint: ',geom_id
             CALL Fatal(Caller, "Unexpected constraint on BC element")
           END IF
 
           Element % BoundaryInfo % Constraint = geom_id
-          Element % BodyId  = ListGetInteger( &
-             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
-
+          IF( geom_id > 0 ) THEN
+            Element % BodyId  = ListGetInteger( &
+                Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
+          END IF
+            
           ! These are the left and right boundary indexes that currently are not used at all!
           LeftParent(t) = PPack % idata(icount+4)
           RightParent(t) = PPack % idata(icount+5)
@@ -2929,18 +3072,18 @@ CONTAINS
 
       CALL Info(Caller,'Finished unpacking piece',Level=20)
       IF( icount /= PPack % indpos ) THEN
-        CALL Fatal(Caller,'Inconsistent icount value: '//TRIM(I2S(icount)))
+        CALL Fatal(Caller,'Inconsistent icount value: '//I2S(icount))
       END IF
     END DO
 
     IF( errcount > 0 ) THEN
-      CALL Fatal(Caller,'Encountered '//TRIM(I2S(errcount))//' indexing issues in elements')
+      CALL Fatal(Caller,'Encountered '//I2S(errcount)//' indexing issues in elements')
     END IF
       
     IF( minelem <= maxelem ) THEN
       ! First create global to local array for the elements 
       CALL Info(Caller,'Global element index range: '&
-          //TRIM(I2S(minelem))//' to '//TRIM(I2S(maxelem)),Level=8)
+          //I2S(minelem)//' to '//I2S(maxelem),Level=8)
       ALLOCATE( GlobalToLocalElem(minelem:maxelem))
       GlobalToLocalElem = 0
       DO i = 1, newnbulk
@@ -2951,30 +3094,47 @@ CONTAINS
           PRINT *,'j out of bounds:',ParEnv % MyPe, i, j
         END IF
       END DO
+
+      i = COUNT( GlobalToLocalElem == 0 )
+      j = SIZE(GlobalToLocal)
+      CALL Info(Caller,'Number of mapping indexes defined '//I2S(i)//&
+          ' out of '//I2S(j),Level=10)
       
       ! Then use the temporal vectors to repoint the left and right indexes to elements
       DO i = newnbulk+1, newnbulk + newnbdry
-        Element => NewMesh % Elements(i)
+        Element => NewMesh % Elements(i)        
+        HaveParent = .FALSE.
 
         j = LeftParent(i)
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
-          IF( k <= 0 .OR. k > newnbulk ) THEN
+          IF( k == 0 ) THEN
+            CONTINUE
+          ELSE IF( k < 0 .OR. k > newnbulk ) THEN
             errcount = errcount + 1
             PRINT *,'k left out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
           ELSE
+            HaveParent = .TRUE.
             Element % BoundaryInfo % Left => NewMesh % Elements(k)
           END IF
         END IF
         j = RightParent(i)
         IF( j >= minelem .AND. j <= maxelem ) THEN
           k = GlobalToLocalElem(j)
-          IF( k <= 0 .OR. k > newnbulk ) THEN
+          IF( k == 0 ) THEN
+            CONTINUE
+          ELSE IF( k <= 0 .OR. k > newnbulk ) THEN
             errcount = errcount + 1
             PRINT *,'k right out of bounds:',ParEnv % MyPe, i, j, k, newnbulk, minelem, maxelem
-          ELSE          
+          ELSE
+            HaveParent = .TRUE.
             Element % BoundaryInfo % Right => NewMesh % Elements(k)
           END IF
+        END IF
+
+        IF(.NOT. HaveParent ) THEN
+          errcount = errcount + 1
+          PRINT *,'No parent for boundary element:',ParEnv % MyPe, i, newnbulk, minelem, maxelem
         END IF
       END DO
       DEALLOCATE( GlobalToLocalElem ) 
@@ -3012,24 +3172,24 @@ CONTAINS
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
 
-        NewMesh % ParallelInfo % INTERFACE(k) = PPack % ldata(lcount+1)
+        NewMesh % ParallelInfo % NodeInterface(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
     END DO
 
     IF( errcount > 0 ) THEN
-      CALL Fatal(Caller,'Encountered '//TRIM(I2S(errcount))//' indexing issues in nodes')
+      CALL Fatal(Caller,'Encountered '//I2S(errcount)//' indexing issues in nodes')
     END IF
  
 
     
-    n = COUNT( NewMesh % ParallelInfo % INTERFACE )
-    CALL Info(Caller,'Potential interface nodes '//TRIM(I2S(n))//' out of '&
-        //TRIM(I2S(NewMesh % NumberOfNodes)),Level=20)
+    n = COUNT( NewMesh % ParallelInfo % NodeInterface )
+    CALL Info(Caller,'Potential interface nodes '//I2S(n)//' out of '&
+        //I2S(NewMesh % NumberOfNodes),Level=20)
 
     
     CALL Info(Caller,'Creating local to global numbering for '&
-         //TRIM(I2S(newnodes))//' nodes',Level=20)
+         //I2S(newnodes)//' nodes',Level=20)
     ALLOCATE( NewMesh % ParallelInfo % GlobalDofs( newnodes ), STAT = allocstat)
     NewMesh % ParallelInfo % GlobalDofs = 0
     IF( allocstat /= 0 ) THEN
@@ -3081,14 +3241,14 @@ CONTAINS
     IF( n == 0 ) RETURN
 
     ! The interface includes the old interface between partitions
-    IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) THEN
-      ALLOCATE( Mesh % ParallelInfo % INTERFACE( n ), STAT=allocstat )
+    IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) THEN
+      ALLOCATE( Mesh % ParallelInfo % NodeInterface( n ), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal(Caller,'Allocation error for parallel interface!')
       END IF
-      Mesh % ParallelInfo % Interface = .FALSE.
+      Mesh % ParallelInfo % NodeInterface = .FALSE.
     END IF
-    PartInterface => Mesh % ParallelInfo % Interface
+    PartInterface => Mesh % ParallelInfo % NodeInterface
 
     IF( .NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
       CALL Fatal(Caller,'Allocation error for parallel interface!')
@@ -3126,12 +3286,12 @@ CONTAINS
     n = COUNT( PartInterface ) 
     DEALLOCATE( PrevPartition )
     
-    CALL Info(Caller,'Number of potential nodes at the interface: '//TRIM(I2S(n)),Level=10)      
+    CALL Info(Caller,'Number of potential nodes at the interface: '//I2S(n),Level=10)      
       
   END SUBROUTINE UpdateInterfaceNodeCandidates
 
   !> Based on a conservative list of potential interface nodes
-  !> in ParallelInfo % Interface, find real interface nodes &
+  !> in ParallelInfo % NodeInterface, find real interface nodes &
   !> populate NeighbourList % Neighbours
   !-------------------------------------------------------------------
   SUBROUTINE FindRepartitionInterfaces(Model, Mesh, DIM)
@@ -3155,7 +3315,7 @@ CONTAINS
     !Find potential neighbour partitions - shouldn't really need to buffer
     PartMaybeNeigh = FindMeshNeighboursGeometric(Mesh,DIM,1.0_dp)
 
-    Iface => Mesh % ParallelInfo % Interface
+    Iface => Mesh % ParallelInfo % NodeInterface
     NeighList => Mesh % ParallelInfo % NeighbourList
 
     n = COUNT(Iface)
@@ -3318,8 +3478,8 @@ CONTAINS
   END FUNCTION FindMeshNeighboursGeometric
 
 
-  !> Makes a serial mesh partitiong. Current uses geometric criteria.
-  !> Includes some hybrid strategies where the different physical domains
+  !> Makes a serial mesh partitiong. Currently uses geometric criteria or Zoltan.
+  !> Includes some hybrid strategies where the different physical domains (bc & bulk)
   !> are partitioned using different strategies. 
   !----------------------------------------------------------------------------  
   SUBROUTINE PartitionMeshSerial( Model, Mesh, Params ) 
@@ -3331,21 +3491,22 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params 
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: SectionParams
-     INTEGER, ALLOCATABLE :: ParameterInd(:), ElementSet(:)
+     INTEGER, ALLOCATABLE :: ParameterInd(:), ElementSet(:), PartCount(:)
      INTEGER, POINTER :: ElementPart(:)
-     INTEGER :: NumberOfSets, NumberOfBoundarySets, SetNo, id
+     INTEGER :: NumberOfSets, NumberOfBoundarySets, SetNo, id, NoEqs
      LOGICAL, POINTER :: PartitionCand(:)
-     INTEGER :: i,j,k,n, allocstat
-     LOGICAL :: Found
+     INTEGER :: i,j,j0,j1,k,n,m,allocstat
+     LOGICAL :: Found, PartBalance, EqInterface, MasterHalo
      INTEGER, ALLOCATABLE :: EquationPart(:)    
-
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     INTEGER :: PartOffset, PartOffsetBC
+     LOGICAL, ALLOCATABLE :: MasterElement(:)
      CHARACTER(*), PARAMETER :: FuncName = 'PartitionMeshSerial'
      
      !-----------------------------------------------------------------------
      CALL Info(FuncName,'Using internal mesh partitioning on one processor')
        
-     n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements     
+     n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
 
      ALLOCATE( PartitionCand(n), ElementSet(n), STAT = allocstat )
      IF( allocstat /= 0 ) THEN
@@ -3370,32 +3531,54 @@ CONTAINS
      PartitionCand = .FALSE.
      ElementSet = 0
      ElementPart = 0
-     
-     n = MAX( Model % NumberOfBCs, Model % NumberOfEquations ) 
+     PartOffset = 0
+     PartOffsetBC = 0
+
+     ! Only use the halo for master elements
+     MasterHalo = ListGetLogical( Model % Simulation,'Boundary Partition Halo Master')
+     IF( MasterHalo ) THEN
+       ALLOCATE( MasterElement(n) )
+       MasterElement = .FALSE.
+     END IF
+          
+     n = MAX( Model % NumberOfBCs, Model % NumberOfEquations )
      ALLOCATE( ParameterInd(n), STAT = allocstat ) 
      IF( allocstat /= 0 ) THEN
        CALL Fatal(FuncName,'Allocation error for ParameterInd')
      END IF
-     
+
+     PartBalance = ListGetLogical( Model % Simulation,'Partition Equation Balance',Found )      
      ParameterInd = 0
-     
-     CALL Info(FuncName,'Partitioning the boundary elements sets') 
+
+     EqInterface = ListGetLogical( Model % Simulation,'Partition Equation Interface',Found )
+                  
+
+     CALL Info(FuncName,'Partitioning boundary elements sets') 
      CALL InitializeBoundaryElementSet(NumberOfBoundarySets)
      
      IF( NumberOfBoundarySets > 0 ) THEN
+       IF( EqInterface ) THEN
+         CALL Fatal(FuncName,'Cannot deal with boundary sets and interface partition at same time!')
+       END IF
+
        DO SetNo = 1, NumberOfBoundarySets
+         CALL Info(FuncName,'Doing boundary partitioning set: '//I2S(SetNo),Level=8)
+
          SectionParams => NULL()
+         ! Get the bc-specific partitioning commands, if any
          IF( ParameterInd(SetNo) > 0 ) THEN
            id = ParameterInd(SetNo)
            IF( id <= Model % NumberOfBCs ) THEN
              SectionParams => Model % BCs(id) % Values
            END IF
          END IF
-         CALL PartitionMeshPart(SetNo,SectionParams,.TRUE.)
+         CALL PartitionMeshPart(SetNo,SectionParams,.TRUE.,PartOffset,PartOffsetBC)
        END DO
 
        IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
          CALL MergeJoinedPartitions(.TRUE.)
+         PartOffset = MAXVAL( ElementPart )
+         PartOffsetBC = PartOffset
        END IF
        
        CALL InheritBoundaryToBulkPart()
@@ -3409,7 +3592,7 @@ CONTAINS
          CALL InheritHaloToBulkPart
        END IF
        
-       CALL ExtendBoundaryPart()
+       CALL ExtendBoundaryPart(.TRUE.)
 
        ! We could do the halo stuff also after extending 
        IF( ListGetLogical( Params,'Boundary Bounding Box Halo',Found ) ) THEN
@@ -3418,37 +3601,85 @@ CONTAINS
        IF( ListGetLogical( Params,'Boundary Partition Halo',Found ) ) THEN
          !CALL GenerateSetHalo()
        END IF
-    END IF
+       
+     ELSE IF( EqInterface ) THEN
+       NumberOfBoundarySets = 1       
+       CALL SetInterfacePartition()
+       CALL ExtendBoundaryPart(.FALSE.)
+       CALL InheritBulkToBoundaryPart()
+       PartOffset = 1
+       PartOffsetBC = 1
+     END IF
      
      CALL Info(FuncName,'Partition the bulk elements sets')
+
+     
+     j0 = MAXVAL( ElementPart )
+     ParameterInd = 0
+     
+     CALL Info(FuncName,'Maximum partition index for BCs: '//I2S(j0),Level=8)
+     
      CALL InitializeBulkElementSet(NumberOfSets)
 
+     
      DO SetNo = 1, NumberOfSets
+       CALL Info(FuncName,'Doing bulk partitioning set: '//I2S(SetNo),Level=8)
+
        SectionParams => NULL()
+       
+       ! Get the equation-specific parameters, if any
        IF( ParameterInd(SetNo) > 0 ) THEN
          id = ParameterInd(SetNo)
          IF( id <= Model % NumberOfEquations ) THEN
            SectionParams => Model % Equations(id) % Values
          END IF
        END IF
-       CALL PartitionMeshPart(SetNo,SectionParams,.FALSE.)
-     END DO
-       
-     CALL InheritBulkToBoundaryPart()
 
+       CALL PartitionMeshPart(SetNo+NumberOfBoundarySets,SectionParams,.FALSE.,PartOffset,PartOffsetBC)        
+       IF( SetNo == 1 ) THEN
+         j0 = PartOffsetBC
+         j1 = PartOffset
+       END IF
+     END DO
+
+      IF( PartBalance ) THEN
+       NoEqs = Model % NumberOfEquations
+       CALL Info(FuncName,'Removing offset for optimal load balancing of '//I2S(NoEqs)//' equations',Level=10)
+       DO i=1,SIZE(ElementPart)
+         j = ElementPart(i)
+         IF(j<=j1) CYCLE
+         ElementPart(i) = MODULO(j-j0-1,j1-j0)+j0+1
+       END DO
+     END IF    
+     
+     CALL InheritBulkToBoundaryPart()
+     
      IF( ListGetLogicalAnySolver( Model,'Discontinuous Galerkin') ) THEN
        CALL GenerateDGHalo()
      END IF
 
-     DO i=1,MAXVAL( Mesh % RePartition ) 
-       PRINT *,'Elements in partition:',i,COUNT( Mesh % RePartition == i )
-     END DO
-    
      CALL CreateNeighbourList()
 
+
+     IF( InfoActive(5) ) THEN
+       n = Mesh % NumberOfBulkElements
+       m = MAXVAL(ElementPart(1:n))
+              
+       ALLOCATE(PartCount(0:m))
+       PartCount = 0
+       DO i=1,n
+         j = ElementPart(i)
+         PartCount(j) = PartCount(j) + 1
+       END DO       
+       DO i=0,m
+         PRINT *,'Elements in Partition:',i,PartCount(i)
+       END DO
+     END IF
+
+     
 100  CALL Info(FuncName,'All done for now',Level=12)
 
-
+     
    CONTAINS
 
      ! Inherit partition from a boundary partition.
@@ -3482,19 +3713,25 @@ CONTAINS
 
              IF( ASSOCIATED( Parent ) ) THEN               
                ElemIndx = Parent % ElementIndex
+
                IF( ElementPart( ElemIndx ) == 0 ) THEN
                  NoHerited = NoHerited + 1
-                 ElementPart( ElemIndx ) = BoundPart
+                 ElementPart( ElemIndx ) = BoundPart                 
                ELSE IF( ElementPart( ElemIndx ) /= BoundPart ) THEN
                  NoConflict = NoConflict + 1
                END IF
+
+               ! Inherit also the master status.
+               ! This is done always since we need the halo if the bulk
+               ! element is associated to any master element.
+               IF( MasterHalo ) MasterElement( ElemIndx ) = MasterElement( t )               
              END IF
            END DO
          END IF
        END DO
        
-       CALL Info(FuncName,'Number of herited bulk elements: '//TRIM(I2S(NoHerited)))
-       CALL Info(FuncName,'Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
+       CALL Info(FuncName,'Number of herited bulk elements: '//I2S(NoHerited))
+       CALL Info(FuncName,'Number of conflicted bulk elements: '//I2S(NoConflict))
        
      END SUBROUTINE InheritBoundaryToBulkPart
 
@@ -3566,7 +3803,7 @@ CONTAINS
          END DO
        END DO
        
-       CALL Info(FuncName,'Number of herited halo bulk elements: '//TRIM(I2S(NoHerited)))
+       CALL Info(FuncName,'Number of herited halo bulk elements: '//I2S(NoHerited))
        
      END SUBROUTINE InheritHaloToBulkPart
 
@@ -3589,7 +3826,8 @@ CONTAINS
          Element => Mesh % Elements(t) 
 
          ! Don't set boundaries that are already defined
-         IF( ElementPart( t ) > 0 ) CYCLE
+         ! We want to study conflicted conditions, so comment this away...
+         !IF( ElementPart( t ) > 0 ) CYCLE
          
          IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
            DO LeftRight=0,1
@@ -3601,19 +3839,87 @@ CONTAINS
              
              IF( ASSOCIATED( Parent ) ) THEN               
                ElemIndx = Parent % ElementIndex
-               ElementPart(t) = ElementPart(ElemIndx)
-               NoHerited = NoHerited + 1
-               EXIT
+               
+               IF( ElementPart(t) > 0 ) THEN
+                 IF( ElementPart(t) /= ElementPart(ElemIndx) ) THEN
+                   NoConflict = NoConflict + 1
+                 END IF
+               ELSE
+                 ElementPart(t) = ElementPart(ElemIndx)
+                 NoHerited = NoHerited + 1
+                 !PRINT *,'inherit:',t,Element % TYPE % ElementCode, &
+                 !    Parent % TYPE % ElementCode, ElemIndx
+                 !EXIT
+               END IF
              END IF
            END DO
          END IF
        END DO
        
-       CALL Info(FuncName,'Number of herited boundary elements: '//TRIM(I2S(NoHerited)))
-       !CALL Info(FuncName,'Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
+       CALL Info(FuncName,'Number of herited boundary elements: '//I2S(NoHerited))
+       CALL Info(FuncName,'Number of conflicted bulk elements: '//I2S(NoConflict))
        
      END SUBROUTINE InheritBulkToBoundaryPart
 
+     ! Find interface and inherit it to a partition.
+     !-----------------------------------------------------
+     SUBROUTINE SetInterfacePartition()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: i,n,t,eq_id,body_id,mincnt,maxcnt
+       INTEGER, ALLOCATABLE :: EqCnt(:)
+       LOGICAL, ALLOCATABLE :: EqTag(:)
+       
+       CALL Info(FuncName,'Inheriting the bulk partitioning into the boundary mesh') 
+
+
+       n = Mesh % NumberOfNodes
+       ALLOCATE( EqTag(n), EqCnt(n) ) 
+       EqCnt = 0
+       
+       DO eq_id = 1, Model % NumberOfEquations
+
+         EqTag = .FALSE.
+         
+         DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+           
+           Element => Mesh % Elements(t) 
+           body_id = Element % BodyId
+           IF( body_id <= 0 ) CYCLE
+           
+           i = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', Found )
+           IF(i /= eq_id) CYCLE
+           
+           EqTag( Element % NodeIndexes ) = .TRUE.
+         END DO
+
+         !PRINT *,'Eq count:',eq_id,COUNT(EqTag)
+         
+
+         ! If we found this equation then add the counter for number of equations for the node
+         WHERE( EqTag )
+           EqCnt = EqCnt + 1
+         END WHERE
+       END DO
+
+       DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+         
+         Element => Mesh % Elements(t) 
+         body_id = Element % BodyId
+         IF( body_id <= 0 ) CYCLE
+         
+         mincnt = MINVAL( EqCnt( Element % NodeIndexes )  )
+         maxcnt = MAXVAL( EqCnt( Element % NodeIndexes )  )
+
+         IF( mincnt /= maxcnt ) ElementPart(t) = 1
+       END DO
+
+       n = COUNT( ElementPart == 1 )
+
+       CALL Info(FuncName,'Number of elements set to interface partition: '//I2S(n),Level=6)
+
+     END SUBROUTINE SetInterfacePartition
+         
      
 
      ! Merge partitioned boundaries that share even just one node. 
@@ -3647,7 +3953,7 @@ CONTAINS
          
        DO i = 1, MaxPart
          PartFlag = .FALSE.
-         CALL Info(FuncName,'Studying coupling with partition:'//TRIM(I2S(i)),Level=20)
+         CALL Info(FuncName,'Studying coupling with partition:'//I2S(i),Level=20)
 
          ! Mark the nodes that are included in this partition, even in one element
          DO t=tstart, tfin
@@ -3666,7 +3972,7 @@ CONTAINS
              Element => Mesh % Elements(t) 
              IF( ANY( PartFlag( Element % NodeIndexes ) ) ) THEN
                CALL Info(FuncName,&
-                   'Joined no is coupling '//TRIM(I2S(i))//' and '//TRIM(I2S(j)),Level=10)
+                   'Joined no is coupling '//I2S(i)//' and '//I2S(j),Level=10)
                PartitionCoupling(i,j) = .TRUE.
                PartitionCoupling(j,i) = .TRUE.
              END IF
@@ -3689,14 +3995,14 @@ CONTAINS
            IF( PartitionCoupling(i,j) ) THEN
              IF( PartMap(i) /= PartMap(j) ) THEN
                CALL Info(FuncName,'Mapping partition '&
-                   //TRIM(I2S(j))//' to become '//TRIM(I2S(PartMap(i))),Level=8)
+                   //I2S(j)//' to become '//I2S(PartMap(i)),Level=8)
                PartMap(j) = PartMap(i)
              END IF
            END IF
          END DO
        END DO
        j = MAXVAL( PartMap ) 
-       CALL Info(FuncName,'Number of mapped partitions: '//TRIM(I2S(j)),Level=8)
+       CALL Info(FuncName,'Number of mapped partitions: '//I2S(j),Level=8)
 
        ! If we studied bulk elements then make the boundary elements follow the new indexing.
        ! If we stufied boundary elements bulk elements will be studied later.
@@ -3721,22 +4027,25 @@ CONTAINS
      SUBROUTINE GenerateSetHalo()
        
        TYPE(Element_t), POINTER :: Element
-       INTEGER :: t, nblk, nbndry, nelem, nhalo, ntothalo, i, j, MinPart, MaxPart
+       INTEGER :: t, nblk, nbndry, nelem, ntothalo, i, j, MinPart, &
+           MaxPart, dPart, ThisPart, nhalo
        
        MaxPart = MAXVAL( ElementPart, PartitionCand ) 
        MinPart = MINVAL( ElementPart, PartitionCand ) 
-
+       
        IF( MaxPart - MinPart == 0 ) THEN
          CALL Info(FuncName,'No need not generate halo within one partition!',Level=12)
          RETURN
        END IF
 
        CALL Info(FuncName,'Generating halo among partitions '&
-           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+           //I2S(MinPart)//' to '//I2S(MaxPart),Level=10 )
        
        nblk = Mesh % NumberOfBulkElements
        nbndry = Mesh % NumberOfBoundaryElements
        nelem = nblk + nbndry
+
+       dPart = ListGetInteger( Params,'Boundary Partition Halo Width',Found )
        
        IF(.NOT. ASSOCIATED( Mesh % Halo ) ) THEN
          ALLOCATE( Mesh % Halo(nelem) )         
@@ -3746,19 +4055,38 @@ CONTAINS
        END IF
        
        ! For this halo type the number of neighbuor partitions in always constant
-       nhalo = MaxPart - MinPart
        ntothalo = 0
        
        DO t=1, nelem
-         IF( ElementPart( t ) < MinPart .OR. ElementPart( t ) > MaxPart ) CYCLE
+         ThisPart = ElementPart( t ) 
+         IF( ThisPart < MinPart .OR. ThisPart > MaxPart ) CYCLE
 
+         ! Create halo only for master elements.
+         ! This is useful for mortar & contact BCs. 
+         IF( MasterHalo ) THEN           
+           IF( .NOT. MasterElement(t) ) CYCLE
+         END IF
+         
          Element => Mesh % Elements(t) 
          IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
+           nhalo = 0
+           DO i=MinPart, MaxPart
+             IF( ThisPart == i ) CYCLE
+             IF( dPart > 0 ) THEN
+               IF( ABS(ThisPart-i) > dPart ) CYCLE
+             END IF
+             nhalo = nhalo + 1
+           END DO
+
            ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo) )
            j = 0
            DO i=MinPart, MaxPart
              ! The owner is always considered, hence don't add that to the halo elements
-             IF( ElementPart(t) == i ) CYCLE
+             IF( ThisPart == i ) CYCLE
+             ! The width may be used for example when the partitioning is slices in z-direction
+             IF( dPart > 0 ) THEN
+               IF( ABS(ThisPart-i) > dPart ) CYCLE
+             END IF
              j = j + 1
              Mesh % Halo(t) % Neighbours(j) = i
            END DO
@@ -3766,7 +4094,7 @@ CONTAINS
          END IF
        END DO
 
-       CALL Info(FuncName,'Total number of set halo elements: '//TRIM(I2S(ntothalo)),Level=10)
+       CALL Info(FuncName,'Total number of set halo elements: '//I2S(ntothalo),Level=10)
      END SUBROUTINE GenerateSetHalo
 
 
@@ -3789,7 +4117,7 @@ CONTAINS
 
       
        CALL Info(FuncName,'Generating halo for DG in partitions '&
-           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+           //I2S(MinPart)//' to '//I2S(MaxPart),Level=10 )
        
        nblk = Mesh % NumberOfBulkElements
        nbndry = Mesh % NumberOfBoundaryElements
@@ -3843,7 +4171,7 @@ CONTAINS
          END DO
        END DO
 
-       CALL Info(FuncName,'Total number of DG halo elements: '//TRIM(I2S(ntothalo)),Level=10)
+       CALL Info(FuncName,'Total number of DG halo elements: '//I2S(ntothalo),Level=10)
      END SUBROUTINE GenerateDGHalo
 
 
@@ -3873,7 +4201,7 @@ CONTAINS
        dim = 3
        
        CALL Info(FuncName,'Generating halo for bounding boxes in partitions '&
-           //TRIM(I2S(MinPart))//' to '//TRIM(I2S(MaxPart)),Level=10 )
+           //I2S(MinPart)//' to '//I2S(MaxPart),Level=10 )
        
        nblk = Mesh % NumberOfBulkElements
        nbndry = Mesh % NumberOfBoundaryElements
@@ -3900,7 +4228,7 @@ CONTAINS
            NodeActive( Element % NodeIndexes ) = .TRUE.
          END DO
 
-         PRINT *,'noactive:',dim,ownerpart,COUNT( NodeActive ) 
+         !PRINT *,'noactive:',dim,ownerpart,COUNT( NodeActive ) 
          
          BBox(1) = MINVAL( Mesh % Nodes % x, NodeActive ) 
          BBox(2) = MAXVAL( Mesh % Nodes % x, NodeActive ) 
@@ -3948,7 +4276,7 @@ CONTAINS
 
            IF(.NOT. Hit ) CYCLE
 
-           PRINT *,'hit:',t,ElementPart(t),i,j,Coord, Element % Type % ElementCode
+           !PRINT *,'hit:',t,ElementPart(t),i,j,Coord, Element % Type % ElementCode
 
            
            IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
@@ -3973,7 +4301,7 @@ CONTAINS
          END DO
        END DO
 
-       CALL Info(FuncName,'Total number of BBox halo elements: '//TRIM(I2S(ntothalo)),Level=10)
+       CALL Info(FuncName,'Total number of BBox halo elements: '//I2S(ntothalo),Level=10)
      END SUBROUTINE GenerateBBoxHalo
 
      
@@ -3983,20 +4311,25 @@ CONTAINS
      ! The routine is written with just a small number of existing
      ! boundary partitions in mind and uses minimal memory. 
      !------------------------------------------------------------
-     SUBROUTINE ExtendBoundaryPart()
-       
+     SUBROUTINE ExtendBoundaryPart(StartFromBC)
+
+       LOGICAL :: StartFromBC
+
        TYPE(Element_t), POINTER :: Element
        INTEGER :: t, ExtendLayers, NoExtend, ElemIndx, NoHits, TestPart, NumberOfParts
        LOGICAL, ALLOCATABLE :: ActiveNode(:)
        INTEGER, ALLOCATABLE :: RefHits(:)
        INTEGER :: allocstat
+       LOGICAL :: BCfirst
 
        NoExtend = 0
+       BCFirst = StartFromBC
 
+       
        ExtendLayers = ListGetInteger( Params,'Partition Mesh Extend Layers', Found ) 
        IF( ExtendLayers <= 0 ) RETURN
        
-       CALL Info(FuncName,'Extending boundary meshes by layers: '//TRIM(I2S(ExtendLayers)))
+       CALL Info(FuncName,'Extending boundary meshes by layers: '//I2S(ExtendLayers))
 
        ALLOCATE( ActiveNode( Mesh % NumberOfNodes ), STAT = allocstat ) 
        IF( allocstat /= 0 ) THEN
@@ -4006,11 +4339,13 @@ CONTAINS
 
        NumberOfParts = MAXVAL( ElementPart ) 
        IF( NumberOfParts > 1 ) THEN
-         CALL Info(FuncName,'Extending boundary to dominating owner among: '//TRIM(I2S(NumberOfParts)))
+         CALL Info(FuncName,'Extending boundary to dominating owner among: '//I2S(NumberOfParts))
          ALLOCATE( RefHits( Mesh % NumberOfBulkElements ), STAT = allocstat )
          IF( allocstat /= 0 ) THEN
            CALL Fatal(FuncName,'Allocation error for RefHits')
          END IF
+       ELSE
+         CALL Info(FuncName,'Extending boundary to all neighbours of 1st partition.')
        END IF
 
 
@@ -4025,7 +4360,7 @@ CONTAINS
 
            ! Set the active nodes for the partition under testing
            ActiveNode = .FALSE.
-           IF( i == 1 ) THEN
+           IF( BCFirst ) THEN
              ! First layer make starting from boundary elements
              DO t=Mesh % NumberOfBulkElements + 1, &
                  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -4034,6 +4369,7 @@ CONTAINS
                  ActiveNode( Element % NodeIndexes ) = .TRUE.
                END IF
              END DO
+             BCFirst = .FALSE.
            ELSE
              ! Thereafter continue from bulk elements
              DO t=1, Mesh % NumberOfBulkElements 
@@ -4070,12 +4406,12 @@ CONTAINS
          ! Now include the layer in the new partitioning
          t = COUNT( ElementPart < 0 )
          NoExtend = NoExtend + t
-         CALL Info(FuncName,'Layer '//TRIM(I2S(i))//' with elements: '//TRIM(I2S(t)),Level=8)
+         CALL Info(FuncName,'Layer '//I2S(i)//' with elements: '//I2S(t),Level=8)
 
          ElementPart = ABS( ElementPart ) 
        END DO
       
-       CALL Info(FuncName,'Number of extended bulk elements: '//TRIM(I2S(NoExtend)),Level=6)
+       CALL Info(FuncName,'Number of extended bulk elements: '//I2S(NoExtend),Level=6)
        
        DEALLOCATE( ActiveNode ) 
        IF( NumberOfParts > 1 ) DEALLOCATE( RefHits ) 
@@ -4090,33 +4426,38 @@ CONTAINS
        
        INTEGER :: NumberOfParts
        
-       INTEGER :: i,j,k,bc_id
+       INTEGER :: i,j,k,n,bc_id
        TYPE(ValueList_t), POINTER :: ValueList
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: Found, NewSet, SeparateBoundarySets        
        INTEGER, ALLOCATABLE :: BCPart(:)
+       LOGICAL, ALLOCATABLE :: BCMaster(:)
        INTEGER :: allocstat
 
+       NumberOfParts = 0
+       IF( Model % NumberOfBCs == 0 ) RETURN
        
+      
        SeparateBoundarySets = ListGetLogical( Params, &
            'Partitioning Separate Boundary Set', Found)
-       
-       ALLOCATE( BCPart( Model % NUmberOfBCs ), STAT = allocstat )
+
+       n = Model % NumberOfBCs
+       ALLOCATE( BCPart(n), BCMaster(n), STAT = allocstat )
        IF( allocstat /= 0 ) THEN
          CALL Fatal(FuncName,'Allocation error for BCPart')
        END IF
        BCPart = 0
+       BCMaster = .FALSE.
 
        ! First, set the partition sets enforced by the user
-       NumberOfParts = 0
        DO bc_id = 1, Model % NumberOfBCs 
          ValueList => Model % BCs(bc_id) % Values
          k = ListGetInteger( ValueList,'Partition Set',Found)
          IF( .NOT. Found ) CYCLE
-         BCPart(bc_id) = k 
+         BCPart(bc_id) = k         
          ParameterInd(k) = bc_id
        END DO
-       
+
        IF( ListGetLogical( Params,'Partition Connected BCs',Found ) ) THEN 
          j = MAXVAL( BCPart ) + 1
 
@@ -4125,27 +4466,33 @@ CONTAINS
 
            IF( BCPart(bc_id) > 0 ) CYCLE
 
-           NewSet = ListGetLogical( ValueList, 'Discontinuous Boundary', Found )
+           NewSet = ListGetLogical( ValueList, 'Discontinuous Boundary', Found ) .OR. &
+               ListGetLogical( ValueList, 'Partition BC',Found) 
 
-           k = ListGetInteger( ValueList, 'Discontinuous BC',Found)
+           k = ListGetInteger( ValueList, 'Mortar BC',Found)
+           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Contact BC',Found)
+           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Discontinuous BC',Found)
            IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Periodic BC',Found) 
-           IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Mortar BC',Found)
            IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Conforming BC',Found)
            IF(.NOT. Found ) k = ListGetInteger( ValueList, 'Discontinuous BC',Found)           
+           
            IF(k>0) NewSet = .TRUE.
 
            IF( NewSet ) THEN
              BCPart(bc_id) = j
-             IF(k > 0) BCPart(k) = j
+             IF(k > 0) THEN
+               BCPart(k) = j
+               BCMaster(k) = .TRUE.
+             END IF
              ParameterInd(j) = bc_id
 
              IF( k > 0 ) THEN
                CALL Info('PartitionMeshSerial','Including BCs '&
-                   //TRIM(I2S(bc_id))//' and '//TRIM(I2S(k))//&
-                   ' in set '//TRIM(I2S(j)),Level=10)
+                   //I2S(bc_id)//' and '//I2S(k)//&
+                   ' in set '//I2S(j),Level=10)
              ELSE
                CALL Info('PartitionMeshSerial','Including BC '&
-                   //TRIM(I2S(bc_id))//' in set '//TRIM(I2S(j)),Level=10)
+                   //I2S(bc_id)//' in set '//I2S(j),Level=10)
              END IF
                
              IF( SeparateBoundarySets ) j = j + 1             
@@ -4167,14 +4514,17 @@ CONTAINS
                Model % BCs(bc_id) % Tag ) THEN
              IF( BCPart( bc_id ) > 0 ) THEN
                ElementSet( i ) = BCPart( bc_id )
+               IF( MasterHalo ) THEN
+                 IF( BCMaster( bc_id) ) MasterElement(i) = .TRUE.
+               END IF
              END IF
              EXIT
            END IF
          END DO
        END DO
 
-       CALL Info(FuncName,'Number of sets for boundary partitioning: '//TRIM(I2S(NumberOfParts)))
-       CALL Info(FuncName,'Number of boundary elements in set: '//TRIM(I2S(COUNT(ElementSet > 0))))
+       CALL Info(FuncName,'Number of sets for boundary partitioning: '//I2S(NumberOfParts))
+       CALL Info(FuncName,'Number of boundary elements in set: '//I2S(COUNT(ElementSet > 0)))
       
      END SUBROUTINE InitializeBoundaryElementSet
 
@@ -4190,7 +4540,7 @@ CONTAINS
        INTEGER :: i,j,k,eq_id, bc_id
        TYPE(ValueList_t), POINTER :: ValueList
        TYPE(Element_t), POINTER :: Element
-       LOGICAL :: Found, SeparateBoundarySets, FoundAny 
+       LOGICAL :: Found, SeparateBoundarySets
        INTEGER :: allocstat
      
        ElementSet = 0 
@@ -4201,40 +4551,47 @@ CONTAINS
        END IF
  
        EquationPart = 0
-       FoundAny = .FALSE.
-       DO eq_id = 1, Model % NumberOfEquations 
-         ValueList => Model % Equations(eq_id) % Values
-         k = ListGetInteger( ValueList,'Partition Set',Found) 
-         IF( k > 0 ) THEN
-           EquationPart(eq_id) = k 
-           FoundAny = .TRUE.
-         END IF
-       END DO
+       ParameterInd = 0
        
-       NumberOfParts = MAXVAL( EquationPart ) 
-      
-       Found = .FALSE.
+       IF( ListGetLogical( Model % Simulation,'Partition Equation Balance',Found ) ) THEN
+         CALL Info(FuncName,'Partitioning each equation separately',Level=5)
+         DO eq_id = 1, Model % NumberOfEquations 
+           EquationPart(eq_id) = eq_id
+           ParameterInd(eq_id) = eq_id
+         END DO
+       ELSE
+         DO eq_id = 1, Model % NumberOfEquations 
+           ValueList => Model % Equations(eq_id) % Values
+           k = ListGetInteger( ValueList,'Partition Set',Found) 
+           IF( k > 0 ) THEN
+             EquationPart(eq_id) = k 
+             ParameterInd(k) = eq_id
+           END IF
+         END DO
+       END IF
+
+       NumberOfParts = MAXVAL( EquationPart )
+       
+       IF( NumberOfParts == 0 ) THEN
+         WHERE( ElementPart == 0 ) ElementSet = NumberOfBoundarySets + 1
+         NumberOfParts = 1
+         RETURN
+       END IF
+                                 
        DO i = 1, Mesh % NumberOfBulkElements 
          IF( ElementPart(i) > 0 ) CYCLE
 
          Element => Mesh % Elements(i)
-         j = 0
-         IF( NumberOfParts > 0 ) THEN
-           eq_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values, &
-               'Equation', Found )
-           IF( eq_id > 0 ) j = EquationPart( eq_id ) 
-         END IF
-         
+         eq_id = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Equation', Found )
+         IF( eq_id > 0 ) j = EquationPart( eq_id ) 
          IF( j == 0 ) THEN
-           Found = .TRUE.
-           ElementSet(i) = NumberOfParts + 1
-         ELSE
-           ElementSet( i ) = j
+           CALL Fatal(FuncName,'"Partition Set" in Equation '//I2S(eq_id)//' is undefined!')
          END IF
+
+         ElementSet(i) = NumberOfBoundarySets + j
        END DO
-       IF( Found ) NumberOfParts = NumberOfParts + 1
        
-       CALL Info(FuncName,'Number of sets for bulk partitioning: '//TRIM(I2S(NumberOfParts)))
+       CALL Info(FuncName,'Number of sets for bulk partitioning: '//I2S(NumberOfParts))
        
      END SUBROUTINE InitializeBulkElementSet
 
@@ -4242,78 +4599,117 @@ CONTAINS
      
      ! Partition the nodes that have the correct ElementSet using various strategies.
      !------------------------------------------------------------------------
-     SUBROUTINE PartitionMeshPart(SetNo, LocalParams, IsBoundary )
+     SUBROUTINE PartitionMeshPart(SetNo, LocalParams, IsBoundary, PartOffset, PartOffsetBC )
        
       INTEGER :: SetNo
-      LOGICAL :: IsBoundary 
       TYPE(ValueList_t), POINTER :: LocalParams       
-
-      LOGICAL :: BoundaryPart
-      CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform, SetMethod
+      LOGICAL :: IsBoundary      
+      INTEGER :: PartOffset, PartOffsetBC
+     
+      CHARACTER(:), ALLOCATABLE :: CoordTransform, SetMethod
       LOGICAL :: GotCoordTransform, SetNodes
       INTEGER :: SumPartitions, NoPartitions, NoCand
-      LOGICAL :: Found
-      INTEGER :: NoCandElements
+      LOGICAL :: Found, GotMethod
+      INTEGER :: i,j,NoCandElements
       REAL(KIND=dp) :: BoundaryFraction
-      INTEGER :: PartOffset
+      INTEGER, POINTER :: PartDivs(:)
+      
 
-      
       PartitionCand = ( ElementSet == SetNo )
-      n = Mesh % NumberOfBulkElements
-      
+      n = Mesh % NumberOfBulkElements      
       NoCandElements = COUNT( PartitionCand ) 
 
+      
+      CALL Info(FuncName,'Doing element set: '//I2S(SetNo))
+      CALL Info(FuncName,'Number of elements in set: '//I2S(NoCandElements))
 
-      CALL Info(FuncName,'Doing element set: '//TRIM(I2S(SetNo)))
-      CALL Info(FuncName,'Number of elements in set: '//TRIM(I2S(NoCandElements)))
+      IF( NoCandElements == 0 ) THEN
+        CALL Info(FuncName,'No element in set, doing nothing.',Level=10)
+        RETURN
+      END IF
+        
 
-      IF( NoCandElements == 0 ) RETURN
+      GotMethod = .FALSE.
+      IF( ASSOCIATED( LocalParams) ) THEN
+        SetMethod = ListGetString( LocalParams,'Partitioning Method',GotMethod)
+      END IF
+      IF(.NOT. GotMethod ) THEN
+        IF( IsBoundary ) THEN
+          SetMethod = ListGetString( Params,'Boundary Partitioning Method',GotMethod)
+        ELSE
+          SetMethod = ListGetString( Params,'Partitioning Method',GotMethod)
+        END IF
+      END IF
 
-
+      NoPartitions = 0
+      Found = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         NoPartitions = ListGetInteger( LocalParams,'Number of Partitions',Found )        
       END IF
+      
       IF(.NOT. Found ) THEN
         IF( IsBoundary ) THEN
           NoPartitions = ListGetInteger( Params,'Boundary Number of Partitions',Found)
         ELSE
-          NoPartitions = ListGetInteger( Params,'Number Of Partitions',Found)          
+          NoPartitions = ListGetInteger( Params,'Number Of Partitions',Found)
+          IF(Found) NoPartitions = NoPartitions - PartOffsetBC         
         END IF
       END IF
 
-      BoundaryFraction = ListGetCReal( Params,&
-          'Partitioning Maximum Fraction',Found)
-      IF( Found .AND. NoCandElements <= &
-          BoundaryFraction * Mesh % NumberOfBulkElements ) THEN
-        WRITE(Message,'(A,ES12.3)') 'Number of elements in set below critical limit: ',BoundaryFraction
-        CALL Info(FuncName,Message )
-        WHERE( PartitionCand ) ElementPart = SetNo
+      IF( NoPartitions == 0 ) THEN
+        IF(GotMethod) THEN
+          IF( SetMethod == 'uniform' .OR. SetMethod == 'directional') THEN
+            PartDivs => ListGetIntegerArray( Params,'Partitioning Divisions',Found )
+            IF( Found ) THEN
+              NoPartitions = 1
+              DO i=1,SIZE(PartDivs)
+                NoPartitions = NoPartitions * MAX(1,PartDivs(i))
+              END DO
+            END IF
+          END IF
+        END IF
+      END IF
+      
+      IF(NoPartitions == 0 ) THEN
+        IF( IsBoundary ) THEN
+          CALL Info(FuncName,'Defaulting to one partition for BCs',Level=10)
+          NoPartitions = 1          
+        ELSE
+          NoPartitions = ParEnv % PEs - PartOffsetBC
+          CALL Info(FuncName,'Defaulting rest of partitions for the equation: '//I2S(NoPartitions),Level=5)
+        END IF
+      END IF
+      
+      ! We have parallel case but asked too many partitions
+      IF( ParEnv % PEs > 1 .AND. NoPartitions + PartOffsetBC > ParEnv % PEs ) THEN
+        NoPartitions = ParEnv % PEs - PartOffsetBC
+        CALL Info(FuncName,'Reducing partitions for the following split to: '//I2S(NoPartitions),Level=5)
+      END IF
+
+      BoundaryFraction = ListGetCReal( Params,'Boundary Partitioning Maximum Fraction',Found)
+      IF( Found ) THEN
+        IF( NoCandElements <= BoundaryFraction * Mesh % NumberOfBulkElements ) THEN
+          NoPartitions = 1 
+          WRITE(Message,'(A,ES12.3)') 'Number of elements in set below critical limit: ',BoundaryFraction
+          CALL Info(FuncName,Message )
+        ELSE
+          NoPartitions = CEILING(  Mesh % NumberOfBulkElements / ( BoundaryFraction * NoCandElements ) )
+        END IF
+      END IF
+      
+      IF( NoPartitions == 1 ) THEN
+        CALL Info(FuncName,'Partitions set to one, doing nothing.',Level=10)
+        PartOffset = PartOffset + 1
+        IF( IsBoundary ) PartOffsetBC = PartOffset
+        WHERE( PartitionCand ) ElementPart = PartOffset 
+        PartitionCand = .FALSE.
         RETURN
       END IF
-         
-      BoundaryPart = .FALSE.
 
-      Found = .FALSE.
-      IF( ASSOCIATED( LocalParams) ) THEN
-        SetMethod = ListGetString( LocalParams,'Partitioning Method',Found)
+      IF( .NOT. GotMethod ) THEN
+        CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
       END IF
-      IF(.NOT. Found ) THEN
-        IF( IsBoundary ) THEN
-          SetMethod = ListGetString( Params,'Boundary Partitioning Method',Found)
-        ELSE
-          SetMethod = ListGetString( Params,'Partitioning Method',Found)
-        END IF
-      END IF
-      IF( .NOT. Found ) THEN
-        IF( IsBoundary .AND. NoPartitions == 0 ) THEN
-          CALL Info(FuncName,'Partition method and count not given, doing nothing.',Level=10)
-          WHERE( PartitionCand ) ElementPart = SetNo
-          RETURN
-        ELSE
-          CALL Fatal(FuncName,'Could not define > Partitioning Method < ')
-        END IF
-      END IF
-          
+
       Found = .FALSE.
       IF( ASSOCIATED( LocalParams) ) THEN
         CoordTransform = ListGetString( LocalParams,&
@@ -4350,9 +4746,9 @@ CONTAINS
 
       CALL Info(FuncName,'Using partitioning method: '//TRIM(SetMethod))
       
-      PartOffset = MAXVAL( ElementPart )       
-      CALL Info(FuncName,'Partitioning offset: '//TRIM(I2S(PartOffset)))
+      CALL Info(FuncName,'Using partitioning offset: '//I2S(PartOffset))
 
+      
       SELECT CASE( SetMethod ) 
         
         !CASE( 'metis recursive' ) 
@@ -4375,12 +4771,10 @@ CONTAINS
           
         CASE( 'zoltan' )
 #ifdef HAVE_ZOLTAN
-          IF( SetNo /= 1 .OR. IsBoundary ) THEN
+          IF( IsBoundary ) THEN
             CALL Fatal('PartitionMeshPart','Zoltan interface not yet applicable to boundary partitioning!')
           END IF
-          NoPartitions = ListGetInteger( Params,'Number of Partitions',Found )
-          IF(.NOT. Found ) NoPartitions = ParEnv % PEs 
-          CALL Zoltan_Interface( Model, Mesh, .TRUE., NoPartitions - PartOffset, PartitionCand )
+          CALL Zoltan_Interface( Model, Mesh, .TRUE., NoPartitions, PartitionCand )
 #else
           CALL Fatal(FuncName,'Partition with Zoltan not available!')
 #endif 
@@ -4389,12 +4783,17 @@ CONTAINS
           CALL Fatal(FuncName,'Unspecificed partitioning: '//TRIM(SetMethod))
           
       END SELECT
-      
+
+      ! Add offset related to previous partitioning routines to the elements of this set.
+      ! This only relates to bulk elements!
+      i = Mesh % NumberOfBulkElements
       IF( PartOffset > 0 ) THEN
-        WHERE( PartitionCand ) ElementPart = ElementPart + PartOffset
+        WHERE( PartitionCand(1:i) ) ElementPart(1:i) = ElementPart(1:i) + PartOffset
       END IF
+      PartOffset = MAXVAL( ElementPart )
+      IF( IsBoundary ) PartOffsetBC = PartOffset
       
-      CALL Info(FuncName,'Partitioning of set finished')      
+      CALL Info(FuncName,'Partitioning of set finished',Level=10)      
       
       IF( GotCoordTransform ) THEN
         CALL BackCoordinateTransformation( Mesh, DeleteTemporalMesh = .TRUE. )
@@ -4462,7 +4861,7 @@ CONTAINS
         lsum = lsum + l
       END DO
 
-      CALL Info(FuncName,'Maximum number of partitions for a node: '//TRIM(I2S(lmax)))
+      CALL Info(FuncName,'Maximum number of partitions for a node: '//I2S(lmax))
 
       WRITE(Message,'(A,F8.3)') 'Average number of partitions for a node: ',1.0_dp*lsum/n
       CALL Info(FuncName,Message)

@@ -28,19 +28,35 @@ Material 1
   Reluctivity  = Real 1
   Electric Conductivity = Real 1
 
-  Harmonic Loss Linear Coefficient = Variable "Frequency"
+! Old keyword syntax limited to linear and quadratic loss components
+!  Harmonic Loss Linear Coefficient = Variable "Frequency"
+!    Real 
+!      0.0 1.0
+!      1.0 1.0
+!      10.0 1.0
+!    End 
+!
+!  Harmonic Loss Quadratic Coefficient = Variable "Frequency"
+!    Real 
+!      0.0 1.0
+!      1.0 1.0
+!      10.0 1.0
+!    End
+
+! This is generic way where we can have arbitrary number of components
+  Harmonic Loss Coefficient 1 = Variable "Frequency"
     Real 
       0.0 1.0
       1.0 1.0
       10.0 1.0
     End 
 
-  Harmonic Loss Quadratic Coefficient = Variable "Frequency"
+  Harmonic Loss Coefficient 2 = Variable "Frequency"
     Real 
       0.0 1.0
       1.0 1.0
       10.0 1.0
-    End 
+    End
 End
 
 Equation 1
@@ -61,11 +77,11 @@ Solver 1
   Linear System refactorize = False
 
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = Ilu
+  Linear System Preconditioning = ILU0
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
   Linear System Iterative Method = BiCGStabL
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Convergence Tolerance = 1.0e-9
 
   Steady State Convergence Tolerance = 1e-09
 End
@@ -98,8 +114,6 @@ Solver 3
   Frequency = Real 1.0
   Target Variable = String "P"
   Fourier Loss Filename = File "Loss.dat"
-  Harmonic Loss Linear Exponent = Real 1.0
-  Harmonic Loss Quadratic Exponent = Real 2.0
 
   Linear System Symmetric = True
   Steady State Convergence Tolerance = 0
@@ -109,6 +123,19 @@ Solver 3
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-6
+
+! This is for the old format
+!  Harmonic Loss Linear Exponent = Real 1.0
+!  Harmonic Loss Quadratic Exponent = Real 2.0
+
+
+! There are the same as for the old linear/quadratic test
+! but there could be more...
+  Harmonic Loss Frequency Exponent(2) = Real 1.0 2.0
+  Harmonic Loss Field Exponent(2) = Real 1.0 2.0
+
+! If this is not set true only one loss field appears!
+  Separate Loss Components = Logical True
 End
 
 Boundary Condition 1
@@ -132,6 +159,13 @@ Boundary Condition 3
   P = Real 0
   P {e} = Real 0
 End
-Solver 3 :: Reference Norm = Real 1.1854786
-Solver 3 :: Reference Norm Tolerance = Real 1e-3
-RUN
+
+Solver 1 :: Reference Norm = 4.78587574E-04
+Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 2 :: Reference Norm = 4.45458059E-04
+Solver 2 :: Reference Norm Tolerance = 1e-4
+
+! Is there an error?
+Solver 3 :: Reference Norm = 2.70924162E-01
+Solver 3 :: Reference Norm Tolerance = 1e-3
+

@@ -188,7 +188,7 @@
         lsum = lsum + l
       END DO
       
-      CALL Info('PartitionMesh','Maximum number of partitions for a node: '//TRIM(I2S(lmax)))
+      CALL Info('PartitionMesh','Maximum number of partitions for a node: '//I2S(lmax))
       
       WRITE(Message,'(A,F8.3)') 'Average number of partitions for a node: ',1.0_dp*lsum/n
       CALL Info('PartitionMesh',Message) 

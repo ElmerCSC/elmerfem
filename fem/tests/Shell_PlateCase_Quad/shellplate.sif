@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 3D  !** This affects what ElementInfo returns (3D for getting right metric)
   Simulation Type = Steady
   Output Intervals(1) = 1

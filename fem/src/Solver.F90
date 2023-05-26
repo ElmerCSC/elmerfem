@@ -39,14 +39,14 @@ PROGRAM Solver
    INTEGER, PARAMETER :: Initialize=0
    INTEGER :: tlen
    LOGICAL :: Silent
-   CHARACTER(LEN=MAX_NAME_LEN) :: DateStr, toutput
+   CHARACTER(:), ALLOCATABLE :: DateStr
+   CHARACTER(LEN=MAX_NAME_LEN) :: toutput
 
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
 
    CT = CPUtime()
    RT = RealTime()
-
 
    IF ( .NOT. Silent ) THEN
      DateStr = FormatDate()

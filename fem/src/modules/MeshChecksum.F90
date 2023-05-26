@@ -114,7 +114,7 @@ SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
   PRINT *,'Checksums for file output:'
   PRINT *,'ThisResults:',NINT(CheckSum(1:7)),CheckSum(8)
   
-  WrkArray => ListGetConstRealArray( Params,'Reference Sums',Found )
+  WrkArray => ListGetConstRealArray( Params,'Reference Values',Found )
   IF( Found ) THEN
     RefSum => WrkArray(:,1)
     PRINT *,'RefResults:',NINT(RefSum(1:7)),RefSum(8)    
@@ -124,8 +124,9 @@ SUBROUTINE MeshChecksum( Model,Solver,dt,Transient)
     DO i=1,nsize
       IF( ABS(RefSum(i)) > EPSILON(c) ) THEN
         c = CheckSum(i) / RefSum(i)
+        c = MAX( c, 1.0_dp /c ) 
       ELSE
-        c = CheckSum(i) 
+        c = 1.0_dp + CheckSum(i) 
       END IF
       PseudoNorm = PseudoNorm + c / nsize
     END DO          

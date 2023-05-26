@@ -200,7 +200,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
       CALL Info( 'FourierDiffusionSolve', ' ', Level=4 )
       CALL Info( 'FourierDiffusionSolve', &
            '-------------------------------------', Level=4 )
-      WRITE( Message, * ) 'Fourier Diffusuion  iteration', iter
+      WRITE( Message, * ) 'Fourier Diffusion  iteration', iter
       CALL Info( 'FourierDiffusionSolve', Message, Level=4 )
       WRITE( Message, * ) 'Frequency (Hz): ', AngularFrequency/(2*PI)
       CALL Info( 'FourierDiffusionSolve', Message, Level=4 )

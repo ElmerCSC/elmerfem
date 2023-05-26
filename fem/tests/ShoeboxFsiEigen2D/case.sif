@@ -1,0 +1,145 @@
+! This is test case for strongly coupled eigenmode solution of
+! coupled wave equation and elasticity equation.
+! The case is based on an earlier version in harmonic mode.
+! With new features of coupling it is possible to solve eigenmode
+! problems as well.
+!
+! P.R. 30.9.2021
+
+
+$ AirDensity = 1.21
+$ SoundSpeed = sqrt( 1.402 * 0.402 * 716 * 293)
+
+
+Header
+  Mesh DB "." "shoebox2d"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+! Activate these for postprocessing
+  Post File = "case.vtu"
+  vtu: eigen analysis = Logical True
+  vtu: eigen vector component = String "complex"
+End
+
+Body 1
+  Name = "fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "structure"
+  Equation = 2
+  Material = 2
+End
+
+Initial Condition 1
+  Name = "guess p"
+  P = Real 1.0e-12
+End 
+
+Material 1
+  Density = Real $ AirDensity
+  Sound Speed = $ SoundSpeed
+End
+
+Material 2
+  Density = 2710.0
+  Youngs Modulus = 1.0e6
+  Poisson Ratio = 0.3
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Active Solvers(1) = 2
+End
+
+
+Solver 1
+  Equation = "WaveEq"
+  Variable = "Potential"
+  Procedure = "WaveSolver" "WaveSolver"
+
+  Steady State Convergence Tolerance = 1e-09
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = MUMPS
+
+  Linear System Scaling = Logical False
+
+  Eigen System Select = smallest magnitude
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+
+  Eigen System Complex = Logical True
+
+  Automated Fluid-Structure Coupling = Logical True
+End
+
+
+
+Solver 2
+  Equation = Navier Solver
+  Variable = -dofs 2 U
+  Procedure = "StressSolve" "StressSolver"
+End
+
+
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = File "SaveData" "SaveScalars"
+
+! Register 1st eigenvalue for consistency test
+  Save Eigenvalues = True
+  Show Norm Index = 1
+
+!  Filename = eig.dat
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 5 7
+  Name = "Structure Sides"
+
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+End 
+
+Boundary Condition 2
+  Target Boundaries(3) = 1 2 4
+  Name = "Fluid Sides"
+!  Potential = 0
+End 
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "Fsi"
+
+  Save Scalars = True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 6
+  Name = "Top"
+End
+ 
+
+Solver 1 :: reference norm = 1.46000148E+01
+Solver 3 :: reference norm = 9.99922700E-04

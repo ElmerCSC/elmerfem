@@ -1,0 +1,296 @@
+! Circuits and dynamics test case with foil winding.
+! This test case uses the elemental W Vector as the test function 
+! and the elemental J Vector as the source field. These fields 
+! are computed in WPotentialSolver and their divergence is imposed
+! zero elementally in WVectorFix. Using this arrangement the source 
+! component should be divergence free even if some divergence would 
+! be generated in creating W and J vectors. In this case it seems 
+! though that the divergence is fine even before the fix.
+! Notice the key words using J Vector
+! Solver 4 :: Compute J Vector = Logical True 
+! Component 1 :: Foil Winding Use J Vector = Logical True
+! In addition if when you use W Vector you need to define
+! Component 1 :: Coil Use W Vector = Logical True
+! if J Vector and W Vector are used then source term is of the form (J Vector, W Vector)
+! if only J Vector is used then (J Vector, grad w)
+! if only W Vector is used then (C W Vector, W Vector)
+! When neither are used then (C grad w, grad w)
+! Author: Eelis Takala
+! Original date: May 2021
+! eelis.takala@gmail.com
+Check Keywords "Warn"
+INCLUDE sif/6459-circuits.definitions
+INCLUDE 6459/mesh.names
+Header 1
+   Mesh DB "." "6459"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Initial Condition 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   BDF Order = 1
+   Output Intervals = 1
+   Angular Frequency = 314.159265359
+End
+Solver 1  !---- DirectionSolver, DirectionSolver
+   Exec Solver = Before all
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Alpha
+   Variable =  Alpha
+End
+Solver 2  !---- DirectionSolver, DirectionSolver
+   Exec Solver = Before all
+   Procedure = "DirectionSolver" "DirectionSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 5000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+   Equation = Direction Beta
+   Variable =  Beta
+End
+Solver 3  !---- CoordinateTransform, RotMSolver
+   Exec Solver = Before All
+   Equation = Transformation matrix
+   Procedure = "CoordinateTransform" "RotMSolver"
+   Variable = -nooutput Dummy
+   Optimize Bandwidth = False
+   Polar Decomposition Determinant Tolerance = Real 1.0e-9
+   Polar Decomposition Max Iterations = Integer 100
+   Exported Variable 1 = -nooutput RotM E[RotM E:9]
+   Exported Variable 2 = -nooutput Alpha Vector E[Alpha Vector E:3]
+   Exported Variable 3 = -nooutput Beta Vector E[Beta Vector E:3]
+   Exported Variable 4 = -nooutput Gamma Vector E[Gamma Vector E:3]
+   Discontinuous Galerkin = True
+End
+Solver 4  !---- WPotentialSolver, Wsolve
+   Exec Solver = Before All
+   Procedure = "WPotentialSolver" "Wsolve"
+   Equation = "Wire direction"
+   Variable = W
+   Compute J Vector = Logical True ! This has to be computed if foil winding is sourced with J vector
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 10000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+End
+Solver 5  ! --- WPotentialFix for fixing the gradient of wire potential
+  Exec Solver = Before All
+  !Exec Solver = never
+  Equation = "WFix"
+  Procedure = "WVectorFix" "WVectorFix"
+  Steady State Convergence Tolerance = 1e-06 
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = CG
+  Linear System Residual Output = 100
+
+End
+Solver 6  !---- CircuitsAndDynamics, CircuitsAndDynamicsHarmonic
+   Exec Solver = Always
+   !Exec Solver = never
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 7  !---- MagnetoDynamics, WhitneyAVHarmonicSolver
+   Exec Solver = Always
+   !Exec Solver = never
+   Equation = "MGDynamics"
+   Variable = "A[A re:1 A im:1]"
+   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+   Angular Frequency = 314.159265359
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = Logical True
+   Linear System Complex = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System Convergence Tolerance = 1.e-10
+   Linear System Max Iterations = 5000
+   Linear System Residual Output = 10
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-08
+End
+Solver 8  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+   Exec Solver = Always
+   !Exec Solver = never
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Loss Estimation = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-10
+End
+Solver 9  !---- CircuitsAndDynamics, CircuitsOutput
+   Exec Solver = Always
+   !Exec Solver = never
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 10  !---- ResultOutputSolve, ResultOutputSolver
+   Exec Solver = After timestep
+   !Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 6459-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 11  !---- SaveData, SaveScalars
+   Exec Solver = Always
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 6459/dat/6459.dat
+End
+Solver 12
+   Equation = Divergence Solver
+   Procedure = "DivergenceSolver" "DivergenceSolver"
+   Target Variable = J Vector E
+End
+Equation 1
+   Active Solvers(8) = 1 2 3 4 5 7 8 12
+End
+Equation 2
+   Active Solvers(9) = 1 2 3 4 5 6 \
+                       7 8 12
+End
+Material 1  !---- iron: generic
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+   Relative Permittivity = 1e100
+End
+Material 2  !---- air: generic
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+   Relative Permittivity = 1
+End
+Material 3  !---- aluminium: generic
+   Name = aluminium
+   Relative Permeability = 1
+   Relative Permittivity = 1e100
+   Electric Conductivity = 36e6
+End
+Body 1  !---- core
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+Body 2  !---- air
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 3  !---- A1
+   Name = A1
+   Target Bodies(1) = $ A1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+   Alpha reference (3) = Real 1 0 0
+   Beta reference (3) = Real 0 1 0
+End
+Component 1  !---- A1
+   Name = String A1
+   Master Bodies = Integer 3
+   Coil Type = String foil winding
+   Number of Turns = Real 8
+   Electrode Area = Real 0.01 ! This should be automated in the future and invoked with the "Electrode Boundaries" key
+   Foil Winding Voltage Polynomial Order = Integer 1
+   Coil Use W Vector = Logical True
+   Foil Winding Use J Vector = Logical True
+   Coil Thickness = Real 0.1
+   Foil Layer Thickness = Real 0.0112
+   Circuit Equation Voltage Factor = Real 0.5 !symmetry (half of the problem is solved)
+End
+Body Force 1  !---- Circuit
+   Name = "Circuit"
+   S1 Re = Real $ cos(0.0*pi/3) * 1.41421356237
+   S1 Im = Real $ sin(0.0*pi/3) * 1.41421356237
+End
+Boundary Condition 1  !---- BCn Flux Parallel
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ coreface_xy xy0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 2  !---- Alpha0
+   Name = Alpha0
+   Target Boundaries = $ A1_alpha0
+   Body 3: Alpha = Real 0 ! This boundary condition can be given for each body
+End
+Boundary Condition 3  !---- Alpha1
+   Name = Alpha1
+   Target Boundaries = $ A1_alpha1
+   Body 3: Alpha = Real 1
+End
+Boundary Condition 4  !---- ground
+   Name = ground
+   Target Boundaries = $ A1_gamma1
+   W = Real 0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 5  !---- current in foil winding
+   Name = current in foil winding
+   Target Boundaries = $ A1_gamma0
+   W = Real 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 6  !---- Beta1
+   Name = Beta1
+   Target Boundaries = $ A1_beta1
+   Body 3: Beta = Real 1
+End
+Boundary Condition 7  !---- Beta0
+   Name = Beta0
+   Target Boundaries = $ A1_beta0
+   Body 3: Beta = Real 0
+End
+Solver 7 :: Reference Norm = Real 1.5653E-05
+Solver 7 :: Reference Norm Tolerance = Real 1E-3
+!Solver 8 :: Reference Norm = Real 758
+Solver 8 :: Reference Norm = Real 767
+Solver 8 :: Reference Norm Tolerance = Real 1E-3
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

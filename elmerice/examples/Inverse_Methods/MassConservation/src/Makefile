@@ -1,4 +1,4 @@
-# define the environnement variable SRC_DIR
+# define the environment variable SRC_DIR
 LIBS= RAMP Random
       
 all: $(LIBS)

@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY angle.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(LinControlCoordDisp LABELS quick)
+ADD_ELMER_TEST(LinControlCoordDisp LABELS quick control)

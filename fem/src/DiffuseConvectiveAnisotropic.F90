@@ -130,7 +130,7 @@ MODULE DiffuseConvective
 !    Local variables
 !------------------------------------------------------------------------------
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: StabilizeFlag
+     CHARACTER(:), ALLOCATABLE :: StabilizeFlag
      REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
      REAL(KIND=dp) :: Basis(2*n)
      REAL(KIND=dp) :: ddBasisddx(n,3,3),dNodalBasisdx(n,n,3)

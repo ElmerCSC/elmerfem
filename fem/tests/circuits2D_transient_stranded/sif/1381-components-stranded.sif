@@ -25,8 +25,8 @@ End
 Solver 1
    Exec Solver = Always
    Equation = Circuits
-   Variable = X
-   No Matrix = Logical True
+!   Variable = X
+!   No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
 End
 Solver 2
@@ -59,6 +59,7 @@ Solver 3
    Linear System Iterative Method = BicgstabL
    Linear System Symmetric = True
    Linear System Max Iterations = 100
+   Linear System Residual Output = 10
    Linear System Preconditioning = ILU0
    Linear System Convergence Tolerance = 1e-8
 End
@@ -155,9 +156,6 @@ Boundary Condition 3
    Target Boundaries(7) = 10 13 14 17 18 19 27
    Infinity BC = Logical True
 End
-Solver 3 :: Reference Norm = Real 8.16115E-04
-Solver 3 :: Reference Norm Tolerance = Real 1e-2 
-solver 6 :: Reference Norm = real 9.745811085169E+002
-solver 6 :: reference norm tolerance = real 1e-4
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+
+Solver 2 :: Reference Norm = 6.80676626E+01
+Solver 6 :: Reference Norm = 9.74580283E+02

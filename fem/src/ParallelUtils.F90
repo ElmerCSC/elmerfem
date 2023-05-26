@@ -46,6 +46,10 @@ MODULE ParallelUtils
 
      IMPLICIT NONE
 
+     INTERFACE ParallelReduction
+       MODULE PROCEDURE ParallelReductionR, ParallelReductionI
+     END INTERFACE ParallelReduction
+          
 CONTAINS
 
 #define PARALLEL_FOR_REAL
@@ -69,7 +73,10 @@ CONTAINS
   SUBROUTINE ParallelFinalize()
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
-    CALL ParEnvFinalize()
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Info('ParallelFinalize','Final synchronization of the MPI system!',Level=12)
+      CALL ParEnvFinalize()
+    END IF
 #endif
 !-------------------------------------------------------------------------------
   END SUBROUTINE ParallelFinalize
@@ -110,9 +117,9 @@ CONTAINS
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
+       
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
-
 
        Perm => Solver % Variable % Perm
        IF(PRESENT(inPerm)) Perm=>InPerm
@@ -156,11 +163,11 @@ CONTAINS
          n = Matrix % NumberOfRows
          ALLOCATE( Matrix % ParallelInfo )
          ALLOCATE( Matrix % ParallelInfo % NeighbourList(n) )
-         CALL AllocateVector( Matrix % ParallelInfo % Interface, n)
+         CALL AllocateVector( Matrix % ParallelInfo % NodeInterface, n)
          CALL AllocateVector( Matrix % ParallelInfo % GlobalDOFs, n)
 
          DO i=1,n
-           Matrix % ParallelInfo % Interface(i) = .FALSE.
+           Matrix % ParallelInfo % NodeInterface(i) = .FALSE.
            Matrix % ParallelInfo % GlobalDOFs(i) = 0
            Matrix % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
          END DO
@@ -172,12 +179,15 @@ CONTAINS
 
               Matrix % ParallelInfo % GlobalDOFs(k) = &
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
-              Matrix % ParallelInfo % Interface(k) = &
-                Mesh % ParallelInfo % Interface(i)
-              ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
-                   Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
-              Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
-                Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              Matrix % ParallelInfo % NodeInterface(k) = &
+                Mesh % ParallelInfo % NodeInterface(i)
+              
+              IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+                ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
+                Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              END IF
            END DO
          END DO
 
@@ -185,7 +195,7 @@ CONTAINS
          IF (.NOT.Found) GB = .TRUE.
 
          maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = NINT(ParallelReduction(1._dp*maxnode,2))
+         maxnode = ParallelReduction(maxnode,2)
 
          edofs = 0; fdofs = 0; maxedofs = 0; maxfdofs = 0
          maxedge = 0; maxface = 0
@@ -197,13 +207,13 @@ CONTAINS
            n = Mesh % NumberOfEdges
 
            edofs = Mesh % MaxEdgeDOFS
-           maxedofs = NINT(ParallelReduction(edofs*1._dp,2))
+           maxedofs = ParallelReduction(edofs,2)
 
            maxedge = 0
            DO i=1,n
              maxedge = MAX(maxedge, Mesh % Edges(i) % GElementindex)
            END DO
-           maxedge = NINT(ParallelReduction(1._dp*maxedge,2))
+           maxedge = ParallelReduction(maxedge,2)
 
            DO i=1,n
              Element => Mesh % Edges(i)
@@ -214,7 +224,7 @@ CONTAINS
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % Interface(l) = Mesh % ParallelInfo % EdgeInterface(i)
+                 Matrix % ParallelInfo % NodeInterface(l) = Mesh % ParallelInfo % EdgeInterface(i)
                 
                  ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
                       Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)))
@@ -233,13 +243,13 @@ CONTAINS
            n = Mesh % NumberOfFaces
 
            fdofs = Mesh % MaxFaceDOFS
-           maxfdofs = NINT(ParallelReduction(fdofs*1._dp,2))
+           maxfdofs = ParallelReduction(fdofs,2)
 
            maxface = 0
            DO i=1,n
              maxface = MAX(maxface, Mesh % Faces(i) % GElementindex)
            END DO
-           maxface = NINT(ParallelReduction(1._dp*maxface,2))
+           maxface = ParallelReduction(maxface,2)
 
            DO i=1,n
              Element => Mesh % Faces(i)
@@ -249,7 +259,7 @@ CONTAINS
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxfdofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % Interface(l) = Mesh % ParallelInfo % FaceInterface(i)
+                 Matrix % ParallelInfo % NodeInterface(l) = Mesh % ParallelInfo % FaceInterface(i)
 
                  ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
                       Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)))
@@ -267,7 +277,7 @@ CONTAINS
                    Mesh % NumberOfFaces*Mesh % MaxFaceDOFs
 
            g_beg = Maxnode +  maxedge*maxedofs + maxface*maxfdofs
-           maxbdofs = NINT(ParallelReduction(1._dp*Mesh % MaxBDOFs,2))
+           maxbdofs = ParallelReduction(Mesh % MaxBDOFs,2)
 
            DO i=1,Mesh % NumberOfBulkElements
              Element=>Mesh % Elements(i)
@@ -283,7 +293,7 @@ CONTAINS
                  IF(k==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(k) = &
                    DOFs*(g_beg+maxbdofs*(Element % GElementIndex-1)+l-1)+j
-                 Matrix % ParallelInfo % Interface(k) = .FALSE.
+                 Matrix % ParallelInfo % NodeInterface(k) = .FALSE.
                  ALLOCATE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours(1))
                  Matrix % ParallelInfo % NeighbourList(k) % Neighbours=ParEnv % MyPE
                END DO
@@ -295,8 +305,8 @@ CONTAINS
          ! variables are assigned to task zero, and are assumed to be shared by
          ! all tasks (TODO: to be optimized if need be...)
          ! --------------------------------------------------------------------
-         g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
-         pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
+         g_beg = ParallelReduction(MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2)
+         pardofs_all = ParallelReduction(Matrix % ParallelDOFs,2)
 
          LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
          DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
@@ -327,7 +337,7 @@ CONTAINS
            j=j+1
            Global_dof = j <= Matrix % ParallelDOFs
            IF (Global_dof) THEN
-             Matrix % Parallelinfo % Interface(i) = .TRUE.
+             Matrix % ParallelInfo % NodeInterface(i) = .TRUE.
 
              IF(NeighboursGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
@@ -337,7 +347,7 @@ CONTAINS
                   Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
 
                IF(ALL(Matrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
-                 Matrix % ParallelInfo % Interface(i) = .FALSE.
+                 Matrix % ParallelInfo % NodeInterface(i) = .FALSE.
                  DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
                  ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
                  Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
@@ -374,20 +384,20 @@ CONTAINS
              k = MOD(n-1,Solver % Matrix % NumberOfRows)+1
              n = (n-1) / Solver % Matrix % NumberOfRows
 
-             Matrix % Parallelinfo % Interface(i) = Matrix % ParallelInfo % Interface(k)
+             Matrix % ParallelInfo % NodeInterface(i) = Matrix % ParallelInfo % NodeInterface(k)
 
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
              IF(LocalConstraints) THEN
                IF(.NOT.DiscontBC) THEN
-                 IF (Matrix % Parallelinfo % Interface(k)) &
+                 IF (Matrix % ParallelInfo % NodeInterface(k)) &
                    CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
                END IF
 
                DO m=Matrix % Rows(i), Matrix % Diag(i)-1
                  col = Matrix % Cols(m)
-                 IF (Matrix % Parallelinfo % Interface(col)) THEN
+                 IF (Matrix % ParallelInfo % NodeInterface(col)) THEN
                    DO l=1,SIZE(Matrix % ParallelInfo % NeighbourList(col) % Neighbours)
                      proc = Matrix % ParallelInfo % NeighbourList(col) % Neighbours(l)
                      IF(proc==ParEnv % mype) THEN
@@ -512,7 +522,7 @@ CONTAINS
          ALLOCATE( MatrixPI % GlobalDOFs(n) ); MatrixPI % GlobalDOFs=0
 
          maxnode = MAXVAL(Mesh % ParallelInfo % GlobalDOFs)
-         maxnode = NINT(ParallelReduction(1._dp*maxnode,2))
+         maxnode = ParallelReduction(maxnode,2)
 
          DGReduced = ListGetLogical(Solver % Values, 'DG Reduced Basis', Found )
 
@@ -598,8 +608,8 @@ CONTAINS
            END DO
          END IF
          
-         ALLOCATE( MatrixPI % INTERFACE(n), MatrixPI % NeighbourList(n) )
-         MatrixPI % Interface = .FALSE.
+         ALLOCATE( MatrixPI % NodeInterface(n), MatrixPI % NeighbourList(n) )
+         MatrixPI % NodeInterface = .FALSE.
          DO i=1,n
            MtrxN => MatrixPI % NeighbourList(i)
            MtrxN % Neighbours => NULL()
@@ -608,7 +618,7 @@ CONTAINS
          DO i=1,Mesh % NumberOfBulkElements
            Element => Mesh % Elements(i)
            IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-           IF ( ALL(MeshPI % Interface(Element % NodeIndexes)) ) THEN
+           IF ( ALL(MeshPI % NodeInterface(Element % NodeIndexes)) ) THEN
              DO j=1,Element % Type % NumberOfNodes
                 K = Matrix % Perm(Element % DGIndexes(j))
                 IF(K==0) CYCLE
@@ -617,7 +627,7 @@ CONTAINS
                 MeshN => MeshPI % NeighbourList(L)
                 MtrxN => MatrixPI % NeighbourList(K)
 
-                MatrixPI % Interface(k) = .TRUE.
+                MatrixPI % NodeInterface(k) = .TRUE.
 
                 CALL AllocateVector( MtrxN % Neighbours,  SIZE(MeshN % Neighbours) )
                 MtrxN % Neighbours = MeshN % Neighbours
@@ -652,12 +662,135 @@ CONTAINS
        END DO
        CALL SortI( n,Ind, Matrix % ParallelInfo % Gorder )
 
+
+
+       ! This is used for a rare condition:
+       !
+       ! o Linear system solved using Hypre
+       ! o Some partitions have no degrees of freedom assigned, but have matrix entries
+       ! to contribute to the global system (for example from halo elements).
+       BLOCK
+         INTEGER :: NameSpaceI
+
+         IF( ListGetLogical( Solver % Values,'Linear System Trialing', Found ) ) THEN
+           NameSpaceI = MAX( 1, NINT( ListGetCReal( &
+                         Solver % Values,'Linear System Namespace Number', Found ) ))
+
+           IF( ListGetLogical( Solver % Values, 'linsys' // &
+                 I2S(NameSpaceI)//': Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         ELSE
+           IF( ListGetLogical( Solver % Values, 'Linear System Use Hypre', Found) .OR. &
+               ListGetLogical( Solver % Values, 'linsys1: Linear System Use Hypre', Found) ) &
+
+             CALL AssignAtLeastOneDOFToPartition(n,Matrix % ParallelInfo,Matrix % Comm)
+         END IF
+       END BLOCK
+
+
        Matrix % ParMatrix => &
           ParInitMatrix( Matrix, Matrix % ParallelInfo )
 !if(parenv%mype==0) print*,'MATRIX INIT TIME: ', realtime()-tt
 #endif
+CONTAINS
+
+
 !-------------------------------------------------------------------------------
-    END SUBROUTINE ParallelInitMatrix
+   SUBROUTINE AssignAtLeastOneDOFToPartition(n,ParallelInfo,comm)
+!-------------------------------------------------------------------------------
+     INTEGER :: i,j,k,n, comm
+     TYPE(ParallelInfo_t)  :: ParallelInfo
+
+     INTEGER, POINTER :: p(:)
+     LOGICAL :: L(0:ParEnv % PEs-1), L1(0:ParEnv % PEs-1)
+     INTEGER :: ierr, status(MPI_STATUS_SIZE), np, memb(0:ParEnv % PEs-1), imemb(0:ParEnv % PEs-1), dof, nbr
+
+     np = 0
+     memb  = -1
+     imemb = -1
+     DO i=1,ParEnv % PEs
+       IF ( ParEnv % Active(i) ) THEN
+         memb(np)  = i-1
+         imemb(i-1) = np
+         np = np + 1
+       END IF
+     END DO
+
+     L1 = .TRUE.; L=.TRUE.
+     DO i=1,n
+       IF(ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % myPE) THEN
+         L1(imemb(ParEnv % MyPE)) = .FALSE.; EXIT
+       END IF 
+     END DO
+     CALL MPI_ALLREDUCE(L1, L, np, MPI_LOGICAL, MPI_LAND, comm ,ierr)
+
+
+     IF(ANY(L(0:np-1))) THEN
+
+       IF(L(imemb(ParEnv % MyPE))) THEN
+
+         j = 0; k=0
+         DO i=1,n
+           p => ParallelInfo % NeighbourList(i) % Neighbours
+           IF (SIZE(p)>j) THEN
+              j=SIZE(p); k=i
+           END IF
+         END DO
+         K = n/2
+         p => ParallelInfo % NeighbourList(k) % Neighbours
+
+         DO i=1,SIZE(p)
+           IF(p(i)==ParEnv % myPE) THEN
+             p(i) = p(1)
+             p(1) = ParEnv % MyPE
+             EXIT
+           END IF
+         END DO
+         CALL Sort(SIZE(p)-1, p(2:) )
+
+         dof = ParallelInfo % GlobalDOFs(k)
+         DO i=2,SIZE(p)
+           IF(.NOT.ParEnv % Active(p(i)+1)) CYCLE
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, imemb(p(i)), 501, comm, ierr)
+         END DO
+
+         dof = 0
+         DO i=0,np-1
+           IF(ANY(memb(i)==p)) CYCLE
+           CALL MPI_BSEND(dof, 1, MPI_INTEGER, i, 501, comm, ierr)
+         END DO
+       END IF
+
+       DO i=0,np-1
+         IF(memb(i) == ParEnv % myPE) CYCLE
+
+         IF(L(i)) THEN
+           CALL MPI_RECV(dof, 1, MPI_INTEGER, i, 501, comm, status, ierr )
+
+           IF(dof>0) THEN
+            k = SearchNode( ParallelInfo, dof, Order = ParallelInfo % Gorder )
+             IF (k>0) THEN
+               p => ParallelInfo % NeighbourList(k) % Neighbours
+               DO j=1,SIZE(p)
+                 IF(p(j)==ParEnv % myPE) THEN
+                   p(j) = p(1)
+                   p(1) = memb(i)
+                   EXIT
+                 END IF
+               END DO
+               CALL Sort(SIZE(p)-1, p(2:) )
+             ELSE
+!              STOP 'k'
+             END IF
+           END IF
+         END IF
+       END DO
+     END IF
+!-------------------------------------------------------------------------------
+   END SUBROUTINE AssignAtLeastOneDOFToPartition
+!-------------------------------------------------------------------------------
+  END SUBROUTINE ParallelInitMatrix
 !-------------------------------------------------------------------------------
 
 
@@ -678,6 +811,7 @@ CONTAINS
     END SUBROUTINE ParallelInitSolve
 !-------------------------------------------------------------------------------
 
+! Compute parallel sum (or optional min=1 or max=2)     
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelSumVector( Matrix, x, Op )
 !-------------------------------------------------------------------------------
@@ -692,6 +826,23 @@ CONTAINS
               Matrix % ParallelInfo, x, op )
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelSumVector
+!-------------------------------------------------------------------------------
+
+! As the previous except for integer valued vectors.
+!-------------------------------------------------------------------------------
+    SUBROUTINE ParallelSumVectorInt( Matrix, x, Op )
+!-------------------------------------------------------------------------------
+       TYPE(Matrix_t) :: Matrix
+       INTEGER, OPTIONAL :: op
+       INTEGER CONTIG :: x(:)
+!-------------------------------------------------------------------------------
+       ParEnv = Matrix % ParMatrix % ParEnv
+       ParEnv % ActiveComm = Matrix % Comm
+
+       CALL ExchangeSourceVecInt( Matrix, Matrix % ParMatrix % SplittedMatrix, &
+              Matrix % ParallelInfo, x, op )
+!-------------------------------------------------------------------------------
+     END SUBROUTINE ParallelSumVectorInt
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -736,14 +887,17 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelMatrixVector( Matrix, x, b, Update, UseMassVals,ZeroNotOwned )
+    SUBROUTINE ParallelMatrixVector( Matrix, x, b, Update, UseMassVals, &
+                   ZeroNotOwned, UseAbs )
 !-------------------------------------------------------------------------------
-      REAL(KIND=dp) CONTIG :: x(:), b(:)
+      REAL(KIND=dp) CONTIG, TARGEt :: x(:), b(:)
       TYPE(Matrix_t), POINTER :: Matrix
-      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned
+      LOGICAL, OPTIONAL :: Update, UseMassVals,ZeroNotOwned, UseAbs
 !-------------------------------------------------------------------------------
       INTEGER :: i,ipar(1)
       REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mr(:), Mb(:), r(:)
+
+      LOGICAL:: UpdateL, UseMassValsL,ZeroNotOwnedL, UseAbsL
 
       TYPE(Matrix_t), POINTER :: SaveMatrix
       TYPE(SplittedMatrixT), POINTER :: SP
@@ -756,144 +910,90 @@ CONTAINS
       GlobalMatrix => Matrix
       ParEnv = GlobalData % ParEnv
       ParEnv % ActiveComm = Matrix % Comm
-      IF ( PRESENT( Update ) ) THEN
-         IF ( Update ) THEN
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
 
-                  SP => GlobalData % SplittedMatrix
-                  ALLOCATE( SavePtrIF( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrNB( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrIn )
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
-                       SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
-                    END IF
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
-                       SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
-                    END IF
-                  END DO
-                  SavePtrIN % Values => SP % InsideMatrix % Values
+      UpdateL = .FALSE.
+      IF(PRESENT(Update)) UpdateL=Update
 
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
-                      SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
+      UseMassValsL = .FALSE.
+      IF(PRESENT(UseMassVals)) UseMassValsL=UseMassVals
 
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
+      ZeroNotOwnedL = .FALSE.
+      IF(PRESENT(ZeroNotOwned)) ZeroNotOwnedL=ZeroNotOwned
+
+      UseABSL = .FALSE.
+      IF(PRESENT(UseABS)) UseABSL=UseABS
+
+      IF ( UseMassValsL ) THEN
+        SP => GlobalData % SplittedMatrix
+        ALLOCATE( SavePtrIF( ParEnv % PEs ) )
+        ALLOCATE( SavePtrNB( ParEnv % PEs ) )
+        ALLOCATE( SavePtrIn )
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
+             ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
+             SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
+          END IF
+          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+             ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
+             SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
+          END IF
+        END DO
+        SavePtrIN % Values => SP % InsideMatrix % Values
+
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
+            SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
+
+          IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
                        SP % NbsIfMatrix(i) % Values = SP % NbsIfMatrix(i) % MassValues 
-                  END DO
-                  SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
-               END IF
-
-               Mx => GlobalData % SplittedMatrix % TmpXVec 
-               Mr => GlobalData % SplittedMatrix % TmpRVec 
-               CALL SParMatrixVector( Mx, Mr, ipar )
-               CALL SParUpdateResult( Matrix, x, b, .FALSE. )
-
-               IF(PRESENT(ZeroNotOwned)) THEN
-                 IF(ZeroNotOwned) THEN
-                   DO i = 1, Matrix % NumberOFRows
-                     IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) THEN
-                       b(i) = 0._dp
-                     END IF
-                   END DO
-                 END IF
-               ENDIF
-            ELSE
-               Mx => GlobalData % SplittedMatrix % TmpXVec 
-               Mr => GlobalData % SplittedMatrix % TmpRVec 
-               CALL SParMatrixVector( Mx, Mr, ipar )
-               CALL SParUpdateResult( Matrix, x, b, .FALSE. )
-
-               IF(PRESENT(ZeroNotOwned)) THEN
-                 IF(ZeroNotOwned) THEN
-                   DO i = 1, Matrix % NumberOFRows
-                     IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) THEN
-                       b(i) = 0._dp
-                     END IF
-                   END DO
-                 END IF
-               ENDIF
-            END IF
-
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
-                       SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
-                    END IF
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
-                       SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
-                    END IF
-                  END DO
-                  SP % InsideMatrix % Values => SavePtrIN % Values 
-                  DEALLOCATE( SavePtrIF )
-                  DEALLOCATE( SavePtrNB )
-                  DEALLOCATE( SavePtrIn )
-               END IF
-            END IF
-         ELSE
-            IF ( PRESENT(UseMassVals) ) THEN
-               IF ( UseMassVals ) THEN
-                  SP => Matrix % ParMatrix % SplittedMatrix
-                  ALLOCATE( SavePtrIF( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrNB( ParEnv % PEs ) )
-                  ALLOCATE( SavePtrIn )
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrIF(i) % Values(SIZE(SP % IfMatrix(i) % Values)))
-                       SavePtrIF(i) % Values = SP % IfMatrix(i) % Values
-                    END IF
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                       ALLOCATE(SavePtrNB(i) % Values(SIZE(SP % NbsIfMatrix(i) % Values)))
-                       SavePtrNB(i) % Values = SP % NbsIfMatrix(i) % Values
-                    END IF
-                  END DO
-                  SavePtrIN % Values => SP % InsideMatrix % Values
-
-                  DO i=1,ParEnv % PEs
-                    IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) &
-                       SP % IfMatrix(i) % Values = SP % IfMatrix(i) % MassValues
-
-                    IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) &
-                       SP % NbsIfMatrix(i) % Values = SP % NbsIfMatrix(i) % MassValues 
-                  END DO
-                  SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
-               END IF
-            END IF
-
-            CALL SParMatrixVector( x, b, ipar )
-
-            IF ( PRESENT(UseMassVals) ) THEN
-              IF ( UseMassVals ) THEN
-                DO i=1,ParEnv % PEs
-                  IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-                     SP % IfMatrix(i) % Values = SavePtrIF(i) % Values
-                     DEALLOCATE(SavePtrIF(i) % Values)
-                  END IF
-
-                  IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-                     SP % NbsIfMatrix(i) % Values = SavePtrNB(i) % Values 
-                     DEALLOCATE(SavePtrNB(i) % Values)
-                  END IF
-                END DO
-                SP % InsideMatrix % Values => SavePtrIN % Values 
-                DEALLOCATE( SavePtrIF )
-                DEALLOCATE( SavePtrNB )
-                DEALLOCATE( SavePtrIN )
-              END IF
-            END IF
-         END IF
-      ELSE
-         CALL SParMatrixVector( x, b, ipar )
+        END DO
+        SP % InsideMatrix % Values => SP % InsideMatrix % MassValues
       END IF
-      GlobalMatrix => SaveMatrix
+
+      IF(UpdateL) THEN
+        Mx => GlobalData % SplittedMatrix % TmpXVec 
+        Mr => GlobalData % SplittedMatrix % TmpRVec 
+      ELSE
+        Mx => x
+        Mr => b
+      END  IF
+
+      IF(UseABSL) THEN
+        CALL SParABSMatrixVector( Mx, Mr, ipar )
+      ELSE
+        CALL SParMatrixVector( Mx, Mr, ipar )
+      END IF
+ 
+      IF(UpdateL) CALL SParUpdateResult( Matrix, x, b, .FALSE. )
+
+      IF (ZeroNotOwnedL) THEN
+        DO i = 1, Matrix % NumberOFRows
+          IF ( Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) &
+            b(i) = 0._dp
+        END DO
+      END IF
+
+      IF ( UseMassValsL ) THEN
+        DO i=1,ParEnv % PEs
+          IF ( SP % IfMatrix(i) % NumberOfRows /= 0 ) THEN
+            IF( ALLOCATED( SP % IfMatrix(i) % Values ) ) DEALLOCATE( SP % IfMatrix(i) % Values )
+            ALLOCATE(SP % IfMatrix(i) % Values(SIZE(SavePtrIF(i) % Values)))
+              SP % IfMatrix(i) % Values =  SavePtrIF(i) % Values
+           END IF
+
+           IF ( SP % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
+             IF( ALLOCATED( SP % NbsIfMatrix(i) % Values ) ) DEALLOCATE( SP % NbsIfMatrix(i) % Values )
+              ALLOCATE(SP % NbsIfMatrix(i) % Values(SIZE(SavePtrNB(i) % Values)))
+              SP % NbsIfMatrix(i) % Values =  SavePtrNB(i) % Values 
+           END IF
+        END DO
+        SP % InsideMatrix % Values => SavePtrIN % Values 
+        DEALLOCATE( SavePtrIF )
+        DEALLOCATE( SavePtrNB )
+        DEALLOCATE( SavePtrIn )
+      END IF
+
+       GlobalMatrix => SaveMatrix
 #endif
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelMatrixVector
@@ -1168,8 +1268,10 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 
+!---------------------------------------------------------------------------    
+! Computed a parallel sum (or min or max) for a real valued scalar.    
 !-------------------------------------------------------------------------------
-    FUNCTION ParallelReduction(R,oper_arg) RESULT(rsum)
+    FUNCTION ParallelReductionR(R,oper_arg) RESULT(rsum)
 !-------------------------------------------------------------------------------
       REAL(KIND=dp) :: R, rsum
       INTEGER, OPTIONAL :: oper_arg
@@ -1189,14 +1291,44 @@ CONTAINS
         IF (.NOT.ASSOCIATED(ParEnv % Active)) &
           CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
-
       END IF
 #endif
 !-------------------------------------------------------------------------------
-    END FUNCTION ParallelReduction
+    END FUNCTION ParallelReductionR
 !-------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! Same as previous byt for integer values.    
+!-------------------------------------------------------------------------------
+    FUNCTION ParallelReductionI(i,oper_arg) RESULT(isum)
+!-------------------------------------------------------------------------------
+      INTEGER :: i, isum
+      INTEGER, OPTIONAL :: oper_arg
+!-------------------------------------------------------------------------------
+      INTEGER :: oper
+!-------------------------------------------------------------------------------
+      isum = i
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs>1) THEN
+        oper = 0
+        IF (PRESENT(oper_arg)) THEN
+          oper=oper_arg
+        ELSE
+          oper = 0
+        END IF
+
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
+            CALL ParallelActive(.TRUE.)
+        CALL SparActiveSUMInt(isum,oper)
+      END IF
+#endif
+!-------------------------------------------------------------------------------
+    END FUNCTION ParallelReductionI
+!-------------------------------------------------------------------------------
+
+    
+    
 !-------------------------------------------------------------------------------
     SUBROUTINE ParallelBarrier
 !-------------------------------------------------------------------------------
@@ -1218,6 +1350,218 @@ CONTAINS
     END SUBROUTINE ParallelActiveBarrier
 !-------------------------------------------------------------------------------
 
-END MODULE ParallelUtils
+
+    FUNCTION ParallelSlicesComm() RESULT( CustomComm )
+      INTEGER :: CustomComm      
+#ifdef PARALLEL_FOR_REAL      
+      LOGICAL :: Visited = .FALSE.
+      INTEGER :: nSlices, nTimes, iSlice, iTime
+      INTEGER :: CustomComm0
+      LOGICAL :: GotIt
+      SAVE Visited, CustomComm0
+      
+      IF(.NOT. Visited ) THEN
+        nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
+        nTimes = ListGetInteger( CurrentModel % Simulation,'Number Of Times',GotIt)
+        IF(nSlices > 1 .AND. nTimes > 1) THEN
+          iSlice = MODULO( ParEnv % MyPe, nSlices )           
+          iTime = ParEnv % MyPe / nSlices 
+          CALL MPI_Comm_split(ELMER_COMM_WORLD, iTime, ParEnv % PEs, CustomComm0);
+        ELSE
+          CustomComm0 = ELMER_COMM_WORLD
+        END IF
+        PRINT *,'Creating SlicesComm:',ParEnv % MyPe, iSlice, iTime
+        Visited = .TRUE.
+      END IF
+
+      CustomComm = CustomComm0
+#else
+      CustomComm = -1
+#endif
+      
+    END FUNCTION ParallelSlicesComm
+
+    
+    FUNCTION ParallelTimesComm() RESULT( CustomComm )
+      INTEGER :: CustomComm      
+#ifdef PARALLEL_FOR_REAL      
+      LOGICAL :: Visited = .FALSE.
+      INTEGER :: nSlices, nTimes, iSlice, iTime
+      INTEGER :: CustomComm0
+      LOGICAL :: GotIt
+      SAVE Visited, CustomComm0
+      
+      IF(.NOT. Visited ) THEN
+        nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
+        nTimes = ListGetInteger( CurrentModel % Simulation,'Number Of Times',GotIt)
+        IF(nSlices > 1 .AND. nTimes > 1) THEN
+          iSlice = MODULO( ParEnv % MyPe, nSlices )           
+          iTime = ParEnv % MyPe / nSlices 
+          CALL MPI_Comm_split(ELMER_COMM_WORLD, iSlice, ParEnv % PEs, CustomComm0);
+        ELSE
+          CustomComm0 = ELMER_COMM_WORLD
+        END IF
+        PRINT *,'Creating TimesComm:',ParEnv % MyPe, iSlice, iTime
+        Visited = .TRUE.
+      END IF
+      
+      CustomComm = CustomComm0
+#else
+      CustomComm = -1
+#endif      
+    END FUNCTION ParallelTimesComm
+
+
+    FUNCTION ParallelPieceRank(CustomComm) RESULT (CommRank)
+      INTEGER :: CustomComm, CommRank
+#ifdef PARALLEL_FOR_REAL
+      PRINT *,'GetRank:',ParEnv % MyPe, CustomComm
+      CALL MPI_Comm_rank(CustomComm, CommRank)
+      PRINT *,'GotRank:',ParEnv % MyPe, CommRank
+#else
+      CommRank = -1 
+#endif       
+    END FUNCTION ParallelPieceRank
+
+    FUNCTION ParallelPieceSize(CustomComm) RESULT (CommSize)
+      INTEGER :: CustomComm, CommSize
+#ifdef PARALLEL_FOR_REAL
+      PRINT *,'GetSize:',ParEnv % MyPe, CustomComm
+      CALL MPI_Comm_size(CustomComm, CommSize)
+      PRINT *,'GotSize:',ParEnv % MyPe, CommSize
+#else
+      CommRank = -1 
+#endif       
+    END FUNCTION ParallelPieceSize
+
+
+
+!--------------------------------'-----------------------------------------------
+    SUBROUTINE ParallelMergeMatrix( Solver, A, A1, A2 )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t) :: Solver
+      TYPE(Matrix_t), POINTER :: A, A1, A2
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), POINTER :: Ai
+      TYPE(ParallelInfo_t), POINTER :: P, Pi
+      INTEGER :: i, j, k, l, m, n, ni, ksum, c
+      INTEGER :: jumps(3)
+      INTEGER :: Ierr, status(MPI_STATUS_SIZE)     
+!-------------------------------------------------------------------------------
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs <= 1 ) RETURN       
+
+      n = 0
+      jumps = 0 
+
+      DO i=1,2
+        IF(i == 1) THEN
+          Ai => A1
+        ELSE
+          Ai => A2
+        END IF
+        ni = Ai % NumberOfRows
+        Pi => Ai % ParallelInfo
+        IF(.NOT. ASSOCIATED(Pi) ) THEN
+          CALL Fatal('ParallelMergeMatrix',&
+              'Submatrix '//I2S(i)//' does not have parallel info!')
+        END IF
+        
+        n = n + ni         
+        m = ParallelReduction(MAXVAL(Pi % GlobalDOFs),2)
+        jumps(i+1) = jumps(i) + m 
+      END DO
+
+      !IF( ParEnv % MyPe == 0 ) THEN
+      !  PRINT *,'offsets for parallel info:',jumps
+      !END IF
+      
+      ALLOCATE( A % ParallelInfo )
+      P => A % ParallelInfo
+
+      c = A % NumberOfRows / n
+!     IF( n /= A % NumberOfRows ) THEN
+!       PRINT *,'n:',parenv % mype, n,A % NumberOfRows,c
+!       CALL Warn('ParallelMergeMatrix','Mismatch in vector length')
+!     END IF
+
+      n = A % NumberOfRows
+      ALLOCATE( P % NeighbourList(n) )
+      CALL AllocateVector( P % NodeInterface, n)
+      CALL AllocateVector( P % GlobalDOFs, n)
+      IF( ASSOCIATED( A1 % Perm ) ) CALL AllocateVector( A % Perm, n)      
+      IF( ASSOCIATED( A1 % InvPerm ) ) CALL AllocateVector( A % InvPerm, n)
+
+
+      ! This is made so that would there be need it is easy to add matrices
+      ! if we later need more than two...
+      n = 0
+      DO i=1,2
+        IF(i == 1) THEN
+          Ai => A1
+        ELSE
+          Ai => A2
+        END IF
+
+        ni = Ai % NumberOfRows
+        Pi => Ai % ParallelInfo
+        m = jumps(i)
+
+        IF(c==1) THEN
+          P % NodeInterface(n+1:n+ni) = Pi % NodeInterface(1:ni) 
+          P % GlobalDofs(n+1:n+ni) = Pi % GlobalDofs(1:ni) + m
+        ELSE
+          P % NodeInterface(2*n+1:2*(n+ni)-1:2) = Pi % NodeInterface(1:ni) 
+          P % NodeInterface(2*n+2:2*(n+ni):2) = Pi % NodeInterface(1:ni) 
+          P % GlobalDofs(2*n+1:2*(n+ni)-1:2) = 2*Pi % GlobalDofs(1:ni)-1 + 2*m
+          P % GlobalDofs(2*n+2:2*(n+ni):2) = 2*Pi % GlobalDofs(1:ni) + 2*m
+        END IF
+          
+        !IF( ASSOCIATED( A % Perm ) ) THEN
+        !  A % Perm(n+1:n+ni) = Ai % Perm(1:ni)           
+        !END IF
+        !IF( ASSOCIATED( A % InvPerm ) ) THEN
+        !  A % InvPerm(n+1:n+ni) = Ai % InvPerm(1:ni)           
+        !END IF
+
+        ksum = 0
+        DO j=1,ni
+          IF(.NOT. ASSOCIATED(Pi % NeighbourList(j) % Neighbours)) CYCLE
+          k = SIZE(Pi % NeighbourList(j) % Neighbours)
+          ksum = ksum + k
+          IF(c==1) THEN
+            ALLOCATE(P % NeighbourList(n+j) % Neighbours(k))
+            P % NeighbourList(n+j) % Neighbours = Pi % NeighbourList(j) % Neighbours
+          ELSE
+            ALLOCATE(P % NeighbourList(2*n+2*j-1) % Neighbours(k))
+            P % NeighbourList(2*n+2*j-1) % Neighbours = Pi % NeighbourList(j) % Neighbours
+            ALLOCATE(P % NeighbourList(2*n+2*j) % Neighbours(k))
+            P % NeighbourList(2*n+2*j) % Neighbours = Pi % NeighbourList(j) % Neighbours
+          END IF
+        END DO
+
+        n = n + ni
+      END DO
+
+BLOCK
+     INTEGER, ALLOCATABLE :: Ind(:)
+
+     n = A % NumberOfRows
+
+     ALLOCATE(P % Gorder(n), Ind(n))
+     Ind = P % GlobalDOFs
+     P % Gorder = [(i,i=1,n)]
+     CALL SortI( n, Ind, P % Gorder)
+END BLOCK
+
+     ! Finalize creation of parallel structures
+     A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
+#endif
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelMergeMatrix
+!-------------------------------------------------------------------------------
+
+    
+  END MODULE ParallelUtils
 
 !> \}

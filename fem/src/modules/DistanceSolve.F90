@@ -357,7 +357,7 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
     comm = Solver % Matrix % Comm
     gPerm => Mesh % ParallelInfo % GlobalDOFs
 
-    maxnode = NINT(ParallelReduction(MAXVAL(gPerm(aperm(1:nb)))*1._dp,2))
+    maxnode = ParallelReduction(MAXVAL(gPerm(aperm(1:nb))),2)
     ALLOCATE( ibuf(maxnode),cperm(maxnode) );
 
     cperm=0

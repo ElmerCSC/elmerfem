@@ -948,10 +948,10 @@ public:
 // storage in the data structure). Give each edge the same index as the node //
 // opposite it in the triangle. The six versions of a triangle are:          //
 //                                                                           //
-//                 | edge 0   edge 1   edge 2                                //
-//  ---------------|--------------------------                               //
-//   ccw orieation |   0        2        4                                   //
-//    cw orieation |   1        3        5                                   //
+//                    | edge 0   edge 1   edge 2                             //
+//  ------------------|--------------------------                            //
+//    ccw orientation |   0        2        4                                //
+//     cw orientation |   1        3        5                                //
 //                                                                           //
 // In the following, a 'triface' is a handle of tetrahedron, and a 'face' is //
 // a handle of a triangle.                                                   //

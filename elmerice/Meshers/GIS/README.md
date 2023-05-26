@@ -1,7 +1,7 @@
 # ElmerIce meshing tools
 
 This directory contains meshing tools designed to facilitate the mesh generation of real system 
-and the interaction with GIS sofwares.
+and the interaction with GIS software.
 
 An example demonstrating the use of *Contour2geo.py* and *MeshToShp.py* can be found 
 [here](https://cloud.univ-grenoble-alpes.fr/index.php/s/nFZEEKDDcTg8DD3)
@@ -17,16 +17,16 @@ python Contour2geo.py -r res [-h] [-i <inputfile>] [-o <outputfile>] [--spline] 
 
 Generate a [Gmsh](https://gmsh.info) geometry file (.geo) from a closed contour.  
 
-The countour can be provided as :  
+The contour can be provided as :  
 
-- an ASCII file with x,y cordinates.
+- an ASCII file with x,y coordinates.
 
 - a shapefile: either a single polygon or a collection of polylines.
 
 By default the contour is a Gmsh *compound line*, i.e. the mesh will exactly follow the contour nodes. 
 In case of a very complex curved contour it might be interesting to *simplify* the contour, to avoid over-refinement.
 
-*Splines* can be used with the argument **--spline**, but it may be less accurate to really track the countour and may leed to loops.
+*Splines* can be used with the argument **--spline**, but it may be less accurate to really track the contour and may leed to loops.
 
 The mandatory *-r* argument prescribe the uniform mesh resolution. The mesh size is prescribed at the boundary nodes
 and by prescribing a uniform background field. 
@@ -45,11 +45,11 @@ If the input file contains only one feature (ASCII file or shapefile with 1 poly
 one boundary condition type. Otherwise (in case of several polylines) each feature will be attributed
 a *physical* identification.
 
-If there is several polylines they must form an ordered closed countour. 
+If there is several polylines they must form an ordered closed contour. 
 If the attribute *BC* (integer) is present, the program will use this attribute *BC* to order the lines as shown in the picture:  
 ![](images/Example.png "See line orientation and order of the BC attribute")
 
-In general, the workflow in a GIS sofware will be as follow:
+In general, the workflow in a GIS software will be as follow:
 
 - Create a polygon feature of you domain  
 - Convert the *polygon* to *lines*  

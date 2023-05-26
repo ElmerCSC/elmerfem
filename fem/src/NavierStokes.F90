@@ -114,7 +114,7 @@ MODULE NavierStokes
 !      INPUT: If previous is True, components of angular velocity
 !
 !  LOGICAL :: NewtonLinearization
-!      INPUT: Picard or Newton linearization of the convetion term ?
+!      INPUT: Picard or Newton linearization of the convection term ?
 !
 !  TYPE(Element_t) :: Element
 !       INPUT: Structure describing the element (dimension,nof nodes,
@@ -1740,7 +1740,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Return the local matrices and RHS contrbution for the wall law.
+!> Return the local matrices and RHS contribution for the wall law.
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesWallLaw( BoundaryMatrix,BoundaryVector,LayerThickness,&
     SurfaceRoughness,Nodalmu,Nodalrho,Ux,Uy,Uz,Element,n,Nodes )

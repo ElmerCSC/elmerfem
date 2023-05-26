@@ -1,6 +1,6 @@
 This directory contains standard configuration files to optimize the basal friction velocity
 This use the adjoint inverse method with the SSA direct model to minimize the mismatch between model and observed velocities
-with constrains on teh mismatch betwee model and observed ice flux divergence and smoothness of the basal friction field.
+with constrains on the mismatch between model and observed ice flux divergence and smoothness of the basal friction field.
 
 The output can be restarted to run forecast simulations in the SSA directory with using the optimized friction field.
 

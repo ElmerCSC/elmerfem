@@ -1,4 +1,4 @@
-#MATC libary 
+#MATC library 
 
 MATC is a library for the numerical evaluation of mathematical expressions.
 In the Elmer package it can be used in defining expressions in the command

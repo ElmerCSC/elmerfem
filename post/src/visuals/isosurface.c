@@ -52,7 +52,7 @@
 #include "../elements/elements.h"
 /******************************************************************************
  * 
- * Parameter sructure definitios for Isosurface visual class
+ * Parameter structure definitions for Isosurface visual class
  *
  ******************************************************************************/
 
@@ -171,7 +171,7 @@ static int vis_get_isosurface
  *
  *         Output:  graphics
  *   
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

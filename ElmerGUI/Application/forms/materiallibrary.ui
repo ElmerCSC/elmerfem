@@ -1,94 +1,90 @@
-<ui version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <class>MaterialLibrary</class>
- <widget class="QDialog" name="MaterialLibrary" >
-  <property name="geometry" >
+ <widget class="QDialog" name="MaterialLibrary">
+  <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>441</width>
-    <height>340</height>
+    <height>500</height>
    </rect>
   </property>
-  <property name="windowTitle" >
+  <property name="windowTitle">
    <string>Material library</string>
   </property>
-  <widget class="QListWidget" name="materialListWidget" >
-   <property name="geometry" >
-    <rect>
-     <x>20</x>
-     <y>10</y>
-     <width>401</width>
-     <height>279</height>
-    </rect>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="okButton" >
-   <property name="geometry" >
-    <rect>
-     <x>341</x>
-     <y>300</y>
-     <width>80</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text" >
-    <string>Ok</string>
-   </property>
-   <property name="icon" >
-    <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="appendButton" >
-   <property name="geometry" >
-    <rect>
-     <x>20</x>
-     <y>300</y>
-     <width>80</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text" >
-    <string>Append</string>
-   </property>
-   <property name="icon" >
-    <iconset resource="../ElmerGUI.qrc" >:/icons/list-add.png</iconset>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="clearButton" >
-   <property name="geometry" >
-    <rect>
-     <x>110</x>
-     <y>300</y>
-     <width>80</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text" >
-    <string>Clear</string>
-   </property>
-   <property name="icon" >
-    <iconset resource="../ElmerGUI.qrc" >:/icons/edit-clear.png</iconset>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="closeButton" >
-   <property name="geometry" >
-    <rect>
-     <x>250</x>
-     <y>300</y>
-     <width>80</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text" >
-    <string>Close</string>
-   </property>
-   <property name="icon" >
-    <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
-   </property>
-  </widget>
+  <layout class="QVBoxLayout" name="verticalLayout0">
+   <item>
+    <widget class="QComboBox" name="fileComboBox"/>
+   </item>
+   <item>
+    <widget class="QListWidget" name="materialListWidget"/>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout0">
+     <item>
+      <widget class="QPushButton" name="okButton">
+       <property name="text">
+        <string>Ok</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../ElmerGUI.qrc">
+         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="appendButton">
+       <property name="text">
+        <string>Append</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../ElmerGUI.qrc">
+         <normaloff>:/icons/list-add.png</normaloff>:/icons/list-add.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="spacer0">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="clearButton">
+       <property name="text">
+        <string>Clear</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../ElmerGUI.qrc">
+         <normaloff>:/icons/edit-clear.png</normaloff>:/icons/edit-clear.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>Close</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../ElmerGUI.qrc">
+         <normaloff>:/icons/dialog-close.png</normaloff>:/icons/dialog-close.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
  </widget>
  <resources>
-  <include location="../ElmerGUI.qrc" />
+  <include location="../ElmerGUI.qrc"/>
  </resources>
  <connections/>
 </ui>

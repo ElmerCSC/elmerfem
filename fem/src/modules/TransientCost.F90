@@ -113,10 +113,10 @@ SUBROUTINE TransientCost( Model,Solver,dt,TransientSimulation )
     IF(.NOT. Found) CALL Fatal(Caller,'Solver expects > Data Coordinates < ')
     
     NoPoints = SIZE(DataCoordinates,1)
-    CALL Info(Caller,'Number of data points: '//TRIM(I2S(NoPoints)))
+    CALL Info(Caller,'Number of data points: '//I2S(NoPoints))
 
     NoDims = SIZE(DataCoordinates,2)
-    CALL Info(Caller,'Dimension of data points: '//TRIM(I2S(NoDims)))
+    CALL Info(Caller,'Dimension of data points: '//I2S(NoDims))
         
     DataWeights => ListGetConstRealArray(Params,&
         'Data Weights',Found)
@@ -210,7 +210,7 @@ SUBROUTINE TransientCost( Model,Solver,dt,TransientSimulation )
     Model % CurrentElement => Element
     
     ! These are expected to be tables such that they depend on time
-    str = 'Data '//TRIM(I2S(Point))
+    str = 'Data '//I2S(Point)
     RefVal = ListGetCReal( Params, str, Found )
     IF( .NOT. Found ) THEN
       CALL Fatal( Caller,'Measurement data not found: '//TRIM(str))
@@ -231,7 +231,7 @@ SUBROUTINE TransientCost( Model,Solver,dt,TransientSimulation )
     ELSE IF( NormType == 2 ) THEN
       dCost = dt * (RefVal-SimVal)**2
     ELSE
-      CALL Fatal(Caller,'Invalid norm type: '//TRIM(I2S(NormType)))
+      CALL Fatal(Caller,'Invalid norm type: '//I2S(NormType))
     END IF
     
     IF( ASSOCIATED( DataWeights ) ) THEN

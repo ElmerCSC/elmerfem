@@ -1,0 +1,155 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test for Weertman friction law        !!
+!! in IncompressibleNSVec                !!
+!! with Newton Linearisation             !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!check keywords warn
+!echo on
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+$beta = 0.01
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady        
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+!  Post File = "case.vtu"
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real $-gravity*sin(Slope)
+  Flow BodyForce 2 = Real $gravity*cos(Slope)
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 2
+End
+
+Solver 2
+  Equation = "Stokes-Vec"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Stokes Flow = logical true
+
+  !linear settings:
+  !------------------------------
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  !Non-linear iteration settings:
+  !------------------------------ 
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-8
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Reset Newton = Logical True
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+
+ !! Normal-Tangential coordinate system
+    Normal-Tangential Velocity = Logical True
+    Velocity 1 = Real 0.0
+
+ !! OR x/y   
+  !Velocity 2 = Real 0.0
+
+! If we know that normal velocity is zero by construction no need
+! to reduce it from the velocity field. 
+  !Friction Normal Velocity Zero = Logical True
+
+! Cut-off such that argument is not smaller than this
+  Friction Linear Velocity = Real 1.0e-4 
+
+! 1) Internal Weertman model 
+  Weertman Friction Coefficient =  Variable Coordinate 1
+    Real MATC "beta*sin(2.0*pi*tx/L)"
+
+  Weertman Exponent = Real $1.0/n
+
+  Bottom Surface = Real 0.0
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L 0.0  
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+End
+
+! Upper Surface
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Top Surface = Real 1000.0
+End
+
+! Periodic Left
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+Solver 2 :: Reference Norm = 570.12040
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

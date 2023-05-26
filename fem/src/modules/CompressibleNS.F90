@@ -169,7 +169,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   CALL DefaultStart()
 
   DO iter=1, NonlinearIter
-     ! Initialize the system matrices and vectrors...
+     ! Initialize the system matrices and vectors...
      CALL DefaultInitialize()
 
      DO t=1,Solver % NumberOfActiveElements

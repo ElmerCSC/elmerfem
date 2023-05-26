@@ -1,0 +1,147 @@
+! Test case for generalized source with four heaters.
+! This one with temperature set at given location. 
+!
+! This only works if the control problem is diagonal. 
+!
+! P.R. 10.12.2021
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 50
+!  Post File = case.vtu
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+
+Body Force 1
+  Name = "Heater1"
+  Temperature Control 1 = Real 1.0
+  Heat Source = 1
+End
+
+Body Force 2
+  Name = "Heater2"
+  Temperature Control 2 = Real 2.0
+End
+
+Body Force 3
+  Name = "Heater3"
+  Temperature Control 3 = Real 3.0
+End
+
+Body Force 4
+  Name = "Heater4"
+  Temperature Control 4 = Real 4.0
+End
+
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 50
+  Linear System Abort Not Converged = False
+
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Steady State Convergence Tolerance = 1.0e-08
+  
+  Apply Source Control = Logical True
+
+  Number Of Controls = Integer 4
+
+  Control Target Value 1 = Real 20.0
+  Control Target Value 2 = Real 30.0
+  Control Target Value 3 = Real 40.0
+  Control Target Value 4 = Real 50.0
+
+  Initial Control Amplitude 1 = Real 1.0
+  Initial Control Amplitude 2 = Real 1.0
+  Initial Control Amplitude 3 = Real 1.0
+  Initial Control Amplitude 4 = Real 1.0
+
+  Control Node Coordinates(4,2) = Real 2 6 6 6 2 2 6 2
+
+! There probably is no gain in assuming the sensitivity be diagonal
+!  Control Diagonal = Logical True
+
+! Relaxation could be useful in nonlinear cases
+!  Control Relaxation Factor = Real 0.7
+End 
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 2.20281802E+01
+
+
+

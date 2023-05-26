@@ -30,14 +30,14 @@ The observations can be given in an ascii or netcdf file.
 
 The model variable can be a scalar or a vector, and the observations can be only the first *n* components of the variable, e.g. in general only the horizontal components of the surface velocity vector are observed.
 
-Be carefull, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
+Be careful, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
 
 In general this solver will be executed on the whole mesh for vertically integrated models or on the upper free surface
 for a 3D model and 2D surface observations.
 
 ###  Keywords
 
-Bellow are the related keywords in the *.sif* file:  
+Below are the related keywords in the *.sif* file:  
 
 
 ```
@@ -45,7 +45,7 @@ Solver *solver id*
   
     Equation = String "Cost"  
     procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
-    !## No need to declare a variable, this is done internally to insure 
+    !## No need to declare a variable, this is done internally to ensure 
     !## that Solver structures exist
 
     !# If the variable is a vector, 
@@ -63,7 +63,7 @@ Solver *solver id*
      !##  the rms (i.e. not normalised by standard error)
      Cost Filename = File ""
      
-     !# Name of the variable that contain the cost value
+     !# Name of the variable that contains the cost value
      !#  must exist and can be a global variable
      Cost Variable Name = String ""
      
@@ -79,17 +79,17 @@ Solver *solver id*
      !## Coordinates dimension of the Obs. must be consistent with Pb dimension;
      !##  i.e. CoordsystemDim if solver is on the bulk or 
      !###      (CoordsystemDim-1) if solver is on a boundary
-     !## If the observation file is in ASCII it must containt the following columns:
-     !##  coordinates(1:ndim), observations(1:vardim), standar errors(1:vardim) (optional)
+     !## If the observation file is in ASCII it must contain the following columns:
+     !##  coordinates(1:ndim), observations(1:vardim), standard errors(1:vardim) (optional)
      Observation File Name = File "" 
      
-     !# If the variable is a vector, how many component do we observe?
+     !# If the variable is a vector, how many components do we observe?
      !## it will be the first *n* components
      Observed Variable dimension = Integer ...
    
-     !# If true data that have been found in the mesh at the 
+     !# If true data that has been found in the mesh at the 
      !#  first visit will be saved in an ascii file
-     !## will save coordinates, observation, standar error (optional), element number
+     !## will save coordinates, observation, standard error (optional), element number
      !## there will be one file per partition
      Save used data = Logical 
      !## if yes name of the output file
@@ -143,7 +143,7 @@ Body Force i
 End
 ```
 
-### Limitations and possible improvments
+### Limitations and possible improvements
 
 - The search algorithm to locate the observations in the mesh is very efficient if the solver is executed on the whole mesh (e.g. for vertcially integrated models); however it is not efficient if the solver is executed on a boundary. 
 In this case, if working with Elmer internal extrusion, it can be advantageus to :  
@@ -158,13 +158,13 @@ In this case, if working with Elmer internal extrusion, it can be advantageus to
    - If running parallel, the same number of partitions must be used and set
      - *Parallel Observation Files = Logical True*
 
-- If the observed variable is a vector, data will only be used only if all the observed components are valid. The solver could be updated to use indepently all the observed components.
+- If the observed variable is a vector, data will only be used only if all the observed components are valid. The solver could be updated to use independently all the observed components.
 
-Bellow is a list of features that are not currently possible in this solver but that could be implemented:
+Below is a list of features that are not currently possible in this solver but that could be implemented:
 
 - For the moment we assume that errors on the observation are not correlated, i.e. the observation error covariance matrix is diagonal with the square of the standard errors in the diagonal. 
 
-- We could allow for the possibility that only the norm of a vector is oberved or only the components in a given direction.
+- We could allow for the possibility that only the norm of a vector is observed or only the components in a given direction.
 
 
 ### Tests and Examples

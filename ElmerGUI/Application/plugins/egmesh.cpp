@@ -427,9 +427,9 @@ void GetElementSide(int element,int side,int normal,
       ind[2] = elemind[(side+1)%3+3];
       ind[3] = elemind[side+3];  
       ind[4] = elemind[6+side];
-      ind[5] = elemind[12+(side+1)%3];
-      ind[6] = elemind[9+side];
-      ind[7] = elemind[12+side];      
+      ind[5] = elemind[9+(side+1)%3];
+      ind[6] = elemind[12+side];
+      ind[7] = elemind[9+side];      
     }
     else if (side < 5) {
       *sideelemtype = 306;          
@@ -912,12 +912,10 @@ void InitializeKnots(struct FemType *data)
   }
 
   for(i=0;i<MAXBODIES;i++) {
-    strcpy(data->bodyname[i],""); 
-    sprintf(data->bodyname[i],"body%d",i);
+    data->bodyname[i] = NULL;
   }
   for(i=0;i<MAXBCS;i++) {
-    strcpy(data->boundaryname[i],""); 
-    sprintf(data->boundaryname[i],"bc%d",i);
+    data->boundaryname[i] = NULL;
   }
 }
 
@@ -2568,7 +2566,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
       dy2 = data->y[data->topology[i][(j+1)%4]] - data->y[data->topology[i][j]];
       ds1 = sqrt(dx1*dx1+dy1*dy1);
       ds2 = sqrt(dx2*dx2+dy2*dy2);
-      angles[j] = (180.0/M_PI) * acos((dx1*dx2+dy1*dy2)/(ds1*ds2));
+      angles[j] = (180.0/FM_PI) * acos((dx1*dx2+dy1*dy2)/(ds1*ds2));
       
       /* Slightly favor divisions where corner is split */
       if(needed[data->topology[i][j]] == 1) angles[j] *= 1.001;
@@ -2867,16 +2865,30 @@ int PolarCoordinates(struct FemType *data,Real rad,int info)
 int CylinderCoordinates(struct FemType *data,int info)
 {
   int i;
-  Real rad,fii;
-
-  for(i=1;i<=data->noknots;i++) {
-    rad = data->x[i];
-    fii = FM_PI/180.0 * data->y[i];
-
-    data->x[i] = rad * cos(fii);
-    data->y[i] = rad * sin(fii);
+  Real x,y,z,rad,fii;
+  
+  if( data->dim == 3 ) {    
+    for(i=1;i<=data->noknots;i++) {
+      x = data->x[i];
+      y = data->y[i];
+      fii = FM_PI/180.0 * data->z[i];
+      rad = data->x[i];
+      
+      data->x[i] = rad * cos(fii);
+      data->y[i] = rad * sin(fii);
+      data->z[i] = y;
+    }
   }
-
+  else {
+    for(i=1;i<=data->noknots;i++) {
+      rad = data->x[i];
+      fii = FM_PI/180.0 * data->y[i];
+      
+      data->x[i] = rad * cos(fii);
+      data->y[i] = rad * sin(fii);
+    }
+  }
+    
   if(info) printf("Making coordinate transformation from cylindrical to cartesian\n");
 
   return(0);
@@ -2949,6 +2961,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	if( !bodynameis[mat] ) {
 	  bodynameis[mat] = mat;
 	  bodyused[mat] = TRUE;
+	  if(!data1->bodyname[mat]) data1->bodyname[mat] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
 	}
       }
@@ -2963,6 +2976,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	  if( !boundarynameis[mat] ) {
 	    boundarynameis[mat] = mat;
 	    boundaryused[mat] = TRUE;
+	    if(!data1->boundaryname[mat]) data1->boundaryname[mat] = Cvector(0,MAXNAMESIZE);
 	    strcpy(data1->boundaryname[mat],data2->boundaryname[mat]);
 	  }
 	}
@@ -2980,7 +2994,8 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	  if(info) printf("Renumbering body %d to %d\n",mat,k);
 	  bodynameis[mat] = k;	  
 	  bodyused[k] = TRUE;
-	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
+  	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
 	}
       }
     }
@@ -2997,6 +3012,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	    if(info) printf("Renumbering boundary %d to %d\n",mat,k);
 	    boundarynameis[mat] = k;
 	    boundaryused[k] = TRUE;
+	    if(!data1->boundaryname[k]) data1->boundaryname[k] = Cvector(0,MAXNAMESIZE);
 	    strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
 	  }
 	}
@@ -3986,8 +4002,8 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,doinit,isordered;
   int minbc=0,maxbc=0,**mapbc;
   int elemdim=0,elemtype=0,sideind[MAXNODESD1];
-  int bctype;
-  
+  int bctype,havename,isname;
+
   if(renumber) {
     if(0) printf("Renumbering boundary types\n");
     
@@ -4036,21 +4052,43 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     j = 0;
     /* Give the larger dimension always a smaller BC type */
     isordered = TRUE;
-    for(elemdim=2;elemdim>=0;elemdim--) {
-      for(i=minbc;i<=maxbc;i++) {
-	if(!mapbc[i][elemdim]) continue;
-	j++;
-	if(i == j) {
-	  printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim); 
+    for(isname=1;isname>=0;isname--) {      
+      for(elemdim=2;elemdim>=0;elemdim--) {
+	for(i=minbc;i<=maxbc;i++) {
+	  if(!mapbc[i][elemdim]) continue;
+
+	  /* Give index 1st to the named entities, then to unnamed. */
+	  havename = FALSE;
+	  if(data->boundarynamesexist) {
+	    if(i<MAXBCS) { 
+	      if(data->boundaryname[i]) havename = TRUE;
+	    }
+	  }
+	  if(havename != isname) break;
+
+	  j++;
+	  if(i == j) {
+	    if( isname ) {
+	      printf("BC index unaltered %d in %d %dD elements of %s\n",i,mapbc[i][elemdim],elemdim,data->boundaryname[i]); 
+	    }
+	    else {	      
+	      printf("BC index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  else {
+	    isordered = FALSE;
+	    if( isname ) {
+	      printf("BC index changed %d -> %d in %d %dD elements of %s\n",i,j,mapbc[i][elemdim],elemdim,data->boundaryname[i]);
+	    }
+	    else {
+	      printf("BC index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim);
+	    }
+	  }
+	  mapbc[i][elemdim] = j;
 	}
-	else {
-	  isordered = FALSE;
-	  printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim); 
-	}
-	mapbc[i][elemdim] = j;
       }
     }
-
+      
     if(0) {
       for(i=minbc;i<=maxbc;i++) 
 	for(j=0;j<=2;j++)
@@ -4071,17 +4109,42 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	  bound[j].types[i] = mapbc[bound[j].types[i]][elemdim];
 	}
       }
+      
       if(data->boundarynamesexist) {
-	char boundaryname0[MAXBCS][MAXNAMESIZE];
+	char *boundaryname0[MAXBCS];
 
-	/* We need some temporal place is name mapping might not be unique */
-	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) 
-	  strcpy(boundaryname0[j],data->boundaryname[j]);
+	for(j=0;j<MAXBODIES;j++)
+	  boundaryname0[j] = NULL;
 	
+	/* We need some temporal place is name mapping might not be unique */
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	  k = 0;
 	  for(elemdim=2;elemdim>=0;elemdim--) {	    
 	    k = mapbc[j][elemdim];
-	    if(k) strcpy(data->boundaryname[k],boundaryname0[j]);
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(data->boundaryname[j]) {
+	      boundaryname0[j] = Cvector(0,MAXNAMESIZE);	    
+	      strcpy(boundaryname0[j],data->boundaryname[j]);
+	      free_Cvector(data->boundaryname[j],0,MAXNAMESIZE);
+	      data->boundaryname[j] = NULL;
+	    }
+	  }
+	}
+	
+	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
+	  k = 0;
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    	   	    
+	    k = mapbc[j][elemdim];
+	    if(k) break;
+	  }
+	  if(k) {
+	    if(boundaryname0[j]) {
+	      if(!data->boundaryname[k]) 
+		data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	      strcpy(data->boundaryname[k],boundaryname0[j]);
+	    }
 	  }
 	}
       }
@@ -4098,7 +4161,9 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     }
     if(data->boundarynamesexist) {
       for(j=MAXBOUNDARIES-bcoffset-1;j>=0;j--) {
-	strcpy(data->boundaryname[j+bcoffset],data->boundaryname[j]);
+	k = j+bcoffset;
+	if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	strcpy(data->boundaryname[k],data->boundaryname[j]);
       }
     }
   }
@@ -4108,7 +4173,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 
 void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int info)
 {     
-  int i,j,noelements,doinit;
+  int i,j,k,noelements,doinit;
   int minmat=0,maxmat=0,*mapmat;
   
   if(0) printf("Setting new material types\n");
@@ -4153,16 +4218,25 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
       data->material[j] = mapmat[data->material[j]];
 
     if(data->bodynamesexist) {
+      if(info) printf("Mapping entity names to follow material indexes\n");
       for(j=minmat;j<=MIN(maxmat,MAXBODIES-1);j++) {
-	if(mapmat[j]) 
-	  strcpy(data->bodyname[mapmat[j]],data->bodyname[j]);
+	k = mapmat[j];
+	if(k) {
+	  if(data->bodyname[j]) {
+	    if(!data->bodyname[k]) data->bodyname[k] = Cvector(0,MAXNAMESIZE);
+	    strcpy(data->bodyname[k],data->bodyname[j]);
+	  }
+	}
       }
     }
   }
   else {
     if(info) printf("Numbering of bodies is already ok\n");
   }
+  
   free_Ivector(mapmat,minmat,maxmat);
+
+  if(info) printf("Renumbering of material types completed!\n");
 }
 
 
@@ -4191,7 +4265,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
 
   /* Nothing to remove if the bulk mesh has 1D elements */
   if(minelemdim < 2) return(2);
-
+  
   oldnosides = 0;
   newnosides = 0;
   for(j=0;j < MAXBOUNDARIES;j++) {
@@ -4225,7 +4299,7 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
     bound[j].nosides = nosides;
     newnosides += nosides;
   }
-
+  
   if(info) printf("Removed %d (out of %d) less than %dD boundary elements\n",
 		  oldnosides-newnosides,oldnosides,minelemdim-1);
   return(0);
@@ -5027,7 +5101,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
 {
   int i,j,side,element,maxcon,con,newknots,ind,ind2;
   int noelements,noknots,nonodes,maxnodes,maxelemtype,hit,node;
-  int elemtype;
+  int elemtype,stat;
   int **newnodetable=NULL,inds[2],**newtopo=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
   
@@ -5141,7 +5215,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
     data->elementtypes[element] = elemtype;
   }
 
-  DestroyNodalGraph(data,info);
+  stat = DestroyNodalGraph(data,info);
 
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
@@ -5161,196 +5235,6 @@ int IncreaseElementOrder(struct FemType *data,int info)
 
   return(0);
 }
-
-
-
-int IncreaseElementOrderOld(struct FemType *data,int info)
-{
-  int i,j,side,element,noedges,elemtype,newnode;
-  int noelements,noknots,nosides,maxnodes;
-  int maxelementtype,maxedgenodes,elemedges,maxelemedges,edge,dosides;
-  int **edgetable=NULL,sideind[MAXNODESD1],sideelemtype,allocated;
-  int *indx=NULL,*identical=NULL,**newtopo=NULL;
-  Real *arrange=NULL,*newx=NULL,*newy=NULL,*newz=NULL;
-  
-  if(info) printf("Trying to increase the element order of current elements\n");
- 
-  maxelementtype = 0;
-  maxnodes = 0;
-  noedges = 0;
-
-  noelements = data->noelements;
-  noknots = data->noknots;
-
-  maxelementtype = GetMaxElementType(data);
-
-  if(maxelementtype/100 > 4) {
-    printf("IncreaseElementOrder: Implemented only for 2D elements!\n");
-    dosides = 0;
-    return(1);
-  } 
-
-  if(maxelementtype/100 <= 2) maxedgenodes = 1;
-  else if(maxelementtype/100 <= 4) maxedgenodes = 2;
-  maxelemedges = maxelementtype/100;
-  allocated = FALSE;
-
- edgeloop:
-  
-  edge = 0;
-  for(element=1;element<=data->noelements;element++) {
-
-    elemedges = data->elementtypes[element]/100;
-    
-    for(side=0;side<elemedges;side++) {
-      edge++;
-      
-      if(!allocated) continue;
-      GetElementSide(element,side,1,data,sideind,&sideelemtype);
-      edgetable[edge][maxedgenodes] = element;
-      edgetable[edge][maxedgenodes+1] = side;
-      
-      if(maxedgenodes == 1) 
-	edgetable[edge][0] = sideind[0];
-      else if(maxedgenodes == 2) {
-	if(sideind[0] > sideind[1]) {
-	  edgetable[edge][0] = sideind[0];
-	  edgetable[edge][1] = sideind[1];
-	}
-	else {
-	  edgetable[edge][1] = sideind[0];
-	  edgetable[edge][0] = sideind[1];
-	}
-      }
-    }
-  }
-
-  if(!allocated) {
-    noedges = edge;
-    edgetable = Imatrix(1,noedges,0,maxedgenodes+1);
-    for(i=1;i<=noedges;i++) 
-      for(j=0;j<=maxedgenodes+1;j++) 
-	edgetable[i][j] = 0;
-    allocated = TRUE;
-    goto edgeloop;
-  }
-
-  printf("There are altogether %d edges in the elements\n",noedges);
-
-  arrange = Rvector(1,noedges);
-  for(i=1;i<=noedges;i++) 
-    arrange[i] = 0.0;
-  for(i=1;i<=noedges;i++) 
-    arrange[i] = edgetable[i][0];
-  indx = Ivector(1,noedges);
-
-  SortIndex(noedges,arrange,indx);
-
-#if 0
-  printf("noknots = %d\n",noknots);
-  for(i=1;i<=noknots;i++) 
-    printf("indx[%d]=%d  edge=%d  arrange[%d] = %g  arrange[indx[%d]] = %g\n",
-	   i,indx[i],edgetable[i][0],i,arrange[i],i,arrange[indx[i]]);
-#endif
-#if 0
-  revindx = Ivector(1,data->noknots);
-  for(i=1;i<=noknots;i++) 
-    revindx[indx[i]] = i;
-#endif
-
-  allocated = FALSE;
-  identical = Ivector(1,noedges);
-  for(i=1;i<=noedges;i++) identical[i] = 0;
-
-  nosides = 0;
-  for(i=1;i<=noedges;i++) {
-    if(identical[i] < 0) continue;
-    if(maxedgenodes == 1) {
-      for(j=i+1;j<=noedges && edgetable[indx[i]][0] == edgetable[indx[j]][0];j++) 
-	identical[j] = -i;
-    }
-    else if(maxedgenodes == 2) {
-      for(j=i+1;j<=noedges && edgetable[indx[i]][0] == edgetable[indx[j]][0];j++) 
-	if(edgetable[indx[i]][1] == edgetable[indx[j]][1]) 
-	  identical[j] = -i;
-    }
-    identical[i] = ++nosides;
-  }
-
-  printf("There will be %d new nodes in the elements\n",nosides);
-
-  newx = Rvector(1,noknots+nosides);
-  newy = Rvector(1,noknots+nosides);
-  newz = Rvector(1,noknots+nosides);
-
-  for(i=1;i<=noknots;i++) {
-    newx[i] = data->x[i];
-    newy[i] = data->y[i];
-    newz[i] = data->z[i];
-  }
-    
-  if(maxelementtype <= 303) 
-    maxnodes = 6;
-  else if(maxelementtype == 404) 
-    maxnodes = 8;
-  newtopo = Imatrix(1,noelements,0,maxnodes-1);
-    
-  for(element=1;element<=noelements;element++) {
-    elemtype = data->elementtypes[element];
-    elemedges = elemtype/100;
-    for(i=0;i<elemtype%100;i++)
-      newtopo[element][i] = data->topology[element][i];
-  }
-    
-
-  for(j=1;j<=noedges;j++) {
-    newnode = identical[j];
-    if(newnode < 0) newnode = identical[abs(newnode)];
-    if(newnode <= 0) printf("Newnode = %d  Edge = %d\n",newnode,j);
-    newnode += noknots;
-
-    edge = indx[j];
-    element = edgetable[edge][maxedgenodes];
-    side = edgetable[edge][maxedgenodes+1];
-
-    GetElementSide(element,side,1,data,sideind,&sideelemtype);
-
-    elemtype = data->elementtypes[element];
-
-    newtopo[element][elemtype/100+side] = newnode;
-    if(elemtype == 303) 
-      data->elementtypes[element] = 306;
-    else if(elemtype == 404)
-      data->elementtypes[element] = 408;
-
-    newx[newnode] = 0.5*(data->x[sideind[0]] + data->x[sideind[1]]);
-    newy[newnode] = 0.5*(data->y[sideind[0]] + data->y[sideind[1]]);
-    newz[newnode] = 0.5*(data->z[sideind[0]] + data->z[sideind[1]]);
-  }
-
-  free_Rvector(data->x,1,data->noknots);
-  free_Rvector(data->y,1,data->noknots);
-  free_Rvector(data->z,1,data->noknots);
-  free_Imatrix(data->topology,1,data->noelements,0,data->maxnodes);
-  
-
-  data->x = newx;
-  data->y = newy;
-  data->z = newz;
-
-  data->topology = newtopo;
-  data->noknots += nosides;
-  data->maxnodes = maxnodes;
-
-  free_Ivector(indx,1,noedges);
-  free_Ivector(identical,1,noedges);
-  free_Imatrix(edgetable,1,noedges,0,maxedgenodes+1);
-
-  printf("Created extra nodes in the middle of the edges\n");
-
-  return(0);
-}
-
 
 
 
@@ -5946,7 +5830,9 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   for(i=1;i<=dataxy->noelements;i++) 
     origtype = MAX( origtype, dataxy->elementtypes[i]);
 
-  if(origtype == 303)  
+  if(origtype == 202)
+    elemtype = 404;
+  else if(origtype == 303)  
     elemtype = 706;
   else if(origtype == 404)  
     elemtype = 808;
@@ -5958,7 +5844,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     printf("CreateKnotsExtruded: not implemented for elementtypes %d!\n",origtype);
     return;
   }
-  printf("Maxium elementtype %d extruded to type %d.\n",origtype,elemtype);
+  printf("Maximum elementtype %d extruded to type %d.\n",origtype,elemtype);
 
   nonodes2d = origtype%100;
   data->maxnodes = nonodes3d = elemtype%100;
@@ -6059,15 +5945,16 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
     for(k=1;k<=kmax; k++) {
       
-      if(0) printf("elem0=%d  knot0=%d  knot1=%d\n",elem0,knot0,knot1);
       level++;
       
       for(element=1;element <= dataxy->noelements;element++)  {
 
 	origtype = dataxy->elementtypes[element];
 	nonodes2d = origtype % 100;
-	
-	if(origtype == 303)  
+
+	if(origtype == 202)
+	  elemtype = 404;
+	else if(origtype == 303)  
 	  elemtype = 706;
 	else if(origtype == 404)  
 	  elemtype = 808;
@@ -6138,6 +6025,12 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  data->topology[elem0][25] = dataxy->topology[element][8]+knot1;
 	  data->topology[elem0][26] = dataxy->topology[element][8]+knot2;
 	}
+	else if(elemtype == 404) {
+	  data->topology[elem0][0] = dataxy->topology[element][0]+knot0;
+	  data->topology[elem0][1] = dataxy->topology[element][1]+knot0;
+	  data->topology[elem0][2] = dataxy->topology[element][1]+knot1;
+	  data->topology[elem0][3] = dataxy->topology[element][0]+knot1;
+	}	
       }
       knot0 += layers*dataxy->noknots;
       knot1 += layers*dataxy->noknots;
@@ -6286,6 +6179,12 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	      bound[j].side2[side] = boundxy[j].side[i];
 	      bound[j].material[side] = material2;	      
 	    }
+
+	    /* The sides have different convention for 1D initial elements */
+	    if(elemtype == 404) {
+	      if(bound[j].side[side] == 0) bound[j].side[side] = 3; 
+	      if(bound[j].side2[side] == 0) bound[j].side2[side] = 3; 
+	    }
 	  }
 	}
       }
@@ -6307,10 +6206,18 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
 
   if( usenames ) {
-    for(i=1;i< MAXBODIES;i++) 
-      strcpy(data->bodyname[i],dataxy->bodyname[i]);
-    for(i=1;i< MAXBOUNDARIES;i++) 
-      strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
+    for(i=1;i< MAXBODIES;i++) {
+      if(dataxy->bodyname[i]) {
+	if(!data->bodyname[i]) data->bodyname[i] = Cvector(0,MAXNAMESIZE);
+	strcpy(data->bodyname[i],dataxy->bodyname[i]);
+      }
+    }
+    for(i=1;i< MAXBOUNDARIES;i++) { 
+      if(dataxy->boundaryname[i]) {
+	if(!data->boundaryname[i]) data->boundaryname[i] = Cvector(0,MAXNAMESIZE);
+	strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
+      }
+    }
     data->bodynamesexist = TRUE;
     data->boundarynamesexist = TRUE;
   }
@@ -6377,8 +6284,10 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  for(i=1;i<=dataxy->noelements;i++){
 	    origtype = dataxy->elementtypes[i];
 	    nonodes2d = origtype % 100;
-	
-	    if(origtype == 303)  
+
+	    if(origtype == 202)
+	      elemtype = 404;
+	    else if(origtype == 303)  
 	      elemtype = 706;
 	    else if(origtype == 404)  
 	      elemtype = 808;
@@ -6492,18 +6401,20 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 		    printf("Layer includes more than %d new BCs!\n",MAXNEWBC);
 		  }
 		}
-		bound[bcset].types[side] = refsidetype[m];
+		l = refsidetype[m];
+		bound[bcset].types[side] = l;
 
 		
 		if( usenames ) {
+		  if(!data->boundaryname[l]) data->boundaryname[l] = Cvector(0,MAXNAMESIZE);		  
 		  if( bclevel == 1 ) 
-		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+		    sprintf(data->boundaryname[l],"%s%s",
 			    dataxy->bodyname[dataxy->material[i]],"_Start");		  
 		  else if( cellk == grid->zcells )
-		    sprintf(data->boundaryname[refsidetype[m]],"%s%s",
+		    sprintf(data->boundaryname[l],"%s%s",
 			    dataxy->bodyname[dataxy->material[i]],"_End");		  
 		  else
-		    sprintf(data->boundaryname[refsidetype[m]],"%s%s%d",
+		    sprintf(data->boundaryname[l],"%s%s%d",
 			    dataxy->bodyname[dataxy->material[i]],"_Level",bclevel);		  
 		}
 
@@ -6547,18 +6458,21 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     for(element=1;element<=data->noelements;element++) {
 
       for(side=0;side<6;side++) {
-	GetElementSide(element,side,1,data,&sideind[0],&sideelemtype);
-
+	GetElementSide(element,side,1,data,&sideind[0],&sideelemtype);	
+	
 	meanrad = 0.0;
 	maxrad = 0.0;
 	maxradi = 0;
 
-	for(i=0;i<4;i++) {
+	j = sideelemtype/100;
+	if(j==1) break;
+	
+	for(i=0;i<j;i++) {
 	  xc = data->x[sideind[i]];
 	  yc = data->y[sideind[i]];
 
 	  rad = sqrt(yc*yc+xc*xc);
-	  fii = 2*atan2(yc,xc)/M_PI;  /* Map fii to [0 4] */
+	  fii = 2*atan2(yc,xc)/FM_PI;  /* Map fii to [0 4] */
 
 	  rads[i] = rad;
 	  fiis[i] = fii;
@@ -6567,7 +6481,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	    maxrad = rad;
 	    maxradi = i;
 	  }
-	  meanrad += 0.25 * rad;
+	  meanrad += rad / j;
 	}
 
        	fii0 = fiis[maxradi];
@@ -6701,7 +6615,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   if( grid->zhelicityexists ) {
     Real helicity,fii,x,y,z,minz,maxz;
 
-    helicity = (M_PI/180.0)*grid->zhelicity;
+    helicity = (FM_PI/180.0)*grid->zhelicity;
 
     minz = maxz = data->z[1];
     for(i=1;i<=data->noknots;i++) {
@@ -7073,9 +6987,9 @@ void ElementsToBoundaryConditions(struct FemType *data,
   int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
   int sidenodes,sidenodes2,maxelemtype,elemtype,elemdim,sideelements,material;
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
-  int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim;
-  int debug,unmoved,removed,elemhits,loopdim,elemdim2,lowdimbulk;
-  int notfound,*notfounds=NULL;
+  int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
+  int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
+  int notfound,*notfounds=NULL,movenames;
 
 
   if(info) {
@@ -7090,6 +7004,14 @@ void ElementsToBoundaryConditions(struct FemType *data,
 
   noelements = data->noelements;
   noknots = data->noknots;
+  
+  movenames = (data->bodynamesexist && !data->boundarynamesexist);
+  if(data->bodynamesexist && info) {
+    if(movenames)
+      printf("Moving boundarynames together with elements\n");
+    else
+      printf("Assuming that boundaries names are already Ok!\n");
+  }
 
   maxelemtype = GetMaxElementType(data);
   if(info) printf("Leading bulk elementtype is %d\n",maxelemtype);
@@ -7097,12 +7019,93 @@ void ElementsToBoundaryConditions(struct FemType *data,
   minelemtype = GetMinElementType(data);
   if(info) printf("Trailing bulk elementtype is %d\n",minelemtype);
 
-  elemdim = GetElementDimension(maxelemtype);
-  if( elemdim - GetElementDimension(minelemtype) == 0) {
+  maxelemdim = GetElementDimension(maxelemtype);
+  minelemdim = GetElementDimension(minelemtype);
+  if( maxelemdim - minelemdim == 0) {
     if(info) printf("No lower dimensional elements present!\n");
     return;
   }
+
+  if(maxelemdim-minelemdim > 1 ) {
+    int **tagcount;
+    int mintag,maxtag,tag,overlap;
+
+    mintag=maxtag=tag=overlap=-1;
     
+    if(info) printf("Checking that different dimensions have unique boundary tags!\n");
+
+    for(k=0;k<=2;k++) {
+      for(i=1;i<=noelements;i++) {
+	elemdim = GetElementDimension(data->elementtypes[i]);      
+	tag = data->material[i];
+	
+	/* Get the tag interval for all elements */
+	if(k==0) {
+	  if(maxtag==-1) {
+	    mintag = maxtag = tag;
+	  }
+	  else {
+	    mintag = MIN(mintag,tag);
+	    maxtag = MAX(maxtag,tag);
+	  }
+	}
+
+	/* Count the number of tags for each dimensional */
+	else if(k==1) {
+	  tagcount[elemdim][tag] += 1;
+	}
+
+	/* Set the new tags for lower dimensions */
+	else if(k==2) {
+	  if(elemdim < maxelemdim ) { 
+	    data->material[i] = tagcount[elemdim][tag];
+	  }
+	}
+      }
+      
+      if(k==0) {
+	if(info) printf("Tag interval for boundaries: [%d %d]\n",mintag,maxtag);
+	tagcount = Imatrix(0,maxelemdim,mintag,maxtag);
+	for(i=0;i<=maxelemdim;i++)
+	  for(j=mintag;j<=maxtag;j++)
+	    tagcount[i][j] = 0;
+      }
+      else if(k==1) {
+	for(j=mintag;j<=maxtag;j++) {
+	  overlap = 0;
+	  for(i=0;i<maxelemdim;i++) 
+	    if(tagcount[i][j]) overlap++;
+	  if(overlap>1) break;
+	}
+	if(overlap>1) {
+	  if(info) printf("We have an overlap, applying offsets!\n");
+	  tag = 0;
+	  for(i=maxelemdim-1;i>=0;i--)
+	    for(j=mintag;j<=maxtag;j++) {
+	      if(tagcount[i][j]) {
+		if(tag+1 <= j) {
+		  tag = j;
+		}
+		else  {
+		  tag++;
+		  if(info) printf("Replacing tag in %d-dim %d -> %d\n",i,j,tag);
+		}
+		tagcount[i][j] = tag;
+	      }
+	    }
+	}	  
+	else  {	  
+	  if(info) printf("No overlap, no offsets needed!\n");
+	  break;
+	}	
+      }
+      else if(k==2) {
+	if(info) printf("Renumbered tags for boundary elements!\n");
+      }
+    }
+    free_Imatrix(tagcount,0,maxelemdim,mintag,maxtag);
+  }
+  
   moveelement = Ivector(1,noelements); 
 
   sideelements = 0;
@@ -7116,9 +7119,9 @@ void ElementsToBoundaryConditions(struct FemType *data,
   for(i=1;i<=noelements;i++) {
     moveelement[i] = FALSE;
     sideelemdim = GetElementDimension(data->elementtypes[i]);
-
+    
     /* Lower dimensional elements are candidates to become BC elements */
-    moveelement[i] = elemdim - sideelemdim;
+    moveelement[i] = maxelemdim - sideelemdim;
     if(moveelement[i]) sideelements++;
   }
   if(info) printf("There are %d (out of %d) lower dimensional elements.\n",
@@ -7175,7 +7178,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   debug = FALSE;
 
   /* Go through boundary element candidates starting from higher dimension */
-  for(loopdim=elemdim-1;loopdim>=0;loopdim--) {
+  for(loopdim=maxelemdim-1;loopdim>=0;loopdim--) {
 
     if(debug) printf("loopdim = %d\n",loopdim);
     
@@ -7207,10 +7210,10 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	if(moveelement[elemind2]) continue;
 	
 	elemtype = data->elementtypes[elemind2];
-	elemdim2 = GetElementDimension(elemtype);
+	elemdim = GetElementDimension(elemtype);
 	
 	/* Owner element should have highger dimension */
-	if(elemdim2 <= sideelemdim ) continue;
+	if(elemdim <= sideelemdim ) continue;
 
 	hit = 0;
 	for(i=0;i<sidenodes;i++)
@@ -7284,12 +7287,16 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	    if((sideind[0]-sideind[1])*(sideind2[0]-sideind2[1])<0) 	      
 	      bound->normal[sideelem] = -1;
 	  }		
-	  if(data->bodynamesexist) {
+	  if(movenames) {
 	    data->boundarynamesexist = TRUE;
-	    if(material < MAXBODIES && material < MAXBOUNDARIES) 
-	      strcpy(data->boundaryname[material],data->bodyname[material]);
-	    if(!strncmp(data->boundaryname[material],"body",4))
-	      strncpy(data->boundaryname[material],"bnry",4);
+	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
+	      if(!data->boundaryname[material]) data->boundaryname[material] = Cvector(0,MAXNAMESIZE);
+	      if(data->bodyname[material]) {
+		strcpy(data->boundaryname[material],data->bodyname[material]);
+		free_Cvector(data->bodyname[material],0,MAXNAMESIZE);
+		data->bodyname[material] = NULL;
+	      }
+	    }
 	  }
 
 	  /* Only try to find two parents if the boundary element is one degree smaller than maximum dimension */
@@ -7351,7 +7358,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
     printf("Found correctly %d side elements.\n",sideelem);
   }
   else {
-    printf("Studied %d lower dimensional elememnts\n",sideelements);
+    printf("Studied %d lower dimensional elements\n",sideelements);
     printf("Defined %d side elements\n",sideelem);
     printf("Defined %d lower dimensional bulk elements\n",lowdimbulk);
 
@@ -7455,6 +7462,8 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
   
 
   if(eg->sidemappings) {
+    if(info) printf("Renumbering boundary types with %d mappings\n",eg->sidemappings);
+
     for(l=0;l<eg->sidemappings;l++) 
       if(info) printf("Setting boundary types between %d and %d to %d\n",
 		      eg->sidemap[3*l],eg->sidemap[3*l+1],eg->sidemap[3*l+2]);
@@ -7477,6 +7486,8 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
   }
   
   if(eg->bulkmappings) {
+    if(info) printf("Renumbering bulk types with %d mappings\n",eg->bulkmappings);
+
     for(l=0;l<eg->bulkmappings;l++) 
       if(info) printf("Setting material types between %d and %d to %d\n",
 		      eg->bulkmap[3*l],eg->bulkmap[3*l+1],eg->bulkmap[3*l+2]);
@@ -7549,7 +7560,7 @@ void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
 
   AllocateBoundary(bound,sideelements);
   
-  /* Calculate how may times a node apppears */
+  /* Calculate how may times a node appears */
   possible = Ivector(1,noknots);
   for(i=1;i<=noknots;i++) possible[i] = 0; 
   for(elemind=1;elemind <= data->noelements;elemind++) { 
@@ -9900,7 +9911,7 @@ int CreateInverseTopology(struct FemType *data,int info)
 int CreateDualGraph(struct FemType *data,int unconnected,int info)
 {
   int totcon,dcon,noelements,noknots,elemtype,nonodes,i,j,k,l,i2,m,ind,hit,ci,ci2;
-  int dualmaxcon,invmaxcon,showgraph,freeelements,step,orphanelements;
+  int dualmaxcon,invmaxcon,showgraph,freeelements,step,orphanelements,stat;
   int *elemconnect,*neededby;
   int *dualrow,*dualcol,dualsize,dualmaxelem,allocated;
   int *invrow,*invcol;
@@ -10088,7 +10099,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
 
   /* Inverse topology is created for partitioning only and then the direct
      topology is needed elsewhere as well. Do do not destroy it. */ 
-  if(0) DestroyInverseTopology(data,info);
+  if(0) stat = DestroyInverseTopology(data,info);
 
   return(0);
 }
@@ -10113,12 +10124,16 @@ int DestroyCRSMatrix(struct CRSType *sp) {
 
 int DestroyInverseTopology(struct FemType *data,int info)
 {
-  DestroyCRSMatrix( &data->invtopo );
+  int stat;
+  stat = DestroyCRSMatrix( &data->invtopo );
+  return(stat);
 }
 
 int DestroyDualGraph(struct FemType *data,int info)
 {
-  DestroyCRSMatrix( &data->dualgraph );
+  int stat;
+  stat = DestroyCRSMatrix( &data->dualgraph );
+  return(stat);
 }
 
 
@@ -10155,3 +10170,4 @@ int MeshTypeStatistics(struct FemType *data,int info)
   free_Ivector(elemtypes,minelemtype,maxelemtype);
   return(0);
 }
+

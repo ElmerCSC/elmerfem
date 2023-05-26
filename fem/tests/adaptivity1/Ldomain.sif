@@ -6,12 +6,14 @@ Constants
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 30
   Coordinate System = Cartesian 2D
   Simulation Type = Steady State
   Steady State Max Iterations = 20
   Mesh Input File = "Ldomain.mif"
-! Post File = "Ldomain.ep"
+
+!  Post File = "Ldomain.vtu"
+!  vtu: Output Directory = File "results"
 End
 
 Body 1
@@ -45,9 +47,9 @@ Solver 1
   Linear System Solver = Direct
   Optimize Bandwidth = TRUE
   Steady State Convergence Tolerance = 1.0e-8
-  Adaptive Mesh Refinement = TRUE
-  Adaptive Remesh = TRUE
-  Adaptive Save Mesh = TRUE
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Save Mesh = False
   Adaptive Error Limit = 0.01
 End
 

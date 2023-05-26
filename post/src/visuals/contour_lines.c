@@ -23,7 +23,7 @@
 
 /*******************************************************************************
  *
- * Action routines for visual classe ContourLines.
+ * Action routines for visual class ContourLines.
  *
  *******************************************************************************
  *
@@ -52,7 +52,7 @@
 
 /******************************************************************************
  * 
- * Parameter sructure definitios for Contour Lines visual class
+ * Parameter structure definitions for Contour Lines visual class
  *
  ******************************************************************************/
 
@@ -193,7 +193,7 @@ static void vis_draw_line( line_t *line, int quick, double width )
  *
  *         Output:  graphics
  *   
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

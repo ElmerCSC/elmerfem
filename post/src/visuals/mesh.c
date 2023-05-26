@@ -53,7 +53,7 @@
 
 /******************************************************************************
  * 
- * Parameter sructure definitios for mesh visual class
+ * Parameter structure definitions for mesh visual class
  *
  ******************************************************************************/
 static char *mesh_style_names[] =
@@ -117,7 +117,7 @@ void vis_polygon( polygon_t *poly)
  *         Input:    (triangle_t *) triangle
  *                   (vertex_t   *) vertex array
  *                   (double     *) quantity to use color the edges (or NULL)
- *                   (double,double ) CScl,CAdd are constatnt to scale color
+ *                   (double,double ) CScl,CAdd are constant to scale color
  *                                  range (0-1)
  *                   (line_style_t) line style, either line_style_line or
  *                                  line_style_cylider
@@ -163,7 +163,7 @@ void vis_triangle
  *         Input:    (vertex_t   *) vertex array
  *                   (int,int)      edge vertex indices
  *                   (double *)      color quantity
- *                   (double,double ) CScl,CAdd are constatnt to scale color
+ *                   (double,double ) CScl,CAdd are constant to scale color
  *                                  range (0-1)
  *                   (line_style_t) line style, either line_style_line or
  *                                  line_style_cylider
@@ -206,7 +206,7 @@ static void vis_draw_edge(vertex_t *vertex,int v0,int v1,double *color,double CS
  *
  *         Output:  graphics
  *   
- *   Return value:  if mouse interaction is going on, and time used exeeds
+ *   Return value:  if mouse interaction is going on, and time used exceeds
  *                  given value (TooLong1,2) FALSE, otherwise TRUE
  *
  ******************************************************************************/

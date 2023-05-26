@@ -11,7 +11,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -45,6 +45,8 @@ Solver 1
 !  Constraint Modes Fluxes = Logical True
 !  Constraint Modes Fluxes Symmetric = Logical True
 !  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
+  Constraint Modes Fluxes Norm = Logical True
+
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -55,6 +57,16 @@ Solver 1
 
   Nonlinear System Max Iterations = 1
 End
+
+! This solver is just to provide the Nrm for the test
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Show Norm Name = String "res: potential constraint norm" 
+  Filename = f.dat
+End 
+
 
 Material 1
   Electric Conductivity = 1.0
@@ -90,7 +102,9 @@ Boundary Condition 6
   Conductivity Body = Integer 5
 End
 
-Solver 1 :: Reference Norm = Real 0.27012653
+Solver 1 :: Reference Norm = 0.27012653
+Solver 2 :: Reference Norm = 5.08829854E+01
+
 
 !End Of File
 

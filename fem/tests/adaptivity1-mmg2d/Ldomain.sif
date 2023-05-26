@@ -1,0 +1,71 @@
+! This is a variation of adaptivity1 test case that was done using
+! ElmerMesh2D & file I/O now done with MMG2D library using API.
+
+
+Header
+  Mesh DB "." "Ldomain"
+  Results Directory "results"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5 
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 20
+
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+!  vtu: Save Solver Mesh Index = Integer 1
+!  Output File = "Ldomain.result"
+!  vtu: Output Directory = File vtu
+End
+
+Body 1
+  Material = 1
+  Equation = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Heat Conductivity = 1.0e-5
+  Density = 7800.0
+End
+
+Body Force 1
+  Heat Source = 1.0e-6
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Temperature = 300
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1.0e-8
+  Optimize Bandwidth = False
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.001
+
+  Adaptive Remesh Use MMG = Logical True
+  Adaptive Mesh Numbering = Logical False
+
+!  Adaptive Save Mesh = True
+End
+
+Solver 1 :: Reference Norm = 348.88593
+Solver 1 :: Reference Norm Tolerance = Real 0.01
+

@@ -8,10 +8,12 @@
 typedef double Real;
 #define Rvector       dvector
 #define Ivector       ivector
+#define Cvector       cvector
 #define Rmatrix       dmatrix
 #define Imatrix       imatrix
 #define free_Rvector  free_dvector
 #define free_Ivector  free_ivector  
+#define free_Cvector  free_cvector  
 #define free_Rmatrix  free_dmatrix
 #define free_Imatrix  free_imatrix
 #define TRUE 1
@@ -25,7 +27,7 @@ void nrerror(const char error_text[]);
 
 float *vector(int,int);
 int  *ivector(int,int);
-unsigned char *cvector(int,int);
+char *cvector(int,int);
 unsigned long *lvector(int,int);
 double *dvector(int,int);
 
@@ -37,7 +39,7 @@ double ***f3tensor(int nrl,int nrh,int ncl,int nch,int ndl,int ndh);
 
 void free_vector(float *,int,int);
 void free_ivector(int *,int,int);
-void free_cvector(unsigned char *,int,int);
+void free_cvector(char *,int,int);
 void free_lvector(unsigned long *,int,int);
 void free_dvector(double *,int,int);
  

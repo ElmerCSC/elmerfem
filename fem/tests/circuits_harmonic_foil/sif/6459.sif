@@ -124,8 +124,8 @@ Solver 8  !---- CircuitsAndDynamics, CircuitsOutput
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
 Solver 9  !---- ResultOutputSolve, ResultOutputSolver
-   !Exec Solver = After timestep
-   Exec Solver = Never
+   Exec Solver = After timestep
+   !Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 6459-results

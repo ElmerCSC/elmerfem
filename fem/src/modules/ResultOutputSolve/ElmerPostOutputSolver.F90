@@ -157,7 +157,7 @@
         ALLOCATE( MaskPerm( Model % NumberOfNodes ) ) 
         CALL MakePermUsingMask( Model,Solver,Mesh,Str, &
             .FALSE., MaskPerm, NumberOfNodes )
-        ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfNodes ) )
+        ParallelNodes = ParallelReduction( NumberOfNodes ) 
         IF( ParallelNodes > 0 ) THEN
           MaskExists = .TRUE.
           MaskAllocated = .TRUE.
@@ -398,7 +398,7 @@
           
           WRITE( PostFileUnit,'(a)',ADVANCE='NO' )  Str(1:k)
         ELSE
-          WRITE(PostFileUnit,'(a)',ADVANCE='NO' ) 'body'//TRIM(I2S(k))//' '
+          WRITE(PostFileUnit,'(a)',ADVANCE='NO' ) 'body'//I2S(k)//' '
         END IF
         
         WRITE(PostFileUnit,'(i5)', ADVANCE='NO') Element % TYPE % ElementCode
@@ -443,7 +443,7 @@
           
           WRITE( PostFileUnit,'(a)',ADVANCE='NO' )  Str(1:k)
         ELSE
-          WRITE( PostFileUnit,'(a)',ADVANCE='NO' ) 'Constraint'//TRIM(I2S(k))//' '
+          WRITE( PostFileUnit,'(a)',ADVANCE='NO' ) 'Constraint'//I2S(k)//' '
         END IF
         
         WRITE(PostFileUnit,'(i5)', ADVANCE='NO') Element % TYPE % ElementCode
@@ -463,7 +463,7 @@
     END IF
    
 !------------------------------------------------------------------------------
-!  Save resulst on a timestep (or steady state iteration step)
+!  Save results on a timestep (or steady state iteration step)
 !------------------------------------------------------------------------------
  
     TimeStep   = SavedCount

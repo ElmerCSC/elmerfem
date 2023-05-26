@@ -194,6 +194,9 @@ CONTAINS
     IF (ALLOCATED(Solver % Def_Dofs)) THEN
       tag = ecode / 100
       Solver % Def_Dofs(tag,1,6) = P
+      Solver % Def_Dofs(tag,1,1) = 1
+    ELSE
+      CALL Fatal('TestElement', 'def_dofs are not allocated') 
     END IF
     IF (ecode==404) THEN
       Quadrature = GaussPointsQuad((P+1)**2)
@@ -214,7 +217,7 @@ CONTAINS
     Element => ClonePElement(SingleElement)
 
     nndof = Element % Type % NumberOfNodes
-    nbasis = nndof + GetElementNOFDOFs( Element )
+    nbasis = GetElementNOFDOFs( Element, Solver )
     
     ! Reserve workspace
     ALLOCATE(STIFF(nbasis, nbasis), FORCE(nbasis), &
@@ -279,6 +282,8 @@ CONTAINS
     IF (ALLOCATED(Solver % Def_Dofs)) THEN
       tag = ecode / 100
       Solver % Def_Dofs(tag,1,6) = 0
+    ELSE
+      CALL Fatal('TestElement', 'def_dofs was not allocated') 
     END IF
   END FUNCTION TestElement
   
@@ -551,6 +556,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: ngp, evals1, evals2
+    INTEGER :: nd
     REAL(kind=dp), INTENT(IN) :: t_n1, t_n2
 
     WRITE (*,'(A,I0)') 'Element type=', Element % TYPE % ElementCode
@@ -559,8 +565,9 @@ CONTAINS
     END IF
     WRITE (*,'(A,L1)') 'Active P element=', isActivePElement(Element)
     WRITE (*,'(A,I0)') 'Element number of nodes=', Element % TYPE % NumberOfNodes
-    WRITE (*,'(A,I0)') 'Element number of nonnodal dofs=', GetElementNOFDOFs(Element)
-    WRITE (*,'(A,I0)') 'Element number of bubble dofs=', GetElementNOFBDOFs()
+    nd = GetElementNOFDOFs(Element, Solver) - Element % TYPE % NumberOfNodes
+    WRITE (*,'(A,I0)') 'Element number of nonnodal dofs=', nd
+    WRITE (*,'(A,I0)') 'Element number of bubble dofs for static condensation=', GetElementNOFBDOFs()
     WRITE (*,'(A,I0)') 'Number of Gauss points=', ngp
     WRITE (*,'(A,I0)') 'Nodal basis, number of local matrix evaluations=', evals1
     WRITE (*,'(A,F12.9)') 'Nodal  basis, local matrix assembly t(s):', t_n1
@@ -577,7 +584,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, INTENT(IN) :: ElementCode, P
     TYPE(Element_t), POINTER :: PElement
-    INTEGER :: node, edge, face, astat
+    INTEGER :: node, edge, face, bubble, astat
 
     ! Allocate a mesh with a single element
     Mesh => AllocateMesh()
@@ -586,6 +593,7 @@ CONTAINS
       CALL Fatal('AllocateMeshAndElement','Allocation of mesh element failed')
     END IF
     Mesh % NumberOfBulkElements = 1
+    Mesh % MaxNDOFs = 1
 
     ! Construct P element
     PElement => AllocateElement()
@@ -673,6 +681,9 @@ CONTAINS
           CALL Fatal('AllocateMeshAndElement','Unknown element type')
         END SELECT
         CALL AllocatePDefinitions(Mesh % Faces(face))
+        ALLOCATE(Mesh % Faces(face) % BoundaryInfo)
+        Mesh % Faces(face) % BoundaryInfo % Right => NULL()
+        Mesh % Faces(face) % BoundaryInfo % Left => NULL()
         Mesh % Faces(face) % PDefs % P = P
         Mesh % Faces(face) % PDefs % isEdge = .TRUE.
         Mesh % Faces(face) % PDefs % GaussPoints = (P+1) ** Mesh % Faces(face) % Type % DIMENSION
@@ -684,6 +695,14 @@ CONTAINS
     END IF 
 
     PElement % BDofs = GetBubbleDofs( PElement, P )
+    IF (PElement % BDofs >0) THEN
+      ALLOCATE(PElement % BubbleIndexes(PElement % BDOFs), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('AllocateMeshAndElement','Allocation of bubble indices failed')
+      END IF
+      PElement % BubbleIndexes(:) = [(bubble, bubble=1,PElement % BDofs)]
+    END IF
+
     PElement % PDefs % P = P
     IF (ElementCode == 504) THEN
       PElement % PDefs % TetraType = 1
@@ -756,6 +775,10 @@ CONTAINS
       ALLOCATE(ClonedElement % FaceIndexes( SIZE(Element % FaceIndexes)))
       ClonedElement % FaceIndexes(:) = Element % FaceIndexes(:)
     END IF
+    IF (ASSOCIATED( Element % BubbleIndexes )) THEN
+      ALLOCATE(ClonedElement % BubbleIndexes( SIZE(Element % BubbleIndexes)))
+      ClonedElement % BubbleIndexes(:) = Element % BubbleIndexes(:)
+    END IF
   END FUNCTION ClonePElement
   
   SUBROUTINE DeallocatePElement(PElement)
@@ -767,6 +790,7 @@ CONTAINS
     IF (ASSOCIATED(PElement % NodeIndexes)) DEALLOCATE(PElement % NodeIndexes)
     IF (ASSOCIATED(PElement % EdgeIndexes)) DEALLOCATE(PElement % EdgeIndexes)
     IF (ASSOCIATED(PElement % FaceIndexes)) DEALLOCATE(PElement % FaceIndexes)
+    IF (ASSOCIATED(PElement % BubbleIndexes)) DEALLOCATE(PElement % BubbleIndexes)
     DEALLOCATE(PElement)
   END SUBROUTINE DeallocatePElement
 

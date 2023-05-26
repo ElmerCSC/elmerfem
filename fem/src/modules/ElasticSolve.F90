@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -236,15 +236,15 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
     END IF
   END DO
   
-  CALL Info(Caller,'Maximum number of state variables in UMAT: '//TRIM(I2S(Nstate)),Level=7)
+  CALL Info(Caller,'Maximum number of state variables in UMAT: '//I2S(Nstate),Level=7)
   
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
   IF( NState > 0 ) THEN
     IF (OutputStateVars) THEN
-      str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-dofs '//I2S(NState)//' -ip UmatState'
     ELSE
-      str = '-nooutput -dofs '//TRIM(I2S(NState))//' -ip UmatState'
+      str = '-nooutput -dofs '//I2S(NState)//' -ip UmatState'
     END IF
     CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
@@ -339,7 +339,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
   LOGICAL, ALLOCATABLE :: UmatInitDone(:)
-  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta
+  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
   REAL(KIND=dp) :: RayleighAlpha, RayleighBeta  
   
   CHARACTER(*), PARAMETER :: Caller = 'ElasticSolver'
@@ -394,7 +394,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   CALL Info( Caller, '----------------------------------',Level=5)
   CALL Info( Caller, 'Starting Elasticity Solver', Level=5 )
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
+  
   SolverParams => GetSolverParams()
   Mesh => GetMesh()
   dim = CoordinateSystemDimension()
@@ -404,7 +404,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   IF ( .NOT. ( CoordinateSystem == Cartesian .OR. AxialSymmetry) ) THEN
     CALL Fatal(Caller, 'Unsupported coordinate system')
   END IF
-  
+
   Parallel = ParEnv % PEs > 1
   Scanning = ListGetString(Model % Simulation, 'Simulation Type', GotIt) == 'scanning'
 
@@ -442,6 +442,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        'Displace Mesh', GotIt )
   IF ( .NOT. GotIt ) MeshDisplacementActive = .TRUE.
 
+  ! Sometimes we might want to use this solver to provide also eigenmode or harmonic analysis.
+  ! Then we need to add also the mass even though the system is not transient.
+  IF( TransientSimulation ) THEN
+    NeedMass = .FALSE.
+  ELSE
+    NeedMass = EigenOrHarmonicAnalysis() .OR.  & 
+        getLogical( SolverParams, 'Harmonic Analysis', GotIt ) .OR. &
+        getLogical( SolverParams,'Harmonic Mode',GotIt ) 
+  END IF
+    
+  
   IF ( AllocationsDone .AND. MeshDisplacementActive ) THEN
      CALL DisplaceMesh( Mesh, Displacement, -1, StressPerm, STDOFs, UpdateDirs=dim )
   END IF
@@ -563,7 +574,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        IF( ASSOCIATED( UmatStateVar ) ) THEN
          MaxStateV = UmatStateVar % Dofs
          CALL Info(Caller,'Maximum number of state variables in UMAT: '&
-             //TRIM(I2S(MaxStateV)),Level=7)
+             //I2S(MaxStateV),Level=7)
          UmatState => UmatStateVar % Values         
          ALLOCATE( UmatState0( SIZE( UmatState ) ) )          
          UmatState = 0.0_dp         
@@ -688,7 +699,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   NonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT. GotIt ) NonlinearIter = 1
-  NonlinTol = GetConstReal(SolverParams, 'Nonlinear System Convergence Tolerance')
+  IF( NonlinearIter > 1 ) THEN
+    NonlinTol = GetConstReal(SolverParams, 'Nonlinear System Convergence Tolerance')
+  END IF
   MinNonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Min Iterations', GotIt )
 
@@ -723,7 +736,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller,'-------------------------------------', Level=5 )
-     CALL Info( Caller,'ELASTICITY ITERATION '//TRIM(I2S(iter)),Level=4)
+     CALL Info( Caller,'ELASTICITY ITERATION '//I2S(iter),Level=4)
      CALL Info( Caller,'-------------------------------------', Level=5 )
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller, 'Starting assembly...', Level=7 )
@@ -781,7 +794,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
                    'Youngs Modulus', n, NodeIndexes, GotIt )
-           ELSE
+            ELSE
               CALL InputTensor( ElasticModulus, Isotropic, &
                    'Youngs Modulus', Material, n, NodeIndexes )
               !------------------------------------------------------------------------------
@@ -853,8 +866,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            IF ( dim > 2 ) THEN
               InertialLoad(3,1:n) = GetReal(  BodyForce, 'Inertial Bodyforce 3', GotIt )
            END IF
-        END IF
-        
+
+           IF( STDOFS > dim ) THEN
+             LoadVector(STDOFs,1:n) = GetReal( BodyForce, 'Stress Volume Source', GotIt )                        
+           END IF
+         END IF
+                
         !------------------------------------------------------------------------------
         !        Get values of field variables:
         !------------------------------------------------------------------------------
@@ -969,6 +986,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         !------------------------------------------------------------------------------
         CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
         !------------------------------------------------------------------------------
+
+        IF( NeedMass ) THEN
+          CALL DefaultUpdateMass( LocalMassMatrix )
+          IF( AnyDamping ) CALL DefaultUpdateDamp( LocalDampMatrix )
+        END IF
+        
+
      END DO
 
      CALL DefaultFinishBulkAssembly()
@@ -1020,8 +1044,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                END DO
                DO i=1,dim
                  DO j=1,dim
-                   IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), GotIt)
+                   IF (ListCheckPresent(BC,'Spring '//i2s(i)//i2s(j) )) &
+                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//i2s(i)//i2s(j), GotIt)
                  END DO
                END DO
              END IF
@@ -1165,6 +1189,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
      !------------------------------------------------------------------------------
      CALL DefaultFinishBoundaryAssembly()
+
+     ! This is a matrix level routine for setting friction such that tangential
+     ! traction is the normal traction multiplied by a coefficient.
+     CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient',&
+         'Friction Direction')
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
@@ -1246,7 +1276,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
        END IF
        WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
-           //TRIM(I2S(Iter-1))//': ',NonLinRes
+           //I2S(Iter-1)//': ',NonLinRes
        CALL Info('ElasticitySolver', Message, Level=5)        
 
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
@@ -2502,7 +2532,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(ntot)
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric
 
-    REAL(KIND=dp) :: Force(3), InertialForce(3), NodalLame1(n),NodalLame2(n),Density, &
+    REAL(KIND=dp) :: Force(4), InertialForce(3), NodalLame1(n),NodalLame2(n),Density, &
          Damping,Lame1,Lame2,NodalPressure(ntot),Pressure,NodalPressurePar(n),PressurePar
     REAL(KIND=dp) :: Grad(3,3),InvC(3,3),Identity(3,3),DetDefG
     REAL(KIND=dp) :: DefG(3,3), InvDefG(3,3),Strain(3,3), Stress2(3,3), Stress1(3,3)
@@ -2607,9 +2637,12 @@ CONTAINS
        !     Force at integration point
        !------------------------------------------------------------------------   
        Force = 0.0D0
+       ! We could have an entry for loss of volume
+       DO i=1,dofs         
+         Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n) )
+       END DO
        DO i=1,cdim
-          Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n) )
-          InertialForce(i) = SUM( InertialLoad(i,1:n)*Basis(1:n) )
+         InertialForce(i) = SUM( InertialLoad(i,1:n)*Basis(1:n) )
        END DO
        !-----------------------------------------------------------------------
        !     Material properties at the integration point
@@ -2901,6 +2934,10 @@ CONTAINS
 
              END DO
            END DO
+
+           ! Source/drain for volume
+           ForceVector(DOFs*p) = ForceVector(DOFs*p) &
+               + Basis(p)*Force(dofs)*s  ! DetDefG - to multiply with this or not?                       
          END DO
        END IF
      END DO
@@ -4707,7 +4744,7 @@ END SUBROUTINE ElasticSolver
           'Normal Force', En, Edge % NodeIndexes, GotIt )
 
 !       If dirichlet BC for displacement in any direction given,
-!       nullify force in that directon:
+!       nullify force in that direction:
 !       ------------------------------------------------------------------
         Dir = 1.0d0
         s = ListGetConstReal( Model % BCs(j) % Values, 'Displacement 1', GotIt )

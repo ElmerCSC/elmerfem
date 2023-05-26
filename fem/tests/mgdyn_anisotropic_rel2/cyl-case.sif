@@ -1,0 +1,188 @@
+! This is a development test case for a tensor-valued reluctivity
+! derived from the test mgdyn_anisotropic_rel. Here the calling convention
+! allows the reluctivity tensor to depend upon the three components of the
+! magnetic induction B. In this case the keyword command
+! "Reluctivity Function(3,3) = ..." is used to specify a subroutine which 
+! defines how the reluctivity function depends on B and other variables.
+
+
+$ mu0 = 4e-7*pi
+$ mu_pm = 1.05
+$ B_pm = 1.3
+
+Header
+  Mesh DB "." "cylinders"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = steady state
+
+  Timestep Sizes = 0.00101
+  Timestep Intervals = 50
+  !Timestep Intervals = 1
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+! When stiffness matrix is nonlinear this could be used, but should be checked for consistency
+  !Nonlinear Timestepping = Logical True
+
+  Mesh Levels = 1
+  Mesh Keep = 1
+  !Post File = fields_b.vtu
+  Use Mesh Names = Logical False
+End
+
+Material 1 ! Air
+  name = "air"
+  Relative Permittivity = 1
+  relative permeability = 1
+end
+
+Material 2 ! nonlinear material
+  Name = "Iron"
+
+  ! To define a tensor-valued reluctivity as a function of B, instead of using
+  ! the keyword "Reluctivity" we must use "Reluctivity Function". When the A-V
+  ! solver calls the reluctivity function, the first three input arguments are 
+  ! automatically given the values of the current approximation of B and 
+  ! therefore we need some dummy names for the arguments which are replaced
+  ! by B.
+
+  Reluctivity Function(3,3) = variable B1_dummy, B2_dummy, B3_dummy, coordinate
+    real procedure "reluctivity" "reluctfun"
+
+  Relative Permittivity = 1
+End
+
+Material 3 ! permanent magnet material
+  name = "PM"
+  relative permeability = $ mu_pm
+  relative permittivity = 1
+  magnetization 2 = $ B_pm/(mu_pm*mu0)
+End
+
+
+Body 1 ! air
+  name = "air"
+  target bodies(1) = 1
+  material = integer 1
+  Equation = 1
+end
+
+Body 2 ! iron
+  name = "iron"
+  target bodies(1) = 2
+  material = integer 2
+  Equation = 1
+end
+
+body 3 ! magnets
+  name = "magnets"
+  target bodies(2) = 3 4
+  material = integer 3
+  Equation = 1
+end
+
+Boundary condition 1 ! ext
+  name = "ext"
+  target boundaries(1) = 2
+  A {e} = real 0
+  A = real 0
+End
+
+Solver 1 ! whitneyavsolver
+  Equation = "Mag"
+
+  Variable = "A"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current Density = false
+  Use Piola Transform = Logical true
+  use tree gauge = logical false
+
+  Newton-Raphson Iteration = logical true
+  !Nonlinear System Convergence Without Constraints = Logical True
+  Nonlinear System Convergence Tolerance = 1.0e-10
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  newton-raphson iteration = logical false
+
+  Linear System Solver = iterative
+  Linear System Symmetric=false
+  Linear System Convergence Tolerance = 1.e-7
+  Linear System Max Iterations= 1000
+  Linear System Residual Output=10
+  Linear System Abort not Converged=False
+  Linear System preconditioning=none
+  Linear System Iterative Method = BicgstabL
+
+
+ !Linear System Solver = "Direct"
+ !Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1e-06
+
+  Edge Basis = Logical True
+  Optimize Bandwidth = False
+End
+
+Solver 2 ! MagnetoDynamicsCalcFields
+  Equation = ComputeB
+
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+  Calculate Nodal Forces = Logical True
+  Calculate Elemental Fields = Logical True
+  !Calculate Maxwell Stress = Logical True
+  !Optimize Bandwidth = False
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgstabL
+  Linear System Symmetric = True
+  Linear System Max Iterations = 100
+  Linear System Residual Output=10
+  Linear System Preconditioning = none
+  Linear System Convergence Tolerance = 1.0e-8
+
+!  Exec solver = never
+End
+
+Solver 3
+!  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  output directory = "cylinders"
+  Filename = cylinder.dat
+  show norm index = 2
+End
+
+Solver 4
+!  exec solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = cylinder_orig
+  Output Directory = cylinders
+  Save Geometry IDs = Logical True
+  Vtu Format = Logical True
+  discontinuous bodies = true
+End
+
+Equation 1
+  active solvers(4) = 1 2 3 4
+End
+
+solver 1::Reference norm = 7.03999646E-06
+solver 1::Reference norm tolerance = 1e-5
+solver 3::Reference norm = 9.54680124E+00
+solver 3::Reference norm tolerance = 1e-5

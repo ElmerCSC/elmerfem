@@ -149,7 +149,7 @@ Solver 3
   Optimal Restart = Logical True
 
 ! Optimization Accuracy = Real 0.0e-2
-!  Step Size = Real 0.01
+!  StepSize = Real 0.01
 End
 
 

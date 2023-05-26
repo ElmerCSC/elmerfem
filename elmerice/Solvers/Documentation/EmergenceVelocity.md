@@ -11,7 +11,7 @@
 - **Optional Input Variable(s):** None
 
 ## General Description
-This is a pseudo solver (i.e., it only composes a new variable from given, not solving a matrix) to retrieve the emergence velocity from a given surface normal vector and a (ice) velocity field. It uses the fact that the scalar-product between surface velocity and surface normal gives (apart from a factor that is very close to unity) the emergence velocity
+This is a pseudo solver (i.e., it only composes a new variable from given, not solving a matrix) to retrieve the emergence velocity from a given surface normal vector and a velocity field. It uses the fact that the scalar-product between surface velocity and surface normal gives (apart from a factor that is very close to unity) the emergence velocity
 
 *v_{em} =  - u  {{\partial h}/{\partial x}} - v  {{\partial h}/{\partial y}} + w,*
 
@@ -34,7 +34,7 @@ and the emergence velocity can be approximated by
 *v_{em} = \vec{u} . \vec{n}*
 
 ## SIF Contents
-The following SIF excerpt additionally contains solvers needed for the surface Normal Vector (Solver 2) and the Flow Solution (Solver 3).
+The following SIF excerpt additionally contains solvers needed for the surface Normal Vector (Solver 2) and the *Flow Solution* (not shown here).
 
 ```
 !==============================================================================
@@ -51,27 +51,9 @@ Solver 2
    ComputeAll = Logical False
 End
 !==============================================================================
-! /// Stokes Equation ///
-!==============================================================================
-Solver 3
-  Equation = String "Navier-Stokes"
-  Flow Model = "Stokes"
-  Stabilization Method = Stabilized
-  Optimize Bandwidth = Logical True
-  Steady State Convergence Tolerance = 1.0E-03
-  Linear System Solver = Direct
-  Linear System Direct Method = umfpack
-  Nonlinear System Convergence Tolerance = 1.0E-03
-  Nonlinear System Max Iterations = 50
-  Nonlinear System Min Iterations = 10
-  Nonlinear System Newton After Iterations = 50
-  Nonlinear System Newton After Tolerance =  1.0E-01
-  Nonlinear System Reset Newton = Logical True
-End
-!==============================================================================
 ! /// Computing emergence velocity ///
 !==============================================================================
-Solver 4
+Solver 3
   Equation = "SMB"
   Procedure = "ElmerIceSolvers" "GetEmergenceVelocity"
   Variable = -dofs 1 EmergenceVelocity

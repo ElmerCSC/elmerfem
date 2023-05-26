@@ -135,7 +135,7 @@ Material 1
   Density = Real 9.1376e-19  
   Viscosity Model = String "power law"
 
-! Viscosity defined as mu^2 to insure >0
+! Viscosity defined as mu^2 to ensure >0
   Viscosity = Variable mu
     Real MATC "tx*tx"
 

@@ -73,14 +73,16 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: maxdt, dertime = 0.0, tottime = 0.0
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, IntegMethod
   TYPE(Particle_t), POINTER  :: Particles
+  CHARACTER(*), PARAMETER :: Caller = 'ParticleAdvector'
+
   
   SAVE Nstep, VisitedTimes, TimeOrder, &
       tottime, TimeStepsTaken, ParticleStepsTaken, ParticleInfo
 
 !------------------------------------------------------------------------------
 
-  CALL Info('ParticleAdvector','-----------------------------------------', Level=4 )
-  CALL Info('ParticleAdvector','Advecting fields using particle tracking',Level=4) 
+  CALL Info(Caller,'-----------------------------------------', Level=4 )
+  CALL Info(Caller,'Advecting fields using particle tracking',Level=4) 
   
   Particles => GlobalParticles
   VisitedTimes = VisitedTimes + 1
@@ -96,7 +98,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
   InitAllVelo = .TRUE.
   
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',GotIt)
@@ -119,9 +121,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( VisitedTimes == 1 ) THEN
-    IF( GetLogical( Params,'Particle Time',Found) ) THEN
-      CALL ParticleVariableCreate( Particles,'particle time')
-    END IF 
+    CALL ParticleVariableCreate( Particles,'particle time')
     CALL ParticleVariableCreate( Particles,'particle distance')
   ELSE	 
     PtimeVar => ParticleVariableGet( Particles, 'particle time' )
@@ -156,7 +156,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------
     IF( ABS( maxdt ) < TINY( maxdt ) ) THEN
       WRITE (Message,'(A,I0)') 'Number of steps used: ',i-1
-      CALL Info('ParticleAdvector',Message,Level=6)
+      CALL Info(Caller,Message,Level=6)
       EXIT	
     END IF
 
@@ -206,9 +206,9 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     END DO 
 
     NoMoving = Particles % NumberOfMovingParticles
-    NoMoving = NINT( ParallelReduction( 1.0_dp * NoMoving ) )
+    NoMoving = ParallelReduction( NoMoving ) 
     WRITE (Message,'(A,I0,A,I0,A)') 'Timestep ',i,' with ',NoMoving,' moving particles'
-    CALL Info('ParticleAdvector',Message,Level=6)
+    CALL Info(Caller,Message,Level=6)
 
     ! Freeze particles that are too old
     !----------------------------------------------------------------
@@ -232,8 +232,8 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 	TimeStepsTaken, tottime )
   END IF
     
-  CALL Info('ParticleAdvector','All done',Level=4)
-  CALL Info('ParticleAdvector', '-----------------------------------------', Level=4 )
+  CALL Info(Caller,'All done',Level=4)
+  CALL Info(Caller, '-----------------------------------------', Level=4 )
   
 
 CONTAINS
@@ -334,7 +334,7 @@ CONTAINS
     DEALLOCATE( PTime, PCond )
               
     CALL Info('SetFixedParticles','Number of new fixed particles: '&
-        //TRIM(I2S(FixedCount)),Level=7)
+        //I2S(FixedCount),Level=7)
     
   END SUBROUTINE SetFixedParticles 
 
@@ -371,7 +371,7 @@ CONTAINS
 
     IF( FixedCount > 0 ) THEN
       CALL Info('SetRetiredParticles','Number of new retired particles: '&
-          //TRIM(I2S(FixedCount)),Level=7)    
+          //I2S(FixedCount),Level=7)    
     END IF
       
   END SUBROUTINE SetRetiredParticles
@@ -565,7 +565,7 @@ CONTAINS
     
     SAVE :: Visited, PrevNorm, UnitPerm
 
-    CALL Info('ParticleAdvector','Setting the advected fields',Level=10)
+    CALL Info(Caller,'Setting the advected fields',Level=10)
 
     
     Mesh => GetMesh()
@@ -600,7 +600,7 @@ CONTAINS
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
 
-      CALL Info('ParticleAdvector','Setting field for variable: '//TRIM(VariableName),Level=15)
+      CALL Info(Caller,'Setting field for variable: '//TRIM(VariableName),Level=15)
 
       ! Get the target variables
       ! Variables starting with 'particle' as associated with particles
@@ -621,13 +621,13 @@ CONTAINS
       ELSE
         TargetVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
         IF( .NOT. ASSOCIATED(TargetVar)) THEN
-          CALL Fatal('ParticleAdvector','Could not obtain target variable:'&
+          CALL Fatal(Caller,'Could not obtain target variable:'&
               //TRIM(VariableName))
           CYCLE
         END IF
         dofs = TargetVar % dofs
         IF( dofs > 1 ) THEN
-          CALL Fatal('ParticleAdvector','Advection implemented so far only for scalars')
+          CALL Fatal(Caller,'Advection implemented so far only for scalars')
         END IF
         InternalVariable = .FALSE.
         maxdim = MAX( dofs, maxdim ) 
@@ -659,7 +659,7 @@ CONTAINS
         OperName = 'adv'
       END IF
 
-      CALL Info('ParticleAdvector','Using operator for variable: '//TRIM(OperName),Level=15)
+      CALL Info(Caller,'Using operator for variable: '//TRIM(OperName),Level=15)
       
       WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
       ResultName = GetString( Params,Name,GotRes)
@@ -675,29 +675,29 @@ CONTAINS
       IF( ASSOCIATED(ResultVar) ) THEN        
         IF( ASSOCIATED( DataVar) ) THEN        
           IF( DataVar % TYPE /= ResultVar % TYPE ) THEN
-            CALL Fatal('ParticleAdvector','ResultVar is of wrong type, use new name for result variable!')
+            CALL Fatal(Caller,'ResultVar is of wrong type, use new name for result variable!')
           END IF
           IF( SIZE( DataVar % Values ) /= SIZE( ResultVar % Values) ) THEN
-            CALL Fatal('ParticleAdvector','ResultVar is of wrong size, use new name for result variable!')
+            CALL Fatal(Caller,'ResultVar is of wrong size, use new name for result variable!')
           END IF
         END IF
-        CALL Info('ParticleAdvector','Found a pre-existing result variable: '//TRIM(ResultName),Level=20)
+        CALL Info(Caller,'Found a pre-existing result variable: '//TRIM(ResultName),Level=20)
       ELSE
         GotIt = .FALSE.
         PPerm => NULL()
         IF( ASSOCIATED( DataVar ) ) THEN
-          CALL Info('ParticleAdvector','Using non-nodal given permutation for data',Level=15)
+          CALL Info(Caller,'Using non-nodal given permutation for data',Level=15)
           PPerm => DataVar % Perm
           VarType = DataVar % TYPE
         ELSE IF( ASSOCIATED( TargetVar ) ) THEN
-          CALL Info('ParticleAdvector','Using inherited permutation for data',Level=15)
+          CALL Info(Caller,'Using inherited permutation for data',Level=15)
           PPerm => TargetVar % Perm
           VarType = TargetVar % TYPE
         END IF
 
         IF( .NOT. ASSOCIATED( PPerm ) ) THEN
           IF(.NOT. ASSOCIATED(UnitPerm)) THEN
-            CALL Info('ParticleAdvector','Creating unity permutation for data',Level=15)
+            CALL Info(Caller,'Creating unity permutation for data',Level=15)
             ALLOCATE( UnitPerm(nsize) )
             DO i=1,nsize
               UnitPerm(i) = i
@@ -711,23 +711,23 @@ CONTAINS
             Perm = PPerm, VarType = VarType )
         
         IF( dofs == 1 ) THEN
-          CALL Info('ParticleAdvector','Created a scalar variable: '//TRIM(ResultName) )
+          CALL Info(Caller,'Created a scalar variable: '//TRIM(ResultName) )
         ELSE
-          CALL Info('ParticleAdvector','Created a vector variable: '//TRIM(ResultName) )          
+          CALL Info(Caller,'Created a vector variable: '//TRIM(ResultName) )          
         END IF
         ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName))
-        IF(.NOT. ASSOCIATED(ResultVar)) CALL Fatal('ParticleAdvector','Problems in VariableAdd')
+        IF(.NOT. ASSOCIATED(ResultVar)) CALL Fatal(Caller,'Problems in VariableAdd')
       END IF
 
 
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
-        CALL Info('ParticleAdvector','Setting particle variable to fields',Level=15)
+        CALL Info(Caller,'Setting particle variable to fields',Level=15)
 
         IF( VariableName == 'particle coordinate') THEN
           IF( ResultVar % Dofs /= dim ) THEN
-            CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
+            CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
           DO i=1,NoParticles
             DO j=1,dim
@@ -744,7 +744,7 @@ CONTAINS
           END DO
         ELSE IF( VariableName == 'particle velocity') THEN
           IF( ResultVar % Dofs /= dim ) THEN
-            CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
+            CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
           DO i=1,NoParticles
             DO j=1,dim
@@ -763,7 +763,7 @@ CONTAINS
 
         ELSE IF( VariableName == 'particle force') THEN
           IF( ResultVar % Dofs /= dim ) THEN
-            CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
+            CALL Fatal(Caller,'Variable should have dim dofs: '//TRIM(VariableName))
           END IF
           DO i=1,NoParticles
             DO j=1,dim
@@ -791,12 +791,12 @@ CONTAINS
           IF( ASSOCIATED( ParticleVar ) ) THEN
             NewValues = ParticleVar % Values(1:SIZE(NewValues))
           ELSE
-            CALL Warn('ParticleAdvector','Field does not exist: '//TRIM(VariableName))
+            CALL Warn(Caller,'Field does not exist: '//TRIM(VariableName))
           END IF
         END IF
         
       ELSE 
-        CALL Info('ParticleAdvector','Setting field variable to advected fields',Level=15)
+        CALL Info(Caller,'Setting field variable to advected fields',Level=15)
         
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -878,7 +878,7 @@ CONTAINS
           GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
           
           IF( GotScale ) THEN
-            CALL Info('ParticleAdvector','Expanding shrinked DG field',Level=12)        
+            CALL Info(Caller,'Expanding shrinked DG field',Level=12)        
             DO t=1, Mesh % NumberOfBulkElements
               Element => Mesh % Elements(t)
               n = Element % TYPE % NumberOfNodes
@@ -918,10 +918,10 @@ CONTAINS
 
     ! Allocate the local new temporal values
     IF(.NOT. Initiated ) THEN
-      CALL Info('ParticleAdvector','Allocating for temporal value vectors',Level=15)
+      CALL Info(Caller,'Allocating for temporal value vectors',Level=15)
       NoVar = NoVar - 1
       IF( NoVar < 1 ) THEN
-        CALL Fatal('ParticleAdvector','No target and result variables exist!')
+        CALL Fatal(Caller,'No target and result variables exist!')
       END IF
       ALLOCATE( NewValues( maxdim * Particles % NumberOfParticles ) ) 
       NewValues = 0.0_dp
@@ -983,11 +983,11 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
 
   IF( AdvectElemental .OR. AdvectDg .OR. AdvectIp ) THEN  
     IF( AdvectElemental ) THEN
-      CALL ListAddString( Params,'Exported Variable 1','-elem AdvectorData')
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-elem AdvectorData')
     ELSE IF( AdvectDg ) THEN
-      CALL ListAddString( Params,'Exported Variable 1','-dg AdvectorData')
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-dg AdvectorData')
     ELSE
-      CALL ListAddString( Params,'Exported Variable 1','-ip AdvectorData')     
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),'-ip AdvectorData')
     END IF      
     CALL ListAddString( Params,'Coordinate Initialization Method','advector')    
     CALL ListAddString( Params,'Velocity Initialization Method','advector')

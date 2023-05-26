@@ -6,4 +6,4 @@ CONFIGURE_FILE( init.sif init.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(MeshLevelsRestart LABELS quick)
+ADD_ELMER_TEST(MeshLevelsRestart LABELS quick restart)

@@ -33,6 +33,9 @@
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
+
+#include <../config.h>
+
 #define lua_upvalueindex(i)	(LUA_GLOBALSINDEX-(i))
 #define LUA_GLOBALSINDEX	(-10002)
 !-------------------------------------------------------------------------------
@@ -54,6 +57,7 @@ end type
 type(LuaState_t), PUBLIC :: LuaState
 !$OMP THREADPRIVATE(LuaState)
 
+#ifdef HAVE_LUA
 public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, &
     lua_pushnumber, luafun, lua_runfile, lua_dostring, &
     luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, &
@@ -109,6 +113,12 @@ interface !
     integer(kind=c_int) :: len
     type(c_ptr) :: s
   end function
+
+  subroutine lua_set_type(L, n) bind(C, name="lua_set_type_c")
+    import
+    type(c_ptr), value :: L
+    integer(kind=c_int), value :: n
+  end subroutine
 
   function luaL_checkinteger(L, n) result(r) bind(C, name="luaL_checkinteger")
     import
@@ -227,15 +237,24 @@ end function
 function lua_tolstring(L, n, slen) result(sp)
   type(c_ptr) :: L
   integer(kind=c_int) :: n
-  character(kind=c_char), pointer :: sp
+  character(kind=c_char), pointer :: sp_arr(:)
+  character(:, kind=c_char), pointer :: sp
 
   character(kind=c_char, len=:), allocatable :: s
   type(c_ptr) :: c_s
   integer(kind=c_int) :: slen
 
   c_s = lua_tolstring_c(L, n, slen)
-  call c_f_pointer(c_s, sp)
+  call c_f_pointer(c_s, sp_arr, shape=[slen])
+  call char_c_f(slen, sp_arr, sp)
 end function
+
+subroutine char_c_f(len, cchar, fchar)
+  INTEGER, intent(in) :: len
+  CHARACTER(kind=c_char, LEN=len), INTENT(in), target :: cchar(1)
+  CHARACTER(:, kind=c_char), INTENT(OUT), pointer :: fchar
+  fchar => cchar(1)
+end subroutine char_c_f
 
 function luaL_checkstring(L, n, slen) result(sp)
   type(c_ptr) :: L
@@ -338,6 +357,7 @@ subroutine lua_exec_fun(L, fname, nin, nout)
   integer :: lstat
 
   CALL lua_getfield(L%L, LUA_GLOBALSINDEX, fname)
+  CALL lua_set_type(L%L, nin)
   lstat = lua_pcall(L%L, nin, nout, 0)
   call check_error(L, lstat)
 end subroutine
@@ -388,9 +408,11 @@ function lua_popstring(L, slen) result(s)
   type(LuaState_t) :: L
   character(kind=c_char, len=:), pointer :: s
   integer :: slen
+
   s => lua_tolstring(L%L, -1, slen)
   call lua_pop(L%L, 1)
 end function
+#endif
 
 !-------------------------------------------------------------------------------
 end module ! Lua }}}

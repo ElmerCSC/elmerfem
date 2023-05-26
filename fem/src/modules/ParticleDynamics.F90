@@ -476,9 +476,11 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
   REAL(KIND=dp) :: cput1,cput2,dcput
+  REAL(KIND=dp) :: Coord(3)
   REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
-
+  CHARACTER(LEN=MAX_NAME_LEN) :: str
+  
   SAVE CollisionInteraction, ContactInteraction, NoGroups, &
       ParticleToField, OutputInterval, Nstep, VisitedTimes, &
       TimeOrder, ParticleInBox, &
@@ -517,9 +519,6 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       
     CALL SetParticlePreliminaries( Particles, dim, TimeOrder )
 
-    i = GetInteger( Params,'Random Seed',Found ) 
-    IF( Found ) CALL RANDOM_SEED(i)
-
     ParticleToField = GetLogical( Params,'Particle To Field',Found)
     CollisionInteraction = GetLogical( Params,'Particle Particle Collision',Found)
     ContactInteraction = GetLogical( Params,'Particle Particle Contact',Found)
@@ -554,8 +553,10 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
       GetLogical( Params,'Reinitialize Particles',Found) ) THEN
 
     IF( NoGroups > 0 ) THEN
+      Group = ListGetInteger(Params,'Default Group',Found)
+      IF(.NOT. Found) Group = 1
       IF( ListGetLogical( Params,'Set Particle Group By Domain',Found ) ) THEN
-        CALL InitializeParticles( Particles, Group = 1 )
+        CALL InitializeParticles( Particles, Group = Group )
         CALL Info('ParticleDynamics','Setting particle group by domain',Level=9)
         DO i=1, Particles % NumberOfParticles
           j = Particles % ElementIndex(i)
@@ -565,18 +566,36 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
           END IF
           Particles % Group(i) = Mesh % Elements(j) % BodyId 
         END DO
+      ELSE IF( ListGetLogical( Params,'Set Particle Group By Condition',Found ) ) THEN
+        CALL InitializeParticles( Particles, Group = Group )
+        CALL Info('ParticleDynamics','Setting particle group by condition',Level=9)
         DO Group = 1, NoGroups
-          j = COUNT( Particles % Group == Group )
-          CALL Info('ParticleDynamics','Group '//TRIM(I2S(Group))//' particles: '//TRIM(I2S(j)),Level=9)
+          BLOCK
+            TYPE(ValueListEntry_t), POINTER :: ptr
+            REAL(KIND=dp) :: cond
+            str = 'Group Condition '//I2S(Group)
+            ptr => ListFind(Params,str,Found)
+            IF ( .NOT.ASSOCIATED(ptr) ) CYCLE
+            
+            DO i=1, Particles % NumberOfParticles
+              Coord = GetParticleCoord( Particles, i )
+              cond = ExecRealFunction( ptr % PROCEDURE,CurrentModel, i, Coord )
+              IF( cond > 0.0_dp ) Particles % Group(i) = Group
+            END DO
+          END BLOCK
         END DO
       ELSE
         DO Group = 1, NoGroups
-          CALL Info('ParticleDynamics','Initializing particles in group '//TRIM(I2S(group)),Level=5)
-          CALL ListPushNameSpace('group'//TRIM(I2S(Group))//':')
+          CALL Info('ParticleDynamics','Initializing particles in group '//I2S(group),Level=5)
+          CALL ListPushNameSpace('group'//I2S(Group)//':')
           CALL InitializeParticles( Particles, AppendParticles = .TRUE.,Group = Group )
           CALL ListPopNameSpace()
         END DO
       END IF
+      DO Group = 1, NoGroups
+        j = COUNT( Particles % Group == Group )
+        CALL Info('ParticleDynamics','Group '//I2S(Group)//' particles: '//I2S(j),Level=5)
+      END DO
     ELSE
       CALL InitializeParticles( Particles )
     END IF
@@ -594,7 +613,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     CALL ParticleStatistics( Particles, 1 )
   END IF
 
-  ! a logaritmic scale of indexes is used to estimate time
+  ! a logarithmic scale of indexes is used to estimate time
   !--------------------------------------------------------
   IF( TimeInfo ) THEN
     cput1 = CPUTime()
@@ -868,9 +887,9 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Valuelist_t), POINTER :: Params
      REAL(KIND=dp) :: PotAtPoint, GradPotAtPoint(3),VeloAtPoint(3), &
-         GradVeloAtPoint(3,3)
+         GradVeloAtPoint(3,3), BAtPoint(3)
      LOGICAL :: Stat, UseGradVelo, CoordCond, VeloCond, Visited = .FALSE., &
-         GotIt, GotPot, GotPot2, GotVelo
+         GotIt, GotPot, GotPot2, GotVelo, GotB
      INTEGER :: i,j,k,l,n,dim,TimeOrder,NoGroups, MaxField, PrevGroup, CurrGroup
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: SqrtElementMetric, Weight, TimeDecay, DistDecay, Dist, &
@@ -881,7 +900,7 @@ CONTAINS
      REAL(KIND=dp), POINTER :: gWork(:,:), ForceVector(:)
      INTEGER, POINTER :: ForcePerm(:)
      CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, DensityName, FieldMode, FieldWeight, GroupName, str
-     TYPE(Variable_t), POINTER :: VeloVar, PotVar, PotVar2, VeloCondVar, CoordCondVar, WeightVar
+     TYPE(Variable_t), POINTER :: VeloVar, PotVar, PotVar2, BVar, VeloCondVar, CoordCondVar, WeightVar
      LOGICAL :: GotGravity, GotBuoyancy, GotField, &
          GotTimeDecay, GotDistDecay, GotFieldMode, GotFieldWeight, &
          NormalizedVars(MAXPARFIELDS)
@@ -895,9 +914,9 @@ CONTAINS
      SAVE :: Visited, dim, Basis, dBasisdx, &
          FieldMode, FieldWeight, TimeDecay, DistDecay, UseGradVelo, TimeOrder, &
          GotFieldMode, GotFieldWeight, GotGravity, GotDamping, GotTimeDecay, GotDistDecay, &
-         GotPot, GotPot2, GotVelo, Gravity, Damping, VeloCond, CoordCond, GotBuoyancy, &
+         GotPot, GotB, GotPot2, GotVelo, Gravity, Damping, VeloCond, CoordCond, GotBuoyancy, &
          ParticleVolume, GotField, CoordCondVar, VeloCondVar, DensityName, &
-         PotVar, PotVar2, VeloVar, Mesh, PrevDtime, DistVar, &
+         PotVar, BVar, PotVar2, VeloVar, Mesh, PrevDtime, DistVar, &
          ActiveVars, ActiveOpers, ActiveGroups, NormalizedVars, MaxField, NoGroups
 
 
@@ -924,6 +943,7 @@ CONTAINS
        END IF
 
        VariableName = ListGetString(Params,'Potential Variable Name',GotPot)
+       IF(.NOT. GotPot) VariableName = ListGetString(Params,'Potential Variable',GotPot)
        IF( GotPot ) THEN
          PotVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( PotVar ) ) THEN
@@ -932,6 +952,7 @@ CONTAINS
        END IF
        
        VariableName = ListGetString(Params,'Secondary Potential Variable Name',GotPot2)
+       IF(.NOT. GotPot2) VariableName = ListGetString(Params,'Secondary Potential Variable',GotPot2)
        IF( GotPot2 ) THEN
          PotVar2 => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( PotVar2 ) ) THEN
@@ -939,7 +960,17 @@ CONTAINS
          END IF
        END IF
 
+       VariableName = ListGetString(Params,'Magnetic Field Variable Name',GotB)
+       IF(.NOT. GotB) VariableName = ListGetString(Params,'Magnetic Field Variable',GotB)
+       IF( GotB ) THEN
+         BVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
+         IF(.NOT. ASSOCIATED( BVar ) ) THEN
+           CALL Fatal('ParticleFieldInteraction','Magnetic field variable does not exist: '//TRIM(VariableName))           
+         END IF
+       END IF
+       
        VariableName = ListGetString(Params,'Velocity Variable Name',GotVelo)
+       IF(.NOT. GotVelo) VariableName = ListGetString(Params,'Velocity Variable',GotVelo)
        IF( GotVelo ) THEN
          VeloVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
@@ -951,6 +982,7 @@ CONTAINS
        END IF
     
        VariableName = ListGetString(Params,'Velocity Condition Variable Name',VeloCond)
+       IF(.NOT. VeloCond) VariableName = ListGetString(Params,'Velocity Condition Variable',VeloCond)
        IF( VeloCond ) THEN
          VeloCondVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( VeloCondVar ) ) THEN
@@ -959,6 +991,7 @@ CONTAINS
        END IF
 
        VariableName = ListGetString(Params,'Coordinate Condition Variable Name',CoordCond)
+       IF(.NOT. CoordCond) VariableName = ListGetString(Params,'Coordinate Condition Variable',CoordCond)
        IF( CoordCond ) THEN
          CoordCondVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
          IF(.NOT. ASSOCIATED( CoordCondVar ) ) THEN
@@ -1046,7 +1079,7 @@ CONTAINS
            NormalizedVars(i) = ListGetLogical( Params, str, GotIt )
          END DO
 
-         CALL Info('ParticleDynamics','Number of particle fields: '//TRIM(I2S(MaxField)),Level=6)
+         CALL Info('ParticleDynamics','Number of particle fields: '//I2S(MaxField),Level=6)
        END IF
        
        DensityName = 'Density'
@@ -1059,7 +1092,7 @@ CONTAINS
        END IF
 
        GotField = ParticleToField .OR. GotVelo .OR. GotPot .OR. &
-           VeloCond .OR. CoordCond .OR. GotBuoyancy
+           VeloCond .OR. CoordCond .OR. GotBuoyancy .OR. GotB
 
        Visited = .TRUE.
      END IF
@@ -1253,6 +1286,11 @@ CONTAINS
            CALL GetScalarFieldInMesh(PotVar, BulkElement, Basis, PotAtPoint, &
                dBasisdx, GradPotAtPoint )
            Force = Force - charge * GradPotAtPoint 
+         END IF
+
+         IF( GotB ) THEN           
+           CALL GetVectorFieldInMesh(BVar, BulkElement, Basis, BAtPoint )
+           Force = Force + charge * CrossProduct( Velo, BAtPoint )  
          END IF
          
          ! there can be a secondary potential field also
@@ -1529,8 +1567,9 @@ CONTAINS
          IF( MovingWall ) THEN
            IF( Collision ) THEN
              VariableName = ListGetString(Params,'Wall Velocity Variable Name',Found)
+             IF(.NOT. Found) VariableName = ListGetString(Params,'Wall Velocity Variable',Found)
              IF( .NOT. Found ) THEN
-               CALL Fatal('ParticleWallContact','Moving wall needs > Wall Velocity Variable Name <')                    
+               CALL Fatal('ParticleWallContact','Moving wall needs > Wall Velocity Variable <')                    
              END IF
            ELSE
              CALL Fatal('ParticleWallContact','Moving Wall assumes > Wall Particle Collision <')
@@ -1540,8 +1579,9 @@ CONTAINS
          IF( AccumulationLimit ) THEN
            IF( Contact ) THEN
              VariableName = ListGetString(Params,'Velocity Variable Name',Found)
+             IF(.NOT. Found) VariableName = ListGetString(Params,'Velocity Variable',Found)
              IF( .NOT. Found ) THEN
-               CALL Fatal('ParticleWallContact','Particle Accumulation needs > Velocity Variable Name <')                    
+               CALL Fatal('ParticleWallContact','Particle Accumulation needs > Velocity Variable <')                    
              END IF
            ELSE
              CALL Warn('ParticleWallContact','Particle Accumulation assumes > Wall Particle Collision <')

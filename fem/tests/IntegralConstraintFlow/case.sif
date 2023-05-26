@@ -1,0 +1,103 @@
+! This is a test case for setting integral constraint over a boundary.
+! Here the integral over normal "velocity 1" should be exactly one.
+! The constraint allows setting the incoming velocity without actually
+! defining the profile.
+!
+! To plot the profile in matlab/octave
+! load f.dat; plot(f(:,5),f(:,7))
+!
+! P.R. 15.6.2021
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = case.vtu
+  Set Dirichlet BCs by BC Numbering = True
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Stabilization Method = Stabilized
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 50
+
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = BicgstabL
+  BiCGStabl polynomial degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU0
+
+! Without this the integral BC will not be enforced for this Solver!
+  Apply Integral BCs = Logical True
+End
+
+Solver 2
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = f.dat
+End
+
+
+Equation 1 :: Active Solvers=1
+
+Material 1
+  Density = 1.0
+  Viscosity = 1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Name = "Right"   
+  Integral BC = Logical True
+  Integral BC Velocity 1 = Real 1
+  Velocity 2 = 0
+
+  Save Line = True
+  
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Left"
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 1 3
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Solver 1 :: Reference Norm = 6.86098760E-01
+

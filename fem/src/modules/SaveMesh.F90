@@ -43,6 +43,9 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
   USE MeshUtils
+#ifdef USE_ISO_C_BINDINGS
+  USE LoadMod
+#endif
 
   IMPLICIT NONE
 
@@ -75,6 +78,7 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
        "Save Mesh Directory", Found)
   IF(.NOT. Found) CALL FATAL("SaveMesh",&
        "No directory given to save mesh")
+  CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
 
   EveryTime = ListGetLogical( Solver % Values, "Save All Timesteps", Found)
   IF(.NOT. Found) EveryTime = .FALSE.
@@ -86,9 +90,13 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ParEnv % PEs<=1 ) THEN !serial
-     CALL SYSTEM("mkdir -p "//MeshDir)
+     CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
      CALL WriteMeshToDisk2(Model, Mesh, MeshDir)
   ELSE !parallel
+
+     !MakeDirectory seems unable to create multi/level/directories
+     !so create the top level first, then the lower
+     IF(ParEnv % MyPe==0) CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
      
      parts = ParEnv % PEs
 
@@ -99,8 +107,8 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
      MeshDir = TRIM(tmp)
 
      IF(ParEnv % MyPe==0) THEN
-        PRINT *, 'Save Mesh, creating directory...' !TEST
-        CALL SYSTEM("mkdir -p "//MeshDir)        
+        PRINT *, 'Save Mesh, creating directory: '//MeshDir
+        CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
      END IF
      CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 

@@ -46,16 +46,17 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Found, AllocationsDone = .FALSE.
   
-  INTEGER :: i,j,k,l,m,n,nsize,dim,dofs,ElmerType, GmshType,body_id,&
+  INTEGER :: i,j,k,l,m,n,n1,n2,nsize,dim,dofs,ElmerType, GmshType,body_id,&
       Vari, Rank, NoNodes, NoElems, NoBulkElems, ElemDim, MaxElemDim, &
       MaxElemNodes, AlignCoord
   INTEGER :: GmshToElmerType(21), GmshIndexes(27) 
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
-  REAL(KIND=dp) :: x,y,z,GmshVer,dx
+  REAL(KIND=dp) :: x,y,z,GmshVer,dx,minx,maxx
   REAL(KIND=dp), POINTER :: x1(:), x2(:)
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
-  CHARACTER(MAX_NAME_LEN) :: InputFile, InputDirectory, VarName
+  CHARACTER(MAX_NAME_LEN) :: InputFile, VarName
+  CHARACTER(:), ALLOCATABLE :: InputDirectory
   INTEGER :: FileUnit=1
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var
@@ -123,7 +124,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF(.NOT. AllocationsDone ) THEN
         READ( str,*) NoNodes
-        CALL Info(Caller,'Number of nodes in mesh: '//TRIM(I2S(NoNodes)),Level=7)
+        CALL Info(Caller,'Number of nodes in mesh: '//I2S(NoNodes),Level=7)
       END IF
       DO i=1,NoNodes 
         READ( FileUnit,'(A)',END=20,ERR=20 ) str     
@@ -146,7 +147,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       READ( FileUnit,'(A)',END=20,ERR=20 ) str    
       IF(.NOT. AllocationsDone ) THEN
         READ( str,*) NoElems
-        CALL Info(Caller,'Number of elements in mesh: '//TRIM(I2S(NoElems)),Level=7)
+        CALL Info(Caller,'Number of elements in mesh: '//I2S(NoElems),Level=7)
       END IF
         
       DO i=1,NoElems
@@ -220,7 +221,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       
       CALL VariableAddVector( FromMesh % Variables, FromMesh, Solver, &
           VarName, dofs = dofs, Perm = Perm )
-      Var => VariableGet( FromMesh % Variables, VarName )
+      Var => VariableGet( FromMesh % Variables, VarName, ThisOnly = .TRUE. )
       
       DO i=1,NoNodes
         READ( FileUnit,'(A)',END=20,ERR=20 ) str  
@@ -231,19 +232,22 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
       READ( FileUnit,'(A)',END=20,ERR=20 ) str  ! EndNodeData      
-      !PRINT *,'Var Range:',MINVAL( Var % Values ), MAXVAL( Var % Values ) 
+
+      IF( InfoActive(30) ) THEN
+        PRINT *,'Var Range:',TRIM(Var % Name), MINVAL( Var % Values ), MAXVAL( Var % Values )
+      END IF
     END IF ! NodeData
   END DO
 
 20 CONTINUE
   
   IF(AllocationsDone ) THEN
-    CALL Info(Caller,'Last bulk element index: '//TRIM(I2S(NoBulkElems)),Level=7)
+    CALL Info(Caller,'Last bulk element index: '//I2S(NoBulkElems),Level=7)
     FromMesh % NumberOfBulkElements = NoBulkElems
     FromMesh % NumberOfBoundaryElements = NoElems - NoBulkElems
   ELSE
-    CALL Info(Caller,'Maximum element dimension: '//TRIM(I2S(MaxElemDim)),Level=7)
-    CALL Info(Caller,'Maximum element nodes: '//TRIM(I2S(MaxElemNodes)),Level=7)
+    CALL Info(Caller,'Maximum element dimension: '//I2S(MaxElemDim),Level=7)
+    CALL Info(Caller,'Maximum element nodes: '//I2S(MaxElemNodes),Level=7)
     
     FromMesh => AllocateMesh(NoElems,0,NoNodes)    
     FromMesh % MeshDim = MaxElemDim
@@ -264,6 +268,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   AlignCoord = ListGetInteger( SolverParams,'Align Coordinate',Found )
   IF( Found ) THEN
     k = ABS( AlignCoord ) 
+
     IF( k == 1 ) THEN
       x1 => FromMesh % Nodes % x
       x2 => ToMesh % Nodes % x
@@ -274,20 +279,27 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
       x1 => FromMesh % Nodes % z
       x2 => ToMesh % Nodes % z
     ELSE
-      CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//TRIM(I2S(AlignCoord)))
+      CALL Fatal(Caller,'Invalid value for "Align Coordinate": '//I2S(AlignCoord))
     END IF
       
+    n1 = FromMesh % NumberOfNodes
+    n2 = ToMesh % NumberOfNodes
+
     IF( AlignCoord > 0 ) THEN
-      dx = MINVAL( x2 ) - MAXVAL( x1 ) 
+      minx = MINVAL( x2(1:n2) )
+      maxx = MAXVAL( x1(1:n1) ) 
+      dx = minx - maxx
     ELSE
-      dx = MINVAL( x1 ) - MAXVAL( x2 ) 
+      minx = MINVAL( x1(1:n1) )
+      maxx = MAXVAL( x2(1:n2) ) 
+      dx = minx - maxx
     END IF
-    WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//TRIM(I2S(k))//' with: ',dx
+    
+    WRITE(Message,'(A,ES12.3)') 'Aligning coordinate '//I2S(k)//' with: ',dx
     CALL Info(Caller,Message)
     
     x1 = x1 + dx
   END IF
-
   
   Str = ListGetString( SolverParams,'Mask Name',Found) 
   IF( Found ) THEN
@@ -298,7 +310,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
     IF( n == 0 ) THEN
       CALL Fatal(Caller,'Zero masked nodes')
     ELSE
-      CALL Info(Caller,'Number of masked nodes: '//TRIM(I2S(n)))
+      CALL Info(Caller,'Number of masked nodes: '//I2S(n))
     END IF
 
     CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables, &
@@ -306,7 +318,8 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   ELSE
     CALL InterpolateMeshToMeshQ( FromMesh, ToMesh, FromMesh % Variables, ToMesh % Variables )
   END IF
-
+  
+  
   CALL Info(Caller,'Interpolation complete')
   
 !------------------------------------------------------------------------------

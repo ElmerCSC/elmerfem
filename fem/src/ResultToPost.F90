@@ -78,20 +78,14 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=512) :: ModelName, eq
-     CHARACTER(LEN=512) :: OutputFile, PostFile, RestartFile, OutputName,PostName
+     CHARACTER(:), ALLOCATABLE :: eq,OutputFile,PostFile,OutputName,PostName
+
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName
 
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER :: Var
      TYPE(Solver_t), POINTER :: Solver
 
-!------------------------------------------------------------------------------
-!    For sgi machines reset the output unit to line buffering, so that
-!    Elmercadi, etc, can follow progress, even if output is to a file.
-!------------------------------------------------------------------------------
-#ifdef SGI
-     CALL SetLineBuf(6)
-#endif
 !------------------------------------------------------------------------------
 !    Read input file name and whether parallel execution is requested
 !------------------------------------------------------------------------------
@@ -234,11 +228,7 @@
      OutputFile = ListGetString(CurrentModel % Simulation,'Output File',GotIt)
      IF ( GotIt ) THEN
        IF ( ParEnv % PEs > 1 ) THEN
-         DO i=1,MAX_NAME_LEN
-           IF ( PostFile(i:i) == ' ' ) EXIT
-         END DO
-         PostFile(i:i) = '.'
-         WRITE( PostFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+         PostFile = PostFile // '.' // i2s(ParEnv % MyPE)
        END IF
        Mesh => CurrentModel % Meshes
        DO WHILE( ASSOCIATED( Mesh ) )

@@ -9,9 +9,6 @@ Simulation
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
-  Timestepping Method = BDF
-  Timestep Sizes = 1
-  Timestep Intervals = 10
   Steady State Max Iterations = 1
 
   !Post File = vectorhelmholtz.vtu
@@ -26,7 +23,7 @@ End
 Body 1
   Equation = 1
   Material = 1
-  Body Force = 1
+  ! Body Force = 1
   Initial Condition = 1
 End
 
@@ -36,20 +33,16 @@ $ kc=31.4159265358979
 $ w=2*pi*(2.5e9)
 $ mu0=4e-7*pi
 
-Initial Condition 1
+!Initial Condition 1
   ! Pre = Variable coordinate
   ! Real MATC "rand(1)"
-  Eref_re 2 = Variable coordinate 1, coordinate 3
-  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
-End
+  ! Eref_re 2 = Variable coordinate 1, coordinate 3
+  !  Real MATC "-1.66782047593233*sin(tx(0)*pi*10)*(sin(beta0*tx(1)) - sin(-beta0*tx(1) + 2 * beta0*0.2))"
+!End
 
 Material 1
   Relative Permittivity = Real 1
   !Relative Permittivity im = Real 0
-  
-  !Real MATC "if (tx>0.1) -2.2135; else 0;"
-  !Relative Permittivity im = Variable coordinate 3
-  !Real MATC "if (tx>0.1) 2.2135/5; else 0;"
 End
 
 Equation 1
@@ -57,29 +50,12 @@ Equation 1
   Angular Frequency = Real $w
 End
 
-
-Solver 4
-  Exec Solver = never
-  !Equation = VtuOutput
-  Equation = "result output"
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Vtu Format = Logical True
-  !GMSH Format = Logical True
-  !Single Precision = Logical True
-  !Save Bulk Only = True
-End 
-
 Solver 1
   Equation = "VectorHelmholtz"
-  Variable = E[E re:1 E im:1]
   Use Piola Transform = Logical True
-  Optimize Bandwidth = True
-  Linear System Symmetric = False
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
-  !Angular Frequency = Real $w
-
+  Linear System Symmetric = False
   Linear System Scaling = True
 
   !Linear System Use Hypre = Logical True
@@ -92,21 +68,21 @@ Solver 1
   BiCGstabl polynomial degree = Integer 4
   
   Linear System Preconditioning Damp Coefficient = Real 0.0
-  Linear System Preconditioning Damp Coefficient im = Real 1
+  Linear System Preconditioning Damp Coefficient im = Real -1
+  Mass-proportional Damping = True
   !Linear System Preconditioning = String "boomerAMG"
   !Linear System Preconditioning = String "parasails"
-  Linear System Preconditioning = String "vanka"
+  !Linear System Preconditioning = String "vanka"
   !Linear System Preconditioning = String "None"
   !Linear System Preconditioning = String "diagonal"
-  !Linear System Preconditioning = String "ILU1"
+  Linear System Preconditioning = String "ILU0"
   Linear System ILUT Tolerance = Real 3e-3
   Linear System Max Iterations = Integer 4000
-  Linear System Convergence Tolerance = 1.0e-5
+  Linear System Convergence Tolerance = 1.0e-7
 
   linear system abort not converged = false
 
   Steady State Convergence Tolerance = 1e-09
-  Automated Source Projection BCs = Logical False
   Linear System Residual Output = 10
   Calculate Loads = Logical True
   Calculate Energy Norm = Logical True
@@ -116,7 +92,6 @@ Solver 2
   Equation = "calcfields"
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
-  Linear System Symmetric = False
 
   Calculate Elemental Fields = Logical True
   Calculate Magnetic Field Strength = Logical True
@@ -133,7 +108,7 @@ Solver 2
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-9
-  Exported Variable 1 = -dofs 3 Eref_re
+  !Exported Variable 1 = -dofs 3 Eref_re
 End
 
 Solver 3
@@ -142,13 +117,25 @@ Solver 3
   FileName = "scalar_values.dat"
 End
 
-Body Force 1
+Solver 4
+  Exec Solver = never
+  !Equation = VtuOutput
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  !GMSH Format = Logical True
+  !Single Precision = Logical True
+  !Save Bulk Only = True
+End 
+
+!Body Force 1
   !Current Density 1 = Real 
   !Current Density 2 = Variable Coordinate 3
   !Real MATC "1-10*tx"
   !Current Density = Real 0
   !Current Density 2 = Real 1e8
-End
+!End
 
 Boundary Condition 1
   Target Boundaries(1) = 1
@@ -159,7 +146,7 @@ Boundary Condition 1
   !E re {e} 2 = Real 1
 
   Magnetic Boundary Load 2 = Variable Coordinate 1
-  Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
+    Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
   !Real MATC "-139.87*sin(pi*tx/100e-3)"
   !Real MATC "-1.1131e8*sin(pi*tx/100e-3)"
   !Real MATC "-2/mu0*beta0*k0/kc*sin(pi*tx/100e-3)"

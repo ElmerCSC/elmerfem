@@ -90,7 +90,7 @@ End
 
 Boundary Condition 1
   Name = "Zero"
-  Target Boundaries(1) = 1 2
+  Target Boundaries(1) = 1
   Temperature = 0
   Save Scalars = True
 End

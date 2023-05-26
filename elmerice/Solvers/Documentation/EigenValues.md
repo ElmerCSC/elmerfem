@@ -8,7 +8,7 @@
 - **Optional Input Variable(s):** None
 
 ## General Description
-The aim of this solver is to compute the eigenvalues of a tensor variable (e.g., strain-rate or stress tensors). Optionnaly, the 3 eigenvectors corresponding to each of the three eigenvalues can be computed.
+The aim of this solver is to compute the eigenvalues of a tensor variable (e.g., strain-rate or stress tensors). Optionally, the 3 eigenvectors corresponding to each of the three eigenvalues can be computed.
 
 ## SIF contents
 The required keywords in the SIF file for this solver are:

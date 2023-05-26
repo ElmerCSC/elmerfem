@@ -1,0 +1,110 @@
+! Test case for extrusion where layers are assigned different partitions.
+! This uses tailored internal partitioning routine.
+!
+! P.R. 20.1.2022
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+
+! This should be divisible with the number of partitions!
+  Extruded Mesh Layers  = Integer 24
+
+! There activate partitioning in z-direction while doing
+! parallel extrusion.
+  Single Mesh = Logical True
+!  Parallel Mesh Modulo = Integer 3
+  Extruded Mesh Slices = Logical True
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+
+  Linear System Solver = "Iterative"  
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+
+  Nonlinear System Consistent Norm = True
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2 
+  Exec Solver = never !before all 
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+End 
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Heated Sides"
+  Target Boundaries(2) = 1 2
+  Heat Flux = 10.0
+End
+
+Boundary Condition 2
+  Name = "Adiabatic Sides"
+  Target Boundaries(4) = 3 4 5 6 
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries = 7
+  Temperature = 0.0
+End
+
+Boundary Condition 4
+  Name = "Top"
+  Target Boundaries = 8 
+  Temperature = 1.0
+End
+
+! with 24 layers
+Solver 1 :: Reference Norm = 1.42322633
+

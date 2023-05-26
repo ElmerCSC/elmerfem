@@ -1,0 +1,353 @@
+! Simple historical case to demonstrate that there can be many atomic solvers
+! in a sif file. The basic case is a case of natural convection that is
+! augmented by a number of postprocessing solvers.
+!
+! P.R. 14.3.2021
+
+$ prefix = "case"
+$ visc = 1.0e-3
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+ 
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 100
+  Output Intervals = 0
+
+! For every mesh split the number of elements grows with factor 4!
+  Mesh Levels = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Boltzmann Constant = 1.3807e-23
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial condition = 1
+End
+
+! Heat equation for the iterative solution of natural convection
+!----------------------------------------------------------------
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Exec Solver = Always
+  Stabilize = True
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.5
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+  Calculate Loads = Logical True
+End
+
+! Navier-Stokes equation for the iterative solution of natural convection
+!-------------------------------------------------------------------------
+Solver 2
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Exec Solver = Always
+  Stabilize = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.5
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End
+
+
+
+! This solver calculates the flux vector in the whole domain
+! using the Galerkin method from equation q=-\kappa \grad T
+!---------------------------------------------------------------
+Solver 3
+  Exec Solver = after all
+  Equation = "flux compute"
+  Procedure = "FluxSolver" "FluxSolver"
+  
+  Flux Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = False
+End
+
+! This solver calculates the steamlines in 2D incompressible flow
+!---------------------------------------------------------------------
+Solver 4
+  Exec Solver = after all
+  Equation = "streamlines"
+  Procedure = "StreamSolver" "StreamSolver"
+  Variable = String Stream
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = False
+End
+
+! This solver calculates vorticity (i.e. curl) of the flow field
+!---------------------------------------------------------------------
+Solver 5
+  Exec Solver = after all
+  Equation = "vorticity"
+  Procedure = "VorticitySolver" "VorticitySolver"
+!  Constant Bulk Matrix = True
+End
+
+! This solver calculates divergence of the flow field
+!---------------------------------------------------------------------
+Solver 6
+  Exec Solver = after all
+  Equation = "div"
+  Procedure = "DivergenceSolver" "DivergenceSolver"
+  Divergence Variable = String "velocity"
+!  Constant Bulk Matrix = True
+End
+
+
+! This solver calculates the shearrate from velocity field
+!---------------------------------------------------------------------
+Solver 7
+  Exec Solver = after all
+  Equation = "ShearrateSolver"
+  Procedure = "ShearrateSolver" "ShearrateSolver"
+  Target Variable = String velocity
+End
+
+
+! This solver extracts the 1D isolines from 2D temperature field
+! and stores them to a mesh called "isosurf"
+!---------------------------------------------------------------------
+Solver 8
+  Exec Solver = after all
+  Equation = "isoline"
+  Procedure = "Isosurface" "IsosurfaceSolver"
+  IsoSurface Variable = Temperature
+  IsoSurface Values(3) = 0.25 0.5 0.75
+
+  Output Directory = isoline
+
+  Variable 1 = Temperature
+  Variable 2 = stream
+  Variable 3 = vorticity
+End
+
+
+! This solver saves the results in other formats
+! Perhaps most importantly, the vtu format for Paraview
+!------------------------------------------------------------
+Solver 9
+  Exec Solver = after all
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = $prefix$
+
+!  Enforce Parallel Format = Logical True
+  No Fileindex = Logical True
+
+  Binary Output = Logical True
+  Single Precision = Logical True
+
+  Vtu Format = Logical True
+
+!  ElmerPost Format = Logical True  
+!  GiD Format = Logical True
+!  Gmsh Format = Logical True
+
+!  Scalar Field 1 = String Temperature
+!  Scalar Field 2 = String Pressure
+!  Vector Field 1 = String Velocity
+End
+
+
+! This solver saves the results in a uniform grid
+! May be handy if the original grid is unevenly spaced.
+!------------------------------------------------------------
+Solver 10
+  Exec Solver = after all
+
+  Equation = SaveGrid
+  Procedure = "SaveGridData" "SaveGridData"
+
+!  Grid dx = Real 0.07
+  Grid nx = Integer 25 
+  Grid Origin At Corner = Logical True
+!  Grid Origin 1 = Real 0.1
+!  Grid Origin 2 = Real 0.05
+  Check For Duplicates = Logical True
+!  Max Coordinate 1 = Real 7.0
+  
+  Binary Output = Logical True
+!  Single Precision = Logical True
+
+!  Scalar Field 1 = Pressure
+!  Scalar Field 2 = Temperature
+
+  Filename Prefix = String $prefix$_glyphs
+!  Vtu Format = Logical True
+  Vti Format = Logical True
+End 
+
+! This solver computes the boundary flux and saves them
+! to external files, to be read by Matlab, for example.
+!-----------------------------------------------------
+Solver 11
+  Exec Solver = after all
+  Equation = "save line"
+  Procedure = "SaveData" "SaveLine"
+  Filename = $prefix$_line.dat
+  Save Flux = Logical True
+  Flux Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+End
+
+
+! This solver computes the total flux in two different ways
+! 1) using integration points of the boundary
+! 2) summing up the nodal heat loads from the residual, r=Ax-b
+! Of these the latter is more accurate.
+!-------------------------------------------------------------
+Solver 12
+  Exec Solver = after all
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = $prefix$_tot.dat
+
+  Operator 1 = "diffusive flux"
+  Variable 1 = "Temperature"
+  Coefficient 1 = "Heat Conductivity"
+  Operator 2 = "boundary sum"
+  Variable 2 = "Temperature Loads"
+End
+
+
+Equation 1
+  Name = Natural Convection
+  Convection = Computed
+  Active Solvers(8) = 1 2 3 4 5 6 7 8
+End
+
+Material 1
+  Name = Fluid
+  Heat Conductivity = 1
+  Reference Temperature = 0.5
+  Heat Capacity = 1000
+  Compressibility Model = Incompressible
+  Viscosity = $ visc
+
+  Density = 1 
+  Heat expansion Coefficient = 1.0e-2
+End
+
+Body Force 1
+  Name = Buoyancy
+
+! We can use either built-in or explicit formula for Boussinesq approximation.
+! The explicit formula is here used for educational purposes.
+!  Boussinesq = True
+  Flow BodyForce 2 = Variable "Temperature"
+    Real LUA "9.82*0.01*(tx[0]-0.5)"  
+End
+
+Initial Condition 1
+  Name = InitialGuess
+  Velocity 2 = 0.0
+  Velocity 1 = 0.0
+  Temperature = 0.5
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = Bottom
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = Right
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Temperature = 1.0
+  Save Line = Logical True
+  Save Scalars = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = Top
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  Name = Left
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Temperature = 0.0
+End
+
+
+! This applies only for "Mesh Levels = 1"
+Solver 1 :: Reference Norm = 5.65846550E-01
+Solver 2 :: Reference Norm = 2.08704503E-02
+Solver 3 :: Reference Norm = 6.14514078E-01
+Solver 4 :: Reference Norm = 3.58593946E-03
+Solver 5 :: Reference Norm = 4.97812953E-01
+Solver 6 :: Reference Norm = 2.97827702E-02
+Solver 7 :: Reference Norm = 4.83969877E-01
+

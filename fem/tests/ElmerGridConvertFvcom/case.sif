@@ -39,7 +39,7 @@ End
 Solver 1
   Equation = "CheckMesh"
   Procedure = "MeshChecksum" "MeshChecksum"
-  Reference Sums(8) = 4460 535098 1766 2477652 17776 15 70328 59266207.756800078
+  Reference Values(8) = 4460 535098 1766 2477652 17776 15 70328 59266207.756800078
 End
 
 Solver 2
