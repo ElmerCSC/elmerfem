@@ -1832,7 +1832,7 @@ END BLOCK
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), localGapLength, muAir, muVacuum
     REAL(KIND=dp) :: GapLength(:), AirGapMu(:)
     LOGICAL :: Stat
@@ -1888,7 +1888,7 @@ END BLOCK
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinSheet(  MASS, STIFF, FORCE, LOAD, Thickness, Permeability, &
+  SUBROUTINE LocalMatrixThinSheet(MASS, STIFF, FORCE, LOAD, Thickness, Permeability, &
                                           Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1897,7 +1897,7 @@ END BLOCK
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
     REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C

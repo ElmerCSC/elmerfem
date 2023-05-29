@@ -10530,8 +10530,12 @@ END SUBROUTINE PickActiveFace
                 END DO
                 EdgeBasis(j,1:cdim) = B(1:cdim)
                 ! The returned spatial curl in the case cdim=3 and dim=2 handled here
-                ! has limited usability. This handles only a transformation of
-                ! the type x_3 = p_3:
+                ! has limited usability. This handles only either a transformation of
+                ! the type x_3 = p_3 or the normal component of curl for an arbitrarily
+                ! oriented surface element. Note that the normal component is returned
+                ! as the third entry, so this value has to be multiplied with the normal
+                ! vector to get the vector representation of the normal component with
+                ! respect to the coordinate axes. 
                 CurlBasis(j,3) = 1.0d0/DetJ * CurlBasis(j,3)
               END DO
             END IF

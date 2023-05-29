@@ -3084,7 +3084,11 @@ CONTAINS
               B(k,3) = 0._dp
             END IF
           CASE(3)
-            B(k,:) = normal*MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
+            IF (PiolaVersion) THEN
+              B(k,:) = normal*SUM( SOL(k,np+1:nd) * RotWBasis(1:nd-np,3) )
+            ELSE
+              B(k,:) = normal*SUM(Normal(1:3) * MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,1:3) ))
+            END IF
           END SELECT
         END DO
 
