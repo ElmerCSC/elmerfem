@@ -3510,15 +3510,18 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
   INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
 
   INTEGER, ALLOCATABLE :: requests(:), recv_size(:), &
-        send_size(:), perm(:), neigh(:)
+        send_size(:), perm(:), neigh(:), Replications(:)
   !*********************************************************************
   n = ParEnv % NumOfNeighbours
   IF ( n<= 0 ) RETURN
 
-  oper = 0 ! 0=sum, 1=min, 2=max
-  IF ( PRESENT(op) ) oper=op
+  oper = OPER_SUM  ! Operator. See Types.F90 for valid values.
+  IF ( PRESENT(op) ) oper=op ! Optional input argument for operator.
 
   ALLOCATE( neigh(n) )
+
+  ALLOCATE( Replications(SIZE(SourceVec)) )
+  Replications = 1
 
   n = 0
   DO i=1,ParEnv % PEs
@@ -3645,23 +3648,28 @@ SUBROUTINE ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
 !         Ind = SourceMatrix % Perm(Ind)
           IF ( Ind > 0 ) THEN
              SELECT CASE(oper)
-             CASE(0)
+             CASE(OPER_SUM)
                SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
-             CASE(1)
+             CASE(OPER_MIN)
                SourceVec(Ind) = MIN(SourceVec(Ind),recv_buf(i) % vec(j))
-             CASE(2)
+             CASE(OPER_MAX)
                SourceVec(Ind) = MAX(SourceVec(Ind),recv_buf(i) % vec(j))
+             CASE(OPER_MEAN)
+               SourceVec(Ind) = SourceVec(Ind) + recv_buf(i) % vec(j)
+               Replications(Ind) = Replications(Ind) + 1
              END SELECT
           END IF
        END IF
     END DO
   END DO
 
+  SourceVec = SourceVec / Replications
+
   DO i=1,n
     IF (send_size(i)>0) DEALLOCATE(send_buf(i) % Ind, send_buf(i) % Vec)
     IF (recv_size(i)>0) DEALLOCATE(recv_buf(i) % Ind, recv_buf(i) % Vec)
   END DO
-  DEALLOCATE( recv_buf, send_buf, recv_size, send_size, requests, neigh, perm )
+  DEALLOCATE( recv_buf, send_buf, recv_size, send_size, requests, neigh, perm, replications )
 
 !*********************************************************************
 END SUBROUTINE ExchangeSourceVec
