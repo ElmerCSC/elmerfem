@@ -210,7 +210,8 @@ MODULE Types
                DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:)
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
-    REAL(KIND=dp) :: RhsScaling
+    REAL(KIND=dp) :: RhsScaling=1.0, AveScaling=1.0 
+    INTEGER :: ScalingMethod = 0
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
         PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()

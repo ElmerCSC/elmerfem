@@ -8185,11 +8185,10 @@ CONTAINS
     
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: ScaleSystem, DirichletComm, Found, NoDiag
-    REAL(KIND=dp), POINTER :: DiagScaling(:)
     REAL(KIND=dp) :: dval, s
     INTEGER :: i,j,k,n,n2,n3
     CHARACTER(*), PARAMETER :: Caller = 'EnforceDirichletConditions'
-    LOGICAL :: Parallel
+    LOGICAL :: Parallel, DoDiagScale
     
     
     Params => Solver % Values
@@ -8234,13 +8233,14 @@ CONTAINS
         IF(.NOT.Found) ScaleSystem=.TRUE.
       END IF
     END IF
-          
+
+    DoDiagScale = .FALSE.
     IF( ScaleSystem ) THEN
       CALL Info(Caller,'Applying Dirichlet conditions using scaled diagonal',Level=8)
       CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
-      DiagScaling => A % DiagScaling
+      DoDiagScale = ASSOCIATED(A % DiagScaling)
     END IF
-
+    
     n2 = 0
     IF( Parallel ) THEN
       n = 0
@@ -8268,13 +8268,15 @@ CONTAINS
         
         dval = A % Dvalues(k) 
         
-        IF( ScaleSystem ) THEN
-          s = DiagScaling(k)            
+        IF( DoDiagScale ) THEN
+          s = A % DiagScaling(k)            
           IF( ABS(s) <= TINY(s) ) s = 1.0_dp
+          s = 1._dp / s**2
+        ELSE IF( A % ScalingMethod == 3 ) THEN
+          s = A % AveScaling
         ELSE
           s = 1.0_dp
         END IF
-        s = 1._dp / s**2
           
         CALL ZeroRow(A, k)
 
@@ -8303,7 +8305,7 @@ CONTAINS
     END DO
 
     ! Deallocate scaling since otherwise it could be misused out of context
-    IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
+    IF (DoDiagScale) DEALLOCATE( A % DiagScaling ) 
         
     CALL Info(Caller,'Dirichlet conditions enforced for dofs: '//I2S(n), Level=6)
     IF(n2>0) CALL Info(Caller,'Dirichlet conditions shared count: '//I2S(n2), Level=12)
@@ -12648,263 +12650,416 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
-!>  Scale system Ax = b as:
-!>  (DAD)y = Db, where D = 1/SQRT(Diag(A)), and y = D^-1 x
+!>  Scale linear system with different strategies.
 !------------------------------------------------------------------------------
   SUBROUTINE ScaleLinearSystem(Solver,A,b,x,DiagScaling, & 
           ApplyScaling,RhsScaling,ConstraintScaling)
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
-    REAL(KIND=dp), OPTIONAL :: b(:),x(:)
+    REAL(KIND=dp), OPTIONAL :: b(:), x(:)
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
     LOGICAL, OPTIONAL :: ApplyScaling, RhsScaling,ConstraintScaling
-    INTEGER :: n,i,j
-    REAL(KIND=dp) :: bnorm,s
-    COMPLEX(KIND=dp) :: DiagC
-    LOGICAL :: ComplexMatrix, DoRHS, DoCM, Found, Parallel
-    REAL(KIND=dp), POINTER  :: Diag(:)
+    INTEGER :: n
 
-    TYPE(Matrix_t), POINTER :: CM
-
-    n = A % NumberOfRows
-
-    Parallel = Solver % Parallel    
-    IF( Parallel ) THEN
-      CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in parallel',Level=10)
-    ELSE
-      CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in serial',Level=10)
-    END IF
-      
-    IF( PRESENT( DiagScaling ) ) THEN
-      CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
-      Diag => DiagScaling 
-    ELSE
-      CALL Info('ScaleLinearSystem','Computing > DiagScaling < vector',Level=12)
-      IF(.NOT. ASSOCIATED(A % DiagScaling)) THEN
-        ALLOCATE( A % DiagScaling(n) ) 
-      END IF
-      Diag => A % DiagScaling
-      Diag = 0._dp
+    CHARACTER(:), ALLOCATABLE :: str
+    LOGICAL :: Parallel, Found, ComplexMatrix
     
-      IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
-        ComplexMatrix = .TRUE.
-      ELSE
-        ComplexMatrix = A % COMPLEX
-      END IF
+    n = A % NumberOfRows
+    Parallel = Solver % Parallel    
+    
+    IF( ListGetLogical( Solver % Values,'Linear System Pseudo Complex',Found ) ) THEN
+      ComplexMatrix = .TRUE.
+    ELSE
+      ComplexMatrix = A % COMPLEX
+    END IF
+           
+    IF( ListGetLogical(Solver % Values,'Linear System Row Equilibration',Found ) ) THEN
+      str = 'row equilibration'
+    ELSE
+      str = ListGetString( Solver % Values,'Linear System Scaling Method',Found )
+      IF(.NOT. Found) str = 'diagonal'
+    END IF
+    
+    SELECT CASE( str ) 
+    CASE('diagonal')
+      CALL ScaleLinearSystemDiagonal()
+
+    CASE('row equilibration','rowsum')
+      CALL RowEquilibration(Solver, A, b, Parallel)
       
-      IF ( ComplexMatrix ) THEN
-        CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
+    CASE('constant')
+      CALL ScaleLinearSystemConstant()
 
-        !$OMP PARALLEL DO &
-        !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j) &
-        !$OMP DEFAULT(NONE)
-        DO i=1,n,2
-          j = A % Diag(i)
-          IF(j>0) THEN
-            Diag(i)   = A % Values(j)
-            Diag(i+1) = A % Values(j+1)
-          ELSE
-            Diag(i) = 0._dp
-            Diag(i+1) = 0._dp
-          END IF
-        END DO
-        !$OMP END PARALLEL DO
-      ELSE
-        CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
-
-        !$OMP PARALLEL DO &
-        !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j) &
-        !$OMP DEFAULT(NONE)
-        DO i=1,n
-          j = A % Diag(i)
-          IF (j>0) Diag(i) = A % Values(j)
-        END DO
-        !$OMP END PARALLEL DO
-      END IF
+    CASE('none')
+      CALL Info('ScaleLinearSystem','No scaling will be applied!',Level=12)
+      RETURN
       
-      IF ( Parallel ) CALL ParallelSumVector(A, Diag)
+    CASE DEFAULT
+      CALL Fatal('ScaleLinearSystem','Unknown scaling method: '//TRIM(str))
+    END SELECT
+     
+          
+  CONTAINS
 
-      IF ( ComplexMatrix ) THEN
-        !$OMP PARALLEL DO &
-        !$OMP SHARED(Diag, A, N) &
-        !$OMP PRIVATE(i, j, DiagC, s) &
-        !$OMP DEFAULT(NONE)
-        DO i=1,n,2
-          DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
+    !-------------------------------------------------------------
+    !>  Scale system Ax = b as:
+    !>  (DAD)y = Db, where D = 1/SQRT(Diag(A)), and y = D^-1 x
+    !-------------------------------------------------------------    
+    SUBROUTINE ScaleLinearSystemDiagonal()
 
-          s = SQRT( ABS( DiagC ) )
-          IF( s > TINY(s) ) THEN 
-            Diag(i)   = 1.0_dp / s
-            Diag(i+1) = 1.0_dp / s
-          ELSE
-            Diag(i)   = 1.0_dp
-            Diag(i+1) = 1.0_dp
-          END IF
-        END DO
-        !$OMP END PARALLEL DO
+      INTEGER :: i,j
+      REAL(KIND=dp) :: bnorm,s
+      COMPLEX(KIND=dp) :: DiagC
+      LOGICAL :: DoRHS, DoCM
+      REAL(KIND=dp), POINTER  :: Diag(:)      
+      TYPE(Matrix_t), POINTER :: CM
+
+      A % ScalingMethod = 1
+      
+      IF( Parallel ) THEN
+        CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in parallel',Level=10)
       ELSE
-        s = 0.0_dp
-        ! TODO: Add threading
-        IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
-        IF(Parallel) s = ParallelReduction(s,2) 
+        CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in serial',Level=10)
+      END IF
 
-        IF(s > TINY(s) ) THEN 
-          DO i=1,n
-            IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
-              Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
+      IF( PRESENT( DiagScaling ) ) THEN
+        CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
+        Diag => DiagScaling 
+      ELSE
+        CALL Info('ScaleLinearSystem','Computing > DiagScaling < vector',Level=12)
+        IF(.NOT. ASSOCIATED(A % DiagScaling)) THEN
+          ALLOCATE( A % DiagScaling(n) ) 
+        END IF
+        Diag => A % DiagScaling
+        Diag = 0._dp
+
+        IF ( ComplexMatrix ) THEN
+          CALL Info('ScaleLinearSystem','Assuming complex matrix while scaling',Level=20)
+
+          !$OMP PARALLEL DO &
+          !$OMP SHARED(Diag, A, N) &
+          !$OMP PRIVATE(i, j) &
+          !$OMP DEFAULT(NONE)
+          DO i=1,n,2
+            j = A % Diag(i)
+            IF(j>0) THEN
+              Diag(i)   = A % Values(j)
+              Diag(i+1) = A % Values(j+1)
             ELSE
-              j = A % Diag(i)
-              IF (j>0) Diag(i) = A % Values(j)
+              Diag(i) = 0._dp
+              Diag(i+1) = 0._dp
             END IF
           END DO
-          IF ( Parallel ) CALL ParallelSumVector(A, Diag)
-        END IF
-
-        !$OMP PARALLEL DO &
-        !$OMP SHARED(Diag, N, bnorm) &
-        !$OMP PRIVATE(i) &
-        !$OMP DEFAULT(NONE)
-        DO i=1,n
-          IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
-            Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
-          ELSE
-            Diag(i) = 1.0_dp
-          END IF
-        END DO
-        !$OMP END PARALLEL DO
-      END IF
-    END IF
-
-    
-    ! Optionally we may just create the diag and leave the scaling undone
-    !--------------------------------------------------------------------
-    IF( PRESENT( ApplyScaling ) ) THEN
-      IF(.NOT. ApplyScaling ) RETURN
-    END IF
-
-    CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
-    
-    !$OMP PARALLEL &
-    !$OMP SHARED(Diag, A, N) &
-    !$OMP PRIVATE(i,j) &
-    !$OMP DEFAULT(NONE)
-
-    !$OMP DO
-    DO i=1,n
-      DO j = A % Rows(i), A % Rows(i+1)-1
-        A % Values(j) = A % Values(j) * &
-            ( Diag(i) * Diag(A % Cols(j)) )
-      END DO
-    END DO
-    !$OMP END DO NOWAIT
-
-    IF ( ASSOCIATED( A % PrecValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
-        CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % PrecValues(j) = A % PrecValues(j) * &
-                ( Diag(i) * Diag(A % Cols(j)) )
-          END DO
-        END DO
-        !$OMP END DO NOWAIT
-      END IF
-    END IF
-
-    IF ( ASSOCIATED( A % MassValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
-        CALL Info('ScaleLinearSystem','Scaling MassValues',Level=20)
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % MassValues(j) = A % MassValues(j) * &
-                ( Diag(i) * Diag(A % Cols(j)) )
-          END DO
-        END DO
-        !$OMP END DO NOWAIT
-      END IF
-    END IF
-    
-    IF ( ASSOCIATED( A % DampValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
-        CALL Info('ScaleLinearSystem','Scaling DampValues',Level=20)
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % DampValues(j) = A % DampValues(j) * &
-                ( Diag(i) * Diag(A % Cols(j)) )
-          END DO
-        END DO
-        !$OMP END DO NOWAIT
-      END IF
-    END IF
-
-    !$OMP END PARALLEL
-
-    DoCM = .FALSE.
-    IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
-
-    IF(doCM) THEN
-      CM => A % ConstraintMatrix
-      IF (ASSOCIATED(CM)) THEN
-        CALL Info('ScaleLinearSystem','Scaling Constraints',Level=20)
-        !$OMP PARALLEL DO &
-        !$OMP SHARED(Diag, CM) &
-        !$OMP PRIVATE(i,j) &
-        !$OMP DEFAULT(NONE)
-        DO i=1,CM % NumberOFRows
-          DO j=CM % Rows(i), CM % Rows(i+1)-1
-            CM % Values(j) = CM % Values(j) * Diag(CM % Cols(j))
-          END DO
-        END DO
-        !$OMP END PARALLEL DO
-      END IF
-    END IF
-
-    ! Scale r.h.s. and initial guess
-    !--------------------------------
-    A % RhsScaling=1._dp
-    ! TODO: Add threading
-    IF( PRESENT( b ) ) THEN
-      CALL Info('ScaleLinearSystem','Scaling Rhs vector',Level=20)
-      
-      b(1:n) = b(1:n) * Diag(1:n)
-      DoRHS = .TRUE.
-      IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
-      IF (DoRHS) THEN
-        IF( Parallel ) THEN
-          bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+          !$OMP END PARALLEL DO
         ELSE
-          bnorm = SQRT(SUM(b(1:n)**2))
+          CALL Info('ScaleLinearSystem','Assuming real valued matrix while scaling',Level=25)
+
+          !$OMP PARALLEL DO &
+          !$OMP SHARED(Diag, A, N) &
+          !$OMP PRIVATE(i, j) &
+          !$OMP DEFAULT(NONE)
+          DO i=1,n
+            j = A % Diag(i)
+            IF (j>0) Diag(i) = A % Values(j)
+          END DO
+          !$OMP END PARALLEL DO
         END IF
-          
-        IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
-          CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
-          DoRhs = .FALSE.
+
+        IF ( Parallel ) CALL ParallelSumVector(A, Diag)
+
+        IF ( ComplexMatrix ) THEN
+          !$OMP PARALLEL DO &
+          !$OMP SHARED(Diag, A, N) &
+          !$OMP PRIVATE(i, j, DiagC, s) &
+          !$OMP DEFAULT(NONE)
+          DO i=1,n,2
+            DiagC = CMPLX(Diag(i),-Diag(i+1),KIND=dp)
+
+            s = SQRT( ABS( DiagC ) )
+            IF( s > TINY(s) ) THEN 
+              Diag(i)   = 1.0_dp / s
+              Diag(i+1) = 1.0_dp / s
+            ELSE
+              Diag(i)   = 1.0_dp
+              Diag(i+1) = 1.0_dp
+            END IF
+          END DO
+          !$OMP END PARALLEL DO
+        ELSE
+          s = 0.0_dp
+          ! TODO: Add threading
+          IF (ANY(ABS(Diag) <= TINY(bnorm))) s=1
+          IF(Parallel) s = ParallelReduction(s,2) 
+
+          IF(s > TINY(s) ) THEN 
+            DO i=1,n
+              IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
+                Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
+              ELSE
+                j = A % Diag(i)
+                IF (j>0) Diag(i) = A % Values(j)
+              END IF
+            END DO
+            IF ( Parallel ) CALL ParallelSumVector(A, Diag)
+          END IF
+
+          !$OMP PARALLEL DO &
+          !$OMP SHARED(Diag, N, bnorm) &
+          !$OMP PRIVATE(i) &
+          !$OMP DEFAULT(NONE)
+          DO i=1,n
+            IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
+              Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
+            ELSE
+              Diag(i) = 1.0_dp
+            END IF
+          END DO
+          !$OMP END PARALLEL DO
+        END IF
+      END IF
+
+
+      ! Optionally we may just create the diag and leave the scaling undone
+      !--------------------------------------------------------------------
+      IF( PRESENT( ApplyScaling ) ) THEN
+        IF(.NOT. ApplyScaling ) RETURN
+      END IF
+
+      CALL Info('ScaleLinearSystem','Scaling matrix values',Level=20)
+
+      !$OMP PARALLEL &
+      !$OMP SHARED(Diag, A, N) &
+      !$OMP PRIVATE(i,j) &
+      !$OMP DEFAULT(NONE)
+
+      !$OMP DO
+      DO i=1,n
+        DO j = A % Rows(i), A % Rows(i+1)-1
+          A % Values(j) = A % Values(j) * &
+              ( Diag(i) * Diag(A % Cols(j)) )
+        END DO
+      END DO
+      !$OMP END DO NOWAIT
+
+      IF ( ASSOCIATED( A % PrecValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
+          CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % PrecValues(j) = A % PrecValues(j) * &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
+          END DO
+          !$OMP END DO NOWAIT
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( A % MassValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+          CALL Info('ScaleLinearSystem','Scaling MassValues',Level=20)
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % MassValues(j) = A % MassValues(j) * &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
+          END DO
+          !$OMP END DO NOWAIT
+        END IF
+      END IF
+
+      IF ( ASSOCIATED( A % DampValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+          CALL Info('ScaleLinearSystem','Scaling DampValues',Level=20)
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % DampValues(j) = A % DampValues(j) * &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
+          END DO
+          !$OMP END DO NOWAIT
+        END IF
+      END IF
+
+      !$OMP END PARALLEL
+
+      DoCM = .FALSE.
+      IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
+
+      IF(doCM) THEN
+        CM => A % ConstraintMatrix
+        IF (ASSOCIATED(CM)) THEN
+          CALL Info('ScaleLinearSystem','Scaling Constraints',Level=20)
+          !$OMP PARALLEL DO &
+          !$OMP SHARED(Diag, CM) &
+          !$OMP PRIVATE(i,j) &
+          !$OMP DEFAULT(NONE)
+          DO i=1,CM % NumberOFRows
+            DO j=CM % Rows(i), CM % Rows(i+1)-1
+              CM % Values(j) = CM % Values(j) * Diag(CM % Cols(j))
+            END DO
+          END DO
+          !$OMP END PARALLEL DO
+        END IF
+      END IF
+
+      ! Scale r.h.s. and initial guess
+      !--------------------------------
+      A % RhsScaling=1._dp
+      ! TODO: Add threading
+      IF( PRESENT( b ) ) THEN
+        CALL Info('ScaleLinearSystem','Scaling Rhs vector',Level=20)
+
+        b(1:n) = b(1:n) * Diag(1:n)
+        DoRHS = .TRUE.
+        IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
+        IF (DoRHS) THEN
+          IF( Parallel ) THEN
+            bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
+          ELSE
+            bnorm = SQRT(SUM(b(1:n)**2))
+          END IF
+
+          IF( bnorm < SQRT( TINY( bnorm ) ) ) THEN
+            CALL Info('ScaleLinearSystem','Rhs vector is almost zero, skipping rhs scaling!',Level=20)
+            DoRhs = .FALSE.
+            bnorm = 1.0_dp
+          END IF
+        ELSE
           bnorm = 1.0_dp
         END IF
+
+        A % RhsScaling = bnorm
+
+        IF( DoRhs ) THEN
+          Diag(1:n) = Diag(1:n) * bnorm
+          b(1:n) = b(1:n) / bnorm
+        END IF
+
+        IF( PRESENT( x) ) THEN
+          x(1:n) = x(1:n) / Diag(1:n)
+        END IF
+      END IF
+    END SUBROUTINE ScaleLinearSystemDiagonal
+
+
+    !-------------------------------------------------------------
+    !>  Scale system Ax = b as:
+    !>  (A/Ascl)(Ascl*x/bscl) = (b/bscl)
+    !-------------------------------------------------------------    
+    SUBROUTINE ScaleLinearSystemConstant()
+
+      INTEGER :: i,j,nSum
+      REAL(KIND=dp) :: bnorm,s
+      COMPLEX(KIND=dp) :: DiagC
+      LOGICAL :: DoRHS, DoCM
+      REAL(KIND=dp) :: Ascl, bscl, Xscl, bsum, DiagSum
+      TYPE(Matrix_t), POINTER :: CM
+           
+      IF( Parallel ) THEN
+        CALL Info('ScaleLinearSystem','Scaling matrix entries by constant in parallel',Level=10)
       ELSE
-        bnorm = 1.0_dp
+        CALL Info('ScaleLinearSystem','Scaling matrix entries by constant in serial',Level=10)
       END IF
       
-      A % RhsScaling = bnorm
+      IF( A % AveScaling == 3 ) THEN
+        CALL Info('ScaleLinearSystem','Reusing existing > AveScaling < constant',Level=12)
+        Ascl = A % AveScaling 
+      ELSE
+        CALL Info('ScaleLinearSystem','Computing > AveScaling < constant',Level=12)
 
-      IF( DoRhs ) THEN
-        Diag(1:n) = Diag(1:n) * bnorm
-        b(1:n) = b(1:n) / bnorm
+        A % ScalingMethod = 3
+        DiagSum = 0.0_dp
+        nSum = n
+        
+        DO i=1,n
+          j = A % Diag(i)
+          IF (j>0) THEN
+            DiagSum = DiagSum + ABS(A % Values(j))
+          END IF
+        END DO
+
+        IF ( Parallel ) THEN
+          DiagSum = ParallelReduction( DiagSum )
+          nSum = ParallelReduction( nSum )
+        END IF
+
+        Ascl = DiagSum / nSum
+        A % AveScaling = Ascl
+
+        WRITE( Message,'(A,ES12.3)') 'Average diagonal entry: ', Ascl
+        CALL Info( 'ScaleLinearSystemConstant', Message, Level=5 )        
+      END IF
+        
+      ! Optionally we may just create the diag and leave the scaling undone
+      !--------------------------------------------------------------------
+      IF( PRESENT( ApplyScaling ) ) THEN
+        IF(.NOT. ApplyScaling ) RETURN
+      END IF
+      
+      A % Values = A % Values / Ascl
+      IF ( ASSOCIATED( A % PrecValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+          A % PrecValues = A % PrecValues / Ascl
+        END IF
+      END IF
+      IF ( ASSOCIATED( A % MassValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+          A % MassValues = A % MassValues / Ascl
+        END IF
+      END IF        
+      IF ( ASSOCIATED( A % DampValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+          A % DampValues = A % DampValues / Ascl
+        END IF
+      END IF
+
+      DoCM = .FALSE.
+      IF(PRESENT(ConstraintScaling)) DoCm=ConstraintScaling
+      IF(doCM) THEN
+        CM => A % ConstraintMatrix
+        IF (ASSOCIATED(CM)) THEN
+          CM % Values = CM % Values / Ascl
+        END IF
+      END IF
+
+      ! Scale r.h.s. and initial guess
+      !--------------------------------
+      A % RhsScaling = 1._dp
+
+      IF( PRESENT( b ) ) THEN       
+        DoRHS = .TRUE.
+        IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
+        IF (DoRHS) THEN          
+          bsum = SUM( ABS( b ) ) 
+          nSum = n
+          
+          IF ( Parallel ) THEN
+            bSum = ParallelReduction( bSum )
+            nSum = ParallelReduction( nSum )
+          END IF
+
+          bscl = bsum / nSum           
+          b = b / bscl
+                   
+          A % RhsScaling = bscl
+          
+          WRITE( Message,'(A,ES12.3)') 'Average rhs entry: ', bscl
+          CALL Info( 'ScaleLinearSystemConstant', Message, Level=7 )        
+        END IF
       END IF
       
       IF( PRESENT( x) ) THEN
-        x(1:n) = x(1:n) / Diag(1:n)
+        Xscl = Bscl / Ascl
+        x(1:n) = x(1:n) / Xscl 
       END IF
-    END IF
 
-    
-    !-----------------------------------------------------------------------------
+    END SUBROUTINE ScaleLinearSystemConstant
+
+!-----------------------------------------------------------------------------
   END SUBROUTINE ScaleLinearSystem
 !-----------------------------------------------------------------------------
 
@@ -12946,6 +13101,8 @@ END FUNCTION SearchNodeL
     Diag = 0.0d0
     norm = 0.0d0
 
+    A % ScalingMethod = 2
+    
     !---------------------------------------------
     ! Compute 1-norm of each row
     !---------------------------------------------
@@ -13037,7 +13194,6 @@ END FUNCTION SearchNodeL
         END DO
       END IF
     END IF
-
     
     WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
     CALL Info( 'RowEquilibration', Message, Level=5 )
@@ -13060,136 +13216,218 @@ END FUNCTION SearchNodeL
     LOGICAL, OPTIONAL :: ConstraintScaling, EigenScaling
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
 
-    REAL(KIND=dp), POINTER :: Diag(:)
-    REAL(KIND=dp) :: bnorm
-    INTEGER :: n,i,j
-    LOGICAL :: doCM
-
-    TYPE(Matrix_t), POINTER :: CM
+    CHARACTER(:), ALLOCATABLE :: str
+    LOGICAL :: Found
+    INTEGER :: n
 
     CALL Info('BackScaleLinearSystem','Scaling back to original scale',Level=14)
 
-    
     n = A % NumberOfRows
     
-    IF( PRESENT( DiagScaling ) ) THEN
-      Diag => DiagScaling
-    ELSE  
-      Diag => A % DiagScaling
-    END IF
+    SELECT CASE( A % ScalingMethod )
+      
+    CASE( 1 ) 
+      CALL BackScaleLinearSystemDiagonal()
+      
+    CASE( 2 ) 
+      CALL ReverseRowEquilibration( A, b )
+      
+    CASE( 3 ) 
+      CALL BackScaleLinearSystemConstant()
 
-    IF(.NOT. ASSOCIATED( Diag ) ) THEN
-      CALL Warn('BackScaleLinearSystem','Diag not associated!')
-      RETURN
-    END IF
-    IF( SIZE( Diag ) /= n ) THEN
-      CALL Fatal('BackScaleLinearSystem','Diag of wrong size!')
-    END IF 
-
-    IF( PRESENT( b ) ) THEN
-       ! TODO: Add threading
-! 
-!      Solve x:  INV(D)x = y, scale b back to orig
-!      -------------------------------------------
-      IF( PRESENT( x ) ) THEN
-        x(1:n) = x(1:n) * Diag(1:n)
-      END IF
-      bnorm = A % RhsScaling
-      Diag(1:n) = Diag(1:n) / bnorm
-      b(1:n) = b(1:n) / Diag(1:n) * bnorm
-    END IF
+    CASE DEFAULT
+      CALL Info('BackScaleLinearSystem','No scaling was applied!',Level=20)
+      
+    END SELECT
     
-    IF( PRESENT( EigenScaling ) ) THEN
-      IF( EigenScaling ) THEN
+  CONTAINS
+
+    SUBROUTINE BackScaleLinearSystemDiagonal()
+
+      REAL(KIND=dp), POINTER :: Diag(:)
+      REAL(KIND=dp) :: bnorm
+      INTEGER :: i,j
+      LOGICAL :: doCM      
+      TYPE(Matrix_t), POINTER :: CM
+      
+      IF( PRESENT( DiagScaling ) ) THEN
+        Diag => DiagScaling
+      ELSE  
+        Diag => A % DiagScaling
+      END IF
+
+      IF(.NOT. ASSOCIATED( Diag ) ) THEN
+        CALL Warn('BackScaleLinearSystem','Diag not associated!')
+        RETURN
+      END IF
+      IF( SIZE( Diag ) /= n ) THEN
+        CALL Fatal('BackScaleLinearSystem','Diag of wrong size!')
+      END IF
+
+      IF( PRESENT( b ) ) THEN
         ! TODO: Add threading
-        DO i=1,Solver % NOFEigenValues
-          !
-          !           Solve x:  INV(D)x = y
-          !           --------------------------
-          IF ( Solver % Matrix % COMPLEX ) THEN
-            Solver % Variable % EigenVectors(i,1:n/2) = &
-                Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
-          ELSE
-            Solver % Variable % EigenVectors(i,1:n) = &
-                Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
-          END IF
-        END DO
+        ! 
+        !      Solve x:  INV(D)x = y, scale b back to orig
+        !      -------------------------------------------
+        IF( PRESENT( x ) ) THEN
+          x(1:n) = x(1:n) * Diag(1:n)
+        END IF
+        bnorm = A % RhsScaling
+        Diag(1:n) = Diag(1:n) / bnorm
+        b(1:n) = b(1:n) / Diag(1:n) * bnorm
       END IF
-    END IF
-    
-    !$OMP PARALLEL &
-    !$OMP SHARED(Diag, A, N) &
-    !$OMP PRIVATE(i, j) &
-    !$OMP DEFAULT(NONE)
-    
-    !$OMP DO
-    DO i=1,n
-      DO j=A % Rows(i), A % Rows(i+1)-1
-        A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
+
+      IF( PRESENT( EigenScaling ) ) THEN
+        IF( EigenScaling ) THEN
+          ! TODO: Add threading
+          DO i=1,Solver % NOFEigenValues
+            !
+            !           Solve x:  INV(D)x = y
+            !           --------------------------
+            IF ( Solver % Matrix % COMPLEX ) THEN
+              Solver % Variable % EigenVectors(i,1:n/2) = &
+                  Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
+            ELSE
+              Solver % Variable % EigenVectors(i,1:n) = &
+                  Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+            END IF
+          END DO
+        END IF
+      END IF
+
+      !$OMP PARALLEL &
+      !$OMP SHARED(Diag, A, N) &
+      !$OMP PRIVATE(i, j) &
+      !$OMP DEFAULT(NONE)
+
+      !$OMP DO
+      DO i=1,n
+        DO j=A % Rows(i), A % Rows(i+1)-1
+          A % Values(j) = A % Values(j) / (Diag(i) * Diag(A % Cols(j)))
+        END DO
       END DO
-    END DO
-    !$OMP END DO NOWAIT
-    
-    IF ( ASSOCIATED( A % PrecValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % PrecValues(j) = A % PrecValues(j) / &
-                ( Diag(i) * Diag(A % Cols(j)) )
-          END DO
-        END DO
-        !$OMP END DO NOWAIT
-      END IF
-    END IF
+      !$OMP END DO NOWAIT
 
-    IF ( ASSOCIATED( A % MassValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % MassValues(j) = A % MassValues(j) / &
-                ( Diag(i) * Diag(A % Cols(j)) )
+      IF ( ASSOCIATED( A % PrecValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % PrecValues(j) = A % PrecValues(j) / &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
           END DO
-        END DO
-        !$OMP END DO NOWAIT
+          !$OMP END DO NOWAIT
+        END IF
       END IF
-    END IF
-    
-    IF ( ASSOCIATED( A % DampValues ) ) THEN
-      IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
-        !$OMP DO
-        DO i=1,n
-          DO j=A % Rows(i), A % Rows(i+1)-1
-            A % DampValues(j) = A % DampValues(j) / &
-                ( Diag(i) * Diag(A % Cols(j)) )
+
+      IF ( ASSOCIATED( A % MassValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % MassValues(j) = A % MassValues(j) / &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
           END DO
-        END DO
-        !$OMP END DO NOWAIT
+          !$OMP END DO NOWAIT
+        END IF
       END IF
-    END IF
 
-    !$OMP END PARALLEL
-
-    ! TODO: Add threading
-    doCM=.FALSE.
-    IF(PRESENT(ConstraintScaling)) doCM=ConstraintScaling
-    IF(doCM) THEN
-      CM => A % ConstraintMatrix
-      IF (ASSOCIATED(CM)) THEN
-        DO i=1,CM % NumberOFRows
-          DO j=CM % Rows(i), CM % Rows(i+1)-1
-            CM % Values(j) = CM % Values(j) / ( Diag(CM % Cols(j)) )
+      IF ( ASSOCIATED( A % DampValues ) ) THEN
+        IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+          !$OMP DO
+          DO i=1,n
+            DO j=A % Rows(i), A % Rows(i+1)-1
+              A % DampValues(j) = A % DampValues(j) / &
+                  ( Diag(i) * Diag(A % Cols(j)) )
+            END DO
           END DO
-        END DO
+          !$OMP END DO NOWAIT
+        END IF
       END IF
-    END IF
 
-    A % RhsScaling=1._dp
-    DEALLOCATE(A % DiagScaling); A % DiagScaling=>NULL()
+      !$OMP END PARALLEL
+
+      ! TODO: Add threading
+      doCM=.FALSE.
+      IF(PRESENT(ConstraintScaling)) doCM=ConstraintScaling
+      IF(doCM) THEN
+        CM => A % ConstraintMatrix
+        IF (ASSOCIATED(CM)) THEN
+          DO i=1,CM % NumberOFRows
+            DO j=CM % Rows(i), CM % Rows(i+1)-1
+              CM % Values(j) = CM % Values(j) / ( Diag(CM % Cols(j)) )
+            END DO
+          END DO
+        END IF
+      END IF
+
+      A % RhsScaling=1._dp
+      DEALLOCATE(A % DiagScaling); A % DiagScaling=>NULL()
+
+    END SUBROUTINE BackScaleLinearSystemDiagonal
+
+
+    SUBROUTINE BackScaleLinearSystemConstant()
+      
+      REAL(KIND=dp) :: Ascl, Bscl, Xscl
+      LOGICAL :: doCM      
+      TYPE(Matrix_t), POINTER :: CM
+            
+      Ascl = A % AveScaling
+      Bscl = A % RhsScaling
+      Xscl = Bscl / Ascl
+
+      IF( PRESENT( b ) ) THEN
+        IF( PRESENT( x ) ) THEN
+          x(1:n) = x(1:n) * Xscl 
+        END IF
+        b(1:n) = Bscl * b(1:n) 
+      END IF
+
+      IF( PRESENT( EigenScaling ) ) THEN
+        IF( EigenScaling ) THEN
+          Solver % Variable % EigenVectors = &
+              Solver % Variable % EigenVectors * Xscl
+        END IF
+      END IF
+
+      IF( Ascl > 0.0 .AND. ABS(Ascl-1.0_dp) > EPSILON(Ascl) ) THEN
+        A % Values = Ascl * A % Values
+        IF ( ASSOCIATED( A % PrecValues ) ) THEN
+          IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+            A % PrecValues = AScl * A % PrecValues
+          END IF
+        END IF
+        IF ( ASSOCIATED( A % MassValues ) ) THEN
+          IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
+            A % MassValues = Ascl * A % MassValues
+          END IF
+        END IF
+        IF ( ASSOCIATED( A % DampValues ) ) THEN
+          IF (SIZE(A % Values) == SIZE(A % DampValues)) THEN
+            A % DampValues = Ascl * A % DampValues
+          END IF
+        END IF
+        
+        doCM = .FALSE.
+        IF(PRESENT(ConstraintScaling)) doCM=ConstraintScaling
+        IF(doCM) THEN
+          CM => A % ConstraintMatrix
+          IF( ASSOCIATED(CM ) ) THEN
+            CM % Values = Ascl * CM % Values
+          END IF
+        END IF
+      END IF
+
+      A % RhsScaling = 1._dp
+
+    END SUBROUTINE BackScaleLinearSystemConstant
+
     
   END SUBROUTINE BackScaleLinearSystem
-
+      
 
 !------------------------------------------------------------------------------
 !> Scale the linear system back to original when the linear
@@ -13234,7 +13472,6 @@ END FUNCTION SearchNodeL
         END DO
       END IF
     END IF
-
     
     DEALLOCATE(A % DiagScaling)
     A % DiagScaling => NULL()
@@ -14210,13 +14447,13 @@ END FUNCTION SearchNodeL
 !   Convert rhs & initial value to the scaled system:
 !   -------------------------------------------------
     IF ( ScaleSystem ) THEN
-      ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
-      IF ( ApplyRowEquilibration ) THEN
-        CALL RowEquilibration(Solver, A, b, Parallel)
-      ELSE
-        CALL ScaleLinearSystem(Solver, A, b, x, &
-            RhsScaling = (bnorm/=0._dp), ConstraintScaling=.TRUE. )
-      END IF
+      !ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
+      !IF ( ApplyRowEquilibration ) THEN
+      !  CALL RowEquilibration(Solver, A, b, Parallel)
+      !ELSE
+      CALL ScaleLinearSystem(Solver, A, b, x, &
+          RhsScaling = (bnorm/=0._dp), ConstraintScaling=.TRUE. )
+      !END IF
     END IF
 
     ComputeChangeScaled = ListGetLogical(Params,&
@@ -14365,11 +14602,11 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( ScaleSystem ) THEN
-      IF ( ApplyRowEquilibration ) THEN
-        CALL ReverseRowEquilibration( A, b )
-      ELSE
+      !IF ( ApplyRowEquilibration ) THEN
+      !  CALL ReverseRowEquilibration( A, b )
+      !ELSE
         CALL BackScaleLinearSystem( Solver, A, b, x, ConstraintScaling=.TRUE. )
-      END IF
+      !END IF
     END IF
 
 120 IF( AndersonAcc .AND. .NOT. AndersonScaled )  THEN
