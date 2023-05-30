@@ -2619,15 +2619,15 @@ END SUBROUTINE LocalConstraintMatrix
           dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
           ApplyPiolaTransform = .TRUE.)
 
-       C  = SUM(Basis(1:n) * Conductivity(1:n))
-       Area= SUM(Basis(1:n) * CrossectArea(1:n))
+       C = SUM(Basis(1:n) * Conductivity(1:n))
+       Area = SUM(Basis(1:n) * CrossectArea(1:n))
 
-       CONDUCTOR: IF ( C /= 0._dp ) THEN
+       CONDUCTOR: IF ( ABS(C) > AEPS ) THEN
          DO p=1,np
            DO q=1,np
 
-             ! Compute the conductivity term <C grad V,grad v> for stiffness 
-             ! matrix (anisotropy taken into account)
+             ! Compute the conductivity term <C grad V x n,grad v x n> for stiffness 
+             ! matrix (without anisotropy taken into account)
              ! -------------------------------------------
 
              STIFF(p,q) = STIFF(p,q) + Area * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
@@ -2636,13 +2636,13 @@ END SUBROUTINE LocalConstraintMatrix
            DO j=1,nd-np
              q = j+np
 
-             ! Compute the conductivity term <C A,grad v> for 
-             ! mass matrix (anisotropy taken into account)
+             ! Compute the conductivity term <C A x n,grad v x n> for 
+             ! mass matrix (without anisotropy taken into account)
              ! -------------------------------------------
              MASS(p,q) = MASS(p,q) + Area * C * SUM(WBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
 
-             ! Compute the conductivity term <C grad V, eta> for 
-             ! stiffness matrix (anisotropy taken into account)
+             ! Compute the conductivity term <C grad V x n, eta x n> for 
+             ! stiffness matrix (without anisotropy taken into account)
              ! ------------------------------------------------
              STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*WBasis(j,:))*detJ*IP % s(t)
            END DO
@@ -2653,8 +2653,8 @@ END SUBROUTINE LocalConstraintMatrix
            DO j=1,nd-np
              q = j+np
 
-             ! Compute the conductivity term <C A, eta> for 
-             ! mass matrix (anisotropy taken into account)
+             ! Compute the conductivity term <C A x n, eta x n> for 
+             ! mass matrix (without anisotropy taken into account)
              ! -------------------------------------------
              MASS(p,q) = MASS(p,q) + Area * C * SUM(WBasis(i,:)*Wbasis(j,:))*detJ*IP % s(t)
            END DO

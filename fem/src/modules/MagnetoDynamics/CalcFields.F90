@@ -2588,7 +2588,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     DO i=1,Active
        Element => GetBoundaryElement(i)
        BC=>GetBC()
-
+       IF (.NOT. ASSOCIATED(BC) ) CYCLE
+       
        ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
        IF (Found) THEN
@@ -2599,7 +2600,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CYCLE
        END IF
 
-       IF (.NOT. ASSOCIATED(BC) ) CYCLE
        SELECT CASE(GetElementFamily())
        CASE(1)
          CYCLE
@@ -2707,6 +2707,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       BC => GetBC()
       IF (.NOT. ASSOCIATED(BC)) CYCLE
 
+      SheetThickness = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+      IF (Found) THEN
+        ! Technically, there is no skin but why create yet another conductivity variable?
+        ThinLineCond = GetConstReal(BC, 'Thin Sheet Electric Conductivity', Found)
+        IF (.NOT. Found) ThinLineCond = 1.0_dp ! if not found default to "air" property
+      ELSE
+        CYCLE
+      END IF
+      
       SELECT CASE(GetElementFamily())
       CASE(1)
         CYCLE
@@ -2718,15 +2727,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
         Element => Mesh % Faces(k)
       END SELECT
       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
-
-      SheetThickness = GetConstReal( BC, 'Thin Sheet Thickness', Found)
-      IF (Found) THEN
-        ! Technically, there is no skin but why create yet another conductivity variable?
-        ThinLineCond = GetConstReal(BC, 'Thin Sheet Electric Conductivity', Found)
-        IF (.NOT. Found) ThinLineCond = 1.0_dp ! if not found default to "air" property
-      ELSE
-        CYCLE
-      END IF
 
       Model % CurrentElement => Element
 
@@ -2769,9 +2769,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ELSE
            !da/dt part
            E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-           !grad V part
            E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-           
+
+           !grad V part
            E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
            E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
            ! Now Power = J.conjugate(E), with the possible imaginary component neglected.         

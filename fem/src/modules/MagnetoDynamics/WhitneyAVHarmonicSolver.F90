@@ -1945,7 +1945,7 @@ END BLOCK
        mu  = SUM(Basis(1:n) * Permeability(1:n))
        C  = SUM(Basis(1:n) * Conductivity(1:n))
 
-       CONDUCTOR: IF ( C > AEPS ) THEN
+       CONDUCTOR: IF ( ABS(C) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
@@ -1953,46 +1953,44 @@ END BLOCK
             p = i
             DO q=1,np
 
-              ! Compute the conductivity term <C grad V,grad v> for stiffness 
-              ! matrix (anisotropy taken into account)
+              ! Compute the conductivity term <C grad V x n,grad v x n> for stiffness 
+              ! matrix (without anisotropy taken into account)
               ! -------------------------------------------
-                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+              STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
               
-              ! Compute the conductivity term <j * omega * C A,grad v> for 
-              ! stiffness matrix (anisotropy taken into account)
+              ! Compute the conductivity term <j * omega * C A x n,grad v x n> for 
+              ! stiffness matrix (without anisotropy taken into account)
               ! -------------------------------------------
               DAMP(p,q) = DAMP(p,q) + &
                   sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
 
-              ! Compute the conductivity term <C grad V, eta> for 
-              ! stiffness matrix (anisotropy taken into account)
+              ! Compute the conductivity term <C grad V x n, eta x n> for 
+              ! stiffness matrix (without anisotropy taken into account)
               ! ------------------------------------------------
               STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
             END DO
           END DO
        END IF CONDUCTOR
 
-       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
-       !        J + curl(M) - C*grad(P'):
-       ! ----------------------------------------------------
        DO i = 1,nd-np
          p = i+np
-       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
-       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
-
          DO j = 1,nd-np
            q = j+np
+           ! Magnetic energy term due to the magnetic flux density 
+           ! ----------------------------------------------------
            STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
               SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
 
-           ! Compute the conductivity term <j * omega * C A,eta> 
-           ! for stiffness matrix (anisotropy taken into account)
+           ! Compute the conductivity term <j * omega * C A x n,eta x n> 
+           ! for stiffness matrix (without anisotropy taken into account)
            ! ----------------------------------------------------
-           DAMP(p,q) = DAMP(p,q) + sheetThickness * &
-              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           IF (C > AEPS) THEN
+             DAMP(p,q) = DAMP(p,q) + sheetThickness * &
+                 C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+           END IF
          END DO
        END DO
     END DO
