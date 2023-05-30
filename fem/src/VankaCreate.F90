@@ -285,7 +285,8 @@
     SUBROUTINE CircuitPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-
+      IMPLICIT NONE
+      
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -326,7 +327,8 @@
     SUBROUTINE CircuitPrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-
+      IMPLICIT NONE
+      
       INTEGER :: ipar(*)
       COMPLEX(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -385,6 +387,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitPrecCreate(A,Solver)
      USE DefUtils
+     IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), TARGET :: A
      TYPE(Solver_t) :: Solver
@@ -621,6 +624,182 @@
   END SUBROUTINE CircuitPrecCreate
 !------------------------------------------------------------------------------
 
+
+!-------------------------------------------------------------------------------
+!> Assumes another solver being used for the preconditioning.
+!> Given residual "v" solver Au=v in an approximatite manner.
+!-------------------------------------------------------------------------------
+  SUBROUTINE SlavePrec(u,v,ipar)
+!-------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: ipar(*)  ! parameters for Hutiter
+    REAL(KIND=dp) u(*)  ! new solution
+    REAL(KIND=dp) v(*)  ! right-hand-side
+!-------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar
+    TYPE(Matrix_t), POINTER :: Amat
+    REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
+    REAL(KIND=dp) :: rnorm
+    LOGICAL :: Found
+    CHARACTER(MAX_NAME_LEN) :: str   
+    INTEGER :: n
+!-------------------------------------------------------------------------------
+
+    Solver => CurrentModel % Solver
+    Params => Solver % Values
+    Mesh => Solver % Mesh 
+    Amat => Solver % Matrix
+    
+    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    n = SIZE(pVar % Values)
+    b => pVar % Values
+
+    b(1:n) = v(1:n)
+
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
+
+    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    x => pVar % Values
+    
+    IF( ListCheckPresent( Params,'MG Smoother') ) THEN
+      ALLOCATE(r(n))
+      
+      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
+        BLOCK
+          REAL(KIND=dp) :: rn, bn    
+          CALL MatrixVectorMultiply( Amat, x, r) 
+          rn = SUM( r(1:n)**2 )
+          bn = SUM( r(1:n) * b(1:n) )
+          IF( rn > TINY( rn ) ) THEN
+            bn = bn / rn 
+            x(1:n) = x(1:n) * bn 
+            WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
+            CALL Info('SlavePrec',Message,Level=6) 
+          END IF
+        END BLOCK
+      END IF
+
+      CALL CRS_MatrixVectorMultiply( Amat, x, r )
+      !CALL MGmv( Amat, x, r, .TRUE. )
+      r(1:n) = b(1:n) - r(1:n)
+      RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+          1, pVar % dofs, PreSmooth = .FALSE.)
+    END IF
+          
+    u(1:n) = x(1:n) 
+
+!-------------------------------------------------------------------------------
+  END SUBROUTINE SlavePrec
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+  SUBROUTINE SlavePrecComplex(u,v,ipar)
+!-------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: ipar(*)  ! parameters for Hutiter
+    COMPLEX(KIND=dp) u(*)  ! new solution
+    COMPLEX(KIND=dp) v(*)  ! right-hand-side
+!-------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar
+    TYPE(Matrix_t), POINTER :: Amat
+    REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
+    REAL(KIND=dp) :: rnorm
+    LOGICAL :: Found
+    CHARACTER(MAX_NAME_LEN) :: str   
+    INTEGER :: n
+!-------------------------------------------------------------------------------
+
+    Solver => CurrentModel % Solver
+    Params => Solver % Values
+    Mesh => Solver % Mesh
+    Amat => Solver % Matrix
+
+    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrecComplex','Could not find: '//TRIM(str))
+    n = SIZE(pVar % Values)   
+    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
+      CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
+    END IF
+    IF(n /= SIZE(Solver % Variable % Values) ) THEN
+      CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
+    END IF
+    b => pVar % Values
+
+    b(1:n:2) = REAL(v(1:n/2))
+    b(2:n:2) = AIMAG(v(1:n/2))
+    
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
+    
+    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )    
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
+    END IF
+    IF(n /= SIZE(Solver % Variable % Values) ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
+    END IF
+
+    x => pVar % Values
+    
+    IF( ListCheckPresent( Params,'MG Smoother') ) THEN      
+      ALLOCATE(r(n))
+      
+      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
+        BLOCK
+          REAL(KIND=dp) :: rn, bnre, bnim    
+          CALL MatrixVectorMultiply( Amat, x, r) 
+          rn = SUM( r(1:n)**2 )
+          bnre = SUM( r(1:n) * b(1:n) )          
+          bnim = SUM( r(1:n:2) * b(2:n:2) - r(2:n:2) * b(1:n:2) )
+          
+          IF( rn > TINY( rn ) ) THEN
+            bnre = bnre / rn
+            bnim = bnim / rn
+#if 0
+            ! This does not seem to help ...
+            b(1:n) = x(1:n)
+            x(1:n:2) = bnre * r(1:n:2) - bnim * r(2:n:2)
+            x(2:n:2) = bnim * r(1:n:2) + bnre * r(2:n:2)
+#else            
+            x(1:n) = x(1:n) * bnre
+#endif
+            WRITE( Message,'(A,2ES12.3)') 'Preconditioning Normalizing Factor: ',bnre,bnim
+            CALL Info('SlavePrec',Message,Level=6) 
+          END IF
+        END BLOCK
+      END IF
+        
+      CALL CRS_MatrixVectorMultiply( Amat, x, r )
+      !CALL MGmv( Amat, x, r, .TRUE. )
+      r(1:n) = b(1:n) - r(1:n)
+      RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+          1, pVar % dofs, PreSmooth = .FALSE.)
+      DEALLOCATE(r)
+    END IF
+      
+    u(1:n/2) = CMPLX(x(1:n:2), x(2:n:2) ) 
+
+!-------------------------------------------------------------------------------
+  END SUBROUTINE SlavePrecComplex
+!-------------------------------------------------------------------------------
+
+  
+  
 !> \}
 
 !> \}

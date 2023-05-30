@@ -13296,7 +13296,6 @@ END FUNCTION SearchNodeL
       Rhs => Aaid % Rhs
     END IF
 
-
     IF ( Parallel ) THEN
       ALLOCATE(TempRHS(SIZE(Rhs)))
       TempRHS = Rhs 
@@ -13369,7 +13368,7 @@ END FUNCTION SearchNodeL
     NoBCs = CurrentModel % NumberOfBCs
     DO This=1,NoBCs
       Projector => CurrentModel  % BCs(This) % PMatrix
-      IF (ASSOCIATED(Projector))THEN
+      IF (ASSOCIATED(Projector)) THEN
         DO DOF=1,DOFs
           DO i=1,Projector % NumberOfRows
             ii = Projector % InvPerm(i)
@@ -14184,7 +14183,7 @@ END FUNCTION SearchNodeL
     ELSE
       bnorm = SQRT(SUM(b(1:n)**2))
     END IF
-      
+
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
       CALL Info('SolveLinearSystem','Solution trivially zero!',Level=5)
       x = 0.0d0
@@ -14359,7 +14358,7 @@ END FUNCTION SearchNodeL
 110 IF( AndersonAcc .AND. AndersonScaled )  THEN
       CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
     END IF
-    
+
     IF(ComputeChangeScaled) THEN
       CALL ComputeChange(Solver,.FALSE.,n, x, NonlinVals, Matrix=A, RHS=b )
       DEALLOCATE(NonlinVals)
@@ -14403,7 +14402,7 @@ END FUNCTION SearchNodeL
     END IF
 
 !------------------------------------------------------------------------------
-
+    
 !------------------------------------------------------------------------------
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
@@ -14411,7 +14410,19 @@ END FUNCTION SearchNodeL
       CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
     END IF
     Norm = Solver % Variable % Norm
+    
+    NodalLoads => VariableGet( Solver % Mesh % Variables, &
+        GetVarName(Solver % Variable) // ' Residual' )
+    IF( ASSOCIATED( NodalLoads ) ) THEN
+      CalcLoads = ListGetLogical( Solver % Values,'Calculate Residual',GotIt )
+      IF( .NOT. GotIt ) CalcLoads = .TRUE.
+      IF( CalcLoads ) THEN
+        CALL Info('SolveLinearSystem','Calculating nodal residual',Level=6)
+        CALL CalculateLoads( Solver, Aaid, x, Dofs, .FALSE., NodalLoads ) 
+      END IF
+    END IF
 
+    
 !------------------------------------------------------------------------------
  
    Solver % Variable % PrimaryMesh => Solver % Mesh

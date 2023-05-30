@@ -124,7 +124,7 @@ CONTAINS
       END IF
       
       n = M % NumberOfRows
-      InvLevel = 1 + Solver % MultiGridTotal - Level
+      InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
 
       Lowest = .FALSE.
       IF( PRESENT( LowestSmooth ) ) Lowest = LowestSmooth
@@ -154,7 +154,6 @@ CONTAINS
           IterMethod = 'bsgs'
         END IF
       END IF
-
 
       Rounds = 0
       IF(Lowest) THEN
@@ -254,7 +253,7 @@ CONTAINS
         CALL SmoothedSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
         
       CASE( 'csgs' )                                     
-        CALL CSGS( n, A, M, Mx, Mb, Mr, Rounds)
+        CALL CSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
         
       CASE( 'cjacobi' )                                     
         CALL CJacobi( n, A, M, Mx, Mb, Mr, Rounds )
@@ -612,7 +611,6 @@ CONTAINS
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-
        
         DO k=1,Rounds
           DO i=1,n
@@ -810,10 +808,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE CSGS( n, A, M, rx, rb, rr, Rounds )
+      SUBROUTINE CSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
+        REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
@@ -840,7 +839,7 @@ CONTAINS
             
             j = A % Diag(2*i-1)
             r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
-            x(i) = x(i) + r(i)
+            x(i) = x(i) + w * r(i)
           END DO
           
           DO i=n/2,1,-1
@@ -852,7 +851,7 @@ CONTAINS
             
             j = A % Diag(2*i-1)
             r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
-            x(i) = x(i) + r(i)
+            x(i) = x(i) + w * r(i)
           END DO
           
         END DO

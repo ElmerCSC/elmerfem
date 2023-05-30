@@ -2145,46 +2145,54 @@ CONTAINS
     !------------------------------------------------------------------------------
     ! If soft limiters are applied then also loads must be computed
     !------------------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
-       CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
-     END IF
+    IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
+      CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
+    END IF
 	    
     !------------------------------------------------------------------------------
-    ! Create the variable needed for the computation of nodal loads: r=b-Ax
+    ! Create the variable needed for the computation of nodal loads and
+    ! residual: r=b-Ax. The difference here is at what stage the A and b are stored.     
     !------------------------------------------------------------------------------
-    IF ( ListGetLogical( Solver % Values,'Calculate Loads', Found ) ) THEN
-      Var_name = GetVarName(Solver % Variable) // ' Loads'
-      Var => VariableGet( Solver % Mesh % Variables, var_name )
-      IF ( .NOT. ASSOCIATED(Var) ) THEN
-        ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Loads')
-
-        DOFs = Solver % Variable % DOFs
-        Solution = 0.0d0
-        nrows = SIZE( Solution ) 
-        Perm => Solver % Variable % Perm
-
-        VariableOutput = ListGetLogical( Solver % Values,'Save Loads',Found )
-        IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
-        
-        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-            var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
-        
-        IF ( DOFs > 1 ) THEN
-          n = LEN_TRIM( Var_name )
-          DO j=1,DOFs
-            tmpname = ComponentName( var_name(1:n), j )
-            Component => Solution( j:nRows-DOFs+j:DOFs )
-            CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
-          END DO
-        END IF
-        NULLIFY( Solution )
+    DO k=1,2
+      IF(k==1) THEN
+        str = 'loads'
+      ELSE
+        str = 'residual'
       END IF
-    END IF
 
-        
+      IF ( ListGetLogical( Solver % Values,'Calculate '//TRIM(str), Found ) ) THEN
+        Var_name = GetVarName(Solver % Variable) // ' '//TRIM(str)
+        Var => VariableGet( Solver % Mesh % Variables, var_name )
+        IF ( .NOT. ASSOCIATED(Var) ) THEN
+          ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for '//TRIM(str))
+
+          DOFs = Solver % Variable % DOFs
+          Solution = 0.0d0
+          nrows = SIZE( Solution ) 
+          Perm => Solver % Variable % Perm
+
+          VariableOutput = ListGetLogical( Solver % Values,'Save '//TRIM(str),Found )
+          IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
+
+          CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+              var_name, Solver % Variable % DOFs, Solution, &
+              Solver % Variable % Perm, Output=VariableOutput, TYPE = Solver % Variable % TYPE )
+
+          IF ( DOFs > 1 ) THEN
+            n = LEN_TRIM( Var_name )
+            DO j=1,DOFs
+              tmpname = ComponentName( var_name(1:n), j )
+              Component => Solution( j:nRows-DOFs+j:DOFs )
+              CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+                  tmpname, 1, Component, Perm, Output=VariableOutput, TYPE = Solver % Variable % TYPE )
+            END DO
+          END IF
+          NULLIFY( Solution )
+        END IF
+      END IF
+    END DO
+
     !------------------------------------------------------------------------------
     ! Optionally create variable for saving permutation vector.
     ! This is mainly for debugging purposes and is therefore commented out.
