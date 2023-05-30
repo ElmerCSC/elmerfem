@@ -61,12 +61,14 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
+  ! We solve the equation component-wise. Hence the primary variable is a temporal one. 
   CALL ListAddNewLogical( Params,'Variable Output',.FALSE.)
   CALL ListAddNewString( Params,'Variable','Etmp[Etmp re:1 Etmp im:1]')
   CALL ListAddNewLogical( Params, "Linear System Complex", .TRUE.)  
 
   PrecUse = ListGetLogical( Params,'Preconditioning Solver',Found )
 
+  ! We use different naming convention if this is used as preconditioner. 
   IF( PrecUse ) THEN
     CALL ListAddString( Params,&
         NextFreeKeyword('Exported Variable', Params), &
@@ -77,21 +79,21 @@ SUBROUTINE VectorHelmholtzNodal_init( Model,Solver,dt,Transient )
         "Electric field[Electric field re:3 Electric field im:3]" )
   END IF
     
-  IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Electric Energy Density' )
-  END IF
+  !IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
+  !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+  !      'Electric Energy Density' )
+  !END IF
 
-  IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
-  END IF
+  !IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
+  !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+  !      'Elecric Flux[Elecric Flux:'//I2S(dim)//']' )       
+  !END IF
 
   ! Nodal fields that may directly be associated as nodal loads
-  IF (ListGetLogical(Params,'Calculate Nodal Energy',Found))  THEN
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-        'Nodal Energy Density' )
-  END IF
+  !IF (ListGetLogical(Params,'Calculate Nodal Energy',Found))  THEN
+  !  CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+  !      'Nodal Energy Density' )
+  !END IF
 
   CALL ListAddInteger( Params,'Time Derivative Order', 0 )  
   
@@ -222,35 +224,19 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
         CALL LocalMatrixBC(  Element, n, nd+nb, nb, InitHandles )
       END IF
     END DO
-    IF( InfoActive(20) ) THEN
-      CALL VectorValuesRange(Solver % Matrix % Values,SIZE(Solver % Matrix % Values),'A1')       
-    END IF
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
 
-    IF( InfoActive(20) ) THEN
-      CALL VectorValuesRange(Solver % Matrix % Values,SIZE(Solver % Matrix % Values),'A')       
-    END IF
-    
     ! And finally, solve:
     !--------------------
     Solver % Variable % Values(1::2) = EF % Values(compi::2*dim) 
     Solver % Variable % Values(2::2) = EF % Values(compi+dim::2*dim) 
 
-    IF( InfoActive(20) ) THEN
-      CALL VectorValuesRange(Solver % Matrix % Rhs,SIZE(Solver % Matrix % rhs),'Rhs'//I2S(i))       
-      PRINT *,'Solving component:',compi
-    END IF
-
-#if 0
-    EiVar % Values = Solver % Matrix % rhs
-#else
     Norm = DefaultSolve()
-#endif
     
-    IF( InfoActive(20) ) THEN
+    IF( InfoActive(25) ) THEN
       CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(i))       
       PRINT *,'Componet Norm:',Norm
     END IF
