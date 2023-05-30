@@ -117,7 +117,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm(3)
   INTEGER :: i, n, nb, nd, t, active, dim, RelOrder
   INTEGER :: iter, maxiter, compi, compn, compj
   LOGICAL :: Found, VecAsm, InitHandles, &
@@ -140,7 +140,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   IF( CurrentCoordinateSystem() /= Cartesian ) THEN 
     CALL Fatal(Caller,'Only implemented for cartesian problems!')
   END IF
-    
+  
   Mesh => GetMesh()
   Params => GetSolverParams()
 
@@ -234,11 +234,11 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     Solver % Variable % Values(1::2) = EF % Values(compi::2*dim) 
     Solver % Variable % Values(2::2) = EF % Values(compi+dim::2*dim) 
 
-    Norm = DefaultSolve()
+    Norm(compi) = DefaultSolve()
     
     IF( InfoActive(25) ) THEN
       CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(i))       
-      PRINT *,'Componet Norm:',Norm
+      PRINT *,'Componet Norm:',Norm(compi)
     END IF
     EF % Values(compi::2*dim) = Solver % Variable % Values(1::2)
     EF % Values(compi+dim::2*dim) = Solver % Variable % Values(2::2)    
@@ -268,6 +268,10 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
   
   CALL DefaultFinish()
 
+  Solver % Variable % Norm = SQRT(SUM(Norm(1:dim)**2))
+  
+  CALL Info(Caller,'All done',Level=12)
+  
     
 CONTAINS
 
