@@ -24403,7 +24403,8 @@ CONTAINS
      REAL(KIND=dp), POINTER :: VeloDir(:,:)
      REAL(KIND=dp) :: VeloCoeff(3),AbsVeloCoeff
      CHARACTER(*), PARAMETER :: Caller = 'SetImplicitFriction'
-     INTEGER :: Indexes(100), NodeCoeff(27)
+     INTEGER :: Indexes(100)
+     REAL(KIND=dp) :: NodeCoeff(27)
      
      IF(.NOT. ListCheckPresentAnyBC( Model, FrictionName ) ) RETURN
 
@@ -24440,14 +24441,13 @@ CONTAINS
        n = Element % TYPE % NumberOfNodes
 
        nb = mGetElementDOFs( Indexes, Element, Solver )
-
        
        ! Normal vector may be needed if this is not all normal-tangential nodes
        CALL CopyElementNodesFromMesh( Nodes, Mesh, n, NodeIndexes)
        Normal = NormalVector( Element, Nodes )
 
-       NodeCoeff(1:n) = ListGetReal( BC, FrictionName, n, NodeIndexes, Found )
-      
+       NodeCoeff(1:n) = ListGetReal( BC, FrictionName, n, NodeIndexes, UnfoundFatal = .TRUE.)
+       
        DO i = 1, nb ! n
          j = Indexes(i) ! Nodeindexes(i) 
 
@@ -24542,13 +24542,14 @@ CONTAINS
              IF( A % Cols(l2) == A % Cols(l) ) EXIT
            END DO
            A % Values(l2) = A % Values(l2) + VeloCoeff(DofT1) * A % Values(l)
-
+                     
            IF( dim == 3 ) THEN
              DO l3 = A % Rows(k3), A % Rows(k3+1)-1
                IF( A % Cols(l3) == A % Cols(l) ) EXIT
              END DO
              A % Values(l3) = A % Values(l3) + VeloCoeff(DofT2) * A % Values(l)
            END IF
+           
          END DO
        END DO
      END DO
