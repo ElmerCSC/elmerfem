@@ -8237,7 +8237,7 @@ CONTAINS
     DoDiagScale = .FALSE.
     IF( ScaleSystem ) THEN
       CALL Info(Caller,'Applying Dirichlet conditions using scaled diagonal',Level=8)
-      CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.)
+      CALL ScaleLinearSystem(Solver,A,b,ApplyScaling=.FALSE.) !,scalingStr='diagonal')
       DoDiagScale = ASSOCIATED(A % DiagScaling)
     END IF
     
@@ -8267,15 +8267,19 @@ CONTAINS
       IF ( A % ConstrainedDOF(k) ) THEN
         
         dval = A % Dvalues(k) 
-        
-        IF( DoDiagScale ) THEN
-          s = A % DiagScaling(k)            
-          IF( ABS(s) <= TINY(s) ) s = 1.0_dp
-          s = 1._dp / s**2
-        ELSE IF( A % ScalingMethod == 3 ) THEN
-          s = A % AveScaling
-        ELSE
-          s = 1.0_dp
+
+        s = 1.0_dp
+        IF( ScaleSystem ) THEN
+          SELECT CASE(A % ScalingMethod ) 
+          CASE( 1 )
+            s = A % DiagScaling(k)            
+            IF( ABS(s) <= TINY(s) ) s = 1.0_dp
+            s = 1._dp / s**2
+          CASE( 2 )
+            s = 1.0_dp / A % DiagScaling(k)
+          CASE( 3 ) 
+            s = A % AveScaling
+          END SELECT
         END IF
           
         CALL ZeroRow(A, k)
@@ -8295,8 +8299,7 @@ CONTAINS
               END IF
             END IF
           END IF
-#endif
-          
+#endif          
           CALL SetMatrixElement(A,k,k,s)
           b(k) = s * dval
         END IF
@@ -12653,13 +12656,13 @@ END FUNCTION SearchNodeL
 !>  Scale linear system with different strategies.
 !------------------------------------------------------------------------------
   SUBROUTINE ScaleLinearSystem(Solver,A,b,x,DiagScaling, & 
-          ApplyScaling,RhsScaling,ConstraintScaling)
-
+          ApplyScaling,RhsScaling,ConstraintScaling,ScalingStr)
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:), x(:)
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
     LOGICAL, OPTIONAL :: ApplyScaling, RhsScaling,ConstraintScaling
+    CHARACTER(*), OPTIONAL :: ScalingStr
     INTEGER :: n
 
     CHARACTER(:), ALLOCATABLE :: str
@@ -12673,8 +12676,10 @@ END FUNCTION SearchNodeL
     ELSE
       ComplexMatrix = A % COMPLEX
     END IF
-           
-    IF( ListGetLogical(Solver % Values,'Linear System Row Equilibration',Found ) ) THEN
+
+    IF( PRESENT( ScalingStr ) ) THEN
+      str = ScalingStr
+    ELSE IF( ListGetLogical(Solver % Values,'Linear System Row Equilibration',Found ) ) THEN
       str = 'row equilibration'
     ELSE
       str = ListGetString( Solver % Values,'Linear System Scaling Method',Found )
@@ -12686,7 +12691,7 @@ END FUNCTION SearchNodeL
       CALL ScaleLinearSystemDiagonal()
 
     CASE('row equilibration','rowsum')
-      CALL RowEquilibration(Solver, A, b, Parallel)
+      CALL RowEquilibration(Solver, A, b, Parallel, ApplyScaling )
       
     CASE('constant')
       CALL ScaleLinearSystemConstant()
@@ -12715,14 +12720,14 @@ END FUNCTION SearchNodeL
       REAL(KIND=dp), POINTER  :: Diag(:)      
       TYPE(Matrix_t), POINTER :: CM
 
-      A % ScalingMethod = 1
-      
       IF( Parallel ) THEN
         CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in parallel',Level=10)
       ELSE
         CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity in serial',Level=10)
       END IF
 
+      A % ScalingMethod = 1                
+      
       IF( PRESENT( DiagScaling ) ) THEN
         CALL Info('ScaleLinearSystem','Reusing existing > DiagScaling < vector',Level=12)
         Diag => DiagScaling 
@@ -12965,35 +12970,31 @@ END FUNCTION SearchNodeL
         CALL Info('ScaleLinearSystem','Scaling matrix entries by constant in serial',Level=10)
       END IF
       
-      IF( A % AveScaling == 3 ) THEN
-        CALL Info('ScaleLinearSystem','Reusing existing > AveScaling < constant',Level=12)
-        Ascl = A % AveScaling 
-      ELSE
-        CALL Info('ScaleLinearSystem','Computing > AveScaling < constant',Level=12)
+      CALL Info('ScaleLinearSystem','Computing > AveScaling < constant',Level=12)
 
-        A % ScalingMethod = 3
-        DiagSum = 0.0_dp
-        nSum = n
-        
-        DO i=1,n
-          j = A % Diag(i)
-          IF (j>0) THEN
-            DiagSum = DiagSum + ABS(A % Values(j))
-          END IF
-        END DO
+      A % ScalingMethod = 3
+           
+      DiagSum = 0.0_dp
+      nSum = n
 
-        IF ( Parallel ) THEN
-          DiagSum = ParallelReduction( DiagSum )
-          nSum = ParallelReduction( nSum )
+      DO i=1,n
+        j = A % Diag(i)
+        IF (j>0) THEN
+          DiagSum = DiagSum + ABS(A % Values(j))
         END IF
+      END DO
 
-        Ascl = DiagSum / nSum
-        A % AveScaling = Ascl
-
-        WRITE( Message,'(A,ES12.3)') 'Average diagonal entry: ', Ascl
-        CALL Info( 'ScaleLinearSystemConstant', Message, Level=5 )        
+      IF ( Parallel ) THEN
+        DiagSum = ParallelReduction( DiagSum )
+        nSum = ParallelReduction( nSum )
       END IF
-        
+
+      Ascl = DiagSum / nSum
+      A % AveScaling = Ascl
+
+      WRITE( Message,'(A,ES12.3)') 'Average diagonal entry: ', Ascl
+      CALL Info( 'ScaleLinearSystemConstant', Message, Level=8 )        
+
       ! Optionally we may just create the diag and leave the scaling undone
       !--------------------------------------------------------------------
       IF( PRESENT( ApplyScaling ) ) THEN
@@ -13068,12 +13069,13 @@ END FUNCTION SearchNodeL
 !>   Equilibrate the rows of the coefficient matrix A to
 !>   minimize the condition number. The associated rhs vector f is also scaled.
 !------------------------------------------------------------------------------
-  SUBROUTINE RowEquilibration( Solver, A, f, Parallel )
+  SUBROUTINE RowEquilibration( Solver, A, f, Parallel, ApplyScaling )
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t), TARGET :: A
     REAL(KIND=dp) :: f(:)
     LOGICAL :: Parallel
+    LOGICAL, OPTIONAL :: ApplyScaling 
 !-----------------------------------------------------------------------------
     LOGICAL :: ComplexMatrix, Found
     INTEGER :: i, j, n 
@@ -13153,7 +13155,10 @@ END FUNCTION SearchNodeL
     IF( Parallel ) THEN
       norm = ParallelReduction(norm,2)
     END IF
-
+    
+    WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
+    CALL Info( 'RowEquilibration', Message, Level=5 )
+    
     !--------------------------------------------------
     ! Now, define the scaling matrix by inversion and 
     ! perform the actual scaling of the linear system
@@ -13177,13 +13182,16 @@ END FUNCTION SearchNodeL
       END DO
     END IF
 
+    IF( PRESENT( ApplyScaling ) ) THEN
+      IF(.NOT. ApplyScaling) RETURN
+    END IF
+    
     DO i=1,n    
       DO j=Rows(i),Rows(i+1)-1
         Values(j) = Values(j) * Diag(i)
       END DO
       f(i) = Diag(i) * f(i)
     END DO
-
 
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
@@ -13195,9 +13203,6 @@ END FUNCTION SearchNodeL
       END IF
     END IF
     
-    WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
-    CALL Info( 'RowEquilibration', Message, Level=5 )
-
 !------------------------------------------------------------------------------
   END SUBROUTINE RowEquilibration
 !------------------------------------------------------------------------------
@@ -13393,7 +13398,7 @@ END FUNCTION SearchNodeL
               Solver % Variable % EigenVectors * Xscl
         END IF
       END IF
-
+                 
       IF( Ascl > 0.0 .AND. ABS(Ascl-1.0_dp) > EPSILON(Ascl) ) THEN
         A % Values = Ascl * A % Values
         IF ( ASSOCIATED( A % PrecValues ) ) THEN
