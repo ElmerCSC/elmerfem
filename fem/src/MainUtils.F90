@@ -2970,6 +2970,10 @@ CONTAINS
         RK2_err = 0.0_dp
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
+          IF(.NOT. ASSOCIATED(Solver % Variable)) CYCLE
+          IF(.NOT. ASSOCIATED(Solver % Variable % PrevValues) ) CYCLE
+          IF(Solver % Variable % Norm < 1.0d-20) CYCLE 
+          
           IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
 
           k1 => RKCoeff(i) % k1

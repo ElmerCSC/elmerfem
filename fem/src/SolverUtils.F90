@@ -13260,6 +13260,7 @@ END FUNCTION SearchNodeL
         CALL Warn('BackScaleLinearSystem','Diag not associated!')
         RETURN
       END IF
+
       IF( SIZE( Diag ) /= n ) THEN
         CALL Fatal('BackScaleLinearSystem','Diag of wrong size!')
       END IF
