@@ -18,7 +18,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals(1) = 1
-!  Post File = nodal.vtu
+  Post File = mono.vtu
 
 ! Add for more precision: 2,3,...
 !  Mesh Levels = 1
@@ -28,6 +28,7 @@ Body 1
   Equation = 1
   Material = 1
   Initial Condition = 1
+  Body Force = 1
 End
 
 $ beta0=41.9332032192090
@@ -50,6 +51,8 @@ Solver 1
   Equation = "VectorHelmholtzNodal"
   Procedure = "VectorHelmholtzNodal" "VectorHelmholtzNodal"
 
+  Monolithic Solver = Logical True
+
   Linear System Scaling = True
   Linear System Solver = "Iterative"
   Linear System Iterative Method = String "bicgstab2"
@@ -66,6 +69,26 @@ Solver 1
   Nonlinear System Max Iterations = 1
 End
 
+Solver 2
+  Exec Solver = never !Before all
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+
+!  Variable = MeshRelax
+!  Nonlinear System Max Iterations = 1
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+End
+
+
+! x in [0,0.1]
+! y in [0,0.05]
+! z in [0,0.2]
+Body Force 1
+  Mesh Translate 1 = Variable "Coordinate 3"
+    Real MATC "0.05*sin(0.5*pi*tx/0.2)"
+End
 
 Boundary Condition 1
   Name = "Inlet"

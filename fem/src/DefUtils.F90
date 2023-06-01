@@ -56,7 +56,8 @@ MODULE DefUtils
    IMPLICIT NONE
 
    INTERFACE DefaultUpdateEquations
-     MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC
+     MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC, &
+         DefaultUpdateEquationsDiagC
    END INTERFACE
 
    INTERFACE DefaultUpdatePrec
@@ -3724,7 +3725,7 @@ CONTAINS
      TYPE(Element_t), POINTER  :: Element, P1, P2
      REAL(KIND=dp), POINTER CONTIG   :: b(:), svalues(:)
 
-     LOGICAL :: Found, BUpd, VecAsm, MCAsm
+     LOGICAL :: Found, VecAsm, MCAsm
 
      INTEGER :: i, j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
@@ -3974,7 +3975,7 @@ CONTAINS
 
      REAL(KIND=dp), POINTER :: G(:,:), F(:)
 
-     LOGICAL :: Found, BUpd
+     LOGICAL :: Found
 
      INTEGER :: i,j,n,DOFs
      INTEGER, POINTER :: Indexes(:)
@@ -4042,6 +4043,109 @@ CONTAINS
   END SUBROUTINE DefaultUpdateEquationsC
 !------------------------------------------------------------------------------
 
+
+! This is a version when the initial matrix is given in diagonal form,
+! such that the last array index refers to the component.
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultUpdateEquationsDiagC( GC, FC, UElement, USolver, VecAssembly ) 
+!------------------------------------------------------------------------------
+    TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    COMPLEX(KIND=dp)   :: GC(:,:,:), FC(:,:)
+    LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
+
+    TYPE(Solver_t), POINTER   :: Solver
+    TYPE(Matrix_t), POINTER   :: A
+    TYPE(Variable_t), POINTER :: x
+    TYPE(Element_t), POINTER  :: Element, P1, P2
+    REAL(KIND=dp), POINTER  CONTIG :: b(:)
+
+    REAL(KIND=dp), POINTER :: G(:,:), F(:)
+
+    LOGICAL :: Found, Half
+
+    INTEGER :: i,j,k,n,DOFs
+    INTEGER, POINTER :: Indexes(:)
+
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver
+    END IF
+    A => Solver % Matrix
+    x => Solver % Variable
+    b => A % RHS
+
+    Element => GetCurrentElement( UElement )
+
+    DOFs = x % DOFs
+    Indexes => GetIndexStore()
+    n = GetElementDOFs( Indexes, Element, Solver )
+    
+    Half = .FALSE.
+    IF ( ParEnv % PEs > 1 ) THEN
+      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+        P1 => Element % BoundaryInfo % Left
+        P2 => Element % BoundaryInfo % Right
+        IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
+          IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
+              P2 % PartIndex/=ParEnv % myPE )RETURN
+
+          IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
+              P2 % PartIndex/=ParEnv % myPE ) THEN
+            Half = .TRUE.
+          END IF
+        ELSE IF ( ASSOCIATED(P1) ) THEN
+          IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
+        ELSE IF ( ASSOCIATED(P2) ) THEN
+          IF ( P2 % PartIndex/=ParEnv % myPE ) RETURN
+        END IF
+      ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+        RETURN
+      END IF
+    END IF
+
+    ALLOCATE( G(DOFs*n,DOFs*n), F(DOFs*n) )
+    G = 0.0_dp; F = 0.0_dp
+
+    DO i=1,n
+      DO k=1,dofs/2 
+        F( dofs*(i-1)+2*k-1) = REAL( FC(i,k) )
+        F( dofs*(i-1)+2*k ) = AIMAG( FC(i,k) )
+      END DO
+    END DO
+    
+    DO i=1,n
+      DO j=1,n
+        DO k=1,DOFs/2
+          G( dofs*(i-1)+2*k-1, dofs*(j-1)+2*k-1 ) = REAL( GC(i,j,k) )
+          G( dofs*(i-1)+2*k-1, dofs*(j-1)+2*k ) = -AIMAG( GC(i,j,k) )
+          G( dofs*(i-1)+2*k, dofs*(j-1)+2*k-1 ) =  AIMAG( GC(i,j,k) )
+          G( dofs*(i-1)+2*k, dofs*(j-1)+2*k ) = REAL( GC(i,j,k) )
+        END DO
+      END DO
+    END DO
+
+    ! Scale only the temporal fields
+    IF( Half ) THEN
+      G = G/2; F = F/2 
+    END IF
+
+    ! If we have any antiperiodic entries we need to check them all!
+    IF( Solver % PeriodicFlipActive ) THEN
+      CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+      CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+    END IF
+
+    CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
+
+    DEALLOCATE( G, F)
+!------------------------------------------------------------------------------
+  END SUBROUTINE DefaultUpdateEquationsDiagC
+!------------------------------------------------------------------------------
+
+
+  
 !> Adds the elementwise contribution the right-hand-side of the real valued matrix equation 
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateForceR( F, UElement, USolver, BulkUpdate )
@@ -4055,7 +4159,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: x
     TYPE(Element_t), POINTER  :: Element, P1, P2
 
-    LOGICAL :: Found, BUpd
+    LOGICAL :: Found
 
     INTEGER :: n
     INTEGER, POINTER :: Indexes(:)
@@ -5044,7 +5148,7 @@ CONTAINS
 
      LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
-     LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
+     LOGICAL :: PiolaTransform, QuadraticApproximation, SecondKindBasis
      LOGICAL, ALLOCATABLE :: ReleaseDir(:)
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      
