@@ -38,8 +38,11 @@
 
 #include <mpi.h>
 
+static int rank;
+
 /* print callback (could be customized) */
-void print_callback(const char *msg, int length) { printf("%s", msg); }
+void print_callback(const char *msg, int length)
+  { if(rank==0) printf("%s", msg); }
 
 typedef struct {
    AMGX_matrix_handle A;
@@ -126,7 +129,7 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
   double *b_in, double *x_in,int *nonlin_update, char *config_name, int *fcomm, 
      int *ng_in, int *part_vec, double *bnrm_in )
 {
-    int i,j,k,n = *n_in, ng=*ng_in, lrank, nranks, rank, gpu_count;
+    int i,j,k,n = *n_in, ng=*ng_in, lrank, nranks, gpu_count;
     static MPI_Comm comm;
     double bnrm = *bnrm_in;
 
