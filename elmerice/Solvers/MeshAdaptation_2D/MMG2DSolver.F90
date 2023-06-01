@@ -81,7 +81,7 @@
       IMPLICIT NONE
 
 #ifdef HAVE_MMG
-#include "mmg/mmg2d/libmmgtypesf.h"
+#include "mmg/common/libmmgtypesf.h"
 #endif
       
       TYPE(Model_t) :: Model

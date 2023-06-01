@@ -61,7 +61,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   IMPLICIT NONE
 
-#include "mmg/mmg3d/libmmgtypesf.h"
+#include "mmg/common/libmmgtypesf.h"
 #ifndef MMGVERSION_H
 #define MMG_VERSION_LT(MAJOR,MINOR) 1
 #endif
