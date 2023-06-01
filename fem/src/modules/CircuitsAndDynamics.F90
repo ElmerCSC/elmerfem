@@ -2151,7 +2151,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             !
             !  + 1/Z (grad v , a') 
             !
-            cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*Wbasis(j,:))
+            cmplx_val = IP % s(t)*detJ*invZs*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor
           ELSE
             cmplx_val = IP % s(t)*detJ*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
           END IF
