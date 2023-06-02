@@ -277,7 +277,7 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
 
     IF( Segregated ) THEN
       IF( InfoActive(25) ) THEN
-        CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(i))       
+        CALL VectorValuesRange(EiVar % Values,SIZE(EiVar % Values),'E'//I2S(compi))       
         PRINT *,'Componet Norm:',Norm(compi)
       END IF
       EF % Values(compi::2*dim) = EiVar % Values(1::2)
@@ -292,19 +292,10 @@ SUBROUTINE VectorHelmholtzNodal( Model,Solver,dt,Transient )
     IF(.NOT. ASSOCIATED(EdgeSolVar)) THEN
       CALL Fatal(Caller,'Edge solution not found: '//TRIM(sname))
     END IF
-  END IF
-  IF( ASSOCIATED( EdgeSolVar ) ) THEN
     CALL Info(Caller,'Projecting nodal solution to edge field')
-    IF(EdgeSolVar % Dofs /= 2) THEN
-      CALL Fatal(Caller,'We should have 2 dofs for edge field!')
-    END IF
-    IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
-      CALL Fatal(Caller,'Mesh edges not associated!')
-    END IF
     CALL NodeToEdgeProject()
   END IF
-  
-  
+    
   !IF( Solver % Variable % NonlinConverged == 1 ) EXIT
   
   CALL DefaultFinish()
@@ -353,6 +344,13 @@ CONTAINS
     REAL(KIND=dp) :: NodalSol(3), EdgeVector(3), s
     TYPE(Element_t), POINTER :: Edge
 
+    IF(EdgeSolVar % Dofs /= 2) THEN
+      CALL Fatal(Caller,'We should have 2 dofs for edge field!')
+    END IF
+    IF(.NOT. ASSOCIATED( Mesh % Edges ) ) THEN
+      CALL Fatal(Caller,'Mesh edges not associated!')
+    END IF
+   
     n0 = Mesh % NumberOfNodes
 
     DO j=1, Mesh % NumberOfEdges      
