@@ -56,6 +56,10 @@
 #include <QStringListModel>
 #include <QScrollBar>
 
+#if WITH_QT6
+#include <QJSEngine>
+#endif
+
 #include <iostream>
 using namespace std;
 
@@ -320,3 +324,18 @@ void EcmaConsole::insertCompletion(const QString& completion)
     setTextCursor(tc);
   }
 }
+
+#if WITH_QT6
+template<class... A> QJSValue EcmaConsole::print(A... args)
+{
+  QString result;
+
+  for(char* s : std::initializer_list<char*>{args...}) {
+      result.append(" ");
+    result.append(s);
+  }
+  append(result.trimmed());
+  
+  return QJSValue(QJSValue::UndefinedValue);
+}
+#endif

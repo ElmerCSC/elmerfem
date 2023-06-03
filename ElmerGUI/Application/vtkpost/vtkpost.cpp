@@ -132,6 +132,7 @@ using namespace std;
 //----------------------------
 #if QT_VERSION >= 0x040403
 #if WITH_QT6
+// In the case of Qt6, EcmaConsole::print(A... args) is used instead.
 #else
 QScriptValue printFun(QScriptContext* context, QScriptEngine* engine)
 {
@@ -478,6 +479,8 @@ VtkPost::VtkPost(QWidget *parent)
 
 #if QT_VERSION >= 0x040403
 #if WITH_QT6
+  QJSValue fun = engine->newQObject(ecmaConsole);
+  engine->globalObject().setProperty("print", fun.property("print"));  
 #else
   QScriptValue fun = engine->newFunction(printFun);
   fun.setData(engine->newQObject(ecmaConsole));
