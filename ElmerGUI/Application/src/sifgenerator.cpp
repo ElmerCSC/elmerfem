@@ -1285,23 +1285,28 @@ void SifGenerator::handleLineEdit(const QDomElement &elem, QWidget *widget)
   
   // Adjust array parameters, i.e.:
   // eliminate the first '=' in "Save Coordinates = (2,3) = 1.2 2.3 3.4 4.5 5.6 6.7"
+#if WITH_QT5 || WITH_QT6
+  QRegularExpression qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
+  QRegularExpressionMatch match = qre.match(value);
+  if(match.hasMatch()){
+    addSifLine("  " + name, value);
+	cout << " [SifGenerator] array parameter adjusted: '" 
+	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
+	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
+  }else{
+    addSifLine("  " + name + " = ", value);
+  }  
+#else
   QRegExp qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
   int index = qre.indexIn(value);
   if(index >= 0) {
     addSifLine("  " + name, value);
-#if WITH_QT5
-	cout << " [SifGenerator] array parameter adjusted: '" 
-	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
-	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
-#else
 	cout << " [SifGenerator] array parameter adjusted: '" 
 	     << name.toAscii().constData() << " = " << value.toAscii().constData() << "' to '" 
 	     << name.toAscii().constData() << value.toAscii().constData() << "'" << endl;
 #endif
 
-  }else{
-    addSifLine("  " + name + " = ", value);
-  }  
+
 }
 
 void SifGenerator::handleTextEdit(const QDomElement &elem, QWidget *widget)
