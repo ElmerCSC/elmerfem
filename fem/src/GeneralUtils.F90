@@ -1182,8 +1182,8 @@ CONTAINS
              m = m + 1
            END IF
          END DO
-         IF ( m <= inlen ) readstr(m:inlen) = ' '
          inlen = m-1
+         readstr(inlen+1:) = ' '
        END IF
        
      END SUBROUTINE TrimMatcExpression
@@ -1254,8 +1254,8 @@ CONTAINS
          END IF
          first_bang = .false.
        END DO
-       IF ( m <= inlen ) readstr(m:inlen) = ' '
        inlen = m-1
+       readstr(inlen+1:) = ' '
      END SUBROUTINE TrimLuaExpression
 #endif
 

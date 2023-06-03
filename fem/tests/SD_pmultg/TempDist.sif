@@ -1,0 +1,81 @@
+!echo on
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+! Output File = "TempDist.dat"
+! Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers=1
+End
+
+Solver 1
+  Equation = "T"
+
+  Variable = "T"
+  Procedure="./Poisson" "PoissonSolver"
+
+
+  Element=p:8
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method=CG
+
+  Linear System Preconditioning = Multigrid
+  MG PElement=Logical True
+  MG Levels=4
+  MG P at Level(4) = Integer 1 2 4 8 ! must be increasing &
+                                     ! largest p==element p
+  MG Smoother=SGS
+  MG Pre  Smoothing iterations =  5
+  MG Post Smoothing Iterations = 10
+
+  Linear System Direct Method=Umfpack
+  Linear System Symmetric = True
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-08
+
+  Steady State Convergence Tolerance = 1.0e-05
+End
+
+
+Body Force 1:: Source=1
+
+Boundary Condition 1
+  Target Boundaries = 1
+  T=Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.74347461e-2
+RUN
+
+
+!End Of File

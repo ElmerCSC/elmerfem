@@ -778,12 +778,12 @@ END SUBROUTINE SaveGridData
       INTEGER, ALLOCATABLE,SAVE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:),Values(:),Values2(:),&
           Values3(:), Values4(:), Values5(:), Values6(:), Values7(:),&
-          Values8(:), Values9(:), Basis(:)
+          Values8(:), Values9(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
       REAL :: fvalue
       TYPE(Nodes_t),SAVE :: Nodes      
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp),SAVE,ALLOCATABLE :: Array(:,:,:),PArray(:,:,:)
+      REAL(KIND=dp),SAVE,ALLOCATABLE :: Array(:,:,:),PArray(:,:,:),Basis(:)
       REAL(KIND=dp) :: rt,rt0,rtc
       INTEGER :: nx,ny,nz
 
@@ -876,19 +876,11 @@ END SUBROUTINE SaveGridData
           IF(i==3) DimName = 'y'
           IF(i==4) DimName = 'z'
 
-          IF(i==1) THEN
-            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, NFTYPE, (/ DimId(i) /),VarId(NumVars))
-            IF ( NetCDFStatus /= 0 ) THEN
-              CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
-            END IF
-            NumVars = NumVars + 1
-          ELSE
-            NetCDFStatus = NF90_DEF_VAR(FileId, DimName, NFTYPE, (/ DimId(i) /),VarId(NumVars))
-            IF ( NetCDFStatus /= 0 ) THEN
-              CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))
-            END IF
-            NumVars = NumVars + 1
+          NetCDFStatus = NF90_DEF_VAR(FileId, DimName, NF90_DOUBLE, (/ DimId(i) /),VarId(NumVars))
+          IF ( NetCDFStatus /= 0 ) THEN
+             CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(DimName))
           END IF
+          NumVars = NumVars + 1
         END DO
 
         !Create all the variables in the NetCDF if first time. Vectors will have
@@ -942,7 +934,7 @@ END SUBROUTINE SaveGridData
                 END IF
                 IF(Dim==2) THEN
                   NetCDFStatus =  NF90_DEF_VAR(FileId,&
-                                TRIM(FieldName)//' '//I2S(j), 6,&
+                                TRIM(FieldName)//' '//TRIM(I2S(j)), NFTYPE,&
                                 (/ DimId(2), DimId(3), DimId(1) /),VarId(NumVars))
                   IF ( NetCDFStatus /= 0 ) THEN
                     CALL Fatal( 'WriteNetCDFFile', 'NetCDF variable could not be created: '//TRIM(FieldName))

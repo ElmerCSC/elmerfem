@@ -55,21 +55,45 @@ SUBROUTINE SaveLine_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: NormInd
+  INTEGER :: NormInd,i
   LOGICAL :: GotIt
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  INTEGER, POINTER :: ASolvers(:)
+  LOGICAL :: ActiveSomewhere
 
-  ! If we want to show a pseudonorm add a variable for which the norm
-  ! is associated with.
-  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
-  IF( NormInd > 0 ) THEN
-    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+
+  ! Create Perm vector if the solver is not active everywhere.
+  ! This will affect how Polylines, Circle lines and Isocurves are
+  ! plotted. 
+  ActiveSomewhere = .FALSE.
+  DO i=1,CurrentModel % NumberOfEquations
+    ASolvers => ListGetIntegerArray( Model % Equations(i) % Values, &
+        'Active Solvers', GotIt )
+    IF( GotIt ) THEN
+      IF( ANY(ASolvers == Solver % SolverId) ) THEN
+        ActiveSomewhere = .TRUE.
+        EXIT
+      END IF
+    END IF
+  END DO
+
+  IF(ActiveSomewhere) THEN
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
-      CALL ListAddString( Solver % Values,'Variable',&
-          '-nooutput -global '//TRIM(SolverName)//'_var')
+      CALL Info('SaveLine_init','If you want to mask with Equation block give some "Variable"',Level=5)
     END IF
   END IF
-
+  
+  ! If we want to show a pseudonorm add a variable for which the norm
+  ! is associated with.
+  SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  IF( NormInd > 0 ) THEN
+    CALL ListAddNewString( Solver % Values,'Variable',&
+        '-nooutput -global '//TRIM(SolverName)//'_var')
+  END IF
+  
+  CALL ListAddNewLogical( Solver % Values,'No Matrix',.TRUE.)
+  
 END SUBROUTINE SaveLine_init
 
 
@@ -110,7 +134,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: PointFluxes(:,:), PointWeight(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
-      SkipBoundaryInfo, GotDivisions, EdgeBasis, DGVar, ElemVar, IpVar
+      SkipBoundaryInfo, GotDivisions, EdgeBasis, DGVar, ElemVar, IpVar, MaskWithPerm
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
       Side, SaveNodes(4), node, NoResults, NoLabels, &
       LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
@@ -173,7 +197,11 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   FoundNan = 0
   NoData = 0
   SaveNodes = 0
-
+  MaskWithPerm = .FALSE.
+  IF( ASSOCIATED( Solver % Variable ) ) THEN
+    MaskWithPerm = ASSOCIATED( Solver % Variable % Perm )
+  END IF
+  
   NULLIFY( PosData, LabelData, ResultData ) 
   
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
@@ -208,15 +236,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
   IF( DIM == 3 ) THEN
-    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )
+    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )   
+    IF(.NOT. IntersectEdge ) THEN
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate',IntersectEdge)
+    ELSE
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
+    END IF
   ELSE
+    IntersectCoordinate = 0
     IntersectEdge = .FALSE.
   END IF
   IF(IntersectEdge) THEN
-    IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
     IntersectEpsilon = ListGetConstReal(Params,'Intersect Epsilon')
-  ELSE 
-    IntersectCoordinate = 0
   END IF
   DetEpsilon = ListGetConstReal(Params,'Det Epsilon',GotIt)
   IF(.NOT. GotIt) DetEpsilon = 1.0e-6  
@@ -347,10 +378,13 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL SaveVariableNames()
 
   DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, &
-      LineNodes % x, LineNodes % y, LineNodes % z, Basis, Values, STAT=istat)
+      LineNodes % x, LineNodes % y, LineNodes % z, STAT=istat)
   IF(istat /= 0) CALL Fatal(Caller,'Errors in deallocating some basis stuff!')
+
+  IF( ALLOCATED(Values) ) DEALLOCATE(Values)
+  IF( ALLOcATED(Basis) ) DEALLOCATE(Basis)
   
-  IF( NormInd > 0 ) THEN
+  IF( NormInd > 0 ) THEN    
     Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
@@ -1426,7 +1460,8 @@ CONTAINS
           PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
         END DO
       END IF
-      
+
+      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
@@ -1480,7 +1515,7 @@ CONTAINS
                 END IF
               END DO
               IF(.NOT. Found) CALL Fatal(Caller,'Could not find DG node!')              
-            END IF            
+            END IF
                         
             Coord(1) = ElementNodes % x(i)
             Coord(2) = ElementNodes % y(i)
@@ -1488,7 +1523,7 @@ CONTAINS
 
             ! Shrink the element so that external sort work better!
             Coord0 = Coord
-            Coord = 0.999_dp * Coord + 0.001_dp * Center
+            Coord = Center + 0.9999*(Coord-Center)
 
             ! Do this dirty way such that DG nodes may be sorted
             Mesh % Nodes % x(node) = Coord(1) 
@@ -1699,6 +1734,10 @@ CONTAINS
             m = GetElementCorners( CurrentElement )
             NodeIndexes => CurrentElement % NodeIndexes
 
+            IF( MaskWithPerm ) THEN
+              IF( ANY( Solver % Variable % Perm( NodeIndexes) == 0 ) ) CYCLE
+            END IF
+                        
             ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
             ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
             ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -1895,6 +1934,10 @@ CONTAINS
         m = GetElementCorners( CurrentElement )
         NodeIndexes => CurrentElement % NodeIndexes
 
+        IF( MaskWithPerm ) THEN
+          IF( ANY( Solver % Variable % Perm( NodeIndexes) == 0 ) ) CYCLE
+        END IF
+                
         ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -2084,6 +2127,10 @@ CONTAINS
 
         ! There is an intersection if the value
         IF( f1 * f2 >= 0.0_dp ) CYCLE 
+
+        IF( MaskWithPerm ) THEN
+          IF( ANY( Solver % Variable % Perm( NodeIndexes(1:2) ) == 0 ) ) CYCLE
+        END IF
         
         q = ABS( f2 ) / ( ABS(f1) + ABS(f2) )
 

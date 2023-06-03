@@ -17,6 +17,8 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 !  Post File   = "case.vtu"
+
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -66,17 +68,17 @@ End
 
 
 !Solver 1 :: Reference Norm = 6.45497224E-01
-Solver 1 :: Reference Norm = 3.47804172E-01 ! p:2
-!Solver 1 :: Reference Norm = 2.65997588E-01 ! p:3
+Solver 1 :: Reference Norm = 0.3 ! p:2
+!Solver 1 :: Reference Norm = 0.17320508 ! p:3
 RUN
 
 ! Test other rules. Following combinations should be ok:
 ! laplace, 1st order: consistent
 ! 1,2,3,4,5,6,7,8,10,11,12,14,15,16,18,21,24,27,28,44,64
 ! p:2
-! 4-> ok
+! 8-> ok
 ! p:3
-! 5, 7, 10-> ok
+! 12 -> ok
 
 Solver 1 :: Number of Integration Points = Integer 64
 RUN
@@ -106,13 +108,13 @@ Solver 1 :: Number of Integration Points = Integer 10
 RUN
 Solver 1 :: Number of Integration Points = Integer 8
 RUN
-Solver 1 :: Number of Integration Points = Integer 7
-RUN
-Solver 1 :: Number of Integration Points = Integer 6
-RUN
-Solver 1 :: Number of Integration Points = Integer 5
-RUN
 Solver 1 :: Number of Integration Points = Integer 44
 RUN
+!Solver 1 :: Number of Integration Points = Integer 7
+!RUN
+!Solver 1 :: Number of Integration Points = Integer 6
+!RUN
+!Solver 1 :: Number of Integration Points = Integer 5
+!RUN
 !Solver 1 :: Number of Integration Points = Integer 3
 !RUN

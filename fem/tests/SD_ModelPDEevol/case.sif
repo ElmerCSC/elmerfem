@@ -1,0 +1,78 @@
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "square"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Convection Velocity 1 = 1
+  Convection Velocity 2 = 0.0
+
+  diffusion coefficient = 1.0
+  convection coefficient = 9.0
+  time derivative coefficient = 0.0
+End
+
+Body Force 1 :: Field Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "ModelPDEthreaded"
+  Variable = "Field"
+  Procedure = "ModelPDEevol" "AdvDiffSolver"
+  Element = "p:2"
+  
+  Steady State Convergence Tolerance = 1e-9
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GMRES
+  Linear System GMRES Restart = 30
+  Linear System Max Iterations = 300
+  Linear System Residual Output = 10
+  Linear System Convergence Tolerance = 1e-6
+  !   Linear System Preconditioning = Diagonal
+  Linear System Timing = Logical True
+
+  Optimize Bandwidth = False
+
+  Multithreaded Startup = Logical True
+  Multicolour Solver = Logical True
+  Multicolour Consistent = Logical True
+
+  Nonlinear System Consistent Norm = Logical True
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Field = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Robin Coefficient = 10.0
+  External Field = 5.0
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  Field Flux = 10.0
+End
+
+! Solver 1 :: Reference Norm = Real 9.6852E-01
+! Solver 1 :: Reference Norm Tolerance = Real 1.0E-4
+Solver 1 :: Reference Norm = Real 1.0578593
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
+RUN

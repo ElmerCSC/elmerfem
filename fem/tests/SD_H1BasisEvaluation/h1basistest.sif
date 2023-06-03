@@ -1,0 +1,40 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body Force 1 :: Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "H1BasisEvaluation"
+
+  ! Element = "p:6"
+
+  Variable = -global "Variable"
+  Variable DOFs = 1
+  Procedure = "H1BasisEvaluation" "H1BasisEvaluation"
+
+  Norm Variable Index = Integer 1
+
+  Optimize Bandwidth = False
+End
+
+Solver 1 :: Reference Norm = Real 1.0
+Solver 1 :: Reference Norm Tolerance = Real 0.0
+
+RUN

@@ -107,7 +107,7 @@ Solver 1
   Spectral dT = 10.0
 
   Calculate Loads = True
-  Calculate Radiation Fluxes = Logical True
+  Calculate Radiosity Fields = Logical True
 End
 
 

@@ -28,6 +28,10 @@
  USE DefUtils
  IMPLICIT NONE
 
+ INTERFACE GetPermittivity
+   MODULE PROCEDURE GetPermittivityR, GetPermittivityC
+ END INTERFACE
+
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
@@ -479,6 +483,87 @@
        
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityR(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    REAL(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetPermittivityC(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    COMPLEX(KIND=dp) :: Acoef(:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, Found_im, FirstTime = .TRUE., Warned = .FALSE.
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+    REAL(KIND=dp), PARAMETER :: im  = (0._dp, 1._dp)
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      Pvacuum = GetConstReal( CurrentModel % Constants, &
+              'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
+      FirstTime = .FALSE.
+    END IF
+
+    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
+    IF ( Found ) THEN
+      Acoef(1:n) = Pvacuum * Acoef(1:n)
+      Acoef(1:n) = Acoef(1:n) + im * Pvacuum * & 
+              GetReal(Material,'Relative Permittivity  im', Found_im )
+    ELSE
+      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+      Acoef(1:n) = Acoef(1:n) + im * &
+                 GetReal(Material,'Permittivity  im', Found_im )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
+      Acoef(1:n) = Pvacuum
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetPermittivityC
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

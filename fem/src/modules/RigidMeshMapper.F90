@@ -78,7 +78,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: Found,GotMatrix,GotRotate,GotTranslate,GotScale,Visited=.FALSE.,&
       UseOriginalMesh, Cumulative, GotRelaxField=.FALSE., &
       CalculateVelocity,TranslateBeforeRotate, StoreOriginalMesh, &
-      RotorMode 
+      RotorMode, DoIt
   LOGICAL :: AnyMeshMatrix,AnyMeshRotate,AnyMeshTranslate,AnyMeshScale,&
       AnyMeshOrigin, AnyRelax, ConstantMap, GotMap
   LOGICAL, POINTER :: NodeDone(:)
@@ -199,11 +199,17 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
      END DO
   END IF
 
-
-  IF( .NOT. Visited .AND. ASSOCIATED(Solver % Matrix) ) THEN
+  DoIt = ASSOCIATED( Solver % Matrix )
+  IF( DoIt ) THEN
+    DoIt = .NOT. Visited .OR. ListGetLogical( SolverParams,'mmg remesh',Found )     
+  END IF
+  
+  IF( DoIt ) THEN
     N = Solver % Mesh % MaxElementNodes 
     ALLOCATE( FORCE(N), STIFF(N,N), STAT=istat )
 
+    CALL Info('RigidMeshMapper','Solving mesh relaxation field: '//TRIM(Solver % Variable % Name),Level=5)
+    
     ! Implement moving and fixed BCs
     ! ------------------------------
     DO i=1,Model % NumberOFBCs
@@ -226,7 +232,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     
     DO NonlinIter = 1, MaxNonlinIter
       CALL DefaultInitialize()
-      
+
       DO t=1, GetNOFActive()
         Element => GetActiveElement(t)
         n = GetElementNOFNodes()
@@ -518,13 +524,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ! moving and fixed walls.
       !------------------------------------------------------------------------------
       IF( GotRelaxField ) THEN
-        IF( RelaxPerm(NodeI) == 0 ) THEN
-          Found = .FALSE.
-        ELSE
-          Relax(1) = RelaxField( RelaxPerm( NodeI ) )
-          Found = .TRUE.
+        IF( RelaxPerm(NodeI) > 0 ) THEN
+          Relax(1:1) = RelaxField( RelaxPerm( NodeI ) )
+          dx = Relax(1) * dx
         END IF
-        dx = Relax(1) * dx 
       ELSE IF( AnyRelax ) THEN
         Relax(1:1) = ListGetReal( ValueList,'Mesh Relax',1,NodeIndex,Found)
         IF( Found ) dx = Relax(1) * dx
@@ -568,9 +571,10 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   DEALLOCATE( NodeDone )
+
+  CALL DefaultFinish()
   
   Visited = .TRUE.
-
 
 CONTAINS
 

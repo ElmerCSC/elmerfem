@@ -53,7 +53,7 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found
+  LOGICAL :: Found, Serendipity
   
   Params => GetSolverParams()
 
@@ -61,8 +61,15 @@ SUBROUTINE HeatSolver_Init0(Model, Solver, dt, Transient)
       ListCheckPresentAnyEquation( Model,'Draw Velocity') .OR. &
       ListGetLogical( Params,'Bubbles',Found) ) THEN
     IF( .NOT. ListCheckPresent( Params,'Element') ) THEN
-      CALL ListAddString(Params,'Element', &
-          'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+      IF(.NOT.Found) Serendipity = .TRUE.
+      IF(Serendipity) THEN
+        CALL ListAddString(Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      ELSE
+        CALL ListAddString(Params,'Element', &
+            'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+      END IF
       CALL ListAddNewLogical(Params,'Bubbles in Global System',.FALSE.)
     END IF
   END IF
@@ -149,7 +156,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   INTEGER :: n, nb, nd, t, active, dim
   INTEGER :: iter, maxiter, nColours, col, totelem, nthr
   LOGICAL :: Found, VecAsm, InitHandles, InitDiscontHandles, AxiSymmetric, &
-      DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, PostCalc = .FALSE.
+      DG, DB, Newton, HaveFactors, DiffuseGray, Radiosity, Spectral, &
+      Converged, PostCalc = .FALSE.
   TYPE(Variable_t), POINTER :: PostWeight, PostFlux, PostAbs, PostEmis, PostTemp
   TYPE(ValueList_t), POINTER :: Params 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -256,6 +264,8 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
     CALL Info(Caller,'Heat solver iteration: '//I2S(iter))
 
     Newton = GetNewtonActive()
+
+100 CONTINUE
     IF(Radiosity) CALL RadiationFactors( Solver, .FALSE., Newton) 
     
     ! Initialize the matrix equation to zero.
@@ -409,14 +419,17 @@ END BLOCK
     CALL DefaultFinishAssembly()
 
     CALL DefaultDirichletBCs()
-    
+
+    ! Check stepsize for nonlinear iteration
+    !------------------------------------------------------------------------------
+    IF( DefaultLinesearch( Converged ) ) GOTO 100
+    IF( Converged ) EXIT
+        
     ! And finally, solve:
     !--------------------
-
     Norm = DefaultSolve()
 
     IF( DefaultConverged(Solver) ) EXIT
-
   END DO
   
   CALL DefaultFinish()
@@ -499,7 +512,7 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
     
-    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    IP = GaussPointsAdapt(Element)
     ngp = IP % n
     
     ! Deallocate storage if needed
@@ -1289,6 +1302,7 @@ CONTAINS
           END DO
           FORCE(p) = FORCE(p) + s * Basis(p) * RadLoadAtIp 
         END DO
+        Base(1:n) = Base(1:n) + s * Basis(1:n) 
       END DO
         
     ELSE ! .NOT. Radiosity ) 

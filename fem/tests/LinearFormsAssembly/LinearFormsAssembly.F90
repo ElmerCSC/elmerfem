@@ -74,6 +74,12 @@ SUBROUTINE LinearFormsAssembly( Model,Solver,dt,TransientSimulation )
     END IF
     nerror = nerror + netest
 
+    netest = TestPyramidElement(Solver, P, tol3d*10)
+    IF (netest /= 0) THEN
+      CALL Warn('LinearFormsAssembly','Pyramid element contained errors')
+    END IF
+    nerror = nerror + netest
+
     netest = TestWedgeElement(Solver, P, tol3d)
     IF (netest /= 0) THEN
       CALL Warn('LinearFormsAssembly','Wedge element contained errors')
@@ -147,6 +153,17 @@ CONTAINS
     nerror = TestElement(Solver, 706, P, tol)
   END FUNCTION TestWedgeElement
 
+  FUNCTION TestPyramidElement(Solver, P, tol) RESULT(nerror)
+    IMPLICIT NONE
+    
+    TYPE(Solver_t) :: Solver
+    INTEGER, INTENT(IN) :: P
+    REAL(kind=dp), INTENT(IN) :: tol
+    INTEGER :: nerror
+    
+    nerror = TestElement(Solver, 605, P, tol)
+  END FUNCTION TestPyramidElement
+
   FUNCTION TestBrickElement(Solver, P, tol) RESULT(nerror)
     IMPLICIT NONE
     
@@ -174,7 +191,7 @@ CONTAINS
     INTEGER :: i, j, k, l, q, nerror, nbasis, nndof, allocstat, tag, nthr, &
             nbasisvec, ndbasisdxvec, rep, dim, lm_eval, lm_eval_vec, NumGP
 
-    INTEGER, PARAMETER :: NREP = 100
+    INTEGER, PARAMETER :: NREP = 10 ! 100 To imrpove statistics increase this
     REAL(kind=dp) :: t_start, t_end, t_tot, t_startvec, t_endvec, t_tot_vec
     TYPE(GaussIntegrationPoints_t) :: Quadrature
     
@@ -760,7 +777,7 @@ CONTAINS
       ClonedElement % PDefs % TetraType = Element % PDefs % TetraType
       ClonedElement % PDefs % isEdge = Element % PDefs % isEdge
       ClonedElement % PDefs % GaussPoints = Element % PDefs % GaussPoints
-      ClonedElement % PDefs % pyramidQuadEdge = Element % PDefs % pyramidQuadEdge
+      ClonedElement % PDefs % Serendipity = Element % PDefs % Serendipity
       ClonedElement % PDefs % localNumber = Element % PDefs % localNumber
     END IF
     IF (ASSOCIATED( Element % NodeIndexes )) THEN

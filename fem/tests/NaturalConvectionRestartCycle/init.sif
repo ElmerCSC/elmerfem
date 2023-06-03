@@ -43,6 +43,7 @@ Simulation
 !  Output Variable 3 = String time
 !  Output Variable 4 = String globaltest
 !  Output Variable 5 = String fieldtest 3
+  Serendipity P Elements = False
 End
 
 Constants

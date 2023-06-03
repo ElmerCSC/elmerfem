@@ -28,6 +28,7 @@ Simulation
   Extruded Mesh Levels = 3
   Extruded Min Coordinate = 0.0
   Extruded Max Coordinate = 0.2
+  Serendipity P Elements = False
 End
 
 

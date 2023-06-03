@@ -505,7 +505,14 @@ CONTAINS
       ! This way diffusion will not depend on the amount of data, whether
       ! that is desirable, or not, I don't know. 
       !-----------------------------------------------------------------------
-      WeightCorr = SUM( NodalWeight) / SUM( WeightVector )
+      BLOCK
+        REAL(KIND=dp) :: s1, s2
+        s1 = SUM( NodalWeight )
+        s2 = SUM( WeightVector )
+        s1 = ParallelReduction(s1)
+        s2 = ParallelReduction(s2)        
+        WeightCorr = s1 / s2
+      END BLOCK
     ELSE
       WeightCorr = 1.0_dp
     END IF

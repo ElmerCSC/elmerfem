@@ -1635,7 +1635,7 @@ CONTAINS
 
       INTEGER(KIND=AddrInt) :: Proc
 
-      INTEGER :: i,j,j0,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
+      INTEGER :: i,j,j0,k,k2,l,n,slen,str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, partag, iostat
       LOGICAL :: disttag
       
@@ -1816,47 +1816,76 @@ CONTAINS
                SELECT CASE( TYPE )
                CASE( LIST_TYPE_CONSTANT_SCALAR )
                  
-                  k = 0
-                  DO i=1,N1
-                     DO j=1,N2
-                        DO WHILE( k <= slen )
-                           k = k + 1
-                           IF ( str(k:k) == ' ' ) EXIT
-                        END DO
-
-                        DO WHILE( k <= slen )
-                          k = k + 1
-                             IF ( str(k:k) /= ' ' ) EXIT
-                        END DO
-
-                        IF ( k > slen ) THEN
-                          IF( SizeUnknown ) THEN
-                            N1 = i-1
-                            GOTO 11
-                          END IF                                                                     
-                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
-                          IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
-                          k = 1
-                          slen = LEN_TRIM(str)
-                        END IF
-
-                        IF (.NOT.ScanOnly ) THEN
-                          READ( str(k:),*,iostat=iostat ) ATx(i,j,1)
-                          IF( iostat /= 0 ) THEN
-                            CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
-                          END IF
-                        END IF
+                 k = 0
+                 DO i=1,N1
+                   DO j=1,N2
+                     DO WHILE( k <= slen )
+                       k = k + 1
+                       IF ( str(k:k) == ' ' ) EXIT
                      END DO
-                  END DO
- 
-11                IF ( .NOT. ScanOnly ) THEN
-                    IF ( SizeGiven ) THEN
-                      CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
-                    ELSE
-                      CALL ListAddConstReal( List,Name,ATx(1,1,1) )
-                    END IF
-                  END IF
-  
+
+                     DO WHILE( k <= slen )
+                       k = k + 1
+                       IF ( str(k:k) /= ' ' ) EXIT
+                     END DO
+
+                     IF ( k > slen ) THEN
+                       IF( SizeUnknown ) THEN
+                         N1 = i-1
+                         GOTO 11
+                       END IF
+                       Stat = ReadAndTrim( InFileUnit,str,Echo) 
+                       IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
+
+                       k = 1
+                       slen = LEN_TRIM(str)
+                     END IF
+
+                     ! Find first empty space at "k2"
+                     k2 = k
+                     DO WHILE( k2 < slen )
+                       k2 = k2 + 1
+                       IF(str(k2:k2) == ' ') EXIT
+                     END DO
+                     IF(str(k2:k2)==' ') k2 = k2-1
+
+                     IF( ScanOnly ) THEN
+                       IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
+                         CALL Fatal(Caller,'Invalid characters for real '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
+                       END IF
+                     ELSE                                 
+                       READ( str(k:k2),*,iostat=iostat ) ATx(i,j,1)
+                       IF( iostat /= 0 ) THEN
+                         CALL Fatal(Caller,'Problem reading '&
+                             //I2S((i-1)*N2+j)//'th real keyword "'//TRIM(Name)//'": "'//str(k:k2)) 
+                       END IF
+                     END IF
+                   END DO
+                 END DO
+                
+                 IF(k2 < slen ) THEN
+                   ! Determine the 1st trailing non-white space character
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
+                 END IF
+                  
+11               IF ( .NOT. ScanOnly ) THEN
+                   IF ( SizeGiven ) THEN
+                     CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
+                   ELSE
+                     CALL ListAddConstReal( List,Name,ATx(1,1,1) )
+                   END IF
+                 END IF
+                 
                CASE( LIST_TYPE_VARIABLE_SCALAR )
 
                  IF (ScanOnly) THEN
@@ -1918,23 +1947,50 @@ CONTAINS
                            N1 = i-1
                            GOTO 12
                          END IF
-                                                                       
+
                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
                          IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
-                         
+
                          k = 1
                          slen = LEN_TRIM(str)
                        END IF
 
-                       IF ( .NOT. ScanOnly ) THEN
-                         READ( str(k:),*,iostat=iostat ) ATx(i,j,n)
+                       ! Find first empty space at "k2"
+                       k2 = k 
+                       DO WHILE( k2 <= slen )
+                         k2 = k2 + 1
+                         IF ( str(k2:k2) == ' ') EXIT
+                       END DO
+                       k2 = k2-1
+
+                       IF ( ScanOnly ) THEN
+                         IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
+                           CALL Fatal(Caller,'Invalid characters for real '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
+                         END IF
+                       ELSE
+                         READ( str(k:k2),*,iostat=iostat ) ATx(i,j,n)
                          IF( iostat /= 0 ) THEN
-                           CALL Fatal(Caller,'Problem reading real keyword: '//TRIM(Name)//': '//str(k:)) 
+                           CALL Fatal(Caller,'Problem reading real keyword "'//TRIM(Name)//'": '//str(k:k2)) 
                          END IF
                        END IF
 
                      END DO
                    END DO
+                   
+                   IF(k2 < slen ) THEN
+                     k2 = k2+1
+                     DO WHILE( k2 < slen )
+                       IF ( str(k2:k2) /= ' ') EXIT
+                       k2 = k2 + 1
+                     END DO
+                     IF( k2 < slen ) THEN
+                       IF(str(k2:slen) /= 'end') THEN
+                         CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                              //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                       END IF
+                     END IF
+                   END IF
+                   
                  END DO
 
 
@@ -2008,14 +2064,16 @@ CONTAINS
                      ALLOCATE(IValues(n1))
                    END IF
                  END IF
-                 
+
                  k = 0
                  DO i=1,N1
+                   ! Find first empty space at "k"
                    DO WHILE( k <= slen )
-                      k = k + 1
-                      IF ( str(k:k) == ' ') EXIT
+                     k = k + 1
+                     IF ( str(k:k) == ' ') EXIT
                    END DO
 
+                   ! Find first non-empty space at "k"
                    DO WHILE( k <= slen )
                      k = k + 1
                      IF ( str(k:k) /= ' ') EXIT
@@ -2028,26 +2086,81 @@ CONTAINS
                      END IF
                      Stat = ReadAndTrim(InFileUnit,str,Echo)
                      IF ( .NOT. Stat) CALL SyntaxError( Section,Name,str )
+
                      k = 1
                      slen = LEN_TRIM(str)
                    END IF
 
-                   IF ( .NOT. ScanOnly ) THEN
-                     READ( str(k:),*,iostat=iostat ) IValues(i)
+                   ! Find first empty space at "k2"
+                   k2 = k 
+                   DO WHILE( k2 <= slen )
+                     k2 = k2 + 1
+                     IF ( str(k2:k2) == ' ') EXIT
+                   END DO
+                   k2 = k2-1
+
+                   IF( ScanOnly ) THEN
+                     IF(VERIFY(str(k:k2),'-+0123456789') /= 0) THEN
+                       CALL Fatal(Caller,'Non-numeric characters for integer '&
+                           //I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2))
+                     END IF
+                   ELSE             
+                     READ( str(k:k2),*,iostat=iostat ) IValues(i)
                      IF( iostat /= 0 ) THEN
-                       CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(k:)) 
+                       CALL Fatal(Caller,'Problem reading integer '//I2S(i)//' for keyword "'//TRIM(Name)//'": '//str(k:k2)) 
                      END IF
                    END IF
-
                  END DO
-                 IF ( .NOT. ScanOnly ) CALL ListAddIntegerArray( &
-                              List,Name,N1,IValues )
-               ELSE IF (.NOT.ScanOnly) THEN
-                 READ( str(str_beg:),*,iostat=iostat ) k 
-                 IF( iostat /= 0 ) THEN
-                   CALL Fatal(Caller,'Problem reading integer keyword: '//TRIM(Name)//': '//str(str_beg:)) 
+                 
+                 IF(k2 < slen ) THEN
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN                  
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
                  END IF                 
-                 CALL ListAddInteger( List,Name,k )
+
+                 IF ( .NOT. ScanOnly ) CALL ListAddIntegerArray( List,Name,N1,IValues )
+               ELSE
+                 k = str_beg
+
+                 ! Find first empty space at "k2"
+                 k2 = k 
+                 DO WHILE( k2 <= slen )
+                   k2 = k2 + 1
+                   IF ( str(k2:k2) == ' ') EXIT
+                 END DO
+                 k2 = k2-1
+                                 
+                 IF (ScanOnly) THEN
+                   IF(VERIFY(str(k:k2),'-+0123456789') /= 0) THEN
+                     CALL Fatal(Caller,'Non-numeric characters for integer for keyword "'&
+                         //TRIM(Name)//'": '//str(k:k2))
+                   END IF
+                   k2 = k2+1
+                   DO WHILE( k2 < slen )
+                     IF ( str(k2:k2) /= ' ') EXIT
+                     k2 = k2 + 1
+                   END DO
+                   IF( k2 < slen ) THEN
+                     IF(str(k2:slen) /= 'end') THEN
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
+                     END IF
+                   END IF
+                 ELSE
+                   READ( str(k:k2),*,iostat=iostat ) i 
+                   IF( iostat /= 0 ) THEN
+                     CALL Fatal(Caller,'Problem reading integer keyword "'//TRIM(Name)//'": '//str(k:)) 
+                   END IF
+                   CALL ListAddInteger( List,Name,i )
+                 END IF
                END IF
              END IF
              EXIT
@@ -3108,7 +3221,7 @@ CONTAINS
         ELSE
           Model % Meshes => Solver % Mesh
         END IF
-      END IF
+      END IF  ! "Mesh" given for Solver
     END DO
 
     CALL SetCoordinateSystem( Model )
@@ -3663,6 +3776,7 @@ CONTAINS
               VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
+	      IF (len(Var % Name) < k2) CYCLE
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
                 SaveThis = .TRUE.
                 ! This makes it possible to request saving of vectors
@@ -5954,7 +6068,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))

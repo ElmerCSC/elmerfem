@@ -103,13 +103,18 @@ CONTAINS
     
     INTEGER :: i
     TYPE(Element_t), POINTER :: Element
-    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    TYPE(Valuelist_t), POINTER :: ComponentParams, EntityParams
     LOGICAL :: Found
     
-    BodyParams => GetBodyParams( Element )
-    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+    EntityParams => GetBC(Element)
+    IF (.NOT. ASSOCIATED(EntityParams)) THEN
+
+      EntityParams => GetBodyParams( Element )
+      IF (.NOT. ASSOCIATED(EntityParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+
+    END IF
    
-    i = GetInteger(BodyParams, 'Component', Found)
+    i = GetInteger(EntityParams, 'Component', Found)
     
     IF (.NOT. Found) THEN
       ComponentParams => Null()
@@ -162,9 +167,10 @@ CONTAINS
     LOGICAL, SAVE :: Visited=.FALSE.
     ! Components and Bodies:
     ! ----------------------  
-    INTEGER :: BodyId
+    INTEGER :: BodyId, BoundaryId
     INTEGER, POINTER :: BodyAssociations(:) => Null()
-    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    INTEGER, POINTER :: BCAssociations(:) => Null()
+    TYPE(Valuelist_t), POINTER :: BodyParams, BCParams, ComponentParams
      
     IF (Visited) RETURN
 
@@ -179,33 +185,68 @@ CONTAINS
       BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
 
       IF (.NOT. Found) BodyAssociations => ListGetIntegerArray(ComponentParams, 'Master Bodies', Found)
+
+      IF (.NOT. Found) BCAssociations => ListGetIntegerArray(ComponentParams, 'Master BCs', Found)
       
       IF (.NOT. Found) CYCLE
 
-      DO j = 1, SIZE(BodyAssociations)
-        BodyId = BodyAssociations(j)
-        BodyParams => CurrentModel % Bodies(BodyId) % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
-                                                      'Body parameters not found!')
-        k = GetInteger(BodyParams, 'Component', Found)
-        IF (Found) CALL Fatal ('AddComponentsToBodyList', &
-                              'Body '//i2s(BodyId)//' associated to two components!')
-        CALL listAddInteger(BodyParams, 'Component', i)
-        BodyParams => Null()
-      END DO
+      IF (ASSOCIATED(BodyAssociations)) THEN
+        DO j = 1, SIZE(BodyAssociations)
+          BodyId = BodyAssociations(j)
+          BodyParams => CurrentModel % Bodies(BodyId) % Values
+          IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
+                                                        'Body parameters not found!')
+          k = GetInteger(BodyParams, 'Component', Found)
+          IF (Found) CALL Fatal ('AddComponentsToBodyList', &
+                                'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+          CALL listAddInteger(BodyParams, 'Component', i)
+          BodyParams => Null()
+        END DO
+      END IF
+      IF (ASSOCIATED(BCAssociations)) THEN
+        DO j = 1, SIZE(BCAssociations)
+          BoundaryId = BCAssociations(j)
+          BCParams => CurrentModel % BCs(BoundaryId) % Values
+          IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
+                         'Boundary Condition parameters not found!')
+
+          k = GetInteger(BCParams, 'Component', Found)
+
+          IF (Found) CALL Fatal ('AddComponentsToBodyList', &
+            'Boundary Condition '//TRIM(i2s(BoundaryId))//' associated to two components!')
+
+          CALL ListAddInteger(BCParams, 'Component', i)
+          BCParams => Null()
+        END DO
+      END IF
     END DO
 
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
-                                                   'Body parameters not found!')
+                          'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A)') '"Body '//I2S(i)//'" associated to "Component '//I2S(j)//'"' 
+      WRITE(Message,'(A)') '"Body '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
       CALL Info('AddComponentsToBodyList',Message,Level=5)
       BodyParams => Null()
     END DO
+
+    IF (ASSOCIATED(BCAssociations)) THEN
+      DO i = 1, SIZE(CurrentModel % BCs)
+        BCParams => CurrentModel % BCs(i) % Values
+        IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
+                    'Boundary Condition parameters not found!')
+        j = GetInteger(BCParams, 'Component', Found)
+        IF (.NOT. Found) CYCLE
+
+        WRITE(Message,'(A)') '"Boundary Condition '//TRIM(I2S(i))// &
+            '" associated to "Component '//TRIM(I2S(j))//'"' 
+        CALL Info('AddComponentsToBodyList',Message,Level=5)
+        BCParams => Null()
+      END DO
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AddComponentsToBodyLists
 !------------------------------------------------------------------------------
@@ -223,7 +264,7 @@ CONTAINS
     ComponentParams => CurrentModel % Components(Id) % Values
     
     IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentBodyIds', &
-                                                         'Component parameters not found!')
+                      'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Body', Found)
     IF (.NOT. Found) BodyIds => ListGetIntegerArray(ComponentParams, 'Master Bodies', Found)
     IF (.NOT. Found) BodyIds => Null()
@@ -245,7 +286,7 @@ CONTAINS
     ComponentParams => CurrentModel % Components(Id) % Values
     
     IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
-                                                         'Component parameters not found!')
+                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
     IF (.NOT. Found) BodyIds => GetComponentBodyIds(Id)
 
@@ -1172,8 +1213,19 @@ END FUNCTION isComponentName
      IMPLICIT NONE
      TYPE(Component_t), POINTER :: Component
      TYPE(Element_t), POINTER :: Element
-     LOGICAL :: T
-     T = IdInList(Element % BodyId, Component % BodyIds)
+     INTEGER :: k
+     LOGICAL :: T, Found
+
+     k = GetInteger(GetBC(Element), 'Component', Found)
+     
+     IF (Found) THEN
+       T = (k .eq. Component % ComponentId)
+     ELSE IF (ASSOCIATED(Component % BodyIds)) THEN
+       T = IdInList(Element % BodyId, Component % BodyIds)
+     ELSE
+       T = .False.
+     END IF
+
 !------------------------------------------------------------------------------
    END FUNCTION ElAssocToComp
 !------------------------------------------------------------------------------
@@ -1465,7 +1517,17 @@ CONTAINS
         RowId = Cvar % ValueId + nm
 
         nn = COUNT(r_cnt>0)
-        IF( r_cnt(CVar % Owner+1)<=0 ) Nn=nn+1
+        IF( r_cnt(CVar % Owner+1)<=0 ) THEN
+          r_cnt(CVar % Owner+1) = 1
+          nn=nn + 1
+        END IF
+
+        IF(r_cnt(Parenv % myPE+1)<=0) THEN
+          r_cnt(parenv % mype+1) = 1
+          nn = nn + 1
+        END IF
+
+        r_cnt  = 1; nn=Parenv % PEs ! for now
 
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
@@ -1753,6 +1815,11 @@ CONTAINS
           Element => GetActiveElement(q)
           CALL CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
         END DO
+
+        DO q=GetNOFBoundaryElements(),1,-1
+          Element => GetBoundaryElement(q)
+          CALL CountComponentElements(Element, Comp, RowId, Rows, Cnts, Done, dofsdone)
+        END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
 !        print *, ParEnv % Mype, "CompInd:", CompInd, "Comp % nofcnts", Comp % nofcnts
       END DO
@@ -1823,6 +1890,11 @@ CONTAINS
 !print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
+          CALL CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
+        END DO
+
+        DO q=GetNOFBoundaryElements(),1,-1
+          Element => GetBoundaryElement(q)
           CALL CreateComponentElements(Element, Comp, VvarId, IvarId, Rows, Cols, Cnts, Done, dofsdone)
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp

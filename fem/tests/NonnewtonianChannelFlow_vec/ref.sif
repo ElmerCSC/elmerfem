@@ -20,6 +20,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
   Post File = ref.vtu
+  Serendipity P Elements = False
 End
 
 Constants

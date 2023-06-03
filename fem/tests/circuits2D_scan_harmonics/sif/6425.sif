@@ -73,7 +73,7 @@ Solver 3  !---- MagnetoDynamics2D, MagnetoDynamics2DHarmonic
    Steady State Convergence Tolerance = 1e-08
    Scanning Loops = 3
    Nonlinear Pre Solvers (1) = 2
-   Post Solvers (3) = 4 5 6 8
+   Post Solvers (3) = 4 5 6 
 End
 
 Solver 4  !---- MagnetoDynamics2D, bSolver

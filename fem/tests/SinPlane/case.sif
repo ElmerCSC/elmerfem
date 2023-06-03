@@ -30,6 +30,8 @@ Simulation
   BDF Order = 1
 !  Solver Input File = case.sif
 !  Post File = case.vtu
+
+  Serendipity P Elements = False
 End
 
 Constants
@@ -102,5 +104,5 @@ Boundary Condition 2
   Force 2 =  0
 End
 
-Solver 1 :: Reference Norm = 1.81684071E+00
+Solver 1 :: Reference Norm = 1.82506114
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

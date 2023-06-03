@@ -48,6 +48,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
+      INTEGER, POINTER :: pCols(:), pRows(:)
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
 !-------------------------------------------------------------------------------
@@ -56,7 +57,17 @@
       A % Values => A % ILUValues
 
       IF (ParEnv % Pes <= 1 ) THEN
+        IF( ASSOCIATED( A % ILUCols ) ) THEN
+          pCols => A % Cols
+          pRows => A % Rows
+          A % Cols => A % ILUCols
+          A % Rows => A % ILURows
+        END IF
         CALL CRS_MatrixVectorProd(v,u,ipar)
+        IF( ASSOCIATED( A % ILUCols ) ) THEN
+          A % Cols => pCols
+          A % Rows => pRows
+        END IF
       ELSE
         SP => GlobalData % SplittedMatrix
         ALLOCATE( SaveIF(ParEnv % PEs) )
@@ -112,6 +123,9 @@
      END TYPE Buf_t
      TYPE(Buf_t), POINTER :: buf(:)
 
+     TYPE(Matrix_t), POINTER :: B
+     INTEGER :: VankaMode
+     
      Diag => A % Diag
      Rows => A % Rows
      Cols => A % Cols
@@ -138,7 +152,7 @@
        cnt = 0
        DO i=1,A % NumberOfRows
          DO j=Rows(i),Rows(i+1)-1
-           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
              DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
                IF ( m==ParEnv % myPE ) CYCLE
@@ -241,38 +255,382 @@
        DEALLOCATE(rrow,rcol,rval)
      END IF
 
-     nn = Solver % Mesh % MaxElementDOFs
+     nn = 10*Solver % Mesh % MaxElementDOFs
      ALLOCATE( Indexes(nn), AL(nn*dofs,nn*dofs), ind(nn*dofs) )
 
-     Active = GetNOFActive(Solver)
      ILUValues = 0._dp
-     DO i=1,Active
-       element => GetActiveElement(i)
-       nn = GetElementDOFs(Indexes)
 
-       l = 0
-       DO j=1,nn
-         k =  Indexes(j)
-         DO dof=1,dofs
-           l = l + 1
-           ind(l) = DOFs*(perm(k)-1)+dof
+     VankaMode = ListGetInteger(Solver % Values,'Vanka Mode',Found)
+
+     SELECT CASE(VankaMode)
+     CASE(0)
+       Active = GetNOFActive(Solver)
+       DO i=1,Active
+         element => GetActiveElement(i)
+         nn = GetElementDOFs(Indexes)
+
+         l = 0
+         DO j=1,nn
+           k =  Indexes(j)
+           IF(perm(k)==0) CYCLE
+           DO dof=1,dofs
+             l = l + 1
+             ind(l) = DOFs*(perm(k)-1)+dof
+           END DO
+         END DO
+         IF(l==0) CYCLE
+         
+         A % Values => TotValues
+         DO j=1,nn*dofs
+           DO k=1,nn*dofs
+             al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+           END DO
+         END DO
+         CALL InvertMatrix(al,nn*dofs)
+         A % Values => ILUValues
+         DO j=1,nn*dofs
+           DO k=1,nn*dofs
+             CALL CRS_AddToMatrixElement( A,ind(j),ind(k),AL(j,k) )
+           END DO
          END DO
        END DO
 
-       A % Values => TotValues
-       DO j=1,nn*dofs
-         DO k=1,nn*dofs
-           al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+     CASE(1)
+       BLOCK
+         INTEGER :: jj, kk
+         REAL(KIND=dp) :: asum, ab, veps
+         
+         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
+         IF(.NOT. Found) veps = 1.0e-6
+         
+         ! Create a temporal matrix that is used to create the ILU(=Vanka) topology
+         B => AllocateMatrix()
+         B % FORMAT = MATRIX_LIST
+
+         ! Add the max index first because list matrix likes this
+         i = A % NumberOfRows 
+         CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
+         
+         DO i=1,A % NumberOfRows / dofs
+           j = dofs*(i-1)+1
+           
+           l = 0
+           DO k=A % Rows(j),A % Rows(j+1)-1
+             l = l+1
+             IF(l > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
+             Ind(l) = A % Cols(k)
+           END DO
+           nn = l         
+
+           A % Values => TotValues
+           al(1:nn,1:nn) = 0.0_dp
+           DO j=1,nn
+             DO k=1,nn
+               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
+                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+               END IF
+             END DO
+           END DO
+
+           CALL InvertMatrix(al,nn)
+           asum = SUM(ABS(al(1:nn,1:nn)))
+           
+           ! For complex problems we need to have all matrix entries related to same complex number present
+           IF( A % COMPLEX ) THEN
+             DO j=1,nn/2
+               DO k=1,nn/2
+                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
+                 IF(ab < veps * asum ) CYCLE
+                 DO jj=-1,0
+                   DO kk=-1,0                     
+                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
+                   END DO
+                 END DO
+               END DO
+             END DO
+           ELSE    
+             DO j=1,nn
+               DO k=1,nn
+                 ab = ABS(AL(j,k))
+                 IF(ab < veps * asum ) CYCLE
+                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k) )
+               END DO
+             END DO
+           END IF
          END DO
-       END DO
-       CALL InvertMatrix(al,nn*dofs)
-       A % Values => ILUValues
-       DO j=1,nn*dofs
-         DO k=1,nn*dofs
-           CALL CRS_AddToMatrixElement( A,ind(j),ind(k),AL(j,k) )
+
+         CALL List_ToCRSMatrix(B)
+
+         A % ILUValues => B % Values
+         A % ILUCols => B % Cols
+         A % ILURows => B % Rows
+
+         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
+         
+         NULLIFY( B % Values, B % Cols, B % Rows)
+         CALL FreeMatrix( B ) 
+
+         CALL Info('VankaCreate','Number of matrix non-zeros '//I2S(SIZE(A % Values)))
+         CALL Info('VankaCreate','Number of prec non-zeros '//I2S(SIZE(A % ILUValues)))
+       END BLOCK
+
+         
+     CASE(2) 
+
+       BLOCK
+         TYPE(Matrix_t), POINTER :: NodeGraph, EdgeGraph
+         TYPE(Element_t), POINTER :: Edge
+         TYPE(Mesh_t), POINTER :: Mesh
+         INTEGER :: n0, jj, kk
+         REAL(KIND=dp) :: asum, ab, ablock(2,2), veps
+
+         CALL Info('VankaCreate','Using block created around each edge')
+
+         
+         Mesh => Solver % Mesh
+         IF(.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal('VankaCreate','This version requires Edges!')
+         
+         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
+         IF(.NOT. Found) veps = 1.0e-6
+         
+         ! Create a graph for node-to-edge connectivity
+         !----------------------------------------------
+         NodeGraph => AllocateMatrix()
+         NodeGraph % FORMAT = MATRIX_LIST         
+         DO i = Mesh % NumberOfEdges, 1, -1
+           Edge => Mesh % Edges(i)
+           DO j=1, Edge % TYPE % NumberOfNodes 
+             CALL List_AddToMatrixElement( NodeGraph % ListMatrix,Edge % NodeIndexes(j),i,1.0_dp )
+           END DO
          END DO
-       END DO
-     END DO
+         CALL List_ToCRSMatrix(NodeGraph)
+         PRINT *,'Nonzeros per row NodeGraph:',1.0_dp * SIZE(NodeGraph % Values) / NodeGraph % NumberOfRows
+
+         ! Create a graph for edge-to-edge connectivity
+         !----------------------------------------------
+         EdgeGraph => AllocateMatrix()
+         EdgeGraph % FORMAT = MATRIX_LIST                 
+         DO i = Mesh % NumberOfEdges, 1, -1
+           Edge => Mesh % Edges(i)
+           DO j=1, Edge % TYPE % NumberOfNodes 
+             k = Edge % NodeIndexes(j)
+             DO l = NodeGraph % Rows(k),NodeGraph % Rows(k+1)-1
+               CALL List_AddToMatrixElement( EdgeGraph % ListMatrix,i,NodeGraph % Cols(l),1.0_dp )
+             END DO
+           END DO
+         END DO
+         CALL FreeMatrix( NodeGraph)
+         
+         CALL List_ToCRSMatrix(EdgeGraph)
+         PRINT *,'Nonzeros per row EdgeGraph:',1.0_dp * SIZE(EdgeGraph % Values) / EdgeGraph % NumberOfRows
+
+         ! Create the preconditioning matrix
+         !-----------------------------------
+         B => AllocateMatrix()
+         B % FORMAT = MATRIX_LIST
+         
+         i = A % NumberOfRows 
+         CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
+
+         n0 = Mesh % NumberOfNodes
+         DO i=1, Mesh % NumberOfEdges
+           j = perm(n0 + i)
+           l = 0
+           DO k=EdgeGraph % Rows(i), EdgeGraph % Rows(i+1)-1
+             DO dof=1,dofs
+               l = l + 1
+               IF(l > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
+               ind(l) = dofs*(perm(EdgeGraph % Cols(k)+n0)-1)+dof 
+             END DO
+           END DO
+
+           nn = l           
+           A % Values => TotValues
+
+           al(1:nn,1:nn) = 0.0_dp
+           l = 0
+           DO j=1,nn
+             DO k=1,nn
+               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
+                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+                 l = l+1
+               END IF
+             END DO
+           END DO
+
+           CALL InvertMatrix(al,nn)
+           asum = SUM(ABS(al(1:nn,1:nn)))
+
+           ! For complex problems we need to have all matrix entries related to same complex number present
+           IF( A % COMPLEX ) THEN
+             DO j=1,nn/2
+               DO k=1,nn/2
+                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
+                 IF(ab < veps * asum ) CYCLE
+                 DO jj=-1,0
+                   DO kk=-1,0                     
+                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
+                   END DO
+                 END DO
+               END DO
+             END DO
+           ELSE
+             DO j=1,nn
+               DO k=1,nn
+                 ab = ABS(AL(j,k))
+                 IF(ab < veps * asum ) CYCLE
+                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k))
+               END DO
+             END DO
+           END IF
+         END DO
+         
+         CALL FreeMatrix( EdgeGraph )         
+         CALL List_ToCRSMatrix(B)
+
+         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
+         
+         A % ILUValues => B % Values
+         A % ILUCols => B % Cols
+         A % ILURows => B % Rows
+         
+         NULLIFY( B % Values, B % Cols, B % Rows)
+         CALL FreeMatrix( B ) 
+         
+       END BLOCK
+
+
+     CASE(3)
+       BLOCK
+         INTEGER :: jj, kk
+         REAL(KIND=dp) :: asum, ab, veps
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Face
+         INTEGER :: nn2
+         INTEGER, POINTER :: Indexes2(:)
+         
+
+         CALL Info('VankaCreate','Using block created around each face')
+         
+         Mesh => Solver % Mesh
+         ALLOCATE(Indexes2(SIZE(Indexes)))
+         
+         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
+         IF(.NOT. Found) veps = 1.0e-6
+
+         ! Create a temporal matrix that is used to create the ILU(=Vanka) topology
+         B => AllocateMatrix()
+         B % FORMAT = MATRIX_LIST
+
+         ! Add the max index first because list matrix likes this
+         i = A % NumberOfRows 
+         CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
+
+
+         DO i=1, Mesh % NumberOfFaces
+
+           Face => Mesh % Faces(i)
+           nn = 0
+           nn2 = 0
+           DO j=1,2
+             IF(j==1) THEN
+               Element => Face % BoundaryInfo % Left
+             ELSE
+               Element => Face % BoundaryInfo % Right
+             END IF
+
+             IF(.NOT. ASSOCIATED(Element) ) CYCLE
+
+             IF(j==1) THEN 
+               nn = GetElementDOFs(Indexes,Element)
+             ELSE
+               nn2 = GetElementDOFs(Indexes2,Element)
+             END IF
+           END DO
+
+           IF(nn2 > 0 .AND. nn > 0 ) THEN
+             DO j=1,nn2
+               IF( ALL(Indexes(1:nn) /= Indexes2(j) ) ) THEN
+                 nn = nn+1
+                 Indexes(nn) = Indexes2(j)
+               END IF
+             END DO
+           ELSE IF(nn2 == 0 .AND. nn == 0 ) THEN
+             CALL Fatal('VankaCreate','No dofs in parents?')
+           ELSE IF( nn2 == 0 ) THEN
+             CONTINUE
+           ELSE IF( nn == 0 ) THEN
+             nn = nn2
+             Indexes(1:nn) = Indexes2(1:nn2)             
+           END IF
+             
+           l = 0
+           DO j=1,nn
+             k = Indexes(j)
+             IF(perm(k)==0) CYCLE
+             DO dof=1,dofs
+               l = l + 1
+               ind(l) = dofs*(perm(k)-1)+dof
+             END DO
+           END DO
+           IF(l==0) CYCLE
+           nn = l
+
+           A % Values => TotValues
+           al(1:nn,1:nn) = 0.0_dp
+           DO j=1,nn
+             DO k=1,nn
+               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
+                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+               END IF
+             END DO
+           END DO
+
+           CALL InvertMatrix(al,nn)
+           asum = SUM(ABS(al(1:nn,1:nn)))
+
+           ! For complex problems we need to have all matrix entries related to same complex number present
+           IF( A % COMPLEX ) THEN
+             DO j=1,nn/2
+               DO k=1,nn/2
+                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
+                 IF(ab < veps * asum ) CYCLE
+                 DO jj=-1,0
+                   DO kk=-1,0                     
+                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
+                   END DO
+                 END DO
+               END DO
+             END DO
+           ELSE    
+             DO j=1,nn
+               DO k=1,nn
+                 ab = ABS(AL(j,k))
+                 IF(ab < veps * asum ) CYCLE
+                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k) )
+               END DO
+             END DO
+           END IF
+         END DO
+
+         CALL List_ToCRSMatrix(B)
+
+         A % ILUValues => B % Values
+         A % ILUCols => B % Cols
+         A % ILURows => B % Rows
+
+         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
+        
+         NULLIFY( B % Values, B % Cols, B % Rows)
+         CALL FreeMatrix( B ) 
+
+         CALL Info('VankaCreate','Number of matrix non-zeros '//I2S(SIZE(A % Values)))
+         CALL Info('VankaCreate','Number of prec non-zeros '//I2S(SIZE(A % ILUValues)))
+
+       END BLOCK
+               
+     END SELECT
+       
      A % Values => Svalues
      DEALLOCATE(AL, Indexes, Ind, TotValues)
 !------------------------------------------------------------------------------
@@ -285,7 +643,8 @@
     SUBROUTINE CircuitPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-
+      IMPLICIT NONE
+      
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -326,7 +685,8 @@
     SUBROUTINE CircuitPrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-
+      IMPLICIT NONE
+      
       INTEGER :: ipar(*)
       COMPLEX(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -385,6 +745,7 @@
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitPrecCreate(A,Solver)
      USE DefUtils
+     IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), TARGET :: A
      TYPE(Solver_t) :: Solver
@@ -429,7 +790,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1
@@ -449,7 +810,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % GInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1
@@ -621,6 +982,182 @@
   END SUBROUTINE CircuitPrecCreate
 !------------------------------------------------------------------------------
 
+
+!-------------------------------------------------------------------------------
+!> Assumes another solver being used for the preconditioning.
+!> Given residual "v" solver Au=v in an approximatite manner.
+!-------------------------------------------------------------------------------
+  SUBROUTINE SlavePrec(u,v,ipar)
+!-------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: ipar(*)  ! parameters for Hutiter
+    REAL(KIND=dp) u(*)  ! new solution
+    REAL(KIND=dp) v(*)  ! right-hand-side
+!-------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar
+    TYPE(Matrix_t), POINTER :: Amat
+    REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
+    REAL(KIND=dp) :: rnorm
+    LOGICAL :: Found
+    CHARACTER(MAX_NAME_LEN) :: str   
+    INTEGER :: n
+!-------------------------------------------------------------------------------
+
+    Solver => CurrentModel % Solver
+    Params => Solver % Values
+    Mesh => Solver % Mesh 
+    Amat => Solver % Matrix
+    
+    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    n = SIZE(pVar % Values)
+    b => pVar % Values
+
+    b(1:n) = v(1:n)
+
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
+
+    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    x => pVar % Values
+    
+    IF( ListCheckPresent( Params,'MG Smoother') ) THEN
+      ALLOCATE(r(n))
+      
+      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
+        BLOCK
+          REAL(KIND=dp) :: rn, bn    
+          CALL MatrixVectorMultiply( Amat, x, r) 
+          rn = SUM( r(1:n)**2 )
+          bn = SUM( r(1:n) * b(1:n) )
+          IF( rn > TINY( rn ) ) THEN
+            bn = bn / rn 
+            x(1:n) = x(1:n) * bn 
+            WRITE( Message,'(A,ES12.3)') 'Preconditioning Normalizing Factor: ',bn
+            CALL Info('SlavePrec',Message,Level=6) 
+          END IF
+        END BLOCK
+      END IF
+
+      CALL CRS_MatrixVectorMultiply( Amat, x, r )
+      !CALL MGmv( Amat, x, r, .TRUE. )
+      r(1:n) = b(1:n) - r(1:n)
+      RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+          1, pVar % dofs, PreSmooth = .FALSE.)
+    END IF
+          
+    u(1:n) = x(1:n) 
+
+!-------------------------------------------------------------------------------
+  END SUBROUTINE SlavePrec
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+  SUBROUTINE SlavePrecComplex(u,v,ipar)
+!-------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: ipar(*)  ! parameters for Hutiter
+    COMPLEX(KIND=dp) u(*)  ! new solution
+    COMPLEX(KIND=dp) v(*)  ! right-hand-side
+!-------------------------------------------------------------------------------
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: pVar
+    TYPE(Matrix_t), POINTER :: Amat
+    REAL(KIND=dp), POINTER :: b(:), x(:), r(:)
+    REAL(KIND=dp) :: rnorm
+    LOGICAL :: Found
+    CHARACTER(MAX_NAME_LEN) :: str   
+    INTEGER :: n
+!-------------------------------------------------------------------------------
+
+    Solver => CurrentModel % Solver
+    Params => Solver % Values
+    Mesh => Solver % Mesh
+    Amat => Solver % Matrix
+
+    str = ListGetString( Params,'Slave Prec Residual',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrecComplex','Could not find: '//TRIM(str))
+    n = SIZE(pVar % Values)   
+    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
+      CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
+    END IF
+    IF(n /= SIZE(Solver % Variable % Values) ) THEN
+      CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
+    END IF
+    b => pVar % Values
+
+    b(1:n:2) = REAL(v(1:n/2))
+    b(2:n:2) = AIMAG(v(1:n/2))
+    
+    CALL DefaultSlaveSolvers( Solver, 'Prec Solvers' )
+    
+    str = ListGetString( Params,'Slave Prec Update',UnfoundFatal=.TRUE.)
+    pVar => VariableGet( Mesh % Variables, str )    
+    IF(.NOT. ASSOCIATED(pVar)) CALL Fatal('SlavePrec','Could not find: '//TRIM(str))
+    IF(pVar % Dofs /= Solver % Variable % dofs ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
+    END IF
+    IF(n /= SIZE(Solver % Variable % Values) ) THEN
+      CALL Fatal('SlavePrecComplex','Update should have same size as primary variable!')
+    END IF
+
+    x => pVar % Values
+    
+    IF( ListCheckPresent( Params,'MG Smoother') ) THEN      
+      ALLOCATE(r(n))
+      
+      IF( ListGetLogical( Params,'MG Smoother Normalize Guess',Found) )  THEN
+        BLOCK
+          REAL(KIND=dp) :: rn, bnre, bnim    
+          CALL MatrixVectorMultiply( Amat, x, r) 
+          rn = SUM( r(1:n)**2 )
+          bnre = SUM( r(1:n) * b(1:n) )          
+          bnim = SUM( r(1:n:2) * b(2:n:2) - r(2:n:2) * b(1:n:2) )
+          
+          IF( rn > TINY( rn ) ) THEN
+            bnre = bnre / rn
+            bnim = bnim / rn
+#if 0
+            ! This does not seem to help ...
+            b(1:n) = x(1:n)
+            x(1:n:2) = bnre * r(1:n:2) - bnim * r(2:n:2)
+            x(2:n:2) = bnim * r(1:n:2) + bnre * r(2:n:2)
+#else            
+            x(1:n) = x(1:n) * bnre
+#endif
+            WRITE( Message,'(A,2ES12.3)') 'Preconditioning Normalizing Factor: ',bnre,bnim
+            CALL Info('SlavePrec',Message,Level=6) 
+          END IF
+        END BLOCK
+      END IF
+        
+      CALL CRS_MatrixVectorMultiply( Amat, x, r )
+      !CALL MGmv( Amat, x, r, .TRUE. )
+      r(1:n) = b(1:n) - r(1:n)
+      RNorm = MGSmooth( Solver, Amat, Mesh, x, b, r, &
+          1, pVar % dofs, PreSmooth = .FALSE.)
+      DEALLOCATE(r)
+    END IF
+      
+    u(1:n/2) = CMPLX(x(1:n:2), x(2:n:2) ) 
+
+!-------------------------------------------------------------------------------
+  END SUBROUTINE SlavePrecComplex
+!-------------------------------------------------------------------------------
+
+  
+  
 !> \}
 
 !> \}

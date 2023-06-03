@@ -132,7 +132,7 @@ Solver 5
 End
 
 Equation 1
-  Active Solvers(2) = 1 3 4
+  Active Solvers(2) = 1 3 
 End
 
 Equation 2

@@ -57,6 +57,8 @@
       LOGICAL :: PjInitialized=.FALSE.
       CHARACTER(LEN=MAX_NAME_LEN) :: proj_type,proj_string
       REAL(KIND=dp) :: RefLon,RefLat
+      REAL(KIND=dp) :: MinLon=0._dp,MinLat=0._dp,MaxLon=90._dp,MaxLat=90._dp
+      REAL(KIND=dp) :: xmax,ymax,xmin,ymin
 
 #ifdef HAVE_PROJ
       TYPE(pj_object) :: pj
@@ -88,6 +90,11 @@
              CALL proj_inv(-x,-y,Lon,Lat,-RefLon,-RefLat)
              Lon=-Lon*rad2deg
              Lat=-Lat*rad2deg
+
+          CASE('regular')
+             Lon=MinLon+(x-xmin)*(MaxLon-MinLon)/(xmax-xmin)
+             Lat=MinLat+(y-ymin)*(MaxLat-MinLat)/(ymax-ymin)
+
 #ifdef HAVE_PROJ
           CASE('proj4')
              CALL proj_inv(x,y,Lon,Lat)
@@ -118,7 +125,7 @@
              CALL proj_fwd(Lon,Lat,x,y)
 #endif
           CASE DEFAULT
-            CALL FATAL('xy2LonLat','unsuported projection type: '//TRIM(proj_type))
+            CALL FATAL('LonLat2xy','unsuported projection type: '//TRIM(proj_type))
         END SELECT
       END SUBROUTINE LonLat2xy
 
@@ -126,6 +133,10 @@
 ! Initialise proj variables
 !------------------------------------------------------------------------------
       SUBROUTINE ProjINIT
+         TYPE(Mesh_t), POINTER :: Mesh
+         LOGICAL :: Parallel
+         LOGICAL :: GotIt
+         REAL(KIND=dp) :: val
 
          PjInitialized=.TRUE.
 
@@ -142,6 +153,35 @@
                RefLon=RefLon*deg2rad
                RefLat = ListGetConstReal(GetSimulation(),'latitude_of_origin',UnFoundFatal=.True.)
                RefLat = RefLat*deg2rad
+
+            CASE('regular')
+               IF(ParEnv % PEs > 1) Parallel = .TRUE.
+               Mesh => GetMesh()     
+               xmax=MAXVAL(Mesh % Nodes % x )
+               ymax=MAXVAL(Mesh % Nodes % y )
+               xmin=MINVAL(Mesh % Nodes % x )
+               ymin=MINVAL(Mesh % Nodes % y )
+
+               IF (Parallel) THEN
+                  xmax=ParallelReduction(xmax,2)
+                  ymax=ParallelReduction(ymax,2)
+                  xmin=ParallelReduction(xmin,1)
+                  ymin=ParallelReduction(ymin,1)
+              END IF
+
+              val = ListGetConstReal(GetSimulation(),'Min Latitude',GotIt)
+              IF (GotIt) MinLat=val
+              val = ListGetConstReal(GetSimulation(),'Min Longitude',GotIt)
+              IF (GotIt) MinLon=val
+              val = ListGetConstReal(GetSimulation(),'Max Latitude',GotIt)
+              IF (GotIt) MaxLat=val
+              val = ListGetConstReal(GetSimulation(),'Max Longitude',GotIt)
+              IF (GotIt) MaxLon=val
+
+              IF ((MaxLat-MinLat).LT.0._dp) &
+                 CALL FATAL("ProjINIT","(MaxLat-MinLat) <= 0")
+              IF ((MaxLon-MinLon).LT.0._dp) &
+                 CALL FATAL("ProjINIT","(MaxLon-MinLon) <= 0")
 
 #ifdef HAVE_PROJ
             CASE('proj4')

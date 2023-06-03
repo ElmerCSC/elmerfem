@@ -28,6 +28,7 @@ Simulation
 !  Set Dirichlet BCs by BC Numbering = True
 !  Initialize Dirichlet Conditions = False
 !  Coordinate Mapping(3) = 2 1 3
+  Serendipity P Elements = False
 End
 
 

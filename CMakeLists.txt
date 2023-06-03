@@ -10,23 +10,6 @@
 # First public beta release 11th of October, 2013
 #
 
-if(APPLE)
-  # message("you need to have gcc-gfrotran installed using HomeBrew")
-  # set(CMAKE_C_COMPILER "/usr/bin/gcc")
-  # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
-  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
-  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
-  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
-  # set(BLA_VENDOR "OpenBLAS")
-  # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
-  # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
-  # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
-endif()
-
-
-
-
-
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
@@ -38,17 +21,6 @@ CMAKE_MINIMUM_REQUIRED(VERSION 1.0.2)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
-    # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
-    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
-      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
-    find_library(X11_GL_LIB GL
-      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
-#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
-# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
-INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
 #shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
@@ -222,8 +194,6 @@ IF(WITH_OpenMP)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # endif()
 
- 
-  
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -245,7 +215,7 @@ IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
 #    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
   ENDIF()
 ENDIF()
-  
+
 
 IF(WITH_MPI)
   # Advanced properties
@@ -264,6 +234,10 @@ IF(WITH_MPI)
   SET(CMAKE_CXX_REQUIRED_LIBRARIES ${MPI_CXX_LIBRARIES})
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
+
+IF(WITH_AMGX)
+  FIND_PACKAGE(AMGX)
+ENDIF()
 
 # if(APPLE)
 #   # message(STATUS "Trying to find Accelerate library")
@@ -462,31 +436,35 @@ IF(WITH_MMG)
 
   MESSAGE(STATUS "------------------------------------------------")
 
-  FIND_PACKAGE(PARMMG)
+  IF (WITH_PARMMG) 
+    FIND_PACKAGE(PARMMG)
+    IF(PARMMG_FOUND)
+
+      SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
+      GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
+      
+      MARK_AS_ADVANCED(HAVE_PARMMG)
+      MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
+      MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
+      MESSAGE(STATUS "  ParMmg_LIB:      " "${PARMMG_LIBRARY}")
+      MESSAGE(STATUS "  ParMmg_LIBDIR:      " "${PARMMG_LIBDIR}")
+      #MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+      ADD_DEFINITIONS(-DHAVE_PARMMG)
+
+      INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
+      MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
+    ENDIF(PARMMG_FOUND)
+  ELSE()
+    SET(PARMMG_FOUND FALSE)
+    MESSAGE(STATUS "  Skipping ParMMG")
   # INCLUDE("cmake/Modules/FindParMMG.cmake")
   # INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
   # TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${PARMMG_LIBRARY})
-
-  IF(PARMMG_FOUND)
-
-    SET(HAVE_PARMMG TRUE CACHE BOOL "Has ParMmg tools for Elmer/Ice Mesh adaptation" )
-    GET_FILENAME_COMPONENT(PARMMG_LIBDIR ${PARMMG_LIBRARY} DIRECTORY)
-
-    MARK_AS_ADVANCED(HAVE_PARMMG)
-    MESSAGE(STATUS "  ParMmg:           " "${PARMMG_FOUND}")
-    MESSAGE(STATUS "  ParMmg_INC:       " "${PARMMG_INCLUDE_DIR}")
-    MESSAGE(STATUS "  ParMmg_LIB:      " "${PARMMG_LIBRARY}")
-    MESSAGE(STATUS "  ParMmg_LIBDIR:      " "${PARMMG_LIBDIR}")
-    #MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
-    ADD_DEFINITIONS(-DHAVE_PARMMG)
-
-    INCLUDE_DIRECTORIES(${PARMMG_INCLUDE_DIR})
-    MESSAGE(STATUS "------------------------------------------------")
-
-  ELSE()
-    MESSAGE(STATUS "  Library not found: >PARMMG_FOUND< ")
-    MESSAGE(STATUS "    Missing: >PARMMG_INCLUDE_DIR< , >PARMMG_LIBRARY<, to compile PARMMGSolver")
-  ENDIF(PARMMG_FOUND)
+  #  SET(HAVE_PARMMG FALSE)
+  ENDIF(WITH_PARMMG) 
 ELSE()
   SET(HAVE_MMG FALSE)
   SET(HAVE_PARMMG FALSE)
@@ -559,6 +537,14 @@ IF(FETI4I_FOUND)
   ADD_DEFINITIONS(-DHAVE_FETI4I)
 ENDIF()
 
+IF (AMGX_FOUND)
+  SET(HAVE_AMGX TRUE)
+  MARK_AS_ADVANCED(HAVE_AMGX)
+  INCLUDE_DIRECTORIES(${AMGX_INCLUDE_DIR})
+  LINK_DIRECTORIES(${CUDA_LIBDIR})
+ENDIF()
+
+  
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)

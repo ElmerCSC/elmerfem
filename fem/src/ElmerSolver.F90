@@ -285,6 +285,9 @@
 #ifdef HAVE_ZOLTAN
          CALL Info( 'MAIN', ' Zoltan library linked in.' )
 #endif
+#ifdef HAVE_AMGX
+         CALL Info( 'MAIN', ' AMGX library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
@@ -652,7 +655,6 @@
                  ! Release the old adaptive meshes
                  DO WHILE( ASSOCIATED(pMesh % Parent))
                    pMesh => pMesh % Parent             
-                   PRINT *,'Freeing Mesh:',pMesh % Child % AdaptiveDepth, TRIM(pMesh % Child % Name)
                    CALL ReleaseMesh( pMesh % Child ) 
                  END DO
                  pMesh % Child => NULL()
@@ -675,6 +677,7 @@
 
          BLOCK
            TYPE(Solver_t), POINTER :: iSolver
+           LOGICAL :: DoIt
            DO i=1,CurrentModel % NumberOfSolvers 
              iSolver => CurrentModel % Solvers(i)
              IF( iSolver % NumberOfConstraintModes > 0 ) THEN
@@ -682,7 +685,19 @@
                  CALL FinalizeLumpedMatrix( iSolver )            
                END IF
              END IF
-           END DO           
+           END DO
+
+           DO i=1,CurrentModel % NumberOfSolvers 
+             iSolver => CurrentModel % Solvers(i)
+             IF ( iSolver % PROCEDURE == 0 ) CYCLE
+             When = ListGetString( iSolver % Values, 'Exec Solver', Found )
+             IF ( Found ) THEN
+               DoIt = ( When == 'after control' ) 
+             ELSE
+               DoIt = ( iSolver % SolverExecWhen == SOLVER_EXEC_AFTER_CONTROL )
+             END IF
+             IF(DoIt) CALL SolverActivate( CurrentModel,iSolver,dt,Transient )
+           END DO
          END BLOCK
        ELSE
          CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
@@ -696,18 +711,18 @@
        IF ( Initialize >= 2 ) EXIT
      END DO
 
- 
+     IF( ListGetLogical( CurrentModel % Simulation,'Echo Keywords at End', GotIt ) ) THEN
+       CALL ListEchoKeywords( CurrentModel )        
+     END IF
+      
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
-
 
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('MAIN','Reporting list counters for code optimization purposes only!')
      CALL Info('MAIN','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
      CALL ReportListCounters( CurrentModel )
 #endif
-     
-
-     
+          
 !------------------------------------------------------------------------------
 !    THIS IS THE END (...,at last, the end, my friend,...)
 !------------------------------------------------------------------------------
@@ -1328,7 +1343,9 @@
        CALL ListAddString(Params,'Exec Solver','after saving')
        CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
        CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
-
+       CALL ListAddLogical(Params,'No Matrix',.TRUE.)
+       CALL ListAddNewString(Params,'Variable','-global vtu_internal_dummy')
+       
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
@@ -1390,8 +1407,9 @@
 !------------------------------------------------------------------------------
     SUBROUTINE AddSolvers()
 !------------------------------------------------------------------------------
-      INTEGER :: i,j,k,nlen
+      INTEGER :: i,j,k,n,nlen
       LOGICAL :: InitSolver, Found, DoTiming
+      TYPE(Mesh_t), POINTER :: pMesh
 !------------------------------------------------------------------------------
 
       CALL Info('AddSolvers','Setting up '//I2S(CurrentModel % NumberOfSolvers)//&
@@ -1448,6 +1466,24 @@
            Solver % Mesh => CurrentModel % Meshes
          END IF
 
+         n = ListGetInteger( Solver % Values,'Relative Mesh Level',Found )
+         IF( Found .AND. n /= 0) THEN
+           IF( n > 0 ) CALL Fatal('AddSolvers','Relative Mesh Level should ne negative!')
+           j = 0
+           DO WHILE(j > n)             
+             pMesh => pMesh % Parent
+             IF(.NOT. ASSOCIATED(pMesh)) EXIT
+             j = j-1
+           END DO
+           IF(ASSOCIATED(pMesh) ) THEN
+             CALL Info('AddSolvers','Using relative mesh level '//I2S(n),Level=10)
+           ELSE
+             CALL Fatal('AddSolvers','Could not find relative mesh level: '//I2S(n))
+           END IF
+           Solver % Mesh => pMesh
+         END IF
+         
+         
          DoTiming = ListGetLogical( Solver % Values,'Solver Timing', Found ) 
          IF( DoTiming ) CALL ResetTimer('SolverInitialization')
          
@@ -1822,7 +1858,10 @@
                     DO j=1,n
                       k = Element % NodeIndexes(j)
                       IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
-                      IF ( k>0 ) Var % PrevValues(k,2) = Work(j)
+                      IF ( k>0 ) THEN
+                        Var % PrevValues(k,2) = Work(j)
+                        Var % PrevValues(k,6) = Work(j)
+                      END IF
                     END DO
                   END IF
                END IF
@@ -2095,7 +2134,10 @@
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
-                     IF ( k1>0 ) Var % PrevValues(k1,2) = Work(k)
+                     IF ( k1>0 ) THEN
+                       Var % PrevValues(k1,2) = Work(k)
+                       Var % PrevValues(k1,6) = Work(k)
+                     END IF
                    END DO
                  END IF
                END IF
@@ -3265,12 +3307,19 @@
         IF ( GotIt ) THEN
            IF ( When == 'after simulation' .OR. When == 'after all' ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !IF( ASSOCIATED(Solver % Variable) ) THEN
+              ! This construct seems to be for cases when we solve something "after all"
+              ! that affects results elsewhere. Hence we set "LastSaved" to false even
+              ! if it would be true before.                 
+              !IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !END IF
            END IF
         ELSE
            IF ( Solver % SolverExecWhen == SOLVER_EXEC_AFTER_ALL ) THEN
               CALL SolverActivate( CurrentModel,Solver,dt,Transient )
-              IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !IF( ASSOCIATED(Solver % Variable) ) THEN
+              !  IF (ASSOCIATED(Solver % Variable % Values) ) LastSaved = .FALSE.
+              !END IF
            END IF
         END IF
      END DO
