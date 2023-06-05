@@ -546,9 +546,9 @@ CONTAINS
       ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
 
-      ELSE IF ( str == 'vanka' ) THEN
+      ELSE IF ( SEQL(str,'vanka') ) THEN
         PCondType = PRECOND_VANKA
-
+        
       ELSE IF ( str == 'slave' ) THEN
         PCondType = PRECOND_SLAVE
         

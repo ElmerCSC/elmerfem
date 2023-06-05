@@ -14527,7 +14527,13 @@ END FUNCTION SearchNodeL
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF( GotIt ) THEN
         CALL Info('SolveLinearSystem','Linear System Preconditioning: '//TRIM(Prec),Level=8)
-        IF ( Prec=='vanka' ) CALL VankaCreate(A,Solver)
+        IF( SEQL(Prec,'vanka') ) THEN
+          IF(LEN(Prec)>=6) THEN
+            i = ICHAR(Prec(6:6)) - ICHAR('0')
+            CALL ListAddNewInteger( Params,'Vanka Mode',i) 
+          END IF
+          CALL VankaCreate(A,Solver)
+        END IF
         IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
       END IF
     END IF

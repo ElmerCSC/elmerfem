@@ -157,6 +157,7 @@ REAL(kind=dp) :: tt,realtime
 
     LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
+    CHARACTER(:), ALLOCATABLE :: Prec
     REAL(kind=dp) :: st
   !******************************************************************
 st = realtime()
@@ -347,8 +348,11 @@ st = realtime()
   END IF
   NULLIFY( SplittedMatrix % InsideMatrix % DampValues )
 
-  NeedILU = ListGetString(CurrentModel % Solver % Values, &
-   'Linear System Preconditioning', Found ) == 'vanka'
+  NeedIlu = .FALSE.
+  Prec = ListGetString(CurrentModel % Solver % Values, &
+      'Linear System Preconditioning', Found )
+  IF(Found) NeedILU = SEQL(Prec,'vanka') 
+    
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 
