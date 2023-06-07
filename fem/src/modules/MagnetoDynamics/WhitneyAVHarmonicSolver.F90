@@ -2076,10 +2076,6 @@ END BLOCK
 
       !
       ! The contributions from applying Ohm's law to the tangential surface current 
-      ! which is assumed to be constant over the skin depth: NOTE that a non-vanishing 
-      ! surface current cannot yet be prescribed on the one-dimensional boundary of the skin
-      ! surface via giving a current BC (the conducting skin must be either insulated over its
-      ! boundary or constrained by a Dirichlet condition for the scalar potential).
       !
         IF (.NOT. CircuitDrivenBC) THEN
           DO p = 1,np
