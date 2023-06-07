@@ -2143,10 +2143,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! the surface impedance from the power density P_S = 1/2 Real(1/Zs) E.conjugate(E)
          Coeff = HarmPowerCoeff * REAL(1.0_dp/Zs) * &
              (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * s 
-
-         ! The total power required to maintain the current in the layer when the current density is
-         ! assumed to be constant through the layer thickness:
-         !SurfPower = SurfPower + HarmPowerCoeff * C_ip * (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * val * detJ * IP % s(j)
          
          SurfPower = SurfPower + Coeff
 
@@ -2660,9 +2656,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ELSE
            !da/dt part
            E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-           !grad V part
            E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-           
+
+           !grad V part
            E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
            E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
            CALL Warn('CalcFields', 'Power loss not implemented for harmonic case')

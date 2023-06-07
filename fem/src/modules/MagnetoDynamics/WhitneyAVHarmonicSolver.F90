@@ -1775,27 +1775,6 @@ END BLOCK
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
 
 
-       ! Experimental so far...
-       !
-       ! After integration over the layer the surface current Lambda_S is expressed as
-       !
-       !    Lambda_S = sigma*delta/(1+i)E_S = -inv(Z)E_S. 
-       !
-       ! In order to maintain the relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S] we multiply 
-       ! the given surface current with (1-i) and then consider instead
-       !
-       !   (1-i) Lambda_S = sigma*delta/(1+i)E_S 
-       !
-       ! which gives Lambda_S = sigma*delta/2 E_S = Re[-inv(Z)] E_S and also
-       ! the desired relation Re[Lambda_S] = Re[-inv(Z)] Re[E_S]. This modification of
-       ! the input surface current is done in the following.
-       !   
-       IF( LineElem ) THEN
-         F = F * (1-im)
-         TC = TC * (1-im)
-       END IF
-
-       
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
@@ -1987,7 +1966,7 @@ END BLOCK
            ! Compute the conductivity term <j * omega * C A x n,eta x n> 
            ! for stiffness matrix (without anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (C > AEPS) THEN
+           IF (ABS(C) > AEPS) THEN
              DAMP(p,q) = DAMP(p,q) + sheetThickness * &
                  C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END IF
@@ -2105,13 +2084,13 @@ END BLOCK
         IF (.NOT. CircuitDrivenBC) THEN
           DO p = 1,np
             DO q = 1,np
-              STIFF(p,q) = STIFF(p,q) + delta * cond * &
+              STIFF(p,q) = STIFF(p,q) + invZs * &
                   SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
             END DO
 
             DO j = 1,nd-np
               q = j+np
-              DAMP(p,q) = DAMP(p,q) + delta * cond * &
+              DAMP(p,q) = DAMP(p,q) + invZs * &
                 SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
             END DO
           END DO
