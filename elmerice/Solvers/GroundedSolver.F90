@@ -259,8 +259,12 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
            IF (Nn==0) CYCLE
            IF (ABS(VariableValues(Nn)-1.0_dp)<AEPS) THEN
               VariableValues(Nn) = 0.0_dp
-              IF (DIM==2) PRINT *, 'Grounding Line, x', Nodes % x( i )
-              IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
+              IF (DIM == 2) THEN
+                 WRITE (Message,'(A,F6.2)') 'Grounding Line x', Nodes % x( i )
+              ELSEIF (DIM == 3) THEN
+                 WRITE (Message,'(A,F6.2, F6.2)') 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
+              END IF
+              CALL INFO(SolverName, Message, level=5)
            END IF
         END DO
      END IF
