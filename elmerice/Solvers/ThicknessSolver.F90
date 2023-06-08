@@ -33,7 +33,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE Differentials
   USE MaterialModels
+  USE SSAMaterialModels
   USE ElementDescription
+
   IMPLICIT NONE
 
   !------------------------------------------------------------------------------
@@ -93,6 +95,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: ComputeMassBalance
   TYPE(Variable_t), POINTER :: acabf,libmassbf
   REAL(KIND=dp) :: Eacabf,Elibmassbf
+  LOGICAL :: SEM ! Sub-element melting for Grounding line
+  INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element melting
+  CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
+
   !-----------------------------------------------------------------------------
   !      remember these variables
   !----------------------------------------------------------------------------- 
@@ -187,9 +193,27 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           'Using residual squared-stabilized formulation.',Level=6 )
   END IF
 
+!  Sub - element melting
+  Material => GetMaterial()
+  MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.FALSE.)
+  IF (Found) THEN
+     SEM = .TRUE.
+  ELSE
+     SEM = .FALSE.
+  END IF
+
+  !SEM=GetLogical( Solver % Values, 'Sub-Element GL melting',Found)
+  !IF (.NOT.Found) SEM=.False.
+
+  IF (SEM) THEN
+     GLnIP=ListGetInteger( Solver % Values, &
+         'GL integration points number',UnFoundFatal=.TRUE. )
+     WRITE(Message,'(A,I0)') 'Using SEM with num IPs: ', GLnIP
+     CALL Info( SolverName, Message, Level=6 )
+  END IF
 
   WRITE(Message,'(A,I0)') 'Mesh dimension: ', DIM
-  CALL Info( SolverName, Message, Level=8 )
+  CALL Info( SolverName, Message, Level=6 )
 
   !------------------------------------------------------------------------------
   !    Allocate some permanent storage, this is done first time only
@@ -430,7 +454,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
                       GetReal( BodyForce, 'Bottom Surface Accumulation', Found )
         END IF
 
-
         !------------------------------------------------------------------------------
         !      Get element local matrix, and rhs vector
         !------------------------------------------------------------------------------
@@ -438,7 +461,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              SMB,BMB,  Velo, NSDOFs, MeshVelocity, &
              CurrentElement, n, ElementNodes, NodeIndexes, &
              TransientSimulation,&
-              ALEFormulation,Eacabf,Elibmassbf)
+              ALEFormulation,Eacabf,Elibmassbf, SEM)
 
         IF (ComputeMassBalance) THEN
           acabf % Values ( acabf % Perm (CurrentElement % ElementIndex)) = Eacabf
@@ -636,10 +659,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      !==============================================================================
      SUBROUTINE LocalMatrix( STIFF, MASS, FORCE,&
-          SMB,BMB,  Velo, NSDOFs, MeshVelo, &
+          SMB, BMB, Velo, NSDOFs, MeshVelo, &
           Element, nCoord, Nodes, NodeIndexes, &
           TransientSimulation,&
-          ALEFormulation,acabf,libmassbf)
+          ALEFormulation,acabf,libmassbf, SEM)
        !------------------------------------------------------------------------------
        !    INPUT:  SMB(:)/BMB(:)   nodal values of the accumulation/ablation function
        !            
@@ -660,7 +683,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        INTEGER :: nCoord, NodeIndexes(:), NSDOFs
        TYPE(Nodes_t) :: Nodes
        TYPE(Element_t), POINTER :: Element
-       LOGICAL :: TransientSimulation,ALEFormulation
+       LOGICAL :: TransientSimulation,ALEFormulation,SEM
        REAL(KIND=dp) :: acabf,libmassbf
 
        !------------------------------------------------------------------------------
@@ -676,14 +699,36 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        REAL(KIND=dp) :: Tau2_factor
        TYPE(ElementType_t), POINTER :: SaveElementType
        INTEGER :: LinType(2:4) = [202,303,404]
-
-       LOGICAL :: Stat, UseLinear
+       TYPE(Variable_t),POINTER :: GMSol
+       REAL(KIND=dp) :: NodalGM(nCoord),NodalThick(nCoord)
+       LOGICAL :: Stat, UseLinear,PartlyGroundedElement
        INTEGER :: i,j,t,p,q, n
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
-       REAL(KIND=dp) :: smbE,bmbE,area
-       REAL(KIND=dp) :: smbAtIP,bmbAtIP
+       REAL(KIND=dp) :: smbE, bmbE, area, MinH
+       REAL(KIND=dp) :: smbAtIP, bmbAtIP, GMatIP, rho, rhow, hh, sealevel
        !------------------------------------------------------------------------------
 
+       IF (SEM) THEN
+          rhow = ListGetConstReal( Model % Constants, 'SW Density', Found)
+          IF (.NOT.Found) THEN
+             WRITE (Message,'(A)') 'Fatal: Constant SW Density not found.'
+             CALL FATAL(SolverName,Message)
+          END IF
+          rho = ListGetConstReal( Model % Constants, 'Ice Density', Found)
+          IF (.NOT.Found) THEN
+             WRITE (Message,'(A)') 'Fatal: Constant Ice Density not found.'
+             CALL FATAL(SolverName,Message)
+          END IF
+          sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
+          IF (.NOT.Found) THEN
+             WRITE(Message,'(A)') 'Constant >Sea Level< not found. Setting to 0.0'
+             CALL INFO(SolverName, Message, level=20)
+             sealevel=0.0_dp
+          END IF
+          MinH = ListGetConstReal( Material, 'SSA Critical Thickness',Found)
+          If (.NOT.Found) MinH=EPSILON(MinH)
+       END IF
+          
        FORCE = 0.0_dp
        STIFF = 0.0_dp
        MASS  = 0.0_dp
@@ -694,6 +739,20 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           n = nCoord
        END IF
 
+!       IF (SEM) THEN
+!         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+!         CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+!         PartlyGroundedElement=(ANY(NodalGM(1:nCoord).GE.0._dp).AND.ANY(NodalGM(1:nCoord).LT.0._dp))
+!
+!         IF (PartlyGroundedElement) THEN
+!           IntegStuff = GaussPoints( Element , np=GLnIP )
+!         ELSE
+!           IntegStuff = GaussPoints( Element )
+!         ENDIF
+!       ELSE
+!         IntegStuff = GaussPoints( Element )
+!       ENDIF
+       
        UseLinear = GetLogical( GetSolverParams(), 'Use linear elements', Stat )
        UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
        UseLinear = UseLinear .AND. Element % TYPE % BasisFunctionDegree==2
@@ -708,12 +767,28 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        !
        !      Numerical integration:
        !      ----------------------
-       IF (Bubbles) THEN
-          IntegStuff = GaussPoints( Element, Element % TYPE % gausspoints2)
+       IF (SEM) THEN
+         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+         CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+         CALL GetLocalSolution( NodalThick,UElement=Element,UVariable=Solver % Variable)
+         PartlyGroundedElement=(ANY(NodalGM(1:nCoord).GE.0._dp).AND.ANY(NodalGM(1:nCoord).LT.0._dp))
+         IF (PartlyGroundedElement) THEN
+           IntegStuff = GaussPoints( Element , np=GLnIP )
+         ELSE
+           IF (Bubbles) THEN
+             IntegStuff = GaussPoints( Element, Element % TYPE % gausspoints2)
+           ELSE
+             IntegStuff = GaussPoints( Element )
+           END IF
+         ENDIF
        ELSE
-          IntegStuff = GaussPoints( Element )
-       END IF
-
+         IF (Bubbles) THEN
+           IntegStuff = GaussPoints( Element, Element % TYPE % gausspoints2)
+         ELSE
+           IntegStuff = GaussPoints( Element )
+         END IF
+       ENDIF
+       
        SU = 0.0_dp
        SW = 0.0_dp
 
@@ -829,10 +904,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
           !        Get accumulation/ablation function 
           !        --------------------------------------------------------- 
-          smbAtIP=SUM(Basis(1:nCoord)*SMB(1:nCoord))
-          bmbAtIP=SUM(Basis(1:nCoord)*BMB(1:nCoord))
+          smbAtIP = SUM(Basis(1:nCoord)*SMB(1:nCoord))
+          bmbAtIP = SUM(Basis(1:nCoord)*BMB(1:nCoord))
+          IF (SEM .AND. PartlyGroundedElement) THEN
+             hh=MAX(SUM(Basis(1:nCoord)*NodalThick(1:nCoord)),MinH)
+             BMBatIP = SSAEffectiveBMB(Element,IntegStuff%n,Basis,SEM,BMB(1:nCoord),hh,rho,rhow,sealevel)
+          END IF
+         
           Source = smbAtIP+bmbAtIP
-
+          
           !        Assemble force vector:
           !        ---------------------
           FORCE(1:n) = FORCE(1:n) &

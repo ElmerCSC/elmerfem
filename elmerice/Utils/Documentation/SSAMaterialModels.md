@@ -8,6 +8,8 @@
 	- Move SSA friction laws in a separate module to ease use by other piece of code
 - Rev. afcafe865: 
 	- add ComputeMeanFriction
+- 4th June 2023
+      	- add SSAEffectiveBMB
 
 ## General Description  
 Module containing utility functions to define the Material/Frictions laws for the SSA.
@@ -20,3 +22,5 @@ Module containing utility functions to define the Material/Frictions laws for th
 - ComputeMeanFriction:
 	- compute the element-averaged basal friction
 
+- SSAEffectiveBMB:
+	- Return the basal mass balance at current location

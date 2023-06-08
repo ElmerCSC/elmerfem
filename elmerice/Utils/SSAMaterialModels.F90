@@ -23,8 +23,9 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: fabien Gillet-Chaulet
+! *  Authors: fabien Gillet-Chaulet, Rupert Gladstone
 ! *  Email:   fabien.gillet-chaulet@univ-grenoble-alpes.fr
+! *           rupertgladstone1972@gmail.com
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: May 2022
@@ -34,10 +35,12 @@
 !>  Module containing utility routines for the SSA
 !--------------------------------------------------------------------------------
 MODULE SSAMaterialModels
-    USE DefUtils
+  
+  USE DefUtils
+  
+  IMPLICIT NONE
 
-   IMPLICIT NONE
-   CONTAINS
+  CONTAINS
 
 !--------------------------------------------------------------------------------
 !>  Return the effective friction coefficient
@@ -258,5 +261,66 @@ MODULE SSAMaterialModels
 
    END FUNCTION ComputeMeanFriction
 
-  END MODULE SSAMaterialModels
+!--------------------------------------------------------------------------------
+!>  Return the effective basal mass balance (to be called separately for each IP in
+!>  a partly grounded element)
+!--------------------------------------------------------------------------------
+   FUNCTION SSAEffectiveBMB(Element,nn,Basis,SEM,BMB,hh,rho,rhow,sealevel) RESULT(BMBatIP)
+     
+     IMPLICIT NONE
+
+     REAL(KIND=dp)              :: BMBatIP ! the effective basal melt rate at integration point
+
+     INTEGER,INTENT(IN)         :: nn ! element number of nodes
+     REAL(KIND=dp), INTENT(IN)  :: BMB(:) ! basal mass balance
+     LOGICAL, INTENT(IN)        :: SEM ! Sub-Element Parametrisation (requires interpolation of floatation on IPs) 
+     REAL(KIND=dp),INTENT(IN)   :: hh ! the ice thickness at current location
+     REAL(KIND=dp),INTENT(IN)   :: rho,rhow,sealevel
+     TYPE(Element_t),POINTER,INTENT(IN) :: Element
+     REAL(KIND=dp),INTENT(IN)   :: Basis(:)
+     
+     TYPE(ValueList_t), POINTER :: Material
+     TYPE(Variable_t), POINTER  :: GMSol,BedrockSol
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
+
+     REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC
+     REAL(KIND=dp) :: bedrock,Hf
+     
+     LOGICAL :: Found
+     
+     !  Sub - element GL parameterisation
+     IF (SEM) THEN
+        GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
+        CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+        BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
+        CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol)
+     END IF
+     
+     Material => GetMaterial(Element)
+     
+     MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
+     
+     BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
+
+     SELECT CASE(MeltParam)
+
+     CASE('FMP','fmp')
+
+     CASE('NMP','nmp')
+        BMBatIP = 0.0_dp
+
+     CASE('SEM','sem')
+        bedrock = SUM( NodalBed(1:nn) * Basis(1:nn) )
+        Hf= rhow * (sealevel-bedrock) / rho
+        IF (hh.LT.Hf) BMBatIP = 0.0_dp
+        
+     CASE DEFAULT
+        WRITE( Message, * ) 'SSA Melt Param not recognised:', MeltParam
+        CALL FATAL("SSAEffectiveMelt",Message)
+        
+     END SELECT
+
+   END FUNCTION SSAEffectiveBMB
+
+END MODULE SSAMaterialModels
 
