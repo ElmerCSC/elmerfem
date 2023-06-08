@@ -21,6 +21,15 @@ fem/tests/CircuitsAndDynamics
 slurm*out
 ElmerGUI/CMakeLists.txt
 
+# Test-generated files
+fem/tests/**/*.boundary
+fem/tests/**/*.elements
+fem/tests/**/*.header
+fem/tests/**/*.nodes
+fem/tests/**/*.shared
+fem/tests/**/TEST.PASSED
+fem/tests/**/results
+
 
 ### C ###
 # Prerequisites
