@@ -143,9 +143,9 @@ Solver 5
 
 ! Components of the complex voltage
   Variable 3 = AV Re
-  Operator 3 = boundary mean
+  Operator 3 = boundary int mean
   Variable 4 = AV Im
-  Operator 4 = boundary mean
+  Operator 4 = boundary int mean
 
 ! This is just to create a testable norm 
   Show norm index = 5
