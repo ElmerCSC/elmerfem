@@ -23,4 +23,14 @@ Module containing utility functions to define the Material/Frictions laws for th
 	- compute the element-averaged basal friction
 
 - SSAEffectiveBMB:
-	- Return the basal mass balance at current location
+	- Return the basal mass balance at current location.  Requires the following.
+
+In material section:
+
+SSA Melt Param = String "sem"
+
+Valid values include sem for sub element melt parameterisation (i.e. melt at each IP is allowed or not based on floatation), fmp for full melt parameterisation and nmp for no melt parameterisation.
+
+In Thickness Solver:
+
+GL integration points number = Integer 20
