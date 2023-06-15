@@ -741,8 +741,10 @@ CONTAINS
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         
         UpdateStiff = .TRUE.
-        ! print *, 'skin depth/sheet thickness', SQRT( 2.0_dp*muinv/(Real(cond)*omega))/th
-        ! print *, 'impedance', SQRT(omega/( 2.0_dp*muinv*real(cond)))
+        
+!         print *, 'skin depth', SQRT( 2.0_dp*muinv/(Real(cond)*omega))
+!         print *, 'skin depth/sheet thickness', SQRT( 2.0_dp*muinv/(Real(cond)*omega))/th
+!         print *, 'impedance', SQRT(omega/( 2.0_dp*muinv*real(cond)))
 
         !
         ! The contributions from the constraint (n x H) x n = K x n = - a (E x n) where
@@ -772,6 +774,19 @@ CONTAINS
           END DO
         END DO
 
+        DO p = 1,np
+          DO q = 1,np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+
+          DO j = 1,nd-np
+            q = j+np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+          END DO
+        END DO
+        
         CYCLE
       END IF
       
