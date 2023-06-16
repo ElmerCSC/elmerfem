@@ -14527,7 +14527,13 @@ END FUNCTION SearchNodeL
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF( GotIt ) THEN
         CALL Info('SolveLinearSystem','Linear System Preconditioning: '//TRIM(Prec),Level=8)
-        IF ( Prec=='vanka' ) CALL VankaCreate(A,Solver)
+        IF( SEQL(Prec,'vanka') ) THEN
+          IF(LEN(Prec)>=6) THEN
+            i = ICHAR(Prec(6:6)) - ICHAR('0')
+            CALL ListAddNewInteger( Params,'Vanka Mode',i) 
+          END IF
+          CALL VankaCreate(A,Solver)
+        END IF
         IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
       END IF
     END IF
@@ -15497,20 +15503,19 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   IF( Found ) THEN
     k = ParallelReduction(ParEnv % MyPe,1)     
     IF( k == ParEnv % MyPe ) THEN
-      OPEN (10, FILE=MatrixFile)
-      IF( IsComplex ) OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+      OPEN(10, FILE=MatrixFile)
       DO i=1,NoModes
-        DO j=1,NoModes
-          WRITE (10,'(ES17.9)',advance='no') FluxesMatrix(i,j)
-          IF( IsComplex ) THEN
-            WRITE (11,'(ES17.9)',advance='no') FluxesMatrixIm(i,j) 
-          END IF
-        END DO
-        WRITE(10,'(A)') ' '
-        IF( IsComplex ) WRITE(11,'(A)') ' ' 
+        WRITE (10,*) FluxesMatrix(i,:)
       END DO
       CLOSE(10)
-      IF( IsComplex ) CLOSE(11)
+
+      IF( IsComplex ) THEN
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+        DO i=1,NoModes
+          WRITE (11,*) FluxesMatrixIm(i,:) 
+        END DO
+        CLOSE(11)
+      END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
     END IF
   END IF

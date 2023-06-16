@@ -658,10 +658,10 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs
+    REAL(KIND=dp) :: th, DetJ
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
@@ -669,6 +669,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
+    TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
@@ -688,6 +689,10 @@ CONTAINS
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+
+      CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Thin Sheet Thickness')
+      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Thin Sheet Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Thin Sheet Electric Conductivity',InitIm=.TRUE.)
       InitHandles = .FALSE.
     END IF
 
@@ -714,12 +719,75 @@ CONTAINS
       !
       IF (GetElementFamily(Element) == 2) THEN
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
-            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, BasisDegree = EdgeBasisDegree, &
-            ApplyPiolaTransform = .TRUE.)
+            Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE    
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+      END IF
+
+      th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
+      IF (ThinSheet) THEN
+        IF (ndofs /= 1) CALL Fatal(Caller, 'One nodal field expected')
+        IF (.NOT. (ABS(th) > AEPS)) CYCLE
+
+        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+        IF( Found ) THEN
+          muinv = muinv * mu0inv
+        ELSE
+          muinv = mu0inv
+        END IF
+        Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+        
+        UpdateStiff = .TRUE.
+        
+!         print *, 'skin depth', SQRT( 2.0_dp*muinv/(Real(cond)*omega))
+!         print *, 'skin depth/sheet thickness', SQRT( 2.0_dp*muinv/(Real(cond)*omega))/th
+!         print *, 'impedance', SQRT(omega/( 2.0_dp*muinv*real(cond)))
+
+        !
+        ! The contributions from the constraint (n x H) x n = K x n = - a (E x n) where
+        ! the coefficient a is taken to be the product of the sheet conductivity and thickness
+        DO i = 1,nd-np
+          p = i+np
+          DO j = 1,nd-np
+            q = j+np
+            !
+            ! The term -i*omega*a < A x n, eta x n>
+            !
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
+            !
+            ! An additional term related to magnetic co-energy
+            !
+            !STIFF(p,q) = STIFF(p,q) + th * muinv * &
+            !    SUM(RotWBasis(i,:) * RotWBasis(j,:)) * detJ * IP % s(t)
+          END DO
+
+          DO q = 1,np
+            !
+            ! The term  -i*omega*a < grad V x n, eta x n>
+            !
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+        END DO
+
+        DO p = 1,np
+          DO q = 1,np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+
+          DO j = 1,nd-np
+            q = j+np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+          END DO
+        END DO
+        
+        CYCLE
       END IF
       
       IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN

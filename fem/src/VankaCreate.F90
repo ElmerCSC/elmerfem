@@ -41,7 +41,8 @@
     SUBROUTINE VankaPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-
+      IMPLICIT NONE
+      
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
 !-------------------------------------------------------------------------------
@@ -102,10 +103,11 @@
 !> Create the Vanka preconditioning.
 !------------------------------------------------------------------------------
   SUBROUTINE VankaCreate(A,Solver)
-     USE DefUtils
+    USE DefUtils
+    IMPLICIT NONE 
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
-     TYPE(Solver_t) :: Solver
+     TYPE(Solver_t), TARGET :: Solver
 !------------------------------------------------------------------------------
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
      REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
@@ -113,10 +115,11 @@
      LOGICAL ::  found
      TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
-     INTEGER :: i,j,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
+     INTEGER :: i,j,i2,j2,ierr,k,l,m,proc,rcnt,nn, dof, dofs, Active, Totcnt
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:)
-
+     REAL(KIND=dp) :: veps
+     
      TYPE Buf_t
         REAL(KIND=dp), ALLOCATABLE :: gval(:)
         INTEGER, ALLOCATABLE :: grow(:),gcol(:)
@@ -129,11 +132,6 @@
      Diag => A % Diag
      Rows => A % Rows
      Cols => A % Cols
-
-     IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
-       ALLOCATE( A % ILUvalues(SIZE(A % Values)) )
-     END IF
-     ILUValues => A % ILUValues
 
      Dofs  = Solver % Variable % DOFs
      Perm => Solver % Variable % Perm
@@ -258,12 +256,32 @@
      nn = 10*Solver % Mesh % MaxElementDOFs
      ALLOCATE( Indexes(nn), AL(nn*dofs,nn*dofs), ind(nn*dofs) )
 
-     ILUValues = 0._dp
-
      VankaMode = ListGetInteger(Solver % Values,'Vanka Mode',Found)
-
+     veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
+     IF(.NOT. Found) veps = 1.0e-6
+     
+     IF( VankaMode == 0 ) THEN
+       ! For the basic mode the filling is exactly the same as for the primary matrix
+       IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
+         ALLOCATE( A % ILUvalues(SIZE(A % Values)) )
+       END IF
+       ILUValues => A % ILUValues
+       ILUValues = 0.0_dp
+     ELSE
+       ! For the other modes we don't know the fill pattern and hence use a list matrix for assembly
+       B => AllocateMatrix()
+       B % FORMAT = MATRIX_LIST
+       A % Values => TotValues
+     END IF
+       
+     
      SELECT CASE(VankaMode)
+
      CASE(0)
+
+       ! Pick entries related to ene single element and inverse the matrix.
+       ! Add the inverse to the preconditioning matrix.
+       !-------------------------------------------------------------------
        Active = GetNOFActive(Solver)
        DO i=1,Active
          element => GetActiveElement(i)
@@ -296,84 +314,21 @@
        END DO
 
      CASE(1)
-       BLOCK
-         INTEGER :: jj, kk
-         REAL(KIND=dp) :: asum, ab, veps
+       CALL Info('VankaCreate','Using block created from connections in matrix row')
+       
+       ! Add the max index first because list matrix likes this
+       i = A % NumberOfRows 
+       CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
+       
+       DO i=1,A % NumberOfRows / dofs
+         j = dofs*(i-1)+1
          
-         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
-         IF(.NOT. Found) veps = 1.0e-6
-         
-         ! Create a temporal matrix that is used to create the ILU(=Vanka) topology
-         B => AllocateMatrix()
-         B % FORMAT = MATRIX_LIST
+         nn = A % Rows(j+1)-A % Rows(j)
+         IF(nn > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')         
+         Ind(1:nn) = A % Cols(A % Rows(j):A % Rows(j+1)-1)
 
-         ! Add the max index first because list matrix likes this
-         i = A % NumberOfRows 
-         CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
-         
-         DO i=1,A % NumberOfRows / dofs
-           j = dofs*(i-1)+1
-           
-           l = 0
-           DO k=A % Rows(j),A % Rows(j+1)-1
-             l = l+1
-             IF(l > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
-             Ind(l) = A % Cols(k)
-           END DO
-           nn = l         
-
-           A % Values => TotValues
-           al(1:nn,1:nn) = 0.0_dp
-           DO j=1,nn
-             DO k=1,nn
-               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
-                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
-               END IF
-             END DO
-           END DO
-
-           CALL InvertMatrix(al,nn)
-           asum = SUM(ABS(al(1:nn,1:nn)))
-           
-           ! For complex problems we need to have all matrix entries related to same complex number present
-           IF( A % COMPLEX ) THEN
-             DO j=1,nn/2
-               DO k=1,nn/2
-                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
-                 IF(ab < veps * asum ) CYCLE
-                 DO jj=-1,0
-                   DO kk=-1,0                     
-                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
-                   END DO
-                 END DO
-               END DO
-             END DO
-           ELSE    
-             DO j=1,nn
-               DO k=1,nn
-                 ab = ABS(AL(j,k))
-                 IF(ab < veps * asum ) CYCLE
-                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k) )
-               END DO
-             END DO
-           END IF
-         END DO
-
-         CALL List_ToCRSMatrix(B)
-
-         A % ILUValues => B % Values
-         A % ILUCols => B % Cols
-         A % ILURows => B % Rows
-
-         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
-         
-         NULLIFY( B % Values, B % Cols, B % Rows)
-         CALL FreeMatrix( B ) 
-
-         CALL Info('VankaCreate','Number of matrix non-zeros '//I2S(SIZE(A % Values)))
-         CALL Info('VankaCreate','Number of prec non-zeros '//I2S(SIZE(A % ILUValues)))
-       END BLOCK
-
+         CALL AssembleVankaBlock()
+       END DO
          
      CASE(2) 
 
@@ -381,18 +336,15 @@
          TYPE(Matrix_t), POINTER :: NodeGraph, EdgeGraph
          TYPE(Element_t), POINTER :: Edge
          TYPE(Mesh_t), POINTER :: Mesh
-         INTEGER :: n0, jj, kk
-         REAL(KIND=dp) :: asum, ab, ablock(2,2), veps
+         INTEGER :: n0
 
-         CALL Info('VankaCreate','Using block created around each edge')
-
+         CALL Info('VankaCreate','Using agressive block created around edge')
          
          Mesh => Solver % Mesh
-         IF(.NOT. ASSOCIATED(Mesh % Edges)) CALL Fatal('VankaCreate','This version requires Edges!')
-         
-         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
-         IF(.NOT. Found) veps = 1.0e-6
-         
+         IF(.NOT. ASSOCIATED(Mesh % Edges)) THEN
+           CALL Fatal('VankaCreate','This version requires Edges!')
+         END IF
+           
          ! Create a graph for node-to-edge connectivity
          !----------------------------------------------
          NodeGraph => AllocateMatrix()
@@ -426,110 +378,93 @@
 
          ! Create the preconditioning matrix
          !-----------------------------------
-         B => AllocateMatrix()
-         B % FORMAT = MATRIX_LIST
-         
          i = A % NumberOfRows 
          CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
 
          n0 = Mesh % NumberOfNodes
+
          DO i=1, Mesh % NumberOfEdges
-           j = perm(n0 + i)
            l = 0
+
+           ! First add the nodes
            DO k=EdgeGraph % Rows(i), EdgeGraph % Rows(i+1)-1
-             DO dof=1,dofs
-               l = l + 1
-               IF(l > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
-               ind(l) = dofs*(perm(EdgeGraph % Cols(k)+n0)-1)+dof 
-             END DO
-           END DO
-
-           nn = l           
-           A % Values => TotValues
-
-           al(1:nn,1:nn) = 0.0_dp
-           l = 0
-           DO j=1,nn
-             DO k=1,nn
-               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
-                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+             j = EdgeGraph % Cols(k)
+             Edge => Mesh % Edges(j)
+             DO i2=1,2
+               j2 = Edge % NodeIndexes(i2)
+               IF( ALL( Indexes(1:l) /= j2 ) )  THEN
                  l = l+1
+                 Indexes(l) = j2
                END IF
              END DO
            END DO
 
-           CALL InvertMatrix(al,nn)
-           asum = SUM(ABS(al(1:nn,1:nn)))
+           ! Then add the edges
+           DO k=EdgeGraph % Rows(i), EdgeGraph % Rows(i+1)-1
+             j = EdgeGraph % Cols(k)
+             l = l+1
+             indexes(l) = j + n0
+           END DO
 
-           ! For complex problems we need to have all matrix entries related to same complex number present
-           IF( A % COMPLEX ) THEN
-             DO j=1,nn/2
-               DO k=1,nn/2
-                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
-                 IF(ab < veps * asum ) CYCLE
-                 DO jj=-1,0
-                   DO kk=-1,0                     
-                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
-                   END DO
-                 END DO
-               END DO
+           nn=l
+           l=0
+           DO j=1,nn
+             k = Indexes(j)
+             IF(perm(k)==0) CYCLE
+             DO dof=1,dofs
+               l = l + 1
+               IF(l > SIZE(ind)) CALL Fatal('VankaCreate','Index too large for "ind" table!')
+               ind(l) = dofs*(perm(k)-1)+dof
              END DO
-           ELSE
-             DO j=1,nn
-               DO k=1,nn
-                 ab = ABS(AL(j,k))
-                 IF(ab < veps * asum ) CYCLE
-                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k))
-               END DO
-             END DO
-           END IF
+           END DO
+           IF(l==0) CYCLE
+
+           nn = l
+           CALL AssembleVankaBlock()
          END DO
-         
          CALL FreeMatrix( EdgeGraph )         
-         CALL List_ToCRSMatrix(B)
-
-         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
-         
-         A % ILUValues => B % Values
-         A % ILUCols => B % Cols
-         A % ILURows => B % Rows
-         
-         NULLIFY( B % Values, B % Cols, B % Rows)
-         CALL FreeMatrix( B ) 
          
        END BLOCK
 
 
      CASE(3)
        BLOCK
-         INTEGER :: jj, kk
-         REAL(KIND=dp) :: asum, ab, veps
          TYPE(Mesh_t), POINTER :: Mesh
          TYPE(Element_t), POINTER :: Face
-         INTEGER :: nn2
+         INTEGER :: nn2, NoElems
          INTEGER, POINTER :: Indexes2(:)
          
-
          CALL Info('VankaCreate','Using block created around each face')
          
          Mesh => Solver % Mesh
+         IF( Mesh % MeshDim == 3 ) THEN
+           IF(.NOT. ASSOCIATED(Mesh % Faces)) THEN
+             CALL Warn('VankaCreate','This mode requires existance of Faces in 3D!')
+             CALL FindMeshFaces3D(Mesh)
+           END IF
+           NoElems = Mesh % NumberOfFaces
+         ELSE
+           IF(.NOT. ASSOCIATED(Mesh % Edges)) THEN
+             CALL Warn('VankaCreate','This mode requires existance of Edges in 2D!')
+             CALL FindMeshEdges2D(Mesh)
+           END IF
+           
+           NoElems = Mesh % NumberOfEdges
+         END IF
+
          ALLOCATE(Indexes2(SIZE(Indexes)))
          
-         veps = ListGetCReal( Solver % Values,'Vanka epsilon',Found)
-         IF(.NOT. Found) veps = 1.0e-6
-
-         ! Create a temporal matrix that is used to create the ILU(=Vanka) topology
-         B => AllocateMatrix()
-         B % FORMAT = MATRIX_LIST
-
          ! Add the max index first because list matrix likes this
          i = A % NumberOfRows 
          CALL List_AddToMatrixElement( B % ListMatrix,i,i,0.0_dp )
-
-
-         DO i=1, Mesh % NumberOfFaces
-
-           Face => Mesh % Faces(i)
+         
+         DO i=1, NoElems 
+           IF( Mesh % MeshDim == 3 ) THEN
+             Face => Mesh % Faces(i)
+           ELSE
+             Face => Mesh % Edges(i)
+           END IF
+             
            nn = 0
            nn2 = 0
            DO j=1,2
@@ -538,7 +473,6 @@
              ELSE
                Element => Face % BoundaryInfo % Right
              END IF
-
              IF(.NOT. ASSOCIATED(Element) ) CYCLE
 
              IF(j==1) THEN 
@@ -574,65 +508,151 @@
              END DO
            END DO
            IF(l==0) CYCLE
+
            nn = l
-
-           A % Values => TotValues
-           al(1:nn,1:nn) = 0.0_dp
-           DO j=1,nn
-             DO k=1,nn
-               IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
-                 al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
-               END IF
-             END DO
-           END DO
-
-           CALL InvertMatrix(al,nn)
-           asum = SUM(ABS(al(1:nn,1:nn)))
-
-           ! For complex problems we need to have all matrix entries related to same complex number present
-           IF( A % COMPLEX ) THEN
-             DO j=1,nn/2
-               DO k=1,nn/2
-                 ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
-                 IF(ab < veps * asum ) CYCLE
-                 DO jj=-1,0
-                   DO kk=-1,0                     
-                     CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
-                   END DO
-                 END DO
-               END DO
-             END DO
-           ELSE    
-             DO j=1,nn
-               DO k=1,nn
-                 ab = ABS(AL(j,k))
-                 IF(ab < veps * asum ) CYCLE
-                 CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k) )
-               END DO
-             END DO
-           END IF
+           CALL AssembleVankaBlock()
          END DO
 
-         CALL List_ToCRSMatrix(B)
-
-         A % ILUValues => B % Values
-         A % ILUCols => B % Cols
-         A % ILURows => B % Rows
-
-         PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
-        
-         NULLIFY( B % Values, B % Cols, B % Rows)
-         CALL FreeMatrix( B ) 
-
-         CALL Info('VankaCreate','Number of matrix non-zeros '//I2S(SIZE(A % Values)))
-         CALL Info('VankaCreate','Number of prec non-zeros '//I2S(SIZE(A % ILUValues)))
-
        END BLOCK
-               
-     END SELECT
+
+#if 0
+     CASE(4)
+       ! This does not really work for the problems tested
+       BLOCK                  
+         TYPE(Mesh_t), POINTER :: Mesh
+         INTEGER :: NoLayers = 0
+         INTEGER, POINTER :: DownPointer(:), TopPointer(:)
+         TYPE(Variable_t), POINTER :: ExtVar
+         TYPE(Solver_t), POINTER :: pSolver
+         
+         SAVE ExtVar, DownPointer, TopPointer, NoLayers
+         
+         CALL Info('VankaCreate','Using block created by inverse extrusion') 
+
+         pSolver => Solver
+         Mesh => Solver % Mesh
+         
+         ! Find the extruded structure 
+         IF( NoLayers == 0 ) THEN
+           CALL DetectExtrudedStructure( Mesh, pSolver, ExtVar, &
+               TopNodePointer = TopPointer, DownNodePointer = DownPointer, &
+               NumberOfLayers = NoLayers )
+         END IF
+
+         i = (NoLayers+1)*dofs
+         IF( SIZE(Ind) < i ) THEN
+           DEALLOCATE( Ind, al)
+           ALLOCATE(Ind(i),al(i,i))           
+         END IF
+           
+         DO i=1,Mesh % NumberOfNodes
+           IF( TopPointer(i) == i ) THEN
+             l = 1
+             k = i
+             Indexes(1) = k
+             DO j = 1,NoLayers
+               k = DownPointer(k)
+               l = l+1
+               Indexes(l) = k
+             END DO
+             
+             nn = l
+             l = 0
+             DO j=1,nn
+               k = Indexes(j)
+               IF(perm(k)==0) CYCLE
+               DO dof=1,dofs
+                 l = l + 1
+                 IF(l > SIZE(ind)) THEN
+                   PRINT *,'l:',l,size(ind)
+                   CALL Fatal('VankaCreate','Index too large for "ind" table!')
+                 END IF
+                 ind(l) = dofs*(perm(k)-1)+dof
+               END DO
+             END DO
+             IF(l==0) CYCLE
+
+             nn = l
+             CALL AssembleVankaBlock()
+           END IF
+         END DO                      
+       END BLOCK
+#endif
+
+     CASE DEFAULT
+
+       CALL Fatal('VankaCreate','Unknown vanka mode: '//I2S(VankaMode))
        
+     END SELECT
+
+     ! This is common to all other vanka modes except the basic elemental one. 
+     IF( VankaMode > 0 ) THEN
+       CALL List_ToCRSMatrix(B)
+       PRINT *,'Nonzeros per row Vanka:',1.0_dp * SIZE(B % Values) / B % NumberOfRows
+       PRINT *,'Fill ratio for Vanka:',1.0_dp * SIZE(B % Values) / SIZE(A % Values)
+       
+       IF(ASSOCIATED(A % ILUValues)) DEALLOCATE(A % ILUValues)
+       IF(ASSOCIATED(A % ILUCols)) DEALLOCATE(A % ILUCols)
+       IF(ASSOCIATED(A % ILURows)) DEALLOCATE(A % ILURows)
+       
+       A % ILUValues => B % Values
+       A % ILUCols => B % Cols
+       A % ILURows => B % Rows
+       
+       ! Nullify these so that they wont be destroyed
+       NULLIFY( B % Values, B % Cols, B % Rows)
+       CALL FreeMatrix( B )               
+     END IF
+   
      A % Values => Svalues
      DEALLOCATE(AL, Indexes, Ind, TotValues)
+
+
+   CONTAINS
+     
+     SUBROUTINE AssembleVankaBlock()
+       
+       INTEGER :: jj, kk
+       REAL(KIND=dp) :: asum, ab
+       
+       
+       al(1:nn,1:nn) = 0.0_dp
+       DO j=1,nn
+         DO k=1,nn
+           IF( CRS_CheckMatrixElement( A,Ind(j), Ind(k) ) ) THEN
+             al(j,k) = CRS_GetMatrixElement( A, ind(j), ind(k) )
+           END IF
+         END DO
+       END DO
+
+       CALL InvertMatrix(al,nn)
+       asum = SUM(ABS(al(1:nn,1:nn)))
+
+       ! For complex problems we need to have all matrix entries related to same complex number present
+       IF( A % COMPLEX ) THEN
+         DO j=1,nn/2
+           DO k=1,nn/2
+             ab = SUM( ABS(AL(2*j-1:2*j,2*k-1:2*k)) )
+             IF(ab < veps * asum ) CYCLE
+             DO jj=-1,0
+               DO kk=-1,0                     
+                 CALL List_AddToMatrixElement( B % ListMatrix,ind(2*j+jj),ind(2*k+kk),AL(2*j+jj,2*k+kk) )
+               END DO
+             END DO
+           END DO
+         END DO
+       ELSE    
+         DO j=1,nn
+           DO k=1,nn
+             ab = ABS(AL(j,k))
+             IF(ab < veps * asum ) CYCLE
+             CALL List_AddToMatrixElement( B % ListMatrix,ind(j),ind(k),AL(j,k) )
+           END DO
+         END DO
+       END IF
+       
+     END SUBROUTINE AssembleVankaBlock
+              
 !------------------------------------------------------------------------------
   END SUBROUTINE VankaCreate
 !------------------------------------------------------------------------------

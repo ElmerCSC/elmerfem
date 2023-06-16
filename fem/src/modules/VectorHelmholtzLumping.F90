@@ -1,0 +1,525 @@
+!------------------------------------------------------------------------------
+!> Calculate lumped fields for vector helmholtz type solver.
+!------------------------------------------------------------------------------
+ SUBROUTINE VectorHelmholtzLumping(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+   USE DefUtils
+
+   IMPLICIT NONE
+!------------------------------------------------------------------------------
+   TYPE(Solver_t) :: Solver
+   TYPE(Model_t) :: Model
+   REAL(KIND=dp) :: dt
+   LOGICAL :: Transient
+!------------------------------------------------------------------------------
+   TYPE(Variable_t), POINTER :: EVar, PotVar
+   TYPE(Element_t), POINTER :: Element
+   INTEGER :: i, j, t, k, vdofs, soln, Active, iMode, jMode=0
+   TYPE(Solver_t), POINTER :: pSolver
+   REAL(KIND=dp) :: mu0inv, eps0, Omega
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname
+   LOGICAL :: Found, stat, InitHandles
+   TYPE(Mesh_t), POINTER :: Mesh
+   COMPLEX(KIND=dp), ALLOCATABLE :: IntPoynt(:,:), IntCurr(:,:), IntVolt(:,:)   
+   REAL(KIND=dp), ALLOCATABLE :: IntCenter(:,:), IntWeight(:)   
+   INTEGER, ALLOCATABLE :: CenterNode(:)
+   INTEGER, POINTER :: PotPerm(:)
+   REAL(KIND=dp), POINTER :: PotVals(:)
+   INTEGER :: EdgeBasisDegree, NoModes
+   LOGICAL :: PiolaVersion, NodalMode, EdgeMode
+   TYPE(ValueList_t), POINTER :: SolverParams, BC 
+   LOGICAL :: Visited = .FALSE.
+   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzLumping'
+
+   SAVE IntCenter, IntWeight, IntCurr, IntVolt, IntPoynt, CenterNode, jMode, NoModes 
+
+   
+!-------------------------------------------------------------------------------------------
+
+   CALL Info(Caller,'',Level=6 )
+   CALL Info(Caller,'----------------------------------------------------------',Level=6 )
+   CALL Info(Caller,'Computing derived fields for electromagnetic wave equation!',Level=4 )
+   
+   SolverParams => GetSolverParams()
+
+   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
+   IF( soln == 0 ) THEN
+     CALL Fatal(Caller,'We should know > Primary Solver Index <')
+   END IF
+
+   ! Pointer to primary solver
+   pSolver => Model % Solvers(soln)
+
+   Mesh => GetMesh()
+   
+   Omega = GetAngularFrequency(pSolver % Values,Found=Found)
+   IF(.NOT. Found) CALL Fatal(Caller,'We need angular frequency!')
+   
+   Found = .FALSE.
+   IF( ASSOCIATED( Model % Constants ) ) THEN
+     mu0inv = 1.0_dp / GetConstReal( Model % Constants,'Permeability of Vacuum', Found )
+   END IF
+   IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
+   
+   Found = .FALSE.
+   IF( ASSOCIATED( Model % Constants ) ) THEN
+     eps0 = GetConstReal ( Model % Constants,'Permittivity of Vacuum', Found )
+   END IF
+   IF(.NOT. Found ) eps0 = 8.854187817d-12   
+
+   IF(.NOT. Visited ) THEN
+     NoModes = 0
+     DO i=1,Model % NumberOfBCs
+       j = ListGetInteger( Model % BCs(i) % Values,'Constraint Mode', Found )
+       NoModes = MAX(NoModes, j)
+     END DO
+     PRINT *,'NoModes:',NoModes
+     
+     ALLOCATE( IntPoynt(NoModes,NoModes), IntCurr(NoModes,NoModes), IntVolt(NoModes,NoModes), &
+         IntCenter(NoModes,3), IntWeight(NoModes), CenterNode(NoModes) )
+     IntPoynt = 0.0_dp
+     IntCurr = 0.0_dp
+     IntVolt = 0.0_dp
+   END IF       
+   jMode = jMode + 1
+
+   IF(jMode > NoModes ) THEN
+     CALL Fatal(Caller,'The lumping was already called "NoModes" times!')
+   END IF
+   
+   ! For now, in future add possibility to directly utilize Hcurl basis
+   NodalMode = ListGetLogical(SolverParams,'Nodal Target Field',Found )   
+   EdgeMode = .NOT. NodalMode
+
+   IF( NodalMode ) THEN  
+     CALL Info(Caller,'Assuming electric field living on nodes')
+
+     evar => VariableGet( Mesh % Variables, 'Electric field e', ThisOnly = .TRUE.)
+     IF(.NOT. ASSOCIATED( evar ) ) THEN
+       evar => VariableGet( Mesh % Variables, 'Electric field', ThisOnly = .TRUE.)
+     END IF
+     IF(.NOT. ASSOCIATED(evar) ) THEN
+       CALL Fatal(Caller,'Could not find nodal electric field!')
+     END IF
+     IF( evar % dofs /= 6 ) THEN
+       CALL Fatal(Caller,'Nodal mode assumes exactly 6 dofs, not '//I2S(evar % dofs))
+     END IF
+   ELSE
+     CALL Info(Caller,'Assuming electric field to live in Hcurl')
+     Pname = ListGetString( SolverParams,'Target Variable', Found )
+     IF(Found ) THEN
+       Evar => VariableGet( pSolver % Mesh % Variables, Pname ) 
+     ELSE
+       Evar => pSolver % Variable
+       Pname = getVarName(pSolver % Variable)
+     END IF
+     IF(.NOT. ASSOCIATED(evar) ) THEN
+       CALL Fatal(Caller,'Could not find electric field living on edges!')
+     END IF
+     
+     CALL Info(Caller,'Name of target variable: '//TRIM(pName),Level=10)
+
+     ! Inherit the solution basis from the primary solver
+     vDOFs = Evar % DOFs
+     IF( vDofs /= 2 ) CALL Fatal(Caller,'Primary field should have two components!')
+     IF( GetLogical( pSolver % Values,'Quadratic Approximation', Found ) ) THEN
+       PiolaVersion = .TRUE.
+       EdgeBasisDegree = 2
+     ELSE
+       PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found )
+       EdgeBasisDegree = 1
+     END IF
+     IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
+   END IF
+  
+   
+   Active = GetNOFBoundaryElements()
+
+   InitHandles = .TRUE.
+   IntCenter = 0.0_dp
+   IntWeight = 0.0_dp
+   
+   DO t=1,Active
+     Element => GetBoundaryElement(t)
+     BC => GetBC()
+     IF (.NOT. ASSOCIATED(BC) ) CYCLE
+
+     iMode = ListGetInteger( BC,'Constraint Mode',Found )
+     IF( iMode == 0 ) CYCLE       
+
+     IF(.NOT. NodalMode) THEN
+       SELECT CASE(GetElementFamily())
+       CASE(1)
+         CYCLE
+       CASE(2)
+         k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
+       CASE(3,4)
+         k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
+       END SELECT
+     END IF
+     
+     CALL LocalIntegBC(BC,Element,InitHandles )
+   END DO
+
+   PRINT *,'Energy through port:',IntPoynt(jMode,:)
+   PRINT *,'Current through port:',IntCurr(jMode,:)
+
+   CALL CenterPortLoc()
+   
+   potVar => VariableGet( Mesh % Variables,'Potential', ThisOnly = .TRUE.)
+   IF( ASSOCIATED( potVar ) ) THEN
+     CALL Info(Caller,'Computing voltage using "Potential" as path indicator')
+     potVals => PotVar % Values
+     PotPerm => PotVar % Perm        
+     CALL EdgeVoltageIntegral()
+   ELSE
+     CALL Info(Caller,'Cannot compute voltage as no "Potential" is present')
+   END IF
+     
+   IF( jMode == NoModes ) THEN
+     CALL Info(Caller,'Writing results on final visit!')
+
+     OPEN (10, FILE="Poynt_re.dat")
+     DO i=1,NoModes
+       WRITE(10,*) REAL(IntPoynt(i,:))
+     END DO
+     CLOSE(10) 
+     OPEN (10, FILE="Poynt_im.dat")
+     DO i=1,NoModes
+       WRITE(10,*) AIMAG(IntPoynt(i,:))
+     END DO
+     CLOSE(10) 
+     OPEN (10, FILE="Curr_re.dat")
+     DO i=1,NoModes
+       WRITE(10,*) REAL(IntPoynt(i,:))
+     END DO
+     CLOSE(10) 
+     OPEN (10, FILE="Curr_im.dat")
+     DO i=1,NoModes
+       WRITE(10,*) AIMAG(IntPoynt(i,:))
+     END DO
+     CLOSE(10) 
+     IF( ASSOCIATED( PotVar ) ) THEN
+       OPEN (10, FILE="Volt_re.dat")
+       DO i=1,NoModes
+         WRITE(10,*) REAL(IntVolt(i,:))
+       END DO
+       CLOSE(10) 
+       OPEN (10, FILE="Volt_im.dat")
+       DO i=1,NoModes
+         WRITE(10,*) AIMAG(IntVolt(i,:))
+       END DO
+       CLOSE(10)
+     END IF
+   END IF
+        
+   Visited = .TRUE.
+   CALL Info(Caller,'All done for now!',Level=20)   
+   
+   
+CONTAINS
+
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE LocalIntegBC( BC, Element, InitHandles )
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: InitHandles
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
+        e_ip(3), e_ip_norm, e_ip_tan(3), imu
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
+    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond
+    LOGICAL :: Stat, Found
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
+    TYPE(Nodes_t), SAVE :: Nodes
+    LOGICAL :: AllocationsDone = .FALSE.
+    TYPE(Element_t), POINTER :: Parent
+    TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
+    TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
+    
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local
+
+    IF(.NOT. AllocationsDone ) THEN
+      m = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(6,m) )      
+      AllocationsDone = .TRUE.
+    END IF
+    
+    IF( InitHandles ) THEN
+      CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
+      CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
+      CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
+      CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
+      CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)      
+      CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity')
+      InitHandles = .FALSE.
+    END IF
+
+    imu = CMPLX(0.0_dp, 1.0_dp)
+    
+    CALL GetElementNodes( Nodes, Element )    
+    Parent => GetBulkElementAtBoundary(Element)
+    IF(.NOT. ASSOCIATED( Parent ) ) THEN
+      CALL Fatal(Caller,'Model lumping requires parent element!')
+    END IF
+    
+    IF( NodalMode ) THEN
+      CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar )
+    ELSE
+      CALL GetVectorLocalSolution( e_local, Pname, uSolver=pSolver)
+    END IF
+      
+    Normal = NormalVector(Element, Nodes, Check=.TRUE.)
+    
+    ! Numerical integration:
+    !-----------------------
+    n = Element % TYPE % NumberOfNodes
+    IF( NodalMode ) THEN
+      IP = GaussPoints(Element)
+    ELSE
+      IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+      nd = GetElementNOFDOFs(uSolver=pSolver)
+    END IF
+
+    DO t=1,IP % n  
+      
+      IF( NodalMode ) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis )              
+      ELSE 
+        IF (GetElementFamily(Element) == 2) THEN
+          stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
+              Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        ELSE    
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+        END IF
+      END IF
+
+      weight = IP % s(t) * detJ
+
+      ! Get material properties from parent element.
+      !----------------------------------------------
+      muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+      IF( Found ) THEN
+        muinv = muinv * mu0inv
+      ELSE
+        muinv = mu0inv
+      END IF
+
+      eps = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+      IF( Found ) THEN
+        eps = eps * eps0
+      ELSE
+        eps = eps0
+      END IF
+
+      Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
+
+                  
+      IF( NodalMode ) THEN
+        DO i=1,3
+          e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
+        END DO
+      ELSE
+        e_ip = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,:)))
+      END IF
+
+      e_ip_norm = SUM(e_ip*Normal)
+      e_ip_tan = e_ip - e_ip_norm * Normal
+      
+      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+      Zs = B * muinv / (imu*Omega)
+      
+      IntPoynt(jMode,iMode) = IntPoynt(jMode,iMode) + weight * &
+          SQRT(SUM(e_ip_tan * CONJG(e_ip_tan) ) ) / Zs
+      IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
+          ( imu * Omega * Eps + cond ) * e_ip_norm 
+
+      IntWeight(iMode) = IntWeight(iMode) + weight
+      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
+      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * SUM(Basis(1:n) * Nodes % y(1:n)) 
+      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * SUM(Basis(1:n) * Nodes % z(1:n))       
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalIntegBC
+!------------------------------------------------------------------------------
+
+
+  ! Find a node closest to the port center.
+  !-----------------------------------------
+  SUBROUTINE CenterPortLoc()
+    
+    INTEGER :: i,iMode,mini
+    REAL(KIND=dp) :: mindist2, dist2, Coord0(3), Coord1(3)    
+
+    PRINT *,'IntWeight:',IntWeight
+    
+    ! Calculate the center nodes for each mode.
+    IF( ANY( IntWeight < EPSILON(dist2) ) ) THEN
+      PRINT *,'IntWeight:',IntWeight
+      CALL Fatal(Caller,'Some weight is zero!')
+    END IF
+
+    DO i=1,3
+      IntCenter(:,i) = IntCenter(:,i) / IntWeight(:)
+    END DO
+
+        
+    ! Find the node closest to the center for each port
+    ! As each port is planar the node with minimum distance
+    ! should hopefully lie on the port as well.  
+    CenterNode = 0
+    DO iMode=1,NoModes
+      Coord0 = IntCenter(iMode,:)
+      PRINT *,'Center:',Coord0
+            
+      mindist2 = HUGE(mindist2)
+      DO i=1,Mesh % NumberOfNodes
+        Coord1(1) = Mesh % Nodes % x(i)
+        Coord1(2) = Mesh % Nodes % y(i)
+        Coord1(3) = Mesh % Nodes % z(i)        
+        dist2 = SUM((Coord0-Coord1)**2)
+        IF(dist2 < mindist2 ) THEN
+          mindist2 = dist2
+          mini = i
+        END IF
+      END DO
+
+      PRINT *,'Minimum distance:',iMode,mini,SQRT(mindist2)
+      
+      CenterNode(iMode) = mini      
+    END DO
+    
+  END SUBROUTINE CenterPortLoc
+    
+
+  ! Perform line integral from the center of port to ground. The ground is defined as a node having
+  ! the smallest potential that can be reached following the edges. The integral is taking over this
+  ! route. 
+  !-------------------------------------------------------------------------------------------------
+  SUBROUTINE EdgeVoltageIntegral()
+
+    TYPE(Matrix_t), POINTER :: NodeGraph
+    COMPLEX :: gradv(3), Circ
+    REAL(KIND=dp) :: pot, minpot, EdgeVector(3), s
+    INTEGER :: iMode, nsteps, sgn, i, j, k, kmin, imin, i1, i2, j1, j2, l, lp, n0
+    INTEGER, POINTER :: NodeIndexes(:)
+    TYPE(Element_t), POINTER :: Edge
+
+    
+    ! Create a graph for node-to-edge connectivity
+    !----------------------------------------------
+    NodeGraph => AllocateMatrix()
+    NodeGraph % FORMAT = MATRIX_LIST         
+    DO i = Mesh % NumberOfEdges, 1, -1
+      Edge => Mesh % Edges(i)
+      DO j=1, Edge % TYPE % NumberOfNodes 
+        CALL List_AddToMatrixElement( NodeGraph % ListMatrix,Edge % NodeIndexes(j),i,1.0_dp )
+      END DO
+    END DO
+    CALL List_ToCRSMatrix(NodeGraph)
+    PRINT *,'Nonzeros per row NodeGraph:',1.0_dp * SIZE(NodeGraph % Values) / NodeGraph % NumberOfRows
+    n0 = Mesh % NumberOfNodes
+    
+    DO iMode=1,NoModes
+      i = CenterNode(iMode)
+      minpot = PotVals(PotPerm(i))
+      nsteps = 0
+      Circ = 0.0_dp
+      
+      PRINT *,'Starting pot:',iMode, minpot
+      
+      DO WHILE(.TRUE.)
+        kmin = 0
+        DO j = NodeGraph % Rows(i),NodeGraph % Rows(i+1)-1
+          k = NodeGraph % Cols(j)
+          Edge => Mesh % Edges(k)
+          NodeIndexes => Edge % NodeIndexes
+          DO l=1,2
+            IF(NodeIndexes(l) == i) CYCLE
+            lp = PotPerm(NodeIndexes(l))
+            IF(lp == 0) CYCLE
+            pot = PotVals(lp)
+            IF( pot < minpot ) THEN
+              kmin = k
+              imin  = NodeIndexes(l)
+              minpot = pot              
+            END IF
+          END DO
+        END DO
+        IF( kmin == 0 ) EXIT
+
+        nsteps = nsteps + 1
+        
+        ! The edge to integrate over
+        k = kmin
+
+        ! Edge that goes to the minimum value
+        Edge => Mesh % Edges(k)
+
+        i1 = Edge % NodeIndexes(1)
+        i2 = Edge % NodeIndexes(2)
+                
+        EdgeVector(1) = Mesh % Nodes % x(i2) - Mesh % Nodes % x(i1)
+        EdgeVector(2) = Mesh % Nodes % y(i2) - Mesh % Nodes % y(i1)
+        EdgeVector(3) = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
+
+        ! Integration length and direction
+        s = SQRT(SUM(EdgeVector**2))
+
+        ! If we do the path integral in the wrong direction compared to definiotion of edge swith the sign
+        sgn = 1
+        IF(i /= Edge % NodeIndexes(1) ) sgn = -sgn 
+
+        IF( NodalMode ) THEN
+          j1 = eVar % Perm(i1)
+          j2 = eVar % Perm(i2)          
+          DO k=1,3
+            gradv(k) = CMPLX(eVar % Values(6*(j1-1)+k) + eVar % Values(6*(j2-1)+k),&
+                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) )
+          END DO
+          
+          gradv = gradv / 2
+          Circ = Circ + sgn * SUM(gradv*EdgeVector)
+        ELSE        
+          ! Check the sign if the direction based on global edge direction rules
+          IF( ParEnv % PEs > 1 ) THEN                            
+            i1 = Mesh % ParallelInfo % GlobalDOFs(i1)             
+            i2 = Mesh % ParallelInfo % GlobalDOFs(i2)             
+          END IF
+          IF( i1 < i2) sgn = -sgn      
+                                      
+          j = eVar % Perm(n0 + k)
+          Circ = Circ + s * sgn * CMPLX( eVar % Values(2*j-1),eVar % Values(2*j) )
+        END IF
+
+        ! Continue from the end point
+        i = imin
+      END DO
+
+      PRINT *,'Path integral:',iMode, minpot, nsteps, Circ
+      
+      IntVolt(jMode,iMode) = Circ
+    END DO
+
+    CALL FreeMatrix(NodeGraph)
+    
+  END SUBROUTINE EdgeVoltageIntegral
+    
+!------------------------------------------------------------------------
+END SUBROUTINE VectorHelmholtzLumping
+!------------------------------------------------------------------------
+
