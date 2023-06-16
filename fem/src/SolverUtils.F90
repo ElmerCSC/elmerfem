@@ -15503,20 +15503,19 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   IF( Found ) THEN
     k = ParallelReduction(ParEnv % MyPe,1)     
     IF( k == ParEnv % MyPe ) THEN
-      OPEN (10, FILE=MatrixFile)
-      IF( IsComplex ) OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+      OPEN(10, FILE=MatrixFile)
       DO i=1,NoModes
-        DO j=1,NoModes
-          WRITE (10,'(ES17.9)',advance='no') FluxesMatrix(i,j)
-          IF( IsComplex ) THEN
-            WRITE (11,'(ES17.9)',advance='no') FluxesMatrixIm(i,j) 
-          END IF
-        END DO
-        WRITE(10,'(A)') ' '
-        IF( IsComplex ) WRITE(11,'(A)') ' ' 
+        WRITE (10,*) FluxesMatrix(i,:)
       END DO
       CLOSE(10)
-      IF( IsComplex ) CLOSE(11)
+
+      IF( IsComplex ) THEN
+        OPEN( 11, FILE=TRIM(MatrixFile)//'_im')
+        DO i=1,NoModes
+          WRITE (11,*) FluxesMatrixIm(i,:) 
+        END DO
+        CLOSE(11)
+      END IF
       CALL Info( Caller,'Constraint modes fluxes was saved to file '//TRIM(MatrixFile),Level=5)
     END IF
   END IF
