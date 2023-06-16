@@ -462,7 +462,6 @@ CONTAINS
     INTEGER :: iMode, nsteps, sgn, i, j, k, kmin, imin, i1, i2, j1, j2, l, lp, n0
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Edge
-
     
     ! Create a graph for node-to-edge connectivity
     !----------------------------------------------
@@ -526,17 +525,15 @@ CONTAINS
 
         ! If we do the path integral in the wrong direction compared to definiotion of edge swith the sign
         sgn = 1
-        IF(i /= Edge % NodeIndexes(1) ) sgn = -sgn 
+        IF(i /= i1 ) sgn = -sgn 
 
         IF( NodalMode ) THEN
           j1 = eVar % Perm(i1)
           j2 = eVar % Perm(i2)          
           DO k=1,3
             gradv(k) = CMPLX(eVar % Values(6*(j1-1)+k) + eVar % Values(6*(j2-1)+k),&
-                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) )
+                eVar % Values(6*(j1-1)+3+k) + eVar % Values(6*(j2-1)+3+k) ) / 2
           END DO
-          
-          gradv = gradv / 2
           Circ = Circ + sgn * SUM(gradv*EdgeVector)
         ELSE        
           ! Check the sign if the direction based on global edge direction rules
