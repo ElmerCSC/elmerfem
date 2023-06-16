@@ -191,12 +191,12 @@
      CLOSE(10) 
      OPEN (10, FILE="Curr_re.dat")
      DO i=1,NoModes
-       WRITE(10,*) REAL(IntPoynt(i,:))
+       WRITE(10,*) REAL(IntCurr(i,:))
      END DO
      CLOSE(10) 
      OPEN (10, FILE="Curr_im.dat")
      DO i=1,NoModes
-       WRITE(10,*) AIMAG(IntPoynt(i,:))
+       WRITE(10,*) AIMAG(IntCurr(i,:))
      END DO
      CLOSE(10) 
      IF( ASSOCIATED( PotVar ) ) THEN
@@ -220,6 +220,51 @@
 CONTAINS
 
 
+!------------------------------------------------------------------------------
+  SUBROUTINE FindParentUVW( Nodes, n, &
+      ParentNodes, Parent, U, V, W, Basis )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE( Nodes_t ) :: Nodes, ParentNodes
+    TYPE( Element_t ), POINTER :: Parent
+    INTEGER :: n
+    REAL( KIND=dp ) :: U, V, W, Basis(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, nParent, Check
+    REAL(KIND=dp) :: Dist, DistTolerance
+    REAL(KIND=dp) :: NodalParentU(n), &
+        NodalParentV(n), NodalParentW(n)
+!------------------------------------------------------------------------------
+    DistTolerance = 1.0d-12
+
+    nParent = Parent % Type % NumberOfNodes
+    
+    Check = 0
+    DO i = 1,n
+      DO j = 1,nParent
+        Dist = (Nodes % x(i) - ParentNodes % x(j))**2 & 
+            + (Nodes % y(i) - ParentNodes % y(j))**2 & 
+            + (Nodes % z(i) - ParentNodes % z(j))**2
+
+        IF( Dist < DistTolerance ) THEN
+          Check = Check+1
+          NodalParentU(i) = Parent % Type % NodeU(j)
+          NodalParentV(i) = Parent % Type % NodeV(j)
+          NodalParentW(i) = Parent % Type % NodeW(j)
+        END IF
+
+      END DO
+    END DO
+    IF( Check /= n ) CALL Fatal('FindParentUVW','Could not find all points in element!') 
+
+    U = SUM( Basis(1:n) * NodalParentU(1:n) )
+    V = SUM( Basis(1:n) * NodalParentV(1:n) )
+    W = SUM( Basis(1:n) * NodalParentW(1:n) )
+!------------------------------------------------------------------------------      
+  END SUBROUTINE FindParentUVW
+!------------------------------------------------------------------------------      
+
+  
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalIntegBC( BC, Element, InitHandles )
 !------------------------------------------------------------------------------
@@ -230,11 +275,11 @@ CONTAINS
     COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
         e_ip(3), e_ip_norm, e_ip_tan(3), imu
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
-    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond
+    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w
     LOGICAL :: Stat, Found
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t), SAVE :: Nodes, ParentNodes
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
@@ -243,7 +288,7 @@ CONTAINS
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local
 
     IF(.NOT. AllocationsDone ) THEN
-      m = Mesh % MaxElementDOFs
+      m = 2*Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(6,m) )      
       AllocationsDone = .TRUE.
     END IF
@@ -265,6 +310,7 @@ CONTAINS
 
     imu = CMPLX(0.0_dp, 1.0_dp)
     
+    n = Element % TYPE % NumberOfNodes
     CALL GetElementNodes( Nodes, Element )    
     Parent => GetBulkElementAtBoundary(Element)
     IF(.NOT. ASSOCIATED( Parent ) ) THEN
@@ -274,41 +320,30 @@ CONTAINS
     IF( NodalMode ) THEN
       CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar )
     ELSE
-      CALL GetVectorLocalSolution( e_local, Pname, uSolver=pSolver)
+      CALL GetElementNodes( ParentNodes, Parent )    
+      CALL GetVectorLocalSolution( e_local, Pname, uSolver=pSolver )
+      np = n*pSolver % Def_Dofs(GetElementFamily(Parent),Parent % BodyId,1)
+      nd = GetElementNOFDOFs(Parent,uSolver=pSolver)
     END IF
       
     Normal = NormalVector(Element, Nodes, Check=.TRUE.)
     
     ! Numerical integration:
     !-----------------------
-    n = Element % TYPE % NumberOfNodes
     IF( NodalMode ) THEN
       IP = GaussPoints(Element)
     ELSE
       IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-      nd = GetElementNOFDOFs(uSolver=pSolver)
     END IF
 
     DO t=1,IP % n  
       
-      IF( NodalMode ) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis )              
-      ELSE 
-        IF (GetElementFamily(Element) == 2) THEN
-          stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
-              Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-        ELSE    
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-              IP % W(t), detJ, Basis, dBasisdx, &
-              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
-        END IF
-      END IF
-
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis )              
       weight = IP % s(t) * detJ
 
+      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+            
       ! Get material properties from parent element.
       !----------------------------------------------
       muinv = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
@@ -327,30 +362,39 @@ CONTAINS
 
       Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
 
-                  
+      Zs = B * muinv / (imu*Omega)
+      
+      IntWeight(iMode) = IntWeight(iMode) + weight
+      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
+      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * SUM(Basis(1:n) * Nodes % y(1:n)) 
+      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * SUM(Basis(1:n) * Nodes % z(1:n))       
+
       IF( NodalMode ) THEN
         DO i=1,3
           e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
         END DO
       ELSE
+        ! In order to get the normal component of the electric field we must operate on the
+        ! parent element. The surface element only has tangential components. 
+        CALL FindParentUVW( Nodes, n, ParentNodes, Parent, U, V, W, Basis )
+        IF (GetElementFamily(Element) == 2) THEN
+          stat = EdgeElementInfo(Parent, ParentNodes, u, v, w, detF = detJ, &
+              Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        ELSE    
+          stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
+              EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+        END IF
         e_ip = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,:)))
       END IF
 
       e_ip_norm = SUM(e_ip*Normal)
       e_ip_tan = e_ip - e_ip_norm * Normal
       
-      B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
-      Zs = B * muinv / (imu*Omega)
-      
       IntPoynt(jMode,iMode) = IntPoynt(jMode,iMode) + weight * &
           SQRT(SUM(e_ip_tan * CONJG(e_ip_tan) ) ) / Zs
       IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
           ( imu * Omega * Eps + cond ) * e_ip_norm 
-
-      IntWeight(iMode) = IntWeight(iMode) + weight
-      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
-      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * SUM(Basis(1:n) * Nodes % y(1:n)) 
-      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * SUM(Basis(1:n) * Nodes % z(1:n))       
     END DO
 
 !------------------------------------------------------------------------------
