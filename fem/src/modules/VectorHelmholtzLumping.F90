@@ -87,7 +87,8 @@
      CALL Fatal(Caller,'The lumping was already called "NoModes" times!')
    END IF
    
-   ! For now, in future add possibility to directly utilize Hcurl basis
+   ! One should be able to toggle between using nodal or edge basis.
+   ! The results are not quite the same but should hopefully be close.
    NodalMode = ListGetLogical(SolverParams,'Nodal Target Field',Found )   
    EdgeMode = .NOT. NodalMode
 
@@ -147,17 +148,6 @@
      iMode = ListGetInteger( BC,'Constraint Mode',Found )
      IF( iMode == 0 ) CYCLE       
 
-     IF(.NOT. NodalMode) THEN
-       SELECT CASE(GetElementFamily())
-       CASE(1)
-         CYCLE
-       CASE(2)
-         k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
-       CASE(3,4)
-         k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
-       END SELECT
-     END IF
-     
      CALL LocalIntegBC(BC,Element,InitHandles )
    END DO
 
@@ -487,6 +477,8 @@ CONTAINS
       
       DO WHILE(.TRUE.)
         kmin = 0
+        ! Among the edges related to node "i" find the one that has the steepest
+        ! potential descent.
         DO j = NodeGraph % Rows(i),NodeGraph % Rows(i+1)-1
           k = NodeGraph % Cols(j)
           Edge => Mesh % Edges(k)
@@ -503,6 +495,8 @@ CONTAINS
             END IF
           END DO
         END DO
+
+        ! When no smaller potential is found we are done.
         IF( kmin == 0 ) EXIT
 
         nsteps = nsteps + 1
@@ -523,7 +517,7 @@ CONTAINS
         ! Integration length and direction
         s = SQRT(SUM(EdgeVector**2))
 
-        ! If we do the path integral in the wrong direction compared to definiotion of edge swith the sign
+        ! If we do the path integral in the wrong direction compared to definiotion of edge switch the sign
         sgn = 1
         IF(i /= i1 ) sgn = -sgn 
 
@@ -552,7 +546,6 @@ CONTAINS
       END DO
 
       PRINT *,'Path integral:',iMode, minpot, nsteps, Circ
-      
       IntVolt(jMode,iMode) = Circ
     END DO
 
