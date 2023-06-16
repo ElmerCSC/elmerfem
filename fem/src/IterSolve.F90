@@ -83,6 +83,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: PRECOND_BILUn     =           550
    INTEGER, PARAMETER, PRIVATE :: PRECOND_Vanka     =           560
    INTEGER, PARAMETER, PRIVATE :: PRECOND_Circuit   =           570
+   INTEGER, PARAMETER, PRIVATE :: PRECOND_Slave     =           580
 
    INTEGER, PARAMETER :: stack_max=64
    INTEGER :: stack_pos=0
@@ -223,6 +224,18 @@ CONTAINS
         INTEGER :: ipar(*)
         COMPLEX(KIND=dp) :: u(*),v(*)
       END SUBROUTINE CircuitPrecComplex
+
+      SUBROUTINE SlavePrec(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        REAL(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE SlavePrec
+
+      SUBROUTINE SlavePrecComplex(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        COMPLEX(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE SlavePrecComplex      
     END INTERFACE
 !------------------------------------------------------------------------------
     N = A % NumberOfRows
@@ -533,9 +546,12 @@ CONTAINS
       ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
 
-      ELSE IF ( str == 'vanka' ) THEN
+      ELSE IF ( SEQL(str,'vanka') ) THEN
         PCondType = PRECOND_VANKA
-
+        
+      ELSE IF ( str == 'slave' ) THEN
+        PCondType = PRECOND_SLAVE
+        
       ELSE IF ( str == 'circuit' ) THEN
         ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
         IF(.NOT.Gotit ) ILUn=-1
@@ -811,6 +827,13 @@ CONTAINS
       CASE (PRECOND_VANKA)
         pcondProc = AddrFunc( VankaPrec )
 
+      CASE (PRECOND_Slave)
+        IF ( .NOT. ComplexSystem ) THEN
+          pcondProc = AddrFunc( SlavePrec )
+        ELSE
+          pcondProc = AddrFunc( SlavePrecComplex )
+        END IF
+        
       CASE (PRECOND_Circuit)
         IF ( .NOT. ComplexSystem ) THEN
           pcondProc = AddrFunc( CircuitPrec )

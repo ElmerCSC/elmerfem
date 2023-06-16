@@ -1842,12 +1842,12 @@ CONTAINS
                      END IF
 
                      ! Find first empty space at "k2"
-                     k2 = k 
-                     DO WHILE( k2 <= slen )
+                     k2 = k
+                     DO WHILE( k2 < slen )
                        k2 = k2 + 1
-                       IF ( str(k2:k2) == ' ') EXIT
+                       IF(str(k2:k2) == ' ') EXIT
                      END DO
-                     k2 = k2-1
+                     IF(str(k2:k2)==' ') k2 = k2-1
 
                      IF( ScanOnly ) THEN
                        IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
@@ -1864,7 +1864,7 @@ CONTAINS
                  END DO
                 
                  IF(k2 < slen ) THEN
-                   ! Determine the 1st trailing non-white character
+                   ! Determine the 1st trailing non-white space character
                    k2 = k2+1
                    DO WHILE( k2 < slen )
                      IF ( str(k2:k2) /= ' ') EXIT
@@ -1872,7 +1872,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  END IF
@@ -1984,7 +1985,8 @@ CONTAINS
                      END DO
                      IF( k2 < slen ) THEN
                        IF(str(k2:slen) /= 'end') THEN
-                         CALL Fatal(Caller,'There is trailing stuff for real keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                         CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
+                              //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                        END IF
                      END IF
                    END IF
@@ -2118,7 +2120,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  END IF                 
@@ -2147,7 +2150,8 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'There is trailing stuff for integer keyword "'//TRIM(Name)//'": '//str(k2:slen))
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
+                            //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
                  ELSE
@@ -3217,7 +3221,7 @@ CONTAINS
         ELSE
           Model % Meshes => Solver % Mesh
         END IF
-      END IF
+      END IF  ! "Mesh" given for Solver
     END DO
 
     CALL SetCoordinateSystem( Model )
@@ -3772,6 +3776,7 @@ CONTAINS
               VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
+	      IF (len(Var % Name) < k2) CYCLE
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
                 SaveThis = .TRUE.
                 ! This makes it possible to request saving of vectors
@@ -6063,7 +6068,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))

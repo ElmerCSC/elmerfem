@@ -115,6 +115,6 @@ Boundary Condition 2
 End
 
 
-Solver 1 :: Reference Norm = 1.22612804E+00
+Solver 1 :: Reference Norm = 1.18674225E+00
 Solver 3 :: Reference Norm = 3.57499988E+02
 

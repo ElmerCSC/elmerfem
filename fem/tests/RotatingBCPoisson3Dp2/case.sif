@@ -31,6 +31,8 @@ Simulation
   Output Intervals = 1
 
   Simulation Timing = Logical True
+ 
+  Serendipity P Elements = False
 End  
 
 Constants
@@ -233,5 +235,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = 7.09427816E-01
+Solver 2 :: Reference Norm = 7.53682555E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-4

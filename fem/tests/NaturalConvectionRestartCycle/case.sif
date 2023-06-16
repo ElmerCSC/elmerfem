@@ -49,6 +49,7 @@ Simulation
   Restart Variable 1 = String Temperature
   Restart Variable 2 = String Velocity      ! takes components 1 & 2
   Restart Variable 3 = String globaltest 1  ! takes component of the global vector
+  Serendipity P Elements = False
 End
 
 Constants
@@ -192,6 +193,6 @@ Boundary Condition 4
   Temperature = 293.0
 End
 
-Solver 2 :: Reference Norm = Real 3.23629024598017228E-004
+Solver 2 :: Reference Norm = Real 0.41304525E-03
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
 RUN

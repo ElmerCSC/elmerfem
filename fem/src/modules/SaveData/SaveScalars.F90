@@ -1449,7 +1449,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF( WriteCore ) THEN
       ! If there are multiple lines it may be a good idea to mark each by an index
       IF( LineInd /= 0) THEN
-        WRITE (ScalarsUnit,'(I6)',advance='no') LineInd
+        WRITE (ScalarsUnit,'(I10)',advance='no') LineInd
       END IF
       DO No=1,NoValues-1
         IF( ValuesInteger(No) ) THEN

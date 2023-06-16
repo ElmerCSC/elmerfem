@@ -455,7 +455,7 @@ CONTAINS
 #endif          
       ELSE       
         CALL Info(Caller,'Using file I/O for mesh refinement',Level=5)
-        NewMesh => ReMesh( RefMesh, ErrorLimit/3, HValue, &
+        NewMesh => External_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )
       END IF
       RemeshTime = RealTime() - t
@@ -790,7 +790,7 @@ CONTAINS
     
     DO i=1,RefMesh % NumberOfNodes
       ! Deal only with interface nodes here
-      IF(A % ParallelInfo % NodeInterface(i)) THEN
+      IF(A % ParallelInfo % GInterface(i)) THEN
         Hvalue(i) = 0.0_dp
         ! Go through all connected nodes
         DO j=A % Rows(i),A % Rows(i+1)-1
@@ -798,7 +798,7 @@ CONTAINS
           
           ! Skip oneself and other interface nodes
           IF(i==k) CYCLE          
-          IF(A % ParallelInfo % NodeInterface(k)) CYCLE
+          IF(A % ParallelInfo % GInterface(k)) CYCLE
           
           ! Add the observation
           Hvalue(i) = Hvalue(i) + Hvalue(k)
@@ -825,7 +825,7 @@ CONTAINS
     ! Compute the average
     n = 0
     DO i=1,RefMesh % NumberOfNodes
-      IF(A % ParallelInfo % NodeInterface(i)) THEN
+      IF(A % ParallelInfo % GInterface(i)) THEN
         IF( Hcount(i) == 0 ) THEN
           n = n+1
         ELSE          
@@ -842,7 +842,7 @@ CONTAINS
       Hcount = -Hcount
 
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % NodeInterface(i)) THEN
+        IF(A % ParallelInfo % GInterface(i)) THEN
           IF(Hcount(i) == 0) THEN
             DO j=A % Rows(i),A % Rows(i+1)-1
               k = A % Cols(j)
@@ -865,7 +865,7 @@ CONTAINS
       
       n = 0
       DO i=1,RefMesh % NumberOfNodes
-        IF(A % ParallelInfo % NodeInterface(i)) THEN
+        IF(A % ParallelInfo % GInterface(i)) THEN
           IF( Hcount(i) == 0 ) THEN
             n = n+1
           ELSE 
@@ -915,7 +915,7 @@ CONTAINS
         RefMesh % Nodes % y(1:n) + RefMesh % Nodes % z(1:n) 
 
     A => CurrentModel % Solver % Matrix       
-    WHERE( A % ParallelInfo % NodeInterface(1:n) ) 
+    WHERE( A % ParallelInfo % GInterface(1:n) ) 
       AveTest(1:n) = -1000.0
     END WHERE
       
@@ -970,7 +970,7 @@ CONTAINS
 
   
 !------------------------------------------------------------------------------
-  FUNCTION ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
+  FUNCTION External_ReMesh( RefMesh, ErrorLimit, HValue, NodalError, &
        hConvergence, minH, maxH, MaxChange, Coarsening ) RESULT( NewMesh )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
@@ -1088,7 +1088,7 @@ CONTAINS
     END IF
 
 !------------------------------------------------------------------------------
-  END FUNCTION ReMesh
+  END FUNCTION External_ReMesh
 !------------------------------------------------------------------------------
 
 

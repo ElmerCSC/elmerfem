@@ -5,7 +5,7 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 4000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
@@ -18,7 +18,7 @@
 #define MAXNODESD1 9        /* maximum number of 1D nodes */
 #define MAXMAPPINGS 20      /* maximum number of geometry mappings */
 #define MAXCONNECTIONS 500  /* maximum number of connections in nodal or dual graph */
-#define MAXBCS 1000         /* maximum number of BCs in naming */
+#define MAXBCS 4000         /* maximum number of BCs in naming */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 #define MAXHALOMODES 10

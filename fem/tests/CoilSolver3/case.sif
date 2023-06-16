@@ -65,10 +65,10 @@ Solver 1
 
 !  Optimize Bandwidth = False
 
-! The fitting can be either isotropic or unisotropic.
-! In the unisotropic model the conductivity is aligned like the 
+! The fitting can be either isotropic or anisotropic.
+! In the anisotropic model the conductivity is aligned like the 
 ! previous gradient of the solution.
-!  Coil Unisotropic = Logical True
+!  Coil Anisotropic = Logical True
 End
 
 

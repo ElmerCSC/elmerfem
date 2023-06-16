@@ -16,6 +16,8 @@ Simulation
   Output Intervals = 1
   Post File = "Step.vtu"
 ! Output File = "Step.dat"
+
+  Serendipity P Elements = False
 End
 
 
@@ -134,5 +136,5 @@ Boundary Condition 3
   RotSol 2 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 1.2047758
+Solver 1 :: Reference Norm = Real 1.05262643
 RUN

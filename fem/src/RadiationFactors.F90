@@ -124,7 +124,7 @@
          'View Factors Fixed After Iterations',Found)
      IF(.NOT. Found) GeometryFixedAfter = HUGE(GeometryFixedAfter)
 
-     IF( UpdateViewFactors ) THEN
+     IF( UpdateViewFactors ) THEN      
        IF(GeometryFixedAfter < TimesVisited) UpdateViewFactors = .FALSE.
        IF(TimesVisited > 1 ) THEN
          SteadyChange = TSolver % Variable % SteadyChange
@@ -142,7 +142,6 @@
 !------------------------------------------------------------------------------
 !    Go for it
 !------------------------------------------------------------------------------
-
      at = CPUTime()
 
      CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
@@ -270,7 +269,7 @@
      DO RadiationBody = 1,MaxRadiationBody
        bt = CPUTime()
 
-       CALL Info('RadiationFactors','Computing are info for set '//I2S(RadiationBody),Level=12)
+       CALL Info('RadiationFactors','Computing area info for set '//I2S(RadiationBody),Level=12)
        CALL GetBodyRadiationSurfaceInfo(RadiationBody)
        IF(RadiationSurfaces == 0)  CYCLE
 
@@ -282,7 +281,8 @@
        ! -------------------------------------------------------
        ViewFactors => TSolver % Mesh % VFStore(RadiationBody) % VF
        IF(.NOT.CheckForQuickFactors()) THEN
-         CALL Info('RadiationFactors','Computing radiation for set '//I2S(RadiationBody),Level=12)
+         IF( MaxRadiationBody > 1 ) &
+           CALL Info('RadiationFactors','Computing radiation for set '//I2S(RadiationBody),Level=12)
          CALL CalculateRadiation()
        END IF
          
@@ -297,7 +297,7 @@
 
 !------------------------------------------------------------------------------
      
-     IF(.NOT. (FirstTime .OR. TopologyTest .OR. TopologyFixed .OR. Radiosity) ) THEN
+     IF(.NOT. (TopoCall .OR. TopologyTest .OR. TopologyFixed .OR. Radiosity) ) THEN       
        CALL UpdateMatrixTopologyWithFactors()
      END IF     
 
@@ -331,8 +331,8 @@
 
        UpdateGebhartFactors = GetLogical( Params, 'Update Gebhart Factors',Found )
        IF(.NOT.Found ) &
-         UpdateGebhartFactors = GetLogical( Params, 'Update Gebhardt Factors',Found )
-
+           UpdateGebhartFactors = GetLogical( Params, 'Update Gebhardt Factors',Found )
+       
        IF( UpdateGebhartFactors ) THEN       
          FactorsFixedAfter = GetInteger( Params, &
            'Gebhart Factors Fixed After Iterations',Found)
@@ -911,6 +911,8 @@
 
        ALLOCATE(RowSpace(n), Reorder(n))
 
+       CALL Info('CreateRadiationMatrix','Creating matrix for Gebhart computation of size '//TRIM(I2S(n)),Level=12)
+       
        ! Check whether the element already sees itself, it will when 
        ! gebhardt factors are computed. Also compute matrix size.
        RowSpace = 0
@@ -980,61 +982,105 @@
 
      SUBROUTINE TabulateEmissivity()
        REAL(KIND=dp) :: Transmittivity
-       LOGICAL :: Found, ThisConstant, UseConstantEmissivity
-       INTEGER :: i,n
+       LOGICAL :: Found, ThisConstant, SomeEmissivity0
+       INTEGER :: i,j,k,n
        TYPE(ValueList_t), POINTER :: BC
-       TYPE(Element_t), POINTER :: Element
-       
-       
-       CALL Info('TabulateEmissivity','Setting emissivities for faster radiation computation',Level=25)
+       TYPE(Element_t), POINTER :: Element, Parent
+       REAL(KIND=dp) :: Emissivity0
+       LOGICAL :: UseEmissivity0
+       TYPE(ValueList_t), POINTER :: Vlist
+       INTEGER :: bc_id,mat_id,i2,j2
 
-       UseConstantEmissivity = .FALSE.
-       IF( TopoCall ) THEN
-         DO i=1,CurrentModel % NumberOfBCs
-           ThisConstant = ListCheckIsConstant(CurrentModel % BCs(i) % Values,'Emissivity',Found)
-           IF(Found .AND. .NOT. ThisConstant ) UseConstantEmissivity = .TRUE.
-         END DO
-         DO i=1,CurrentModel % NumberOfMaterials
-           ThisConstant = ListCheckIsConstant(CurrentModel % Materials(i) % Values,'Emissivity',Found)
-           IF(Found .AND. .NOT. ThisConstant ) UseConstantEmissivity = .TRUE.
-         END DO
+       
+       CALL Info('TabulateEmissivity','Setting emissivities for radiation computation',Level=25)
+
+       SomeEmissivity0 = .FALSE.
+       IF(TopoCall ) THEN
+         Emissivity0 = GetConstReal( Params,'Constant Emissivity',Found )
+         IF(.NOT. Found) Emissivity0 = 0.5_dp
        END IF
        
-       IF(UseConstantEmissivity) THEN
-         CALL Info('TabulateEmissivity','We use constant emissivity for the 1st call!',Level=6)
-         Emissivity = GetConstReal( Params,'Constant Emissivity',Found )
-         IF(.NOT. Found) Emissivity = 0.5_dp
-         Absorptivity = Emissivity
-         Reflectivity = 1 - Absorptivity
+       DO i=1,RadiationSurfaces         
+         Element => Mesh % Elements(ElementNumbers(i))
+
+         DO bc_id=1,CurrentModel % NumberOfBCs
+           IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+         END DO
+         IF ( bc_id > CurrentModel % NumberOfBCs ) CALL Fatal('TabulateEmissivity','Could not find BC!')
+           
+         Vlist => CurrentModel % BCs(bc_id) % Values         
+         IF( .NOT. ListCheckPresent(Vlist,'Emissivity') ) THEN
+           DO k=1,2
+             IF(k==1) THEN
+               Parent => Element % BoundaryInfo % Left
+             ELSE
+               Parent => Element % BoundaryInfo % Right
+             END IF
+             IF(ASSOCIATED(Parent) ) THEN
+               IF( Parent % BodyId > 0 .AND. Parent % BodyId <= CurrentModel % NumberOfBodies ) THEN
+                 mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,'Material',Found)
+                 IF(Found) THEN
+                   Vlist => CurrentModel % Materials(mat_id) % Values
+
+                   IF(ListCheckPresent(Vlist,'Emissivity') ) THEN
+                     IF( ASSOCIATED(Parent % DGIndexes) ) THEN
+                       IF(.NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+                         ALLOCATE( Element % DGIndexes(Element % TYPE % NumberOfNodes))
+                         Element % DGIndexes = 0
+                       END IF
+                       DO i2 = 1, Element % TYPE % NumberOfNodes
+                         DO j2 = 1, Parent % TYPE % NumberOfNodes
+                           IF( Element % NodeIndexes(i2) == Parent % NodeIndexes(j2) ) THEN
+                             Element % DGIndexes(i2) = Parent % DGIndexes(j2)
+                             EXIT
+                           END IF
+                         END DO
+                       END DO
+                     END IF
+                     EXIT
+                   END IF
+                 END IF
+               END IF
+             END IF
+           END DO
+         END IF
+         
+         IF(.NOT. ASSOCIATED(Vlist) ) CALL Fatal('TabulateEmissivity','Emissivity list not associated!')
+
+         UseEmissivity0 = .FALSE.
+         IF( TopoCall ) THEN
+           UseEmissivity0 = .NOT. ListCheckIsConstant( Vlist,'Emissivity' )
+         END IF
+                
+         IF( UseEmissivity0 ) THEN
+           Emissivity(i) = ListGetConstReal( Vlist,'Initial Emissivity', Found )
+           IF(.NOT. Found ) Emissivity(i) = Emissivity0 
+           Absorptivity(i) = Emissivity(i)
+           Reflectivity(i) = 1.0_dp - Absorptivity(i) 
+           SomeEmissivity0 = .TRUE.
+         ELSE          
+           n = Element % TYPE % NumberOfNodes          
+           CurrentModel % CurrentElement => Element
+           Emissivity(i) = SUM( ListGetReal( Vlist,'Emissivity',n,Element % NodeIndexes) ) / n
+           Transmittivity= SUM( ListGetReal( Vlist,'Transmittivity',n,Element % NodeIndexes, Found) ) / n
+           IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+           Absorptivity(i) = SUM( ListGetReal( Vlist,'Absorptivity',n,Element % NodeIndexes, Found) ) / n
+           IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
+           Reflectivity(i) = 1.0_dp - Absorptivity(i) - Transmittivity
+         END IF
+       END DO
+       
+       IF(SomeEmissivity0) THEN
+         CALL Info('TabulateEmissivity','We used constant emissivity for some elemenets!',Level=6)
          IF(.NOT. UpdateGebhartFactors ) THEN
            CALL Warn('TabulateEmissivity','Gebhart factors should be updated for non-constant emissivities!')
          END IF
        ELSE
-         DO i=1,RadiationSurfaces
-           Element => Mesh % Elements(ElementNumbers(i))
-           n = GetElementNOFNodes(Element)
-           BC => GetBC(Element)
-           Emissivity(i) = SUM(GetReal(BC, 'Emissivity', Found, Element))/n
-
-           IF( Found ) THEN
-             Transmittivity = SUM(GetReal(BC,'Transmissivity', Found, Element))/n
-             Absorptivity(i) = SUM(GetReal(BC,'Absorptivity', Found, Element))/n
-             IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
-             Reflectivity(i) = 1 - Absorptivity(i) - Transmittivity
-           ELSE
-              Emissivity(i) = SUM(GetParentMatProp( 'Emissivity', Element, Found))/n
-              IF(.NOT. Found) THEN
-                WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,GetBCId(Element)
-                CALL Fatal('RadiationFactors',Message)
-              END IF
-              Absorptivity(i) = SUM(GetParentMatProp('Absorptivity', Element, Found))/n
-              IF(.NOT. Found ) Absorptivity(i) = Emissivity(i)
-              Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
-              Reflectivity(i) = 1 - Absorptivity(i) - Transmittivity
-           END IF
-         END DO
+         CALL Info('TabulateEmissivity','We used real emissivity for all elements!',Level=6)
        END IF
+
      END SUBROUTINE TabulateEmissivity
+
 
      !------------------------------------------------------------------------------
      ! To save some time tabulate the spectral emissivity data for each temperature.
@@ -1160,10 +1206,11 @@
        ELSE
          ! Fill the matrix for gebhardt factors
          CALL CalculateGebhartFactors()
-         CALL FreeMatrix(G);G => Null()
+         CALL FreeMatrix(G);G => NULL()
        END IF
 
        DEALLOCATE(Emissivity,Reflectivity,Absorptivity)
+       
      END SUBROUTINE CalculateRadiation
 
 
@@ -1201,7 +1248,17 @@
        ! Scale by (1-Emissivity) to get a symmetric system, if all emissivities are not equal to unity anywhere       
        gTriv = ALL(ABS(Reflectivity)<=AEPS)
        gSymm = ALL(ABS(Reflectivity)>AEPS) .OR. gTriv
+       
 
+       ImplicitLimit = GetConstReal( Params, 'Implicit Gebhart Factor Fraction', ImplicitLimitIs) 
+       IF  (.NOT. ImplicitLimitIs) &
+           ImplicitLimit = GetConstReal( Params, 'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
+
+       NeglectLimit  = GetConstReal( Params, 'Neglected Gebhart Factor Fraction', Found) 
+       IF(.NOT.Found) &
+           NeglectLimit  = GetConstReal( Params, 'Neglected Gebhardt Factor Fraction', Found) 
+       IF(.NOT. Found) NeglectLimit = 1.0d-6
+       
        IF(.NOT. gTriv) THEN
          r=1._dp
          DO i=1,RadiationSurfaces
@@ -1316,15 +1373,6 @@
 
          FactorSum = SUM(Fac)
          ConsideredSum = 0.0_dp
-
-         ImplicitLimit = GetConstReal( Params, 'Implicit Gebhart Factor Fraction', ImplicitLimitIs) 
-         IF  (.NOT. ImplicitLimitIs) &
-            ImplicitLimit = GetConstReal( Params, 'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
-
-         NeglectLimit  = GetConstReal( Params, 'Neglected Gebhart Factor Fraction', Found) 
-         IF(.NOT.Found) &
-           NeglectLimit  = GetConstReal( Params, 'Neglected Gebhardt Factor Fraction', Found) 
-         IF(.NOT. Found) NeglectLimit = 1.0d-6
 
          IF(ImplicitLimitIs) THEN
            DO i=1,RadiationSurfaces
@@ -1442,17 +1490,21 @@
        MinSum = MINVAL(RowSums)
        MaxSum = MAXVAL(RowSums)
 
-       WRITE(Message,'(A,T35,2ES15.4)') 'Minimum Gebhart factors sum',MINVAL(RowSums)
+       WRITE(Message,'(A,T35,2ES15.6)') 'Minimum Gebhart factors sum',MINVAL(RowSums)
        CALL Info('RadiationFactors',Message,Level=5)
-       WRITE(Message,'(A,T35,2ES15.4)') 'Maximum Gebhart factors sum',MAXVAL(RowSums)
+       WRITE(Message,'(A,T35,2ES15.6)') 'Maximum Gebhart factors sum',MAXVAL(RowSums)
        CALL Info('RadiationFactors',Message,Level=5)
-       WRITE(Message,'(A,T35,ES15.4)') 'Maximum share of omitted factors',MaxOmittedFactor
+       WRITE(Message,'(A,T35,ES15.6)') 'Maximum share of omitted factors',MaxOmittedFactor
        CALL Info('RadiationFactors',Message,Level=5)
-       WRITE(Message,'(A,T35,ES15.4)') 'Gebhart factors filling (%)',(100.0 * MatrixEntries) / &
+       WRITE(Message,'(A,T35,ES15.6)') 'Gebhart factors filling (%)',(100.0 * MatrixEntries) / &
            (RadiationSurfaces**2)
        CALL Info('RadiationFactors',Message,Level=5)
+       WRITE(Message,'(A,T38,I0)') 'Gebhart factors count',MatrixEntries
+       CALL Info('RadiationFactors',Message,Level=5)
        IF(ImplicitEntries > 0) THEN
-         WRITE(Message,'(A,T35,ES15.4)') 'Implicit factors filling (%)',(100.0 * ImplicitEntries) / &
+         WRITE(Message,'(A,T38,I0)') 'Implicit factors count',ImplicitEntries
+         CALL Info('RadiationFactors',Message,Level=5)
+         WRITE(Message,'(A,T35,ES15.6)') 'Implicit factors filling (%)',(100.0 * ImplicitEntries) / &
              (RadiationSurfaces**2)
          CALL Info('RadiationFactors',Message,Level=5)
        END IF
@@ -1470,33 +1522,37 @@
      SUBROUTINE UpdateMatrixTopologyWithFactors()
 
        TYPE(Matrix_t), POINTER :: AMatrix
-       LOGICAL :: OptimizeBW, Found
+       LOGICAL :: OptimizeBW, UseGiven, Found
        INTEGER :: j,n,MatrixFormat
        INTEGER, POINTER :: NewPerm(:), TempPerm(:)
      
-       CALL Info('RadiationFactors','Reorganizing the matrix structure',Level=5)
+       CALL Info('RadiationFactors','Recreating the matrix structure for radiation',Level=5)
 
-       MatrixFormat =  Tsolver % Matrix % FORMAT
+       MatrixFormat = Tsolver % Matrix % FORMAT
+
+       ! We have different default here!
        OptimizeBW = ListGetLogical(TSolver % Values,'Optimize Bandwidth',Found) 
-       IF(.NOT. Found) OptimizeBW = .TRUE.
+       IF(.NOT. Found) OptimizeBW = .FALSE.
 
-       CALL FreeMatrix( TSolver % Matrix)
+       ! If we do not use the optimized, we use the previous Perm (which could be optimized as well)
+       UseGiven = .NOT. OptimizeBW
 
-       CALL Info('RadiationFactors','Creating new matrix topology')
+       CALL FreeMatrix( TSolver % Matrix)         
 
        IF ( OptimizeBW ) THEN
+         CALL Info('RadiationFactors','Creating new matrix topology')
          ALLOCATE( NewPerm( SIZE(Tsolver % Variable % Perm)), STAT=istat)
          IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 15.')
-
          TempPerm => Tsolver % Variable % Perm         
        ELSE
+         CALL Info('RadiationFactors','Using existing matrix topology')
          NewPerm => Tsolver % Variable % Perm
        END IF
-
+       
        AMatrix => CreateMatrix( CurrentModel,TSolver,TSolver % Mesh, &
-          NewPerm, 1, MatrixFormat, OptimizeBW,  &
-             ListGetString( TSolver % Values, 'Equation', Found ) )       
-
+           NewPerm, 1, MatrixFormat, OptimizeBW,  &
+           ListGetString( TSolver % Values, 'Equation', Found ), UseGivenPerm = UseGiven )       
+              
        ! Reorder the primary variable for bandwidth optimization:
        ! --------------------------------------------------------
        IF ( OptimizeBW ) THEN
@@ -1514,6 +1570,29 @@
            END DO
          END IF
 
+         BLOCK
+           TYPE(Variable_t), POINTER :: ExpVar
+           CHARACTER(LEN=MAX_NAME_LEN) :: str
+           INTEGER, POINTER :: ExpPerm(:)
+           INTEGER :: k
+           NULLIFY(ExpPerm)         
+           DO j=1,10
+             str = ListGetString(TSolver % Values,'exported variable '//I2S(j),Found)
+             IF(.NOT. Found) EXIT
+             ExpVar => VariableGet(TSolver % Mesh % Variables, str, ThisOnly = .TRUE. )             
+             IF(ASSOCIATED(ExpVar)) THEN
+               IF(ASSOCIATED(ExpVar % Perm, TSolver % Variable % Perm ) ) THEN
+                 DO k=1,ExpVar % Dofs
+                   WHERE( NewPerm > 0 )
+                     ExpVar % Values( ExpVar % Dofs*(NewPerm-1)+k) = &
+                         ExpVar % Values( ExpVar % Dofs*(TempPerm-1)+k)
+                   END WHERE
+                 END DO
+               END IF
+             END IF
+           END DO
+         END BLOCK
+                  
          Tsolver % Variable % Perm = NewPerm
          DEALLOCATE( NewPerm )
        END IF
@@ -1526,8 +1605,7 @@
        n = AMatrix % NumberOFRows
        ALLOCATE( AMatrix % RHS(n), STAT=istat)
        IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 16.')
-
-
+       
        ! Transient case additional allocations:
        ! --------------------------------------
        IF ( ListGetString( CurrentModel % Simulation,'Simulation Type' ) == 'transient' ) THEN
@@ -1538,7 +1616,7 @@
 
        TSolver % Matrix => Amatrix
        CALL ParallelInitMatrix( TSolver, AMatrix )
-
+       
      END SUBROUTINE UpdateMatrixTopologyWithFactors
 
 

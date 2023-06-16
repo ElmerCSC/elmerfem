@@ -15,6 +15,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 !  Post File   = "case.vtu"
+  Serendipity P Elements = False
 End
 
 Body 1

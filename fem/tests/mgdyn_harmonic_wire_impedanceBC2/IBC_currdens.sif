@@ -1,7 +1,8 @@
 ! A sif file to test a surface impedance BC
-! An experimental test case for 1D Neumann conditions trying to get same results as the base case.
+! Here 1D Neumann conditions (a given surface current) are applied and
+! produce the same results as the base case.
 !
-! P.R. 7.10.2022
+! P.R. 7.10.2022 (some fixes by M.M. Jun 7, 2023)
 
 
 Check Keywords "Warn"
@@ -200,13 +201,15 @@ End
 Boundary Condition 5
   Name = "1D"
   Intersection BC(2) = 1 4
-! We give the average skin current as computed in the base case
-  Electric Current Density = 2.6064
+! We give the skin current as computed in the base case.
+! Note that the outward flux has the negative sign.
+  Electric Current Density = 0.126136
+  Electric Current Density Im = -2.60297
 End 
 
 
 
-Solver 1 :: Reference Norm = 1.29647318E-06
+Solver 1 :: Reference Norm = 1.36299260E-06
 Solver 1 :: Reference Norm Tolerance = 1e-5
-Solver 4 :: Reference Norm = 4.43594251E-08
+Solver 4 :: Reference Norm = 4.43466404E-08
 Solver 4 :: Reference Norm Tolerance = 1e-3

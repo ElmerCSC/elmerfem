@@ -453,7 +453,8 @@ CONTAINS
            IF(Element % Type % ElementCode >= 500) THEN
              DO i=1,Element % TYPE % NumberOfFaces
                j = Element % FaceIndexes(i)
-               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i))
+               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i, &
+                      Mesh % Faces(j)) )
              END DO
            END IF
          END IF
@@ -1020,10 +1021,22 @@ CONTAINS
          Var => Var % Next
          CYCLE
        END IF
-       
-       IF ( ASSOCIATED( Var % Perm ) ) &
+
+       IF ( ASSOCIATED( Var % Perm ) ) THEN
+         Var1 => VariableList
+         DO WHILE(ASSOCIATED(Var1))
+           IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+             IF (ASSOCIATED(Var % Perm,Var1 % Perm)) THEN
+               Var1 % Perm => NULL()
+             END IF
+           END IF
+           Var1 => Var1 % Next
+         END DO
+         IF (SIZE(Var % Perm)>0) THEN
            DEALLOCATE( Var % Perm )
-             
+         END IF
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          CALL DeallocateVariableEntries()
        END IF
@@ -1275,7 +1288,7 @@ CONTAINS
           IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,VarType)
+              Perm,Output,.TRUE.,VarType)
         END DO
       END IF
 
@@ -2913,6 +2926,94 @@ CONTAINS
 !-----------------------------------------------------------------------------------
 
 
+!----------------------------------------------------------------
+!> Echo parameters for debugging purposes.
+!> For now only supports constants...
+!----------------------------------------------------------------
+  SUBROUTINE ListEchoKeywords( Model )
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+    
+    CALL Info('ListEchoKeywords','Echoing parameters for debgging purposes')
+
+    CALL EchoList(Model % Simulation, 0, 'simulation' )
+    CALL EchoList(Model % Constants, 0, 'constants' )
+    DO i=1,Model % NumberOfEquations
+      CALL EchoList(Model % Equations(i) % Values, i, 'equation' )
+    END DO
+    DO i=1,Model % NumberOfBodies
+      CALL EchoList(Model % Bodies(i) % Values, i, 'body' )
+    END DO
+        DO i=1,Model % NumberOfBoundaries
+      CALL EchoList(Model % Boundaries(i) % Values, i, 'boundary' ) 
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL EchoList(Model % BodyForces(i) % Values, i, 'body force' )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL EchoList(Model % BCs(i) % Values, i, 'boundary condition' )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL EchoList(Model % Materials(i) % Values, i, 'material' ) 
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL EchoList(Model % Components(i) % Values, i, 'component' )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL EchoList(Model % ICs(i) % Values, i, 'initial condition' )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL EchoList(Model % Solvers(i) % Values, i, 'solver ' )
+    END DO
+
+  CONTAINS
+
+    SUBROUTINE EchoList(list, i, section )
+      TYPE(ValueList_t), POINTER :: list
+      INTEGER :: i
+      CHARACTER(LEN=*) :: section
+      CHARACTER(LEN=MAX_NAME_LEN) :: str 
+
+      TYPE(ValueListEntry_t), POINTER :: ptr
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      ptr => List % Head
+      DO WHILE( ASSOCIATED(ptr) )        
+        SELECT CASE(ptr % TYPE)
+        CASE( LIST_TYPE_CONSTANT_SCALAR )
+          WRITE(str,'(A,ES12.3)') 'Real ',ptr % Coeff * ptr % Fvalues(1,1,1)
+
+        CASE( LIST_TYPE_LOGICAL )
+          IF( ptr % LValue ) THEN
+            str = 'Logical True'
+          ELSE
+            str = 'Logical False'
+          END IF
+        CASE( LIST_TYPE_INTEGER )
+          str = 'Integer '//I2S(ptr % Ivalues(1))
+
+        CASE DEFAULT
+          ptr => ptr % Next
+          CYCLE
+        END SELECT
+
+        IF( i==0 ) THEN
+          WRITE(*,'(A)') TRIM(Section)//' :: '//TRIM(ptr % Name)//' '//TRIM(str)
+        ELSE
+          WRITE(*,'(A)') TRIM(Section)//' '//I2S(i)//' :: '//TRIM(ptr % name)//' '//TRIM(str)          
+        END IF
+        ptr => ptr % Next
+      END DO
+
+    END SUBROUTINE EchoList
+    
+  END SUBROUTINE ListEchoKeywords
+!-----------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------------
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
@@ -6607,13 +6708,12 @@ CONTAINS
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
                Handle % IntVarCount, tstep )
          END IF
-         
+
          IF ( ptr % LuaFun ) THEN
-           CALL Fatal('ListGetElementReal','Variable scalar API for LUA not available!')
+           CALL ElmerEvalLua(LuaState, ptr, T, RValue, Handle % ParNo )
          ELSE
            Rvalue = GetMatcReal(Ptr % Cvalue,Handle % ParNo,T)
          END IF
-
            
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
@@ -7476,7 +7576,7 @@ CONTAINS
            IF ( .NOT. ptr % LuaFun ) THEN
              Rvalue = GetMatcReal(ptr % Cvalue,Handle % Parno,T)
            ELSE
-             call ElmerEvalLua(LuaState, ptr, T, RValue, j)
+             CALL ElmerEvalLua(LuaState, ptr, T, RValue, j)
            END IF
            Handle % ValuesVec(gp) = RValue
          END DO

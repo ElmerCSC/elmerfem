@@ -71,8 +71,9 @@ Solver 1
   Linear System Solver = "Iterative"
   Linear System Preconditioning = Ilu0
   Linear System Residual Output = 10
-  Linear System Max Iterations = 5000
+  Linear System Max Iterations = 5000 
   Linear System Iterative Method = GCR !Bicgstab
+  Linear System GCR Restart = 200
   Linear System Convergence Tolerance = 1.0e-5
 
   Calculate Stresses = Logical True

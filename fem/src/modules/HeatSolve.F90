@@ -181,24 +181,17 @@
 
      CALL Info('HeatSolver','-------------------------------------------',Level=6)
      CALL Info('HeatSolver','Solving the energy equation for temperature',Level=5)
+
+     IF( ListCheckPresentAnyBC( Model,'Heat Gap') ) THEN
+       CALL Warn('HeatSolver','The old way of dealing with HeatGap is obsolite!!')
+     END IF
+
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-
-     StiffMatrix => GetMatrix()
-     ForceVector => Solver % Matrix % RHS
-
-     TempSol => Solver % Variable
-     TempPerm    => TempSol % Perm
-     Temperature => TempSol % Values
-     VarName = GetVarName( TempSol ) 
-  
-     LocalNodes = COUNT( TempPerm > 0 )
-     IF ( LocalNodes <= 0 ) RETURN
-     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
 
      SolverParams => GetSolverParams()
 
@@ -222,8 +215,21 @@
      IsRadiation = ListCheckPresentAnyBC( Model,'Radiation')
      
      IF( IsRadiation .AND. .NOT. Radiosity ) THEN
-       CALL RadiationFactors( Solver, .FALSE., .FALSE.)
+       CALL RadiationFactors( Solver, .FALSE., .FALSE.)       
      END IF
+
+     ! The solver matrix, permutation etc. may change because radiation factors are recomputed
+     StiffMatrix => GetMatrix()
+     ForceVector => Solver % Matrix % RHS
+     TempSol => Solver % Variable
+     TempPerm    => TempSol % Perm
+     Temperature => TempSol % Values
+     VarName = GetVarName( TempSol ) 
+  
+     LocalNodes = COUNT( TempPerm > 0 )
+     IF ( LocalNodes <= 0 ) RETURN
+     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
+     
      
      NeedFlowSol = .FALSE.
      DO i=1,Model % NumberOfEquations
@@ -641,8 +647,8 @@
        END IF
             
        IF(Radiosity) THEN
-         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)
-         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect) 
+         CALL RadiationFactors( Solver, .FALSE., NewtonLinearization)         
+         CALL TabulateBoundaryAverages(Solver % Mesh, Emiss, Reflect)         
        ELSE
          CALL TabulateBoundaryAverages(Solver % Mesh, Emiss) 
        END IF
@@ -1120,27 +1126,27 @@
       IF(SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
       
         IF(.NOT. TransientHeaterControl) THEN
- 
-          CALL ListAddLogical(SolverParams, &
-              'Skip Compute Nonlinear Change',.TRUE.)
+          ! These are control loops. Do use them to check convergence or advance the
+          ! nonlinear iteration flag.
+          CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
+          CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.TRUE.)
 
-          Relax = GetCReal( SolverParams, &
-              'Nonlinear System Relaxation Factor', Found )
+          Relax = GetCReal( SolverParams,'Nonlinear System Relaxation Factor', Found )
           
           IF ( Found .AND. Relax /= 1.0d0 ) THEN
-            CALL ListAddConstReal( Solver % Values, &
+            CALL ListAddConstReal( Solver % Values,&
                 'Nonlinear System Relaxation Factor', 1.0d0 )
           ELSE
             Relax = 1.0d0
           END IF          
 
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
-              ForceHeater, XX, Norm, 1, Solver )
-         
+              ForceHeater, XX, Norm, 1, Solver )         
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, YY, Norm, 1, Solver )
 
           CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.FALSE.)
+          CALL ListAddLogical(SolverParams,'Skip Advance Nonlinear Iter',.FALSE.)
         ELSE                    
           CALL SolveSystem( Solver % Matrix, ParMatrix, &
               Solver % Matrix % RHS, Temperature, Norm, 1, Solver )

@@ -85,7 +85,6 @@ CONTAINS
 
       Parallel = ParEnv % PEs > 1
 
-
       IF ( .NOT. Parallel ) THEN
         M  => A
         Mx => x
@@ -125,7 +124,7 @@ CONTAINS
       END IF
       
       n = M % NumberOfRows
-      InvLevel = 1 + Solver % MultiGridTotal - Level
+      InvLevel = MAX(1,1 + Solver % MultiGridTotal - Level)
 
       Lowest = .FALSE.
       IF( PRESENT( LowestSmooth ) ) Lowest = LowestSmooth
@@ -155,7 +154,6 @@ CONTAINS
           IterMethod = 'bsgs'
         END IF
       END IF
-
 
       Rounds = 0
       IF(Lowest) THEN
@@ -201,7 +199,6 @@ CONTAINS
 
       CASE( 'direct1d' ) 
         ALLOCATE( dx(n) )
-
       END SELECT
 
       TmpArray => ListGetConstRealArray(Solver % Values,'MG Smoother Relaxation Factor',Found)
@@ -256,7 +253,7 @@ CONTAINS
         CALL SmoothedSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
         
       CASE( 'csgs' )                                     
-        CALL CSGS( n, A, M, Mx, Mb, Mr, Rounds)
+        CALL CSGS( n, A, M, Mx, Mb, Mr, Omega, Rounds)
         
       CASE( 'cjacobi' )                                     
         CALL CJacobi( n, A, M, Mx, Mb, Mr, Rounds )
@@ -614,7 +611,6 @@ CONTAINS
         Rows   => M % Rows
         Cols   => M % Cols
         Values => M % Values
-
        
         DO k=1,Rounds
           DO i=1,n
@@ -690,7 +686,7 @@ CONTAINS
           DO i=1,A % NumberOFRows
             ! Skip the interface elements as the gauss-seidel cannot be used to update them
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % NodeInterface(i) ) CYCLE
+              IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0
@@ -703,7 +699,7 @@ CONTAINS
           
           DO i=A % NumberOfRows,1,-1
             IF( Parallel ) THEN
-              IF( A % ParallelInfo % NodeInterface(i) ) CYCLE
+              IF( A % ParallelInfo % GInterface(i) ) CYCLE
             END IF
 
             s = 0.0d0
@@ -812,10 +808,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE CSGS( n, A, M, rx, rb, rr, Rounds )
+      SUBROUTINE CSGS( n, A, M, rx, rb, rr, w, Rounds )
 !------------------------------------------------------------------------------
         TYPE(Matrix_t), POINTER :: A, M
         INTEGER :: Rounds
+        REAL(KIND=dp) :: w
         REAL(KIND=dp) CONTIG :: rx(:),rb(:),rr(:)
         INTEGER :: i,j,k,n,l
         INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
@@ -842,7 +839,7 @@ CONTAINS
             
             j = A % Diag(2*i-1)
             r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
-            x(i) = x(i) + r(i)
+            x(i) = x(i) + w * r(i)
           END DO
           
           DO i=n/2,1,-1
@@ -854,7 +851,7 @@ CONTAINS
             
             j = A % Diag(2*i-1)
             r(i) = (b(i)-s) / CMPLX( Values(j), -Values(j+1),KIND=dp )
-            x(i) = x(i) + r(i)
+            x(i) = x(i) + w * r(i)
           END DO
           
         END DO
@@ -1270,10 +1267,10 @@ CONTAINS
         
         CALL MGCmv( A, x, r )
         r(1:n/2) = b(1:n/2) - r(1:n/2)
-        
+
         DO i=1,Rounds
           Z(1:n/2) = r(1:n/2)
-          CALL CRS_ComplexLUSolve( n, M, Z )
+          CALL CRS_ComplexLUSolve( n/2, M, Z )
           rho = MGCdot( n/2, r, Z )
           
           IF ( i == 1 ) THEN
@@ -1295,8 +1292,6 @@ CONTAINS
           rr(2*i-0) =  AIMAG( r(i) )
           rx(2*i-1) =  REAL( x(i) )
           rx(2*i-0) =  AIMAG( x(i) )
-          rb(2*i-1) =  REAL( b(i) )
-          rb(2*i-0) =  AIMAG( b(i) )
         END DO
 !------------------------------------------------------------------------------
       END SUBROUTINE CCG

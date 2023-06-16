@@ -21,6 +21,8 @@ Simulation
   Output Intervals = 1
 
   Post File = case.vtu
+
+  Serendipity P Elements = False
 End
 
 Constants

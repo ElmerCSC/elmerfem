@@ -1538,7 +1538,10 @@ CONTAINS
           ! We need to precompute view factors if they are included in CRS matrix
           ! Benefit of doing it at later stage is that we may modify the geometry, for example. 
           IF( .NOT. (ListGetLogical( SolverParams,'Radiosity Model',Found ) .OR. &
-              ListGetLogical( SolverParams,'Spectral Model',Found ) ) ) THEN            
+              ListGetLogical( SolverParams,'Spectral Model',Found ) .OR. &
+              ListGetLogical( SolverParams,'Update Gebhart Factors',Found ) ) ) THEN            
+            ! If we need to update the Gebhart factors we may not create the matrix topology at this
+            ! stage as we don't know the emissivities yet.
             CALL RadiationFactors( Solver, .TRUE., .FALSE.)
           END IF
         END IF
@@ -2142,46 +2145,54 @@ CONTAINS
     !------------------------------------------------------------------------------
     ! If soft limiters are applied then also loads must be computed
     !------------------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
-       CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
-     END IF
+    IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
+      CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
+    END IF
 	    
     !------------------------------------------------------------------------------
-    ! Create the variable needed for the computation of nodal loads: r=b-Ax
+    ! Create the variable needed for the computation of nodal loads and
+    ! residual: r=b-Ax. The difference here is at what stage the A and b are stored.     
     !------------------------------------------------------------------------------
-    IF ( ListGetLogical( Solver % Values,'Calculate Loads', Found ) ) THEN
-      Var_name = GetVarName(Solver % Variable) // ' Loads'
-      Var => VariableGet( Solver % Mesh % Variables, var_name )
-      IF ( .NOT. ASSOCIATED(Var) ) THEN
-        ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
-        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for Loads')
-
-        DOFs = Solver % Variable % DOFs
-        Solution = 0.0d0
-        nrows = SIZE( Solution ) 
-        Perm => Solver % Variable % Perm
-
-        VariableOutput = ListGetLogical( Solver % Values,'Save Loads',Found )
-        IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
-        
-        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-            var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
-        
-        IF ( DOFs > 1 ) THEN
-          n = LEN_TRIM( Var_name )
-          DO j=1,DOFs
-            tmpname = ComponentName( var_name(1:n), j )
-            Component => Solution( j:nRows-DOFs+j:DOFs )
-            CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
-          END DO
-        END IF
-        NULLIFY( Solution )
+    DO k=1,2
+      IF(k==1) THEN
+        str = 'loads'
+      ELSE
+        str = 'residual'
       END IF
-    END IF
 
-        
+      IF ( ListGetLogical( Solver % Values,'Calculate '//TRIM(str), Found ) ) THEN
+        Var_name = GetVarName(Solver % Variable) // ' '//TRIM(str)
+        Var => VariableGet( Solver % Mesh % Variables, var_name )
+        IF ( .NOT. ASSOCIATED(Var) ) THEN
+          ALLOCATE( Solution(SIZE(Solver % Variable % Values)), STAT = AllocStat )
+          IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for '//TRIM(str))
+
+          DOFs = Solver % Variable % DOFs
+          Solution = 0.0d0
+          nrows = SIZE( Solution ) 
+          Perm => Solver % Variable % Perm
+
+          VariableOutput = ListGetLogical( Solver % Values,'Save '//TRIM(str),Found )
+          IF( .NOT. Found ) VariableOutput = Solver % Variable % Output
+
+          CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+              var_name, Solver % Variable % DOFs, Solution, &
+              Solver % Variable % Perm, Output=VariableOutput, TYPE = Solver % Variable % TYPE )
+
+          IF ( DOFs > 1 ) THEN
+            n = LEN_TRIM( Var_name )
+            DO j=1,DOFs
+              tmpname = ComponentName( var_name(1:n), j )
+              Component => Solution( j:nRows-DOFs+j:DOFs )
+              CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+                  tmpname, 1, Component, Perm, Output=VariableOutput, TYPE = Solver % Variable % TYPE )
+            END DO
+          END IF
+          NULLIFY( Solution )
+        END IF
+      END IF
+    END DO
+
     !------------------------------------------------------------------------------
     ! Optionally create variable for saving permutation vector.
     ! This is mainly for debugging purposes and is therefore commented out.
@@ -2301,7 +2312,7 @@ CONTAINS
 
         n = SIZE(Solver % Variable % Values)
         IF ( Solver % TimeOrder == 2 ) THEN
-          m = 5
+          m = 7
         ELSE 
           m = MAX( Solver % Order, Solver % TimeOrder )
         END IF
@@ -2959,6 +2970,10 @@ CONTAINS
         RK2_err = 0.0_dp
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
+          IF(.NOT. ASSOCIATED(Solver % Variable)) CYCLE
+          IF(.NOT. ASSOCIATED(Solver % Variable % PrevValues) ) CYCLE
+          IF(Solver % Variable % Norm < 1.0d-20) CYCLE 
+          
           IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
 
           k1 => RKCoeff(i) % k1
@@ -4112,6 +4127,8 @@ CONTAINS
     Mesh => Solver % Mesh
     PSolver => Solver
 
+    SolverRef => Solver
+
     isParallel = ParEnv % PEs > 1
     
          
@@ -5099,11 +5116,14 @@ CONTAINS
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
      Parallel = Solver % Parallel 
      
-!------------------------------------------------------------------------------
-     IF ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     !------------------------------------------------------------------------------
+
+
+     IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
-       
+
        IF ( Found ) THEN
          CALL SetActiveElementsTable( Model, Solver, MaxDim  ) 
          CALL ListAddInteger( Solver % Values, 'Active Mesh Dimension', Maxdim )
@@ -5117,7 +5137,7 @@ CONTAINS
          IF(DoBulk .OR. DoBC ) THEN
            IF ( Parallel .AND. MeActive .AND. ASSOCIATED( Solver % Matrix ) ) THEN
              ParEnv % ActiveComm = Solver % Matrix % Comm
-             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+             IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
                IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
                    CALL ParallelInitMatrix(Solver, Solver % Matrix )               
                Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
@@ -5250,7 +5270,7 @@ END BLOCK
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( Parallel .AND. MeActive ) THEN
-         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+         IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
            IF (.NOT. ASSOCIATED(Solver % Matrix % ParMatrix) ) &
              CALL ParallelInitMatrix(Solver, Solver % Matrix )
 
@@ -5369,7 +5389,7 @@ END BLOCK
      LOGICAL :: GotLoops
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
-     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Mesh_t), POINTER :: Mesh, pMesh
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5380,16 +5400,23 @@ END BLOCK
 
      IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
        i = 0
-       DO WHILE( ASSOCIATED( Mesh % Child ) )
-         Mesh => Mesh % Child 
+       pMesh => Mesh
+       DO WHILE( ASSOCIATED( pMesh % Child ) )
+         pMesh => pMesh % Child 
          i = i+1 
-         IF(Mesh % OutputActive) EXIT 
+         IF(pMesh % OutputActive) EXIT 
        END DO
-       CALL Info('SolverActivate','Changing Solver mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
-           //TRIM(Mesh % Name),Level=7)
-       Solver % Mesh => Mesh
+       IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
+         IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
+           CALL Warn('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
+           CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
+               ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
+               //TRIM(Mesh % Name),Level=7)
+           Solver % Mesh => Mesh
+         END IF
+       END IF
      END IF
-
+     
      CALL SetCurrentMesh( Model, Solver % Mesh )
 
      Model % Solver => Solver

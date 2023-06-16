@@ -89,7 +89,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     END IF
 
     UseGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
-    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorentz Condition', Found)
+    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
     IF (UseGauge) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
@@ -142,10 +142,11 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   LOGICAL :: Found, HasPrecDampCoeff, MassProportional
   REAL(KIND=dp) :: Omega, mu0inv, eps0, rob0
-  INTEGER :: i, NoIterationsMax
+  INTEGER :: i, NoIterationsMax, EdgeBasisDegree
   TYPE(Mesh_t), POINTER :: Mesh
   COMPLEX(KIND=dp) :: PrecDampCoeff
-  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorentzCondition
+  LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
+  LOGICAL :: UseGaussLaw
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
@@ -159,8 +160,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   IF( GetLogical( SolverParams,'Quadratic Approximation', Found ) ) THEN
     PiolaVersion = .TRUE.
+    EdgeBasisDegree = 2
   ELSE
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+    EdgeBasisDegree = 1
   END IF
 
   IF (CoordinateSystemDimension() == 2) THEN
@@ -180,7 +183,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   ENDIF
 
   Omega = GetAngularFrequency(Found=Found)
-
+  IF(.NOT. Found ) THEN
+    CALL Fatal(Caller,'Harmonic wave equation requires angular frequency!')
+  END IF
+  
   PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ) )
@@ -202,7 +208,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   rob0 = Omega * SQRT( eps0 / mu0inv )
   
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
-  LorentzCondition = GetLogical(SolverParams, 'Lorentz Condition', Found)
+  LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
+  UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
@@ -222,6 +229,16 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
   
   CALL DefaultFinish()
+
+  ! This is now just for testing.
+  i = ListGetInteger( SolverParams, 'Circulation BC', Found ) 
+  IF( Found ) THEN
+    BLOCK
+      REAL(KIND=dp) :: Circ(2)      
+      CALL  BoundaryCirculation( Circ, i, pSolver, pSolver % Variable ) 
+      PRINT *,'Circulation around BC:',Circ
+    END BLOCK
+  END IF
 
   CALL Info(Caller,'All done',Level=12)
   
@@ -577,18 +594,32 @@ CONTAINS
             END DO
           END DO
         ELSE
-          DO i = 1,np
-            DO q = 1,nd-np
-              j = q+np
-              Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-              Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-            END DO
-            IF (LorentzCondition) THEN
-              DO j = 1,np
-                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+          IF (UseGaussLaw) THEN
+            ! Add w^2 div D = w^2 rho in a weak form when E = A + grad V:
+            DO i = 1,np
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               END DO
-            END IF
-          END DO
+              DO j = 1,np
+                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+              END DO
+            END DO
+          ELSE
+            DO i = 1,np
+              DO q = 1,nd-np
+                j = q+np
+                Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+              END DO
+              IF (LorenzCondition) THEN
+                DO j = 1,np
+                  Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+                END DO
+              END IF
+            END DO
+          END IF
         END IF
       END IF
     END DO
@@ -627,17 +658,19 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3)
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    REAL(KIND=dp) :: DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithGauge
+    REAL(KIND=dp) :: th, DetJ
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
-       
+    TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
+    TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
+    
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
     IF(.NOT. AllocationsDone ) THEN
@@ -654,6 +687,12 @@ CONTAINS
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
+
+      CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Thin Sheet Thickness')
+      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Thin Sheet Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Thin Sheet Electric Conductivity',InitIm=.TRUE.)
       InitHandles = .FALSE.
     END IF
 
@@ -670,7 +709,7 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     ndofs = np/n
-    WithGauge = ndofs > 1 ! True only when the gauged A-V is used
+    WithNdofs = UseGaussLaw .OR. ndofs > 1 ! True only when the gauged A-V or the Gauss law is used
 
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -680,11 +719,75 @@ CONTAINS
       !
       IF (GetElementFamily(Element) == 2) THEN
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
-            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+            Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE    
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
+      END IF
+
+      th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
+      IF (ThinSheet) THEN
+        IF (ndofs /= 1) CALL Fatal(Caller, 'One nodal field expected')
+        IF (.NOT. (ABS(th) > AEPS)) CYCLE
+
+        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+        IF( Found ) THEN
+          muinv = muinv * mu0inv
+        ELSE
+          muinv = mu0inv
+        END IF
+        Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+        
+        UpdateStiff = .TRUE.
+        
+!         print *, 'skin depth', SQRT( 2.0_dp*muinv/(Real(cond)*omega))
+!         print *, 'skin depth/sheet thickness', SQRT( 2.0_dp*muinv/(Real(cond)*omega))/th
+!         print *, 'impedance', SQRT(omega/( 2.0_dp*muinv*real(cond)))
+
+        !
+        ! The contributions from the constraint (n x H) x n = K x n = - a (E x n) where
+        ! the coefficient a is taken to be the product of the sheet conductivity and thickness
+        DO i = 1,nd-np
+          p = i+np
+          DO j = 1,nd-np
+            q = j+np
+            !
+            ! The term -i*omega*a < A x n, eta x n>
+            !
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
+            !
+            ! An additional term related to magnetic co-energy
+            !
+            !STIFF(p,q) = STIFF(p,q) + th * muinv * &
+            !    SUM(RotWBasis(i,:) * RotWBasis(j,:)) * detJ * IP % s(t)
+          END DO
+
+          DO q = 1,np
+            !
+            ! The term  -i*omega*a < grad V x n, eta x n>
+            !
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+        END DO
+
+        DO p = 1,np
+          DO q = 1,np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+          END DO
+
+          DO j = 1,nd-np
+            q = j+np
+            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+          END DO
+        END DO
+        
+        CYCLE
       END IF
       
       IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
@@ -698,7 +801,9 @@ CONTAINS
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
       L = L + TemGrad
 
-      IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      IF (.NOT. UseGaussLaw) THEN
+        IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
+      END IF
       UpdateStiff = .TRUE.
 
       IF( ASSOCIATED( Parent ) ) THEN        
@@ -722,18 +827,30 @@ CONTAINS
         END DO
       END DO
 
-      IF (WithGauge) THEN
+      IF (WithNdofs) THEN
         ! The following term arises if the decomposition E = A + grad V is applied:
-        DO i = 1,nd-np
-          p = i+np
-          DO j=1,n
-            q = (j-1)*ndofs + 1
-            STIFF(p,q) = STIFF(p,q) - muinv * B * &
-                SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+        IF (ABS(B) > AEPS) THEN
+          DO i = 1,nd-np
+            p = i+np
+            DO j=1,n
+              q = (j-1)*ndofs + 1
+              STIFF(p,q) = STIFF(p,q) - muinv * B * &
+                  SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
+            END DO
           END DO
-        END DO
+        END IF
+          
+        IF (UseGaussLaw) THEN
+          BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+          jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+          DO i = 1,np
+            FORCE(i) = FORCE(i) + im * omega * jn * Basis(i) * detJ * IP % s(t)
+            DO j = 1,np
+              STIFF(i,j) = STIFF(i,j) + im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
+            END DO
+          END DO
+        END IF
       END IF
-
     END DO
 
     IF (UpdateStiff) THEN
@@ -782,20 +899,22 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
 
   ! Find the solver index of the primary solver by the known procedure name.
   ! (the solver is defined here in the same module so not that dirty...)
-  soln = 0
+  soln = ListGetInteger( SolverParams,'Primary Solver index', Found ) 
 
-  DO i=1,Model % NumberOfSolvers
-    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
-    j = INDEX( sname,'VectorHelmholtzSolver')
-    IF( j > 0 ) THEN
-      soln = i 
-      EXIT
-    END IF
-  END DO
-  
-  pname = GetString(SolverParams, 'Potential variable', Found)
-  IF( Found ) THEN
-    IF( soln == 0 ) THEN
+  IF( soln == 0 ) THEN
+    DO i=1,Model % NumberOfSolvers
+      sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+      j = INDEX( sname,'VectorHelmholtzSolver')
+      IF( j > 0 ) THEN
+        soln = i 
+        EXIT
+      END IF
+    END DO
+  END IF
+
+  IF( soln == 0 ) THEN
+    pname = GetString(SolverParams, 'Potential variable', Found)
+    IF( Found ) THEN
       DO i=1,Model % NumberOfSolvers
         sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
 
@@ -806,9 +925,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
           EXIT
         END IF
       END DO
-    ELSE
-      CALL Info('VectorHelmholtzCalcFields_Init0',&
-          'Keyword > Potential Variable < is redundant when we match the Procedure name',Level=7)
     END IF
   END IF
     
@@ -988,6 +1104,29 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
+
+  ! These use one flag to call library features to compute automatically
+  ! a capacitance matrix.
+  IF( ListGetLogical( SolverParams,'Calculate S-Matrix',Found ) ) THEN
+    CALL Info('VectorHelmholtz_init','Using Constraint Modes functionality for S-Matrix')
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes Results',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
+    IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
+      CALL ListRename( SolverParams,'S-Matrix Filename',&
+          'Constraint Modes Fluxes Filename', Found ) 
+    ELSE     
+      CALL ListAddNewString( SolverParams,'Constraint Modes Fluxes Filename',&
+          'SMatrix.dat',.FALSE.)
+    END IF
+    CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')
+    !CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
+    !CALL Info('VectorHelmoltz_init','Suppressing bandwidth optimization in S-Matrix computation!')
+  END IF
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
@@ -1016,7 +1155,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), &
        EdotJ, EF_ip(3), R_ip, B(3)
 
-   TYPE(Variable_t), POINTER :: MFD, MFS, EF, PV, DIVPV, EW
+   TYPE(Variable_t), POINTER :: TargetVar, MFD, MFS, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
    INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
@@ -1041,7 +1180,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   LOGICAL :: WithGauge
+   LOGICAL :: WithGauge, UseGaussLaw
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
@@ -1063,11 +1202,18 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! Pointer to primary solver
    pSolver => Model % Solvers(soln)
 
-   Pname = getVarName(pSolver % Variable)
+   Pname = ListGetString( SolverParams,'Potential Variable', Found )
+   IF(Found ) THEN
+     TargetVar => VariableGet( pSolver % Mesh % Variables, Pname ) 
+   ELSE
+     TargetVar => pSolver % Variable
+     Pname = getVarName(pSolver % Variable)
+   END IF
+
    CALL Info(Caller,'Name of potential variable: '//TRIM(pName),Level=10)
-   
+     
    ! Inherit the solution basis from the primary solver
-   vDOFs = pSolver % Variable % DOFs
+   vDOFs = TargetVar % DOFs
    IF( vDofs /= 2 ) THEN
      CALL Fatal(Caller,'Primary variable should have 2 dofs: '//I2S(vDofs))
    END IF
@@ -1080,6 +1226,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
     
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
+   UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
+   
    Omega = GetAngularFrequency(Found=Found)
    
    Found = .FALSE.
@@ -1147,8 +1295,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    SOL = 0._dp
    Energy = 0._dp; Energy_im = 0._dp
 
-   xx => pSolver % Variable % Values
-   bb => pSolver % Matrix % RHS
+   xx => TargetVar % Values
    
    hdotE_r = 0._dp
    hdotE_i = 0._dp
@@ -1156,6 +1303,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
    ! it treats the system complex valued.
    IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
+     IF( pSolver % Variable % dofs /= 2 ) THEN
+       CALL Fatal(Caller,'Cannot compute energy norm if dofs not 2!') 
+     END IF
+
+     bb => pSolver % Matrix % RHS
      ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
      IF ( ParEnv % PEs > 1 ) THEN
        ALLOCATE(TempRHS(SIZE(bb)))
@@ -1243,7 +1395,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        END IF
 
        EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-       IF (WithGauge) THEN
+       IF (WithGauge .OR. UseGaussLaw) THEN
          DO k=1,3
            EF_ip(k) = EF_ip(k) + &
                CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))

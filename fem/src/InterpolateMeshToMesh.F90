@@ -568,7 +568,7 @@ CONTAINS
 
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % NodeInterface )
+     NULLIFY( Mesh % ParallelInfo % GInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
          
   END FUNCTION AllocateMesh
@@ -673,6 +673,8 @@ END SUBROUTINE InterpolateMeshToMesh
 
        RootQuadrant => OldMesh % RootQuadrant
        dim = CoordinateSystemDimension()
+
+       dim = MAX(dim,OldMesh % MeshDim)
        
        IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
          UseQTree = .TRUE.
@@ -692,7 +694,8 @@ END SUBROUTINE InterpolateMeshToMesh
            eps2 = 0.1_dp * MAXVAL(BoundingBox(4:6)-BoundingBox(1:3))
            BoundingBox(1:3) = BoundingBox(1:3) - eps2
            BoundingBox(4:6) = BoundingBox(4:6) + eps2
-           
+
+           CALL Info('InterpolateMeshToMeshQ','Creating quadrant tree for faster interpolation!',Level=10)
            CALL BuildQuadrantTree( OldMesh,BoundingBox,OldMesh % RootQuadrant)
            RootQuadrant => OldMesh % RootQuadrant
          END IF
@@ -826,6 +829,16 @@ END SUBROUTINE InterpolateMeshToMesh
                  ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
                  ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
                  ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
+
+                 IF( PassiveCoordinate > 0 ) THEN
+                   IF( PassiveCoordinate == 1 ) THEN
+                     ElementNodes % x(1:n) = 0.0_dp
+                   ELSE IF( PassiveCoordinate == 2 ) THEN
+                     ElementNodes % y(1:n) = 0.0_dp
+                   ELSE IF( PassiveCoordinate == 3 ) THEN
+                     ElementNodes % z(1:n) = 0.0_dp
+                   END IF
+                 END IF
                  
                  Found = PointInElement( Element, ElementNodes, &
                      Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric,EdgeBasis=PiolaT)
@@ -853,6 +866,16 @@ END SUBROUTINE InterpolateMeshToMesh
              ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
              ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
              ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
+
+             IF( PassiveCoordinate > 0 ) THEN
+               IF( PassiveCoordinate == 1 ) THEN
+                 ElementNodes % x(1:n) = 0.0_dp
+               ELSE IF( PassiveCoordinate == 2 ) THEN
+                 ElementNodes % y(1:n) = 0.0_dp
+               ELSE IF( PassiveCoordinate == 3 ) THEN
+                 ElementNodes % z(1:n) = 0.0_dp
+               END IF
+             END IF
              
              Found =  PointInElement( Element, ElementNodes, &
                  Point, LocalCoordinates  ) 
@@ -866,8 +889,8 @@ END SUBROUTINE InterpolateMeshToMesh
          IF (.NOT.Found) THEN
            Element => NULL()
            IF (.NOT. Parallel ) THEN
-             WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=20 )
+             WRITE( Message,'(A,I0,A,3ES10.2,A)' ) 'Point ',i,' at ',Point,' not found!'
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )             
              TotFails = TotFails + 1
            END IF
            CYCLE
@@ -907,11 +930,10 @@ END SUBROUTINE InterpolateMeshToMesh
                CYCLE
              END IF          
 
-             IF( Var % Secondary ) THEN
-               Var => Var % Next
-               CYCLE
-             END IF
-            
+             !IF( Var % Secondary ) THEN
+             !  Var => Var % Next
+             !  CYCLE
+             !END IF
              
              IF ( Var % DOFs == 1 .AND. &
                  Var % Name(1:10) /= 'coordinate') THEN
@@ -928,7 +950,6 @@ END SUBROUTINE InterpolateMeshToMesh
                 END IF
                 OldSol => VariableGet( OldMesh % Variables, Var % Name, .TRUE. )
 
-                
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
@@ -1003,6 +1024,9 @@ END SUBROUTINE InterpolateMeshToMesh
              WRITE( Message,'(A,I0,A,I0,A)') 'Points not found: ',TotFails,' (found ',&
                  NewMesh % NumberOfNodes - TotFails,')'
              CALL Warn( 'InterpolateMeshToMesh', Message )
+             IF( ListGetLogical( CurrentModel % Simulation,'Interpolation Abort Not Found',Stat) ) THEN
+               CALL Fatal('InterpolateMeshToMesh','Can not continue with incomplete interpolation!')
+             END IF
            END IF
          END IF
 

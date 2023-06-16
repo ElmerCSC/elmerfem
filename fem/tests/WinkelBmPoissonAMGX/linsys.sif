@@ -1,0 +1,4 @@
+  ! AMGX solver
+  Linear System Solver = AMGX
+  AMGX config = String "config.json"
+

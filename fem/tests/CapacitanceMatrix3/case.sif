@@ -17,6 +17,7 @@ Simulation
   Steady State Max Iterations = 1
 
 !  Mesh Levels = 2
+  Serendipity P Elements = False
 End
 
 Constants
@@ -144,6 +145,6 @@ Boundary Condition 6
   Capacitance Body = 5
 End
 
-Solver 1 :: Reference Norm = 1.57909356E-01
-Solver 3 :: Reference Norm = 5.09226094E+00
+Solver 1 :: Reference Norm = 1.37719121E-01
+Solver 3 :: Reference Norm = 5.08932089E+00
 

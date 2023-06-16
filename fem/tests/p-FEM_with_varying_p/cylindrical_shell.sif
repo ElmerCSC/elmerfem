@@ -69,6 +69,8 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
+
+  Serendipity P Elements = False
 End
 
 Body 1
@@ -172,5 +174,5 @@ Boundary Condition 4
   U 4 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 1.17434024E-02
+Solver 1 :: Reference Norm = Real 9.50681481E-03
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

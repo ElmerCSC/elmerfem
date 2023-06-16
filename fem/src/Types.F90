@@ -161,6 +161,7 @@ MODULE Types
     TYPE(Matrix_t), POINTER :: ParentMatrix => NULL()
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
+    INTEGER :: NoIters = 0
   END TYPE BlockMatrix_t
 
 #if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
@@ -212,7 +213,8 @@ MODULE Types
                DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:)
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
-    REAL(KIND=dp) :: RhsScaling
+    REAL(KIND=dp) :: RhsScaling=1.0, AveScaling=1.0 
+    INTEGER :: ScalingMethod = 0
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
         PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()
@@ -246,6 +248,7 @@ MODULE Types
 #ifdef HAVE_TRILINOS
     INTEGER(KIND=C_INTPTR_T) :: Trilinos=0
 #endif
+    INTEGER(KIND=C_INTPTR_T) :: AMGX=0, AMGXMV=0
     INTEGER(KIND=AddrInt) :: SpMV=0
 
     INTEGER(KIND=AddrInt) :: MatVecSubr = 0
@@ -693,7 +696,7 @@ MODULE Types
       INTEGER :: TetraType       ! Type of p tetrahedron={0,1,2}
       LOGICAL :: isEdge          ! Is element an edge or face?
       INTEGER :: GaussPoints     ! Number of gauss points to use when using p elements
-      LOGICAL :: pyramidQuadEdge ! Is element an edge of pyramid quad face?
+      LOGICAL :: Serendipity=.TRUE.     ! Is this a serendipity of complete basis element ?
       INTEGER :: localNumber     ! Local number of an edge or face for element on boundary
       TYPE(Element_t), POINTER :: localParent => Null()     ! Local number of an edge or face for element on boundary
    END TYPE PElementDefs_t
@@ -747,7 +750,7 @@ MODULE Types
 
    TYPE ParallelInfo_t
      INTEGER :: NumberOfIfDOFs
-     LOGICAL, POINTER               :: NodeInterface(:)
+     LOGICAL, POINTER               :: GInterface(:)
      INTEGER, POINTER               :: GlobalDOFs(:)
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
      INTEGER, POINTER               :: Gorder(:) => NULL()
@@ -781,7 +784,7 @@ MODULE Types
      TYPE(Projector_t), POINTER :: Projector
      TYPE(Quadrant_t), POINTER  :: RootQuadrant
 
-     LOGICAL :: Changed, OutputActive, Stabilize
+     LOGICAL :: Changed, OutputActive, Stabilize = .FALSE.
      INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
      LOGICAL :: AdaptiveFinished = .FALSE.
 
@@ -791,16 +794,17 @@ MODULE Types
      TYPE(ParallelInfo_t) :: ParallelInfo
      TYPE(Variable_t), POINTER :: Variables
 
-     TYPE(Nodes_t), POINTER :: Nodes
-     TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
+     TYPE(Nodes_t), POINTER :: Nodes => NULL()
+     TYPE(Element_t), DIMENSION(:), POINTER :: Elements => NULL(), &
+         Edges => NULL(), Faces => NULL()
      TYPE(Nodes_t), POINTER :: NodesOrig => NULL()
      TYPE(Nodes_t), POINTER :: NodesMapped => NULL()
 
      INTEGER :: SolverId = 0
      
-     LOGICAL :: DisContMesh 
-     INTEGER, POINTER :: DisContPerm(:)
-     INTEGER :: DisContNodes
+     LOGICAL :: DisContMesh = .FALSE.  
+     INTEGER, POINTER :: DisContPerm(:) => NULL()
+     INTEGER :: DisContNodes = 0
 
      INTEGER, POINTER :: PeriodicPerm(:) => NULL()
      LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
@@ -857,6 +861,8 @@ MODULE Types
      INTEGER :: NoModes = 0
      REAL(KIND=dp), POINTER :: CMatrix(:,:) => NULL()
      REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
+     REAL(KIND=dp), POINTER :: Crhs(:) => NULL()
+     REAL(KIND=dp), POINTER :: CrhsIm(:) => NULL()
    END TYPE LumpedModel_t
 
         
@@ -1083,7 +1089,6 @@ MODULE Types
 
     INTEGER :: ELMER_COMM_WORLD = -1
 
-    LOGICAL :: USE_XIOS=.FALSE.
     CHARACTER(len=*),PARAMETER :: xios_id="elmerice"
 !------------------------------------------------------------------------------
 END MODULE Types

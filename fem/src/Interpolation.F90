@@ -84,7 +84,7 @@ MODULE Interpolation
      REAL(KIND=dp) :: BBox(6), eps3
      REAL(KIND=dp), PARAMETER :: eps2=0.0_dp !!!!!!! *** !!!!!!
 !------------------------------------------------------------------------------
-
+     
 !    Loop over ChildQuadrants:
 !    -------------------------
      DO i=1, 2**dim
@@ -331,8 +331,8 @@ MODULE Interpolation
     TYPE(Quadrant_t), POINTER :: MotherQuadrant
     INTEGER :: MaxLeafElems
 
-    dim = CoordinateSystemDimension()
-
+    dim = MAX( Mesh % MeshDim, CoordinateSystemDimension() )
+        
     IF ( dim == 3 ) THEN
       MaxLeafElems = 16
     ELSE
