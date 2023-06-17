@@ -79,6 +79,8 @@
       TYPE(Element_t), POINTER :: Element
       INTEGER :: i,k
       INTEGER :: NN,nf
+      INTEGER, POINTER :: Perm(:)
+      LOGICAL, SAVE :: PermAllocated=.FALSE.
       CHARACTER (len=MAX_STRING_LEN) :: FName
       CHARACTER (len=MAX_NAME_LEN) :: VarName,TVarName,T2VarName
       CHARACTER (len=MAX_NAME_LEN) :: Txt
@@ -268,7 +270,22 @@
         TVarName = ListGetString(SolverParams,TRIM(Txt),Found)
         IF (.NOT.Found) TVarName=TRIM(VarName)
 
-        Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),UnFoundFatal=.TRUE.)
+        Var => VariableGet( ThisMesh % Variables,TRIM(TVarName),ThisOnly=.TRUE.)
+        ! Var not found assumed it is on nodes!!
+        IF(.NOT. ASSOCIATED(Var) ) THEN
+          CALL Warn(SolverName, &
+                TRIM(TVarName) // " not found on solver mesh, asssume nodal variable")
+          IF (.NOT.PermAllocated) THEN
+             ALLOCATE( Perm( ThisMesh % NumberOfNodes ) )
+             DO i =1, ThisMesh % NumberOfNodes
+               Perm(i) = i
+             END DO
+             PermAllocated=.TRUE.
+          END IF
+          CALL VariableAddVector( ThisMesh % Variables, ThisMesh, Solver, &
+              TVarName, dofs = 1, Perm = Perm )
+          Var => VariableGet( ThisMesh % Variables, TVarName, ThisOnly = .TRUE. )
+        END IF
         VarType=Var % TYPE
 
         ! special cases.... time do not seems to be a global variable by
@@ -342,13 +359,6 @@
         NetCDFstatus=nf90_close(ncid)
 
         IF (DoInterp.AND.(VarType.EQ.Variable_on_nodes)) THEN
-
-           ! Rename variable in this mesh with the name in the target mesh
-	   ! to do the interpolation
-	   WRITE(Txt,'(A,I0)') 'Target Mesh Variable ',VarIndex
-           T2VarName = ListGetString(SolverParams,TRIM(Txt),Found)
-           IF (.NOT.Found) T2VarName=TRIM(VarName)
-           Var % NameLen = StringToLowerCase( Var % Name,T2VarName)
 
           CALL InterpolateMeshToMesh( ThisMesh, &
                   TargetMesh, Var, TargetMesh % Variables,&
