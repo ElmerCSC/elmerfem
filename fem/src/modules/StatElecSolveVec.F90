@@ -341,7 +341,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
   CALL DefaultFinish()
 
   IF (ListGetLogical(Solver % Values, 'Adaptive Mesh Refinement', Found)) &
-    CALL RefineMesh(Model, Solver, Potential, PotentialPerm, &
+    CALL RefineMesh(Model, Solver, Solver % Variable % Values, Solver % Variable % Perm, &
                     ElectricInsideResidual, ElectricEdgeResidual, ElectricBoundaryResidual)
 
 CONTAINS
@@ -1151,7 +1151,7 @@ FUNCTION ElectricBoundaryResidual(Model, Edge, Mesh, Quant, Perm, Gnorm) RESULT(
                                 EdgeBasis(:), Basis(:), x(:), y(:), z(:), &
                                 dBasisdx(:, :), Potential(:), Flux(:)
 
-  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, gx, gy, gz
+  REAL(KIND=dp) :: Grad(3, 3), Normal(3), EdgeLength, gx, gy, gz, Permittivity
 
   REAL(KIND=dp) :: u, v, w, s, detJ
 
@@ -1643,7 +1643,7 @@ FUNCTION ElectricInsideResidual(Model, Element, Mesh, &
   nd = GetElementNOFDOFs(Element)
   n = GetElementNOFNodes(Element)
   ALLOCATE (NodalPermittivity(nd), &
-            PrevPot(nd), NodalSource(nd), Potential(nd) &
+            PrevPot(nd), NodalSource(nd), Potential(nd), &
             Basis(nd), dBasisdx(nd, 3), ddBasisddx(nd, 3, 3), Indexes(nd))
 !
 !    Element nodal points:
@@ -1705,7 +1705,6 @@ FUNCTION ElectricInsideResidual(Model, Element, Mesh, &
     IF (.NOT. stat) &
       NodalSource(1:n) = ListGetReal(Model % BodyForces(k) % Values, &
                                      'Source', n, Element % NodeIndexes)
-  END IF
   END IF
 
 !
