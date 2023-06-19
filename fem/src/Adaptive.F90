@@ -447,7 +447,7 @@ CONTAINS
       t = RealTime()
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-        CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
+        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
