@@ -74,9 +74,9 @@ int main( int argc, char **argv )
       
 /* kludge to enable exit. */
 #if defined(WIN32) || defined(MINGW32)
-      if( stricmp(str,"exit") == 0  || stricmp(str,"quit") == 0 )
+      if( stricmp(str,"exit\n") == 0  || stricmp(str,"quit\n") == 0 )
 #else
-      if( strcasecmp(str,"exit") == 0  || strcasecmp(str,"quit") == 0 )
+      if( strcasecmp(str,"exit\n") == 0  || strcasecmp(str,"quit\n") == 0 )
 #endif
       {
 	return 0;
