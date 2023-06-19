@@ -746,7 +746,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     END DO
   END IF
     
-  NewMesh => AllocateMesh( NTetras+nt0, NTris+na0, NVerts+np0, .TRUE.)
+  NewMesh => AllocateMesh( NTetras+nt0, NTris+na0, NVerts+np0, ParEnv % PEs>1)
   NewMesh % Name = "MMG3D_Output"
   NewMesh % MaxElementNodes = maxnodes
   NewMesh % MaxElementDOFs = maxnodes
@@ -967,7 +967,9 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
     END DO
   END IF
              
-  CALL SetMeshMaxDOFs(NewMesh)
+! CALL SetMeshMaxDOFs(NewMesh)
+
+  CALL Finalize_MMG_Mesh(NewMesh)
 
   
 #else
@@ -3099,7 +3101,181 @@ END SUBROUTINE DistributedRemeshParMMG
       END DO
     END IF
              
-    CALL SetMeshMaxDOFs(NewMesh)
+!   CALL SetMeshMaxDOFs(NewMesh)
+
+    CALL Finalize_MMG_Mesh(NewMesh)
+
+BLOCK
+
+     CHARACTER(:), ALLOCATABLE :: ElementDef, ElementDef0
+     INTEGER ::  i,Def_DOFs(10,6)
+     TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: stat, GotMesh = .FALSE.
+
+
+      Solver => CurrentModel % Solver
+
+
+      Def_Dofs = -1; Def_Dofs(:,1)=1
+
+      ! Define what kind of element we are working with in this solver
+      !-----------------------------------------------------------------
+      ElementDef = ListGetString( Solver % Values, 'Element', stat )
+
+      IF ( .NOT. stat ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+           Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2
+           IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
+           i=i+1
+           Solver % DG = .TRUE.
+!          CYCLE
+        ELSE
+           ElementDef = "n:1"
+        END IF
+      END IF
+
+      ElementDef0 = ElementDef
+      DO WHILE(.TRUE.)
+        j = INDEX( ElementDef0, '-' )
+        IF (j>0) THEN
+          !
+          ! Read the element definition up to the next flag which specifies the
+          ! target element set
+          !
+          ElementDef = ElementDef0(1:j-1)
+        ELSE
+          ElementDef = ElementDef0
+        END IF
+        !  Calling GetDefs fills Def_Dofs arrays:
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        IF(j>0) THEN
+          ElementDef0 = ElementDef0(j+1:)
+        ELSE
+          EXIT
+        END IF
+      END DO
+
+      CALL PrepareMesh( CurrentModel, NewMesh, ParEnv % PEs>1 , Def_Dofs )
+END BLOCK
+
+CONTAINS
+
+
+
+!------------------------------------------------------------------------------
+!> This subroutine is used to fill Def_Dofs array of the solver structure.
+!> Note that this subroutine makes no attempt to figure out the index of
+!> the body, so all bodies are assigned with the same element definition.
+!> A similar array of reduced dimension is also filled so as to figure out
+!> the maximal-complexity definition over all solvers which use the same
+!> global mesh.
+!------------------------------------------------------------------------------
+    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
+      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
+      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
+      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
+!------------------------------------------------------------------------------
+      INTEGER, POINTER :: ind(:)
+      INTEGER, TARGET :: Family(10)
+      INTEGER :: i,j,l,n
+      LOGICAL :: stat
+
+      Family = [1,2,3,4,5,6,7,8,9,10]
+
+      ! The default assumption is that the given element definition is applied 
+      ! to all basic element families (note that the element sets 9 and 10 are
+      ! not included since the explicit choice of the target family is 
+      ! a part of the element definition string when the target index is
+      ! deduced to be 9 or 10).
+      !
+      ind => Family(1:8)
+      !
+      ! If the element family is specified, change the target family 
+      !
+      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
+      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
+      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
+      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
+      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
+      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
+      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
+      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
+      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
+      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
+          
+      j = INDEX( ElementDef(1:n), 'n:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,1) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'e:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,2) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'f:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,3) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'd:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation within LoadMesh2,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
+        Solver_Def_Dofs(ind,:,4) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
+      ELSE 
+        IF ( ListGetLogical( Solver % Values, &
+            'Discontinuous Galerkin', stat ) ) THEN
+          Solver_Def_Dofs(ind,:,4) = 0
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
+        END IF
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'b:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,5) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'p:' )
+      IF ( j>0 ) THEN
+        IF ( ElementDef(j+2:j+2)=='%' ) THEN
+          ! Seeing a p-element definition starting as p:% means that a 
+          ! a special keyword construct is used so that the degree of
+          ! approximation can be evaluated by calling a MATC function.
+          ! This special case is handled elsewhere and we now postpone
+          ! setting the right value.
+          Solver_Def_Dofs(ind,:,6) = 0
+        ELSE
+          READ( ElementDef(j+2:), * ) l
+          Solver_Def_Dofs(ind,:,6) = l
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
+         END IF
+      END IF
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE GetDefs
+!------------------------------------------------------------------------------
+
+    
+
     
 #else
   CALL Fatal('Get_MMG2D_Mesh', "Remeshing utility MMG has not been installed")
@@ -3546,5 +3722,177 @@ END SUBROUTINE DistributedRemeshParMMG
     
   END FUNCTION MMG2D_ReMesh
 
+
+
+  SUBROUTINE Finalize_MMG_Mesh(Mesh)
+
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     CHARACTER(:), ALLOCATABLE :: ElementDef, ElementDef0
+     INTEGER ::  i,j,Def_DOFs(10,6)
+     TYPE(Solver_t), POINTER :: Solver
+     LOGICAL :: stat, GotMesh = .FALSE.
+
+
+      Solver => CurrentModel % Solver
+
+
+      Def_Dofs = -1; Def_Dofs(:,1)=1
+
+      ! Define what kind of element we are working with in this solver
+      !-----------------------------------------------------------------
+      ElementDef = ListGetString( Solver % Values, 'Element', stat )
+
+      IF ( .NOT. stat ) THEN
+        IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
+           Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2
+           IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
+           i=i+1
+           Solver % DG = .TRUE.
+!          CYCLE
+        ELSE
+           ElementDef = "n:1"
+        END IF
+      END IF
+
+      ElementDef0 = ElementDef
+      DO WHILE(.TRUE.)
+        j = INDEX( ElementDef0, '-' )
+        IF (j>0) THEN
+          !
+          ! Read the element definition up to the next flag which specifies the
+          ! target element set
+          !
+          ElementDef = ElementDef0(1:j-1)
+        ELSE
+          ElementDef = ElementDef0
+        END IF
+        !  Calling GetDefs fills Def_Dofs arrays:
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
+        IF(j>0) THEN
+          ElementDef0 = ElementDef0(j+1:)
+        ELSE
+          EXIT
+        END IF
+      END DO
+
+      CALL PrepareMesh( CurrentModel, Mesh, ParEnv % PEs>1 , Def_Dofs )
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> This subroutine is used to fill Def_Dofs array of the solver structure.
+!> Note that this subroutine makes no attempt to figure out the index of
+!> the body, so all bodies are assigned with the same element definition.
+!> A similar array of reduced dimension is also filled so as to figure out
+!> the maximal-complexity definition over all solvers which use the same
+!> global mesh.
+!------------------------------------------------------------------------------
+    SUBROUTINE GetDefs(ElementDef, Solver_Def_Dofs, Def_Dofs, Def_Dofs_Update)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*), INTENT(IN) :: ElementDef     !< an element definition string
+      INTEGER, INTENT(OUT) :: Solver_Def_Dofs(:,:,:) !< Def_Dofs of the solver structure
+      INTEGER, INTENT(INOUT) :: Def_Dofs(:,:)        !< holds the maximal-complexity definition on global mesh
+      LOGICAL, INTENT(IN) :: Def_Dofs_Update         !< is .TRUE. when the definition refers to the global mesh
+!------------------------------------------------------------------------------
+      INTEGER, POINTER :: ind(:)
+      INTEGER, TARGET :: Family(10)
+      INTEGER :: i,j,l,n
+      LOGICAL :: stat
+
+      Family = [1,2,3,4,5,6,7,8,9,10]
+
+      ! The default assumption is that the given element definition is applied 
+      ! to all basic element families (note that the element sets 9 and 10 are
+      ! not included since the explicit choice of the target family is 
+      ! a part of the element definition string when the target index is
+      ! deduced to be 9 or 10).
+      !
+      ind => Family(1:8)
+      !
+      ! If the element family is specified, change the target family 
+      !
+      IF (SEQL(ElementDef, 'point') )     ind => Family(1:1)
+      IF (SEQL(ElementDef, 'line') )      ind => Family(2:2)
+      IF (SEQL(ElementDef, 'tri') )       ind => Family(3:3)
+      IF (SEQL(ElementDef, 'quad') )      ind => Family(4:4)
+      IF (SEQL(ElementDef, 'tetra') )     ind => Family(5:5)
+      IF (SEQL(ElementDef, 'pyramid') )   ind => Family(6:6)
+      IF (SEQL(ElementDef, 'prism') )     ind => Family(7:7)
+      IF (SEQL(ElementDef, 'brick') )     ind => Family(8:8)
+      IF (SEQL(ElementDef, 'tri_face') )  ind => Family(9:9)
+      IF (SEQL(ElementDef, 'quad_face') ) ind => Family(10:10)
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
+          
+      j = INDEX( ElementDef(1:n), 'n:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,1) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'e:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,2) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'f:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,3) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'd:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation within LoadMesh2,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
+        Solver_Def_Dofs(ind,:,4) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
+      ELSE 
+        IF ( ListGetLogical( Solver % Values, &
+            'Discontinuous Galerkin', stat ) ) THEN
+          Solver_Def_Dofs(ind,:,4) = 0
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
+        END IF
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'b:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver_Def_Dofs(ind,:,5) = l
+        IF ( Def_Dofs_Update ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'p:' )
+      IF ( j>0 ) THEN
+        IF ( ElementDef(j+2:j+2)=='%' ) THEN
+          ! Seeing a p-element definition starting as p:% means that a 
+          ! a special keyword construct is used so that the degree of
+          ! approximation can be evaluated by calling a MATC function.
+          ! This special case is handled elsewhere and we now postpone
+          ! setting the right value.
+          Solver_Def_Dofs(ind,:,6) = 0
+        ELSE
+          READ( ElementDef(j+2:), * ) l
+          Solver_Def_Dofs(ind,:,6) = l
+          IF ( Def_Dofs_Update ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
+         END IF
+      END IF
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE GetDefs
+!------------------------------------------------------------------------------
+
+END SUBROUTINE Finalize_MMG_Mesh
+    
   
 END MODULE MeshRemeshing

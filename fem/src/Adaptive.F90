@@ -742,10 +742,13 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: RefMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n
-    REAL(KIND=dp) :: Lambda
+    REAL(KIND=dp) :: Lambda, hLimitScale
     INTEGER, ALLOCATABLE :: Hcount(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
+
+    hLimitScale = ListGetConstReal( Params,'Adaptive H Limit Scale', Found )
+    IF ( .NOT.Found ) hLimitScale = 1.0d0
 
     DO i=1,RefMesh % NumberOfNodes      
       IF ( NodalError(i) < 100*AEPS ) CYCLE 
@@ -763,7 +766,7 @@ CONTAINS
       IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
       IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
 
-      HValue(i) = Lambda        
+      HValue(i) = Lambda * hLimitScale
     END DO
   END SUBROUTINE ComputeDesiredHvalue
 
