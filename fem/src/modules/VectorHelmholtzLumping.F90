@@ -145,6 +145,15 @@
      BC => GetBC()
      IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
+     SELECT CASE(GetElementFamily())
+     CASE(1)
+       CYCLE
+     CASE(2)
+       k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
+     CASE(3,4)
+       k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
+     END SELECT
+     
      iMode = ListGetInteger( BC,'Constraint Mode',Found )
      IF( iMode == 0 ) CYCLE       
 
@@ -265,7 +274,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
         e_ip(3), e_ip_norm, e_ip_tan(3), imu
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
-    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w
+    REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z
     LOGICAL :: Stat, Found
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs, n, nd   
@@ -274,12 +283,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
-    
+     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local
 
+    ndofs = evar % dofs
     IF(.NOT. AllocationsDone ) THEN
-      m = 2*Mesh % MaxElementDOFs
-      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(6,m) )      
+      m = Mesh % MaxElementDOFs
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m) )      
       AllocationsDone = .TRUE.
     END IF
     
@@ -306,16 +316,23 @@ CONTAINS
     IF(.NOT. ASSOCIATED( Parent ) ) THEN
       CALL Fatal(Caller,'Model lumping requires parent element!')
     END IF
+
+    e_local = 0.0_dp
     
     IF( NodalMode ) THEN
-      CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar )
+      CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar, Found=Found)
     ELSE
       CALL GetElementNodes( ParentNodes, Parent )    
-      CALL GetVectorLocalSolution( e_local, Pname, uSolver=pSolver )
-      np = n*pSolver % Def_Dofs(GetElementFamily(Parent),Parent % BodyId,1)
+      CALL GetVectorLocalSolution( e_local, UElement = Parent, Uvariable=eVar, &
+          uSolver=pSolver, Found=Found)
+      np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Parent),:,1))
+      np = 0
       nd = GetElementNOFDOFs(Parent,uSolver=pSolver)
     END IF
-      
+    IF(.NOT. Found) THEN
+      CALL Fatal(Caller,'Could not find field data on boundary!?')
+    END IF
+            
     Normal = NormalVector(Element, Nodes, Check=.TRUE.)
     
     ! Numerical integration:
@@ -355,17 +372,22 @@ CONTAINS
       Zs = B * muinv / (imu*Omega)
       
       IntWeight(iMode) = IntWeight(iMode) + weight
-      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * SUM(Basis(1:n) * Nodes % x(1:n)) 
-      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * SUM(Basis(1:n) * Nodes % y(1:n)) 
-      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * SUM(Basis(1:n) * Nodes % z(1:n))       
+      x = SUM(Basis(1:n) * Nodes % x(1:n)) 
+      y = SUM(Basis(1:n) * Nodes % y(1:n)) 
+      z = SUM(Basis(1:n) * Nodes % z(1:n)) 
+      
+      IntCenter(iMode,1) = IntCenter(iMode,1) + weight * x
+      IntCenter(iMode,2) = IntCenter(iMode,2) + weight * y
+      IntCenter(iMode,3) = IntCenter(iMode,3) + weight * z
 
       IF( NodalMode ) THEN
         DO i=1,3
           e_ip(i) = CMPLX( SUM( Basis(1:n) * e_local(i,1:n) ), SUM( Basis(1:n) * e_local(i+3,1:n) ) )
         END DO
-      ELSE
+      ELSE        
         ! In order to get the normal component of the electric field we must operate on the
         ! parent element. The surface element only has tangential components. 
+        u = 0.0_dp; v = 0.0_dp; w = 0.0_dp
         CALL FindParentUVW( Nodes, n, ParentNodes, Parent, U, V, W, Basis )
         IF (GetElementFamily(Element) == 2) THEN
           stat = EdgeElementInfo(Parent, ParentNodes, u, v, w, detF = detJ, &
@@ -375,18 +397,18 @@ CONTAINS
           stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, Basis, dBasisdx, &
               EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
         END IF
-        e_ip = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,:)))
+        e_ip(1:3) = CMPLX(MATMUL(e_local(1,np+1:nd),WBasis(1:nd-np,1:3)), MATMUL(e_local(2,np+1:nd),WBasis(1:nd-np,1:3)))
       END IF
-
+            
       e_ip_norm = SUM(e_ip*Normal)
       e_ip_tan = e_ip - e_ip_norm * Normal
-      
+        
       IntPoynt(jMode,iMode) = IntPoynt(jMode,iMode) + weight * &
           SQRT(SUM(e_ip_tan * CONJG(e_ip_tan) ) ) / Zs
       IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
           ( imu * Omega * Eps + cond ) * e_ip_norm 
     END DO
-
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalIntegBC
 !------------------------------------------------------------------------------
