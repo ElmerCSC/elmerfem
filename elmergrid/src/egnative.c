@@ -4332,7 +4332,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
 	eg->findsides++;
       }
     }
-    else {
+    else if(strcmp(argv[arg],"-") == 0 ) {
       printf("Unknown in-line argument: %s\n",argv[arg]);
       bigerror("Cannot deal with argument, aborting!");
     }
