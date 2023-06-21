@@ -369,7 +369,7 @@ CONTAINS
 
       Cond = ListGetElementReal( CondCoeff_h, Basis, Parent, Found, GaussPoint = t )
 
-      Zs = B * muinv / (imu*Omega)
+      Zs = imu * Omega / (B * muinv)
       
       IntWeight(iMode) = IntWeight(iMode) + weight
       x = SUM(Basis(1:n) * Nodes % x(1:n)) 
@@ -404,7 +404,7 @@ CONTAINS
       e_ip_tan = e_ip - e_ip_norm * Normal
         
       IntPoynt(jMode,iMode) = IntPoynt(jMode,iMode) + weight * &
-          SQRT(SUM(e_ip_tan * CONJG(e_ip_tan) ) ) / Zs
+          0.5_dp * SUM(e_ip_tan * CONJG(e_ip_tan) ) / Zs
       IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
           ( imu * Omega * Eps + cond ) * e_ip_norm 
     END DO
