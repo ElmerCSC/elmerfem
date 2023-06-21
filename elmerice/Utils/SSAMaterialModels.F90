@@ -265,24 +265,28 @@ MODULE SSAMaterialModels
 !>  Return the effective basal mass balance (to be called separately for each IP in
 !>  a partly grounded element)
 !--------------------------------------------------------------------------------
-   FUNCTION SSAEffectiveBMB(Element,nn,Basis,SEM,BMB,hh,rho,rhow,sealevel) RESULT(BMBatIP)
+   FUNCTION SSAEffectiveBMB(Element,nn,Basis,SEM,BMB,hh,FIPcount,rho,rhow,sealevel,FAF) RESULT(BMBatIP)
      
      IMPLICIT NONE
-
+     
      REAL(KIND=dp)              :: BMBatIP ! the effective basal melt rate at integration point
-
+     
      INTEGER,INTENT(IN)         :: nn ! element number of nodes
      REAL(KIND=dp), INTENT(IN)  :: BMB(:) ! basal mass balance
      LOGICAL, INTENT(IN)        :: SEM ! Sub-Element Parametrisation (requires interpolation of floatation on IPs) 
      REAL(KIND=dp),INTENT(IN)   :: hh ! the ice thickness at current location
-     REAL(KIND=dp),INTENT(IN)   :: rho,rhow,sealevel
-     TYPE(Element_t),POINTER,INTENT(IN) :: Element
      REAL(KIND=dp),INTENT(IN)   :: Basis(:)
+     TYPE(Element_t),POINTER,INTENT(IN) :: Element
      
-     TYPE(ValueList_t), POINTER :: Material
-     TYPE(Variable_t), POINTER  :: GMSol,BedrockSol
+     ! optional arguments, depending on melt param
+     INTEGER,INTENT(INOUT),OPTIONAL    :: FIPcount
+     REAL(KIND=dp),INTENT(IN),OPTIONAL :: rho,rhow,sealevel ! to calculate floatation for SEM3
+     REAL(KIND=dp),INTENT(IN),OPTIONAL :: FAF ! Floating area fraction for SEM1
+     
+     TYPE(ValueList_t), POINTER  :: Material
+     TYPE(Variable_t), POINTER   :: GMSol,BedrockSol
      CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
-
+     
      REAL(KIND=dp),DIMENSION(nn) :: NodalBeta, NodalGM, NodalBed, NodalLinVelo,NodalC
      REAL(KIND=dp) :: bedrock,Hf
      
@@ -291,36 +295,172 @@ MODULE SSAMaterialModels
      !  Sub - element GL parameterisation
      IF (SEM) THEN
         GMSol => VariableGet( CurrentModel % Variables, 'GroundedMask',UnFoundFatal=.TRUE. )
-        CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol)
+        CALL GetLocalSolution( NodalGM,UElement=Element,UVariable=GMSol )
         BedrockSol => VariableGet( CurrentModel % Variables, 'bedrock',UnFoundFatal=.TRUE. )
-        CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol)
+        CALL GetLocalSolution( NodalBed,UElement=Element,UVariable= BedrockSol )
      END IF
      
-     Material => GetMaterial(Element)
-     
+     Material => GetMaterial(Element)     
      MeltParam = ListGetString(Material, 'SSA Melt Param',Found, UnFoundFatal=.TRUE.)
+
+!print*, "Rupert SSA",SIZE(Basis),SIZE(BMB),nn
      
      BMBatIP=SUM(Basis(1:nn)*BMB(1:nn))
-
+     
      SELECT CASE(MeltParam)
-
+        
      CASE('FMP','fmp')
-
+        
      CASE('NMP','nmp')
         BMBatIP = 0.0_dp
+        
+     CASE('SEM1','sem1')
+        ! check element type is triangular (would need to modify
+        ! CalcFloatingAreaFraction to allow other element types)
+        IF (element % type % ElementCode .NE. 303) THEN
+           CALL Fatal('SSAEffectiveBMB','Expecting element type 303!')
+        END IF
 
-     CASE('SEM','sem')
+        IF (PRESENT(FAF)) THEN
+           BMBatIP = BMBatIP * FAF
+        ELSE
+           CALL Fatal('SSAEffectiveBMB','FAF (floating area fraction) not present!')
+        END IF
+        
+     CASE('SEM3','sem3')
         bedrock = SUM( NodalBed(1:nn) * Basis(1:nn) )
         Hf= rhow * (sealevel-bedrock) / rho
-        IF (hh.LT.Hf) BMBatIP = 0.0_dp
-        
+        IF (hh.GT.Hf) THEN
+           BMBatIP = 0.0_dp
+        ELSE
+           IF (PRESENT(FIPcount)) FIPcount = FIPcount + 1
+        END IF
+           
      CASE DEFAULT
         WRITE( Message, * ) 'SSA Melt Param not recognised:', MeltParam
-        CALL FATAL("SSAEffectiveMelt",Message)
+        CALL FATAL("SSAEffectiveBMB",Message)
         
      END SELECT
-
+     
    END FUNCTION SSAEffectiveBMB
+   
+!--------------------------------------------------------------------------------
+!> Calculate the fractional floating area of a partly grounded element for SEM1.
+!> For implementing SEP1 use (1-FAF) for grounded area fraction.
+!> Written for element type 303.
+!> To be called per element from ThicknessSolver for SEM1.
+!> See Helene Seroussi TC papers from 2014 and 2018.
+!> More notes here: https://www.overleaf.com/read/chpfpgzhwvjr
+!--------------------------------------------------------------------------------
+   FUNCTION CalcFloatingAreaFraction(element,NodalGM,hhVar,sealevel,rho,rhow) RESULT(FAF)
 
+     IMPLICIT NONE
+     
+     REAL(KIND=dp)              :: FAF ! the area fraction of floating ice
+
+     TYPE(Element_t),POINTER,INTENT(IN)     :: Element
+     REAL(KIND=dp),INTENT(IN)               :: NodalGM(:)
+     TYPE(Variable_t),POINTER,INTENT(IN)    :: hhVar
+     REAL(KIND=dp), INTENT(IN)              :: rho,rhow,sealevel ! to calculate floatation 
+
+     TYPE(Variable_t),POINTER               :: bedVar
+     INTEGER,POINTER                        :: hhPerm(:),bedPerm(:)
+     REAL(KIND=dp),POINTER                  :: hh(:),bed(:)
+     
+     ! The following real vars use Yu's terminology (see overleaf linked above)
+     REAL(KIND=dp) :: ss,tt,A1,A2,x1,x2,x3,x4,x5,y1,y2,y3,y4,y5
+     REAL(KIND=dp) :: B1,B2,B3,Zb1,Zb2,Zb3
+
+     ! NI refers to Node Index.
+     ! NI2 is the sole node of its category (floating or GL, see Yu's notes);
+     ! NI1 and NI3 are both in the other category.
+     ! nn is the number of nodes for the current element (3 for triangles, which is assumed here)
+     INTEGER :: NumFLoatingNodes, nn, NI1, NI2, NI3
+
+     bedVar => VariableGet( CurrentModel % Variables, 'bedrock', UnFoundFatal=.TRUE. )
+     bedPerm => bedVar % Perm
+     bed     => bedVar % Values
+
+     hhPerm  => hhVar % Perm
+     hh      => hhVar % Values
+     
+     nn = GetElementNOFNodes()
+     NumFLoatingNodes = -SUM(NodalGM(1:nn))
+
+     IF (ANY(NodalGM(1:nn).GT.0._dp)) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Fully grounded nodes found!')
+     END IF
+
+     IF (NumFLoatingNodes.LT.1) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Not enough floating nodes!')
+
+     ELSEIF (NumFLoatingNodes.EQ.1) THEN
+        IF (NodalGM(1).EQ.-1) THEN
+           NI2 = element % NodeIndexes(1)
+           NI1 = element % NodeIndexes(2)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(2).EQ.-1) THEN
+           NI2 = element % NodeIndexes(2)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(3).EQ.-1) THEN
+           NI2 = element % NodeIndexes(3)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(2)
+        END IF
+
+     ELSEIF (NumFLoatingNodes.EQ.2) THEN
+        IF (NodalGM(1).EQ.0) THEN
+           NI2 = element % NodeIndexes(1)
+           NI1 = element % NodeIndexes(2)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(2).EQ.0) THEN
+           NI2 = element % NodeIndexes(2)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(3)
+        ELSEIF (NodalGM(3).EQ.0) THEN
+           NI2 = element % NodeIndexes(3)
+           NI1 = element % NodeIndexes(1)
+           NI3 = element % NodeIndexes(2)
+        END IF
+
+     ELSEIF (NumFLoatingNodes.GT.2) THEN
+        CALL Fatal('CalcFloatingAreaFraction','Too many floating nodes!')
+
+     END IF
+
+     x1 = CurrentModel % Mesh % Nodes % x(NI1)
+     x2 = CurrentModel % Mesh % Nodes % x(NI2)
+     x3 = CurrentModel % Mesh % Nodes % x(NI3)
+
+     y1 = CurrentModel % Mesh % Nodes % y(NI1)
+     y2 = CurrentModel % Mesh % Nodes % y(NI2)
+     y3 = CurrentModel % Mesh % Nodes % y(NI3)
+
+     B1 = bed(bedPerm(NI1))
+     B2 = bed(bedPerm(NI2))
+     B3 = bed(bedPerm(NI3))
+
+     Zb1= sealevel - hh(hhPerm(NI1)) * rho/rhow
+     Zb2= sealevel - hh(hhPerm(NI2)) * rho/rhow
+     Zb3= sealevel - hh(hhPerm(NI3)) * rho/rhow
+     
+     ss = (Zb2-B2)/(B3-B2-Zb3+Zb2)
+     tt = (Zb1-B1)/(B2-B1-Zb2+Zb1)
+
+     x4 = x1 + tt*(x2-x1)
+     x5 = x2 + ss*(x3-x2)
+     y4 = y1 + tt*(y2-y1)
+     y5 = y2 + ss*(y3-y2)
+     
+     A1 = 0.5_dp * ABS( x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2) )
+     A2 = 0.5_dp * ABS( x4*(y5-y2) + x5*(y2-y4) + x2*(y4-y5) )
+
+     FAF = A2/A1
+     
+     IF (NumFLoatingNodes.EQ.2) FAF = 1.0_dp - FAF  ! Needed because FAF was grounded fraction
+
+   END FUNCTION CalcFloatingAreaFraction
+   
 END MODULE SSAMaterialModels
-
+ 
