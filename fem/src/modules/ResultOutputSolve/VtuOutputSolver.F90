@@ -333,7 +333,12 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( GotIt ) THEN
     nTime = ExtCount
   ELSE
-    nTime = nTime + 1
+    i = GetInteger( Params,'Fileindex step',GotIt)
+    IF( GotIt ) THEN
+      nTime = nTime + i
+    ELSE
+      nTime = nTime + 1
+    END IF
   END IF
 
   FileIndexOffset = GetInteger( Params,'Fileindex offset',GotIt)
