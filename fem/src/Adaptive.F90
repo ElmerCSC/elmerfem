@@ -516,16 +516,16 @@ CONTAINS
     IF( MeshNumbering ) THEN
       NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // I2S(NewMesh % AdaptiveDepth)
     END IF
-      
-    Nlen = LEN_TRIM(OutputPath)
-    IF ( Nlen > 0 ) THEN
-      Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
-    ELSE
-      Path = TRIM(NewMesh % Name)
-    END IF
-    CALL MakeDirectory( TRIM(path) // CHAR(0) )
+
+    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN 
+      Nlen = LEN_TRIM(OutputPath)
+      IF ( Nlen > 0 ) THEN
+        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
+      ELSE
+        Path = TRIM(NewMesh % Name)
+      END IF
+      CALL MakeDirectory( TRIM(path) // CHAR(0) )
     
-    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL WriteMeshToDisk2( Model, NewMesh, Path, ParEnv % MyPe )
       ELSE
