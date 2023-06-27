@@ -34,3 +34,6 @@ Valid values include sem for sub element melt parameterisation (i.e. melt at eac
 In Thickness Solver:
 
 GL integration points number = Integer 20
+
+More notes here:
+https://www.overleaf.com/4228833216szbdqzqbgsvk
