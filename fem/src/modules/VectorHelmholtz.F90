@@ -1069,8 +1069,16 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
+  IF ( GetLogical( SolverParams, 'Calculate Electric Potential', Found ) ) THEN
+    CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Electric Potential[Electric Potential re:1 Electric Potential im:1]")
+  END IF
+    
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
-  IF(Found.AND..NOT.NodalFields) RETURN
+  IF(.NOT. Found) NodalFields = .TRUE.
+  
+  IF(.NOT. NodalFields) RETURN
 
   IF (GetLogical(SolverParams,'Calculate Magnetic Flux Density',Found)) THEN
     CALL ListAddString( SolverParams,&
@@ -1155,7 +1163,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), &
        EdotJ, EF_ip(3), R_ip, B(3)
 
-   TYPE(Variable_t), POINTER :: TargetVar, MFD, MFS, EF, PV, DIVPV, EW
+   TYPE(Variable_t), POINTER :: TargetVar, MFD, MFS, EF, PV, DIVPV, EW, ELPOT
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
    INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
@@ -1348,110 +1356,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      ndofs = np/n
      WithGauge = ndofs > 1
-     nd = GetElementNOFDOFs(uSolver=pSolver)
 
-     CALL GetElementNodes( Nodes )
-
-     CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
-
-     ! Calculate nodal fields:
-     ! -----------------------
-     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-
-     MASS  = 0._dp
-     FORCE = 0._dp
-
-     ! Loop over Gaussian integration points
-     !---------------------------------------
-     DO j = 1,IP % n
-       u = IP % U(j)
-       v = IP % V(j)
-       w = IP % W(j)
-
-       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
-           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-       
-       B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
-         MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
-
-       ! The conductivity as a tensor not implemented yet
-       !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
-      
-       J_ip = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = j )      
-             
-       R_ip = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = j )      
-       IF( .NOT. Found ) THEN
-         R_ip = mu0inv
-       ELSE
-         R_ip = R_ip * mu0inv
-       END IF 
-       H = R_ip*B
-
-       PR_ip = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = j ) 
-       IF( Found ) THEN
-         PR_ip = Eps0 * PR_ip
-       ELSE
-         PR_ip = Eps0 
-       END IF
-
-       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-       IF (WithGauge .OR. UseGaussLaw) THEN
-         DO k=1,3
-           EF_ip(k) = EF_ip(k) + &
-               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
-         END DO
-       END IF
-       ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
-
-       EdotJ = SUM(EF_ip*CONJG(J_ip))
-       divS = 0.5_dp*(im * Omega * (SUM(B*CONJG(H)) + SUM(EF_ip * CONJG(PR_ip * EF_ip))) - EdotJ)
-
-       s = IP % s(j) * detJ
-
-       Energy = Energy + REAL(divS)*s
-       Energy_im = Energy_im + AIMAG(divS)*s
-       DO p=1,n
-         DO q=1,n
-           MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
-         END DO
-         k = 0
-         IF (ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(B)*Basis(p)
-           k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(B)*Basis(p)
-           k = k+3
-         END IF
-         IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H)*Basis(p)
-           k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)*Basis(p)
-           k = k+3
-         END IF
-         IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(EF_ip)*Basis(p)
-           k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(EF_ip)*Basis(p)
-           k = k+3
-         END IF
-         IF ( ASSOCIATED(PV).OR.ASSOCIATED(EL_PV)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+0.5_dp*s*REAL(ExHc)*Basis(p)
-           k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+0.5_dp*s*AIMAG(ExHc)*Basis(p)
-           k = k+3
-         END IF
-         IF ( ASSOCIATED(DIVPV) .OR. ASSOCIATED(EL_DIVPV)) THEN
-           FORCE(p,k+1) = FORCE(p,k+1) + s*REAL(divS)*Basis(p)
-           k=k+1
-           FORCE(p,k+1) = FORCE(p,k+1) + s*AIMAG(divS)*Basis(p)
-           k=k+1
-           FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*REAL(EdotJ)*Basis(p)
-           k=k+1
-           FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*AIMAG(EdotJ)*Basis(p)
-           k=k+1
-         END IF
-
-       END DO
-     END DO
+     CALL CalcFieldsLocalAssembly()
 
      IF(NodalFields) THEN
        CALL DefaultUpdateEquations( MASS,FORCE(:,1))
@@ -1472,8 +1378,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, nfields)
        CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, nfields)
        CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, nfields)
-     END IF
-     
+     END IF     
    END DO
    
    Energy = ParallelReduction(Energy)
@@ -1514,16 +1419,205 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      CALL Info(Caller, Message )
      CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
    END IF
-      
+
+   ELPOT => VariableGet( Mesh % Variables,'Electric Potential' )
+   IF( ASSOCIATED( ElPot ) ) THEN
+     CALL Info(Caller,'Calculating complex valued electric potential') 
+     IF(.NOT. ASSOCIATED(Solver % Matrix)) THEN
+       CALL Fatal(Caller,'Solver % Matrix not associated!')
+     END IF
+     
+     CALL DefaultInitialize()
+     Fsave => Solver % Matrix % RHS
+
+     IF(.NOT. ALLOCATED(GForce) ) THEN
+       ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),2))
+     END IF
+     Gforce = 0._dp
+
+     DO i = 1, GetNOFActive()
+       Element => GetActiveElement(i)
+       n = GetElementNOFNodes()
+       np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+       ndofs = np/n
+       WithGauge = ( ndofs > 1 ) 
+       
+       CALL ElPotLocalAssembly()
+
+       Solver % Matrix % rhs => GForce(:,1)
+       CALL DefaultUpdateEquations( MASS,FORCE(:,1))
+
+       Solver % Matrix % RHS => GForce(:,2)
+       CALL DefaultUpdateForce(FORCE(:,2))
+     END DO
+     
+     nfields = 0
+     CALL GlobalSol(ElPot, 2, Gforce, nfields )
+     Solver % Matrix % RHS => Fsave     
+   END IF
+   
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Pivot)
-
+   
    CALL Info(Caller,'All done for now!',Level=20)
    
   
 CONTAINS
 
 
+  SUBROUTINE CalcFieldsLocalAssembly()
+
+    nd = GetElementNOFDOFs(uSolver=pSolver)
+    CALL GetElementNodes( Nodes )
+    CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+
+    ! Calculate nodal fields:
+    ! -----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+
+    MASS  = 0._dp
+    FORCE = 0._dp
+
+    ! Loop over Gaussian integration points
+    !---------------------------------------
+    DO j = 1,IP % n
+      u = IP % U(j)
+      v = IP % V(j)
+      w = IP % W(j)
+
+      stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+
+      B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
+          MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
+
+      ! The conductivity as a tensor not implemented yet
+      !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
+
+      J_ip = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = j )      
+
+      R_ip = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = j )      
+      IF( .NOT. Found ) THEN
+        R_ip = mu0inv
+      ELSE
+        R_ip = R_ip * mu0inv
+      END IF
+      H = R_ip*B
+
+      PR_ip = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = j ) 
+      IF( Found ) THEN
+        PR_ip = Eps0 * PR_ip
+      ELSE
+        PR_ip = Eps0 
+      END IF
+
+      EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
+      IF (WithGauge .OR. UseGaussLaw) THEN
+        DO k=1,3
+          EF_ip(k) = EF_ip(k) + &
+              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
+        END DO
+      END IF
+      ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
+
+      EdotJ = SUM(EF_ip*CONJG(J_ip))
+      divS = 0.5_dp*(im * Omega * (SUM(B*CONJG(H)) + SUM(EF_ip * CONJG(PR_ip * EF_ip))) - EdotJ)
+
+      s = IP % s(j) * detJ
+
+      Energy = Energy + REAL(divS)*s
+      Energy_im = Energy_im + AIMAG(divS)*s
+      DO p=1,n
+        DO q=1,n
+          MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
+        END DO
+        k = 0
+        IF (ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD)) THEN
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(B)*Basis(p)
+          k = k+3
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(B)*Basis(p)
+          k = k+3
+        END IF
+        IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H)*Basis(p)
+          k = k+3
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)*Basis(p)
+          k = k+3
+        END IF
+        IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(EF_ip)*Basis(p)
+          k = k+3
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(EF_ip)*Basis(p)
+          k = k+3
+        END IF
+        IF ( ASSOCIATED(PV).OR.ASSOCIATED(EL_PV)) THEN
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+0.5_dp*s*REAL(ExHc)*Basis(p)
+          k = k+3
+          FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+0.5_dp*s*AIMAG(ExHc)*Basis(p)
+          k = k+3
+        END IF
+        IF ( ASSOCIATED(DIVPV) .OR. ASSOCIATED(EL_DIVPV)) THEN
+          FORCE(p,k+1) = FORCE(p,k+1) + s*REAL(divS)*Basis(p)
+          k=k+1
+          FORCE(p,k+1) = FORCE(p,k+1) + s*AIMAG(divS)*Basis(p)
+          k=k+1
+          FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*REAL(EdotJ)*Basis(p)
+          k=k+1
+          FORCE(p,k+1) = FORCE(p,k+1) + 0.5_dp*s*AIMAG(EdotJ)*Basis(p)
+          k=k+1
+        END IF
+
+      END DO
+    END DO      
+
+  END SUBROUTINE CalcFieldsLocalAssembly
+  
+
+  SUBROUTINE ElPotLocalAssembly()
+
+    nd = GetElementNOFDOFs(uSolver=pSolver)
+    CALL GetElementNodes( Nodes )
+    CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+
+    ! Calculate nodal fields:
+    ! -----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+
+    MASS  = 0._dp
+    FORCE = 0._dp
+
+    ! Loop over Gaussian integration points
+    !---------------------------------------
+    DO j = 1,IP % n
+      u = IP % U(j)
+      v = IP % V(j)
+      w = IP % W(j)
+
+      stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+
+      EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
+      IF (WithGauge .OR. UseGaussLaw) THEN
+        DO k=1,3
+          EF_ip(k) = EF_ip(k) + &
+              CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
+        END DO
+      END IF
+
+      s = IP % s(j) * detJ
+      DO p=1,n
+        DO q=1,n
+          MASS(p,q) = MASS(p,q)+s * SUM(dBasisdx(p,:)*dBasisdx(q,:))
+        END DO
+        FORCE(p,1) = FORCE(p,1) + s * SUM(REAL(EF_ip(:)*dBasisdx(p,:)))
+        FORCE(p,2) = FORCE(p,2) + s * SUM(AIMAG(EF_ip(:)*dBasisdx(p,:)))
+      END DO
+    END DO      
+
+  END SUBROUTINE ElPotLocalAssembly
+
+
+  
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
