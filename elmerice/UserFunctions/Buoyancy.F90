@@ -372,17 +372,19 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    TYPE(Model_t) :: Model
    TYPE(Solver_t):: Solver
    TYPE(Nodes_t), SAVE :: Nodes
-   TYPE(variable_t), POINTER :: Timevar
+   TYPE(variable_t), POINTER :: Timevar, NormalSolution
    TYPE(Element_t), POINTER ::  BoundaryElement, BCElement, CurElement, ParentElement
    TYPE(ValueList_t), POINTER :: BC, material, ParentMaterial, BodyForce
    INTEGER :: NBoundary, NParent, BoundaryElementNode, ParentElementNode, body_id, other_body_id, material_id
    INTEGER :: nodenumber, NumberOfNodesOnBoundary 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
-   INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, OldMeshTag
+   INTEGER :: Nn, i, j, k, p, n, Nmax, bf_id, DIM, OldMeshTag
+   INTEGER, POINTER :: Permutation(:)
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv, aux
    REAL(KIND=dp) :: rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE.
+   REAL(KIND=dp), POINTER :: Nvector(:)
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE., ExtNorm=.FALSE.
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE rhow, gravity
@@ -391,6 +393,12 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
 
+   NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector',ExtNorm)
+   IF (ExtNorm) THEN
+     Nvector => NormalSolution % Values
+     Permutation => NormalSolution % Perm
+   END IF
+   
    aux = GetConstReal(Model % Constants, 'Sea Spring Timestep Size', GotIt)
    IF (GotIt) THEN
      dt = aux
@@ -513,29 +521,35 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
            DO i = 1,n
              j = BCElement % NodeIndexes( i )
              Bu = BCElement % Type % NodeU(i)
-             IF ( BCElement % Type % Dimension > 1 ) THEN
+             IF ( BCElement % TYPE % DIMENSION > 1 ) THEN
                  Bv = BCElement % Type % NodeV(i)
              ELSE
                 Bv = 0.0D0
-             END IF
-             Normal(:,NodeOnBoundary(j))  = Normal(:,NodeOnBoundary(j)) + &
-                                NormalVector(BCElement, Nodes, Bu, Bv, .TRUE.)
+              END IF
+              IF (ExtNorm) THEN
+                k = Permutation(j)
+                Normal(1:DIM,NodeOnBoundary(j))  =  Nvector(DIM*(k-1)+1:DIM*k)
+              ELSE
+                Normal(:,NodeOnBoundary(j))  = Normal(:,NodeOnBoundary(j)) + &
+                     NormalVector(BCElement, Nodes, Bu, Bv, .TRUE.)
+              END IF
            END DO
          END IF
       END DO
 
       DO i=1, NumberOfNodesOnBoundary
-      IF (ABS(Normal(DIM,i)) > 1.0e-20_dp) THEN
-         Ns(i) = 1.0_dp + (Normal(1,i)/Normal(DIM,i))**2.0_dp
-         IF (DIM>2) THEN
-               Ns(i) = Ns(i) + (Normal(2,i)/Normal(3,i))**2.0_dp
-         END IF
-         Ns(i) = SQRT(Ns(i))
-      ELSE
-        Ns(i) = -999.0
-        CALL WARN('SeaSpring', 'Lower surface almost is vertically aligned')
-      END IF
+        IF (ABS(Normal(DIM,i)) > 1.0e-20_dp) THEN
+          Ns(i) = 1.0_dp + (Normal(1,i)/Normal(DIM,i))**2.0_dp
+          IF (DIM>2) THEN
+            Ns(i) = Ns(i) + (Normal(2,i)/Normal(3,i))**2.0_dp
+          END IF
+          Ns(i) = SQRT(Ns(i))
+        ELSE
+          Ns(i) = -999.0
+          CALL WARN('SeaSpring', 'Lower surface almost is vertically aligned')
+        END IF
       END DO
+      
       DEALLOCATE (Normal)
       Model % CurrentElement => CurElement 
 
