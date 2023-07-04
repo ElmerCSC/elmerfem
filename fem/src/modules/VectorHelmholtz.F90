@@ -567,26 +567,33 @@ CONTAINS
         END DO
       END IF
       
-      ! Additional terms related to a gauge condition
+      ! Additional terms related to using the Gauss law or a gauge condition
       IF (WithGauge) THEN
         IF (ndofs == 2) THEN
+          !
+          ! Using more than one nodal field is experimental and may break some
+          ! generic functionality. In principle, the idea is to use the A-V representation
+          ! together with a gauge constraint.
+          !
           DO p = 1,n
             ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
-            ! the A-V representation
+            ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
+            ! E = A - grad V:
             i = (p-1)*ndofs + 1
             DO q = 1,nd-np
               j = q+np
-              Gauge(i,j) = Gauge(i,j) - Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
-              Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
+              Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+              Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
             END DO
 
             DO q = 1,n
               j = (q-1)*ndofs + 1
-              Gauge(i,j) = Gauge(i,j) - Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+              Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
             END DO
 
-            ! The second DOF is related to the gauge condition div A =  0:
-            i = (p-1)*ndofs + 2
+            ! The second DOF is related to the gauge condition div A =  0 (TO DO: Add
+            ! Lorenz condition as an alternative)
+            i = p*ndofs
             DO q = 1,nd-np
               j = q+np
               Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
@@ -595,27 +602,28 @@ CONTAINS
           END DO
         ELSE
           IF (UseGaussLaw) THEN
-            ! Add w^2 div D = w^2 rho in a weak form when E = A + grad V:
+            ! Add -w^2 div D = -w^2 rho in a weak form when E = A - grad V:
             DO i = 1,np
               DO q = 1,nd-np
                 j = q+np
-                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               END DO
               DO j = 1,np
                 Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
               END DO
             END DO
           ELSE
+            ! Here Gauss's law is not employed, only an additional gauge constraint is introduced
             DO i = 1,np
               DO q = 1,nd-np
                 j = q+np
                 Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-                Gauge(j,i) = Gauge(j,i) - Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               END DO
               IF (LorenzCondition) THEN
                 DO j = 1,np
-                  Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+                  Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
                 END DO
               END IF
             END DO
@@ -767,16 +775,16 @@ CONTAINS
 
           DO q = 1,np
             !
-            ! The term  -i*omega*a < grad V x n, eta x n>
+            ! The term  i*omega*a < grad V x n, eta x n>
             !
-            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+            STIFF(p,q) = STIFF(p,q) + im * Omega * th * Cond * &
                 SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
           END DO
         END DO
 
         DO p = 1,np
           DO q = 1,np
-            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
+            STIFF(p,q) = STIFF(p,q) + im * Omega * th * Cond * &
                 SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
           END DO
 
@@ -828,13 +836,13 @@ CONTAINS
       END DO
 
       IF (WithNdofs) THEN
-        ! The following term arises if the decomposition E = A + grad V is applied:
+        ! The following term arises if the decomposition E = A - grad V is applied:
         IF (ABS(B) > AEPS) THEN
           DO i = 1,nd-np
             p = i+np
             DO j=1,n
               q = (j-1)*ndofs + 1
-              STIFF(p,q) = STIFF(p,q) - muinv * B * &
+              STIFF(p,q) = STIFF(p,q) + muinv * B * &
                   SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
             END DO
           END DO
@@ -844,9 +852,9 @@ CONTAINS
           BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
           jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
           DO i = 1,np
-            FORCE(i) = FORCE(i) + im * omega * jn * Basis(i) * detJ * IP % s(t)
+            FORCE(i) = FORCE(i) - im * omega * jn * Basis(i) * detJ * IP % s(t)
             DO j = 1,np
-              STIFF(i,j) = STIFF(i,j) + im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
+              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
             END DO
           END DO
         END IF
@@ -1514,7 +1522,7 @@ CONTAINS
       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
       IF (WithGauge .OR. UseGaussLaw) THEN
         DO k=1,3
-          EF_ip(k) = EF_ip(k) + &
+          EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
         END DO
       END IF
@@ -1599,7 +1607,7 @@ CONTAINS
       EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
       IF (WithGauge .OR. UseGaussLaw) THEN
         DO k=1,3
-          EF_ip(k) = EF_ip(k) + &
+          EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
         END DO
       END IF
