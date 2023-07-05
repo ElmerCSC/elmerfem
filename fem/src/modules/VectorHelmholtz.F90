@@ -846,6 +846,20 @@ CONTAINS
                   SUM(WBasis(i,:)*dBasisdx(j,:)) * detJ * IP%s(t)
             END DO
           END DO
+
+          ! Ensure the conservation of surface charge:
+          DO p = 1,n
+            DO q = 1,n
+              STIFF(p,q) = STIFF(p,q) + muinv * B * &
+                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+            END DO
+
+            DO j = 1,nd-np
+              q = j+np
+              STIFF(p,q) = STIFF(p,q) - muinv * B * &
+                  SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+            END DO
+          END DO
         END IF
           
         IF (UseGaussLaw) THEN
