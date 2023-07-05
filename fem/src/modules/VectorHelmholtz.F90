@@ -698,9 +698,9 @@ CONTAINS
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
 
-      CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Thin Sheet Thickness')
-      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Thin Sheet Relative Reluctivity',InitIm=.TRUE.)
-      CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Thin Sheet Electric Conductivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
+!      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
       InitHandles = .FALSE.
     END IF
 
@@ -740,12 +740,12 @@ CONTAINS
         IF (ndofs /= 1) CALL Fatal(Caller, 'One nodal field expected')
         IF (.NOT. (ABS(th) > AEPS)) CYCLE
 
-        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
-        IF( Found ) THEN
-          muinv = muinv * mu0inv
-        ELSE
-          muinv = mu0inv
-        END IF
+!        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+!        IF( Found ) THEN
+!          muinv = muinv * mu0inv
+!        ELSE
+!          muinv = mu0inv
+!        END IF
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         
         UpdateStiff = .TRUE.
