@@ -37,7 +37,8 @@
 !------------------------------------------------------------------------------
 !> Solve the time-harmonic Maxwell equations using the curl-curl equation at a 
 !> relatively high frequency using curl-conforming edge elements. Also a low-
-!> frequency model is available.
+!> frequency model is available. With "Use Gauss Law = True" the A-V representation
+!> is used and to solve the additional scalar potential V the Gauss law is used.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE VectorHelmholtzUtils
@@ -77,9 +78,16 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion, UseGauge
+  LOGICAL :: Found, SecondOrder, PiolaVersion, WithNDOFs
 
   SolverParams => GetSolverParams()  
+
+  WithNDOFs = GetLogical(SolverParams, 'Use Gauss Law', Found)
+  IF (.NOT. WithNDOFs) THEN
+    WithNDOFs = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
+    WithNDOFs = WithNDOFs .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
+  END IF
+  
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
     IF( SecondOrder ) THEN
@@ -87,10 +95,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     ELSE
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )   
     END IF
-
-    UseGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
-    UseGauge = UseGauge .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
-    IF (UseGauge) THEN
+    
+    IF (WithNDOFs) THEN
       IF ( SecondOrder ) THEN
         CALL ListAddString( SolverParams, "Element", &
             "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
@@ -112,8 +118,13 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   END IF
 
   !CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
-  CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
-  CALL ListAddNewString( SolverParams,'Variable','E[E re:1 E im:1]')
+  IF (WithNDOFs) THEN
+    CALL ListAddNewLogical(SolverParams,'Variable Output',.TRUE.)
+    CALL ListAddNewString(SolverParams,'Variable','AV[AV re:1 AV im:1]')
+  ELSE
+    CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
+    CALL ListAddNewString( SolverParams,'Variable','E[E re:1 E im:1]')
+  END IF
   CALL ListAddNewLogical( SolverParams, "Linear System Complex", .TRUE.)
 
 !------------------------------------------------------------------------------
@@ -124,7 +135,8 @@ END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the curl-curl equation 
 !> curl (1/mu) curl E - i \omega \sigma E - \omega^2 epsilon E = i omega J
-!> using edge elements (vector-valued basis of first or second degree) 
+!> using edge elements (vector-valued basis of first or second degree).
+!> For the equations in the case of the A-V representation, see the manual.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
@@ -314,8 +326,8 @@ CONTAINS
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
   
-    ! Dirichlet BCs in terms of electric field E
-    ! ---------------------------------------------
+    ! Dirichlet BCs in terms of electric field E (or the potentials)
+    ! --------------------------------------------------------------
     CALL DefaultDirichletBCs()
 
     ! Call DefaultDirichletBCs another time to apply BCs to PrecValues: 
@@ -444,19 +456,19 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, InitHandles )
 !------------------------------------------------------------------------------
-    INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: eps, muinv, L(3)
     REAL(KIND=dp) :: DetJ, weight, Cond
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
-    LOGICAL :: Stat, WithGauge
+    LOGICAL :: Stat, WithNDOFs
+    LOGICAL :: AllocationsDone = .FALSE.
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
-    LOGICAL :: AllocationsDone = .FALSE.
     TYPE(ValueHandle_t), SAVE :: CondCoeff_h, EpsCoeff_h, CurrDens_h, MuCoeff_h
 
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, &
@@ -484,10 +496,11 @@ CONTAINS
     MASS(1:nd,1:nd)  = 0.0_dp
     FORCE(1:nd) = 0.0_dp
 
-    np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
-    ndofs = np/n
-    WithGauge = ndofs > 0 !np == n
-    IF (WithGauge) THEN
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+
+    WithNDOFs = ndofs > 0
+    IF (WithNDOFs) THEN
       Gauge(1:nd,1:nd)  = 0.0_dp
     END IF
 
@@ -535,6 +548,14 @@ CONTAINS
             STIFF(i,j) = STIFF(i,j) - im * Omega * Cond * &
                 SUM(WBasis(q,:) * WBasis(p,:)) * weight
           END DO
+
+          IF (WithNdofs) THEN
+            DO q = 1,n
+              j = (q-1)*ndofs + 1
+              STIFF(i,j) = STIFF(i,j) + im * Omega * Cond * &
+                  SUM(dBasisdx(q,:) * WBasis(p,:)) * weight
+            END DO
+          END IF
         END DO
       END IF
 
@@ -568,7 +589,7 @@ CONTAINS
       END IF
       
       ! Additional terms related to using the Gauss law or a gauge condition
-      IF (WithGauge) THEN
+      IF (WithNDOFs) THEN
         IF (ndofs == 2) THEN
           !
           ! Using more than one nodal field is experimental and may break some
@@ -641,7 +662,7 @@ CONTAINS
     END IF
 
     STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
-    IF (WithGauge) THEN 
+    IF (WithNDOFs) THEN 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Gauge(1:nd,1:nd)
     END IF
 
@@ -661,8 +682,8 @@ CONTAINS
   SUBROUTINE LocalMatrixBC( BC, Element, n, nd, InitHandles )
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
-    INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
@@ -670,10 +691,10 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet
+    LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
     TYPE(Nodes_t), SAVE :: Nodes
-    LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
@@ -715,9 +736,10 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
-    np = n * MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
-    ndofs = np/n
-    WithNdofs = UseGaussLaw .OR. ndofs > 1 ! True only when the gauged A-V or the Gauss law is used
+
+    ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    np = n * ndofs
+    WithNdofs = ndofs > 0
 
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
@@ -736,7 +758,7 @@ CONTAINS
       END IF
 
       th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
-      IF (ThinSheet) THEN
+      IF (ThinSheet .AND. UseGaussLaw) THEN
         IF (ndofs /= 1) CALL Fatal(Caller, 'One nodal field expected')
         IF (.NOT. (ABS(th) > AEPS)) CYCLE
 
@@ -782,8 +804,9 @@ CONTAINS
           END DO
         END DO
 
-        DO p = 1,np
-          DO q = 1,np
+        ! Ensure the conservation of surface charge:
+        DO p = 1,n
+          DO q = 1,n
             STIFF(p,q) = STIFF(p,q) + im * Omega * th * Cond * &
                 SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
           END DO
@@ -794,7 +817,8 @@ CONTAINS
                 SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
           END DO
         END DO
-        
+
+        ! All done for this type BC:
         CYCLE
       END IF
       
@@ -809,7 +833,7 @@ CONTAINS
           ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found) )
       L = L + TemGrad
 
-      IF (.NOT. UseGaussLaw) THEN
+      IF (.NOT. WithNdofs) THEN
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       END IF
       UpdateStiff = .TRUE.
@@ -847,28 +871,34 @@ CONTAINS
             END DO
           END DO
 
-          ! Ensure the conservation of surface charge:
-          DO p = 1,n
-            DO q = 1,n
-              STIFF(p,q) = STIFF(p,q) + muinv * B * &
-                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-            END DO
+          IF (UseGaussLaw) THEN
+            ! Ensure the conservation of surface charge:
+            DO p = 1,n
+              i = (p-1)*ndofs + 1
+              DO q = 1,n
+                j = (q-1)*ndofs + 1
+                STIFF(i,j) = STIFF(i,j) + muinv * B * &
+                    SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+              END DO
 
-            DO j = 1,nd-np
-              q = j+np
-              STIFF(p,q) = STIFF(p,q) - muinv * B * &
-                  SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+              DO q = 1,nd-np
+                j = q+np
+                STIFF(i,j) = STIFF(i,j) - muinv * B * &
+                    SUM(dBasisdx(p,:) * WBasis(q,:)) * detJ * IP % s(t)
+              END DO
             END DO
-          END DO
+          END IF
         END IF
           
         IF (UseGaussLaw) THEN
           BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
           jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
-          DO i = 1,np
-            FORCE(i) = FORCE(i) - im * omega * jn * Basis(i) * detJ * IP % s(t)
-            DO j = 1,np
-              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(i) * Basis(j) * detJ * IP % s(t)
+          DO p = 1,n
+            i = (p-1)*ndofs + 1
+            FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * detJ * IP % s(t)
+            DO q = 1,n
+              j = (q-1)*ndofs + 1
+              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * Basis(p) * Basis(q) * detJ * IP % s(t)
             END DO
           END DO
         END IF
@@ -1210,7 +1240,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   LOGICAL :: WithGauge, UseGaussLaw
+   LOGICAL :: UseGaussLaw, LorenzCondition
    TYPE(ValueList_t), POINTER :: SolverParams 
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
@@ -1257,6 +1287,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
    UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
+   LorenzCondition = GetLogical(pSolver % Values, 'Lorenz Condition', Found)
    
    Omega = GetAngularFrequency(Found=Found)
    
@@ -1375,10 +1406,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
-     np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-     ndofs = np/n
-     WithGauge = ndofs > 1
-
+     ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+     np = n*ndofs
+     IF (UseGaussLaw .OR. LorenzCondition) THEN
+       IF (ndofs < 1) CALL Fatal(Caller, 'Nodal DOFs needed')
+     END IF
+     
      CALL CalcFieldsLocalAssembly()
 
      IF(NodalFields) THEN
@@ -1460,9 +1493,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      DO i = 1, GetNOFActive()
        Element => GetActiveElement(i)
        n = GetElementNOFNodes()
-       np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-       ndofs = np/n
-       WithGauge = ( ndofs > 1 ) 
+       ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1) 
+       np = n*ndofs
        
        CALL ElPotLocalAssembly()
 
@@ -1534,7 +1566,7 @@ CONTAINS
       END IF
 
       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-      IF (WithGauge .OR. UseGaussLaw) THEN
+      IF (LorenzCondition .OR. UseGaussLaw) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
@@ -1619,7 +1651,7 @@ CONTAINS
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
 
       EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
-      IF (WithGauge .OR. UseGaussLaw) THEN
+      IF (LorenzCondition .OR. UseGaussLaw) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)))
