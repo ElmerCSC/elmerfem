@@ -891,6 +891,15 @@ CONTAINS
         END IF
           
         IF (UseGaussLaw) THEN
+
+          IF (ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
+            ! Ensure the conservation of surface charge:
+            DO p = 1,n
+              i = (p-1)*ndofs + 1
+              FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * detJ * IP % s(t)
+            END DO
+          END IF
+          
           BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
           jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
           DO p = 1,n
