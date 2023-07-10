@@ -687,10 +687,10 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)    
-    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond
+    COMPLEX(KIND=dp) :: B, L(3), muinv, TemGrad(3), BetaPar, jn, Cond, SurfImp
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
-    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
@@ -699,6 +699,7 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
+    TYPE(ValueHandle_t), SAVE :: GoodConductor
     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
@@ -713,6 +714,7 @@ CONTAINS
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
+      CALL ListInitElementKeyword( GoodConductor,'Boundary Condition','Good Conductor BC')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
@@ -720,7 +722,7 @@ CONTAINS
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
 
       CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
-!      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
       InitHandles = .FALSE.
     END IF
@@ -825,7 +827,20 @@ CONTAINS
       IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
         B = CMPLX(0.0_dp, rob0 ) 
       ELSE
-        B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
+        IF (ConductorBC) THEN
+          Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+          muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+          IF ( Found ) THEN
+            muinv = muinv * mu0inv
+          ELSE
+            muinv = mu0inv
+          END IF
+          SurfImp = CMPLX(1.0_dp, -1.0_dp) * SQRT(omega/(2.0_dp * Cond * muinv))
+          B = 1.0_dp/SurfImp
+        ELSE
+          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+        END IF
       END IF
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
 
@@ -849,6 +864,12 @@ CONTAINS
         muinv = mu0inv
       END IF
 
+      IF (ConductorBC) THEN
+        B = im * omega/muinv * B
+        PRINT *, 'Good conductor alpha', B
+      END IF
+
+        
       DO i = 1,nd-np
         p = i+np
         FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * detJ * IP%s(t)
