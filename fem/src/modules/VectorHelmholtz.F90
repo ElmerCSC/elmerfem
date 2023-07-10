@@ -864,11 +864,7 @@ CONTAINS
         muinv = mu0inv
       END IF
 
-      IF (ConductorBC) THEN
-        B = im * omega/muinv * B
-        PRINT *, 'Good conductor alpha', B
-      END IF
-
+      IF (ConductorBC) B = im * omega/muinv * B
         
       DO i = 1,nd-np
         p = i+np
