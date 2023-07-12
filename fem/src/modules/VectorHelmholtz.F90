@@ -760,86 +760,27 @@ CONTAINS
       END IF
 
       th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
-      IF (ThinSheet .AND. UseGaussLaw) THEN
-        IF (ndofs /= 1) CALL Fatal(Caller, 'One nodal field expected')
-        IF (.NOT. (ABS(th) > AEPS)) CYCLE
-
-!        muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
-!        IF( Found ) THEN
-!          muinv = muinv * mu0inv
-!        ELSE
-!          muinv = mu0inv
-!        END IF
+      IF (ThinSheet) THEN
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
-        
-        UpdateStiff = .TRUE.
-        
-!         print *, 'skin depth', SQRT( 2.0_dp*muinv/(Real(cond)*omega))
-!         print *, 'skin depth/sheet thickness', SQRT( 2.0_dp*muinv/(Real(cond)*omega))/th
-!         print *, 'impedance', SQRT(omega/( 2.0_dp*muinv*real(cond)))
-
-        !
-        ! The contributions from the constraint (n x H) x n = K x n = - a (E x n) where
-        ! the coefficient a is taken to be the product of the sheet conductivity and thickness
-        DO i = 1,nd-np
-          p = i+np
-          DO j = 1,nd-np
-            q = j+np
-            !
-            ! The term -i*omega*a < A x n, eta x n>
-            !
-            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
-                SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
-            !
-            ! An additional term related to magnetic co-energy
-            !
-            !STIFF(p,q) = STIFF(p,q) + th * muinv * &
-            !    SUM(RotWBasis(i,:) * RotWBasis(j,:)) * detJ * IP % s(t)
-          END DO
-
-          DO q = 1,np
-            !
-            ! The term  i*omega*a < grad V x n, eta x n>
-            !
-            STIFF(p,q) = STIFF(p,q) + im * Omega * th * Cond * &
-                SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-          END DO
-        END DO
-
-        ! Ensure the conservation of surface charge:
-        DO p = 1,n
-          DO q = 1,n
-            STIFF(p,q) = STIFF(p,q) + im * Omega * th * Cond * &
-                SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
-          END DO
-
-          DO j = 1,nd-np
-            q = j+np
-            STIFF(p,q) = STIFF(p,q) - im * Omega * th * Cond * &
-                SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
-          END DO
-        END DO
-
-        ! All done for this type BC:
-        CYCLE
-      END IF
-      
-      IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
-        B = CMPLX(0.0_dp, rob0 ) 
+        B = th * Cond
       ELSE
-        ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
-        IF (ConductorBC) THEN
-          Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
-          muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
-          IF ( Found ) THEN
-            muinv = muinv * mu0inv
-          ELSE
-            muinv = mu0inv
-          END IF
-          SurfImp = CMPLX(1.0_dp, -1.0_dp) * SQRT(omega/(2.0_dp * Cond * muinv))
-          B = 1.0_dp/SurfImp
+        IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
+          B = CMPLX(0.0_dp, rob0 ) 
         ELSE
-          B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+          ConductorBC = ListGetElementLogical( GoodConductor, Element, Found )
+          IF (ConductorBC) THEN
+            Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
+            muinv = ListGetElementComplex(RelNu_h, Basis, Element, Found, GaussPoint = t)
+            IF ( Found ) THEN
+              muinv = muinv * mu0inv
+            ELSE
+              muinv = mu0inv
+            END IF
+            SurfImp = CMPLX(1.0_dp, -1.0_dp) * SQRT(omega/(2.0_dp * Cond * muinv))
+            B = 1.0_dp/SurfImp
+          ELSE
+            B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
+          END IF
         END IF
       END IF
       L = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
@@ -864,8 +805,8 @@ CONTAINS
         muinv = mu0inv
       END IF
 
-      IF (ConductorBC) B = im * omega/muinv * B
-        
+      IF (ConductorBC .OR. ThinSheet) B = im * omega/muinv * B
+      
       DO i = 1,nd-np
         p = i+np
         FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * detJ * IP%s(t)
@@ -889,7 +830,7 @@ CONTAINS
           END DO
 
           IF (UseGaussLaw) THEN
-            ! Ensure the conservation of surface charge:
+            ! Ensure the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
               DO q = 1,n
@@ -910,7 +851,7 @@ CONTAINS
         IF (UseGaussLaw) THEN
 
           IF (ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
-            ! Ensure the conservation of surface charge:
+            ! Ensure the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
               FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * detJ * IP % s(t)
