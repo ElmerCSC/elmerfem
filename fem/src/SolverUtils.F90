@@ -1060,6 +1060,106 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+! Get normal vector for solver using precomputed data.  
+!------------------------------------------------------------------------------
+   FUNCTION ConsistentNormalVector( Solver, NrmVar, Element, Found, Basis, node ) RESULT ( Normal ) 
+
+     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Variable_t), POINTER :: NrmVar
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     INTEGER, OPTIONAL :: node
+     REAL(KIND=dp) :: Normal(3)
+     
+     TYPE(Solver_t), POINTER :: PrevSolver => NULL()
+     TYPE(NormalTangential_t), POINTER :: NT => NULL()
+     INTEGER :: NrmPerm(27),dofs,dim,i,j,m,n
+     LOGICAL :: GotIt, uFound
+     
+     SAVE PrevSolver, NT, dofs, dim
+     
+     uFound = .FALSE.
+     Normal = 0.0_dp
+     
+     IF(.NOT. ASSOCIATED(Solver,PrevSolver) ) THEN
+       dofs = 0
+       
+       !IF( .NOT. ASSOCIATED(NT) ) THEN
+       !str = ListGetString( Solver % Values,'Normal Vector Name',GotIt )
+       !IF(.NOT. GotIt) str = 'Normal Vector'         
+       !NrmVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly=.TRUE. ) 
+
+       NULLIFY(NT)
+
+       IF( ASSOCIATED(NrmVar) ) THEN
+         ! If we have given Normal variable use that!
+         dofs = NrmVar % Dofs
+       ELSE       
+         ! If we have precomputed normal-tangential vector use that!
+         NT => Solver % NormalTangential      
+         IF( ASSOCIATED(NT) ) THEN
+           IF( NT % NormalTangentialNOFNodes == 0 ) NULLIFY(NT)
+         END IF
+       END IF
+       dim = CoordinateSystemDimension()
+       PrevSolver => Solver
+     END IF
+
+     ! Note that we need to have full hit, otherwise return .FALSE.
+     ! and use elemental normal vector in the code. 
+     IF(dofs > 0) THEN
+       IF(PRESENT( Node ) ) THEN
+         j = NrmVar % Perm(node)
+         IF( j>0 ) THEN
+           Normal(1:dim) = SUM( Basis(1:n) * NrmVar % Values(dofs*(j-1)+1:dofs*(j-1)+dim) ) 
+           uFound = .TRUE.
+         END IF         
+       ELSE IF( PRESENT( Basis ) ) THEN
+         n = Element % TYPE % NumberOfNodes
+         m = COUNT( NrmVar % Perm(Element % NodeIndexes) > 0 )
+         IF( m == n ) THEN
+           NrmPerm(1:n) = NrmVar % Perm( Element % NodeIndexes) - 1
+           Normal(1) = SUM( Basis(1:n) * NrmVar % Values(dofs*NrmPerm(1:n)+1) ) 
+           Normal(2) = SUM( Basis(1:n) * NrmVar % Values(dofs*NrmPerm(1:n)+2) )
+           IF( dim == 3 ) THEN
+             Normal(3) = SUM( Basis(1:n) * NrmVar % Values(dofs*NrmPerm(1:n)+3) ) 
+           END IF
+           uFound = .TRUE.
+         END IF
+       ELSE
+         CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
+       END IF
+     ELSE IF(ASSOCIATED(NT) ) THEN
+       IF(PRESENT( Node ) ) THEN
+         j = NT % BoundaryReorder(node)
+         IF( j>0 ) THEN
+           Normal(1:dim) = NT % BoundaryNormals(j,1:dim)
+           uFound = .TRUE.
+         END IF         
+       ELSE IF( PRESENT( Basis ) ) THEN
+         n = Element % TYPE % NumberOfNodes       
+         m = COUNT( NT % BoundaryReorder(Element % NodeIndexes) > 0 )
+         IF( m == n ) THEN
+           DO i=1,n
+             j = NT % BoundaryReorder(Element % NodeIndexes(i))
+             Normal(1:dim) = Normal(1:dim) + Basis(i) * NT % BoundaryNormals(j,1:dim)
+           END DO
+           uFound = .TRUE.
+         END IF
+       ELSE
+         CALL Fatal('ConsistentNormalvector','Either Basis of Node is required!')
+       END IF
+         
+     END IF
+
+     IF(PRESENT(Found)) Found = uFound
+
+     
+   END FUNCTION ConsistentNormalVector
+
+
+!------------------------------------------------------------------------------
 !> Determine soft limiters set. This is called after the solution.
 !> and can therefore be active only on the 2nd nonlinear iteration round.
 !------------------------------------------------------------------------------
