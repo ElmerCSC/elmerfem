@@ -379,26 +379,19 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: nodenumber, NumberOfNodesOnBoundary 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
    INTEGER :: Nn, i, j, k, p, n, Nmax, bf_id, DIM, OldMeshTag
-   INTEGER, POINTER :: Permutation(:)
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv, aux
-   REAL(KIND=dp) :: rhow, gravity
+   REAL(KIND=dp) :: rhow, gravity, Nsi, NodeNormal(3)
    REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
-   REAL(KIND=dp), POINTER :: Nvector(:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE., ExtNorm=.FALSE.
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE.
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE rhow, gravity
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal,OldMeshTag
-
+   SAVE NormalSolution
+   
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
 
-   NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector',ExtNorm)
-   IF (ExtNorm) THEN
-     Nvector => NormalSolution % Values
-     Permutation => NormalSolution % Perm
-   END IF
-   
    aux = GetConstReal(Model % Constants, 'Sea Spring Timestep Size', GotIt)
    IF (GotIt) THEN
      dt = aux
@@ -429,7 +422,8 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    IF(Model % Mesh % Changed) MeshChanged = .TRUE.
 
    IF (FirstTime .OR. (NewTime .AND. MeshChanged)) THEN
-
+      NormalSolution => VariableGet( Model % Variables, 'Normal Vector')
+      
       IF(.NOT. FirstTime) DEALLOCATE(NodeOnBoundary, Ns)
       FirstTime = .FALSE.
       NewTime = .FALSE.
@@ -526,13 +520,8 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
              ELSE
                 Bv = 0.0D0
               END IF
-              IF (ExtNorm) THEN
-                k = Permutation(j)
-                Normal(1:DIM,NodeOnBoundary(j))  =  Nvector(DIM*(k-1)+1:DIM*k)
-              ELSE
-                Normal(:,NodeOnBoundary(j))  = Normal(:,NodeOnBoundary(j)) + &
-                     NormalVector(BCElement, Nodes, Bu, Bv, .TRUE.)
-              END IF
+              Normal(:,NodeOnBoundary(j))  = Normal(:,NodeOnBoundary(j)) + &
+                  NormalVector(BCElement, Nodes, Bu, Bv, .TRUE.)
            END DO
          END IF
       END DO
@@ -545,7 +534,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
           END IF
           Ns(i) = SQRT(Ns(i))
         ELSE
-          Ns(i) = -999.0
+          Ns(i) = -999.0_dp
           CALL WARN('SeaSpring', 'Lower surface almost is vertically aligned')
         END IF
       END DO
@@ -554,12 +543,32 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       Model % CurrentElement => CurElement 
 
    ENDIF  ! new dt
-    
-   j = NodeOnBoundary( nodenumber )
-   IF (Ns(j) > 0.0_dp) THEN 
-      C = gravity * rhow * dt * Ns(j)                                   
+
+   
+   GotIt = .FALSE.
+   Nsi = -999.0_dp
+
+   ! Get consistent normal if it is available on all nodes.
+   ! This is rather dirty since the other stuff is done anyways, even if this would
+   ! concern all the nodes. 
+   NodeNormal = ConsistentNormalVector( CurrentModel % Solver, NormalSolution, &
+       Model % CurrentElement, GotIt, Node = NodeNumber )
+   IF( GotIt ) THEN
+     IF(ABS(NodeNormal(dim)) > 1.0e-20_dp) THEN
+       Nsi = SQRT( 1.0_dp + (SUM(NodeNormal(1:dim-1)**2)) / NodeNormal(dim)**2.0_dp )
+       GotIt = .TRUE.
+     END IF 
+   END IF
+
+   IF(.NOT. GotIt ) THEN      
+     j = NodeOnBoundary( nodenumber )
+     IF( j > 0 ) Nsi = Ns(j)
+   END IF
+
+   IF( Nsi > 0.0_dp ) THEN
+     C = gravity * rhow * dt * Nsi
    ELSE
-      C = 1.0e20_dp
+     C = 1.0e20_dp
    END IF
 
 END FUNCTION SeaSpring

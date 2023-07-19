@@ -1076,6 +1076,7 @@ CONTAINS
      TYPE(NormalTangential_t), POINTER :: NT => NULL()
      INTEGER :: NrmPerm(27),dofs,dim,i,j,m,n
      LOGICAL :: GotIt, uFound
+     REAL(KIND=dp) :: NrmLen
      
      SAVE PrevSolver, NT, dofs, dim
      
@@ -1153,6 +1154,14 @@ CONTAINS
          
      END IF
 
+     IF( uFound ) THEN
+       NrmLen = SQRT(SUM(Normal**2))
+       IF( ABS(1.0_dp-NrmLen) > 0.5_dp ) THEN         
+         PRINT *,'NormalVector:',dofs,Element % ElementIndex, Element % NodeIndexes, Normal(1:dim)
+         CALL Fatal('ConsistentNormalVector','NormalVector should have a norm close to one!')
+       END IF
+     END IF       
+     
      IF(PRESENT(Found)) Found = uFound
 
      
