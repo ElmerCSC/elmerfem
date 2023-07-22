@@ -202,8 +202,8 @@ MainWindow::MainWindow() {
           SLOT(menuBarTriggeredSlot(QAction *)));
 
   // glWidget emits (list_t*) when a boundary is selected by double clicking:
-  connect(glWidget, SIGNAL(signalBoundarySelected(list_t *)), this,
-          SLOT(boundarySelectedSlot(list_t *)));
+  connect(glWidget, SIGNAL(signalBoundarySelected(list_t *, Qt::KeyboardModifiers)), this,
+          SLOT(boundarySelectedSlot(list_t *, Qt::KeyboardModifiers)));
 
   // glWidget emits (void) when esc has been pressed:
   connect(glWidget, SIGNAL(escPressed()), this, SLOT(viewNormalModeSlot()));
@@ -6099,7 +6099,7 @@ void MainWindow::generateSifSlot() {
 
 // Boundary selected by double clicking (signaled by glWidget::select):
 //-----------------------------------------------------------------------------
-void MainWindow::boundarySelectedSlot(list_t *l) {
+void MainWindow::boundarySelectedSlot(list_t *l, Qt::KeyboardModifiers modifiers) {
   QString qs;
 
   if (l->getIndex() < 0) {
@@ -6131,10 +6131,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
 
   // Open bc property sheet for selected boundary:
   //-----------------------------------------------
-  if (l->isSelected() && (glWidget->altPressed || bcEditActive)) {
-    glWidget->ctrlPressed = false;
-    glWidget->shiftPressed = false;
-    glWidget->altPressed = false;
+  if (l->isSelected() && ((modifiers & Qt::AltModifier) || bcEditActive)) {
 
     if (l->getNature() != PDE_BOUNDARY) {
       /*Ignore when double clicking a body of 2D geometry under boundary
@@ -6186,7 +6183,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
 
   // boundary as a body treatment
   // ----------------------------
-  if (l->isSelected() && glWidget->ctrlPressed) {
+  if (l->isSelected() && (modifiers & Qt::ControlModifier)) {
 
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
@@ -6206,9 +6203,6 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
     bodyEdit = boundaryEdit->bodyProperties;
 
     if (bodyEdit) {
-      glWidget->ctrlPressed = false;
-      glWidget->shiftPressed = false;
-      glWidget->altPressed = false;
 
       bodyEdit->setWindowTitle("Properties for body " +
                                QString::number(current));
@@ -6224,11 +6218,7 @@ void MainWindow::boundarySelectedSlot(list_t *l) {
   // Open body property sheet for selected body:
   //---------------------------------------------
   if ((glWidget->currentlySelectedBody >= 0) &&
-      (glWidget->shiftPressed || bodyEditActive)) {
-
-    glWidget->ctrlPressed = false;
-    glWidget->shiftPressed = false;
-    glWidget->altPressed = false;
+      ( (modifiers & Qt::ShiftModifier) || bodyEditActive)) {
 
     current = glWidget->currentlySelectedBody;
 

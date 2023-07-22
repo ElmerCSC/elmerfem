@@ -89,7 +89,7 @@ private slots:
   void boundaryDividedSlot(double);
   void boundaryUnifiedSlot();
  
-  void boundarySelectedSlot(list_t*);
+  void boundarySelectedSlot(list_t*, Qt::KeyboardModifiers);
   
   void boundaryComboChanged(BoundaryPropertyEditor *,QString);
   void bodyComboChanged(BodyPropertyEditor *,QString);  
