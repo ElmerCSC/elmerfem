@@ -105,6 +105,9 @@ MODULE Types
                         
   INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
                         DIRECT_PERMON = 1    ! Permon direct method
+
+  ! Operations used in ExchangeSourceVec
+  INTEGER, PARAMETER :: OPER_SUM = 0, OPER_MIN = 1, OPER_MAX = 2, OPER_MEAN = 3
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
@@ -424,6 +427,7 @@ MODULE Types
    
    TYPE VariableTable_t     
      TYPE(Variable_t), POINTER :: Variable => NULL()
+     TYPE(ValueListEntry_t), POINTER :: Keyword => NULL()
      REAL(KIND=dp) :: ParamValue
    END TYPE VariableTable_t
 

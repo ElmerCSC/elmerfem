@@ -1,3 +1,5 @@
+! Test case for Hypre AMS - Auxiliary-space Maxwell Solver
+
 $ mu_pm = 1.05
 $ mu0 = 4e-7*pi
 $ Jcurr = 1e3
@@ -7,7 +9,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 12
   Coordinate System = Cartesian
   Simulation Type = steady state
   Use Mesh Names = False
@@ -103,6 +105,8 @@ Solver 1 ! whitneyavsolver
   Linear System preconditioning = ams
   Linear System Iterative Method = cg
   Edge Basis = Logical True
+
+  NonLinear System Consistent Norm = True
 End
 
 Solver 2 ! MagnetoDynamicsCalcFields
@@ -130,6 +134,8 @@ Solver 2 ! MagnetoDynamicsCalcFields
   Linear System Residual Output=10
   Linear System Preconditioning = none
   Linear System Convergence Tolerance = 1.0e-8
+
+  NonLinear System Consistent Norm = True
 End
 
 Solver 3
@@ -154,6 +160,6 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
+Solver 1:: Reference Norm = 1.47377614E-07
 Solver 3:: Show Norm Index = 2
-Solver 3:: Reference Norm = 4.76880839E-08
-Solver 3:: Reference Norm Tolerance = 2e-4
+Solver 3:: Reference Norm = 8.32659888E-06

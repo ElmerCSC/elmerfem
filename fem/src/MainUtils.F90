@@ -5408,11 +5408,11 @@ END BLOCK
        END DO
        IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
          IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
-           CALL Warn('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
+           CALL Info('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
            CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
                ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
-               //TRIM(Mesh % Name),Level=7)
-           Solver % Mesh => Mesh
+               //TRIM(pMesh % Name),Level=7)
+           Solver % Mesh => pMesh
          END IF
        END IF
      END IF

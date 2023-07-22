@@ -971,7 +971,8 @@ END BLOCK
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h
-    TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
+    TYPE(VariableHandle_t), SAVE :: Velo_v
+    TYPE(Variable_t), POINTER, SAVE :: NrmSol
     TYPE(ValueList_t), POINTER :: BC    
     REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     
@@ -1004,9 +1005,12 @@ END BLOCK
 
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
-      CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+      NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.) 
+
+      !CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+
       CALL ListInitElementVariable( Velo_v )
-      
+           
       InitHandles = .FALSE.
     END IF
     
@@ -1085,11 +1089,14 @@ END BLOCK
 
       ! Calculate normal vector only if needed
       IF( HavePres .OR. NormalTangential .OR. HaveFriction  ) THEN
-        IF( HaveNormal ) THEN
-          Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
-        ELSE
-          Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
-        END IF
+        Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
+        IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
+        
+        !IF( HaveNormal ) THEN
+        !  Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
+        !ELSE
+        !  Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
+        !END IF
       END IF
       
       !-----------------------------------------------------------------
@@ -1118,7 +1125,6 @@ END BLOCK
           END IF
         END IF
         ut = MAX(wut0, SQRT(SUM(Velo(1:dim)**2)))
-
 
         IF( HaveFrictionW ) THEN
           ! Weertman friction law computed internally

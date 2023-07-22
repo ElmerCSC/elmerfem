@@ -3386,7 +3386,6 @@ CONTAINS
       
       IF (BodyVolumesCompute) THEN
         BodyId = GetBody()
-        BodyVolumes(BodyId) = 0._dp
       END IF
 
       IF (ComplexPowerCompute) THEN

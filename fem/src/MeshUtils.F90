@@ -736,66 +736,7 @@ CONTAINS
    CALL Info(Caller,'Number of candicate nodes: '&
        //I2S(NoDisContNodes),Level=7)
 
-   ! By default all nodes that are associated to elements immediately at the discontinuous 
-   ! boundary are treated as discontinuous. However, the user may be not be greedy and release
-   ! some nodes from the list that are associated also with other non-discontinuous elements.   
-   ConflictElems = 0
-   IF( NoDiscontNodes > 0 ) THEN
-     n = NoDiscontNodes
-     
-     GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
-     IF(.NOT. Found ) GreedyBulk = .TRUE.     
-     
-     GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
-     IF(.NOT. Found ) GreedyBC = .TRUE.     
-     
-     IF( .NOT. ( GreedyBC .AND. GreedyBulk ) ) THEN
-       CALL Info(Caller,'Applying non-greedy strategies for Discontinuous mesh',Level=12)
-
-       DO t = 1,NoBulkElems+NoBoundElems
-         Element => Mesh % Elements(t)
-
-         IF( t <= NoBulkElems ) THEN
-           IF( GreedyBulk ) CYCLE
-           IF( ParentUsed(t) ) CYCLE
-         ELSE
-           IF( GreedyBC ) CYCLE
-           IF( DiscontElem(t-NoBulkElems) ) CYCLE
-           !IF( Element % BoundaryInfo % Constraint == 0 ) CYCLE
-           ! Check that this is not an internal BC
-           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
-           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
-         END IF
-         Indexes => Element % NodeIndexes
-
-         IF( ANY( DisContNode( Indexes ) ) ) THEN
-           !PRINT *,'t',Element % BoundaryInfo % Constraint, t,DisContElem(t), &
-           !    Indexes, DisContNode( Indexes ) 
-           DisContNode( Indexes ) = .FALSE.
-           ConflictElems = ConflictElems + 1
-         END IF
-       END DO
-       NoDisContNodes = COUNT( DisContNode ) 
-     END IF
-
-     IF( ConflictElems > 0 ) THEN
-       CALL Info(Caller,'Conflicting discontinuity in elements: '&
-           //I2S(ConflictElems))
-     END IF
-
-     IF( NoDiscontNodes < n ) THEN
-       CALL Info(Caller,'Number of local discontinuous nodes: '&
-           //I2S(NoDisContNodes), Level=12)
-     ELSE
-       CALL Info(Caller,'All candidate nodes used',Level=12)
-     END IF
-     
-     IF( NoDiscontNodes == 0 ) THEN
-       IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
-         CALL Info(Caller,'You might want to try the Greedy bulk strategy',Level=3)
-       END IF
-     END IF
-   END IF
+   CALL NonGreedyDiscontinuity()
    
    i = ParallelReduction( NoDiscontNodes ) 
    CALL Info(Caller,'Number of discontinuous nodes: '&
@@ -1226,7 +1167,192 @@ CONTAINS
 
 
    DEALLOCATE( DisContNode, DiscontElem )   
-  
+
+
+ CONTAINS
+
+   ! By default all nodes that are associated to elements immediately at the discontinuous 
+   ! boundary are treated as discontinuous. However, the user may be not be greedy and release
+   ! some nodes from the list that are associated also with other non-discontinuous elements.   
+   !-----------------------------------------------------------------------------------------
+   SUBROUTINE NonGreedyDiscontinuity()
+     INTEGER :: i,i1,i2,j,k
+     REAL(KIND=dp) :: Coords(4,3),e1(3),e2(3),phi
+     REAL(KIND=dp), ALLOCATABLE :: NodePhi(:)
+     INTEGER :: AngleCount(0:36)
+     LOGICAL, ALLOCATABLE :: BoundaryNode(:)
+     
+     IF( NoDiscontNodes == 0 ) RETURN
+
+     ConflictElems = 0
+
+     GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
+     IF(.NOT. Found ) GreedyBulk = .TRUE.     
+     
+     GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
+     IF(.NOT. Found ) GreedyBC = .TRUE.     
+          
+     IF( .NOT. ( GreedyBC .AND. GreedyBulk ) ) THEN
+       CALL Info(Caller,'Applying non-greedy strategies for Discontinuous mesh',Level=12)
+
+       DO t = 1,NoBulkElems+NoBoundElems
+         Element => Mesh % Elements(t)
+         
+         IF( t <= NoBulkElems ) THEN
+           IF( GreedyBulk ) CYCLE
+           IF( ParentUsed(t) ) CYCLE
+         ELSE
+           IF( GreedyBC ) CYCLE
+           IF( DiscontElem(t-NoBulkElems) ) CYCLE
+
+           ! Check that this is not an external BC
+           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
+           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
+         END IF
+         Indexes => Element % NodeIndexes
+         
+         IF( ANY( DisContNode( Indexes ) ) ) THEN
+           !PRINT *,'t',Element % BoundaryInfo % Constraint, t,DisContElem(t), &
+           !    Indexes, DisContNode( Indexes ) 
+           DisContNode( Indexes ) = .FALSE.
+           ConflictElems = ConflictElems + 1
+         END IF
+       END DO
+
+       IF( ConflictElems > 0 ) THEN
+         CALL Info(Caller,'Conflicting discontinuity in elements: '&
+             //I2S(ConflictElems))
+       END IF
+     END IF
+
+       
+     IF( ListGetLogical( Model % Simulation,'Discontinuous Boundary Full Angle',Found ) ) THEN
+       CALL Info(Caller,'Computing sum of angles for discontinuous BC',Level=12)
+
+       ALLOCATE(NodePhi(Mesh % NumberOfNodes))
+       NodePhi = 0.0_dp
+
+       DO t = 1,NoBoundElems
+         Element => Mesh % Elements(NoBulkElems+t)
+
+         IF(.NOT.  DiscontElem(t) ) CYCLE
+         
+         n = Element % TYPE % ElementCode / 100
+         Indexes => Element % NodeIndexes
+         Coords(1:n,1) = Mesh % Nodes % y(Indexes(1:n))
+         Coords(1:n,2) = Mesh % Nodes % x(Indexes(1:n))
+         Coords(1:n,3) = Mesh % Nodes % z(Indexes(1:n))
+
+         DO i = 1, n
+           i1 = MODULO(i,n)+1
+           i2 = MODULO(n+i-2,n)+1
+
+           e1 = Coords(i1,:)-Coords(i,:)
+           e2 = Coords(i2,:)-Coords(i,:)
+           
+           e1 = e1 / SQRT( SUM( e1**2) )
+           e2 = e2 / SQRT( SUM( e2**2) )
+           
+           ! Cosine angle in radians
+           phi = ACOS( SUM( e1 * e2 ) ) 
+           
+           j = Indexes(i)
+           NodePhi(j) = NodePhi(j) + phi
+         END DO
+       END DO
+
+       ! Move to angles
+       NodePhi = 180 * NodePhi / PI
+       
+       IF( InfoActive(10) ) THEN
+         AngleCount = 0
+         DO i=1,Mesh % NumberOfNodes
+           j = NINT(NodePhi(i)/10)
+           AngleCount(j) = AngleCount(j) + 1
+         END DO
+         DO i=0,36
+           j = AngleCount(i)
+           IF( j > 0 ) THEN
+             CALL Info(Caller,'Angle gat '//I2S(10*i)//' count: '//I2S(j)) 
+           END IF
+         END DO
+       END IF
+         
+       CALL FindMeshFaces3D(Mesh)
+       
+       ALLOCATE(BoundaryNode(Mesh % NumberOfNodes) )
+       BoundaryNode = .FALSE.
+       
+       DO t = 1, Mesh % NumberOfFaces
+         Element => Mesh % Faces(t)
+
+         i = 0
+         IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN           
+           IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) i = i+1
+           IF( ASSOCIATED( Element % BoundaryInfo % Right) ) i = i+1
+         END IF
+           
+         IF(i==1) THEN
+           BoundaryNode(Element % NodeIndexes) = .TRUE.
+         END IF
+       END DO
+       
+       i = COUNT( BoundaryNode )
+       CALL Info(Caller,'Number of non-internal nodes: '//I2S(i))
+
+       j = 0; k = 0
+       DO i = 1, Mesh % NumberOfNodes
+         IF(DiscontNode(i) ) THEN
+           IF( BoundaryNode(i) ) THEN
+             ! On boundary we relase the discontinuity when the
+             ! angle is ~90 degs i.e. on corner nodes, hopefully. 
+             IF( NodePhi(i) < 100.0_dp ) THEN
+               DiscontNode(i) = .FALSE.
+               j = j+1
+             END IF
+           ELSE
+             ! Elsewhere we relase the discontinuity when angle is <360 degs.
+             IF( NodePhi(i) < 350.0_dp ) THEN
+               DiscontNode(i) = .FALSE.
+               k = k+1
+             END IF
+           END IF
+         END IF         
+       END DO
+
+       IF(k>0) CALL Info(Caller,'Releasing number of internal boundary nodes: '//I2S(k))
+       IF(j>0) CALL Info(Caller,'Releasing number of corner nodes: '//I2S(j))
+       
+       CALL ReleaseMeshFaceTables( Mesh )
+       Mesh % Faces => NULL()
+
+       DEALLOCATE( BoundaryNode, NodePhi ) 
+
+     END IF
+
+     n = NoDiscontNodes
+     NoDisContNodes = COUNT( DisContNode ) 
+
+     IF( NoDiscontNodes < n ) THEN
+       CALL Info(Caller,'Number of local discontinuous nodes: '&
+           //I2S(NoDisContNodes), Level=12)
+     ELSE
+       CALL Info(Caller,'All candidate nodes used',Level=12)
+     END IF
+
+     IF( NoDiscontNodes == 0 ) THEN
+       IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
+         CALL Info(Caller,'You might want to try the Greedy bulk strategy',Level=3)
+       END IF
+     END IF
+
+   END SUBROUTINE NonGreedyDiscontinuity
+
+
+   
+
+
+   
  END SUBROUTINE CreateDiscontMesh
 
 

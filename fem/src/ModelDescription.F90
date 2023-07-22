@@ -5234,7 +5234,10 @@ CONTAINS
         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
-
+    
+    IF( INDEX( PostFile,'.vtu' ) /= 0 ) RETURN
+    !IF( INDEX( PostFile,'.ep' ) == 0 ) RETURN
+    
     IF( Model % Mesh % SavesDone == 0 ) THEN
       CALL Info('WritePostFile','Saving results in ElmerPost format to file '//TRIM(PostFile))
     END IF

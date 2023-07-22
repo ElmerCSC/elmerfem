@@ -447,7 +447,7 @@ CONTAINS
       t = RealTime()
       IF( ListGetLogical( Params,'Adaptive Remesh Use MMG', Found ) ) THEN
 #ifdef HAVE_MMG
-        CALL Info(Caller,'Using MMG libary for mesh refinement',Level=5)
+        CALL Info(Caller,'Using MMG library for mesh refinement', Level=5)
         NewMesh => MMG_ReMesh( RefMesh, ErrorLimit/3, HValue, &
             NodalError, hConvergence, minH, maxH, MaxChangeFactor, Coarsening )         
 #else
@@ -516,16 +516,16 @@ CONTAINS
     IF( MeshNumbering ) THEN
       NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // I2S(NewMesh % AdaptiveDepth)
     END IF
-      
-    Nlen = LEN_TRIM(OutputPath)
-    IF ( Nlen > 0 ) THEN
-      Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
-    ELSE
-      Path = TRIM(NewMesh % Name)
-    END IF
-    CALL MakeDirectory( TRIM(path) // CHAR(0) )
+
+    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN 
+      Nlen = LEN_TRIM(OutputPath)
+      IF ( Nlen > 0 ) THEN
+        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
+      ELSE
+        Path = TRIM(NewMesh % Name)
+      END IF
+      CALL MakeDirectory( TRIM(path) // CHAR(0) )
     
-    IF ( ListGetLogical( Params, 'Adaptive Save Mesh', Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL WriteMeshToDisk2( Model, NewMesh, Path, ParEnv % MyPe )
       ELSE
@@ -742,10 +742,13 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: RefMesh
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n
-    REAL(KIND=dp) :: Lambda
+    REAL(KIND=dp) :: Lambda, hLimitScale
     INTEGER, ALLOCATABLE :: Hcount(:)
     TYPE(Matrix_t), POINTER :: A
 !------------------------------------------------------------------------------
+
+    hLimitScale = ListGetConstReal( Params,'Adaptive H Limit Scale', Found )
+    IF ( .NOT.Found ) hLimitScale = 1.0d0
 
     DO i=1,RefMesh % NumberOfNodes      
       IF ( NodalError(i) < 100*AEPS ) CYCLE 
@@ -763,7 +766,7 @@ CONTAINS
       IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
       IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
 
-      HValue(i) = Lambda        
+      HValue(i) = Lambda * hLimitScale
     END DO
   END SUBROUTINE ComputeDesiredHvalue
 
