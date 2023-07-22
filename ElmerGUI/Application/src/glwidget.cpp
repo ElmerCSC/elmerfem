@@ -637,7 +637,6 @@ void GLWidget::focusInEvent(QFocusEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::keyPressEvent(QKeyEvent *event)
 {
-  if(event->key() == Qt::Key_Shift)
   if(event->key() == Qt::Key_Escape)
     emit(escPressed());
 }
