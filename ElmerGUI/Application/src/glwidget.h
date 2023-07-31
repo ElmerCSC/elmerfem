@@ -159,9 +159,6 @@ public:
   bool stateDrawBodyIndex;
   bool stateBcColors;
   bool stateBodyColors;
-  bool ctrlPressed;
-  bool shiftPressed;
-  bool altPressed;
   bool bodyEditActive;
   bool stateUseBgImage;
   bool stateStretchBgImage;
@@ -182,7 +179,7 @@ public:
 public slots:
 
 signals:
-  void signalBoundarySelected(list_t*);
+  void signalBoundarySelected(list_t*, Qt::KeyboardModifiers);
   void escPressed();
 
 protected:
