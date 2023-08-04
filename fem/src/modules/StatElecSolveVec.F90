@@ -668,7 +668,7 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   INTEGER, POINTER :: WeightPerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'StatElecSolver_post'
   LOGICAL :: CalcCurrent, CalcField, CalcElectricDisp, NeedScaling, ConstantWeights, &
-      Axisymmetric, CalcAvePotential
+      Axisymmetric, CalcAvePotential, DoAve
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: EnergyTot, Voltot
   
@@ -692,7 +692,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
 
   CalcAvePotential = ListGetLogical( Params,'Calculate Average Potential',Found )
-
+  DoAve = ListGetLogical( Params,'Average Within Materials',Found ) 
+  
   IF( CalcAvePotential ) THEN   
     n = Model % NumberOfBodies 
     ALLOCATE( PotInteg(n), PotVol(n) )
@@ -770,6 +771,11 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
     CALL GlobalPostScale()
   END IF
 
+  IF( DoAve ) THEN
+    CALl GlobalPostAve()
+  END IF
+
+  
   IF( CalcAvePotential ) THEN
     BLOCK        
       REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
@@ -1028,8 +1034,7 @@ CONTAINS
      CALL ListAddConstReal( Model % Simulation,&
          'RES: Effective Capacitance', Capacitance )
    END IF
-     
-    
+         
    DO Vari = 1, 8
      pVar => PostVars(Vari) % Var
      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
@@ -1062,7 +1067,7 @@ CONTAINS
      END IF
      
      DO i=1,dofs
-       WHERE( ABS( WeightVector ) > EPSILON( val ) ) &
+       WHERE( ABS( WeightVector ) > TINY( val ) ) &
            pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
      END DO
    END DO
@@ -1119,6 +1124,32 @@ CONTAINS
  END SUBROUTINE GlobalPostScale
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE GlobalPostAve()
+!------------------------------------------------------------------------------
+    INTEGER :: i, Vari
+    TYPE(Variable_t), POINTER :: pVar
+    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
+    LOGICAL :: DoneWeight = .FALSE.
+    REAL(KIND=dp) :: PotDiff, Capacitance, ControlTarget, ControlScaling, val
+
+    DO Vari = 1, 8
+      pVar => PostVars(Vari) % Var
+      IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+
+      ! This is the only type of variable needing averaging!
+      IF( pVar % TYPE == variable_on_nodes_on_elements ) THEN
+        ! We reset the flag since, otherwise this will not be averaged...
+        pVar % DgAveraged = .FALSE.
+        CALL Info(Caller,'Averaging for field: '//TRIM(pVar % Name),Level=10)
+        CALL CalculateBodyAverage(Mesh, pVar, .FALSE.)
+      END IF
+    END DO
+
+  END SUBROUTINE GlobalPostAve
+!------------------------------------------------------------------------------
+  
+ 
 !------------------------------------------------------------------------
 END SUBROUTINE StatElecSolver_Post
 !------------------------------------------------------------------------
