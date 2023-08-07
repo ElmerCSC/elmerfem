@@ -317,7 +317,9 @@
         END IF
 
         ZbName = GetString( Constants, 'Bedrock Variable Name', Found )
-        IF(.NOT.Found) THEN        
+        IF (Found) THEN
+           ZbSol => VariableGet( Solver % Mesh % Variables, ZbName, UnFoundFatal=.TRUE. )
+        ELSE
            CALL WARN(SolverName,'Keyword >Bedrock Variable Name< not found in section Constants')
            CALL WARN(SolverName,'Taking default value >zb<')
            WRITE(ZbName,'(A)') 'Zb'
