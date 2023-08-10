@@ -2962,7 +2962,8 @@ CONTAINS
       END IF
 
       IF( MeshLevels > 1 ) THEN
-      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+        ! This has been commented out, but is needed. There may be some issues in parallel still...
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
       END IF
     
       

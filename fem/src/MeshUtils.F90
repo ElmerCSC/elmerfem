@@ -13196,7 +13196,8 @@ CONTAINS
     ELSE IF( ListGetLogical( BCParams,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE.
     ELSE
-      DoEdges = ( Mesh % NumberOfEdges > 0 )
+      DoEdges = ( Mesh % NumberOfEdges > 0 ) .AND. &
+          ListGetLogical( Model % Solver % Values,'Hcurl Basis',Found )
     END IF
     IF( DoEdges .AND. Mesh % NumberOfEdges == 0 ) THEN
       CALL Warn('WeightedProjectorDiscont','Edge basis requested but mesh has no edges!')
@@ -16289,8 +16290,9 @@ CONTAINS
           ! We are conservative here since there may be edges in 2D which 
           ! still cannot be used for creating the projector
           DoEdges = ( Mesh % NumberOfEdges > 0 .AND. &
-              Mesh % MeshDim == 3 .AND. Dim == 3 )
-
+              Mesh % MeshDim == 3 .AND. Dim == 3 ) .AND. &
+              ListGetLogical( Model % Solver % Values,'Hcurl Basis',GotIt )
+          
           ! Ensure that there is no p-elements that made us think that we have edges
           ! Here we assume that if there is any p-element then also the 1st element is such
           IF( DoEdges ) THEN
@@ -17342,7 +17344,7 @@ CONTAINS
 
 
     ! Add start and finish planes except if we have a full rotational symmetry
-    IF( .NOT. Rotate2Pi ) THEN
+    IF(Rotate2Pi ) GOTO 100 
 
     ! Add bottom boundary:
     ! --------------------
@@ -17419,11 +17421,8 @@ CONTAINS
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
-
-    END IF ! .NOT. Rotate2Pi
     
-
-    Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
+100 Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
 
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh

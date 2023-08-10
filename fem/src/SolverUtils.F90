@@ -3273,10 +3273,9 @@ CONTAINS
        END IF
 
        IF( InfoActive(20) ) THEN
-         CALL VectorValuesRange(SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoad')       
-         CALL VectorValuesRange(NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoad')       
+         CALL VariableValuesRange(SlipLoadVar,'SlipLoad',AlwaysSerial=.TRUE.)       
+         CALL VariableValuesRange(NormalLoadVar,'NormalLoad',AlwaysSerial=.TRUE.)       
        END IF
-
        
        IF( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) THEN
          IF( NormalCount == 0 ) THEN
@@ -3294,11 +3293,6 @@ CONTAINS
        ! Check whether the normal sign has been enforced
        IF( ListGetLogical( BC,'Normal Sign Negative',Found ) ) DistSign = -1
        IF( ListGetLogical( BC,'Normal Sign Positive',Found ) ) DistSign = 1
-
-       IF(InfoActive(30) ) THEN
-         CALL VectorValuesRange( SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoad')
-         CALL VectorValuesRange( NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoad')
-       END IF
 
        DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, NodeDone )
 
@@ -3703,8 +3697,8 @@ CONTAINS
 
        IF( InfoActive(30) ) THEN
          PRINT *,'Active Tangent set:',COUNT( MortarBC % Active ) 
-         CALL VectorValuesRange(NormalActiveVar % Values,SIZE(NormalActiveVar % Values),'NormalActive')
-         CALL VectorValuesRange(StickActiveVar % Values,SIZE(StickActiveVar % Values),'StickActive')
+         CALL VariableValuesRange(NormalActiveVar,'NormalActive',AlwaysSerial=.TRUE.)
+         CALL VariableValuesRange(StickActiveVar,'StickActive',AlwaysSerial=.TRUE.)
        END IF
          
      END SUBROUTINE TangentContactSet
@@ -4050,10 +4044,10 @@ CONTAINS
        
        IF( InfoActive(30) ) THEN
          CALL Info('PojectFromSlaveToMaster','Projecting fields')
-         CALL VectorValuesRange(NormalLoadVar % Values,SIZE(NormalLoadVar % Values),'NormalLoadVar')
-         CALL VectorValuesRange(SlipLoadVar % Values,SIZE(SlipLoadVar % Values),'SlipLoadVar')
+         CALL VariableValuesRange(NormalLoadVar,'NormalLoadVar',AlwaysSerial=.TRUE.)
+         CALL VariableValuesRange(SlipLoadVar,'SlipLoadVar',AlwaysSerial=.TRUE.)
          IF( CalculateVelocity ) THEN
-           CALL VectorValuesRange(VeloVar % Values,SIZE(VeloVar % Values),'VeloVar')
+           CALL VariableValuesRange(VeloVar,'VeloVar',AlwaysSerial=.TRUE.)
          END IF
        END IF
 
@@ -4398,7 +4392,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Compute range of the linear system mainly for debugging purposes.
+!> Show range of vector values mainly for debugging purposes.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorValuesRange(x,n,str,AlwaysSerial)
 !------------------------------------------------------------------------------    
@@ -4407,11 +4401,9 @@ CONTAINS
     CHARACTER(LEN=*) :: str
     LOGICAL, OPTIONAL :: AlwaysSerial
     
+    INTEGER :: np
     REAL(KIND=dp) :: s(3)
     LOGICAL :: Parallel, Found
-    
-    !WRITE(Message,*) 'Computing range for '//TRIM(str)//' with size '//I2S(n)
-    !CALL Info('VectorValuesRange',Message)
     
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) Parallel = .NOT. CurrentModel % Mesh % SingleMesh 
@@ -4425,23 +4417,61 @@ CONTAINS
         Parallel = .FALSE.
       END IF
     END IF
-    
-    s(1) = MINVAL( x(1:n) ) 
-    s(2) = MAXVAL( x(1:n) ) 
-    s(3) = SUM( x(1:n) ) 
 
+    np = n
+      
+    IF( np == 0 ) THEN
+      s(1) = HUGE(s(1))
+      s(2) = -HUGE(s(2))
+      s(3) = 0.0_dp        
+    ELSE          
+      s(1) = MINVAL( x(1:np) ) 
+      s(2) = MAXVAL( x(1:np) ) 
+      s(3) = SUM( x(1:np) ) 
+    END IF
+      
     IF( Parallel ) THEN
       s(1) = ParallelReduction( s(1),1 ) 
       s(2) = ParallelReduction( s(2),2 ) 
       s(3) = ParallelReduction( s(3) )
+      np = ParallelReduction( np )
     END IF
-      
-    WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
-    CALL Info('VectorValuesRange',Message)
 
+    IF( np == 0 ) THEN
+      WRITE(Message,*) 'Size of vector is zero: '//TRIM(str)
+      CALL Info('VectorValuesRange',Message)              
+    ELSE
+      WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+      CALL Info('VectorValuesRange',Message)
+    END IF
+        
   END SUBROUTINE VectorValuesRange
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Show range of field variable mainly for debugging purposes.
+!------------------------------------------------------------------------------
+  SUBROUTINE VariableValuesRange(pVar,str,AlwaysSerial)
+    TYPE(Variable_t), POINTER :: pVar
+    CHARACTER(LEN=*) :: str
+    LOGICAL, OPTIONAL :: AlwaysSerial
+    
+    REAL(KIND=dp), POINTER :: pVals(:)
+    INTEGER :: n
+    
+    IF( ASSOCIATED(pVar) ) THEN
+      pVals => pVar % Values
+      n = SIZE( pVals )
+    ELSE
+      pVals => NULL()
+      n = 0
+    END IF
+    CALL VectorValuesRange(pVals,n,str,AlwaysSerial)
+    
+  END SUBROUTINE VariableValuesRange
+
+
+  
   SUBROUTINE FindClosestNode(Mesh,Coord,MinDist,MinNode,Parallel,Eps,Perm)
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: Coord(:)
@@ -9336,12 +9366,12 @@ CONTAINS
 
     IF( InfoActive(25) ) THEN
       DO i=1,3        
-        CALL VectorValuesRange(BoundaryNormals(:,i),SIZE(BoundaryNormals(:,i)),'Normal '//I2S(i))
+        CALL VectorValuesRange(BoundaryNormals(:,i),NumberOfBoundaryNodes,'Normal '//I2S(i))
       END DO
       IF( dim > 2 ) THEN
         DO i=1,3        
-          CALL VectorValuesRange(BoundaryTangent1(:,i),SIZE(BoundaryTangent1(:,i)),'Tangent1 '//I2S(i))
-          CALL VectorValuesRange(BoundaryTangent2(:,i),SIZE(BoundaryTangent2(:,i)),'Tangent2 '//I2S(i))
+          CALL VectorValuesRange(BoundaryTangent1(:,i),NumberOfBoundaryNodes,'Tangent1 '//I2S(i))
+          CALL VectorValuesRange(BoundaryTangent2(:,i),NumberOfBoundaryNodes,'Tangent2 '//I2S(i))
         END DO
       END IF
     END IF
