@@ -16900,18 +16900,20 @@ CONTAINS
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: ExtrudedMeshName
-    INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
+    INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,&
         ExtrudedCoord,dg_n,totalnumberofelements
     TYPE(Element_t), POINTER :: Elem_in, Elem_out
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
-    INTEGER :: nnodes,gnodes,gelements,ierr
+    INTEGER :: nnodes,gnodes,gelements,ierr,bcignored,cnt101
     LOGICAL :: isParallel, Found, PreserveBaseline, Rotational, Rotate2Pi
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
     INTEGER, POINTER :: BCLayers(:), TmpLayers(:)
-    INTEGER :: NoBCLayers, bcoffset, bclevel, BaseLineLayer, bcind, ElemCode, m, max_bid0
-    LOGICAL :: GotBCLayers
+    INTEGER :: NoBCLayers, bcoffset, baseline0, bclevel, BaseLineLayer, bcind, &
+        m, max_bid0
+    INTEGER :: BcCounter(100)    
+    LOGICAL :: GotBCLayers, DoCount
     CHARACTER(*), PARAMETER :: Caller="MeshExtrude"   
 
 !------------------------------------------------------------------------------
@@ -17016,7 +17018,7 @@ CONTAINS
     ! This sets the BC layers.
     ! We honor the old way of assuming just bottom and top layer so the internal BCs are
     ! set as additional layers between.
-    TmpLayers => ListGetIntegerArray( CurrentModel % Simulation,'Extruded Internal BCs', GotBCLayers ) 
+    TmpLayers => ListGetIntegerArray( CurrentModel % Simulation,'Extruded BC layers', GotBCLayers ) 
     IF( GotBCLayers ) THEN
       NoBCLayers = 2 + SIZE( TmpLayers )      
     ELSE
@@ -17034,8 +17036,11 @@ CONTAINS
         END IF
       END DO
     END IF    
-    
+
+    DoCount = .FALSE.
+    BCCounter = 0 
     BaseLineLayer = 0
+    baseline0 = 0
     IF( PreserveBaseline ) THEN
       BaseLineLayer = ListGetInteger( CurrentModel % Simulation,'Extruded Baseline Index', Found )
       IF(.NOT. Found) BaseLineLayer = 1
@@ -17127,13 +17132,29 @@ CONTAINS
         
     ! Warn about 101 elements:
     ! -------------------------
+    cnt101 = 0
+    bcignored = 0
     DO i=Mesh_in % NumberOfBulkElements+1, &
-         Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
-      IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) THEN
-        CALL Info(Caller,"WARNING: Historically 101's were extruded as is, now they become 202's!",Level=3)
-        EXIT
-      END IF
+        Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
+      Elem_in => Mesh_in % Elements(i)
+      IF(Elem_in % TYPE % ElementCode == 101) cnt101 = cnt101 + 1
+      IF(Elem_in % BoundaryInfo % Constraint == 0 ) bcignored = bcignored + 1
     END DO
+
+    IF(isParallel) THEN
+      j=cnt101
+      CALL MPI_ALLREDUCE(j,cnt101,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+      j=bcignored
+      CALL MPI_ALLREDUCE(j,bcignored,1,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
+    END IF
+       
+    IF( bcignored > 0 ) THEN
+      CALL Info(Caller,"WARNING: We are skipping '//I2S(bcignored)//&
+          ' non-defined BC elements in extrusion!",Level=3)
+    END IF       
+    IF( cnt101 > 0 ) THEN
+      CALL Info(Caller,"WARNING: Historically 101's were extruded as is, now they become 202's!",Level=3)
+    END IF
     
     ! Compute total number of elements needed
     ! extruded bulk + extruded bc elements
@@ -17219,82 +17240,35 @@ CONTAINS
     END DO
     Mesh_out % NumberOfBulkElements = cnt
     CALL Info(Caller,'Number of extruded bulk elements: '//I2S(cnt),Level=8)
-
-    max_bid = 0
-    max_baseline_bid = 0
-
-    ! If baseline preservation is requested, these will be
-    ! available in the given layer with original bc tags. 
-    ! -------------------------------------------------------
-    IF (PreserveBaseline ) THEN
-      DO j=1,Mesh_in % NumberOfBoundaryElements
-        k = j + Mesh_in % NumberOfBulkElements
-        
-        Elem_In => Mesh_in % Elements(k)
-        IF(.NOT. ASSOCIATED(Elem_In % BoundaryInfo)) CYCLE
-        bcind = Elem_In % BoundaryInfo % Constraint 
-
-        cnt=cnt+1
-
-        Elem_out => Mesh_out % Elements(cnt) 
-        
-        ALLOCATE(Elem_out % BoundaryInfo)
-        Elem_out % BoundaryInfo = Elem_In % BoundaryInfo        
-        Elem_out % PartIndex = Elem_in % PartIndex
-        
-        Elem_out % TYPE => Elem_In % TYPE
-        m = Elem_out % TYPE % ElementCode / 100
-        Elem_out % NDOFs = m 
-
-        ind(1:m) = Elem_in % NodeIndexes(1:m) + BCLayers(BaselineLayer) * Mesh_in % NumberOfNodes 
-        
-        ALLOCATE(Elem_out % NodeIndexes(m)) 
-        Elem_out % NodeIndexes(1:m) = ind(1:m)
-
-        ! bulk elements: n*bulkelem
-        ! preserve baseline: bcelem
-        ! extruded side: n*bcelem
-        ! original bulk layers: 
-
-        k = (Mesh_in % NumberOfBulkElements + Mesh_in % NumberOfBoundaryElements) * (in_levels+1)
-        k = k + BCLayers(BaselineLayer) * Mesh_in % NumberOfBulkElements
-        
-        IF(ASSOCIATED(Elem_In % BoundaryInfo % Left)) THEN
-          l = Elem_in % BoundaryInfo % Left % ElementIndex
-          Elem_out % BoundaryInfo % Left => Mesh_out % Elements(k+l)
-        END IF
-        IF(ASSOCIATED(Elem_In % BoundaryInfo % Right)) THEN
-          l = Elem_in % BoundaryInfo % Right % ElementIndex
-          Elem_out % BoundaryInfo % Right => Mesh_out % Elements(k+l)
-        END IF
-      END DO
-
-      ! We already got this
-      max_baseline_bid = max_bid0
-
-      CALL Info(Caller,'Original baseline given by BCs: '//I2S(max_bid0))
-    END IF
-
-    
+      
     ! Add side boundaries with the bottom mesh boundary id's:
     ! (or shift ids if preserving the baseline boundary)
     ! -------------------------------------------------------
+    max_bid = 0
+    bcoffset = 0
+    IF( PreserveBaseline ) bcoffset = max_bid0
+
     DO i=0,in_levels
       DO j=1,Mesh_in % NumberOfBoundaryElements
         k = j + Mesh_in % NumberOfBulkElements
 
-        cnt = cnt+1
-
         Elem_in => Mesh_in % Elements(k)
+        bcind = Elem_in % BoundaryInfo % constraint
+
+        ! Do not include BCs that are originally not activated
+        IF(bcind==0) CYCLE
+
+        cnt = cnt+1
         Elem_out => Mesh_out % Elements(cnt)  
         
-        Elem_out = Elem_in
+        !Elem_out = Elem_in
         
         ALLOCATE(Elem_out % BoundaryInfo)
         Elem_out % BoundaryInfo = Elem_in % BoundaryInfo
         Elem_out % PartIndex = Elem_in % PartIndex
         
-        bcind = Elem_in % BoundaryInfo % constraint + max_baseline_bid
+        ! Offset from possible baseline         
+        bcind = bcind + bcoffset
 
         ! If we have internal BC layers then find the correct index for the body
         IF( NoBCLayers > 2 ) THEN
@@ -17303,7 +17277,8 @@ CONTAINS
           END DO
           bcind = bcind + max_bid0*(k-1)
         END IF
-
+        IF(DoCount .AND. bcind <= 100) BcCounter(bcind) = BcCounter(bcind) + 1
+        
         Elem_out % BoundaryInfo % constraint = bcind
         max_bid = MAX(max_bid,bcind )
 
@@ -17350,6 +17325,7 @@ CONTAINS
 
         Elem_out % ElementIndex = cnt
       END DO
+      PRINT *,'level cnt:',cnt
     END DO
         
     IF(isParallel) THEN
@@ -17357,7 +17333,8 @@ CONTAINS
       CALL MPI_ALLREDUCE(j,max_bid,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
     CALL Info(Caller,'Largest bc index after extruded BCs: '//I2S(max_bid),Level=8)
-
+    IF(DoCount) PRINT *,'BCInd1:',BcCounter(1:20)
+    
 
     ! Add start and finish planes except if we have a full rotational symmetry
     IF(Rotate2Pi ) GOTO 100 
@@ -17365,10 +17342,21 @@ CONTAINS
     ! Add bottom, top, and possible mid boundaries:
     ! ---------------------------------------------
     bcoffset = max_bid
+    PRINT *,'offset1:',bcoffset
+    
     DO k=1,NoBCLayers
 
-      bcoffset = max_bid + (k-1)*max_body
       bclevel = BCLayers(k)
+
+      IF( PreserveBaseline ) THEN
+        ! Register the starting point for parents of baseline elements
+        IF(k == BaselineLayer ) THEN
+          baseline0 = cnt
+          CALL Info(Caller,'Baseline elements parents start from element index: '//I2S(cnt),Level=8)
+        END IF
+      END IF
+
+      PRINT *,'k:',k,max_body
       
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
@@ -17397,14 +17385,16 @@ CONTAINS
                 Mesh_out % Elements((bclevel-1) * Mesh_in % NumberOfBulkElements+i)
           END IF
         END IF
-        bcid = bcoffset + Elem_out % BodyId
+        bcind = bcoffset + (k-1)*max_body + Elem_in % BodyId
+        IF(DoCount .AND. bcind <= 100) BcCounter(bcind) = BcCounter(bcind) + 1
+        
         max_bid = MAX(max_bid,bcind )
         
-        Elem_out % BoundaryInfo % Constraint = bcid        
+        Elem_out % BoundaryInfo % Constraint = bcind        
         Elem_out % BodyId = 0
 
-        IF( bcid <= CurrentModel % NumberOfBCs) THEN
-          j = ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
+        IF( bcind <= CurrentModel % NumberOfBCs) THEN
+          j = ListGetInteger(CurrentModel % BCs(bcind) % Values,'Body Id',Found)
           IF(Found) Elem_out % BodyId = j
         END IF
 
@@ -17420,20 +17410,88 @@ CONTAINS
       CALL MPI_ALLREDUCE(j,max_bid,1,MPI_INTEGER,MPI_MAX,ELMER_COMM_WORLD,ierr)
     END IF
     CALL Info(Caller,'Largest bc index after layer BCs: '//I2S(max_bid),Level=8)
+    IF(DoCount) PRINT *,'BCInd2:',BcCounter(1:20)
 
     
-100 Mesh_out % NumberOfBoundaryElements = cnt-Mesh_out % NumberOfBulkElements
+    ! If baseline preservation is requested, these will be
+    ! available in the given layer with original bc tags.
+    ! We do this at the end but still use the smallest (original)
+    ! bc constraint indeces here.
+    ! -------------------------------------------------------
+    IF (PreserveBaseline ) THEN
+      DO j=1,Mesh_in % NumberOfBoundaryElements
+        k = j + Mesh_in % NumberOfBulkElements
+        
+        Elem_In => Mesh_in % Elements(k)
+        bcind = Elem_In % BoundaryInfo % Constraint 
+        IF(bcind==0) CYCLE
+        IF(DoCount .AND. bcind <= 100) BcCounter(bcind) = BcCounter(bcind) + 1
+        
+        cnt = cnt+1
+        Elem_out => Mesh_out % Elements(cnt) 
+        
+        ALLOCATE(Elem_out % BoundaryInfo)
+        Elem_out % BoundaryInfo = Elem_In % BoundaryInfo        
+        Elem_out % BoundaryInfo % Constraint = bcind
+        Elem_out % PartIndex = Elem_in % PartIndex
+        
+        Elem_out % TYPE => Elem_In % TYPE
+        m = Elem_out % TYPE % ElementCode / 100
+        Elem_out % NDOFs = m 
 
+        ind(1:m) = Elem_in % NodeIndexes(1:m) + baseline0
+        
+        ALLOCATE(Elem_out % NodeIndexes(m)) 
+        Elem_out % NodeIndexes(1:m) = ind(1:m)
+
+        ! bulk elements: n*bulkelem
+        ! preserve baseline: bcelem
+        ! extruded side: n*bcelem
+        ! original bulk layers: 
+
+        k = (Mesh_in % NumberOfBulkElements + Mesh_in % NumberOfBoundaryElements) * (in_levels+1)
+        k = k + BCLayers(BaselineLayer) * Mesh_in % NumberOfBulkElements
+        
+        IF(ASSOCIATED(Elem_In % BoundaryInfo % Left)) THEN
+          l = Elem_in % BoundaryInfo % Left % ElementIndex
+          Elem_out % BoundaryInfo % Left => Mesh_out % Elements(k+l)
+        END IF
+        IF(ASSOCIATED(Elem_In % BoundaryInfo % Right)) THEN
+          l = Elem_in % BoundaryInfo % Right % ElementIndex
+          Elem_out % BoundaryInfo % Right => Mesh_out % Elements(k+l)
+        END IF
+      END DO
+
+      CALL Info(Caller,'Original baseline given by BCs: '//I2S(max_bid0))
+    END IF
+    IF(DoCount) PRINT *,'BCInd3:',BcCounter(1:20)
+    
+100 Mesh_out % NumberOfBoundaryElements = cnt-Mesh_out % NumberOfBulkElements
+    
     Mesh_out % Name = Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
     Mesh_out % Stabilize = Mesh_in % Stabilize
 
-    Mesh_out % MeshDim = 3
-    CurrentModel % Dimension = 3
-
+    Mesh_out % MeshDim = Mesh_in % MeshDim + 1
+    CurrentModel % Dimension = MIN( CurrentModel % Dimension+1, 3 )
    
     DEALLOCATE( BCLayers ) 
+
+    ! Check whether the *.sif file has included enough BCs.
+    ! If not then add some for convenience.
+    j = 0
+    DO i=Mesh_out % NumberOfBulkElements+1, &
+        Mesh_out % NumberOfBulkElements+Mesh_out % NumberOfBoundaryElements
+      Elem_out => Mesh_out % Elements(i)      
+      bcind = Elem_out % BoundaryInfo % Constraint
+      IF(bcind==0) CYCLE
+      j = MAX(bcind,j)
+    END DO
+    CALL Info(Caller,'Maximum bc constraint in extruded mesh: '//I2S(j))
+    IF( j > CurrentModel % NumberOfBCs ) THEN
+      CALL AppendMissingBCs(CurrentModel,j)
+    END IF
 
     !Active for debugging
     !CALL CheckMeshInfo( Mesh_out )
@@ -17450,6 +17508,44 @@ CONTAINS
       END IF
     END IF
 
+  CONTAINS
+
+    SUBROUTINE AppendMissingBCs(Model,maxbc)
+       TYPE(Model_t) :: Model
+       INTEGER :: maxbc
+       
+       INTEGER :: i, NoBCs, tag 
+       TYPE(BoundaryConditionArray_t), POINTER :: OldBCs(:) => NULL()
+       
+       NoBcs = Model % NumberOfBCs
+       IF(NoBCs >= maxbc ) RETURN
+
+       CALL Info(Caller,'Generating '//I2S(maxbc-NoBCs)//' dummy list BCs for convenience!',Level=5)
+ 
+       OldBCs => Model % BCs(:)
+
+       NULLIFY( Model % BCs )
+       ALLOCATE( Model % BCs(maxbc) )
+
+       DO i=1,NoBCs
+         Model % BCs(i) % Values => OldBCs(i) % Values        
+         tag = OldBCs(i) % Tag
+         IF(tag == 0) tag = i 
+         Model % BCs(i) % Tag = tag
+       END DO
+       DEALLOCATE( OldBCs ) 
+       DO i=NoBCs+1,maxbc
+         Model % BCs(i) % Tag = i
+       END DO
+       DO i=1,maxbc
+         IF(.NOT.ASSOCIATED(Model % BCs(i) % Values)) &
+             Model % BCs(i) % Values => ListAllocate()
+         CALL ListAddString( Model % BCs(i) % Values,'Name','BC'//I2S(i))         
+       END DO
+       Model % NumberOfBCs = maxbc
+       
+     END SUBROUTINE AppendMissingBCs
+    
 !------------------------------------------------------------------------------
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
