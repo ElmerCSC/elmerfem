@@ -17018,7 +17018,7 @@ CONTAINS
     ! This sets the BC layers.
     ! We honor the old way of assuming just bottom and top layer so the internal BCs are
     ! set as additional layers between.
-    TmpLayers => ListGetIntegerArray( CurrentModel % Simulation,'Extruded BC layers', GotBCLayers ) 
+    TmpLayers => ListGetIntegerArray( CurrentModel % Simulation,'Extruded BC Layers', GotBCLayers ) 
     IF( GotBCLayers ) THEN
       NoBCLayers = 2 + SIZE( TmpLayers )      
     ELSE
@@ -17042,7 +17042,7 @@ CONTAINS
     BaseLineLayer = 0
     baseline0 = 0
     IF( PreserveBaseline ) THEN
-      BaseLineLayer = ListGetInteger( CurrentModel % Simulation,'Extruded Baseline Index', Found )
+      BaseLineLayer = ListGetInteger( CurrentModel % Simulation,'Extruded Baseline Layer', Found )
       IF(.NOT. Found) BaseLineLayer = 1
       IF( BaseLineLayer > NoBCLayers ) THEN
         CALL Fatal(Caller,"'Extruded Baseline index' cannot exceed: "//I2S(NoBCLayers)) 
@@ -17169,7 +17169,6 @@ CONTAINS
       totalnumberofelements = totalnumberofelements + Mesh_in % NumberOfBoundaryElements
     END IF
     ALLOCATE(Mesh_out % Elements(totalnumberofelements))
-    PRINT *,'allocating:',totalnumberofelements
     
     ! Initialize all elements to zero
     DO i = 1, totalnumberofelements
@@ -17246,8 +17245,11 @@ CONTAINS
     ! -------------------------------------------------------
     max_bid = 0
     bcoffset = 0
-    IF( PreserveBaseline ) bcoffset = max_bid0
-
+    IF( PreserveBaseline ) THEN
+      CALL Info(Caller,'Preserving original '//I2S(max_bid0)//' BCs',Level=8)
+      bcoffset = max_bid0
+    END IF
+      
     DO i=0,in_levels
       DO j=1,Mesh_in % NumberOfBoundaryElements
         k = j + Mesh_in % NumberOfBulkElements
@@ -17325,7 +17327,6 @@ CONTAINS
 
         Elem_out % ElementIndex = cnt
       END DO
-      PRINT *,'level cnt:',cnt
     END DO
         
     IF(isParallel) THEN
@@ -17342,8 +17343,6 @@ CONTAINS
     ! Add bottom, top, and possible mid boundaries:
     ! ---------------------------------------------
     bcoffset = max_bid
-    PRINT *,'offset1:',bcoffset
-    
     DO k=1,NoBCLayers
 
       bclevel = BCLayers(k)
@@ -17356,8 +17355,6 @@ CONTAINS
         END IF
       END IF
 
-      PRINT *,'k:',k,max_body
-      
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
         
@@ -17439,33 +17436,26 @@ CONTAINS
         m = Elem_out % TYPE % ElementCode / 100
         Elem_out % NDOFs = m 
 
-        ind(1:m) = Elem_in % NodeIndexes(1:m) + baseline0
+        k = BCLayers(BaselineLayer) * Mesh_in % NumberOfNodes
+        ind(1:m) = Elem_in % NodeIndexes(1:m) + k
         
         ALLOCATE(Elem_out % NodeIndexes(m)) 
         Elem_out % NodeIndexes(1:m) = ind(1:m)
-
-        ! bulk elements: n*bulkelem
-        ! preserve baseline: bcelem
-        ! extruded side: n*bcelem
-        ! original bulk layers: 
-
-        k = (Mesh_in % NumberOfBulkElements + Mesh_in % NumberOfBoundaryElements) * (in_levels+1)
-        k = k + BCLayers(BaselineLayer) * Mesh_in % NumberOfBulkElements
         
         IF(ASSOCIATED(Elem_In % BoundaryInfo % Left)) THEN
-          l = Elem_in % BoundaryInfo % Left % ElementIndex
-          Elem_out % BoundaryInfo % Left => Mesh_out % Elements(k+l)
+          l = Elem_in % BoundaryInfo % Left % ElementIndex + baseline0
+          Elem_out % BoundaryInfo % Left => Mesh_out % Elements(l)
         END IF
         IF(ASSOCIATED(Elem_In % BoundaryInfo % Right)) THEN
-          l = Elem_in % BoundaryInfo % Right % ElementIndex
-          Elem_out % BoundaryInfo % Right => Mesh_out % Elements(k+l)
+          l = Elem_in % BoundaryInfo % Right % ElementIndex + baseline0
+          Elem_out % BoundaryInfo % Right => Mesh_out % Elements(l)
         END IF
       END DO
 
       CALL Info(Caller,'Original baseline given by BCs: '//I2S(max_bid0))
     END IF
     IF(DoCount) PRINT *,'BCInd3:',BcCounter(1:20)
-    
+
 100 Mesh_out % NumberOfBoundaryElements = cnt-Mesh_out % NumberOfBulkElements
     
     Mesh_out % Name = Mesh_in % Name
@@ -18754,7 +18744,7 @@ CONTAINS
         END IF
         IF(ANY(Element % NodeIndexes > nn ) ) THEN
           PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn 
-          CALL Fatal(Caller,'Buondary element '//I2S(t)//' has too large index!')
+          CALL Fatal(Caller,'Boundary element '//I2S(t)//' has too large index!')
         END IF
         NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
 
