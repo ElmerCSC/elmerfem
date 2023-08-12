@@ -5016,13 +5016,13 @@ SUBROUTINE SParActiveSUMComplex(tsum, oper)
    ssum = tsum
    SELECT CASE(oper)
    CASE(0)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_COMPLEX, &
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
             MPI_SUM, comm, ierr )
    CASE(1)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_COMPLEX, &
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
             MPI_MIN, comm, ierr )
    CASE(2)
-     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_COMPLEX, &
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
             MPI_MAX, comm, ierr )
   END SELECT
 !*********************************************************************
