@@ -223,7 +223,7 @@ CONTAINS
       BCAssociations => Null()
     END DO
 
-    DO i = 1, SIZE(CurrentModel % Bodies)
+    DO i = 1, CurrentModel % NumberOfBodies
       BodyParams => CurrentModel % Bodies(i) % Values
       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                           'Body parameters not found!')
@@ -235,7 +235,7 @@ CONTAINS
       BodyParams => Null()
     END DO
 
-    DO i = 1, SIZE(CurrentModel % BCs)
+    DO i = 1, CurrentModel % NumberOfBCs
       BCParams => CurrentModel % BCs(i) % Values
       IF (.NOT. ASSOCIATED(BCParams)) CALL Fatal ('AddComponentsToBodyList', &
                   'Boundary Condition parameters not found!')
