@@ -117,7 +117,7 @@ class list_t {
   bool visible;      // Currently visible?
 };
 
-#ifdef WITH_QT6
+#if WITH_QT6
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
   Q_OBJECT
