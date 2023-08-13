@@ -1005,7 +1005,9 @@ BLOCK
         indSize = n 
       CASE (3)
         IF(.NOT. ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(Mesh % Edges) ) ) RETURN
-        
+        IF(.NOT. ASSOCIATED(Element % PDefs) ) RETURN        
+        IF(Element % PDefs % LocalNumber == 0 ) RETURN
+                
         ! Get boundary face
         Face => Mesh % Faces( Parent % FaceIndexes(Element % PDefs % localNumber) )
         

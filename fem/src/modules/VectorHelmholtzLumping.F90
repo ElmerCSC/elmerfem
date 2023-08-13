@@ -20,7 +20,7 @@
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
    LOGICAL :: Found, stat, InitHandles
    TYPE(Mesh_t), POINTER :: Mesh
-   COMPLEX(KIND=dp), ALLOCATABLE :: IntPoynt(:,:), IntCurr(:,:), IntVolt(:,:)   
+   COMPLEX(KIND=dp), ALLOCATABLE :: IntPoynt(:,:), IntCurr(:,:), IntVolt(:,:), IntPot(:,:)   
    REAL(KIND=dp), ALLOCATABLE :: IntCenter(:,:), IntWeight(:)   
    INTEGER, ALLOCATABLE :: CenterNode(:)
    INTEGER, POINTER :: PotPerm(:)
@@ -31,7 +31,7 @@
    LOGICAL :: Visited = .FALSE.
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzLumping'
 
-   SAVE IntCenter, IntWeight, IntCurr, IntVolt, IntPoynt, CenterNode, jMode, NoModes 
+   SAVE IntCenter, IntWeight, IntCurr, IntPot, IntVolt, IntPoynt, CenterNode, jMode, NoModes 
 
    
 !-------------------------------------------------------------------------------------------
@@ -75,17 +75,20 @@
      END DO
      PRINT *,'NoModes:',NoModes
      
-     ALLOCATE( IntPoynt(NoModes,NoModes), IntCurr(NoModes,NoModes), IntVolt(NoModes,NoModes), &
-         IntCenter(NoModes,3), IntWeight(NoModes), CenterNode(NoModes) )
+     ALLOCATE( IntPoynt(NoModes,NoModes), IntCurr(NoModes,NoModes), IntPot(NoModes,Nomodes), &
+         IntVolt(NoModes,NoModes), IntCenter(NoModes,3), IntWeight(NoModes), CenterNode(NoModes) )
      IntPoynt = 0.0_dp
      IntCurr = 0.0_dp
      IntVolt = 0.0_dp
-   END IF       
+     IntPot = 0.0_dp
+   END IF
    jMode = jMode + 1
 
    IF(jMode > NoModes ) THEN
      CALL Fatal(Caller,'The lumping was already called "NoModes" times!')
    END IF
+
+   potVar => VariableGet( Mesh % Variables,'Potential', ThisOnly = .TRUE.)
    
    ! One should be able to toggle between using nodal or edge basis.
    ! The results are not quite the same but should hopefully be close.
@@ -160,12 +163,28 @@
      CALL LocalIntegBC(BC,Element,InitHandles )
    END DO
 
+   IF( ParEnv % PEs > 1 ) THEN
+     DO i=1,NoModes
+       IntPoynt(jMode,i) = ParallelReduction(IntPoynt(jMode,i))
+       IntCurr(jMode,i) = ParallelReduction(IntCurr(jMode,i))
+       IntWeight(i) = ParallelReduction(IntWeight(i))
+     END DO
+   END IF
+   
    PRINT *,'Energy through port:',IntPoynt(jMode,:)
    PRINT *,'Current through port:',IntCurr(jMode,:)
-
+   IF( ASSOCIATED(PotVar) ) THEN
+     IF( ParEnv % PEs > 1 ) THEN
+       DO i=1,NoModes
+         IntPot(jMode,i) = ParallelReduction(IntPot(jMode,i))
+       END DO
+     END IF
+     IntPot(jMode,:) = IntPot(jMode,:) / IntWeight(:)
+     PRINT *,'Average pot on port:',IntPot(jMode,:)
+   END IF
+   
    CALL CenterPortLoc()
    
-   potVar => VariableGet( Mesh % Variables,'Potential', ThisOnly = .TRUE.)
    IF( ASSOCIATED( potVar ) ) THEN
      CALL Info(Caller,'Computing voltage using "Potential" as path indicator')
      potVals => PotVar % Values
@@ -175,7 +194,7 @@
      CALL Info(Caller,'Cannot compute voltage as no "Potential" is present')
    END IF
      
-   IF( jMode == NoModes ) THEN
+   IF( jMode == NoModes .AND. ParEnv % MyPe == 0 ) THEN
      CALL Info(Caller,'Writing results on final visit!')
 
      OPEN (10, FILE="Poynt_re.dat")
@@ -199,6 +218,16 @@
      END DO
      CLOSE(10) 
      IF( ASSOCIATED( PotVar ) ) THEN
+       OPEN (10, FILE="dPot_re.dat")
+       DO i=1,NoModes
+         WRITE(10,*) REAL(IntPot(i,:))
+       END DO
+       CLOSE(10) 
+       OPEN (10, FILE="dPot_im.dat")
+       DO i=1,NoModes
+         WRITE(10,*) AIMAG(IntPot(i,:))
+       END DO
+       CLOSE(10)
        OPEN (10, FILE="Volt_re.dat")
        DO i=1,NoModes
          WRITE(10,*) REAL(IntVolt(i,:))
@@ -272,8 +301,8 @@ CONTAINS
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: B, Zs, L(3), muinv, TemGrad(3), BetaPar, jn, eps, &
-        e_ip(3), e_ip_norm, e_ip_tan(3), imu
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:)
+        e_ip(3), e_ip_norm, e_ip_tan(3), imu, phi
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:), e_local(:,:), phi_local(:,:)
     REAL(KIND=dp) :: weight, DetJ, Normal(3), cond, u, v, w, x, y, z
     LOGICAL :: Stat, Found
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -284,15 +313,15 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h, RelNu_h, CondCoeff_h, CurrDens_h, EpsCoeff_h
      
-    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local
+    SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, phi_local
 
     ndofs = evar % dofs
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
-      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m) )      
+      ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), e_local(ndofs,m), phi_local(2,m) )      
       AllocationsDone = .TRUE.
     END IF
-    
+ 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
@@ -309,7 +338,7 @@ CONTAINS
     END IF
 
     imu = CMPLX(0.0_dp, 1.0_dp)
-    
+
     n = Element % TYPE % NumberOfNodes
     CALL GetElementNodes( Nodes, Element )    
     Parent => GetBulkElementAtBoundary(Element)
@@ -318,6 +347,11 @@ CONTAINS
     END IF
 
     e_local = 0.0_dp
+
+    IF( ASSOCIATED( PotVar ) ) THEN        
+      phi_local = 0.0_dp
+      CALL GetVectorLocalSolution( phi_local, uelement = Element, uvariable = potvar )
+    END IF
     
     IF( NodalMode ) THEN
       CALL GetVectorLocalSolution( e_local, uelement = Element, uvariable = evar, Found=Found)
@@ -407,6 +441,15 @@ CONTAINS
           0.5_dp * SUM(e_ip_tan * CONJG(e_ip_tan) ) / Zs
       IntCurr(jMode,iMode) = IntCurr(jMode,iMode) + weight * &
           ( imu * Omega * Eps + cond ) * e_ip_norm 
+
+      ! If potential is given compute the integral over the potential on the electrode to get
+      ! the avarage potential at the surface.
+      IF( ASSOCIATED( PotVar ) ) THEN        
+        CALL GetVectorLocalSolution( phi_local, uelement = Element, uvariable = potvar )
+        phi = CMPLX( SUM( Basis(1:n) * phi_local(1,1:n) ), SUM( Basis(1:n) * phi_local(2,1:n) ) )
+        IntPot(jMode,iMode) = IntPot(jMode,iMode) + weight * phi
+      END IF
+
     END DO
     
 !------------------------------------------------------------------------------
@@ -495,7 +538,7 @@ CONTAINS
       nsteps = 0
       Circ = 0.0_dp
       
-      PRINT *,'Starting pot:',iMode, minpot
+      PRINT *,'Starting pot:',iMode, minpot, IntPot(jMode,iMode) 
       
       DO WHILE(.TRUE.)
         kmin = 0

@@ -200,10 +200,6 @@ GLWidget::GLWidget(QWidget *parent)
   helpers = new Helpers;
   meshutils = new Meshutils;
 
-  ctrlPressed = false;
-  shiftPressed = false;
-  altPressed = false;
-
   // Coordinate axis:
   quadric_axis = gluNewQuadric();
 
@@ -658,15 +654,6 @@ void GLWidget::focusInEvent(QFocusEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::keyPressEvent(QKeyEvent *event)
 {
-  if(event->key() == Qt::Key_Control)
-    ctrlPressed = true;
-
-  if(event->key() == Qt::Key_Shift)
-    shiftPressed = true;
-
-  if((event->key() == Qt::Key_Alt) || (event->key() == Qt::Key_AltGr))
-    altPressed = true;
-
   if(event->key() == Qt::Key_Escape)
     emit(escPressed());
 }
@@ -676,14 +663,6 @@ void GLWidget::keyPressEvent(QKeyEvent *event)
 //-----------------------------------------------------------------------------
 void GLWidget::keyReleaseEvent(QKeyEvent *event)
 {
-  if(event->key() == Qt::Key_Control)
-    ctrlPressed = false;
-
-  if(event->key() == Qt::Key_Shift)
-    shiftPressed = false;
-
-  if(event->key() == Qt::Key_Alt)
-    altPressed = false;
 }
 
 
@@ -956,7 +935,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
       l = getList(l->getParent());
 
     // if not ctrl pressed, rebuild all selected lists except this one:
-    if(!ctrlPressed) {
+    if(!(event->modifiers() & Qt::ControlModifier)) {
       for(i = 0; i < getLists(); i++) {
 	list_t *l2 = getList(i);
 	if(l2->isSelected() && (l2->getIndex() != l->getIndex())) {
@@ -1014,7 +993,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     // body selection:
     //----------------
     currentlySelectedBody = -1;
-    if(shiftPressed || bodyEditActive) {
+    if( (event->modifiers() & Qt::ShiftModifier) || bodyEditActive) {
 
       // determine the max bulk index
       int MAX_BULK_INDEX = -1;
@@ -1118,7 +1097,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
   body_selection_finished:
     
     // Emit result to mainwindow:
-    emit(signalBoundarySelected(l));
+    emit(signalBoundarySelected(l, event->modifiers()));
 
   } else {
 
@@ -1126,7 +1105,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     dummylist.setNature(-1);
     dummylist.setType(-1);
     dummylist.setIndex(-1);
-    emit(signalBoundarySelected(&dummylist));
+    emit(signalBoundarySelected(&dummylist, event->modifiers()));
 
   }
 

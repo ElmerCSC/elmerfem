@@ -97,5 +97,15 @@ Boundary Condition 1
   Theta 3 = Real 0.0
 End
 
+! This shows how one could set force to the other end:
+! f=(1.0 2.0 3.0) 
+Boundary Condition 2
+  Target Nodes(1) = 2
+!  Target Boundaries(1) = 2
+!  U 1 Load = Real 1.0
+!  U 2 Load = Real 2.0
+!  U 3 Load = Real 3.0
+End
+
 Solver 1 :: Reference Norm = Real 3.88782384E-03
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

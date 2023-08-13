@@ -4631,6 +4631,9 @@ RETURN
         
     
     IF( npos == 0 ) RETURN
+
+    ! MAX 3 velocity direction (4th variable is pressure)
+    ! This has to be accounted for in the Var % Values permutations
     dofs = MIN(3,Var % Dofs)
     
     !-----------------------------------------------------------------
@@ -4644,7 +4647,9 @@ RETURN
       DO i=1,n
         j = LocalPerm(i)
 	DO k=1,dofs
-          LocalVelo(i,k) = Var % Values( Dofs*(j-1)+k)
+          ! For correct permutation we have to account for the full dimension
+          ! of the Flow Solution (e.g., Stokes 3D : vx, vy,vz, p)
+          LocalVelo(i,k) = Var % Values( Var % Dofs * (j-1) + k)
         END DO
       END DO
     ELSE    
@@ -4656,7 +4661,7 @@ RETURN
         IF( j > 0 ) THEN
           SumBasis = SumBasis + Basis(i)
           DO k=1,dofs
-            LocalVelo(i,k) = Var % Values( Dofs*(j-1)+k)
+            LocalVelo(i,k) = Var % Values( Var % Dofs * (j-1) + k)
           END DO
         ELSE
           Basis(i) = 0.0_dp

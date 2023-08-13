@@ -4997,6 +4997,39 @@ END SUBROUTINE SParActiveSUMInt
 !*********************************************************************
 
 
+!*********************************************************************
+SUBROUTINE SParActiveSUMComplex(tsum, oper)
+   INTEGER :: oper
+   COMPLEX(KIND=dp) :: tsum
+!*********************************************************************
+   INTEGER :: ierr, comm, nact
+   COMPLEX(KIND=dp) :: ssum
+
+   comm = ParEnv % ActiveComm
+   nact = COUNT(ParEnv % Active)
+   
+   IF( nact <= 0 ) THEN
+     comm = ELMER_COMM_WORLD
+     nact = ParEnv % PEs
+   END IF
+     
+   ssum = tsum
+   SELECT CASE(oper)
+   CASE(0)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_SUM, comm, ierr )
+   CASE(1)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_MIN, comm, ierr )
+   CASE(2)
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_COMPLEX, &
+            MPI_MAX, comm, ierr )
+  END SELECT
+!*********************************************************************
+END SUBROUTINE SParActiveSUMComplex
+!*********************************************************************
+
+
 
 !*********************************************************************
 !*********************************************************************
