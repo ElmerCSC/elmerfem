@@ -17263,7 +17263,7 @@ CONTAINS
         cnt = cnt+1
         Elem_out => Mesh_out % Elements(cnt)  
         
-        !Elem_out = Elem_in
+        Elem_out = Elem_in
         
         ALLOCATE(Elem_out % BoundaryInfo)
         Elem_out % BoundaryInfo = Elem_in % BoundaryInfo
@@ -17325,6 +17325,11 @@ CONTAINS
           CALL Fatal(Caller,'Invalid number of nodes: '//I2S(m))
         END IF
 
+        IF( bcind <= CurrentModel % NumberOfBCs) THEN
+          k = ListGetInteger(CurrentModel % BCs(bcind) % Values,'Body Id',Found)
+          IF(Found) Elem_out % BodyId = k
+        END IF
+        
         Elem_out % ElementIndex = cnt
       END DO
     END DO
@@ -17516,7 +17521,7 @@ CONTAINS
 
        NULLIFY( Model % BCs )
        ALLOCATE( Model % BCs(maxbc) )
-
+       
        DO i=1,NoBCs
          Model % BCs(i) % Values => OldBCs(i) % Values        
          tag = OldBCs(i) % Tag
@@ -17528,9 +17533,10 @@ CONTAINS
          Model % BCs(i) % Tag = i
        END DO
        DO i=1,maxbc
-         IF(.NOT.ASSOCIATED(Model % BCs(i) % Values)) &
-             Model % BCs(i) % Values => ListAllocate()
-         CALL ListAddString( Model % BCs(i) % Values,'Name','BC'//I2S(i))         
+         IF(.NOT.ASSOCIATED(Model % BCs(i) % Values) .OR. i > NoBCs) THEN
+           Model % BCs(i) % Values => ListAllocate()
+           CALL ListAddString( Model % BCs(i) % Values,'Name','BC'//I2S(i))
+         END IF
        END DO
        Model % NumberOfBCs = maxbc
        
