@@ -489,8 +489,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF (.NOT. Found) THEN
     IF (.NOT. (SteadyGauge .OR. TransientGauge)) THEN
       IF( GetString(SolverParams,'Linear System Solver',Found)=='direct') THEN
-        CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
-        TG = .TRUE.
+        IF( PiolaVersion ) THEN
+          CALL Fatal('WhitneyAVSolver','Direct solver (with tree gauge) is only possible with the lowest order edge basis!')
+        ELSE
+          CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
+          TG = .TRUE.
+        END IF
       END IF
     END IF
   END IF
