@@ -631,8 +631,6 @@ CONTAINS
     !     Diffuse gray radiation condition:
     !     ---------------------------------
     Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-    IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
     IF( Radiation ) THEN        
       Radiation = .FALSE.
       DO i=1,Model % NumberOfBCs
@@ -1442,8 +1440,6 @@ CONTAINS
 !     Diffuse gray radiation condition:
 !     ---------------------------------
       Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-      IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-          Radiation = Radiation .OR. (Equation == 'heat equation')
       IF( Radiation ) THEN        
         Radiation = .FALSE.
         DO i=1,Model % NumberOfBCs

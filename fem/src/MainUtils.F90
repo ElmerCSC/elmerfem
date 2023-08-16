@@ -1119,9 +1119,7 @@ CONTAINS
       var_name = 'Temperature'
       proc_name = 'HeatSolve HeatSolver'
       
-      IF( .NOT. ListCheckPresent( SolverParams,'Radiation Solver') ) THEN
-        CALL ListAddLogical( SolverParams,'Radiation Solver',.TRUE.)
-      END IF
+      CALL ListAddNewLogical( SolverParams,'Radiation Solver',.TRUE.)
       !------------------------------------------------------------------------------
 
     CASE DEFAULT

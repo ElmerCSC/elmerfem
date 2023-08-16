@@ -1751,9 +1751,10 @@ CONTAINS
 !   Update Gebhart factors, if present and the current solver
 !   is a heat equation solver:
 !   ------------------------------------------------------------
-    IF ( ListGetString( Solver % Values, 'Equation' ) == 'heat equation' ) &
-         CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
-
+    IF ( ListGetLogical( Solver % Values, 'Radiation Solver', Found ) ) THEN
+      CALL UpdateGebhartFactors( RefMesh, NewMesh, Children )
+    END IF
+      
     WRITE( Message, * ) 'Bndry element tables generation time (cpu-secs): ',CPUTime()-t
     CALL Info( 'SplitOneLevel', Message, Level=6 )
 

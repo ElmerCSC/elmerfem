@@ -3240,10 +3240,46 @@ CONTAINS
       Mesh => Mesh % Next      
     END DO
 
+
+    CALL TagRadiationSolver() 
+    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! Set radiation solver tag to one heat equation.
+    !--------------------------------------------------
+    SUBROUTINE TagRadiationSolver()
+      TYPE(ValueList_t), POINTER :: Params
+
+      ! Radiation solver tag already exists?
+      IF( ListGetLogicalAnySolver( Model,'Radiation Solver') ) RETURN
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString( Params, 'Equation' )
+        IF ( TRIM(str) == 'heat equation' ) THEN
+          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        ENDIF
+      END DO
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString(Params, 'Procedure', Found)
+        IF(.NOT. Found) CYCLE
+        j = INDEX( str,'HeatSolver')
+        IF( j > 0 ) THEN
+          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        END IF
+      END DO
+
+    END SUBROUTINE TagRadiationSolver
+
+    
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of

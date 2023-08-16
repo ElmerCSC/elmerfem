@@ -583,7 +583,7 @@ CONTAINS
      END DO
 
      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-     IF ( Radiation .OR. Equation == 'heat equation' ) THEN
+     IF ( Radiation ) THEN
         t = Mesh % NumberOfBulkElements + 1
         n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         DO WHILE( t<= n )

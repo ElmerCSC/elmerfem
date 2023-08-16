@@ -182,8 +182,7 @@
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
        Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-       eq = ListGetString( Solver % Values, 'Equation' )
-       IF ( Radiation .OR. TRIM(eq) == 'heat equation' ) THEN
+       IF ( Radiation ) THEN
          Mesh => Solver % Mesh
          Model % Solver => Solver
          EXIT
