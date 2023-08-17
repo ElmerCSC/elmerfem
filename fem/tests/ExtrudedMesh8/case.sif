@@ -33,10 +33,7 @@ Body 2
   Material = 1
 End
 
-Body 3
-  Equation = 1
-  Material = 2
-End
+
 
 Body Force 1 :: Heat Source = Real 1
 Equation 1 :: Active Solvers(1) = 1
