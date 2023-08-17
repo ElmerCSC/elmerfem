@@ -14,25 +14,6 @@ IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
-# Explicitly set the compilers to use GCC and GFortran from MSYS2/MinGW-w64
-# Check if the OS is Windows
-IF(WIN32)
-    # Set the full paths to the compilers in the specified directory
-    SET(CMAKE_C_COMPILER "C:/tools/msys64/mingw64/bin/gcc.exe")
-    SET(CMAKE_CXX_COMPILER "C:/tools/msys64/mingw64/bin/g++.exe")
-    SET(CMAKE_Fortran_COMPILER "C:/tools/msys64/mingw64/bin/gfortran.exe")
-
-    # Set the full path to the make program in the specified directory
-    SET(CMAKE_MAKE_PROGRAM "C:/tools/msys64/mingw64/bin/mingw32-make.exe")
-
-    SET(BLAS_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
-    SET(LAPACK_LIBRARIES C:/tools/msys64/mingw64/lib/libopenblas_64.a)
-    SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} "C:/tools/msys64/mingw64/lib")
-    SET(CMAKE_INCLUDE_PATH ${CMAKE_INCLUDE_PATH} "C:/tools/msys64/mingw64/include")
-
-ENDIF()
-
-
 PROJECT(Elmer Fortran C CXX)
 
 # CMAKE_VERSION seems to require this in minimum
@@ -86,7 +67,7 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
 # Defaults to cache variables
-# SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
+SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
 SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
 SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread and SIMD (if available) parallelization")
@@ -517,12 +498,6 @@ MESSAGE(STATUS "------------------------------------------------")
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
-
-# message(${BLAS_LIBRARIES})
-# message(STATUS "BLAS_LIBRARIES=${BLAS_LIBRARIES}")
-# RETURN()
-
-
 # BLAS and LAPACK libraries may be needed for testing
 SET(CMAKE_REQUIRED_LIBRARIES
   ${CMAKE_REQUIRED_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
