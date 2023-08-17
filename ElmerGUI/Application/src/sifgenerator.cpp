@@ -41,6 +41,11 @@
 #include "sifgenerator.h"
 #include <iostream>
 #include <QDebug>
+#if WITH_QT6
+#include <QJSEngine>
+#else
+#include <QScriptEngine>
+#endif
 
 using namespace std;
 
@@ -414,6 +419,16 @@ void SifGenerator::makeEquationBlocks()
 
   // Sort and enumerate solvers according to their priority:
   //---------------------------------------------------------
+#if WITH_QT6
+  vector<QPair<int, QString> > tmpList;
+
+  foreach(const QString &key, numberForSolver.keys()) {
+    int value = numberForSolver.value(key);
+    tmpList.push_back(qMakePair(value, key));
+  }
+
+  sort(tmpList.begin(), tmpList.end());
+#else
   QList<QPair<int, QString> > tmpList;
 
   foreach(const QString &key, numberForSolver.keys()) {
@@ -422,10 +437,15 @@ void SifGenerator::makeEquationBlocks()
   }
 
   qSort(tmpList);
+#endif
 
   numberForSolver.clear();
 
+#if WITH_QT6
+  int n = tmpList.size();
+#else
   int n = tmpList.count();
+#endif
 
   for(int i = 0; i < n; i++) {
     const QPair<int, QString> &pair = tmpList[i];
@@ -748,7 +768,11 @@ void SifGenerator::makeBoundaryBlocks()
     int bcnum = 0;
     int diff = 0;
     QMap<int, int> boundaryBC;
+#if WITH_QT6	
+    QMultiMap<QString, int> boundaryList; /*(Boundary condition, edge) value pairs */
+#else
     QMap<QString, int> boundaryList; /*(Boundary condition, edge) value pairs */
+#endif
     QList<QString> boundaryConditions; /* List of different boundary conditions */
     QList<int> boundaryEdges; /* List of edges relating to some specific boundary condition */
     QString tmp;
@@ -774,7 +798,11 @@ void SifGenerator::makeBoundaryBlocks()
                 int originalIndex = boundaryMap.key(k);
                 const QString bcname = bEdit->ui.boundaryConditionCombo->currentText().trimmed();
                 if (boundaryConditions.value(index) == bcname)
+#if WITH_QT6
+                    boundaryList.insert(bcname, originalIndex);
+#else
                     boundaryList.insertMulti(bcname, originalIndex);
+#endif
             }
         }
     }
@@ -794,7 +822,11 @@ void SifGenerator::makeBoundaryBlocks()
             bcnum++;
             te->append("Boundary Condition " + QString::number(bcnum));
             if(boundaryConditions.count() > 1) {
+#if WITH_QT6
+                QMultiMap <QString,int>::ConstIterator l = boundaryList.find(boundaryConditions[index]);
+#else
                 QMap <QString,int>::ConstIterator l = boundaryList.find(boundaryConditions[index]);
+#endif
                 while (l != boundaryList.end() && l.key()==boundaryConditions[index]){
                     boundaryEdges.append(l.value());
                     l++;
@@ -805,7 +837,11 @@ void SifGenerator::makeBoundaryBlocks()
                     }
             }
             if(boundaryConditions.count() <= 1) {
+#if WITH_QT6
+                QMultiMap <QString,int>::ConstIterator l = boundaryList.begin();
+#else
                 QMap <QString,int>::ConstIterator l = boundaryList.begin();
+#endif
                 while (l != boundaryList.end()) {
                     boundaryEdges.append(l.value());
                     l++;
@@ -830,7 +866,7 @@ void SifGenerator::makeBoundaryBlocks()
             for(int j = 0; j < boundaryConditionEditor.size(); j++) {
                 DynamicEditor *bc = boundaryConditionEditor[j];
                 if(bc->menuAction != NULL) {
-                    if(bc->nameEdit->text().trimmed() == name && name != NULL) {
+                    if(bc->nameEdit->text().trimmed() == name && !name.isNull()) {
 
                     // go through the hash of this dynamic editor:
                     //--------------------------------------------
@@ -873,6 +909,15 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
 
   bool hasMatrix = true;
 
+#if WITH_QT6
+  QJSEngine engine; 
+
+  QJSValue dim_QSV  = QJSValue(dim);
+  engine.globalObject().setProperty( "dim", dim_QSV );
+
+  QJSValue cdim_QSV = QJSValue(cdim);
+  engine.globalObject().setProperty( "cdim", cdim_QSV );
+#else
   QScriptEngine engine; 
 
   QScriptValue dim_QSV  = QScriptValue(&engine,dim);
@@ -880,6 +925,7 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
 
   QScriptValue cdim_QSV = QScriptValue(&engine,cdim);
   engine.globalObject().setProperty( "cdim", cdim_QSV );
+#endif
 
   for(int i = 0; i < solEditor->hash.count(); i++) {
     hash_entry_t entry = solEditor->hash.values().at(i);
@@ -925,7 +971,11 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
           QStringList subDofSplit = dof.split(" ");
           QString subDof = subDofSplit.at(0).trimmed();
 
+#if WITH_QT6
+          dofs = engine.evaluate(subDof).toInt();
+#else
           dofs = engine.evaluate(subDof).toInt32();
+#endif
           if (i>1) varName = varName + " ";
           varName = varName + subVarName + ":" + QString::number(dofs);
 
@@ -945,7 +995,13 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
           QString dof = dofsplit.at(1).trimmed();
           dofsplit = dof.split(")");
           dof = dofsplit.at(0).trimmed();
+
+#if WITH_QT6		  
+          dofs = engine.evaluate(dof).toInt();
+#else
           dofs = engine.evaluate(dof).toInt32();
+#endif
+
         }
 	// Don't write the the trivial dof==1 case as this leaves possibility to define the number of
 	// dofs internally within the solver. 
@@ -1229,23 +1285,28 @@ void SifGenerator::handleLineEdit(const QDomElement &elem, QWidget *widget)
   
   // Adjust array parameters, i.e.:
   // eliminate the first '=' in "Save Coordinates = (2,3) = 1.2 2.3 3.4 4.5 5.6 6.7"
+#if WITH_QT5 || WITH_QT6
+  QRegularExpression qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
+  QRegularExpressionMatch match = qre.match(value);
+  if(match.hasMatch()){
+    addSifLine("  " + name, value);
+	cout << " [SifGenerator] array parameter adjusted: '" 
+	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
+	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
+  }else{
+    addSifLine("  " + name + " = ", value);
+  }  
+#else
   QRegExp qre("^\\s*\\(\\s*[1-9]+[0-9]*\\s*(,\\s*[1-9]+[0-9]*\\s*)*\\)\\s*=");
   int index = qre.indexIn(value);
   if(index >= 0) {
     addSifLine("  " + name, value);
-#if WITH_QT5
-	cout << " [SifGenerator] array parameter adjusted: '" 
-	     << name.toLatin1().constData() << " = " << value.toLatin1().constData() << "' to '" 
-	     << name.toLatin1().constData() << value.toLatin1().constData() << "'" << endl;
-#else
 	cout << " [SifGenerator] array parameter adjusted: '" 
 	     << name.toAscii().constData() << " = " << value.toAscii().constData() << "' to '" 
 	     << name.toAscii().constData() << value.toAscii().constData() << "'" << endl;
 #endif
 
-  }else{
-    addSifLine("  " + name + " = ", value);
-  }  
+
 }
 
 void SifGenerator::handleTextEdit(const QDomElement &elem, QWidget *widget)

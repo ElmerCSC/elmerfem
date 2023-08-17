@@ -98,8 +98,11 @@ class MeshPoint;
 class MeshEdge;
 class Matc;
 class EcmaConsole;
+#if WITH_QT6
+class QJSEngine;
+#else
 class QScriptEngine;
-
+#endif
 class VtkPost : public QMainWindow
 {
   Q_OBJECT
@@ -503,7 +506,11 @@ private:
   // ECMAScript
   QAction* showECMAScriptConsoleAct;
   EcmaConsole* ecmaConsole;
+#if WITH_QT6
+  QJSEngine* engine;
+#else
   QScriptEngine* engine;
+#endif
 };
 
 #endif // VTKPOST_H

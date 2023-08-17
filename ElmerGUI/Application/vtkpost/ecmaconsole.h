@@ -48,6 +48,10 @@
 #include <QStringList>
 #include <QHash>
 
+#if WITH_QT6
+#include <QJSValue>
+#endif
+
 class QWidget;
 class QKeyEvent;
 class QMouseEvent;
@@ -64,6 +68,10 @@ public:
   void clearHistory();
   void addNames(QString, const QMetaObject*);
   void initCompleter();
+  
+#if WITH_QT6
+  template<class... A> QJSValue print(A... args);
+#endif
 
 public slots:
   void keyPressEvent(QKeyEvent*);

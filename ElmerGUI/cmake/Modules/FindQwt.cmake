@@ -7,8 +7,8 @@
 # FOUND_QWT        = set to true after finding the library
 #
 
-INCLUDE(${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
-INCLUDE(${CMAKE_ROOT}/Modules/FindQt.cmake)
+#INCLUDE(${CMAKE_ROOT}/Modules/FindOpenGL.cmake)
+#INCLUDE(${CMAKE_ROOT}/Modules/FindQt.cmake)
 
 IF(EXISTS ${PROJECT_CMAKE}/QwtConfig.cmake)
   INCLUDE(${PROJECT_CMAKE}/QwtConfig.cmake)
@@ -27,13 +27,14 @@ ELSE(Qwt_INCLUDE_DIRS)
     /usr/include/qwt6
     /usr/local/include/qwt
     /sw/include/qwt
+    PATH_SUFFIXES qwt-qt6 qwt-qt5 qwt-qt4 qwt-qt
     HINTS /usr/local/opt/qwt-qt4/lib/
     HINTS /usr/local/Cellar/qwt-qt4/6.1.3_1/lib
     HINTS /usr/include/qt5/qwt6
     HINTS /msys64/mingw64/include/qwt
     HINTS /msys64/mingw64/include/qwt-qt5
     )
-  FIND_LIBRARY(QWT_LIBRARY NAMES qwt qwt6-qt5 qwt-qt5
+  FIND_LIBRARY(QWT_LIBRARY NAMES qwt qwt6-qt5 qwt-qt5 qwt-qt6 qwt-qt4 qwt-qt
     /usr/lib
     /usr/lib64
     /usr/local/lib
