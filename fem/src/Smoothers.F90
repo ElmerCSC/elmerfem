@@ -407,7 +407,9 @@ CONTAINS
           CALL MGmv(A, x, r)
           DO j=1,n
             r(j) = b(j) - r(j)
-            x(j) = x(j) + r(j) / Diag(j)
+            IF( Diag(j) > EPSILON( Diag(j) ) ) THEN
+              x(j) = x(j) + r(j) / Diag(j)
+            END IF
           END DO
         END DO
 !------------------------------------------------------------------------------
