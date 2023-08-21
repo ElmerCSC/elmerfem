@@ -1304,9 +1304,10 @@ void SifGenerator::handleLineEdit(const QDomElement &elem, QWidget *widget)
 	cout << " [SifGenerator] array parameter adjusted: '" 
 	     << name.toAscii().constData() << " = " << value.toAscii().constData() << "' to '" 
 	     << name.toAscii().constData() << value.toAscii().constData() << "'" << endl;
+  }else{
+    addSifLine("  " + name + " = ", value);
+  }
 #endif
-
-
 }
 
 void SifGenerator::handleTextEdit(const QDomElement &elem, QWidget *widget)
