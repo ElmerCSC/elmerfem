@@ -691,6 +691,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
+    LOGICAL :: LineElement, DegenerateElement
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
@@ -743,13 +744,16 @@ CONTAINS
     np = n * ndofs
     WithNdofs = ndofs > 0
 
+    LineElement = GetElementFamily(Element) == 2
+    DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
+    
     UpdateStiff = .FALSE.
     DO t=1,IP % n  
       !
       ! We need to branch as the only way to get the traces of 2D vector finite elements 
       ! is to call EdgeElementInfo:
       !
-      IF (GetElementFamily(Element) == 2) THEN
+      IF (LineElement) THEN
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
             Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
@@ -760,6 +764,26 @@ CONTAINS
       END IF
 
       th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
+
+      IF (DegenerateElement .AND. ThinSheet .AND. UseGaussLaw) THEN
+        !
+        ! If a degenerate (1-D) element, perform only simplified assembly by assuming that
+        ! a given thickness is associated with the degenerate element
+        !
+        BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
+        jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+        DO p = 1,n
+          i = (p-1)*ndofs + 1
+          FORCE(i) = FORCE(i) - im * omega * jn * th * Basis(p) * detJ * IP % s(t)
+            DO q = 1,n
+              j = (q-1)*ndofs + 1
+              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * th * Basis(p) * Basis(q) * detJ * IP % s(t)
+            END DO
+          END DO
+        UpdateStiff = .TRUE.
+        CYCLE
+      END IF
+        
       IF (ThinSheet) THEN
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         B = th * Cond
