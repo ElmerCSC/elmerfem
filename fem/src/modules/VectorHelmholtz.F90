@@ -691,7 +691,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ
     LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, ConductorBC
-    LOGICAL :: LineElement, DegenerateElement
+    LOGICAL :: LineElement, DegenerateElement, Regularize
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, m, np, p, q, ndofs
@@ -700,7 +700,7 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: MagLoad_h, ElRobin_h, MuCoeff_h, Absorb_h, TemRe_h, TemIm_h
     TYPE(ValueHandle_t), SAVE :: TransferCoeff_h, ElCurrent_h
     TYPE(ValueHandle_t), SAVE :: Thickness_h, RelNu_h, CondCoeff_h
-    TYPE(ValueHandle_t), SAVE :: GoodConductor
+    TYPE(ValueHandle_t), SAVE :: GoodConductor, ChargeConservation
     
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS
 
@@ -716,6 +716,7 @@ CONTAINS
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
       CALL ListInitElementKeyword( GoodConductor,'Boundary Condition','Good Conductor BC')
+      CALL ListInitElementKeyword( ChargeConservation,'Boundary Condition','Apply Conservation of Charge')      
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
@@ -744,6 +745,11 @@ CONTAINS
     np = n * ndofs
     WithNdofs = ndofs > 0
 
+    IF (WithNdofs) THEN
+      Regularize = ListGetElementLogical( ChargeConservation, Element, Found )
+      IF (.NOT. Found) Regularize = .TRUE.
+    END IF
+    
     LineElement = GetElementFamily(Element) == 2
     DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
     
@@ -772,6 +778,7 @@ CONTAINS
         !
         BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
         jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
+        IF (ABS(BetaPar) < AEPS .AND. ABS(jn) < AEPS) CYCLE
         DO p = 1,n
           i = (p-1)*ndofs + 1
           FORCE(i) = FORCE(i) - im * omega * jn * th * Basis(p) * detJ * IP % s(t)
@@ -853,8 +860,8 @@ CONTAINS
             END DO
           END DO
 
-          IF (UseGaussLaw) THEN
-            ! Ensure the conservation of surface charge (not sure whether this is beneficial):
+          IF (Regularize .AND. UseGaussLaw) THEN
+            ! Apply the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
               DO q = 1,n
@@ -869,13 +876,15 @@ CONTAINS
                     SUM(dBasisdx(p,:) * WBasis(q,:)) * detJ * IP % s(t)
               END DO
             END DO
+            ! TO DO: If a distribution of surface charge were also given, we would need to
+            !        add an additional term in order to be consistent
           END IF
         END IF
           
         IF (UseGaussLaw) THEN
 
-          IF (ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
-            ! Ensure the conservation of surface charge (not sure whether this is beneficial):
+          IF (Regularize .AND. ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
+            ! Apply the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
               FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * detJ * IP % s(t)
