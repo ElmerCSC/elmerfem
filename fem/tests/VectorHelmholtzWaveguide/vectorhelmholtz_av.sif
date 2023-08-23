@@ -1,3 +1,4 @@
+
 !
 ! Instead of the E-formulation (waveguide.sif) the electric field E is expressed
 ! by using the A-V representation, which is activated by the command "Use Gauss
@@ -187,7 +188,7 @@ Boundary Condition 2
 End
 
 
-Solver 1 :: Reference Norm = 4.37447418E+00
+Solver 1 :: Reference Norm = 8.88514461E-01
 Solver 1 :: Reference Norm Tolerance = 1e-3
 Solver 2 :: Reference Norm = 2.32743791E-03
 Solver 2 :: Reference Norm Tolerance = 1e-3
