@@ -129,7 +129,8 @@
      
      REAL(KIND=dp) :: at, at0
 
-
+     TYPE(ValueHandle_t) :: Load_h
+     
      SAVE &
           ElementNodes, EdgeNodes,      &
           C1,                    &
@@ -150,7 +151,7 @@
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, Nel,&
-          Calving
+          Calving, Load_h
 
       
      totst = 0.0_dp
@@ -162,6 +163,9 @@
      VariableName = TRIM(Solver % Variable % Name)
      SolverName = 'GlaDSCoupledsolver ('// VariableName // ')'
 
+     CALL ListInitElementKeyword( Load_h, 'Body Force', TRIM(Solver % Variable % Name) // ' Volume Source')
+
+     
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
      SystemMatrix => Solver % Matrix
      ForceVector => Solver % Matrix % RHS
@@ -675,13 +679,14 @@
               !------------------------------------------------------------------------------
               ! Add body forces
               !------------------------------------------------------------------------------
-              LOAD = 0.0_dp
+              LOAD = 0.0_dp              
+              
               BodyForce => GetBodyForce()
-              IF ( ASSOCIATED( BodyForce ) ) THEN
-                 bf_id = GetBodyForceId()
-                 LOAD(1:N) = LOAD(1:N) + &
-                   GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
-              END IF
+              !IF ( ASSOCIATED( BodyForce ) ) THEN
+              !   bf_id = GetBodyForceId()
+              !   LOAD(1:N) = LOAD(1:N) + &
+              !     GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
+              !END IF
               ! f = m - w + v
               ! v is not added here as it will be linearized for the assembly
               LOAD(1:N) = LOAD(1:N) - Wopen(1:N)
@@ -1646,7 +1651,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     REAL(KIND=dp) :: s, u, v, w
 
-    REAL(KIND=dp) :: CT, C2, Vfactor, Phi0, PhiG
+    REAL(KIND=dp) :: CT, C2, Vfactor, Phi0, PhiG, LoadAtIP
 
     REAL(KIND=dp) :: gradPhi(3), Ngrad, na, nb, ng, hsheet 
 
@@ -1723,7 +1728,12 @@ CONTAINS
        ng = SUM(NodalNg(1:n)*Basis(1:n)) 
        Vfactor = Vfactor * ABS(Phi0-PhiG)**(ng-1.0_dp)
 
-       Force = SUM( LoadVector(1:n)*Basis(1:n) ) 
+       Force = SUM( LoadVector(1:n)*Basis(1:n) )
+       ! contribution from volume source (using handle)
+       LoadAtIP = ListGetElementReal( Load_h, Basis, Element, Found, GaussPoint=t)
+       IF (Found) THEN
+         Force = Force + LoadAtIP
+       END IF
        Force = Force + Vfactor * (Phi0 + (ng - 1.0_dp) * PhiG)
 
        !------------------------------------------------------------------------------
