@@ -4789,15 +4789,16 @@ CONTAINS
  !> we need to solve a small linear system in each element to map the values to
  !> the nodes, and further to the integration point defined by Basis.  
  !------------------------------------------------------------------------------
-   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var ) RESULT ( T ) 
+   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var, dof ) RESULT ( T ) 
  !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      REAL(KIND=dp) :: Basis(:)
      TYPE(Variable_t), POINTER :: Var
+     INTEGER, OPTIONAL :: dof
      REAL(KIND=dp) :: T
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Parent
-     INTEGER :: ipar, npar, i, j, n, np, nip
+     INTEGER :: ipar, npar, i, j, n, np, nip, dofs
      REAL(KIND=dp), ALLOCATABLE :: fip(:),fdg(:)
 
      ! We have to provide interface for this as otherwise we would create a
@@ -4815,7 +4816,13 @@ CONTAINS
      T = 0.0_dp
      n = Element % TYPE % NumberOfNodes     
      npar = 0.0_dp
-
+     dofs = Var % Dofs
+     IF(dofs > 1) THEN
+       IF(.NOT. PRESENT(dof)) THEN
+         CALL Fatal('InterpolateIPVariableToBoundary','Give component of ip variable!')
+       END IF
+     END IF
+                 
      ! Go through both potential parents. If we find the information in both then
      ! take on average. Otherwise use one-side interpolation. 
      DO ipar = 1,2 
@@ -4833,8 +4840,14 @@ CONTAINS
        np = Parent % TYPE % NumberOfNodes       
 
        ALLOCATE( fip(nip), fdg(np) )
-       
-       fip(1:nip) = Var % Values(j+1:j+nip)
+
+       IF( dofs > 1 ) THEN         
+         DO i=1,nip
+           fip(i) = Var % Values(dofs*(j+i-1)+dof)
+         END DO
+       ELSE
+         fip(1:nip) = Var % Values(j+1:j+nip)
+       END IF
        fdg(1:np) = 0.0_dp
           
        CALL Ip2DgFieldInElement( CurrentModel % Mesh, Parent, nip, fip, np, fdg )
@@ -4920,13 +4933,16 @@ CONTAINS
            END IF
          ELSE
            IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-             IF( Var % Dofs > 1 ) THEN
-               CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
-             END IF
              IF(.NOT. PRESENT(Basis) ) THEN
                CALL Fatal('VarsToValuesOnIps','We need the "Basis" parameter to map stuff to boundaries!')
-             END IF             
-             T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
+             END IF
+             IF( Var % Dofs > 1 ) THEN             
+               DO l=1,Var % Dofs               
+                 T(count+l) = InterpolateIPVariableToBoundary( Element, Basis, Var, l )
+               END DO
+             ELSE
+               T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )                                
+             END IF               
            ELSE
              CALL Warn('VarsToValuesOnIPs','Could not find dependent IP variable: '//TRIM(Var % Name))
            END IF
