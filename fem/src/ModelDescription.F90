@@ -351,6 +351,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
     LOGICAL :: KeywordsLoaded = .FALSE.
+    LOGICAL :: SimulationRead = .FALSE.
     
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
@@ -568,7 +569,11 @@ CONTAINS
       
       IF( SEQL(Section,'run control') ) THEN
         ! "Run Control" section has been read but to a different Model structure
-        IF( .NOT. ScanOnly ) THEN
+        IF( ScanOnly ) THEN
+          IF( SimulationRead ) THEN
+            CALL Fatal(Caller,'"Run Control" should precede "Simulation" section!')
+          END IF
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Control)) &
               Model % Control => ListAllocate()
@@ -584,7 +589,9 @@ CONTAINS
         END IF
         
       ELSE IF ( SEQL(Section, 'simulation') ) THEN        
-        IF ( .NOT. ScanOnly ) THEN
+        IF ( ScanOnly ) THEN
+          SimulationRead = .TRUE.
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Simulation)) &
               Model % Simulation=>ListAllocate()
