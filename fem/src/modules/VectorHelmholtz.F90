@@ -746,8 +746,7 @@ CONTAINS
     WithNdofs = ndofs > 0
 
     IF (WithNdofs) THEN
-      Regularize = ListGetElementLogical( ChargeConservation, Element, Found )
-      IF (.NOT. Found) Regularize = .TRUE.
+      Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation, Element, Found )
     END IF
     
     LineElement = GetElementFamily(Element) == 2
@@ -860,7 +859,7 @@ CONTAINS
             END DO
           END DO
 
-          IF (Regularize .AND. UseGaussLaw) THEN
+          IF (Regularize) THEN
             ! Apply the conservation of surface charge (not sure whether this is beneficial):
             DO p = 1,n
               i = (p-1)*ndofs + 1
