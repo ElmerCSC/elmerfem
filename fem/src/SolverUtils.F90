@@ -15539,8 +15539,6 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
 
   IF( Lumped % IsComplex ) FluxesMatrixIm => Solver % Lumped % CMatrixIm
 
-  !PRINT *,'iMode:',iMode,FluxesRow(1:NoModes), Solver % Lumped % IsComplex
-
   Lumped % CMatrix(iMode,1:NoModes) = FluxesRow(1:NoModes)
   IF(PRESENT(FluxesRowIm) ) THEN
     Lumped % CMatrixIm(iMode,1:NoModes) = FluxesRowIm(1:NoModes)
@@ -15553,7 +15551,16 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
   END IF
 
   Lumped % CntModes = iMode
-   
+
+  BLOCK
+    INTEGER :: ADepth
+    IF( ListGetLogicalAnySolver( CurrentModel,'Adaptive Mesh Refinement') ) THEN      
+      Adepth = CurrentModel % Mesh % AdaptiveDepth
+      WRITE(Message,*) 'Row'//I2S(iMode)//' Depth'//I2S(Adepth)//':',FluxesRow(1:NoModes)
+      CALL Info('StoreLumpedFluxes',Message,Level=4)
+    END IF
+  END BLOCK
+  
 END SUBROUTINE StoreLumpedFluxes
 
 
