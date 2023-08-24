@@ -597,71 +597,8 @@
            
            IF( iSweep > 1 ) THEN
              IF( ListGetLogical( CurrentModel % Control,'Reset Adaptive Mesh',Found ) ) THEN
-               BLOCK
-                 TYPE(Mesh_t), POINTER :: pMesh, pMesh0
-                 TYPE(Solver_t), POINTER :: iSolver
-                 LOGICAL :: GB, BO
-                 
-                 ! Find the 1st mesh
-                 pMesh0 => CurrentModel % Mesh 
-                 DO WHILE( ASSOCIATED(pMesh0 % Parent) )
-                   pMesh0 => pMesh0 % Parent
-                 END DO
-                 !PRINT *,'First mesh:',pMesh0 % AdaptiveDepth, TRIM(pMesh0 % Name)
-
-                 ! Find the last mesh
-                 pMesh => CurrentModel % Mesh 
-                 DO WHILE( ASSOCIATED(pMesh % Child) )
-                   pMesh => pMesh % Child
-                 END DO
-                 !PRINT *,'Last mesh:',pMesh % AdaptiveDepth, TRIM(pMesh % Name)
-
-                 ! Move point to the 1st mesh and related fields
-                 CALL SetCurrentMesh( CurrentModel, pMesh0 )
-                 DO i=1,CurrentModel % NumberOfSolvers 
-                   iSolver => CurrentModel % Solvers(i)
-
-                   ! Set Solver mesh 
-                   IF(ASSOCIATED(iSolver % Mesh)) iSolver % Mesh => pMesh0
-
-                   ! Set Solver variable point to the field in the original mesh
-                   IF(ASSOCIATED(iSolver % Variable)) THEN
-                     iSolver % Variable => VariableGet(pMesh0 % Variables, &
-                         iSolver % Variable % Name, ThisOnly = .TRUE.)  
-                   END IF
-
-                   ! Reset active element table
-                   iSolver % NumberOfActiveElements = 0
-                   CALL SetActiveElementsTable( CurrentModel, iSolver )                   
-
-                   ! Create the matrix related to the original mesh 
-                   IF( ASSOCIATED( iSolver % Matrix ) ) THEN
-                     CALL FreeMatrix( iSolver % Matrix)
-                                         
-                     GB = ListGetLogical( iSolver % Values,'Bubbles in Global System', Found )
-                     IF ( .NOT. Found ) GB = .TRUE.
-
-                     BO = ListGetLogical( iSolver % Values,'Optimize Bandwidth', Found )
-                     IF ( .NOT. Found ) BO = .TRUE.
-
-                     iSolver % Matrix => CreateMatrix( CurrentModel, iSolver, iSolver % Mesh,  &
-                         iSolver % Variable % Perm, iSolver % Variable % DOFs, MATRIX_CRS, &
-                         BO, ListGetString( iSolver % Values, 'Equation' ), GlobalBubbles=GB )
-                     ALLOCATE( iSolver % Matrix % rhs(iSolver % Matrix % NumberOfRows ) )
-                     iSolver % Matrix % rhs = 0.0_dp
-                   END IF
-                 END DO                 
-                 
-                 ! Release the old adaptive meshes
-                 DO WHILE( ASSOCIATED(pMesh % Parent))
-                   pMesh => pMesh % Parent             
-                   CALL ReleaseMesh( pMesh % Child ) 
-                 END DO
-                 pMesh % Child => NULL()
-                 
-               END BLOCK
+               CALL ResetAdaptiveMesh()
              END IF
-
              IF( ListGetLogical( CurrentModel % Control,'Reset Initial Conditions',Found ) ) THEN
                CALL SetInitialConditions()
              END IF
@@ -749,7 +686,98 @@
 
    CONTAINS 
 
-    
+
+     ! If we want to start a new adaptive simulation with the original mesh
+     ! call this subroutine.
+     !---------------------------------------------------------------------
+     SUBROUTINE ResetAdaptiveMesh()
+
+       TYPE(Mesh_t), POINTER :: pMesh, pMesh0
+       TYPE(Solver_t), POINTER :: iSolver
+       TYPE(Variable_t), POINTER :: pVar
+       LOGICAL :: GB, BO
+       CHARACTER(*), PARAMETER :: Caller = 'ResetAdaptiveMesh'
+       
+       ! Find the 1st mesh
+       pMesh0 => CurrentModel % Mesh 
+       DO WHILE( ASSOCIATED(pMesh0 % Parent) )
+         pMesh0 => pMesh0 % Parent
+       END DO
+       !PRINT *,'First mesh:',pMesh0 % AdaptiveDepth, TRIM(pMesh0 % Name)
+
+       ! Find the last mesh
+       pMesh => CurrentModel % Mesh 
+       DO WHILE( ASSOCIATED(pMesh % Child) )
+         pMesh => pMesh % Child
+       END DO
+       !PRINT *,'Last mesh:',pMesh % AdaptiveDepth, TRIM(pMesh % Name)
+
+       ! Move point to the 1st mesh and related fields
+       CALL SetCurrentMesh( CurrentModel, pMesh0 )
+
+       DO i=1,CurrentModel % NumberOfSolvers 
+         iSolver => CurrentModel % Solvers(i)
+
+         IF(.NOT. ASSOCIATED(iSolver % Variable)) THEN
+           CALL Info(Caller,'No Variable in this mesh for solver index '//I2S(i),Level=10)
+           CYCLE
+         END IF
+
+         ! Set Solver mesh 
+         IF(ASSOCIATED(iSolver % Mesh)) iSolver % Mesh => pMesh0
+
+         ! Set Solver variable point to the field in the original mesh
+         IF(ASSOCIATED(iSolver % Variable)) THEN
+           pVar => VariableGet(pMesh0 % Variables, &
+               iSolver % Variable % Name, ThisOnly = .TRUE.)  
+           IF(.NOT. ASSOCIATED(pVar)) THEN
+             CALL Info(Caller,'No Variable in coarsest mesh for solver index '//I2S(i),Level=10)
+             CYCLE
+           END IF
+           iSolver % Variable => pVar
+         END IF
+
+         ! Reset active element table
+         IF( iSolver % NumberOfActiveElements == 0 ) THEN
+           CALL Info(Caller,'No active elements for solver index '//I2S(i),Level=10)
+           CYCLE
+         END IF
+           
+         iSolver % NumberOfActiveElements = 0
+         CALL SetActiveElementsTable( CurrentModel, iSolver )                   
+
+         ! Create the matrix related to the original mesh 
+         IF( .NOT. ASSOCIATED( iSolver % Matrix ) ) THEN
+           CALL Info(Caller,'No matrix for solver index '//I2S(i),Level=10)
+           CYCLE
+         END IF
+           
+         CALL FreeMatrix( iSolver % Matrix)
+
+         GB = ListGetLogical( iSolver % Values,'Bubbles in Global System', Found )
+         IF ( .NOT. Found ) GB = .TRUE.
+
+         BO = ListGetLogical( iSolver % Values,'Optimize Bandwidth', Found )
+         IF ( .NOT. Found ) BO = .TRUE.
+
+         iSolver % Matrix => CreateMatrix( CurrentModel, iSolver, iSolver % Mesh,  &
+             iSolver % Variable % Perm, iSolver % Variable % DOFs, MATRIX_CRS, &
+             BO, ListGetString( iSolver % Values, 'Equation' ), GlobalBubbles=GB )
+         ALLOCATE( iSolver % Matrix % rhs(iSolver % Matrix % NumberOfRows ) )
+         iSolver % Matrix % rhs = 0.0_dp
+       END DO
+
+       ! Release the old adaptive meshes
+       DO WHILE( ASSOCIATED(pMesh % Parent))
+         pMesh => pMesh % Parent             
+         CALL ReleaseMesh( pMesh % Child ) 
+       END DO
+       pMesh % Child => NULL()
+                 
+     END SUBROUTINE ResetAdaptiveMesh
+
+
+     
      SUBROUTINE InitializeRandomSeed()
        INTEGER :: i,n
        INTEGER, ALLOCATABLE :: seeds(:)

@@ -10383,6 +10383,12 @@ END FUNCTION SearchNodeL
     RelativeP = .FALSE.
     SingleMesh = Solver % Mesh % SingleMesh
 
+    IF(.NOT. ASSOCIATED(Solver % Variable) ) THEN
+      CALL Info(Caller,'Solver variable not found for: '&
+           //TRIM(ListGetString(SolverParams,'equation')),Level=10)
+      RETURN
+    END IF
+    
     Parallel = Solver % Parallel
       
     IF(SteadyState) THEN	
@@ -15545,6 +15551,8 @@ SUBROUTINE StoreLumpedFluxes( Solver, NoModes, iMode, FluxesRow, FluxesRowIm, Fl
   IF(PRESENT(FluxesRhsIm) ) THEN
     Lumped % CRhsIm(iMode) = FluxesRhsIm
   END IF
+
+  Lumped % CntModes = iMode
    
 END SUBROUTINE StoreLumpedFluxes
 
@@ -15571,6 +15579,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   Lumped => Solver % Lumped
   
   NoModes = Lumped % NoModes
+  IF( Lumped % CntModes /= NoModes ) THEN
+    CALL Fatal(Caller,'Trying to deduce '//I2S(NoMOdes)//&
+        ' rows with '//I2S(Lumped % CntModes)//' lines of data!')
+  END IF
+  
   IsComplex = Lumped % IsComplex
 
   FluxesMatrix => Lumped % CMatrix

@@ -860,6 +860,7 @@ MODULE Types
      LOGICAL :: IsComplex = .FALSE.
      INTEGER :: CurrentRow = -1
      INTEGER :: NoModes = 0
+     INTEGER :: CntModes = 0
      REAL(KIND=dp), POINTER :: CMatrix(:,:) => NULL()
      REAL(KIND=dp), POINTER :: CMatrixIm(:,:) => NULL()                
      REAL(KIND=dp), POINTER :: Crhs(:) => NULL()
