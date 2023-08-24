@@ -11,10 +11,11 @@ Header
   Results Directory "results"
 End
 
-! This level is doing the lumping.
+! Run Control level is doing the lumping.
 ! Steady state iteration level is doing the adaptive meshing. 
 Run Control
-  Run Control Iterations = 4
+! Automatically set to number of constraint modes
+!  Run Control Iterations = 4
   Reset Adaptive Mesh = Logical True
 End 
 

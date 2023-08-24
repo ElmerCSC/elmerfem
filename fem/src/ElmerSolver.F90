@@ -116,7 +116,7 @@
 
      INTEGER :: iargc, NoArgs
      INTEGER :: iostat, iSweep = 1, OptimIters
-     
+     LOGICAL :: GotOptimIters
      INTEGER :: MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
@@ -330,10 +330,11 @@
        CALL LoadInputFile( Control,InFileUnit,ModelName,MeshDir,MeshName, &
            .FALSE., .TRUE., ControlOnly = .TRUE.)
        DoControl =  ASSOCIATED( Control % Control )
+
        IF( DoControl ) THEN
          CALL Info('MAIN','Run Control section active!')
-         OptimIters = ListGetInteger( Control % Control,'Run Control Iterations', Found )
-         IF(.NOT. Found) OptimIters = 1              
+         OptimIters = ListGetInteger( Control % Control,'Run Control Iterations', GotOptimIters )
+         IF(.NOT. GotOptimIters) OptimIters = 1              
          
          ! If there are no parameters this does nothing
          CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
@@ -385,7 +386,6 @@
          
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
-
          
          !----------------------------------------------------------------------------------
          ! Set namespace searching mode
@@ -472,7 +472,6 @@
 ! Support easily saving scalars to a file activated by "Scalars File" keyword.
 !-----------------------------------------------------------------------------
        CALL AddSaveScalarsHack()
-
 
 !------------------------------------------------------------------------------
 !      Add coordinates such that if there is a solver that is run on creation
@@ -570,11 +569,13 @@
 #endif
            
        ELSE IF( DoControl ) THEN
-         
+
          ! This sets optionally some internal parameters for doing scanning
          ! over a parameter space / optimization. 
          !-----------------------------------------------------------------
-         DO iSweep = 1, OptimIters
+         iSweep = 0
+         DO WHILE (.TRUE.) 
+           iSweep = iSweep + 1
            CALL Info('MAIN','========================================================',Level=5)
            CALL Info('MAIN','Control Loop '//I2S(iSweep))
            CALL Info('MAIN','========================================================',Level=5)
@@ -610,6 +611,29 @@
            ! This evaluates the cost function and saves the results of control
            CALL ControlParameters(CurrentModel % Control, &
                iSweep,GotParams,FinishEarly,.TRUE.)
+
+           BLOCK
+             TYPE(Solver_t), POINTER :: iSolver
+             DO i=1,CurrentModel % NumberOfSolvers 
+               iSolver => CurrentModel % Solvers(i)
+               j = iSolver % NumberOfConstraintModes
+               IF( j == 0 ) CYCLE
+               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) ) THEN
+                 IF( GotOptimIters ) THEN
+                   IF( OptimIters /= j ) THEN
+                     CALL Warn('MAIN','Incompatible number of run control iterations and constraint modes!')
+                   END IF
+                 ELSE
+                   CALL Info('MAIN','Setting run control iterations to constraint modes count: '//I2S(j))
+                   OptimIters = j
+                 END IF
+                 EXIT
+               END IF
+             END DO
+           END BLOCK
+           
+           ! We use this type of condition so that OptimIters can be changed on-the-fly
+           IF(iSweep == OptimIters) EXIT
          END DO
 
          BLOCK
