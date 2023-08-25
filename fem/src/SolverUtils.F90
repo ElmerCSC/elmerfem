@@ -6971,7 +6971,8 @@ CONTAINS
 
     ExternalLoop = ListGetLogical( Solver % Values,'Nonlinear System Constraint Modes', Found ) .OR. &
         ListGetLogical( Solver % Values,'Steady State Constraint Modes', Found ) .OR. &
-        ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) 
+        ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) .OR. &
+        ListGetLogical( Model % Control,'Constraint Modes Analysis', Found )
        
     RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) .OR. &
         ListGetLogical( Solver % Values,'Constraint Modes EM Wave',Found )
@@ -15908,7 +15909,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         pVar => VariableGet( Solver % Mesh % Variables,'nonlin iter')    
     IF( ListGetLogical( Params,'Steady State Constraint Modes', Found ) ) &
         pVar => VariableGet( Solver % Mesh % Variables,'coupled iter')
-    IF( ListGetLogical( Params,'Run Control Constraint Modes', Found ) ) &
+    IF( ListGetLogical( Params,'Run Control Constraint Modes', Found ) .OR. &
+        ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis', Found ) ) &
         pVar => VariableGet( Solver % Mesh % Variables,'run')    
     IF(ASSOCIATED(pVar)) ThisMode = NINT( pVar % Values(1) ) 
     

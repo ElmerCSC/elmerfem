@@ -618,7 +618,8 @@
                iSolver => CurrentModel % Solvers(i)
                j = iSolver % NumberOfConstraintModes
                IF( j == 0 ) CYCLE
-               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) ) THEN
+               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
+                   ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
                  IF( GotOptimIters ) THEN
                    IF( OptimIters /= j ) THEN
                      CALL Warn('MAIN','Incompatible number of run control iterations and constraint modes!')
@@ -642,7 +643,8 @@
            DO i=1,CurrentModel % NumberOfSolvers 
              iSolver => CurrentModel % Solvers(i)
              IF( iSolver % NumberOfConstraintModes > 0 ) THEN
-               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) ) THEN
+               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
+                   ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
                  CALL FinalizeLumpedMatrix( iSolver )            
                END IF
              END IF

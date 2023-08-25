@@ -17,6 +17,10 @@ Run Control
 ! Automatically set to number of constraint modes
 !  Run Control Iterations = 4
   Reset Adaptive Mesh = Logical True
+
+! This keyword automatically takes the control of the constraint modes
+! to the auter level. 
+  Constraint Modes Analysis = Logical True
 End 
 
 
@@ -67,7 +71,9 @@ Solver 1
   Constraint Modes Fluxes Symmetric = Logical True
   Constraint Modes Fluxes Results = Logical True
   Constraint Modes Fluxes Norm = Logical True
-  Run Control Constraint Modes = Logical True
+
+! If we do not take the control in "Run Control" section we can give it here.
+! Run Control Constraint Modes = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5
 
