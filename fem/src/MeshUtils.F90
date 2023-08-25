@@ -1156,7 +1156,10 @@ CONTAINS
 
 200 CONTINUE
 
-
+   IF(DoubleBC) THEN
+     CALL DropFalseParents()
+   END IF
+     
    CALL EnlargeParallelInfo(Mesh, DiscontPerm )
    IF( ParEnv % PEs > 1 ) THEN
      m = COUNT( Mesh % ParallelInfo % GlobalDofs == 0) 
@@ -1167,10 +1170,70 @@ CONTAINS
 
 
    DEALLOCATE( DisContNode, DiscontElem )   
-
+     
 
  CONTAINS
 
+   ! When indeces change in parents we have to check whether the parents truly are
+   ! parents any more!
+   !------------------------------------------------------------------------------
+   SUBROUTINE DropFalseParents()
+     INTEGER :: i,j,t,n,t1,t2,right,hits,nact,npass,nfalse
+     TYPE(Element_t), POINTER :: Parent, Element
+     
+     t1 = Mesh % NumberOfBulkElements
+     t2 = Mesh % NumberOfBoundaryElements
+     nfalse = 0
+     
+     DO t = t1+1,t1+t2
+       Element => Mesh % Elements(t)
+       IF(.NOT. ASSOCIATED(Element % BoundaryInfo) ) CYCLE
+       n = Element % TYPE % NumberOfNodes
+       nact = 0
+       npass = 0
+                    
+       DO right=0,1
+         IF(right==0) THEN
+           Parent => Element % BoundaryInfo % Left
+         ELSE
+           Parent => Element % BoundaryInfo % Right
+         END IF
+         IF(.NOT. ASSOCIATED(Parent)) CYCLE
+
+         hits = 0
+         DO i=1,n
+           IF(ANY( Element % NodeIndexes(i) == Parent % NodeIndexes) ) hits = hits + 1
+         END DO
+         IF( hits == n ) THEN
+           nact = nact + 1
+           IF(right==1) THEN
+             IF(.NOT. ASSOCIATED(Element % BoundaryInfo % Left)) THEN
+               Element % BoundaryInfo % Left => Element % BoundaryInfo % Right
+               Element % BoundaryInfo % right => NULL()
+             END IF
+           END IF
+         ELSE 
+           npass = npass + 1
+           IF(right==0) THEN
+             Element % BoundaryInfo % Left => NULL()
+           ELSE
+             Element % BoundaryInfo % Right => NULL()
+           END IF
+         END IF
+       END DO
+
+       IF(npass>0 .AND. nact==0) THEN         
+         CALL Warn('DropFalseParents','Boundary element '//I2S(t)//' no longer has parents with same indexes!')
+       END IF
+
+       nfalse = nfalse + npass
+     END DO
+
+     CALL Info('DropFalseParents','Number of parents no longer parents: '//I2S(nfalse),Level=6)
+                      
+   END SUBROUTINE DropFalseParents
+
+   
    ! By default all nodes that are associated to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be not be greedy and release
    ! some nodes from the list that are associated also with other non-discontinuous elements.   
@@ -1349,9 +1412,7 @@ CONTAINS
    END SUBROUTINE NonGreedyDiscontinuity
 
 
-   
-
-
+  
    
  END SUBROUTINE CreateDiscontMesh
 
