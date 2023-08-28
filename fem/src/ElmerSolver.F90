@@ -107,7 +107,7 @@
 
      TYPE(Variable_t), POINTER :: Var
      TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Solver_t), POINTER :: Solver, iSolver
 
      REAL(KIND=dp) :: CT0,RT0,tt
 
@@ -121,7 +121,7 @@
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      TYPE(Model_t), POINTER, SAVE :: Control
-     LOGICAL :: DoControl=.FALSE., ProcControl=.FALSE., GotParams=.FALSE.
+     LOGICAL :: DoControl=.FALSE., ProcControl=.FALSE., GotParams=.FALSE., DoIt
      INTEGER :: nr,ni,ExtMethod
      INTEGER, ALLOCATABLE :: ipar(:)
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
@@ -612,12 +612,11 @@
            CALL ControlParameters(CurrentModel % Control, &
                iSweep,GotParams,FinishEarly,.TRUE.)
 
-           BLOCK
-             TYPE(Solver_t), POINTER :: iSolver
+           IF( iSweep == 1 ) THEN
              DO i=1,CurrentModel % NumberOfSolvers 
                iSolver => CurrentModel % Solvers(i)
                j = iSolver % NumberOfConstraintModes
-               IF( j == 0 ) CYCLE
+               IF( j <= 0 ) CYCLE
                IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
                    ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
                  IF( GotOptimIters ) THEN
@@ -631,37 +630,33 @@
                  EXIT
                END IF
              END DO
-           END BLOCK
+           END IF
            
            ! We use this type of condition so that OptimIters can be changed on-the-fly
            IF(iSweep == OptimIters) EXIT
          END DO
 
-         BLOCK
-           TYPE(Solver_t), POINTER :: iSolver
-           LOGICAL :: DoIt
-           DO i=1,CurrentModel % NumberOfSolvers 
-             iSolver => CurrentModel % Solvers(i)
-             IF( iSolver % NumberOfConstraintModes > 0 ) THEN
-               IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
-                   ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
-                 CALL FinalizeLumpedMatrix( iSolver )            
-               END IF
+         DO i=1,CurrentModel % NumberOfSolvers 
+           iSolver => CurrentModel % Solvers(i)
+           IF( iSolver % NumberOfConstraintModes > 0 ) THEN
+             IF( ListGetLogical( iSolver % Values,'Run Control Constraint Modes', Found ) .OR. &
+                 ListGetLogical( CurrentModel % Control,'Constraint Modes Analysis',Found ) ) THEN
+               CALL FinalizeLumpedMatrix( iSolver )            
              END IF
-           END DO
+           END IF
+         END DO
 
-           DO i=1,CurrentModel % NumberOfSolvers 
-             iSolver => CurrentModel % Solvers(i)
-             IF ( iSolver % PROCEDURE == 0 ) CYCLE
-             When = ListGetString( iSolver % Values, 'Exec Solver', Found )
-             IF ( Found ) THEN
-               DoIt = ( When == 'after control' ) 
-             ELSE
-               DoIt = ( iSolver % SolverExecWhen == SOLVER_EXEC_AFTER_CONTROL )
-             END IF
-             IF(DoIt) CALL SolverActivate( CurrentModel,iSolver,dt,Transient )
-           END DO
-         END BLOCK
+         DO i=1,CurrentModel % NumberOfSolvers 
+           iSolver => CurrentModel % Solvers(i)
+           IF ( iSolver % PROCEDURE == 0 ) CYCLE
+           When = ListGetString( iSolver % Values, 'Exec Solver', Found )
+           IF ( Found ) THEN
+             DoIt = ( When == 'after control' ) 
+           ELSE
+             DoIt = ( iSolver % SolverExecWhen == SOLVER_EXEC_AFTER_CONTROL )
+           END IF
+           IF(DoIt) CALL SolverActivate( CurrentModel,iSolver,dt,Transient )
+         END DO
        ELSE
          CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
              CoupledMaxIter, OutputIntervals, Transient, Scanning) 
