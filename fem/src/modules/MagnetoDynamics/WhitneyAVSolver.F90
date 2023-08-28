@@ -170,6 +170,15 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
   CALL ListAddNewString( SolverParams,'Variable','AV')
+
+  BLOCK
+    LOGICAL :: SRDecomposition
+    SRDecomposition = GetLogical( SolverParams, 'Source-Reaction Decomposition', Found )
+    IF (Found .AND. SRDecomposition) THEN
+      CALL ListAddNewString( SolverParams,'Exported Variable 1','Source Potential')
+      CALL ListAddNewString( SolverParams,'Exported Variable 2','Source Vector Potential [Source Vector Potential:3]')
+    END IF
+  END BLOCK
  
   IF (LagrangeGauge .AND. Transient .AND. &
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
@@ -323,7 +332,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:), &
-                                ThinLineCrossect(:),ThinLineCond(:)
+                                ThinLineCrossect(:),ThinLineCond(:), &
+                                SRDA(:,:), SRDV(:)
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:), &
             JFixFORCE(:), JFixVec(:,:),PrevSol(:)
@@ -363,6 +373,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
   LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
+  LOGICAL :: SRDecomposition=.FALSE.
 
   TYPE(ValueHandle_t), SAVE :: mu_h 
   TYPE(Solver_t), POINTER :: pSolver
@@ -370,7 +381,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   
   SAVE STIFF, LOAD, MASS, DAMP, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
-       Acoef_t, ThinLineCrossect, ThinLineCond
+       Acoef_t, ThinLineCrossect, ThinLineCond, SRDecomposition, SRDA, SRDV
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -514,6 +525,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
+
+     SRDecomposition = GetLogical( SolverParams, 'Source-Reaction Decomposition', Found )
+     IF ( .NOT. Found ) SRDecomposition = .False.
+     IF ( SRDecomposition ) THEN
+       ALLOCATE( SRDA(3,n), SRDV(n), STAT=istat )
+       IF ( istat /= 0 ) THEN
+          CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
+       END IF
+     END IF
 
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, DAMP, TCoef, GapLength, AirGapMu, &
@@ -1821,8 +1841,9 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder )
+            Element, n, nd, PiolaVersion, SecondOrder)
 !------------------------------------------------------------------------------
+    USE LinearAlgebra
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -1839,7 +1860,9 @@ END SUBROUTINE LocalConstraintMatrix
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3), A_t_der(3,3), eps=1.0e-3, Permittivity(nd), P_ip
+    REAL(KIND=dp) :: Asloc(6), Bs_ip(3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
+    REAL(KIND=dp) :: LocalSRDA(3), LocalSRDV(1)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
     LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
@@ -1888,13 +1911,51 @@ END SUBROUTINE LocalConstraintMatrix
     IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
     END IF
-
+    
     !Numerical integration:
     !----------------------
     IP = GaussPointsAdapt(Element, Solver, EdgeBasis=.TRUE. )
 !    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
 !        EdgeBasisDegree=EdgeBasisDegree )
 
+    IF (SRDecomposition) THEN
+      SRDA = 0._dp
+      SRDV = 0._dp
+      CALL GetRealVector( BodyForce, SRDA(1:3,1:n), 'Source Vector Potential', Found )
+      SRDV(1:n) = GetReal( BodyForce, 'Source Potential', Found )
+
+      BLOCK
+        REAL(KIND=dp) :: SRDAatIp(12), RWTransp(12,12), RTMP(12,12)
+
+        stat = ElementInfo( Element, Nodes, IP % U(1), IP % V(1), &
+            IP % W(1), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 1:3), &
+            RotBasis = RotWBasis, USolver = pSolver )
+        SRDAatIp(1:3) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+        stat = ElementInfo( Element, Nodes, IP % U(2), IP % V(2), &
+            IP % W(2), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 4:6), &
+            RotBasis = RotWBasis, USolver = pSolver )
+        SRDAatIp(4:6) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+        stat = ElementInfo( Element, Nodes, IP % U(3), IP % V(3), &
+            IP % W(3), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 7:9), &
+            RotBasis = RotWBasis, USolver = pSolver )
+        SRDAatIp(7:9) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+        stat = ElementInfo( Element, Nodes, IP % U(4), IP % V(4), &
+            IP % W(4), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 10:12), &
+            RotBasis = RotWBasis, USolver = pSolver )
+        SRDAatIp(10:12) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+
+
+        ! R^T R
+        RTMP(1:6,1:6) = MATMUL(RWTransp(1:6, 1:12), TRANSPOSE(RWTransp(1:6, 1:12))) 
+        ! (R^T R)^-1
+        CALL InvertMatrix(RTMP(1:6,1:6), 6)
+        ! (R^T R)^-1 R^T
+        RTMP(1:6,1:12) = MATMUL(RTMP(1:6, 1:6), RWTransp(1:6, 1:12))
+        
+        Asloc(1:6) = MATMUL( SRDAatIp(1:12), TRANSPOSE(RTMP(1:6,1:12)) )
+      END BLOCK
+    END IF
+    
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -2010,6 +2071,12 @@ END SUBROUTINE LocalConstraintMatrix
          
        LocalLamThick = SUM( Basis(1:n) * LamThick(1:n) )
        LocalLamCond = SUM( Basis(1:n) * LamCond(1:n) )
+
+       IF (SRDecomposition) THEN
+         LocalSRDV = SUM(Basis(1:n) * SRDV(1:n))
+         LocalSRDA = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+         Bs_ip = MATMUL( Asloc(1:6), RotWBasis(1:nd-np,:) )
+       END IF
 
        ! Add -C * grad(V^s), where C is a tensor
        ! -----------------------------------------
@@ -2161,6 +2228,8 @@ END SUBROUTINE LocalConstraintMatrix
          p = i+np
          FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
+         IF (SRDecomposition) FORCE(p) = FORCE(p) + mu * SUM(Bs_ip*RotWBasis(i,:))*detJ*IP%s(t) 
+
          DO j = 1,nd-np
            q = j+np
 
@@ -2169,6 +2238,8 @@ END SUBROUTINE LocalConstraintMatrix
                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
            ELSE
              STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
+             ! The following is not correct because it is not compatible with the previous
+             ! LocalSRDA*RotWBasis(i,:) is not B_s at ip.
            END IF
            IF ( Newton ) THEN
              IF ( HasHBCurve ) THEN
