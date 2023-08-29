@@ -290,6 +290,8 @@ Solver 4
   Stabilization Method = String Bubbles
 
   Exported Variable 1 = Flow Solution Loads[Stress Vector:2 CEQ Residual:1] 
+  Exported Variable 2 = -dofs 1 "Zs"
+  Exported Variable 3 = -dofs 1 "Zb"
   Calculate Loads = Logical True
 
   Flow Model = String "Stokes"
