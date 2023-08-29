@@ -197,8 +197,14 @@ CONTAINS
     CALL Info( Caller, Message, Level = 6 )
 
 !   Global error estimate:
-!   ----------------------
-    ErrorEstimate =  SQRT( SUM( ErrorIndicator**2  ) / SIZE(ErrorIndicator) )
+    !   ----------------------
+    ErrorEstimate = SUM( ErrorIndicator**2) 
+    n = SIZE(ErrorIndicator)
+    IF( Parallel ) THEN
+      ErrorEstimate = ParallelReduction(ErrorEstimate)
+      n = ParallelReduction(n)
+    END IF        
+    ErrorEstimate =  SQRT( ErrorEstimate / n )
     
     IF(ListGetLogical(Params,'Adaptive Error Histogram',Found ) ) THEN
       CALL ShowVectorHistogram(ErrorIndicator,SIZE(ErrorIndicator))
@@ -805,9 +811,16 @@ CONTAINS
     REAL(KIND=dp) :: x(:)
     REAL(KIND=dp) :: xlim, f
     INTEGER :: n
-    INTEGER :: nlim
+    INTEGER :: np, nlim
 
+    np = n
     nlim = COUNT(x(1:n) > xlim)
+
+    IF( Parallel ) THEN
+      np = ParallelReduction(np)
+      nlim = ParallelReduction(nlim)
+    END IF
+
     f = 1.0_dp*nlim/n
 
   END FUNCTION OutlierFraction
@@ -1022,8 +1035,12 @@ CONTAINS
     Var => VariableGet( RefMesh % Variables, 'Hvalue', ThisOnly=.TRUE. )      
 
     IF( RefMesh % MeshDim == 2 ) THEN
-      CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
-      NewMesh => MMG2D_ReMesh( RefMesh, Var )
+      IF( ParEnv % PEs > 1 ) THEN
+        CALL Fatal('MMG_Remesh','2D remeshing not available in parallel!')
+      ELSE
+        CALL Info('MMG_Remesh','Calling serial remeshing routines in 2D',Level=10)
+        NewMesh => MMG2D_ReMesh( RefMesh, Var )
+      END IF
     ELSE
       IF( ParEnv % PEs > 1 ) THEN
         CALL Info('MMG_Remesh','Calling parallel remeshing routines in 3D',Level=10)
@@ -2187,7 +2204,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Edge, Element
     INTEGER :: i, j, k, Parent
     REAL(KIND=dp), POINTER :: TempIndicator(:,:)
-    REAL(KIND=dp) :: LocalIndicator(2), Fnorm, LocalFnorm,s
+    REAL(KIND=dp) :: LocalIndicator(2), Fnorm, LocalFnorm,s,s1,s2
 !------------------------------------------------------------------------------
     CALL FindMeshEdges( RefMesh )
 
@@ -2286,8 +2303,17 @@ CONTAINS
        END IF
     END DO
 
-!
-    s = SQRT( SUM(TempIndicator(2,:)) ) / SQRT( SUM(TempIndicator(1,:)) )
+
+    s1 = SUM(TempIndicator(2,:))
+    S2 = SUM(TempIndicator(1,:))
+    
+    IF(ParEnv % PEs > 1 ) THEN
+      s1 = ParallelReduction(s1)
+      s2 = ParallelReduction(s2)
+      Fnorm = ParallelReduction(Fnorm) 
+    END IF
+          
+    s = SQRT( s1 ) / SQRT( s2 )
     ErrorIndicator = SQRT( TempIndicator(1,:)/(2*s) + s*TempIndicator(2,:)/2 )
 
     IF ( Fnorm > AEPS ) THEN
@@ -2295,6 +2321,10 @@ CONTAINS
     END IF
 
     MaxError = MAXVAL( ErrorIndicator )
+    IF( ParEnv % PEs > 1 ) THEN
+      MaxError = ParallelReduction(MaxError,2)
+    END IF
+        
     DEALLOCATE( TempIndicator )
 !------------------------------------------------------------------------------
   END FUNCTION ComputeError
