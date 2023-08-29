@@ -781,16 +781,18 @@ CONTAINS
         DO p = 1,n
           i = (p-1)*ndofs + 1
           FORCE(i) = FORCE(i) - im * omega * jn * th * Basis(p) * detJ * IP % s(t)
-            DO q = 1,n
-              j = (q-1)*ndofs + 1
-              STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * th * Basis(p) * Basis(q) * detJ * IP % s(t)
-            END DO
+          DO q = 1,n
+            j = (q-1)*ndofs + 1
+            STIFF(i,j) = STIFF(i,j) - im * omega * BetaPar * th * Basis(p) * Basis(q) * detJ * IP % s(t)
           END DO
+        END DO
         UpdateStiff = .TRUE.
         CYCLE
       END IF
         
       IF (ThinSheet) THEN
+        IF (ListGetElementLogical(GoodConductor, Element, Found)) &
+            CALL Warn(Caller, 'Good Conductor BC neglected, given Layer Thickness used instead')
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         B = th * Cond
       ELSE
