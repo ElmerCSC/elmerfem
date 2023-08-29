@@ -110,7 +110,8 @@ CONTAINS
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
-        LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef
+        LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s,FinalRef,&
+        MaxScale,AveScale,OutFrac,MaxFrac
 
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, &
         MeshNumbering, DoFinalRef
@@ -197,13 +198,17 @@ CONTAINS
 
 !   Global error estimate:
 !   ----------------------
-    ErrorEstimate =  SQRT( SUM( ErrorIndicator**2  ) )
+    ErrorEstimate =  SQRT( SUM( ErrorIndicator**2  ) / SIZE(ErrorIndicator) )
+    
+    IF(ListGetLogical(Params,'Adaptive Error Histogram',Found ) ) THEN
+      CALL ShowVectorHistogram(ErrorIndicator,SIZE(ErrorIndicator))
+    END IF
     
     WRITE( Message, * ) 'Max error      =                                 ',MaxError
     CALL Info( Caller, Message, Level = 6 )
     WRITE( Message, * ) 'Error estimate =                                 ',ErrorEstimate
     CALL Info( Caller, Message, Level = 6 )
-    WRITE(12,*) RefMesh % NumberOfBulkElements,ErrorEstimate,MaxError
+    !WRITE(12,*) RefMesh % NumberOfBulkElements,ErrorEstimate,MaxError
 
 !
 !   Add nodal average of the h-value to the mesh variable list:
@@ -396,17 +401,42 @@ CONTAINS
     ErrorLimit = ListGetConstReal( Params,'Adaptive Error Limit', Found )
     IF ( .NOT.Found ) ErrorLimit = 0.5d0
 
-    IF ( MaxError < ErrorLimit .AND. RefMesh % AdaptiveDepth > MinDepth ) THEN ! ErrorEstimate < ErrorLimit ) THEN
-      FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
-      IF(DoFinalRef ) THEN      
-        CALL Info( Caller, 'Performing one final refinement',Level=6)
-        ErrorLimit = FinalRef * ErrorLimit 
-      ELSE
-        CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
-        RefMesh % OUtputActive = .TRUE.      
-        RefMesh % Parent % OutputActive = .FALSE.      
-        RefMesh % AdaptiveFinished = .TRUE.
-        GOTO 10
+    MaxScale = ListGetConstReal( Params,'Adaptive Max Error Scale', Found )
+    IF(.NOT. Found) MaxScale = 1.0_dp
+
+    AveScale = ListGetConstReal( Params,'Adaptive Average Error Scale', Found )
+    IF(.NOT. Found) AveScale = 1.0_dp
+
+    MaxFrac = ListGetConstReal( Params,'Adaptive Max Outlier Fraction',Found ) 
+    IF( Found ) THEN
+      OutFrac = OutlierFraction(ErrorIndicator,SIZE(ErrorIndicator),ErrorLimit)     
+      WRITE( Message, * ) 'Outlier frac.  =                                 ',OutFrac
+      CALL Info( Caller, Message, Level = 6 )
+    ELSE
+      ! Just make values that are omitted
+      MaxFrac = 1.0_dp
+      OutFrac = 0.0_dp
+    END IF
+            
+    !PRINT *,'Check for convergece:'
+    !PRINT *,'MaxError:',MaxError, MaxScale* ErrorLimit, MaxError < MaxScale*ErrorLimit
+    !PRINT *,'AveError:',ErrorEstimate, AveScale* ErrorLimit, ErrorEstimate < AveScale*ErrorLimit
+    !PRINT *,'OutFrac:',OutFrac,MaxFrac, OutFrac < MaxFrac
+    !PRINT *,'Depth:',RefMesh % AdaptiveDepth, MinDepth
+    
+    IF( RefMesh % AdaptiveDepth > MinDepth ) THEN
+      IF ( MaxError < MaxScale * ErrorLimit .AND. ErrorEstimate < AveScale * ErrorLimit .AND. OutFrac < MaxFrac ) THEN
+        FinalRef = ListGetConstReal( Params,'Adaptive Final Refinement', DoFinalRef ) 
+        IF(DoFinalRef ) THEN      
+          CALL Info( Caller, 'Performing one final refinement',Level=6)
+          ErrorLimit = FinalRef * ErrorLimit 
+        ELSE
+          CALL Info( Caller, 'Mesh convergence limit reached. Nothing to do!', Level=6 )
+          RefMesh % OUtputActive = .TRUE.      
+          RefMesh % Parent % OutputActive = .FALSE.      
+          RefMesh % AdaptiveFinished = .TRUE.
+          GOTO 10
+        END IF
       END IF
     END IF
 
@@ -731,6 +761,56 @@ CONTAINS
     
     
 CONTAINS
+
+  SUBROUTINE ShowVectorHistogram(x,n)
+    REAL(KIND=dp) :: x(:)
+    INTEGER :: n
+
+    REAL(KIND=dp) :: xmin,xmax,dx
+    INTEGER :: ncoh
+    INTEGER, ALLOCATABLE :: cohcnt(:)
+
+    ! Just for now do it only for 1st partition
+    ! Later make things parallel.
+    IF( ParEnv % MyPe /= 0) RETURN
+        
+    ncoh = 20
+    ALLOCATE(cohcnt(ncoh))
+    cohcnt = 0
+
+    ! Find extremum errors
+    xmin = MINVAL(x(1:n))
+    xmax = MAXVAL(x(1:n))
+    dx = ( xmax-xmin) / ncoh
+
+    ! Count each error cohort
+    DO i=1,n
+      j = CEILING( (x(i)-xmin)/dx )
+      j = MAX( 1, MIN( j, ncoh ) )
+      cohcnt(j) = cohcnt(j) + 1
+    END DO
+
+    PRINT *,'Histogram for vector:'
+    DO i=1,ncoh
+      IF( cohcnt(i) > 0 ) THEN
+        PRINT *,i,': ',cohcnt(i),' (',xmin+(i-1)*dx,' to ',xmin+i*dx,')'
+      END IF
+    END DO
+       
+  END SUBROUTINE ShowVectorHistogram
+
+
+  ! What fraction of value in x are above xlim? 
+  FUNCTION OutlierFraction(x,n,xlim) RESULT (f)
+    REAL(KIND=dp) :: x(:)
+    REAL(KIND=dp) :: xlim, f
+    INTEGER :: n
+    INTEGER :: nlim
+
+    nlim = COUNT(x(1:n) > xlim)
+    f = 1.0_dp*nlim/n
+
+  END FUNCTION OutlierFraction
 
   
   SUBROUTINE ComputeDesiredHvalue( RefMesh, ErrorLimit, HValue, NodalError, &
@@ -2067,7 +2147,7 @@ CONTAINS
   FUNCTION ComputeError( Model, ErrorIndicator, RefMesh,  &
        Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual ) RESULT(MaxError)
 !------------------------------------------------------------------------------
-USE crsmatrix
+    USE CRSMatrix
     IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: RefMesh
