@@ -1949,6 +1949,9 @@ END SUBROUTINE LocalConstraintMatrix
         CALL LuSolve(nd-np,MASS(1:6,1:6),FORCE(1:6)) 
         Asloc(1:nd-np)=FORCE(1:nd-np)
       END BLOCK
+
+      FORCE = 0.0_dp
+      MASS  = 0.0_dp
     END IF
     
     DO t=1,IP % n
