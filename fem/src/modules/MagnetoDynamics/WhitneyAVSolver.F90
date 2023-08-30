@@ -1918,6 +1918,7 @@ END SUBROUTINE LocalConstraintMatrix
 !    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
 !        EdgeBasisDegree=EdgeBasisDegree )
 
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     IF (SRDecomposition) THEN
       SRDA = 0._dp
       SRDV = 0._dp
@@ -1925,38 +1926,31 @@ END SUBROUTINE LocalConstraintMatrix
       SRDV(1:n) = GetReal( BodyForce, 'Source Potential', Found )
 
       BLOCK
-        REAL(KIND=dp) :: SRDAatIp(12), RWTransp(12,12), RTMP(12,12)
-
-        stat = ElementInfo( Element, Nodes, IP % U(1), IP % V(1), &
-            IP % W(1), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 1:3), &
-            RotBasis = RotWBasis, USolver = pSolver )
-        SRDAatIp(1:3) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
-        stat = ElementInfo( Element, Nodes, IP % U(2), IP % V(2), &
-            IP % W(2), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 4:6), &
-            RotBasis = RotWBasis, USolver = pSolver )
-        SRDAatIp(4:6) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
-        stat = ElementInfo( Element, Nodes, IP % U(3), IP % V(3), &
-            IP % W(3), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 7:9), &
-            RotBasis = RotWBasis, USolver = pSolver )
-        SRDAatIp(7:9) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
-        stat = ElementInfo( Element, Nodes, IP % U(4), IP % V(4), &
-            IP % W(4), detJ, Basis, dBasisdx, EdgeBasis = RWTransp(1:nd-np, 10:12), &
-            RotBasis = RotWBasis, USolver = pSolver )
-        SRDAatIp(10:12) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
-
-
-        ! R^T R
-        RTMP(1:6,1:6) = MATMUL(RWTransp(1:6, 1:12), TRANSPOSE(RWTransp(1:6, 1:12))) 
-        ! (R^T R)^-1
-        CALL InvertMatrix(RTMP(1:6,1:6), 6)
-        ! (R^T R)^-1 R^T
-        RTMP(1:6,1:12) = MATMUL(RTMP(1:6, 1:6), RWTransp(1:6, 1:12))
+        REAL(KIND=dp) :: SRDAatIp(3)
+        REAL(KIND=dp) :: Weight
         
-        Asloc(1:6) = MATMUL( SRDAatIp(1:12), TRANSPOSE(RTMP(1:6,1:12)) )
+        DO t=1,IP % n
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = pSolver )
+
+          SRDAatIp(1:3) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+
+          Weight = detJ*IP % s(t)
+
+          DO p=1,nd-np
+            FORCE(p) = FORCE(p) + Weight * SUM(SRDAatIp(1:3)*WBasis(p,:))
+            DO q=1,nd-np
+              MASS(p,q) = MASS(p,q) + Weight * SUM(WBasis(q,:)*WBasis(p,:))
+            END DO
+          END DO
+
+        END DO
+        CALL LuSolve(nd-np,MASS(1:6,1:6),FORCE(1:6)) 
+        Asloc(1:nd-np)=FORCE(1:nd-np)
       END BLOCK
     END IF
     
-    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
