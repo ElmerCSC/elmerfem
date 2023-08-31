@@ -1015,7 +1015,7 @@ CONTAINS
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
-        i1,i2,i3
+        i1,i2,i3,iostat
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
@@ -1143,6 +1143,8 @@ CONTAINS
     proc_name = ListGetString( SolverParams, 'Procedure',IsProcedure)
     IF( IsProcedure ) THEN
       CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=10)
+    ELSE
+      CALL Warn('AddEquationBasics','Solver '//I2S(Solver % SolverId)//' may require "Procedure" to operate!')
     END IF
 
 
@@ -1378,7 +1380,10 @@ CONTAINS
         DO WHILE( .TRUE. )
           i = INDEX( var_name(j+1:), ':' ) + j
           IF ( i<=j ) EXIT
-          READ( var_name(i+1:),'(i1)' ) k
+          READ( var_name(i+1:),'(i1)',IOSTAT=iostat) k
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read component count of variable!')
+          END IF
           DOFs = DOFs + k
           j = i + 1
         END DO
@@ -1406,7 +1411,10 @@ CONTAINS
           var_name = var_name(7:)
                
         ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
-          READ( var_name(7:), * ) DOFs
+          READ( var_name(7:), *, IOSTAT=iostat) DOFs
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read number after -dofs of variable!')
+          END IF
           i = 7
           j = LEN_TRIM(var_name)
           DO WHILE( var_name(i:i) /= ' '  )
@@ -1739,7 +1747,10 @@ CONTAINS
         DO WHILE( .TRUE. )
           i = INDEX( var_name(j+1:), ':' ) + j
           IF ( i<=j ) EXIT
-          READ( var_name(i+1:),'(i1)' ) k
+          READ( var_name(i+1:),'(i1)',IOSTAT=iostat) k
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not read component dofs for exported variable '//I2S(l))
+          END IF
           DOFs = DOFs + k
           j = i + 1
         END DO
@@ -1785,7 +1796,10 @@ CONTAINS
           var_name(1:LEN(var_name)-4) = var_name(5:)
                   
         ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
-          READ( var_name(7:), * ) DOFs 
+          READ( var_name(7:), *, IOSTAT=iostat ) DOFs 
+          IF(iostat /= 0) THEN
+            CALL Fatal('AddEquationBasics','Could not -dofs parameter for exported variable '//I2S(l))
+          END IF
           j = LEN_TRIM( var_name )
           k = 7
           DO WHILE( var_name(k:k) /= ' '  )
