@@ -41,7 +41,7 @@
 ! *
 !/*****************************************************************************/
 
-MODULE HydrostaticLocalForms
+MODULE HydrostaticNSUtils
 
   USE DefUtils
 
@@ -178,7 +178,7 @@ CONTAINS
     ELSE
       crho = rho
     END IF
-    
+
     ! Flow bodyforce if present
     LoadAtIpVec = 0._dp
     DO i=1,dim
@@ -840,11 +840,15 @@ CONTAINS
               ! Components in (x,y) plane
               FORCE(k) = FORCE(k) + s * Basis(q) * SurfaceTraction(i)
             ELSE
+#if 0
+              ! I thought I would follow the logic on how gravity is mapped but obviously
+              ! this is a different story. 
               ! Project the z-force component also to (x,y) plane.
               DO j=1,2
                 k = (q-1)*c + j
                 FORCE(k) = FORCE(k) + s * Basis(q) * SUM(dBasisdx(1:n,j)*NodalHeight(1:n)) * SurfaceTraction(i)
               END DO
+#endif
             END IF
           END DO
         END DO
@@ -960,39 +964,68 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   
-  SUBROUTINE PopulateFullVelocity()
+  SUBROUTINE PopulateDerivedFields()
 
     IMPLICIT NONE
 
-    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz
+    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP 
     CHARACTER(LEN=MAX_NAME_LEN):: str
-    TYPE(ValueList_t), POINTER :: Params
+    TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: AllocationsDone = .FALSE., Found
     REAL(KIND=dp), POINTER :: duz(:), wuz(:)
     INTEGER, POINTER, SAVE :: UpPointer(:), DownPointer(:)
-    INTEGER :: i,j,k,i1,i2,k1,k2,t,n,nd,nb,active, dofs
+    INTEGER :: i,j,k,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: dz
+    REAL(KIND=dp) :: dz, rho, g
+    REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
     SAVE :: duz, wuz
 
     pSolver => CurrentModel % Solver    
     Params => pSolver % Values
+    VarXY => pSolver % Variable
+
     str = ListGetString( Params,'Velocity Vector Name',Found )
+    IF(.NOT. Found) str = ListGetString( Params,'Velocity Variable Name',Found )
     IF(.NOT. Found) RETURN
 
     Mesh => CurrentModel % Mesh
     VarFull => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
     IF(.NOT. ASSOCIATED(VarFull)) THEN
-      CALL Fatal('HydrostaticNSVec','Could not find full velocity vector: '//TRIM(str))
+      CALL Fatal('HydrostaticNSVec','Could not find full velocity variable: '//TRIM(str))
     END IF
-
     dofs = VarFull % dofs
-    VarXY => pSolver % Variable
 
+    NULLIFY(VarP) 
+    str = ListGetString( Params,'Pressure Variable Name',Found )
+    IF( Found ) THEN
+      VarP => VariableGet(Mesh % Variables, str, ThisOnly = .TRUE.)
+      IF(.NOT. ASSOCIATED(VarP)) THEN
+        CALL Fatal('HydrostaticNSVec','Could not find full pressure variable: '//TRIM(str))
+      END IF
+    END IF
+    IF(.NOT. ASSOCIATED(VarP)) THEN
+      IF(dofs == 4) THEN
+        VarP => VarFull
+      END IF
+    END IF
+        
+    ! Pressure can be 1st component of pressure or last compenent of 'flow solution'
+    pdof = 0
+    IF(ASSOCIATED(VarP)) pdof = VarP % Dofs
+    g = 1.0_dp
+    IF(pdof > 0) THEN
+      gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found)
+      IF(Found) THEN
+        g = ABS(gWork(SIZE(gWork,1),1))
+      ELSE
+        CALL Warn('HydrostaticNSVec','"Gravity" not found in simulation section, setting to 1')
+      END IF
+    END IF       
+    
     ! Copy the velocity componts x & y
     DO i=1,2
       VarFull % Values(i::dofs) = VarXY % Values(i::2)
@@ -1015,6 +1048,11 @@ CONTAINS
       ! Calculate elemental contribution to d(uz)/dz
       !---------------------------------------------
       CALL LocalDuz(Element, n, n, duz, wuz )      
+
+      IF(t==1) THEN
+        Material => GetMaterial(Element)
+        rho = ListGetCReal(Material,'Density',UnfoundFatal=.TRUE.) 
+      END IF
     END DO
 
     ! Note: we are missing parallel communication here!
@@ -1031,31 +1069,60 @@ CONTAINS
     ! We need to save pointers 
     CALL DetectExtrudedStructure( Mesh, PSolver, &
         UpNodePointer = UpPointer, DownNodePointer = DownPointer)
-      
+
+    VarP % Values = 0.0_dp
+    
     ! Integrate over structured mesh 
     DO i=1,Mesh % NumberOfNodes                   
-      IF(DownPointer(i) /= i) CYCLE
-      i1 = i
-      DO WHILE(.TRUE.)
-        i2 = UpPointer(i1)
-        IF(i2==i1) EXIT
-        
-        k1 = VarFull % Perm(i1)
-        k2 = VarFull % Perm(i2)
-        dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
-        
-        VarFull % Values(dofs*(k2-1)+3) = VarFull % Values(dofs*(k1-1)+3) + &
-            dz * ( duz(k1) + duz(k2) ) / 2.0_dp 
+      i1 = i      
 
-        i1 = i2
-      END DO
+      ! Nodes at the bedrock
+      IF(DownPointer(i) == i) THEN
+        ! Initailize values at the bedrock
+        k1 = VarFull % Perm(i1)
+        VarFull % Values(dofs*(k1-1)+3) = 0.0_dp
+
+        DO WHILE(.TRUE.)
+          i2 = UpPointer(i1)
+          IF(i2==i1) EXIT
+
+          k1 = VarFull % Perm(i1)
+          k2 = VarFull % Perm(i2)
+          dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
+
+          ! Integrate for the z-velocity
+          VarFull % Values(dofs*(k2-1)+3) = VarFull % Values(dofs*(k1-1)+3) + &
+              dz * ( duz(k1) + duz(k2) ) / 2.0_dp 
+          i1 = i2
+        END DO
+      END IF
+
+      ! Nodes at the ice top
+      IF(pdof > 0 .AND. UpPointer(i) == i) THEN
+        ! Initailize values at ice top
+        k1 = VarP % Perm(i1)
+        VarP % Values(pdof*k1) = 0.0_dp
+
+        DO WHILE(.TRUE.)
+          i2 = DownPointer(i1)
+          IF(i2==i1) EXIT
+
+          k1 = VarP % Perm(i1)
+          k2 = VarP % Perm(i2)
+          dz = Mesh % Nodes % z(i1) - Mesh % Nodes % z(i2)
+
+          ! Integrate for the hydrostatic pressure
+          VarP % Values(pdof*k2) = VarP % Values(pdof*k1) + g * dz * rho
+          i1 = i2
+        END DO
+      END IF
     END DO
 
     AllocationsDone = .TRUE.
     
-  END SUBROUTINE PopulateFullVelocity
+  END SUBROUTINE PopulateDerivedFields
     
-  END MODULE HydrostaticLocalForms
+END MODULE HydrostaticNSUtils
 
 
 !------------------------------------------------------------------------------
@@ -1108,7 +1175,7 @@ END SUBROUTINE HydrostaticNSSolver_Init
 SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE HydrostaticLocalForms
+  USE HydrostaticNSUtils
   USE MainUtils
 
   
@@ -1247,7 +1314,8 @@ SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
 
   CALL DefaultFinish()
 
-  CALL PopulateFullVelocity()
+  ! Compute all the other fields that can be computed from the solution.
+  CALL PopulateDerivedFields()
   
   CALL Info( Caller,'All done',Level=10)
 !------------------------------------------------------------------------------
