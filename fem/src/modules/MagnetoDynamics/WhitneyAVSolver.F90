@@ -177,6 +177,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     IF (Found .AND. SRDecomposition) THEN
       CALL ListAddNewString( SolverParams,'Exported Variable 1','Source Potential')
       CALL ListAddNewString( SolverParams,'Exported Variable 2','Source Vector Potential [Source Vector Potential:3]')
+      CALL ListAddNewString( SolverParams,'Exported Variable 3', &
+        '-dg Source Magnetic Flux Density E [Source Magnetic Flux Density E:3]')
     END IF
   END BLOCK
  
@@ -370,7 +372,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  TYPE(Variable_t), POINTER :: CoilCurrentVar
+  TYPE(Variable_t), POINTER :: CoilCurrentVar, BVar
   REAL(KIND=dp) :: CurrAmp
   LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
   LOGICAL :: SRDecomposition=.FALSE.
@@ -533,6 +535,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
        IF ( istat /= 0 ) THEN
           CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
        END IF
+
+       BVar => VariableGet(Solver % Mesh % Variables, &
+         'source magnetic flux density e [source magnetic flux density e:3]', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
      END IF
 
      IF(ALLOCATED(FORCE)) THEN
@@ -1948,10 +1953,36 @@ END SUBROUTINE LocalConstraintMatrix
         END DO
         CALL LuSolve(nd-np,MASS(1:6,1:6),FORCE(1:6)) 
         Asloc(1:nd-np)=FORCE(1:nd-np)
-      END BLOCK
 
+      END BLOCK
       FORCE = 0.0_dp
       MASS  = 0.0_dp
+      
+
+      BLOCK
+        REAL(KIND=dp) :: Bs_dofs(n,3)
+        INTEGER :: ind(n)
+
+        ind(1:np) = BVar % Perm(Element % DGIndexes(1:np))
+
+        DO t=1,IP % n
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = pSolver )
+
+          Bs_dofs(t, 1:3) = MATMUL( Asloc(1:nd-np), RotWBasis(1:nd-np,:) )
+!          DO k = 1,BVar % DOFs
+!            BVar % Values( BVar % DOFs*(ind(t)-1)+k) = Bs_dofs(t, k)
+!          END DO
+        END DO
+
+        DO j = 1,n
+          DO k = 1,BVar % DOFs
+            BVar % Values( BVar % DOFs*(ind(j)-1)+k) = k
+          END DO
+        END DO
+      END BLOCK
+
     END IF
     
     DO t=1,IP % n
