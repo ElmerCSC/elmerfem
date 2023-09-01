@@ -972,7 +972,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: AllocationsDone = .FALSE., Found
+    LOGICAL :: Found
     REAL(KIND=dp), POINTER :: duz(:), wuz(:)
     INTEGER, POINTER, SAVE :: UpPointer(:), DownPointer(:)
     INTEGER :: i,j,k,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof
@@ -1032,10 +1032,7 @@ CONTAINS
     END DO
 
     n = SIZE(VarXY % Values) / 2
-    IF(.NOT. AllocationsDone ) THEN
-      ALLOCATE(duz(n),wuz(n))
-    END IF
-      
+    ALLOCATE(duz(n),wuz(n))      
     duz = 0.0_dp; wuz = 0.0_dp
         
     Active = GetNOFActive()
@@ -1062,25 +1059,22 @@ CONTAINS
 
     ! If we have exported variable "duz" we can save the value of the field
     VarDuz => VariableGet(Mesh % Variables,'duz', ThisOnly = .TRUE.)
-    IF( ASSOCIATED( VarDuz ) ) THEN
-      VarDuz % Values = duz
-    END IF
+    IF( ASSOCIATED( VarDuz ) ) VarDuz % Values = duz
     
     ! We need to save pointers 
     CALL DetectExtrudedStructure( Mesh, PSolver, &
         UpNodePointer = UpPointer, DownNodePointer = DownPointer)
 
-    VarP % Values = 0.0_dp
-    
     ! Integrate over structured mesh 
     DO i=1,Mesh % NumberOfNodes                   
+      IF(DownPointer(i)==0) CYCLE
       i1 = i      
-
+            
       ! Nodes at the bedrock
       IF(DownPointer(i) == i) THEN
         ! Initailize values at the bedrock
         k1 = VarFull % Perm(i1)
-        VarFull % Values(dofs*(k1-1)+3) = 0.0_dp
+        IF(k1>0) VarFull % Values(dofs*(k1-1)+3) = 0.0_dp
 
         DO WHILE(.TRUE.)
           i2 = UpPointer(i1)
@@ -1088,11 +1082,13 @@ CONTAINS
 
           k1 = VarFull % Perm(i1)
           k2 = VarFull % Perm(i2)
-          dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
 
-          ! Integrate for the z-velocity
-          VarFull % Values(dofs*(k2-1)+3) = VarFull % Values(dofs*(k1-1)+3) + &
-              dz * ( duz(k1) + duz(k2) ) / 2.0_dp 
+          IF(k1>0 .AND. k2>0) THEN
+            ! Integrate for the z-velocity
+            dz = Mesh % Nodes % z(i2) - Mesh % Nodes % z(i1)
+            VarFull % Values(dofs*(k2-1)+3) = VarFull % Values(dofs*(k1-1)+3) + &
+                dz * ( duz(k1) + duz(k2) ) / 2.0_dp
+          END IF
           i1 = i2
         END DO
       END IF
@@ -1101,7 +1097,7 @@ CONTAINS
       IF(pdof > 0 .AND. UpPointer(i) == i) THEN
         ! Initailize values at ice top
         k1 = VarP % Perm(i1)
-        VarP % Values(pdof*k1) = 0.0_dp
+        IF(k1>0) VarP % Values(pdof*k1) = 0.0_dp
 
         DO WHILE(.TRUE.)
           i2 = DownPointer(i1)
@@ -1109,16 +1105,18 @@ CONTAINS
 
           k1 = VarP % Perm(i1)
           k2 = VarP % Perm(i2)
-          dz = Mesh % Nodes % z(i1) - Mesh % Nodes % z(i2)
 
-          ! Integrate for the hydrostatic pressure
-          VarP % Values(pdof*k2) = VarP % Values(pdof*k1) + g * dz * rho
+          IF(k1>0 .AND. k2>0) THEN
+            ! Integrate for the hydrostatic pressure           
+            dz = Mesh % Nodes % z(i1) - Mesh % Nodes % z(i2)            
+            VarP % Values(pdof*k2) = VarP % Values(pdof*k1) + g * dz * rho
+          END IF
           i1 = i2
         END DO
       END IF
     END DO
 
-    AllocationsDone = .TRUE.
+    DEALLOCATE(duz,wuz)
     
   END SUBROUTINE PopulateDerivedFields
     
