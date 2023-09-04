@@ -176,7 +176,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     SRDecomposition = GetLogical( SolverParams, 'Source-Reaction Decomposition', Found )
     IF (Found .AND. SRDecomposition) THEN
       CALL ListAddNewString( SolverParams,'Exported Variable 1','Source Potential')
-      CALL ListAddNewString( SolverParams,'Exported Variable 2','Source Vector Potential [Source Vector Potential:3]')
+      CALL ListAddNewString( SolverParams,'Exported Variable 2','-dg Source Vector Potential E [Source Vector Potential E:3]')
       CALL ListAddNewString( SolverParams,'Exported Variable 3', &
         '-dg Source Magnetic Flux Density E [Source Magnetic Flux Density E:3]')
     END IF
@@ -372,7 +372,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  TYPE(Variable_t), POINTER :: CoilCurrentVar, BVar
+  TYPE(Variable_t), POINTER :: CoilCurrentVar, BsVar, AsVar
   REAL(KIND=dp) :: CurrAmp
   LOGICAL :: UseCoilCurrent, ElemCurrent, ElectroDynamics, EigenSystem
   LOGICAL :: SRDecomposition=.FALSE.
@@ -536,8 +536,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
           CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
        END IF
 
-       BVar => VariableGet(Solver % Mesh % Variables, &
+       BsVar => VariableGet(Solver % Mesh % Variables, &
          'source magnetic flux density e [source magnetic flux density e:3]', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
+       AsVar => VariableGet(Solver % Mesh % Variables, &
+         'source vector potential e [source vector potential e:3]', ThisOnly=.TRUE., UnFoundFatal=.TRUE.)
      END IF
 
      IF(ALLOCATED(FORCE)) THEN
@@ -1933,6 +1935,12 @@ END SUBROUTINE LocalConstraintMatrix
       BLOCK
         REAL(KIND=dp) :: SRDAatIp(3)
         REAL(KIND=dp) :: Weight
+        INTEGER :: ind(n)
+
+        ind(1:np) = AsVar % Perm(Element % DGIndexes(1:np))
+
+        FORCE = 0.0_dp
+        MASS  = 0.0_dp
         
         DO t=1,IP % n
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1940,6 +1948,10 @@ END SUBROUTINE LocalConstraintMatrix
               RotBasis = RotWBasis, USolver = pSolver )
 
           SRDAatIp(1:3) = MATMUL( SRDA(1:3,1:n), Basis(1:n) )
+
+          DO k = 1,AsVar % DOFs
+            AsVar % Values( AsVar % DOFs*(ind(t)-1)+k) = SRDAatIp(k)
+          END DO
 
           Weight = detJ*IP % s(t)
 
@@ -1954,16 +1966,16 @@ END SUBROUTINE LocalConstraintMatrix
         CALL LuSolve(nd-np,MASS(1:6,1:6),FORCE(1:6)) 
         Asloc(1:nd-np)=FORCE(1:nd-np)
 
+        FORCE = 0.0_dp
+        MASS  = 0.0_dp
       END BLOCK
-      FORCE = 0.0_dp
-      MASS  = 0.0_dp
       
 
       BLOCK
         REAL(KIND=dp) :: Bs_dofs(n,3)
         INTEGER :: ind(n)
 
-        ind(1:np) = BVar % Perm(Element % DGIndexes(1:np))
+        ind(1:np) = BsVar % Perm(Element % DGIndexes(1:np))
 
         DO t=1,IP % n
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1971,16 +1983,16 @@ END SUBROUTINE LocalConstraintMatrix
               RotBasis = RotWBasis, USolver = pSolver )
 
           Bs_dofs(t, 1:3) = MATMUL( Asloc(1:nd-np), RotWBasis(1:nd-np,:) )
-!          DO k = 1,BVar % DOFs
-!            BVar % Values( BVar % DOFs*(ind(t)-1)+k) = Bs_dofs(t, k)
-!          END DO
-        END DO
-
-        DO j = 1,n
-          DO k = 1,BVar % DOFs
-            BVar % Values( BVar % DOFs*(ind(j)-1)+k) = k
+          DO k = 1,BsVar % DOFs
+            BsVar % Values( BsVar % DOFs*(ind(t)-1)+k) = Bs_dofs(t, k)
           END DO
         END DO
+
+!        DO j = 1,n
+!          DO k = 1,BsVar % DOFs
+!            BsVar % Values( BsVar % DOFs*(ind(j)-1)+k) = Bs_dofs(j, k)
+!          END DO
+!        END DO
       END BLOCK
 
     END IF

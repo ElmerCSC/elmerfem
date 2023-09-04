@@ -101,13 +101,14 @@ End
 Body Force 1
   !Source Vector Potential 1 = Variable Coordinate 1
   !  Real Procedure "source" "SourceFunX"
-  Source Vector Potential 1 = Variable Coordinate 2
-    Real MATC "tx"
+!  Source Vector Potential 1 = Variable Coordinate 2
+!    Real MATC "tx"
   !Source Vector Potential 2 = Variable Coordinate 1
   !  Real Procedure "source" "SourceFunY"
-  Source Vector Potential 2 = Variable Coordinate 1
-    Real MATC "0"
-  Source Vector Potential 3 = Real 0
+!  Source Vector Potential 2 = Variable Coordinate 1
+!    Real MATC "0"
+  Source Vector Potential 3 = Variable Coordinate 1
+    Real MATC "tx"
   Source Potential = Real 0
 End Body Force
 Boundary Condition 1  !---- BCn Flux Parallel
