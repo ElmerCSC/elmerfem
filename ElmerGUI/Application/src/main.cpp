@@ -50,6 +50,13 @@ using namespace std;
 #endif
 
 int main(int argc, char *argv[]) {
+
+#ifdef Q_OS_WINDOWS
+#if WITH_QT6
+    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+#endif
+#endif
+
 #ifdef __APPLE__
   // we'll change ENVIRONMENT so that the Elmer binaries and libraries
   // hidden within the application bundle will be correctly found

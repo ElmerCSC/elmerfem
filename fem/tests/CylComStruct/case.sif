@@ -38,6 +38,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Solver Input File = case.sif
+  Serendipity P Elements = False
 End
 
 Constants
@@ -146,7 +147,6 @@ Boundary Condition 4
   Displacement 3 = 0
 End
 
-Solver 1 :: Reference Norm = Real 1.479288E-01
+Solver 1 :: Reference Norm = Real 1.12278736E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-1
 RUN
-

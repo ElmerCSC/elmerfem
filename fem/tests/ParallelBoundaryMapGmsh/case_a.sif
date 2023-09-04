@@ -1,0 +1,103 @@
+! This case demonstrates how to use Gmsh format to map results between
+! nonconforming boundaries in parallel.
+!
+! This creates the parallel gmsh files.
+!> ElmerGrid 1 2 cube_a.grd
+!> ElmerGrid 2 2 cube_a -partdual -metiskway 4
+!> mpirun -np 4 ElmerSolver_mpi case_a.sif
+!
+! P.R. 29.3.2023
+
+Header
+  Mesh DB "." "cube_a"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+! Does not combine well with Gmsh output!
+! Post File = "case_a.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Ideal"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1 
+End
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+End 
+
+ 
+Solver 2
+  Exec Solver = after all  
+  Equation = "GmshOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+
+  Output Directory = "."
+  Output File Name = case_a.msh
+
+  Gmsh Format = Logical True
+  Scalar Field 1 = temperature
+  Mask Name = "Save BC"
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 2
+  Temperature = 0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 3
+
+  Temperature = Variable "Coordinate"
+    Real MATC "sin(2*pi*tx(0))*sin(3*pi*tx(1))"
+
+  Save BC = Logical True
+End
+
+Solver 1 :: Reference Norm = 2.59818309E-01

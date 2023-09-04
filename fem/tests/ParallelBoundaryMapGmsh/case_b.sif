@@ -1,0 +1,125 @@
+! This case demonstrates how to use Gmsh format to map results between
+! nonconforming boundaries in parallel.
+!
+! This reads the parallel gmsh files on each partition.
+!
+! P.R. 29.3.2023
+
+Header
+  Mesh DB "." "cube_b"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case_b.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Ideal"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Surface"
+  Equation = 2
+  Material = 1
+End 
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Name = "SurfaceMap"
+  Active Solvers(1) = 2 
+End
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = TemperatureB
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+End 
+
+ 
+Solver 2
+  Exec Solver = before simulation
+
+! If we have variable here it is used for the permutation.
+! The other option is to use the "mask name".
+  Variable = temperature
+
+  Equation = "result output"
+  Procedure = "GmshOutputReader" "GmshOutputReader"
+
+  Output Directory = "."
+  Filename = File "case_a.msh"
+
+! This has to be consistent with the setup of the initialization case.
+! Without this flag everything is assumed to be serial.
+  Filename Partitions = Integer 4
+
+! This could help in speed sometimes and parallel I/O too...
+  Use Bounding Box = Logical True
+
+! This makes the interpolation only to dofs where "Inlet" is set True.
+  Scalar Field 1 = temperature
+  Interpolation Passive Coordinate = 3  
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 2
+  TemperatureB = Real 0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 3 
+
+! This sets the read-in temperature to be the Dirichlet condition
+  TemperatureB = Equals "Temperature"
+  Body Id = 2
+End
+
+
+Solver 1 :: Reference Norm = 1.91854314E-01
+

@@ -4,7 +4,7 @@ $namerun = "ParallelRemesh"
 
 Header
   Mesh DB "." "cube"
-  Results Directory "./Results/"
+  Results Directory "results/"
 End
 
 Simulation
@@ -85,7 +85,7 @@ Solver 3
   Manually Assign Edges = Logical True
   Automatic Angle Detection = Logical False
 
-  Save Mesh Name = File "cube"
+!  Save Mesh Name = File "cube"
 
   Save MMG Meshes = Logical False
   Pre MMG Mesh Name = String "elmermesh_pre.mesh"

@@ -1,0 +1,105 @@
+! Test case for dicsontinuity addition when there is an internal
+! T-junction that we don't want to duplicate.
+!
+! P.R. 22.6.2023
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "disco"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Post File = "case.vtu"
+  vtu: Save Bulk Only = Logical True
+
+! This activates the feature being tested
+  Discontinuous Boundary Full Angle = Logical True
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elstat"
+  Variable = "Potential"
+  Procedure = "StatElecSolve" "StatElecSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = "ILU0"
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Name = "Material"
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Name = "Zero"
+  Target Boundaries(1) = 2 
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Name = "ZeroToo"
+  Target Boundaries(1) = 4 
+  Potential = 0.0
+End
+
+Boundary Condition 3
+  Name = "Jump"
+  Target Boundaries(1) = 13 
+
+! Duplicate this boundary and make the 2nd one have index 4.
+  Discontinuous Boundary = True
+  discontinuous bc = 4
+  Surface Charge Density = 1.0
+End
+
+Boundary Condition 4
+  Name = "OtherSide"
+  Surface Charge Density = -1.0
+End
+
+Solver 1 :: Reference Norm = 5.5098531746478108E-002
+!End Of File

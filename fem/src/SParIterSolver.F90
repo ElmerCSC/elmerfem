@@ -157,6 +157,7 @@ REAL(kind=dp) :: tt,realtime
 
     LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
+    CHARACTER(:), ALLOCATABLE :: Prec
     REAL(kind=dp) :: st
   !******************************************************************
 st = realtime()
@@ -208,6 +209,19 @@ st = realtime()
     ALLOCATE( NbsOldCols(ParEnv % PEs) )
     OwnIfMRows(:) = 0; OwnIfMCols(:) = 0; NbsIfMRows(:) = 0; NbsIfMCols(:) = 0
 
+    j = 0
+    k = SIZE(ParallelInfo % NeighbourList) 
+    DO i=1,k
+      IF(.NOT. ASSOCIATED( ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+        ALLOCATE(ParallelInfo % NeighbourList(i) % Neighbours(1))
+        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe        
+        j = j+1
+      END IF
+    END DO
+    IF( j > 0 ) THEN
+      CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
+    END IF
+    
   !----------------------------------------------------------------------
   !
   ! Compute the memory allocations for split matrix blocks
@@ -226,8 +240,7 @@ st = realtime()
 !         --------------------------------------
           DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
-             ColInd = SourceMatrix % Cols(j)
-
+             ColInd = SourceMatrix % Cols(j)                          
              IF ( ParallelInfo % NeighbourList(ColInd) % Neighbours(1) == &
                                 ParEnv % MyPE ) THEN
 
@@ -335,8 +348,11 @@ st = realtime()
   END IF
   NULLIFY( SplittedMatrix % InsideMatrix % DampValues )
 
-  NeedILU = ListGetString(CurrentModel % Solver % Values, &
-   'Linear System Preconditioning', Found ) == 'vanka'
+  NeedIlu = .FALSE.
+  Prec = ListGetString(CurrentModel % Solver % Values, &
+      'Linear System Preconditioning', Found )
+  IF(Found) NeedILU = SEQL(Prec,'vanka') 
+    
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 
@@ -2784,7 +2800,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
   ResEPerNB = 0; RHSEPerNB = 0
 
   DO i = 1, SourceMatrix % NumberOfRows
-     IF ( ParallelInfo % NodeInterface(i) ) THEN
+     IF ( ParallelInfo % GInterface(i) ) THEN
         IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
            DO j = 1, SIZE( ParallelInfo % NeighbourList(i) % Neighbours )
                IF ( ParallelInfo % NeighbourList(i) % Neighbours(j)/=ParEnv % MyPE ) THEN

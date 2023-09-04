@@ -1,0 +1,10 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( ptest.sif ptest.sif COPYONLY)
+ADD_ELMERTEST_MODULE(SD_PoissonPFEM Poisson Poisson.f90)
+
+file(COPY Poisson.f90 square.grd ELMERSOLVER_STARTINFO square  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(SD_PoissonPFEM)
+ADD_ELMER_LABEL(SD_PoissonPFEM quick serendipity)

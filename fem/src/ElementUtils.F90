@@ -152,7 +152,7 @@ CONTAINS
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
-       DEALLOCATE(Matrix % ParallelInfo % NodeInterface)
+       DEALLOCATE(Matrix % ParallelInfo % GInterface)
        DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
        END DO
@@ -631,8 +631,6 @@ CONTAINS
     !     Diffuse gray radiation condition:
     !     ---------------------------------
     Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-    IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
     IF( Radiation ) THEN        
       Radiation = .FALSE.
       DO i=1,Model % NumberOfBCs
@@ -1442,8 +1440,6 @@ CONTAINS
 !     Diffuse gray radiation condition:
 !     ---------------------------------
       Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-      IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-          Radiation = Radiation .OR. (Equation == 'heat equation')
       IF( Radiation ) THEN        
         Radiation = .FALSE.
         DO i=1,Model % NumberOfBCs
@@ -1702,7 +1698,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION CreateMatrix( Model, Solver, Mesh, Perm, DOFs, MatrixFormat, &
           OptimizeBW, Equation, DGSolver, GlobalBubbles, &
-          NodalDofsOnly, ProjectorDofs, ThreadedStartup ) RESULT(Matrix)
+          NodalDofsOnly, ProjectorDofs, ThreadedStartup, &
+          UseGivenPerm ) RESULT(Matrix)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
      TYPE(Model_t) :: Model
@@ -1714,6 +1711,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
      LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs
      LOGICAL, OPTIONAL :: ThreadedStartup
+     LOGICAL, OPTIONAL :: USeGivenPerm
 
      CHARACTER(LEN=*), OPTIONAL :: Equation
 
@@ -1725,7 +1723,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(:), ALLOCATABLE :: Eq,str
-     LOGICAL :: GotIt, DG, GB, UseOptimized, Found
+     LOGICAL :: GotIt, DG, GB, UseOptimized, Found, UseGiven
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
            minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat, &
            NDOFs
@@ -1745,6 +1743,15 @@ CONTAINS
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
+
+     UseGiven = .FALSE.
+     IF( PRESENT( UseGivenPerm ) ) THEN
+       IF( UseGivenPerm ) THEN
+         CALL Info(Caller,'Using given Perm table to create the matrix',Level=6)
+         UseGiven = .TRUE.
+         OptimizeBW = .FALSE.
+       END IF
+     END IF
        
      IF( OptimizeBW ) THEN
        IF( ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) ) THEN
@@ -1843,6 +1850,21 @@ CONTAINS
        Eq = ' '
      END IF
 
+     
+     IF( UseGiven ) THEN
+       k = MAXVAL( Perm ) 
+       ALLOCATE( InvInitialReorder(k), STAT=istat )
+       IF( istat /= 0 ) THEN
+         CALL Fatal(Caller,'Allocation error for InvInitialReorder of size: '//I2S(k))
+       END IF
+       InvInitialReorder = 0
+       DO i=1,SIZE(Perm)
+         IF (Perm(i)>0) InvInitialReorder(Perm(i)) = i
+       END DO
+       GOTO 10
+     END IF
+
+       
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
        CALL Info(Caller,'Creating initial permutation',Level=14)
@@ -1901,7 +1923,7 @@ CONTAINS
      UseOptimized = ListGetLogical( Solver % Values, &
          'Optimize Bandwidth Use Always', GotIt )
           
-     Matrix => NULL()
+10   Matrix => NULL()
 
      ! check if matrix structures really need to be created:
      ! -----------------------------------------------------
@@ -1944,7 +1966,7 @@ CONTAINS
          CALL Fatal(Caller,'Multithreaded startup only supports CRS matrix format')
        END IF
        
-       CALL Info(Caller,'Matrix created',Level=14)
+       CALL Info(Caller,'Sparse atrix created',Level=14)
 
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
@@ -1986,7 +2008,7 @@ CONTAINS
        CASE( MATRIX_SBAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.TRUE.,.TRUE. )
        END SELECT
-       CALL Info(Caller,'Matrix created',Level=14)
+       CALL Info(Caller,'Sparse matrix created',Level=14)
 
        CALL List_FreeMatrix( k, ListMatrix )
      END IF

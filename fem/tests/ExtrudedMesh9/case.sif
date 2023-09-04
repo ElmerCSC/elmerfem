@@ -1,0 +1,88 @@
+! Test for the simple mesh exctrusion within ElmerSolver
+! Test for additional midlayers that divide the mesh into layers.
+! Now BCs are given to the original BCs in mid layer. 
+!
+! P.R. 11.8.2023
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Extruded Mesh Levels = 10
+  Extruded BC Layers(1) = Integer 5
+
+  Preserve Baseline = Logical True
+  ! The bottom one is 1, the middle one is 2, the top one is 3 
+  ! I.e. the size is that of extruded BC layers + 2 
+  Extruded Baseline Layer = Integer 2
+
+  Max Output Level = 8
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Equation 1 :: Active Solvers(1) = 1
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Nonlinear System Max Iterations = 1
+End
+
+Boundary Condition 1
+  Name = "old down and up"
+  Target Boundaries(2) = 1 3
+  Temperature = Real 0
+! These remain as is but find themself in midlayer.
+End
+
+Boundary Condition 2
+  Name = "old right and left"
+  Target Boundaries(2) = 2 4
+! These remain as is but find themself in midlayer.
+End
+
+! Rest BCs are created automatically if not given just for visualization.
+
+
+Boundary Condition 7
+  Name = "New bottom"
+  Heat Flux = 1.0
+End
+
+Solver 1 :: Reference Norm = 5.41602331E-01
+
+
+
+

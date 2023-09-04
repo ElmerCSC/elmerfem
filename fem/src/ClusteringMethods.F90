@@ -728,7 +728,6 @@ CONTAINS
 !> a version that assumes that the initial mesh was created using extrusion and 
 !> this extrusion may be taken back in clustering.
 !------------------------------------------------------------------------------
-
   SUBROUTINE ChooseClusterNodes(Amat, Solver, Components, EliminateDir, CF)
 
     USE MeshUtils    
@@ -772,8 +771,6 @@ CONTAINS
       CALL ClusterNodesByDirection(Solver % Values,Mesh,CF,MaskActive)
 
       IF( ASSOCIATED( MaskPerm ) ) DEALLOCATE( MaskActive ) 
-
-       PRINT *,'CF:',SIZE(CF),MINVAL(CF),MAXVAL(CF)
     
     CASE( 'unextrude' )
       CALL Info('ChooseClusterNodes','Using dimensional reduction of extruded meshes for clustering')
@@ -849,19 +846,14 @@ CONTAINS
       nodesize = matsize / Components
       ALLOCATE( Bonds(SIZE(Amat % Cols)), Passive(nodesize),Fixed(nodesize), CF(nodesize) )
 
+      ! For parallel cases we cluster only the "own" dofs and communicate the clustering
+      ! afterwards. The not own dofs are skipped.
       Passive = .FALSE.
       CALL SetParallelPassive()
 
       CALL CMGBonds(Amat, Bonds, Passive, Fixed, Components,Component1)      
 
       CALL CMGClusterForm(Amat, Bonds, Passive, Fixed, Components, Component1, CF)
-
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('ChooseClusterNodes','Implement parallel stuff')
-        ! Things to implement here:
-        ! 1) Global numbering for CF
-        ! 2) ParallelInfo for algebraic systems
-      END IF
 
       DEALLOCATE(Bonds, Fixed)
 
@@ -887,7 +879,7 @@ CONTAINS
       ! while for Meshes in equals the number of nodes. Here the former is used.
       DO i=1,nodesize
         j = Components*(i-1) + Component1
-        IF( Amat % ParallelInfo % NodeInterface(j) ) CYCLE        
+        IF( Amat % ParallelInfo % GInterface(j) ) CYCLE        
         IF( Amat % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % Mype ) &
             Passive(i) = .TRUE.
       END DO     

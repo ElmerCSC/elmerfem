@@ -351,6 +351,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
     LOGICAL :: KeywordsLoaded = .FALSE.
+    LOGICAL :: SimulationRead = .FALSE.
     
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
@@ -568,7 +569,11 @@ CONTAINS
       
       IF( SEQL(Section,'run control') ) THEN
         ! "Run Control" section has been read but to a different Model structure
-        IF( .NOT. ScanOnly ) THEN
+        IF( ScanOnly ) THEN
+          IF( SimulationRead ) THEN
+            CALL Fatal(Caller,'"Run Control" should precede "Simulation" section!')
+          END IF
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Control)) &
               Model % Control => ListAllocate()
@@ -584,7 +589,9 @@ CONTAINS
         END IF
         
       ELSE IF ( SEQL(Section, 'simulation') ) THEN        
-        IF ( .NOT. ScanOnly ) THEN
+        IF ( ScanOnly ) THEN
+          SimulationRead = .TRUE.
+        ELSE
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Simulation)) &
               Model % Simulation=>ListAllocate()
@@ -1842,12 +1849,12 @@ CONTAINS
                      END IF
 
                      ! Find first empty space at "k2"
-                     k2 = k 
-                     DO WHILE( k2 <= slen )
+                     k2 = k
+                     DO WHILE( k2 < slen )
                        k2 = k2 + 1
-                       IF ( str(k2:k2) == ' ') EXIT
+                       IF(str(k2:k2) == ' ') EXIT
                      END DO
-                     k2 = k2-1
+                     IF(str(k2:k2)==' ') k2 = k2-1
 
                      IF( ScanOnly ) THEN
                        IF(VERIFY(str(k:k2),'-+0123456789eEdD.') /= 0) THEN
@@ -1872,7 +1879,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                       CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
@@ -1985,7 +1992,7 @@ CONTAINS
                      END DO
                      IF( k2 < slen ) THEN
                        IF(str(k2:slen) /= 'end') THEN
-                         CALL Fatal(Caller,'Missmatch of declared and given dimension for keyword "'&
+                         CALL Fatal(Caller,'Mismatch of declared and given dimension for keyword "'&
                               //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                        END IF
                      END IF
@@ -2120,7 +2127,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN                  
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
@@ -2150,7 +2157,7 @@ CONTAINS
                    END DO
                    IF( k2 < slen ) THEN
                      IF(str(k2:slen) /= 'end') THEN
-                       CALL Fatal(Caller,'Missmatch between declared and given dimension for integer keyword "'&
+                       CALL Fatal(Caller,'Mismatch between declared and given dimension for integer keyword "'&
                             //TRIM(Name)//'". Ignored input: '//str(k2:slen))
                      END IF
                    END IF
@@ -2962,7 +2969,8 @@ CONTAINS
       END IF
 
       IF( MeshLevels > 1 ) THEN
-      !  CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
+        ! This has been commented out, but is needed. There may be some issues in parallel still...
+        CALL PrepareMesh( Model, NewMesh, ParEnv % PEs > 1 )        
       END IF
     
       
@@ -3221,7 +3229,7 @@ CONTAINS
         ELSE
           Model % Meshes => Solver % Mesh
         END IF
-      END IF
+      END IF  ! "Mesh" given for Solver
     END DO
 
     CALL SetCoordinateSystem( Model )
@@ -3239,10 +3247,46 @@ CONTAINS
       Mesh => Mesh % Next      
     END DO
 
+
+    CALL TagRadiationSolver() 
+    
 !------------------------------------------------------------------------------
 
   CONTAINS
 
+    ! Set radiation solver tag to one heat equation.
+    !--------------------------------------------------
+    SUBROUTINE TagRadiationSolver()
+      TYPE(ValueList_t), POINTER :: Params
+
+      ! Radiation solver tag already exists?
+      IF( ListGetLogicalAnySolver( Model,'Radiation Solver') ) RETURN
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString( Params, 'Equation' )
+        IF ( TRIM(str) == 'heat equation' ) THEN
+          CALL Info('LoadModel','Defined radition solver by Equation name "heat equation"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        ENDIF
+      END DO
+      
+      DO i=1,Model % NumberOfSolvers
+        Params => Model % Solvers(i) % Values
+        str = ListGetString(Params, 'Procedure', Found)
+        IF(.NOT. Found) CYCLE
+        j = INDEX( str,'HeatSolver')
+        IF( j > 0 ) THEN
+          CALL Info('LoadModel','Defined radiation solver by Procedure containing "HeatSolver"',Level=10) 
+          CALL ListAddLogical( Params,'Radiation Solver',.TRUE.)
+          RETURN
+        END IF
+      END DO
+
+    END SUBROUTINE TagRadiationSolver
+
+    
 !------------------------------------------------------------------------------
 !> This subroutine is used to fill Def_Dofs array of the solver structure.
 !> Note that this subroutine makes no attempt to figure out the index of
@@ -3776,6 +3820,7 @@ CONTAINS
               VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
+	      IF (len(Var % Name) < k2) CYCLE
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
                 SaveThis = .TRUE.
                 ! This makes it possible to request saving of vectors
@@ -5233,7 +5278,10 @@ CONTAINS
         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
-
+    
+    IF( INDEX( PostFile,'.vtu' ) /= 0 ) RETURN
+    !IF( INDEX( PostFile,'.ep' ) == 0 ) RETURN
+    
     IF( Model % Mesh % SavesDone == 0 ) THEN
       CALL Info('WritePostFile','Saving results in ElmerPost format to file '//TRIM(PostFile))
     END IF
@@ -6067,7 +6115,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   Solver % Variable=>VariableGet(Mesh % Variables,'nodal h',ThisOnly=.TRUE.)
 
   IF ( ParEnv % PEs>1 ) THEN
-    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % NodeInterface) ) THEN
+    IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % GInterface) ) THEN
       ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))

@@ -112,7 +112,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
+    IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
@@ -549,6 +549,8 @@ END BLOCK
       LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
+      LOGICAL, SAVE :: SaveShear, SaveVisc
       
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
      
@@ -605,6 +607,30 @@ END BLOCK
           END IF
         END IF
 
+        ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
+        SaveShear = ASSOCIATED(ShearVar)
+        IF(SaveShear) THEN
+          IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
+          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
+          ELSE
+            CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
+          END IF
+        END IF
+
+        ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+        SaveVisc = ASSOCIATED(ViscVar)        
+        IF(SaveVisc) THEN
+          IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
+          ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
+            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
+          ELSE
+            CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
+          END IF
+        END IF
+        
         Visited = .TRUE.
       END IF
 
@@ -637,7 +663,7 @@ END BLOCK
       IF (.NOT. ALLOCATED(ss)) THEN
         ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
-          CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
+          CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
         END IF
       END IF
 
@@ -655,8 +681,19 @@ END BLOCK
       END DO
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
-
-
+      IF(SaveShear) THEN
+        i = Element % ElementIndex
+        IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+          IF(j /= ngp) THEN
+            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+          END IF
+          ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+        ELSE
+          ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+        END IF
+      END IF
+            
       
       SELECT CASE( ViscModel )       
 
@@ -841,6 +878,19 @@ END BLOCK
       END IF
       
 
+      IF(SaveVisc) THEN
+        i = Element % ElementIndex
+        IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
+          j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+          IF(j /= ngp) THEN
+            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+          END IF
+          ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+        ELSE
+          ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+        END IF
+      END IF
+      
     END FUNCTION EffectiveViscosityVec
       
 
@@ -979,7 +1029,8 @@ END BLOCK
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionNewtonEps_h, FrictionUt0_h, FrictionNormal_h, FrictionNewton_h, FrictionCoeff_h, &
         FSSAtheta_h, Dens_h, Load_h(3), FSSAaccum_h
-    TYPE(VariableHandle_t), SAVE :: Normal_v, Velo_v
+    TYPE(VariableHandle_t), SAVE :: Velo_v
+    TYPE(Variable_t), POINTER, SAVE :: NrmSol
     TYPE(ValueList_t), POINTER :: BC    
     REAL(KIND=dp) :: TanFder,JAC(nd*(dim+1),nd*(dim+1)),SOL(nd*(dim+1)),NodalSol(dim+1,nd)
     
@@ -1013,7 +1064,10 @@ END BLOCK
            'FSSA Theta')
       str = ListGetString( CurrentModel % Solver % Values,'Normal Vector Name',Found )
       IF(.NOT. Found) str = 'Normal Vector'
-      CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+      NrmSol => VariableGet( CurrentModel % Solver % Mesh % Variables, str, ThisOnly = .TRUE.) 
+
+      !CALL ListInitElementVariable( Normal_v, str, Found=HaveNormal)
+
       CALL ListInitElementVariable( Velo_v )
       CALL ListInitElementKeyword( Dens_h,'Material','Density')
       DO i=1,dim 
@@ -1131,12 +1185,9 @@ END BLOCK
       IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveFriction .OR. HaveFSSA)) RETURN
 
       ! Calculate normal vector only if needed
-      IF( HavePres .OR. NormalTangential .OR. HaveFriction .OR. HaveFSSA ) THEN
-        IF( HaveNormal ) THEN
-          Normal = ListGetElementVectorSolution( Normal_v, Basis, Element, GaussPoint = t)
-        ELSE
-          Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
-        END IF
+      IF( HavePres .OR. NormalTangential .OR. HaveFriction  .OR. HaveFSSA ) THEN
+        Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
+        IF(.NOT. Found) Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t),.TRUE. )
       END IF
       
       !-----------------------------------------------------------------
@@ -1173,7 +1224,7 @@ END BLOCK
           TanFrictionCoeff = MIN(wcoeff * ut**(wexp-1.0_dp),1.0e20)
           ! dTanFrictionCoeff/dut for Newton
           TanFder=0._dp
-          IF ((ut.GT.wut0).AND.(TanFrictionCoeff.LT.1.0e20)) &
+          IF ((ut > wut0).AND.(TanFrictionCoeff < 1.0e20)) &
              TanFder = (wexp-1.0_dp) * wcoeff * ut**(wexp-2.0_dp) 
         ELSE
           ! Else, user defined friction law
@@ -1368,7 +1419,6 @@ END BLOCK
 
     END IF
       
-     
     CALL DefaultUpdateEquations( STIFF, FORCE )
         
   END SUBROUTINE LocalBoundaryMatrix
@@ -1388,8 +1438,18 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------  
-  CALL ListAddNewString(GetSolverParams(),'Element', &
-    'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  LOGICAL :: Found, Serendipity
+
+  Serendipity = GetLogical( GetSimulation(), 'Serendipity P Elements', Found)
+  IF(.NOT.Found) Serendipity = .TRUE.
+  
+  IF(Serendipity) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+  ELSE
+    CALL ListAddNewString(GetSolverParams(),'Element', &
+      'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:4 -pyramid b:4')
+  END IF
 !------------------------------------------------------------------------------
 END SUBROUTINE IncompressibleNSSolver_Init0
 !------------------------------------------------------------------------------
@@ -1660,7 +1720,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
-
 
     ! Check stepsize for nonlinear iteration
     !------------------------------------------------------------------------------

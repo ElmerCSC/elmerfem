@@ -61,7 +61,7 @@ BoundaryPropertyEditor::BoundaryPropertyEditor(QWidget *parent)
   connect(ui.boundaryAsABody, SIGNAL(stateChanged(int)), this, 
            SLOT(boundaryAsABodyChanged(int)));
 
-  connect(ui.boundaryConditionCombo, SIGNAL(currentIndexChanged(QString)), this, 
+  connect(ui.boundaryConditionCombo, SIGNAL(currentTextChanged(const QString)), this, 
            SLOT(boundaryComboChanged(QString)));
 
   ui.applyButton->setIcon(QIcon::fromTheme("list-add"));

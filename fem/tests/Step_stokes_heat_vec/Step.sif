@@ -22,6 +22,8 @@ Simulation
 
   Output Intervals = 1
   Post File = "Step.vtu"
+
+  Serendipity P Elements = False
 End
 
 
@@ -76,7 +78,7 @@ Solver 2
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 500
 
-  Element = p:1 b:3
+  Element = p:1 b:4
   Bubbles in Global System = False
 
   Linear System Convergence Tolerance = 1.0e-8
@@ -129,5 +131,5 @@ End
 !Solver 1 :: Reference Norm = 0.30861526
 !Solver 2 :: Reference Norm = 6.32597086E-01
 
-Solver 1 :: Reference Norm = 3.08835269E-01
-Solver 2 :: Reference Norm = 6.30561412E-01  
+Solver 1 :: Reference Norm = 3.08821397E-01
+Solver 2 :: Reference Norm = 6.30774428E-01

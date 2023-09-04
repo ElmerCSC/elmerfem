@@ -252,8 +252,9 @@ void Surface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   // mapper->ImmediateModeRenderingOn();
   if(ui.surfaceCombo->currentIndex() == 0 ){ // i.e. Null field
   	mapper->SetScalarRange(0, 1);
-    qreal h,s,v;
-    nullColor.getHsvF(&h, &s, &v);
+    double h = nullColor.hueF();
+    double s = nullColor.saturationF();
+    double v = nullColor.valueF();
     int nColor =128;
     vtkLookupTable* nullLut = vtkLookupTable::New();
     nullLut->SetHueRange(h, h);

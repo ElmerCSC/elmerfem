@@ -453,7 +453,8 @@ CONTAINS
            IF(Element % Type % ElementCode >= 500) THEN
              DO i=1,Element % TYPE % NumberOfFaces
                j = Element % FaceIndexes(i)
-               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i))
+               FaceDOFs(j)=MAX(FaceDOFs(j),getFaceDOFs(Element,Def_Dofs(6),i, &
+                      Mesh % Faces(j)) )
              END DO
            END IF
          END IF
@@ -582,7 +583,7 @@ CONTAINS
      END DO
 
      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-     IF ( Radiation .OR. Equation == 'heat equation' ) THEN
+     IF ( Radiation ) THEN
         t = Mesh % NumberOfBulkElements + 1
         n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         DO WHILE( t<= n )
@@ -1020,10 +1021,22 @@ CONTAINS
          Var => Var % Next
          CYCLE
        END IF
-       
-       IF ( ASSOCIATED( Var % Perm ) ) &
+
+       IF ( ASSOCIATED( Var % Perm ) ) THEN
+         Var1 => VariableList
+         DO WHILE(ASSOCIATED(Var1))
+           IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+             IF (ASSOCIATED(Var % Perm,Var1 % Perm)) THEN
+               Var1 % Perm => NULL()
+             END IF
+           END IF
+           Var1 => Var1 % Next
+         END DO
+         IF (SIZE(Var % Perm)>0) THEN
            DEALLOCATE( Var % Perm )
-             
+         END IF
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          CALL DeallocateVariableEntries()
        END IF
@@ -1275,7 +1288,7 @@ CONTAINS
           IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,VarType)
+              Perm,Output,.TRUE.,VarType)
         END DO
       END IF
 
@@ -2913,6 +2926,94 @@ CONTAINS
 !-----------------------------------------------------------------------------------
 
 
+!----------------------------------------------------------------
+!> Echo parameters for debugging purposes.
+!> For now only supports constants...
+!----------------------------------------------------------------
+  SUBROUTINE ListEchoKeywords( Model )
+!----------------------------------------------------------------
+    TYPE(Model_t) :: Model
+!----------------------------------------------------------------
+    INTEGER :: i,cnt
+    
+    CALL Info('ListEchoKeywords','Echoing parameters for debgging purposes')
+
+    CALL EchoList(Model % Simulation, 0, 'simulation' )
+    CALL EchoList(Model % Constants, 0, 'constants' )
+    DO i=1,Model % NumberOfEquations
+      CALL EchoList(Model % Equations(i) % Values, i, 'equation' )
+    END DO
+    DO i=1,Model % NumberOfBodies
+      CALL EchoList(Model % Bodies(i) % Values, i, 'body' )
+    END DO
+        DO i=1,Model % NumberOfBoundaries
+      CALL EchoList(Model % Boundaries(i) % Values, i, 'boundary' ) 
+    END DO
+    DO i=1,Model % NumberOfBodyForces
+      CALL EchoList(Model % BodyForces(i) % Values, i, 'body force' )
+    END DO
+    DO i=1,Model % NumberOfBCs
+      CALL EchoList(Model % BCs(i) % Values, i, 'boundary condition' )
+    END DO
+    DO i=1,Model % NumberOfMaterials
+      CALL EchoList(Model % Materials(i) % Values, i, 'material' ) 
+    END DO
+    DO i=1,Model % NumberOfComponents
+      CALL EchoList(Model % Components(i) % Values, i, 'component' )
+    END DO
+    DO i=1,Model % NumberOfICs
+      CALL EchoList(Model % ICs(i) % Values, i, 'initial condition' )
+    END DO
+    DO i=1,Model % NumberOfSolvers
+      CALL EchoList(Model % Solvers(i) % Values, i, 'solver ' )
+    END DO
+
+  CONTAINS
+
+    SUBROUTINE EchoList(list, i, section )
+      TYPE(ValueList_t), POINTER :: list
+      INTEGER :: i
+      CHARACTER(LEN=*) :: section
+      CHARACTER(LEN=MAX_NAME_LEN) :: str 
+
+      TYPE(ValueListEntry_t), POINTER :: ptr
+
+      IF(.NOT.ASSOCIATED(List)) RETURN
+
+      ptr => List % Head
+      DO WHILE( ASSOCIATED(ptr) )        
+        SELECT CASE(ptr % TYPE)
+        CASE( LIST_TYPE_CONSTANT_SCALAR )
+          WRITE(str,'(A,ES12.3)') 'Real ',ptr % Coeff * ptr % Fvalues(1,1,1)
+
+        CASE( LIST_TYPE_LOGICAL )
+          IF( ptr % LValue ) THEN
+            str = 'Logical True'
+          ELSE
+            str = 'Logical False'
+          END IF
+        CASE( LIST_TYPE_INTEGER )
+          str = 'Integer '//I2S(ptr % Ivalues(1))
+
+        CASE DEFAULT
+          ptr => ptr % Next
+          CYCLE
+        END SELECT
+
+        IF( i==0 ) THEN
+          WRITE(*,'(A)') TRIM(Section)//' :: '//TRIM(ptr % Name)//' '//TRIM(str)
+        ELSE
+          WRITE(*,'(A)') TRIM(Section)//' '//I2S(i)//' :: '//TRIM(ptr % name)//' '//TRIM(str)          
+        END IF
+        ptr => ptr % Next
+      END DO
+
+    END SUBROUTINE EchoList
+    
+  END SUBROUTINE ListEchoKeywords
+!-----------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------------
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
@@ -3811,10 +3912,8 @@ CONTAINS
        CALL ListPopActiveName()
      ELSE
        IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-         WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-                 '] not used consistently.'
-         CALL Fatal( 'ListGetInteger', Message )
-         RETURN
+         CALL Fatal( 'ListGetInteger', 'Value type for property ['//TRIM(Name)//&
+                 '] not used consistently.')
        END IF
 
        L = ptr % IValues(1)
@@ -3866,9 +3965,8 @@ CONTAINS
      END IF     
      
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetIntegerArray', Message )
+       CALL Fatal( 'ListGetIntegerArray', 'Value type for property ['//TRIM(Name)//&
+           '] not used consistently.')
      END IF
 
      n = SIZE(ptr % IValues)
@@ -4080,9 +4178,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetConstReal', Message )
+         CALL Fatal( 'ListGetConstReal', 'Value type for property ['//TRIM(Name)//&
+           '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -4093,9 +4190,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
        IF ( ptr % PROCEDURE == 0 ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetConstReal', Message )
+         CALL Fatal( 'ListGetConstReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
 
        xx = 0.0_dp
@@ -4403,18 +4499,21 @@ CONTAINS
 !> and obtains the corresponding variables to a table.
 !------------------------------------------------------------------------------
   SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
-      SomeAtIp, SomeAtNodes, AllGlobal, DummyCount )
+      SomeAtIp, SomeAtNodes, AllGlobal, DummyCount, List )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      INTEGER :: slen, count
      TYPE(VariableTable_t) :: VarTable(:)
      LOGICAL :: SomeAtIp, SomeAtNodes, AllGlobal
      INTEGER :: DummyCount
+     TYPE(ValueList_t), POINTER, OPTIONAL :: List         
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
      REAL(KIND=dp) :: Val
-     
+     LOGICAL :: Found
+     TYPE(ValueListEntry_t), POINTER :: ptr
+ 
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
      AllGlobal = .TRUE.
@@ -4479,11 +4578,22 @@ CONTAINS
              VarTable(count) % Variable => NULL()
              VarTable(count) % ParamValue = Val
            ELSE
-             CALL Info('ListParseStrToVars','Parsed variable '//I2S(count)//' of '//str(1:slen),Level=3)
-             CALL Info('ListParseStrToVars','Parse counters: '&
-                 //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
-             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+             ! Check if the dependency is actually a keyword
+             Found = .FALSE.
+             IF(PRESENT(List) ) THEN
+               ptr => ListFind(List,str(l0:l1),Found)
+             END IF
+             IF( Found ) THEN
+               VarTable(count) % Keyword => ptr
+               AllGlobal = .FALSE.
+               SomeAtNodes = .TRUE.
+             ELSE            
+               CALL Info('ListParseStrToVars','Parsed variable '//I2S(count)//' of '//str(1:slen),Level=3)
+               CALL Info('ListParseStrToVars','Parse counters: '&
+                   //I2S(l0)//', '//I2S(l1)//', '//I2S(slen),Level=10)
+               CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                   TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' )
+             END IF
            END IF
          END IF
        END IF
@@ -4500,7 +4610,7 @@ CONTAINS
 !-------------------------------------------------------------------------------------
 !> Given a table of variables and a node index return the variable values on the node.
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount, tStep )
+  RECURSIVE SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, intvarcount, tStep )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
@@ -4532,7 +4642,11 @@ CONTAINS
 
        IF(.NOT. ASSOCIATED( Var ) ) THEN
          count = count + 1
-         T(count) = VarTable(Vari) % ParamValue
+         IF(ASSOCIATED( VarTable(Vari) % Keyword ) ) THEN
+           T(count) = ListGetRealInside( VarTable(Vari) % Keyword,'',ind)
+         ELSE
+           T(count) = VarTable(Vari) % ParamValue
+         END IF
          CYCLE
        END IF
        
@@ -4675,15 +4789,16 @@ CONTAINS
  !> we need to solve a small linear system in each element to map the values to
  !> the nodes, and further to the integration point defined by Basis.  
  !------------------------------------------------------------------------------
-   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var ) RESULT ( T ) 
+   FUNCTION InterpolateIPVariableToBoundary( Element, Basis, Var, dof ) RESULT ( T ) 
  !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      REAL(KIND=dp) :: Basis(:)
      TYPE(Variable_t), POINTER :: Var
+     INTEGER, OPTIONAL :: dof
      REAL(KIND=dp) :: T
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Parent
-     INTEGER :: ipar, npar, i, j, n, np, nip
+     INTEGER :: ipar, npar, i, j, n, np, nip, dofs
      REAL(KIND=dp), ALLOCATABLE :: fip(:),fdg(:)
 
      ! We have to provide interface for this as otherwise we would create a
@@ -4701,7 +4816,13 @@ CONTAINS
      T = 0.0_dp
      n = Element % TYPE % NumberOfNodes     
      npar = 0.0_dp
-
+     dofs = Var % Dofs
+     IF(dofs > 1) THEN
+       IF(.NOT. PRESENT(dof)) THEN
+         CALL Fatal('InterpolateIPVariableToBoundary','Give component of ip variable!')
+       END IF
+     END IF
+                 
      ! Go through both potential parents. If we find the information in both then
      ! take on average. Otherwise use one-side interpolation. 
      DO ipar = 1,2 
@@ -4719,8 +4840,14 @@ CONTAINS
        np = Parent % TYPE % NumberOfNodes       
 
        ALLOCATE( fip(nip), fdg(np) )
-       
-       fip(1:nip) = Var % Values(j+1:j+nip)
+
+       IF( dofs > 1 ) THEN         
+         DO i=1,nip
+           fip(i) = Var % Values(dofs*(j+i-1)+dof)
+         END DO
+       ELSE
+         fip(1:nip) = Var % Values(j+1:j+nip)
+       END IF
        fdg(1:np) = 0.0_dp
           
        CALL Ip2DgFieldInElement( CurrentModel % Mesh, Parent, nip, fip, np, fdg )
@@ -4806,13 +4933,16 @@ CONTAINS
            END IF
          ELSE
            IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
-             IF( Var % Dofs > 1 ) THEN
-               CALL Fatal('VarsToValuesOnIps','We can only map scalar fields to boundary so far!')
-             END IF
              IF(.NOT. PRESENT(Basis) ) THEN
                CALL Fatal('VarsToValuesOnIps','We need the "Basis" parameter to map stuff to boundaries!')
-             END IF             
-             T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )
+             END IF
+             IF( Var % Dofs > 1 ) THEN             
+               DO l=1,Var % Dofs               
+                 T(count+l) = InterpolateIPVariableToBoundary( Element, Basis, Var, l )
+               END DO
+             ELSE
+               T(count+1) = InterpolateIPVariableToBoundary( Element, Basis, Var )                                
+             END IF               
            ELSE
              CALL Warn('VarsToValuesOnIPs','Could not find dependent IP variable: '//TRIM(Var % Name))
            END IF
@@ -5145,10 +5275,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -5158,7 +5286,7 @@ CONTAINS
        CALL ListPushActiveName(Name)
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
-           SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+           SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -5174,10 +5302,8 @@ CONTAINS
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T )
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-               WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-                       '] not used consistently.'
-               CALL Fatal( 'ListGetReal', Message )
-               RETURN
+               CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+                   '] not used consistently.')
              END IF
              F(i) = ptr % Coeff * &
                  InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
@@ -5199,7 +5325,7 @@ CONTAINS
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
-           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -5228,10 +5354,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
        IF ( ptr % PROCEDURE == 0 ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)//&
+             '] not used consistently.')
        END IF
 
        CALL ListPushActiveName(name)
@@ -5265,7 +5389,98 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Gets a real valued parameter for one node. This is a special
+!> version of this routine only for keywords depending on keywords.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListGetRealInside( ptr,Name,NodeIndex) RESULT(F)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=*)  :: Name
+     INTEGER :: NodeIndex
+     REAL(KIND=dp)  :: F
+!------------------------------------------------------------------------------
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+     REAL(KIND=dp) :: T(MAX_FNC)
+     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+     INTEGER :: j, VarCount
+     LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes
+     ! INTEGER :: TID, OMP_GET_THREAD_NUM
+!------------------------------------------------------------------------------
+     ! TID = 0
+     ! !$ TID=OMP_GET_THREAD_NUM()
+     F = 0.0_dp
 
+     SELECT CASE(ptr % TYPE)
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR )
+       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+         CALL Fatal( 'ListGetRealInside', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.' )
+       END IF
+       F = ptr % Coeff * ptr % Fvalues(1,1,1)
+    
+     CASE( LIST_TYPE_VARIABLE_SCALAR )              
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
+           SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetRealInside','Function cannot deal with variables on IPs!')
+       END IF
+
+       CALL VarsToValuesOnNodes( VarCount, VarTable, NodeIndex, T, j )
+       
+       IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           F = ptr % Coeff * &
+               ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndex, T )
+         ELSE
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             CALL Fatal( 'ListGetRealInside','Value type for property ['//TRIM(Name)// &
+                 '] not used consistently.' )
+           END IF
+           F = ptr % Coeff * &
+               InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+               T(1), ptr % CubicCoeff )
+         END IF
+       END IF
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
+         TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+         F = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % values,'st')
+         
+     CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
+       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+       IF( SomeAtIp ) THEN
+         CALL Fatal('ListGetRealInside','Function cannot deal with variables on IPs!')
+       END IF
+              
+       CALL VarsToValuesOnNodes( VarCount, VarTable, NodeIndex, T, j )
+       IF ( .NOT. ptr % LuaFun ) THEN
+         IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+           F = Ptr % Coeff * GetMatcReal(ptr % Cvalue,j,T)
+         END IF
+       ELSE
+         CALL ElmerEvalLua(LuaState, ptr, T, F, j )
+       END IF
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+       IF ( ptr % PROCEDURE == 0 ) THEN
+         CALL Fatal('ListGetRealInside','Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
+       END IF       
+       F = Ptr % Coeff * &
+           ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+           CurrentModel % Mesh % Nodes % x( NodeIndex ), &
+           CurrentModel % Mesh % Nodes % y( NodeIndex ), &
+           CurrentModel % Mesh % Nodes % z( NodeIndex ) )
+     END SELECT
+
+   END FUNCTION ListGetRealInside
+!------------------------------------------------------------------------------
+
+   
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in one single point with value x.
 !> Optionally also computes the derivative at that point. 
@@ -5330,10 +5545,8 @@ CONTAINS
      CASE( LIST_TYPE_CONSTANT_SCALAR )
 
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListGetReal', Message )
-         RETURN
+         CALL Fatal( 'ListGetReal', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
        END IF
        F = ptr % Coeff * ptr % Fvalues(1,1,1)
        IF( PRESENT( dFdx ) ) THEN
@@ -5373,10 +5586,8 @@ CONTAINS
          CALL ListPopActiveName()
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-           WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetFun', Message )
-           RETURN
+           CALL Fatal( 'ListGetFun', 'Value type for property ['//TRIM(Name)// &
+               '] not used consistently.')
          END IF
          F = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
              x, ptr % CubicCoeff )
@@ -6426,7 +6637,7 @@ CONTAINS
        IF( Ptr % DepNameLen > 0 ) THEN         
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal, Handle % IntVarCount )
+             SomeAtIp, SomeAtNodes, AllGlobal, Handle % IntVarCount, List )
 
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
          
@@ -6607,13 +6818,12 @@ CONTAINS
            CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, T, j, GaussPoint, Basis, &
                Handle % IntVarCount, tstep )
          END IF
-         
+
          IF ( ptr % LuaFun ) THEN
-           CALL Fatal('ListGetElementReal','Variable scalar API for LUA not available!')
+           CALL ElmerEvalLua(LuaState, ptr, T, RValue, Handle % ParNo )
          ELSE
            Rvalue = GetMatcReal(Ptr % Cvalue,Handle % ParNo,T)
          END IF
-
            
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
@@ -6767,10 +6977,8 @@ CONTAINS
          CASE( LIST_TYPE_CONSTANT_SCALAR )
            
            IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-             WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                 '] not used consistently.'
-             CALL Fatal( 'ListGetElementReal', Message )
-             RETURN
+             CALL Fatal( 'ListGetElementReal', 'Value type for property ['//TRIM(Handle % Name)// &
+                 '] not used consistently.')
            END IF
            F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
 
@@ -6789,7 +6997,7 @@ CONTAINS
                    ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                    NodeIndexes(i), T )              
              ELSE
-               IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+               IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN                 
                  CALL Fatal('ListGetElementReal','Value type for property ['//TRIM(Handle % Name)// &
                      '] not used consistently!')
                END IF
@@ -7343,7 +7551,7 @@ CONTAINS
        IF( ptr % DepNameLen > 0 ) THEN
          CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
              Handle % Name, Handle % VarCount, Handle % VarTable, &
-             SomeAtIp, SomeAtNodes, AllGlobal, 0 )
+             SomeAtIp, SomeAtNodes, AllGlobal, 0, List )
          IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
          Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
          IF( AllGlobal ) Handle % EvaluateAtIp = .FALSE.
@@ -7476,7 +7684,7 @@ CONTAINS
            IF ( .NOT. ptr % LuaFun ) THEN
              Rvalue = GetMatcReal(ptr % Cvalue,Handle % Parno,T)
            ELSE
-             call ElmerEvalLua(LuaState, ptr, T, RValue, j)
+             CALL ElmerEvalLua(LuaState, ptr, T, RValue, j)
            END IF
            Handle % ValuesVec(gp) = RValue
          END DO
@@ -7531,10 +7739,8 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR )
 
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetElementRealVec', Message )
-           RETURN
+           CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+               '] not used consistently.')
          END IF
          F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
          RValues(1:ngp) = F(1)
@@ -7554,10 +7760,8 @@ CONTAINS
                  NodeIndexes(i), T )              
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-               WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-                   '] not used consistently.'
-               CALL Fatal( 'ListGetElementRealVec', Message )
-               RETURN
+               CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+                   '] not used consistently.')
              END IF
              F(i) = ptr % Coeff * &
                  InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
@@ -7608,10 +7812,8 @@ CONTAINS
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
          IF ( ptr % PROCEDURE == 0 ) THEN
-           WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
-               '] not used consistently.'
-           CALL Fatal( 'ListGetElementRealVec', Message )
-           RETURN
+           CALL Fatal( 'ListGetElementRealVec', 'Value type for property ['//TRIM(Handle % Name)// &
+               '] not used consistently.')
          END IF
 
          !CALL ListPushActiveName(Handle % name)
@@ -8428,9 +8630,8 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetConstRealArray', Message )
+       CALL Fatal( 'ListGetConstRealArray', 'Value type for property ['//TRIM(Name)// &
+           '] not used consistently.')
      END IF
 
      n = SIZE( ptr % FValues,1 )
@@ -8476,10 +8677,8 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-               '] not used consistently.'
-       CALL Fatal( 'ListGetConstRealArray1', Message )
-       RETURN
+       CALL Fatal( 'ListGetConstRealArray1', 'Value type for property ['//TRIM(Name)// &
+           '] not used consistently.')
      END IF
 
      n = SIZE( ptr % FValues,1 )
@@ -9162,9 +9361,8 @@ CONTAINS
        ptr => ListFind(Model % Materials(mat) % Values,Name,Found)
        IF( .NOT. ASSOCIATED( ptr ) ) CYCLE
        IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-         WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-             '] not used consistently.'
-         CALL Fatal( 'ListCheckAnyMaterialArray', Message )
+         CALL Fatal( 'ListCheckAnyMaterialArray', 'Value type for property ['//TRIM(Name)// &
+             '] not used consistently.')
        END IF
        n = SIZE( ptr % FValues,1 )
        m = SIZE( ptr % FValues,2 )

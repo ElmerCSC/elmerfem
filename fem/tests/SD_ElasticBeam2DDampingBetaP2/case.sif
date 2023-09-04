@@ -1,0 +1,130 @@
+! This is a consistency test for a transient case with damping via
+! parameter Rayleigh Damping Beta.
+!
+! Both nonlinear and linear solvers are tested within the same test. 
+!
+! This one with Element = p:2
+!
+! P.R. 30.3.2021
+
+Header
+  Mesh DB "." "beam2d"
+End
+
+Constants
+End
+
+$beta = 1.0
+$tsteps=1000
+$dt=0.01 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+  Timestepping Method = Bossak
+  Timestep Sizes = $dt
+  Timestep Intervals = $tsteps
+
+  Output Intervals = 5
+  vtu: Save Bulk Only = Logical True
+!  Post File = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Stress Bodyforce 2 = Variable "Time"
+    Real 
+      0.0 1.0
+      0.1 1.0
+      0.2 0.0
+      1.0 0.0
+    End 
+End 
+
+Initial Condition 1
+  Name = "Start"
+  DisplacementA 1 = Real 0.0
+  DisplacementA 2 = Real 0.0
+
+  DisplacementB 1 = Real 0.0
+  DisplacementB 2 = Real 0.0
+End 
+
+Material 1
+  Density = 1.0
+  Youngs Modulus = 1.0e4
+  Poisson Ratio = 0.3
+  Rayleigh Damping Beta = $beta
+End
+
+Solver 1
+  Equation = StressSolver
+  Element = p:2
+
+  Variable = -dofs 2 DisplacementA
+  Procedure = "StressSolve" "StressSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+! These two keywords are needed to enable that the norm is nodal
+! for p-elements i.e. comparable to nodal elements. 
+  Optimize Bandwidth = False
+  Nonlinear System Nodal Norm = Logical True
+
+  Nonlinear System Max Iterations = 1
+  Displace Mesh = False
+End
+
+Solver 2
+  Equation = ElasticitySolver
+  Element = p:2
+
+  Variable = -dofs 2 DisplacementB
+  Procedure = "ElasticSolve" "ElasticSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+
+  Optimize Bandwidth = False
+  Nonlinear System Nodal Norm = Logical True
+
+  Displace Mesh = False
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+
+Boundary Condition 1
+  Name = "Wall"
+  Target Boundaries(1) = 1
+
+  DisplacementA 1 = Real 0.0
+  DisplacementA 2 = Real 0.0
+
+  DisplacementB 1 = Real 0.0
+  DisplacementB 2 = Real 0.0
+End 
+
+! Without damping                           ! Nodal quadratic
+!Solver 1 :: Reference Norm = 1.67649440E-01 ! 1.66066677E-01
+!Solver 2 :: Reference Norm = 1.67609359E-01 ! 1.65986821E-01
+
+! With damping, beta = 1.0                  ! Nodal quadratic
+Solver 1 :: Reference Norm = 5.84014184E-02 ! 5.77674335E-02
+Solver 2 :: Reference Norm = 5.82410658E-02 ! 5.76088557E-02
+

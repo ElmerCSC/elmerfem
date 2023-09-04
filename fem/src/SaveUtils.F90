@@ -150,7 +150,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     INTEGER, POINTER :: UseIndexes(:)
     INTEGER, TARGET :: BCIndexes(27)
-    INTEGER :: ElmerCode, i,j,k,n,hits
+    INTEGER :: ElmerCode, i,j,k,n,hits,right
     INTEGER, POINTER :: Order(:)
     INTEGER, TARGET, DIMENSION(16) :: &
         Order416 = (/1,2,3,4,5,6,7,8,10,9,12,11,13,14,16,15/)
@@ -169,11 +169,17 @@ CONTAINS
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
         UseIndexes => Element % DGIndexes
       ELSE IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
-        Parent => Element % BoundaryInfo % Left
-        IF (.NOT.ASSOCIATED(Parent) ) THEN
-          Parent => Element % BoundaryInfo % Right        
-        END IF
-        IF ( ASSOCIATED(Parent) ) THEN
+        n = Element % TYPE % NumberOfNodes 
+                
+        DO right=0,1
+          hits = 0
+          IF(right==0) THEN 
+            Parent => Element % BoundaryInfo % Left
+          ELSE
+            Parent => Element % BoundaryInfo % Right        
+          END IF
+          IF(.NOT. ASSOCIATED(Parent)) CYCLE
+          
           IF (.NOT. ASSOCIATED(Parent % DGIndexes) ) THEN
             ! This could happen if we have parents of parents i.e. the original element
             ! is a line element, has parents that are face elements, having parents being volume elements. 
@@ -185,9 +191,8 @@ CONTAINS
               END IF
             END IF
           END IF
+
           IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
-            n = Element % TYPE % NumberOfNodes 
-            hits = 0
             DO j=1,n
               DO k=1,Parent % TYPE % NumberOfNodes
                 IF(Element % NodeIndexes(j) == Parent % NodeIndexes(k)) THEN
@@ -196,12 +201,20 @@ CONTAINS
                   EXIT
                 END IF
               END DO
-            END DO
-            UseIndexes => BCIndexes
-            IF( Hits < n ) THEN
-              CALL Fatal('Elmer2VtkIndexes','Could not determine DG boundary indexes')
-            END IF
+            END DO            
           END IF
+
+          
+          IF(Hits == n ) THEN
+            UseIndexes => BCIndexes
+            EXIT
+          END IF
+        END DO
+          
+        IF( Hits < n ) THEN
+          PRINT *,'Element:',n, Element % TYPE % ElementCode, Element % NodeIndexes
+          PRINT *,'Parent:',Hits,Parent % TYPE % ElementCode, Parent % NodeIndexes
+          CALL Fatal('Elmer2VtkIndexes','Could not determine DG boundary indexes')
         END IF
       ENDIF
 
@@ -806,8 +819,7 @@ CONTAINS
 
     IF(PRESENT(GotEdge)) GotEdge = .FALSE.
     IF(PRESENT(GotEigen)) GotEIgen = .FALSE.
-    
-
+        
     IF(.NOT. ASSOCIATED(Var)) RETURN
     IF(.NOT. ASSOCIATED(Var % Values)) RETURN
 
@@ -882,11 +894,11 @@ CONTAINS
     IF( PRESENT( GotEigen ) ) THEN
       IsEigen = ASSOCIATED( Var % EigenValues )
       IF(IsEigen) NoEigenValues = SIZE( Var % EigenValues )
-      GotEigen = IsEigen
-      IF( comps > 1 ) THEN
+      IF( comps > 1 .AND. IsEigen ) THEN
         CALL Warn('EvaluetVariableAtGivenPoint','Eigenmode cannot be given in components!')
         IsEigen = .FALSE.
       END IF
+      GotEigen = IsEigen
     END IF
     
     ! Given node is the quickest way to estimate the values at nodes.
@@ -894,17 +906,18 @@ CONTAINS
     NodeIndex(1) = 0
     IF(.NOT. (EdgeBasis .OR. IpVar .OR. ElemVar .OR. NeedDerBasis .OR. pElem) ) THEN
       
-      IF( DgVar ) THEN
-        IF(PRESENT(LocalDGNode)) THEN
-          NodeIndex(1) = LocalDGNode
-        ELSE IF( PRESENT(LocalNode)) THEN
-          PToIndexes => PickDGIndexes(Element)
-          DO i=1, n
-            IF( Element % NodeIndexes(i) == LocalNode ) THEN
-              NodeIndex(1) = pToIndexes(i)
-              EXIT
-            END IF
-          END DO
+      IF( DgVar ) THEN        
+        IF(PRESENT(LocalDGNode)) NodeIndex(1) = LocalDGNode
+        IF(NodeIndex(1) == 0 ) THEN
+          IF( PRESENT(LocalNode)) THEN
+            PToIndexes => PickDGIndexes(Element)
+            DO i=1, n
+              IF( Element % NodeIndexes(i) == LocalNode ) THEN
+                NodeIndex(1) = pToIndexes(i)
+                EXIT
+              END IF
+            END DO
+          END IF
         END IF
       ELSE IF( PRESENT(LocalNode) ) THEN
         NodeIndex(1) = LocalNode
@@ -931,7 +944,8 @@ CONTAINS
 
     IF(.NOT. ASSOCIATED(PtoIndexes) ) THEN
       IF(.NOT. PRESENT(LocalCoord) ) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','No recipe to evaluate variable without local coordinates!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'No recipe to evaluate variable without local coordinates: '//TRIM(Var % Name))
       END IF
 
       IF( EdgeBasis ) THEN
@@ -1058,10 +1072,12 @@ CONTAINS
       No = No + MAX(Var % Dofs, Comps )      
     ELSE
       IF(.NOT. ASSOCIATED(pToBasis)) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','pToBasis not associated!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'pToBasis not associated for variable: '//TRIM(Var % Name))
       END IF
       IF(.NOT. ASSOCIATED(pToIndexes)) THEN
-        CALL Fatal('EvaluteVariableAtGivenPoint','pToIndexes not associated!')
+        CALL Fatal('EvaluteVariableAtGivenPoint',&
+            'pToIndexes not associated for variable: '//TRIM(Var % Name))
       END IF
       
       IF( ASSOCIATED(Var % Perm) ) THEN

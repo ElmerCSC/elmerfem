@@ -107,6 +107,8 @@
 #define _ELMER_LINEAR_REF(var) 
 #endif
 
+#cmakedefine HAVE_AMGX
+
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */
 #cmakedefine HAVE_MUMPS

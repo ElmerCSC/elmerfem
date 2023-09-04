@@ -116,9 +116,10 @@ Simulation
   Steady State Min Iterations = 1
   
   Extruded Mesh Levels = Integer 10
-  Preserve Edges = Logical True
+  !Preserve Edges = Logical True
+  Preserve Baseline =  Logical True
 
-  Post File = "$namerun".vtu"
+  Post File = $namerun".vtu"
 
   max output level = 3
 End
@@ -280,7 +281,7 @@ Solver 4
   VTU BinaryFile = Logical False
 
   Channels OutPut Directory Name = String "results"
-  Channels OutPut File Name = String "$namerun"_channels"
+  Channels OutPut File Name = String $namerun"_channels"
 End
 
 Solver 5
@@ -357,10 +358,13 @@ Boundary Condition 4
   Moulin Flux = Real $0.9*yearinsec
 End
 
+! Mind that the numbering continues with the extruded boundaries of the first four - we don't need them, but we have to account for them
+
 ! the order of the two following boundaries is important
 ! first the bed and then the surface
 ! they have to come after the last targeted boundary (from the mesh.boundary file)
-Boundary Condition 5
+
+Boundary Condition 9
   Name = "bed"
   Body Id = 2
   Velocity 1 = Real 0.0
@@ -368,7 +372,7 @@ Boundary Condition 5
   Velocity 3 = Real 0.0
 End
 
-Boundary Condition 6
+Boundary Condition 10
   Name = "surface"
 End
 Solver 2 :: Reference Norm = Real 8.28146474E+00 

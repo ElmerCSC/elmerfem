@@ -186,7 +186,7 @@ void DynamicEditor::setupTabs(QDomDocument *elmerDefs, const QString &Section, i
           } 
           combo->setCurrentIndex(active);
           // connect(combo, SIGNAL(activated(QString)), this, SLOT(comboSlot(QString)));
-	  connect(combo, SIGNAL(currentIndexChanged(QString)), this, SLOT(comboSlot(QString)));
+	  connect(combo, SIGNAL(currentTextChanged(const QString)), this, SLOT(comboSlot(QString)));
 
         } else if ( widget_type == "CheckBox" ) {
           QCheckBox *l = new QCheckBox;
@@ -342,7 +342,7 @@ void DynLineEdit::editSlot()
 {
   QLineEdit *q =  lineEdit;
   QString s = q->text();
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   cout << string(s.toLatin1()) << endl;
 #else
   cout << string(s.toAscii()) << endl;
@@ -717,7 +717,7 @@ void DynamicEditor::populateHash(QDomElement *item)
     }
     
     if(!match_found) {
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
       cout << "Error: Unable to set menu entry: key: " << key.toLatin1().data() << endl;
 #else
       cout << "Error: Unable to set menu entry: key: " << key.toAscii().data() << endl;

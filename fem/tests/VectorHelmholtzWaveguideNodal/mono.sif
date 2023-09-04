@@ -1,0 +1,116 @@
+! A test case for nodal modal of Vector Helmholtz.
+! Note the heavy assumptions!
+! 1) constant material parameters
+! 2) rectangular geometry
+! So use only with caution!
+!
+! P.R. 30.5.2023
+
+Check Keywords "Warn"
+
+Header
+Mesh DB "." "shoebox_tets"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+  Post File = mono.vtu
+
+! Add for more precision: 2,3,...
+!  Mesh Levels = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+$ beta0=41.9332032192090
+$ k0=52.3961255469564
+$ kc=31.4159265358979 
+$ w=2*pi*(2.5e9)
+$ mu0=4e-7*pi
+
+
+Material 1
+  Relative Permittivity = Real 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+  Angular Frequency = Real $w
+End
+
+Solver 1
+  Equation = "VectorHelmholtzNodal"
+  Procedure = "VectorHelmholtzNodal" "VectorHelmholtzNodal"
+
+  Monolithic Solver = Logical True
+
+  Linear System Scaling = True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = String "bicgstab2"
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "ILU1"
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear system abort not converged = false
+  Linear System Residual Output = 10
+
+! Maintain the L2 norm summed from all components
+  Skip Compute Steady State Change = Logical True
+
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2
+  Exec Solver = never !Before all
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+
+!  Variable = MeshRelax
+!  Nonlinear System Max Iterations = 1
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+End
+
+
+! x in [0,0.1]
+! y in [0,0.05]
+! z in [0,0.2]
+Body Force 1
+  Mesh Translate 1 = Variable "Coordinate 3"
+    Real MATC "0.05*sin(0.5*pi*tx/0.2)"
+End
+
+Boundary Condition 1
+  Name = "Inlet"
+  Target Boundaries(1) = 1
+  Electric Robin Coefficient im = Real $ beta0
+  Magnetic Boundary Load 2 = Variable Coordinate 1
+    Real MATC "-2*beta0*k0/kc*sin(pi*tx/100e-3)"
+End
+
+Boundary Condition 2
+  Name = "Sides"
+  Target Boundaries(4) = 2 3 4 5 
+
+  Electric Robin Coefficient = Real $ -474315.9900340191 
+  Electric Robin Coefficient im = Real $ 474315.9900340191  
+End
+
+
+Boundary Condition 3
+  Name = "Outlet"
+  Target Boundaries(1) = 6
+  Absorbing BC = Logical True
+End
+
+Solver 1 :: Reference Norm = 4.44414001E-01

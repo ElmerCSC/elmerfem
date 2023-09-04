@@ -1,0 +1,96 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "channel"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+
+  Simulation Type = Steady
+
+  Angular Frequency = 1
+
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+! Post File   = "case.ep"
+! Output File = "case.dat"
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Material 1 
+  Reluctivity = 1
+  Permittivity = 1
+  Electric Conductivity = 0
+End
+
+Body Force 1 :: Source = Real 0
+Equation 1 :: Active Solvers(2) = 1 2
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "a[a re:1 a im:1]"
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+
+  Electrodynamics Model = Logical True
+  Linear system Solver = Iterative
+  Linear SYstem Iterative Method = GCR
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 1000
+  Linear System Convergence TOLERANCE = 1e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "Poisson2"
+
+  Potential Variable = "a"
+  Procedure = "MagnetoDynamics" "MagnetodynamicsCalcFields"
+
+  Calculate Nodal Fields = True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+
+  Linear system Solver = Iterative
+  Linear SYstem Iterative Method = CG
+  Linear System Residual Output = 100
+  Linear System Max Iterations = 1000
+  Linear System Convergence TOLERANCE = 1e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1 
+ 
+  a = real 0
+
+  a re {e} = real 0
+  a im {e} = real 0
+  a re {e} 3 = real 1
+End
+ 
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  a re = real 0
+  a im = real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 5 6
+  a re = real 0
+  a im = real 0
+  a re {e} = real 0
+  a im {e} = real 0
+End
+
+Solver 1 :: Reference Norm = Real 4.79371712E-02
+RUN

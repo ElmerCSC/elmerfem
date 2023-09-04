@@ -250,6 +250,17 @@ CONTAINS
     CASE(504)
       ! Tetra edge mapping (for completeness, not needed for enforcing parity)
       CALL H1Basis_GetTetraEdgeDirection(1, map)
+
+    CASE(605)
+      flatmap(1:16) = [ 1,2,&
+                        2,3,&
+                        4,3,&
+                        1,4,&
+                        1,5,&
+                        2,5,&
+                        3,5,&
+                        4,5 ]
+
     CASE(706)
       flatmap(1:18) = [ 1,2,&
                         2,3,&
@@ -301,6 +312,15 @@ CONTAINS
     CASE(504)
       ! Tetra face mapping (for completeness, not needed for enforcing parity)
       CALL H1Basis_GetTetraFaceDirection(1, map)
+
+    CASE(605)
+      ! Pyramid face mappings
+      flatmap(1:20) = [ 1,2,3,4, &
+                        1,2,5,0, &
+                        2,3,5,0, &
+                        3,4,5,0, &
+                        4,1,5,0 ]
+
     CASE(706)
       flatmap(1:20) = [ 1,2,3,0, &
                         4,5,6,0, &
@@ -840,7 +860,10 @@ CONTAINS
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dQuadNodal
 
-  SUBROUTINE H1Basis_QuadEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
+! --- start serendipity quad
+
+
+  SUBROUTINE H1Basis_SD_QuadEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -870,9 +893,9 @@ CONTAINS
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
     END DO
-  END SUBROUTINE H1Basis_QuadEdgeP
+  END SUBROUTINE H1Basis_SD_QuadEdgeP
 
-  SUBROUTINE H1Basis_dQuadEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
+  SUBROUTINE H1Basis_SD_dQuadEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -911,9 +934,9 @@ CONTAINS
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
     END DO
-  END SUBROUTINE H1Basis_dQuadEdgeP
+  END SUBROUTINE H1Basis_SD_dQuadEdgeP
 
-  SUBROUTINE H1Basis_QuadBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localNumbers)
+  SUBROUTINE H1Basis_SD_QuadBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localNumbers)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -957,9 +980,9 @@ CONTAINS
         nbasis = nbasis+MAX(pmax-i-1,0)
       END DO
     END IF
-  END SUBROUTINE H1Basis_QuadBubbleP
+  END SUBROUTINE H1Basis_SD_QuadBubbleP
 
-  SUBROUTINE H1Basis_dQuadBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localNumbers)
+  SUBROUTINE H1Basis_SD_dQuadBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localNumbers)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -1012,6 +1035,215 @@ CONTAINS
           END DO
         END DO
         nbasis = nbasis+MAX((pmax-i)-1,0)
+      END DO
+    END IF
+  END SUBROUTINE H1Basis_SD_dQuadBubbleP
+
+
+! --- end serendipity quad
+
+
+  SUBROUTINE H1Basis_QuadEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+    REAL(KIND=dp), PARAMETER :: c = 1/2D0*2
+
+    REAL(KIND=dp) :: La, Lb, N(VECTOR_BLOCK_LENGTH,nbasismax), Na, Nb
+    INTEGER :: i,j,k, nnb, node1, node2
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
+
+    ! For each edge
+    DO i=1,4
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
+        DO k=1,nvec
+          La = H1Basis_QuadL(node1, u(k), v(k))
+          Lb = H1Basis_QuadL(node2, u(k), v(k))
+
+          Na = fval(k,node1)
+          Nb = fval(k,node2)
+
+          fval(k, nbasis+j-1) = c*Na*Nb*H1Basis_varPhi(j, Lb-La)
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_QuadEdgeP
+
+  SUBROUTINE H1Basis_dQuadEdgeP(nvec, u, v, pmax, nbasismax, grad, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, Phi, dPhi, dLa(2), dLb(2), N(VECTOR_BLOCK_LENGTH,nbasismax), &
+           dN(VECTOR_BLOCK_LENGTH,nbasismax,3), Na, Nb, dNa(2), dNb(2)
+    REAL(KIND=dp), PARAMETER :: c = 1/2D0*2
+    INTEGER :: i,j,k,nnb, node1, node2
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
+    
+    nnb = 0; CALL H1Basis_QuadNodal(nvec, u, v, nbasismax, n, nnb )
+
+    ! For each edge
+    DO i=1,4
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+      dLa = H1Basis_dQuadL(node1)
+      dLb = H1Basis_dQuadL(node2)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Phi, dPhi, Na, Nb, dNa, dNb)
+        DO k=1,nvec
+          La = H1Basis_QuadL(node1, u(k), v(k))
+          Lb = H1Basis_QuadL(node2, u(k), v(k))
+          
+          Na  = N(k,node1)
+          Nb  = N(k,node2)
+          dNa = grad(k,node1,1:2)
+          dNb = grad(k,node2,1:2)
+!         dNa = dN(k,node1,1:2)
+!         dNb = dN(k,node2,1:2)
+
+          Phi = H1Basis_varPhi(j, Lb-La)
+          dPhi = H1Basis_dvarPhi(j,Lb-La)
+
+          grad(k, nbasis+j-1, 1:2) = c*(dNa*Nb*Phi + Na*dNb*Phi + &
+                    Na*Nb*dPhi*(dLb-dLa))
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_dQuadEdgeP
+
+  SUBROUTINE H1Basis_QuadBubbleP(nvec, u, v, pmax, nbasismax, fval, nbasis, localNumbers)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: localNumbers(4)
+
+    INTEGER :: i,j,k
+    REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb
+!DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
+
+
+    ! Calculate value of function without direction and return
+    ! if local numbering not present
+    IF (.NOT. PRESENT(localNumbers)) THEN
+      DO i=2,pmax
+        DO j=2,pmax
+          !_ELMER_OMP_SIMD
+          DO k=1,nvec
+            fval(k,nbasis+j-1) = H1Basis_Phi(i,u(k))*H1Basis_Phi(j,v(k))
+          END DO
+        END DO
+        nbasis = nbasis + pmax - 1
+      END DO
+    ELSE
+      DO i=0,pmax-2
+        DO j=0,pmax-2
+          !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lc,Pa,Pb)
+          DO k=1,nvec
+            ! Directed quad bubbles
+            La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
+            Lb = H1Basis_QuadL(localNumbers(2),u(k),v(k))
+            Lc = H1Basis_QuadL(localNumbers(4),u(k),v(k))
+
+            Pa = fval(k,localNumbers(1))
+            Pb = fval(k,localNumbers(3))
+
+            ! Calculate value of function from the general form
+            fval(k,nbasis+j+1) = Pa*Pb*H1Basis_LegendreP(i,Lb-La)*H1Basis_LegendreP(j,Lc-La)
+          END DO
+        END DO
+        nbasis = nbasis + pmax - 1
+      END DO
+    END IF
+  END SUBROUTINE H1Basis_QuadBubbleP
+
+  SUBROUTINE H1Basis_dQuadBubbleP(nvec, u, v, pmax, nbasismax, grad, nbasis, localNumbers)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: localNumbers(4)
+
+    INTEGER :: i,j,k, nnb
+    REAL(KIND=dp) :: La, Lb, Lc, Legi, Legj, Pa, Pb
+    REAL(Kind=dp), DIMENSION(2) :: dLa, dLb, dLc, dLbdLa, dLcdLa, dLegi,dLegj, dPa,dPb
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: N
+!DIR$ ASSUME_ALIGNED u:64, v:64, grad:64
+
+    IF (.NOT. PRESENT(localNumbers)) THEN
+      DO i=2,pmax
+        DO j=2,pmax
+          !_ELMER_OMP_SIMD
+          DO k=1,nvec
+            ! First coordinate (Xi)
+            grad(k,nbasis+j-1,1) = H1Basis_dPhi(i,u(k))*H1Basis_Phi(j,v(k))
+            ! Second coordinate (Eta)
+            grad(k,nbasis+j-1,2) = H1Basis_Phi(i,u(k))*H1Basis_dPhi(j,v(k))
+          END DO
+        END DO
+        nbasis = nbasis + pmax - 1
+      END DO
+    ELSE
+      nnb = 0; CALL H1Basis_QuadNodal(nvec, u, v, nbasismax, n, nnb )
+
+      ! Numbering present, so use it
+      dLa = H1Basis_dQuadL(localNumbers(1))
+      dLb = H1Basis_dQuadL(localNumbers(2))
+      dLc = H1Basis_dQuadL(localNumbers(4))
+
+      DO i=0,pmax-2
+        DO j=0,pmax-2
+          !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lc,Legi,Legj,dLegi,dLegj,Pa,Pb,dPa,dPb)
+          DO k=1,nvec
+            La = H1Basis_QuadL(localNumbers(1),u(k),v(k))
+            Lb = H1Basis_QuadL(localNumbers(2),u(k),v(k))
+            Lc = H1Basis_QuadL(localNumbers(4),u(k),v(k))
+
+            Pa = N(k,localNumbers(1))
+            Pb = N(k,localNumbers(3))
+
+            dPa = grad(k,localNumbers(1),1:2)
+            dPb = grad(k,localNumbers(3),1:2)
+
+            Legi = H1Basis_LegendreP(i,Lb-La)
+            Legj = H1Basis_LegendreP(j,Lc-La)
+
+            dLegi = H1Basis_dLegendreP(i,Lb-La)*(dLb-dLa)
+            dLegj = H1Basis_dLegendreP(j,Lc-La)*(dLc-dLa)
+
+            grad(k,nbasis+j+1,1:2) = dPa*Pb*Legi*Legj + Pa*dPb*Legi*Legj + &
+                                   Pa*Pb*dLegi*Legj + Pa*Pb*Legi*dLegj
+          END DO
+        END DO
+        nbasis = nbasis + pmax - 1
       END DO
     END IF
   END SUBROUTINE H1Basis_dQuadBubbleP
@@ -1463,6 +1695,445 @@ CONTAINS
     END DO
   END SUBROUTINE H1Basis_dTetraBubbleP
 
+
+! --- start serendipity wedge
+
+  
+  SUBROUTINE H1Basis_SD_WedgeEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, Na, Nb
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: i,j,k,l
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    ! For each triangle face edge
+    DO i=1,6
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
+        DO k=1,nvec
+          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
+          Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
+          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
+          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
+          fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+      
+    ! For each square face edge
+    DO i=7,9
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb)
+        DO k=1,nvec
+          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
+          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
+          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
+          fval(k, nbasis+j-1) = La*H1Basis_Phi(j, Nb-Na)
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_SD_WedgeEdgeP
+  
+  SUBROUTINE H1Basis_SD_dWedgeEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, Na, Nb, Phi, dPhi, vPhi, dVPhi, &
+          dLa(3), dLb(3), dNa(3), dNb(3), NaNb
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: i,j,k
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    ! For each triangle face edge
+    DO i=1,6
+      dLa = H1Basis_dWedgeL(edgedir(1,i))
+      dLb = H1Basis_dWedgeL(edgedir(2,i))
+      dNa = H1Basis_dWedgeH(edgedir(1,i))
+      dNb = H1Basis_dWedgeH(edgedir(2,i))
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, vPhi, dVPhi, NaNb)
+        DO k=1,nvec
+          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
+          Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
+          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
+          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
+          vPhi=H1Basis_varPhi(j,Lb-La)
+          dVPhi=H1Basis_dVarPhi(j,Lb-La)
+          NaNb=1+Na+Nb
+          ! fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
+          grad(k, nbasis+j-1,1) = c*dLa(1)*Lb*vPhi*NaNb + &
+                c*La*dLb(1)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(1)-dLa(1))*NaNb
+                ! + c*La*Lb*vPhi*(dNb(1)+dNa(1)) ! Last term zero
+          grad(k, nbasis+j-1,2) = c*dLa(2)*Lb*vPhi*NaNb + &
+                c*La*dLb(2)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(2)-dLa(2))*NaNb
+                ! c*La*Lb*vPhi*(dNb(2)+dNa(2)) ! Last term zero
+          grad(k, nbasis+j-1,3) = c*La*Lb*vPhi*(dNb(3)+dNa(3))
+                ! c*dLa(3)*Lb*vPhi*NaNb + ! First term zero
+                ! c*La*dLb(3)*vPhi*NaNb + ! Second term zero
+                ! c*La*Lb*dVPhi*(dLb(3)-dLa(3))*NaNb ! Third term zero
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+      
+    ! For each square face edge
+    DO i=7,9
+      dLa = H1Basis_dWedgeL(edgedir(1,i))
+      dNa = H1Basis_dWedgeH(edgedir(1,i))
+      dNb = H1Basis_dWedgeH(edgedir(2,i))
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb, Phi, dPhi)
+        DO k=1,nvec
+          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
+          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
+          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
+          Phi = H1Basis_Phi(j, Nb-Na)
+          dPhi = H1Basis_dPhi(j,Nb-Na)
+          
+          grad(k, nbasis+j-1,1) = dLa(1)*Phi+La*dPhi*(dNb(1)-dNa(1))
+          grad(k, nbasis+j-1,2) = dLa(2)*Phi+La*dPhi*(dNb(2)-dNa(2))
+          grad(k, nbasis+j-1,3) = dLa(3)*Phi+La*dPhi*(dNb(3)-dNa(3)) 
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_SD_dWedgeEdgeP
+  
+  SUBROUTINE H1Basis_SD_WedgeFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp) :: La, Lb, Lc, Na, Nc
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: i,j,k,l
+    LOGICAL :: nonpermuted
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    ! Triangle faces
+    DO i=1,2      
+      DO j=0,pmax(i)-3
+        DO k=0,pmax(i)-j-3
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Na)
+          DO l=1,nvec
+            La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+            Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
+            Lc = H1Basis_WedgeL(facedir(3,i), u(l), v(l))
+            Na = H1Basis_WedgeH(facedir(1,i), w(l))
+
+            fval(l,nbasis+k+1) = c*(1+2*Na)*La*Lb*Lc* &
+                                            H1Basis_LegendreP(j, Lb-La)* &
+                                            H1Basis_LegendreP(k, 2*Lc-1)
+          END DO
+        END DO
+        ! nbasis = nbasis + (p-j-3) + 1
+        nbasis = nbasis + MAX(pmax(i)-j-2,0)
+      END DO
+    END DO
+    ! Square faces
+    DO i=3,5
+      ! First and second node must form an edge in upper or lower triangle
+      nonpermuted = (facedir(1,i) >= 1 .AND. facedir(1,i) <= 3 .AND.&
+                     facedir(2,i) >= 1 .AND. facedir(2,i) <= 3) .OR. &
+                    (facedir(1,i) >= 4 .AND. facedir(1,i) <= 6 .AND.&
+                     facedir(2,i) >= 4 .AND. facedir(2,i) <= 6)
+      
+      DO j=2,pmax(i)-2
+        DO k=2,pmax(i)-j          
+          IF (nonpermuted) THEN
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            DO l=1,nvec
+              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+              Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
+              Na = H1Basis_WedgeH(facedir(1,i), w(l))
+              Nc = H1Basis_WedgeH(facedir(4,i), w(l))
+              fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
+                                         H1Basis_Phi(k, Nc-Na)
+            END DO
+          ELSE
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            DO l=1,nvec
+              ! Numbering permuted, switch indices j,k and nodes 2 and 4
+              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+              Lb = H1Basis_WedgeL(facedir(4,i), u(l), v(l))
+              Na = H1Basis_WedgeH(facedir(1,i), w(l))
+              Nc = H1Basis_WedgeH(facedir(2,i), w(l))
+              fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
+                                         H1Basis_Phi(j, Nc-Na)
+            END DO
+          END IF
+        END DO
+        ! nbasis = nbasis + (pmax(i)-j-2) + 1
+        nbasis = nbasis + MAX(pmax(i)-j-1,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_SD_WedgeFaceP
+  
+  SUBROUTINE H1Basis_SD_dWedgeFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp) :: La, Lb, Lc, Na, Nc, LegPLbLa, LegP2Lc1, &
+            cNa, vPhi, Phi, dLa(3), dLb(3), dLc(3), dNa(3), dNc(3)
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: i,j,k,l
+    LOGICAL :: nonpermuted
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    ! Triangle faces
+    DO i=1,2
+      dLa = H1Basis_dWedgeL(facedir(1,i))
+      dLb = H1Basis_dWedgeL(facedir(2,i))
+      dLc = H1Basis_dWedgeL(facedir(3,i))
+      dNa = H1Basis_dWedgeH(facedir(1,i))
+      DO j=0,pmax(i)-3
+        DO k=0,pmax(i)-j-3
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Na, LegPLbLa, LegP2Lc1, cNa)
+          DO l=1,nvec
+            La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+            Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
+            Lc = H1Basis_WedgeL(facedir(3,i), u(l), v(l))
+            Na = H1Basis_WedgeH(facedir(1,i), w(l))
+
+            LegPLbLa = H1Basis_LegendreP(j, Lb-La)
+            LegP2Lc1 = H1Basis_LegendreP(k, 2*Lc-1)
+            cNa = c*(1+2*Na)
+
+            grad(l,nbasis+k+1,1) = cNa*dLa(1)*Lb*Lc*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*dLb(1)*Lc*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*Lb*dLc(1)*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(1)-dLa(1))*LegP2Lc1 + &
+                    cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k, 2*Lc-1)*(2*dLc(1))
+            ! + 2*c*dNa(1)*La*Lb*Lc*LegPLbLa*LegP2Lc1 ! Term always zero
+            grad(l,nbasis+k+1,2) = cNa*dLa(2)*Lb*Lc*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*dLb(2)*Lc*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*Lb*dLc(2)*LegPLbLa*LegP2Lc1 + &
+                    cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(2)-dLa(2))*LegP2Lc1 + &
+                    cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k, 2*Lc-1)*(2*dLc(2))
+            ! + 2*c*dNa(2)*La*Lb*Lc*LegPLbLa*LegP2Lc1 ! Term always zero
+            grad(l,nbasis+k+1,3) = 2*c*dNa(3)*La*Lb*Lc*LegPLbLa*LegP2Lc1
+            ! Rest of the terms always zero
+            ! cNa*dLa(3)*Lb*Lc*LegPLbLa*LegP2Lc1 + &
+            ! cNa*La*dLb(3)*Lc*LegPLbLa*LegP2Lc1 + &
+            ! cNa*La*Lb*dLc(3)*LegPLbLa*LegP2Lc1 + &
+            ! cNa*La*Lb*Lc*H1Basis_dLegendreP(j, Lb-La)*(dLb(3)-dLa(3))*LegP2Lc1 + &
+            ! cNa*La*Lb*Lc*LegPLbLa*H1Basis_dLegendreP(k, 2*Lc-1)*(2*dLc(3))
+          END DO
+        END DO
+        ! nbasis = nbasis + (p-j-3) + 1
+        nbasis = nbasis + MAX(pmax(i)-j-2,0)
+      END DO
+    END DO
+    ! Square faces
+    DO i=3,5
+      ! First and second node must form an edge in upper or lower triangle
+      nonpermuted = (facedir(1,i) >= 1 .AND. facedir(1,i) <= 3 .AND.&
+                     facedir(2,i) >= 1 .AND. facedir(2,i) <= 3) .OR. &
+                    (facedir(1,i) >= 4 .AND. facedir(1,i) <= 6 .AND.&
+                     facedir(2,i) >= 4 .AND. facedir(2,i) <= 6)
+      
+      IF (nonpermuted) THEN
+        dLa = H1Basis_dWedgeL(facedir(1,i))
+        dLb = H1Basis_dWedgeL(facedir(2,i))
+        dNa = H1Basis_dWedgeH(facedir(1,i))
+        dNc = H1Basis_dWedgeH(facedir(4,i))
+      ELSE
+        dLa = H1Basis_dWedgeL(facedir(1,i))
+        dLb = H1Basis_dWedgeL(facedir(4,i))
+        dNa = H1Basis_dWedgeH(facedir(1,i))
+        dNc = H1Basis_dWedgeH(facedir(2,i))
+      END IF
+
+      DO j=2,pmax(i)-2
+        DO k=2,pmax(i)-j          
+          IF (nonpermuted) THEN
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc,vPhi,Phi)
+            DO l=1,nvec
+              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+              Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
+              Na = H1Basis_WedgeH(facedir(1,i), w(l))
+              Nc = H1Basis_WedgeH(facedir(4,i), w(l))
+              
+              vPhi = H1Basis_varPhi(j, Lb-La)
+              Phi = H1Basis_Phi(k, Nc-Na)
+
+              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
+              !                            H1Basis_Phi(k, Nc-Na)
+              grad(l,nbasis+k-1,1) = dLa(1)*Lb*vPhi*Phi+ &
+                      La*dLb(1)*vPhi*Phi + &
+                      La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(1)-dLa(1))*Phi
+              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
+              grad(l,nbasis+k-1,2) = dLa(2)*Lb*vPhi*Phi+ &
+                      La*dLb(2)*vPhi*Phi + &
+                      La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(2)-dLa(2))*Phi
+              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
+              grad(l,nbasis+k-1,3) = La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(3)-dNa(3))
+              ! Rest of the terms always zero
+              ! dLa(3)*Lb*vPhi*Phi+ &
+              ! La*dLb(3)*vPhi*Phi + &
+              ! La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(3)-dLa(3))*Phi
+            END DO
+          ELSE
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            DO l=1,nvec
+              ! Numbering permuted, switch indices j,k and nodes 2 and 4
+              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
+              Lb = H1Basis_WedgeL(facedir(4,i), u(l), v(l))
+              Na = H1Basis_WedgeH(facedir(1,i), w(l))
+              Nc = H1Basis_WedgeH(facedir(2,i), w(l))
+              
+              vPhi = H1Basis_varPhi(k, Lb-La)
+              Phi = H1Basis_Phi(j, Nc-Na)
+
+              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
+              !                            H1Basis_Phi(j, Nc-Na)
+              grad(l,nbasis+k-1,1) = dLa(1)*Lb*vPhi*Phi+ &
+                      La*dLb(1)*vPhi*Phi + &
+                      La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(1)-dLa(1))*Phi
+              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
+              grad(l,nbasis+k-1,2) = dLa(2)*Lb*vPhi*Phi+ &
+                      La*dLb(2)*vPhi*Phi + &
+                      La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(2)-dLa(2))*Phi
+              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
+              grad(l,nbasis+k-1,3) = La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(3)-dNa(3))
+              ! Rest of the terms always zero
+              ! dLa(3)*Lb*vPhi*Phi+ &
+              ! La*dLb(3)*vPhi*Phi + &
+              ! La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(3)-dLa(3))*Phi
+            END DO
+          END IF
+        END DO
+        ! nbasis = nbasis + (pmax(i)-j-2) + 1
+        nbasis = nbasis + MAX(pmax(i)-j-1,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_SD_dWedgeFaceP
+  
+  SUBROUTINE H1Basis_SD_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    
+    INTEGER :: i, j, k, l
+    REAL(KIND=dp) :: L1, L2, L3, L2_L1, L3_1
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    DO i=0,pmax-5
+      DO j=0,pmax-5-i
+        DO k=2,pmax-3-i-j
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, L2_L1, L3_1)
+          DO l=1,nvec
+            L1 = H1Basis_WedgeL(1,u(l),v(l))
+            L2 = H1Basis_WedgeL(2,u(l),v(l))
+            L3 = H1Basis_WedgeL(3,u(l),v(l))
+            L2_L1 = L2-L1
+            L3_1 = 2d0*L3-1
+
+            ! Get value of bubble function
+            fval(l,nbasis+k-1) = L1*L2*L3*H1Basis_LegendreP(i,L2_L1)*&
+                    H1Basis_LegendreP(j,L3_1)*H1Basis_Phi(k,w(l))
+          END DO
+        END DO
+        ! nbasis = nbasis + (pmax-3-i-j)-2+1
+        nbasis = nbasis + MAX(pmax-4-i-j,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_SD_WedgeBubbleP
+
+  SUBROUTINE H1Basis_SD_dWedgeBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    
+    ! Parameters
+    INTEGER :: i,j,k,l
+    ! Variables
+    REAL(KIND=dp) :: L1,L2,L3,Legi,Legj,phiW,L2_L1,L3_1
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64      
+
+    DO i=0,pmax-5
+      DO j=0,pmax-5-i
+        DO k=2,pmax-3-i-j
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, Legi, Legj, phiW, L2_L1, L3_1)
+          DO l=1,nvec
+
+            ! Values of function L
+            L1 = H1Basis_WedgeL(1,u(l),v(l))
+            L2 = H1Basis_WedgeL(2,u(l),v(l))
+            L3 = H1Basis_WedgeL(3,u(l),v(l))
+            
+            L2_L1 = L2-L1
+            L3_1 = 2d0*L3-1
+
+            Legi = H1Basis_LegendreP(i,L2_L1)
+            Legj = H1Basis_LegendreP(j,L3_1)
+            phiW = H1Basis_Phi(k,w(l))
+            
+            grad(l,nbasis+k-1,1) = ((-1d0/2)*L2*L3*Legi*Legj + &
+                    L1*(1d0/2)*L3*Legi*Legj +&
+                    L1*L2*L3*H1Basis_dLegendreP(i,L2_L1)*Legj)*phiW
+            grad(l,nbasis+k-1,2) = ((-SQRT(3d0)/6)*L2*L3*Legi*Legj + &
+                    L1*(-SQRT(3d0)/6)*L3*Legi*Legj +&
+                    L1*L2*(SQRT(3D0)/3)*Legi*Legj + &
+                    L1*L2*L3*Legi*H1Basis_dLegendreP(j,L3_1)*(2d0*SQRT(3D0)/3))*phiW 
+            grad(l,nbasis+k-1,3) = L1*L2*L3*Legi*Legj*H1Basis_dPhi(k,w(l))
+          END DO
+        END DO
+        ! nbasis = nbasis + (pmax-3-i-j)-2+1
+        nbasis = nbasis + MAX(pmax-4-i-j,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_SD_dWedgeBubbleP
+
+
+! --- end serendipity wedge
+
+
   SUBROUTINE H1Basis_WedgeNodalP(nvec, u, v, w, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -1638,19 +2309,21 @@ CONTAINS
 
     REAL(KIND=dp) :: La, Lb, Na, Nb
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: i,j,k,l
+    INTEGER :: i,j,k,l, node1, node2
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
     ! For each triangle face edge
     DO i=1,6
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
       DO j=2,pmax(i)
         !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
         DO k=1,nvec
-          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
-          Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
-          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
-          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
-          fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
+          La = H1Basis_WedgeL(node1, u(k), v(k))
+          Lb = H1Basis_WedgeL(node2, u(k), v(k))
+          Na = fval(k,node1)
+          Nb = fval(k,node2)
+          fval(k, nbasis+j-1) = Na*Nb*H1Basis_varPhi(j,Lb-La)
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1659,13 +2332,16 @@ CONTAINS
       
     ! For each square face edge
     DO i=7,9
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
       DO j=2,pmax(i)
-        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
         DO k=1,nvec
-          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
-          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
-          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
-          fval(k, nbasis+j-1) = La*H1Basis_Phi(j, Nb-Na)
+          La = H1Basis_WedgeH(node1, w(k))
+          Lb = H1Basis_WedgeH(node2, w(k))
+          Na = fval(k,node1)
+          Nb = fval(k,node2)
+          fval(k, nbasis+j-1) = Na*Nb*H1Basis_varPhi(j, Lb-La)
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1685,38 +2361,36 @@ CONTAINS
     INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
 
     REAL(KIND=dp) :: La, Lb, Na, Nb, Phi, dPhi, vPhi, dVPhi, &
-          dLa(3), dLb(3), dNa(3), dNb(3), NaNb
+          dLa(3), dLb(3), dNa(3), dNb(3), N(VECTOR_BLOCK_LENGTH,nbasismax)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: i,j,k
+    INTEGER :: i,j,k, node1, node2, nnb
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    nnb = 0; CALL H1Basis_WedgeNodalP(nvec, u, v, w, nbasismax, n, nnb )
 
     ! For each triangle face edge
     DO i=1,6
-      dLa = H1Basis_dWedgeL(edgedir(1,i))
-      dLb = H1Basis_dWedgeL(edgedir(2,i))
-      dNa = H1Basis_dWedgeH(edgedir(1,i))
-      dNb = H1Basis_dWedgeH(edgedir(2,i))
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+      dLa = H1Basis_dWedgeL(node1)
+      dLb = H1Basis_dWedgeL(node2)
+
       DO j=2,pmax(i)
-        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, vPhi, dVPhi, NaNb)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, dNa, dNb, vPhi, dVPhi)
         DO k=1,nvec
-          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
-          Lb = H1Basis_WedgeL(edgedir(2,i), u(k), v(k))
-          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
-          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
-          vPhi=H1Basis_varPhi(j,Lb-La)
-          dVPhi=H1Basis_dVarPhi(j,Lb-La)
-          NaNb=1+Na+Nb
+          La = H1Basis_WedgeL(node1, u(k), v(k))
+          Lb = H1Basis_WedgeL(node2, u(k), v(k))
+
+          Na = N(k,node1)
+          Nb = N(k,node2)
+          dNa = grad(k,node1,:)
+          dNb = grad(k,node2,:)
+
+          vPhi = H1Basis_varPhi(j,Lb-La)
+          dVPhi = H1Basis_dVarPhi(j,Lb-La)
           ! fval(k, nbasis+j-1) = c*La*Lb*H1Basis_varPhi(j,Lb-La)*(1+Na+Nb)
-          grad(k, nbasis+j-1,1) = c*dLa(1)*Lb*vPhi*NaNb + &
-                c*La*dLb(1)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(1)-dLa(1))*NaNb
-                ! + c*La*Lb*vPhi*(dNb(1)+dNa(1)) ! Last term zero
-          grad(k, nbasis+j-1,2) = c*dLa(2)*Lb*vPhi*NaNb + &
-                c*La*dLb(2)*vPhi*NaNb + c*La*Lb*dVPhi*(dLb(2)-dLa(2))*NaNb
-                ! c*La*Lb*vPhi*(dNb(2)+dNa(2)) ! Last term zero
-          grad(k, nbasis+j-1,3) = c*La*Lb*vPhi*(dNb(3)+dNa(3))
-                ! c*dLa(3)*Lb*vPhi*NaNb + ! First term zero
-                ! c*La*dLb(3)*vPhi*NaNb + ! Second term zero
-                ! c*La*Lb*dVPhi*(dLb(3)-dLa(3))*NaNb ! Third term zero
+
+          grad(k, nbasis+j-1,:) = dNa*Nb*vPhi + Na*dNb*vPhi + Na*Nb*dvPhi*(dLb-dLa)
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1725,21 +2399,25 @@ CONTAINS
       
     ! For each square face edge
     DO i=7,9
-      dLa = H1Basis_dWedgeL(edgedir(1,i))
-      dNa = H1Basis_dWedgeH(edgedir(1,i))
-      dNb = H1Basis_dWedgeH(edgedir(2,i))
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+      dLa = H1Basis_dWedgeH(node1)
+      dLb = H1Basis_dWedgeH(node2)
       DO j=2,pmax(i)
-        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb, Phi, dPhi)
+        !_ELMER_OMP_SIMD PRIVATE(La, Na, Nb, dNa, dNb, Phi, dPhi)
         DO k=1,nvec
-          La = H1Basis_WedgeL(edgedir(1,i), u(k), v(k))
-          Na = H1Basis_WedgeH(edgedir(1,i), w(k))
-          Nb = H1Basis_WedgeH(edgedir(2,i), w(k))
-          Phi = H1Basis_Phi(j, Nb-Na)
-          dPhi = H1Basis_dPhi(j,Nb-Na)
-          
-          grad(k, nbasis+j-1,1) = dLa(1)*Phi+La*dPhi*(dNb(1)-dNa(1))
-          grad(k, nbasis+j-1,2) = dLa(2)*Phi+La*dPhi*(dNb(2)-dNa(2))
-          grad(k, nbasis+j-1,3) = dLa(3)*Phi+La*dPhi*(dNb(3)-dNa(3)) 
+          La = H1Basis_WedgeH(node1, w(k))
+          Lb = H1Basis_WedgeH(node2, w(k))
+
+          vPhi = H1Basis_varPhi(j, Lb-La)
+          dvPhi = H1Basis_dvarPhi(j, Lb-La)
+
+          Na = N(k,node1)
+          Nb = N(k,node2)
+          dNa = grad(k,node1,:)
+          dNb = grad(k,node2,:)
+
+          grad(k, nbasis+j-1,:) = dNa*Nb*vPhi + Na*dNb*vPhi + Na*Nb*dvPhi*(dLb-dLa)
         END DO
       END DO
       ! nbasis = nbasis + (pmax(i)-2) + 1
@@ -1758,9 +2436,9 @@ CONTAINS
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
 
-    REAL(KIND=dp) :: La, Lb, Lc, Na, Nc
+    REAL(KIND=dp) :: La, Lb, Lc, Na, Nb, Lha, Lhc
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: i,j,k,l
+    INTEGER :: i,j,k,l, node1, node2, node3, node4
     LOGICAL :: nonpermuted
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
@@ -1787,38 +2465,51 @@ CONTAINS
     ! Square faces
     DO i=3,5
       ! First and second node must form an edge in upper or lower triangle
-      nonpermuted = (facedir(1,i) >= 1 .AND. facedir(1,i) <= 3 .AND.&
-                     facedir(2,i) >= 1 .AND. facedir(2,i) <= 3) .OR. &
-                    (facedir(1,i) >= 4 .AND. facedir(1,i) <= 6 .AND.&
-                     facedir(2,i) >= 4 .AND. facedir(2,i) <= 6)
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+
+      nonpermuted = (node1 >= 1 .AND. node1 <= 3 .AND.&
+                     node2 >= 1 .AND. node2 <= 3) .OR. &
+                    (node1 >= 4 .AND. node1 <= 6 .AND.&
+                     node2 >= 4 .AND. node2 <= 6)
+
       
-      DO j=2,pmax(i)-2
-        DO k=2,pmax(i)-j          
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
           IF (nonpermuted) THEN
-            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nb,Lha,Lhc)
             DO l=1,nvec
-              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
-              Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
-              Na = H1Basis_WedgeH(facedir(1,i), w(l))
-              Nc = H1Basis_WedgeH(facedir(4,i), w(l))
-              fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
-                                         H1Basis_Phi(k, Nc-Na)
+              La = H1Basis_WedgeL(node1, u(l), v(l))
+              Lb = H1Basis_WedgeL(node2, u(l), v(l))
+
+              Lha = H1Basis_WedgeH(node1, w(l))
+              Lhc = H1Basis_WedgeH(node4, w(l))
+
+              Na = fval(l,node1)
+              Nb = fval(l,node3)
+
+              fval(l,nbasis+k+1) = Na*Nb*H1Basis_LegendreP(j, Lb-La)*H1Basis_LegendreP(k,Lhc-Lha)
             END DO
           ELSE
-            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nb,Lha,Lhc)
             DO l=1,nvec
               ! Numbering permuted, switch indices j,k and nodes 2 and 4
-              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
-              Lb = H1Basis_WedgeL(facedir(4,i), u(l), v(l))
-              Na = H1Basis_WedgeH(facedir(1,i), w(l))
-              Nc = H1Basis_WedgeH(facedir(2,i), w(l))
-              fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
-                                         H1Basis_Phi(j, Nc-Na)
+              La = H1Basis_WedgeL(node1, u(l), v(l))
+              Lb = H1Basis_WedgeL(node4, u(l), v(l))
+
+              Lha = H1Basis_WedgeH(node1, w(l))
+              Lhc = H1Basis_WedgeH(node2, w(l))
+
+              Na = fval(l,node1)
+              Nb = fval(l,node3)
+
+              fval(l,nbasis+k+1) = Na*Nb*H1Basis_LegendreP(k, Lb-La)*H1Basis_LegendreP(j,Lhc-Lha)
             END DO
           END IF
         END DO
-        ! nbasis = nbasis + (pmax(i)-j-2) + 1
-        nbasis = nbasis + MAX(pmax(i)-j-1,0)
+        nbasis = nbasis + MAX(pmax(i)-1,0)
       END DO
     END DO
   END SUBROUTINE H1Basis_WedgeFaceP
@@ -1834,12 +2525,15 @@ CONTAINS
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
 
-    REAL(KIND=dp) :: La, Lb, Lc, Na, Nc, LegPLbLa, LegP2Lc1, &
-            cNa, vPhi, Phi, dLa(3), dLb(3), dLc(3), dNa(3), dNc(3)
+    REAL(KIND=dp) :: La, Lb, Lc, Lha, Lhc, Na, Nb, Nc, LegPLbLa, LegP2Lc1, &
+            cNa, vPhi, Phi, dLa(3), dLb(3), dLc(3), dLhc(3), dLha(3), dNc(3), &
+                 Legj, Legk, dLegj(3), dLegk(3), dNa(3), dNb(3), N(VECTOR_BLOCK_LENGTH, nbasismax) 
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
-    INTEGER :: i,j,k,l
+    INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
     LOGICAL :: nonpermuted
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    nnb = 0; CALL H1Basis_WedgeNodalP(nvec, u, v, w, nbasismax, n, nnb)
 
     ! Triangle faces
     DO i=1,2
@@ -1885,91 +2579,91 @@ CONTAINS
         nbasis = nbasis + MAX(pmax(i)-j-2,0)
       END DO
     END DO
+
     ! Square faces
     DO i=3,5
+
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+
       ! First and second node must form an edge in upper or lower triangle
-      nonpermuted = (facedir(1,i) >= 1 .AND. facedir(1,i) <= 3 .AND.&
-                     facedir(2,i) >= 1 .AND. facedir(2,i) <= 3) .OR. &
-                    (facedir(1,i) >= 4 .AND. facedir(1,i) <= 6 .AND.&
-                     facedir(2,i) >= 4 .AND. facedir(2,i) <= 6)
+      nonpermuted = (node1 >= 1 .AND. node1 <= 3 .AND.&
+                     node2 >= 1 .AND. node2 <= 3) .OR. &
+                    (node1 >= 4 .AND. node1 <= 6 .AND.&
+                     node2 >= 4 .AND. node2 <= 6)
       
       IF (nonpermuted) THEN
-        dLa = H1Basis_dWedgeL(facedir(1,i))
-        dLb = H1Basis_dWedgeL(facedir(2,i))
-        dNa = H1Basis_dWedgeH(facedir(1,i))
-        dNc = H1Basis_dWedgeH(facedir(4,i))
+        dLa  = H1Basis_dWedgeL(node1)
+        dLb  = H1Basis_dWedgeL(node2)
+        dLha = H1Basis_dWedgeH(node1)
+        dLhc = H1Basis_dWedgeH(node4)
       ELSE
-        dLa = H1Basis_dWedgeL(facedir(1,i))
-        dLb = H1Basis_dWedgeL(facedir(4,i))
-        dNa = H1Basis_dWedgeH(facedir(1,i))
-        dNc = H1Basis_dWedgeH(facedir(2,i))
+        dLa  = H1Basis_dWedgeL(node1)
+        dLb  = H1Basis_dWedgeL(node4)
+        dLha = H1Basis_dWedgeH(node1)
+        dLhc = H1Basis_dWedgeH(node2)
       END IF
 
-      DO j=2,pmax(i)-2
-        DO k=2,pmax(i)-j          
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
           IF (nonpermuted) THEN
-            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc,vPhi,Phi)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lha,Lhc,Na,Nb,dNa,dNb,Legj,Legk,dLegj,dLegk)
             DO l=1,nvec
-              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
-              Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
-              Na = H1Basis_WedgeH(facedir(1,i), w(l))
-              Nc = H1Basis_WedgeH(facedir(4,i), w(l))
-              
-              vPhi = H1Basis_varPhi(j, Lb-La)
-              Phi = H1Basis_Phi(k, Nc-Na)
+              La = H1Basis_WedgeL(node1, u(l), v(l))
+              Lb = H1Basis_WedgeL(node2, u(l), v(l))
 
-              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(j, Lb-La)* &
-              !                            H1Basis_Phi(k, Nc-Na)
-              grad(l,nbasis+k-1,1) = dLa(1)*Lb*vPhi*Phi+ &
-                      La*dLb(1)*vPhi*Phi + &
-                      La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(1)-dLa(1))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
-              grad(l,nbasis+k-1,2) = dLa(2)*Lb*vPhi*Phi+ &
-                      La*dLb(2)*vPhi*Phi + &
-                      La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(2)-dLa(2))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
-              grad(l,nbasis+k-1,3) = La*Lb*vPhi*H1Basis_dPhi(k, Nc-Na)*(dNc(3)-dNa(3))
-              ! Rest of the terms always zero
-              ! dLa(3)*Lb*vPhi*Phi+ &
-              ! La*dLb(3)*vPhi*Phi + &
-              ! La*Lb*H1Basis_dVarPhi(j, Lb-La)*(dLb(3)-dLa(3))*Phi
+              Lha = H1Basis_WedgeH(node1, w(l))
+              Lhc = H1Basis_WedgeH(node4, w(l))
+
+              Na = N(l,node1)
+              Nb = N(l,node3)
+
+              dNa = grad(l,node1,:)
+              dNb = grad(l,node3,:)
+
+              Legj = H1Basis_LegendreP(j,Lb-La)
+              Legk = H1Basis_LegendreP(k,Lhc-Lha)
+
+              dLegj = H1Basis_dLegendreP(j,Lb-La)*(dLb-dLa)
+              dLegk = H1Basis_dLegendreP(k,Lhc-Lha)*(dLhc-dLha)
+
+              grad(l,nbasis+k+1,:) = dNa*Nb*Legj*Legk + Na*dNb*Legj*Legk + &
+                     Na*Nb*dLegj*Legk + Na*Nb*Legj*dLegk
             END DO
           ELSE
-            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Na,Nc)
+            !_ELMER_OMP_SIMD PRIVATE(La,Lb,Lha,Lhc,Na,Nb,dNa,dNb,Legj,Legk,dLegj,dLegk)
             DO l=1,nvec
-              ! Numbering permuted, switch indices j,k and nodes 2 and 4
-              La = H1Basis_WedgeL(facedir(1,i), u(l), v(l))
-              Lb = H1Basis_WedgeL(facedir(4,i), u(l), v(l))
-              Na = H1Basis_WedgeH(facedir(1,i), w(l))
-              Nc = H1Basis_WedgeH(facedir(2,i), w(l))
-              
-              vPhi = H1Basis_varPhi(k, Lb-La)
-              Phi = H1Basis_Phi(j, Nc-Na)
+              La = H1Basis_WedgeL(node1, u(l), v(l))
+              Lb = H1Basis_WedgeL(node4, u(l), v(l))
 
-              ! fval(l,nbasis+k-1) = La*Lb*H1Basis_varPhi(k, Lb-La)* &
-              !                            H1Basis_Phi(j, Nc-Na)
-              grad(l,nbasis+k-1,1) = dLa(1)*Lb*vPhi*Phi+ &
-                      La*dLb(1)*vPhi*Phi + &
-                      La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(1)-dLa(1))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(1)-dNa(1)) ! Term always zero
-              grad(l,nbasis+k-1,2) = dLa(2)*Lb*vPhi*Phi+ &
-                      La*dLb(2)*vPhi*Phi + &
-                      La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(2)-dLa(2))*Phi
-              ! La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(2)-dNa(2)) ! Term always zero
-              grad(l,nbasis+k-1,3) = La*Lb*vPhi*H1Basis_dPhi(j, Nc-Na)*(dNc(3)-dNa(3))
-              ! Rest of the terms always zero
-              ! dLa(3)*Lb*vPhi*Phi+ &
-              ! La*dLb(3)*vPhi*Phi + &
-              ! La*Lb*H1Basis_dVarPhi(k, Lb-La)*(dLb(3)-dLa(3))*Phi
+              Lha = H1Basis_WedgeH(node1, w(l))
+              Lhc = H1Basis_WedgeH(node2, w(l))
+
+              Na = N(l,node1)
+              Nb = N(l,node3)
+
+              dNa = grad(l,node1,:)
+              dNb = grad(l,node3,:)
+
+              Legj = H1Basis_LegendreP(k,Lb-La)
+              Legk = H1Basis_LegendreP(j,Lhc-Lha)
+
+              dLegj = H1Basis_dLegendreP(k,Lb-La)*(dLb-dLa)
+              dLegk = H1Basis_dLegendreP(j,Lhc-Lha)*(dLhc-dLha)
+
+              grad(l,nbasis+k+1,:) = dNa*Nb*Legj*Legk + Na*dNb*Legj*Legk + &
+                     Na*Nb*dLegj*Legk + Na*Nb*Legj*dLegk
             END DO
           END IF
         END DO
-        ! nbasis = nbasis + (pmax(i)-j-2) + 1
-        nbasis = nbasis + MAX(pmax(i)-j-1,0)
+        nbasis = nbasis + MAX(pmax(i)-1,0)
       END DO
     END DO
   END SUBROUTINE H1Basis_dWedgeFaceP
   
+
   SUBROUTINE H1Basis_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -1981,27 +2675,28 @@ CONTAINS
     INTEGER, INTENT(INOUT) :: nbasis
     
     INTEGER :: i, j, k, l
-    REAL(KIND=dp) :: L1, L2, L3, L2_L1, L3_1
+    REAL(KIND=dp) :: L1, L2, L3, s,t
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    DO i=0,pmax-5
-      DO j=0,pmax-5-i
-        DO k=2,pmax-3-i-j
-          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, L2_L1, L3_1)
+    DO i=0,pmax-3
+      DO j=0,pmax-3-i
+        DO k=0,pmax-2
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, s,t)
           DO l=1,nvec
             L1 = H1Basis_WedgeL(1,u(l),v(l))
             L2 = H1Basis_WedgeL(2,u(l),v(l))
             L3 = H1Basis_WedgeL(3,u(l),v(l))
-            L2_L1 = L2-L1
-            L3_1 = 2d0*L3-1
+
+            s = L2-L1
+            t = 2*L3-1
 
             ! Get value of bubble function
-            fval(l,nbasis+k-1) = L1*L2*L3*H1Basis_LegendreP(i,L2_L1)*&
-                    H1Basis_LegendreP(j,L3_1)*H1Basis_Phi(k,w(l))
+            fval(l,nbasis+k+1) = L1*L2*L3*H1Basis_LegendreP(i,s)*&
+                    H1Basis_LegendreP(j,t)*H1Basis_Phi(k+2,w(l))
           END DO
         END DO
         ! nbasis = nbasis + (pmax-3-i-j)-2+1
-        nbasis = nbasis + MAX(pmax-4-i-j,0)
+        nbasis = nbasis + MAX(pmax-1,0)
       END DO
     END DO
   END SUBROUTINE H1Basis_WedgeBubbleP
@@ -2019,13 +2714,18 @@ CONTAINS
     ! Parameters
     INTEGER :: i,j,k,l
     ! Variables
-    REAL(KIND=dp) :: L1,L2,L3,Legi,Legj,phiW,L2_L1,L3_1
+    REAL(KIND=dp) :: L1,L2,L3,Legi,Legj, Legk, dLegi(3), dLegj(3), dLegk(3), &
+                  s,t,ds(3),dt(3), dL1(3),dL2(3),dL3(3)
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64      
 
-    DO i=0,pmax-5
-      DO j=0,pmax-5-i
-        DO k=2,pmax-3-i-j
-          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, Legi, Legj, phiW, L2_L1, L3_1)
+    dL1 = H1Basis_dWedgeL(1)
+    dL2 = H1Basis_dWedgeL(2)
+    dL3 = H1Basis_dWedgeL(3)
+
+    DO i=0,pmax-3
+      DO j=0,pmax-3-i
+        DO k=0,pmax-2
+          !_ELMER_OMP_SIMD PRIVATE(L1, L2, L3, Legi, Legj, Legk, dLegi, dLegj, dLegk, s,t,ds,dt)
           DO l=1,nvec
 
             ! Values of function L
@@ -2033,28 +2733,603 @@ CONTAINS
             L2 = H1Basis_WedgeL(2,u(l),v(l))
             L3 = H1Basis_WedgeL(3,u(l),v(l))
             
-            L2_L1 = L2-L1
-            L3_1 = 2d0*L3-1
+            s = L2-L1
+            t = 2*L3-1
+            ds = dL2-dL1
+            dt = 2*dL3
 
-            Legi = H1Basis_LegendreP(i,L2_L1)
-            Legj = H1Basis_LegendreP(j,L3_1)
-            phiW = H1Basis_Phi(k,w(l))
-            
-            grad(l,nbasis+k-1,1) = ((-1d0/2)*L2*L3*Legi*Legj + &
-                    L1*(1d0/2)*L3*Legi*Legj +&
-                    L1*L2*L3*H1Basis_dLegendreP(i,L2_L1)*Legj)*phiW
-            grad(l,nbasis+k-1,2) = ((-SQRT(3d0)/6)*L2*L3*Legi*Legj + &
-                    L1*(-SQRT(3d0)/6)*L3*Legi*Legj +&
-                    L1*L2*(SQRT(3D0)/3)*Legi*Legj + &
-                    L1*L2*L3*Legi*H1Basis_dLegendreP(j,L3_1)*(2d0*SQRT(3D0)/3))*phiW 
-            grad(l,nbasis+k-1,3) = L1*L2*L3*Legi*Legj*H1Basis_dPhi(k,w(l))
+            Legi = H1Basis_LegendreP(i,s)
+            Legj = H1Basis_LegendreP(j,t)
+            Legk = H1Basis_Phi(k+2,w(l))
+
+            dLegi = H1Basis_dLegendreP(i,s)*ds
+            dLegj = H1Basis_dLegendreP(j,t)*dt
+            dLegk = H1Basis_dPhi(k+2,w(l))*[0,0,1]
+
+            grad(l,nbasis+k+1,:) = dL1*L2*L3*Legi*Legj*Legk + L1*dL2*L3*Legi*Legj*Legk + &
+                    L1*L2*dL3*Legi*Legj*Legk + L1*L2*L3*dLegi*Legj*Legk + &
+                    L1*L2*L3*Legi*dLegj*Legk + L1*L2*L3*Legi*Legj*dLegk
           END DO
         END DO
         ! nbasis = nbasis + (pmax-3-i-j)-2+1
-        nbasis = nbasis + MAX(pmax-4-i-j,0)
+        nbasis = nbasis + MAX(pmax-1,0)
       END DO
     END DO
   END SUBROUTINE H1Basis_dWedgeBubbleP
+
+!------------------------------------------------------------------------------
+!>     Pyramid nodal basis at points (u,v,w)
+!------------------------------------------------------------------------------
+  SUBROUTINE H1Basis_PyramidNodalP(nvec, u, v, w, nbasismax, fval, nbasis)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u,v,w
+    ! Result
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER :: j
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: s, sq2 = SQRT(2.0_dp)
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+      !_ELMER_OMP_SIMD
+      DO j=1,nvec
+        s = w(j) / sq2
+        fval(j,nbasis+1) = (1-u(j)-v(j)-s+u(j)*v(j)/(1-s))/4
+        fval(j,nbasis+2) = (1+u(j)-v(j)-s-u(j)*v(j)/(1-s))/4
+        fval(j,nbasis+3) = (1+u(j)+v(j)-s+u(j)*v(j)/(1-s))/4
+        fval(j,nbasis+4) = (1-u(j)+v(j)-s-u(j)*v(j)/(1-s))/4
+        fval(j,nbasis+5) =  s
+      END DO
+      nbasis = nbasis + 5
+    END SUBROUTINE H1Basis_PyramidNodalP
+
+
+!------------------------------------------------------------------------------
+!>     Gradient of pyramids nodal basis at point (u,v,w)
+!------------------------------------------------------------------------------
+  SUBROUTINE H1Basis_dPyramidNodalP(nvec, u, v, w, nbasismax, grad, nbasis)
+    IMPLICIT NONE
+
+    ! Parameters
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u,v,w
+    ! Result
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER :: j
+    REAL(KIND=dp) :: s, sq2=SQRT(2.0_dp), sq42=4*SQRT(2._dp)
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
+
+      !_ELMER_OMP_SIMD
+      DO j=1,nvec
+        s = v(j)/(1-w(j)/sq2)
+        grad(j,nbasis+1,1) = (-1 + s)/4
+        grad(j,nbasis+2,1) = ( 1 - s)/4
+        grad(j,nbasis+3,1) = ( 1 + s)/4
+        grad(j,nbasis+4,1) = (-1 - s)/4
+        grad(j,nbasis+5,1) = 0
+      END DO
+
+      !_ELMER_OMP_SIMD
+      DO j=1,nvec
+        s = u(j)/(1-w(j)/sq2)
+        grad(j,nbasis+1,2) = (-1 + s)/4
+        grad(j,nbasis+2,2) = (-1 - s)/4
+        grad(j,nbasis+3,2) = ( 1 + s)/4
+        grad(j,nbasis+4,2) = ( 1 - s)/4
+        grad(j,nbasis+5,2) = 0
+      END DO
+
+      !_ELMER_OMP_SIMD
+      DO j=1,nvec
+        s = u(j)*v(j)/(1-w(j)/sq2)**2
+        grad(j,nbasis+1,3) = (-1 + s)/sq42
+        grad(j,nbasis+2,3) = (-1 - s)/sq42
+        grad(j,nbasis+3,3) = (-1 + s)/sq42
+        grad(j,nbasis+4,3) = (-1 - s)/sq42
+        grad(j,nbasis+5,3) = 1/sq2
+      END DO
+      nbasis = nbasis + 5
+  END SUBROUTINE H1Basis_dPyramidnodalP
+
+    ! Define affine coordinates for pyramid square face
+    FUNCTION H1Basis_PyramidL(which, u, v) RESULT(value)
+      IMPLICIT NONE
+
+      ! Parameters
+      INTEGER, INTENT(IN) :: which
+      REAL(KIND=dp), INTENT(IN) :: u,v
+      ! Variables
+      REAL(KIND=dp) :: value
+      
+      SELECT CASE (which)
+      CASE (1)
+         value = ((1-u)+(1-v))/2 
+      CASE (2)
+         value = ((1+u)+(1-v))/2
+      CASE (3)
+         value = ((1+u)+(1+v))/2
+      CASE (4)
+         value = ((1-u)+(1+v))/2
+      CASE DEFAULT
+         CALL Fatal('PElementBase::PyramidL','Unknown affine coordinate for square face')
+      END SELECT
+    END FUNCTION H1Basis_PyramidL
+
+    FUNCTION H1Basis_dPyramidL(which) RESULT(grad)
+      IMPLICIT NONE
+      
+      ! Parameters
+      INTEGER, INTENT(IN) :: which
+      ! Variables
+      REAL(KIND=dp) :: grad(3)
+
+      SELECT CASE (which)
+      CASE (1)
+         grad = [-1d0/2,-1d0/2, 0d0 ]
+      CASE (2)
+         grad = [ 1d0/2,-1d0/2, 0d0 ]
+      CASE (3)
+         grad = [ 1d0/2, 1d0/2, 0d0 ]
+      CASE (4)
+         grad = [-1d0/2, 1d0/2, 0d0 ]
+      CASE DEFAULT
+         CALL Fatal('PElementBase::dPyramidL','Unknown affine coordinate for square face')
+      END SELECT
+    END FUNCTION H1Basis_dPyramidL
+
+
+    FUNCTION H1Basis_PyramidTL(which, u, v, w) RESULT(value)
+      IMPLICIT NONE
+      
+      ! Parameters
+      INTEGER, INTENT(IN) :: which
+      REAL(KIND=dp), INTENT(IN) :: u,v,w 
+      ! Variables
+      REAL(KIND=dp) :: value,s
+      
+      value = 0
+      s = w/SQRT(2.0_dp)
+      SELECT CASE(which)
+      CASE (1)
+         value = (2-u-v-s)/2
+      CASE (2)
+         value = (2+u-v-s)/2
+      CASE (3)
+         value = (2+u+v-s)/2
+      CASE (4)
+         value = (2-u+v-s)/2
+      CASE (5)
+         value = s
+      CASE DEFAULT
+         CALL Fatal('PElementBase::PyramidTL','Unknown function L for brick')
+      END SELECT
+    END FUNCTION H1Basis_PyramidTL
+
+    FUNCTION H1Basis_dPyramidTL(which) RESULT(grad)
+      IMPLICIT NONE
+      
+      ! Parameters
+      INTEGER, INTENT(IN) :: which
+      ! Variables
+      REAL(KIND=dp) :: grad(3),s
+      
+      grad = 0
+      SELECT CASE(which)
+      CASE (1)
+         grad(1) = -1
+         grad(2) = -1
+         grad(3) = -1
+      CASE (2)
+         grad(1) =  1
+         grad(2) = -1
+         grad(3) = -1
+      CASE (3)
+         grad(1) =  1
+         grad(2) =  1
+         grad(3) = -1
+      CASE (4)
+         grad(1) = -1
+         grad(2) =  1
+         grad(3) = -1
+      CASE (5)
+         grad(3) =  2
+      CASE DEFAULT
+         CALL Fatal('PElementBase::PyramidTL','Unknown function L for brick')
+      END SELECT
+      grad = grad/2
+      grad(3) = grad(3)/SQRT(2._dp)
+    END FUNCTION H1Basis_dPyramidTL
+
+
+
+  SUBROUTINE H1Basis_PyramidEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, Na, Nb
+    REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
+    INTEGER :: i,j,k,l, node1, node2, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    DO i=1,4 ! square face
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
+        DO k=1,nvec
+          Na = fval(k,node1)
+          Nb = fval(k,node2)
+          La = H1Basis_PyramidL(node1,u(k),v(k))
+          Lb = H1Basis_PyramidL(node2,u(k),v(k))
+
+          fval(k,nbasis+j-1) = Na*Nb*H1Basis_varPhi(j,Lb-La)
+        END DO
+      END DO
+      nbasis = nbasis + MAX(pmax(i)-1,0)
+    END DO
+
+    DO i=5,8 ! triangular faces
+      Node1 = edgedir(1,i)
+      Node2 = edgedir(2,i)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
+        DO k=1,nvec
+          Na = fval(k,node1)
+          Nb = fval(k,node2)
+          La = H1Basis_PyramidTL(node1,u(k),v(k),w(k))
+          Lb = H1Basis_PyramidTL(node2,u(k),v(k),w(k))
+          fval(k,nbasis+j-1) = Na*Nb*H1Basis_varPhi(j,Lb-La)
+        END DO
+      END DO
+      nbasis = nbasis + MAX(pmax(i)-1,0)
+    END DO
+  END SUBROUTINE H1Basis_PyramidEdgeP
+
+
+  SUBROUTINE H1Basis_dPyramidEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, dLa(3), dLb(3), Na, Nb, dNa(3), dNb(3), Phi, dPhi(3)
+    INTEGER :: i,j,k,l, node1, node2, nnb
+!!!!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
+
+    REAL(KIND=dp) :: s, sq2=SQRT(2.0_dp)
+
+    nnb=0; CALL H1Basis_PyramidNodalP(nvec, u, v, w, nbasismax, n, nnb)
+
+    DO i=1,4 ! square face
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+
+      dLa = H1Basis_dPyramidL(node1)
+      dLb = H1Basis_dPyramidL(node2)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, dNa, dNb, Phi, dPhi)
+        DO k=1,nvec
+          Na = N(k,node1)
+          Nb = N(k,node2)
+
+          dNa = grad(k,node1,:)
+          dNb = grad(k,node2,:)
+
+          La = H1Basis_PyramidL(node1,u(k),v(k))
+          Lb = H1Basis_PyramidL(node2,u(k),v(k))
+
+          Phi = H1Basis_varPhi(j,Lb-La)
+          dPhi = H1Basis_dvarPhi(j,Lb-La)*(dLb-dLa)
+
+          grad(k,nbasis+j-1,:) = dNa*Nb*Phi + Na*dNb*Phi + Na*Nb*dPhi
+        END DO
+      END DO
+      nbasis = nbasis + MAX(pmax(i)-1,0)
+    END DO
+
+    DO i=5,8 ! triangular faces
+      Node1 = edgedir(1,i)
+      Node2 = edgedir(2,i)
+
+      dLa = H1Basis_dPyramidTL(node1)
+      dLb = H1Basis_dPyramidTL(node2)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, dNa, dNb, Phi, dPhi)
+        DO k=1,nvec
+          Na = N(k,node1)
+          Nb = N(k,node2)
+          dNa = grad(k,node1,:)
+          dNb = grad(k,node2,:)
+
+          La = H1Basis_PyramidTL(node1,u(k),v(k),w(k))
+          Lb = H1Basis_PyramidTL(node2,u(k),v(k),w(k))
+
+          Phi = H1Basis_varPhi(j,Lb-La)
+          dPhi = H1Basis_dvarPhi(j,Lb-La)*(dLb-dLa)
+
+          grad(k,nbasis+j-1,:) = dNa*Nb*Phi + Na*dNb*Phi + Na*Nb*dPhi
+        END DO
+      END DO
+      nbasis = nbasis + MAX(pmax(i)-1,0)
+    END DO
+  END SUBROUTINE H1Basis_dPyramidEdgeP
+
+
+
+  SUBROUTINE H1Basis_PyramidFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc
+    INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    DO i=1,1 ! square face
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Pa, Pb)
+          DO l=1,nvec
+            Pa = fval(l,node1)
+            Pb = fval(l,node3)
+
+            La = H1Basis_PyramidL(node1,u(l),v(l))
+            Lb = H1Basis_PyramidL(node2,u(l),v(l))
+            Lc = H1Basis_PyramidL(node4,u(l),v(l))
+            fval(l,nbasis+k+1) = Pa*Pb*H1Basis_LegendreP(j,Lb-La)*H1Basis_LegendreP(k,Lc-La)
+          END DO
+        END DO
+        nbasis = nbasis + pmax(i)-1
+      END DO
+    END DO
+
+    DO i=2,5 ! tri face
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      DO j=0,pmax(i)-3
+        DO k=0,pmax(i)-3-j
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Pa, Pb, Pc)
+          DO l=1,nvec
+            Pa = fval(l,node1)
+            Pb = fval(l,node2)
+            Pc = fval(l,node3)
+
+            La = H1Basis_PyramidTL(node1,u(l),v(l),w(l))
+            Lb = H1Basis_PyramidTL(node2,u(l),v(l),w(l))
+            Lc = H1Basis_PyramidTL(node3,u(l),v(l),w(l))
+            fval(l,nbasis+k+1) = Pa*Pb*Pc*H1Basis_LegendreP(j,Lb-La)*H1Basis_LegendreP(k,2*Lc-1)
+          END DO
+        END DO
+        nbasis = nbasis + MAX(pmax(i)-j-2,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_PyramidFaceP
+
+
+  SUBROUTINE H1Basis_dPyramidFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj
+    REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj
+    INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
+
+    nnb = 0; CALL H1Basis_PyramidNodalP(nvec,u,v,w,nbasismax,n,nnb)
+
+    DO i=1,1 ! square face
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+
+      dLa = H1Basis_dPyramidL(node1)
+      dLb = H1Basis_dPyramidL(node2)
+      dLc = H1Basis_dPyramidL(node4)
+
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Pa, Pb, dPa, dPb, Legi, Legj, dLegi, dLegj)
+          DO l=1,nvec
+            Pa = n(l,node1)
+            Pb = n(l,node3)
+
+            dPa = grad(l,node1,:)
+            dPb = grad(l,node3,:)
+
+            La = H1Basis_PyramidL(node1,u(l),v(l))
+            Lb = H1Basis_PyramidL(node2,u(l),v(l))
+            Lc = H1Basis_PyramidL(node4,u(l),v(l))
+
+            Legi = H1Basis_LegendreP(j,Lb-La)
+            Legj = H1Basis_LegendreP(k,Lc-La)
+
+            dLegi = H1Basis_dLegendreP(j,Lb-La)*(dLb-dLa)
+            dLegj = H1Basis_dLegendreP(k,Lc-La)*(dLc-dLa)
+ 
+            grad(l,nbasis+k+1,:) = dPa*Pb*Legi*Legj + Pa*dPb*Legi*Legj + &
+                                   Pa*Pb*dLegi*Legj + Pa*Pb*Legi*dLegj
+          END DO
+        END DO
+        nbasis = nbasis + pmax(i)-1
+      END DO
+    END DO
+
+    DO i=2,5 ! tri face
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+ 
+      dLa = H1Basis_dPyramidTL(node1)
+      dLb = H1Basis_dPyramidTL(node2)
+      dLc = H1Basis_dPyramidTL(node3)
+
+      DO j=0,pmax(i)-3
+        DO k=0,pmax(i)-3-j
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Pa, Pb, Pc, dPa, dPb, dPc, Legi, Legj, dLegi, dLegj)
+          DO l=1,nvec
+            Pa = n(l,node1)
+            Pb = n(l,node2)
+            Pc = n(l,node3)
+
+            dPa = grad(l,node1,:)
+            dPb = grad(l,node2,:)
+            dPc = grad(l,node3,:)
+
+            La = H1Basis_PyramidTL(node1,u(l),v(l),w(l))
+            Lb = H1Basis_PyramidTL(node2,u(l),v(l),w(l))
+            Lc = H1Basis_PyramidTL(node3,u(l),v(l),w(l))
+
+            Legi = H1Basis_LegendreP(j,Lb-La)
+            Legj = H1Basis_LegendreP(k,2*Lc-1)
+
+            dLegi = H1Basis_dLegendreP(j,Lb-La)*(dLb-dLa)
+            dLegj = H1Basis_dLegendreP(k,2*Lc-1)*2*dLc
+ 
+            grad(l,nbasis+k+1,:) = dPa*Pb*Pc*Legi*Legj + Pa*dPb*Pc*Legi*Legj + &
+                                   Pa*Pb*dPc*Legi*Legj + Pa*Pb*Pc*dLegi*Legj + &
+                                   Pa*Pb*Pc*Legi*dLegj
+          END DO
+        END DO
+        nbasis = nbasis + MAX(pmax(i)-j-2,0)
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_dPyramidFaceP
+
+  SUBROUTINE H1Basis_PyramidBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj, Legk, s
+    REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj
+    INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    ! Calculate value of function
+    DO i=0,pmax-3
+      DO j=0,pmax-i-3
+        DO k=0,pmax-i-j-3
+          nbasis = nbasis + 1
+          !_ELMER_OMP_SIMD PRIVATE(Pa, Pb, Pc, Legi, Legj, Legk,s)
+          DO l=1,nvec
+             s = w(l) / SQRT(2._dp)
+             Pa = fval(l,1)
+             Pb = fval(l,3)
+             Pc = fval(l,5)
+             Legi = H1Basis_LegendreP(i,u(l))
+             Legj = H1Basis_LegendreP(j,v(l))
+             Legk = H1Basis_LegendreP(k,2*s-1)
+             fval(l,nbasis) = Pa*Pb*Pc*Legi*Legj*Legk
+          END DO
+        END DO
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_PyramidBubbleP
+
+  SUBROUTINE H1Basis_dPyramidBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax) :: n
+    REAL(KIND=dp) :: La, Lb, Lc, Pa, Pb, Pc, Legi, Legj, Legk, s
+    REAL(KIND=dp), DIMENSION(3) :: dLa, dLb, dLc, dPa, dPb, dPc, dLegi, dLegj, dLegk
+    INTEGER :: i,j,k,l, node1, node2, node3, node4, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64
+
+
+    nnb = 0; CALL H1Basis_PyramidNodalP(nvec,u,v,w,nbasismax,n,nnb)
+    ! Calculate value of function
+    DO i=0,pmax-3
+      DO j=0,pmax-i-3
+        DO k=0,pmax-i-j-3
+          nbasis = nbasis + 1
+          !_ELMER_OMP_SIMD PRIVATE(Pa, Pb, Pc, Legi, Legj, Legk, dPa, dPb, dPc, dLegi, dLegj, dLegk, s)
+          DO l=1,nvec
+             s = w(l) / SQRT(2._dp)
+             Pa = N(l,1)
+             Pb = N(l,3)
+             Pc = N(l,5)
+
+             dPa = grad(l,1,:)
+             dPb = grad(l,3,:)
+             dPc = grad(l,5,:)
+
+             Legi = H1Basis_LegendreP(i,u(l))
+             Legj = H1Basis_LegendreP(j,v(l))
+             Legk = H1Basis_LegendreP(k,2*s-1)
+
+             dLegi = 0; dLegj=0; dLegk=0
+             dLegi(1) = H1Basis_dLegendreP(i,u(l))
+             dLegj(2) = H1Basis_dLegendreP(j,v(l))
+             dLegk(3) = H1Basis_dLegendreP(k,2*s-1)*2/SQRT(2._dp)
+
+             grad(l,nbasis,:) = dPa*Pb*Pc*Legi*Legj*Legk + Pa*dPb*Pc*Legi*Legj*Legk + &
+                                Pa*Pb*dPc*Legi*Legj*Legk + Pa*Pb*Pc*dLegi*Legj*Legk + &
+                                Pa*Pb*Pc*Legi*dLegj*Legk + Pa*Pb*Pc*Legi*Legj*dLegk
+          END DO
+        END DO
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_dPyramidBubbleP
+
 
   SUBROUTINE H1Basis_BrickNodal(nvec, u, v, w, nbasismax, fval, nbasis)
     IMPLICIT NONE
@@ -2302,8 +3577,11 @@ CONTAINS
       dLb=[ 0, 1, 0 ] ! 1+v
     END SELECT
   END SUBROUTINE H1Basis_dBrickEdgeL
+
+! --- start serendipity brick
+
   
-  SUBROUTINE H1Basis_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
+  SUBROUTINE H1Basis_SD_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2334,9 +3612,9 @@ CONTAINS
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
     END DO
-  END SUBROUTINE H1Basis_BrickEdgeP
+  END SUBROUTINE H1Basis_SD_BrickEdgeP
   
-  SUBROUTINE H1Basis_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
+  SUBROUTINE H1Basis_SD_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2383,9 +3661,9 @@ CONTAINS
       ! nbasis = nbasis + (pmax(i)-2) + 1
       nbasis = nbasis + pmax(i) - 1
     END DO
-  END SUBROUTINE H1Basis_dBrickEdgeP
+  END SUBROUTINE H1Basis_SD_dBrickEdgeP
   
-  SUBROUTINE H1Basis_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
+  SUBROUTINE H1Basis_SD_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2420,9 +3698,9 @@ CONTAINS
         nbasis = nbasis + MAX(pmax(i)-j-1,0)
       END DO
     END DO
-  END SUBROUTINE H1Basis_BrickFaceP
+  END SUBROUTINE H1Basis_SD_BrickFaceP
   
-  SUBROUTINE H1Basis_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
+  SUBROUTINE H1Basis_SD_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2473,9 +3751,9 @@ CONTAINS
         nbasis = nbasis + MAX(pmax(i)-j-1,0)
       END DO
     END DO
-  END SUBROUTINE H1Basis_dBrickFaceP
+  END SUBROUTINE H1Basis_SD_dBrickFaceP
   
-  SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+  SUBROUTINE H1Basis_SD_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2501,9 +3779,9 @@ CONTAINS
         nbasis = nbasis+MAX(pmax-i-j-1,0)
       END DO
     END DO
-  END SUBROUTINE H1Basis_BrickBubbleP
+  END SUBROUTINE H1Basis_SD_BrickBubbleP
 
-  SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+  SUBROUTINE H1Basis_SD_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -2536,9 +3814,289 @@ CONTAINS
         nbasis = nbasis+MAX(pmax-i-j-1,0)
       END DO
     END DO
+  END SUBROUTINE H1Basis_SD_dBrickBubbleP
+
+
+! --- end serendipity brick
+  
+  SUBROUTINE H1Basis_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+
+    REAL(KIND=dp) :: La, Lb, Na, Nb, Lp(nvec,8)
+    INTEGER :: i,j,k,l, node1, node2, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    DO i=1,8
+      !_ELMER_OMP_SIMD
+      DO k=1,nvec
+        Lp(k,i) = H1Basis_BrickL(i, u(k), v(k), w(k))
+      END DO
+    END DO
+
+    ! For each edge
+    DO i=1,12
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb)
+        DO k=1,nvec
+          Na = fval(k, node1)
+          Nb = fval(k, node2)
+          La = Lp(k, node1)
+          Lb = Lp(k, node2)
+          fval(k, nbasis+j-1) = Na*Nb*H1Basis_varPhi(j, Lb-La)
+        END DO
+      END DO
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_BrickEdgeP
+  
+  SUBROUTINE H1Basis_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: edgedir
+    REAL(KIND=dp) :: La, Lb, Na, Nb, Phi, dPhi, dLa(3), Lp(nvec,8), &
+            dLb(3), dNa(3), dNb(3), N(VECTOR_BLOCK_LENGTH, nbasismax)
+    INTEGER :: i,j,k, node1, node2, nnb
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    nnb = 0; CALL H1Basis_BrickNodal(nvec, u, v, w, nbasismax, n, nnb )
+
+    DO i=1,8
+      !_ELMER_OMP_SIMD
+      DO k=1,nvec
+        Lp(k,i) = H1Basis_BrickL(i, u(k), v(k), w(k))
+      END DO
+    END DO
+
+    ! For each edge
+    DO i=1,12
+      node1 = edgedir(1,i)
+      node2 = edgedir(2,i)
+
+      dLa = H1Basis_dBrickL(node1)
+      dLb = H1Basis_dBrickL(node2)
+
+      DO j=2,pmax(i)
+        !_ELMER_OMP_SIMD PRIVATE(La, Lb, Na, Nb, Phi, dPhi)
+        DO k=1,nvec
+          La = Lp(k,node1)
+          Lb = Lp(k,node2)
+
+          Na = N(k,node1)
+          Nb = N(k,node2)
+          dNa = grad(k,node1,:)
+          dNb = grad(k,node2,:)
+
+          Phi = H1Basis_varPhi(j, Lb-La)
+          dPhi = H1Basis_dvarPhi(j, Lb-La)
+
+          grad(k,nbasis+j-1,1) = dPhi*(dLb(1)-dLa(1))*Na*Nb + &
+                  Phi*dNa(1)*Nb + Phi*Na*dNb(1)
+
+          grad(k,nbasis+j-1,2) = dPhi*(dLb(2)-dLa(2))*Na*Nb + &
+                  Phi*dNa(2)*Nb + Phi*Na*dNb(2)
+
+          grad(k,nbasis+j-1,3) = dPhi*(dLb(3)-dLa(3))*Na*Nb + &
+                  Phi*dNa(3)*Nb + Phi*Na*dNb(3)
+        END DO
+      END DO
+      ! nbasis = nbasis + (pmax(i)-2) + 1
+      nbasis = nbasis + pmax(i) - 1
+    END DO
+  END SUBROUTINE H1Basis_dBrickEdgeP
+  
+  SUBROUTINE H1Basis_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp) :: La, Lb, Lc, Ld, Na, Nb, Lp(nvec,8)
+    INTEGER :: i,j,k,l, node1, node2, node3, node4
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    DO i=1,8
+      !_ELMER_OMP_SIMD
+      DO k=1,nvec
+        Lp(k,i) = H1Basis_BrickL(i, u(k), v(k), w(k))
+      END DO
+    END DO
+
+    ! For each face
+    DO i=1,6
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
+          !_ELMER_OMP_SIMD PRIVATE(Na,Nb,La, Lb, Lc, Ld)
+          DO l=1,nvec
+            Na = fval(l,node1)
+            Nb = fval(l,node3)
+            La = Lp(l,node1)
+            Lb = Lp(l,node2)
+            Ld = Lp(l,node4)
+            fval(l, nbasis+k+1) = Na*Nb*H1Basis_LegendreP(j, Lb-La)*H1Basis_LegendreP(k, Ld-La)
+          END DO
+        END DO
+        ! nbasis = nbasis + (pmax(i)-j-2) + 1
+        nbasis = nbasis + pmax(i)-1
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_BrickFaceP
+  
+  SUBROUTINE H1Basis_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, DIMENSION(:) CONTIG, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, DIMENSION(:,:) CONTIG, INTENT(IN) :: facedir
+
+    REAL(KIND=dp) :: La, Lb, Lc, Ld, dLa(3), dLb(3), dLc(3), dLd(3), Lp(nvec,8), &
+          Na,Nb,dNa(3),dNb(3), N(VECTOR_BLOCK_LENGTH, nbasismax), PhiU, PhiV, dPhiU, dPhiV
+    INTEGER :: i,j,k,l, nnb, node1, node2, node3, node4
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    nnb = 0; CALL H1Basis_BrickNodal(nvec, u, v, w, nbasismax, n, nnb )
+    DO i=1,8
+      !_ELMER_OMP_SIMD
+      DO k=1,nvec
+        Lp(k,i) = H1Basis_BrickL(i, u(k), v(k), w(k))
+      END DO
+    END DO
+
+    ! For each face
+    DO i=1,6
+      node1 = facedir(1,i)
+      node2 = facedir(2,i)
+      node3 = facedir(3,i)
+      node4 = facedir(4,i)
+      dLa = H1Basis_dBrickL(node1)
+      dLb = H1Basis_dBrickL(node2)
+      dLc = H1Basis_dBrickL(node3)
+      dLd = H1Basis_dBrickL(node4)
+
+      DO j=0,pmax(i)-2
+        DO k=0,pmax(i)-2
+          !_ELMER_OMP_SIMD PRIVATE(La, Lb, Lc, Ld, PhiU, PhiV, Na, Nb, dNa, dNb)
+          DO l=1,nvec
+
+            La = Lp(l,node1)
+            Lb = Lp(l,node2)
+            Ld = Lp(l,node4)
+            
+            PhiU = H1Basis_LegendreP(j, Lb-La)
+            PhiV = H1Basis_LegendreP(k, Ld-La)
+
+            dPhiU = H1Basis_dLegendreP(j, Lb-La)
+            dPhiV = H1Basis_dLegendreP(k, Ld-La)
+
+            Na = N(l,node1)
+            Nb = N(l,node3)
+
+            dNa = grad(l,node1,:)
+            dNb = grad(l,node3,:)
+
+            grad(l, nbasis+k+1, :) = dNa*Nb*PhiU*PhiV + Na*dNb*PhiU*PhiV + &
+                Na*Nb*dPhiU*(dLb-dLa)*PhiV + Na*Nb*PhiU*dPhiV*(dLd-dLa)
+          END DO
+        END DO
+        ! nbasis = nbasis + (pmax(i)-j-2) + 1
+        nbasis = nbasis + pmax(i)-1
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_dBrickFaceP
+  
+  SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
+    INTEGER, INTENT(INOUT) :: nbasis
+
+    INTEGER :: i, j, k, l
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
+
+    ! For each bubble calculate value of basis function and its derivative
+    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    DO i=2,pmax
+      DO j=2,pmax
+        DO k=2,pmax
+          !_ELMER_OMP_SIMD
+          DO l=1,nvec
+            fval(l,nbasis+k-1) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k,w(l))
+          END DO
+        END DO
+        nbasis = nbasis + pmax-1
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_BrickBubbleP
+
+  SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: nvec
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH), INTENT(IN) :: u, v, w
+    INTEGER, INTENT(IN) :: pmax
+    INTEGER, INTENT(IN) :: nbasismax
+    REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
+    INTEGER, INTENT(INOUT) :: nbasis
+
+    ! Variables
+    INTEGER :: i, j, k, l
+    REAL(KIND=dp) :: phiU, phiV, phiW
+!DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
+
+    ! For each bubble calculate value of basis function and its derivative
+    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    DO i=2,pmax
+      DO j=2,pmax
+        DO k=2,pmax
+          !_ELMER_OMP_SIMD PRIVATE(phiU, phiV, phiW)
+          DO l=1,nvec
+            phiU = H1Basis_Phi(i,u(l))
+            phiV = H1Basis_Phi(j,v(l))
+            phiW = H1Basis_Phi(k,w(l))
+
+            grad(l,nbasis+k-1,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
+            grad(l,nbasis+k-1,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
+            grad(l,nbasis+k-1,3) = phiU*phiV*H1Basis_dPhi(k,w(l))
+          END DO
+        END DO
+        nbasis = nbasis+pmax-1
+      END DO
+    END DO
   END SUBROUTINE H1Basis_dBrickBubbleP
 
-  FUNCTION H1Basis_Phi(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_Phi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -2655,7 +4213,7 @@ CONTAINS
     END SELECT
   END FUNCTION H1Basis_Phi
 
-  FUNCTION H1Basis_dPhi(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_dPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -2736,7 +4294,7 @@ CONTAINS
     END SELECT
   END FUNCTION H1Basis_dPhi
 
-  FUNCTION H1Basis_VarPhi(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_VarPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -2815,7 +4373,7 @@ CONTAINS
     END SELECT
   END FUNCTION H1Basis_VarPhi
 
-  FUNCTION H1Basis_dVarPhi(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_dVarPhi(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -2891,7 +4449,7 @@ CONTAINS
     END SELECT
   END FUNCTION H1Basis_dVarPhi
 
-  FUNCTION H1Basis_LegendreP(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_LegendreP(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters
@@ -3001,7 +4559,7 @@ CONTAINS
     END SELECT
   END FUNCTION H1Basis_LegendreP
 
-  FUNCTION H1Basis_dLegendreP(k, x) RESULT(fval)
+  PURE FUNCTION H1Basis_dLegendreP(k, x) RESULT(fval)
     IMPLICIT NONE
 
     ! Parameters

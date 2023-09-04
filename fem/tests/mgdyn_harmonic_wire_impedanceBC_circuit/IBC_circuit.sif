@@ -1,0 +1,193 @@
+! 
+! A sif file to test a surface impedance BC with CircuitsAndDynamics
+! 
+! Authors: Eelis Takala, Elemental Reality Solutions
+!          Arved Wintzer, Leibniz-Institut für Kristallzüchtung
+! Original date: May 2017
+! eelis.takala@gmail.com
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "wire"
+End
+
+Include "circuit.definition"
+$ omega=1.0e6
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+  Coordinate Scaling = 1.0e-3
+  Angular Frequency = Real $ omega
+End
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 2
+  Material = 2
+End
+
+Material 1
+  Name = "Cu"
+  Permittivity = 0
+!  Relative Permittivity = 1
+  Relative Permeability = 1
+!  Electric Conductivity = 0.0
+  Electric Conductivity = Real 1 ! Skin BC is taking care of this
+End
+
+Material 2
+  Name = "Air"
+  Permittivity = 0  
+!  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+
+Equation 2
+  Active Solvers(2) = 3 4
+End
+
+Solver 1
+  Procedure = "WPotentialSolver" "Wsolve"
+  Equation = "Wire direction"
+  Variable = W
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 10000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 100
+End
+
+Solver 2
+  Exec Solver = Always
+  Equation = Circuits
+  Variable = X
+  No Matrix = Logical True
+  Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3
+  Equation = "MGDynamics"
+  Variable = "AV[AV re:1 AV im:1]"
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+  Angular Frequency = $omega
+  Export Lagrange Multiplier = Logical True
+  Linear System Symmetric = Logical True
+  Linear System Complex = Logical False
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgStabL
+  Linear System preconditioning = Circuit
+  Linear System Convergence Tolerance = 1.e-9
+  Linear System Max Iterations = 3000
+  Linear System Residual Output = 10
+  BicgStabL Polynomial Degree = 4
+  Linear System Abort not Converged = True
+  Steady State Convergence Tolerance = 1.e-4
+End
+
+Solver 4
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Potential Variable = String "AV"
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Joule Heating = True
+  Steady State Convergence Tolerance = 1e-06
+  Linear System Solver = Iterative
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1e-08
+  Angular Frequency = $omega
+End
+
+Solver 5
+  Equation = Circuits Output
+  Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Solver 6
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = skin
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry IDs = Logical True
+End
+
+
+Boundary Condition 1
+  Name = "WireStart"
+  Target Boundaries(1) = 1 
+  W = Real 0
+  AV re {e} = Real 0.0
+  AV im {e} = Real 0.0
+End
+
+Boundary Condition 2
+  !
+  ! Impedance BC
+  !
+  Name = "WireSurface"
+  Target Boundaries(1) = 2
+  Layer Electric Conductivity = Real 58e6
+  Layer Relative Permeability = Real 1
+End
+
+Boundary Condition 3
+  Name = "WireEnd"
+  Target Boundaries(1) = 3
+  W = Real 1
+  AV re {e} = Real 0.0
+  AV im {e} = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "AirStart"
+  Target Boundaries(1) = 4
+  AV re {e} = Real 0.0
+  AV im {e} = Real 0.0
+End
+
+
+Boundary Condition 5
+  Name = "AirSurface"
+  Target Boundaries(1) = 5
+  AV re {e} = Real 0.0
+  AV im {e} = Real 0.0
+End
+
+Boundary Condition 6
+  Name = "AirEnd"
+  Target Boundaries(1) = 6 
+  AV re {e} = Real 0.0
+  AV im {e} = Real 0.0
+End
+
+Solver 3 :: Reference Norm = Real 8.12672082E-02
+Solver 3 :: Reference Norm Tolerance = Real 1E-3
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

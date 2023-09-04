@@ -236,15 +236,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
 
   IF( DIM == 3 ) THEN
-    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )
+    IntersectEdge = ListGetLogical(Params,'Intersect Edge',GotIt )   
+    IF(.NOT. IntersectEdge ) THEN
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate',IntersectEdge)
+    ELSE
+      IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
+    END IF
   ELSE
+    IntersectCoordinate = 0
     IntersectEdge = .FALSE.
   END IF
   IF(IntersectEdge) THEN
-    IntersectCoordinate = ListGetInteger(Params,'Intersect Coordinate')
     IntersectEpsilon = ListGetConstReal(Params,'Intersect Epsilon')
-  ELSE 
-    IntersectCoordinate = 0
   END IF
   DetEpsilon = ListGetConstReal(Params,'Det Epsilon',GotIt)
   IF(.NOT. GotIt) DetEpsilon = 1.0e-6  
@@ -375,10 +378,13 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL SaveVariableNames()
 
   DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, &
-      LineNodes % x, LineNodes % y, LineNodes % z, Basis, Values, STAT=istat)
+      LineNodes % x, LineNodes % y, LineNodes % z, STAT=istat)
   IF(istat /= 0) CALL Fatal(Caller,'Errors in deallocating some basis stuff!')
+
+  IF( ALLOCATED(Values) ) DEALLOCATE(Values)
+  IF( ALLOcATED(Basis) ) DEALLOCATE(Basis)
   
-  IF( NormInd > 0 ) THEN
+  IF( NormInd > 0 ) THEN    
     Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
@@ -1454,7 +1460,8 @@ CONTAINS
           PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
         END DO
       END IF
-      
+
+      DgVar = ASSOCIATED( Mesh % Elements(1) % DGIndexes ) 
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
@@ -1508,7 +1515,7 @@ CONTAINS
                 END IF
               END DO
               IF(.NOT. Found) CALL Fatal(Caller,'Could not find DG node!')              
-            END IF            
+            END IF
                         
             Coord(1) = ElementNodes % x(i)
             Coord(2) = ElementNodes % y(i)
@@ -1516,7 +1523,7 @@ CONTAINS
 
             ! Shrink the element so that external sort work better!
             Coord0 = Coord
-            Coord = 0.999_dp * Coord + 0.001_dp * Center
+            Coord = Center + 0.9999*(Coord-Center)
 
             ! Do this dirty way such that DG nodes may be sorted
             Mesh % Nodes % x(node) = Coord(1) 

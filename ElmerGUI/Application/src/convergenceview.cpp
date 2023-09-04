@@ -156,23 +156,7 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   showNSHistory = true;
   showSSHistory = false;
 
-  setWindowIcon(QIcon(":/icons/Mesh3D.png"));
-  
-  int x,y,w,h;  
-  x = ((MainWindow*) parent)->settings_value("convergenceView/x", -10000).toInt();
-  y = ((MainWindow*) parent)->settings_value("convergenceView/y", -10000).toInt();
-  w = ((MainWindow*) parent)->settings_value("convergenceView/width", -10000).toInt(); 
-  h = ((MainWindow*) parent)->settings_value("convergenceView/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    move(x,y);
-    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
-    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
-    resize(w,h);
-  }
-  if(((MainWindow*) parent)->settings_value("convergenceView/maximized", false).toBool()){
-    setWindowState(windowState() ^ Qt::WindowMaximized);
-  }
-  
+  setWindowIcon(QIcon(":/icons/Mesh3D.png"));  
 }
 
 ConvergenceView::~ConvergenceView()
@@ -326,7 +310,11 @@ void ConvergenceView::createStatusBar()
 
 void ConvergenceView::savePictureSlot()
 {
+#if WITH_QT5 || WITH_QT6
+  QPixmap pixmap = grab();
+#else
   QPixmap pixmap = QPixmap::grabWidget(plot);
+#endif
   
   QString fileName = QFileDialog::getSaveFileName(this,
 	  tr("Save picture"), "", tr("Picture files (*.bmp *.jpg *.png *.pbm *.pgm *.ppm)"));
@@ -338,7 +326,7 @@ void ConvergenceView::savePictureSlot()
   QString suffix = fi.suffix();
   suffix.toUpper();
 
-#if WITH_QT5
+#if WITH_QT5 || WITH_QT6
   bool ok = pixmap.save(fileName, suffix.toLatin1(), 95); // fixed quality
 #else
   bool ok = pixmap.save(fileName, suffix.toAscii(), 95); // fixed quality

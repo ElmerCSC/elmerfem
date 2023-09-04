@@ -1,0 +1,50 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+! Post File   = "ptest.ep"
+! Output File = "ptest.dat"
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Body Force = 1
+End
+
+Body Force 1 :: Source = Real 1
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "Poisson" "PoissonSolver"
+
+  Element = "p:2"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 0.223544023689E-01
+RUN

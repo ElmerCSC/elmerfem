@@ -8,12 +8,9 @@ End
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
-  Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Timestepping Method = BDF
-  BDF Order = 1
   Post File = case3d.vtu
 
   Extruded Mesh Levels = Integer 20
@@ -63,22 +60,16 @@ Solver 1
   Variable = Temperature
   Exec Solver = Always
   Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
   Optimize Bandwidth = True
-  Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
+
   Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Relaxation Factor = 1
+
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 500
   Linear System Convergence Tolerance = 1.0e-10
   BiCGstabl polynomial degree = 2
   Linear System Preconditioning = ILU1
-  Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1

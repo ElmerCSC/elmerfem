@@ -803,6 +803,12 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
  INTEGER,INTENT(IN) :: n
  INTEGER,INTENT(OUT) :: MinIndex,MaxIndex
 
+ IF (n.EQ.1) THEN
+         MinIndex=1
+         MaxIndex=1
+         Return
+ ENDIF
+
  ! coordinates should be  monotonically increasing or
  ! decreasing 
  IF ((x(2)>x(1)).AND.(x(n)>x(n-1))) THEN
