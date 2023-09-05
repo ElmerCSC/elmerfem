@@ -47,6 +47,347 @@ MODULE HydrostaticNSUtils
 
 CONTAINS
 
+  ! Compute effective viscosity. This is needed not only by the bulkassembly but also 
+  ! by the postprocessing when estimating pressure.
+  !----------------------------------------------------------------------------------
+  FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
+      ViscDerVec, ViscNewton, InitHandles ) RESULT ( EffViscVec ) 
+
+    IMPLICIT NONE 
+    
+    INTEGER :: ngp,ntot
+    REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: NodalVelo(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
+    LOGICAL :: InitHandles , ViscNewton
+    REAL(KIND=dp), POINTER  :: EffViscVec(:)
+
+    INTEGER :: allocstat,i,j,k,dim,dofs
+    LOGICAL :: Found     
+    CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
+    TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
+        ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
+        ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
+        ViscTemp_h
+    REAL(KIND=dp), SAVE :: R, vgrad(2,3)
+    REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
+    LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
+    REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+    TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
+    LOGICAL, SAVE :: SaveShear, SaveVisc
+
+    !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
+
+    dim = 3
+    dofs = 2
+    
+    IF(InitHandles ) THEN
+      CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
+
+      CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
+      CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
+
+      IF( ListGetElementSomewhere( ViscModel_h) ) THEN
+        ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
+            'Newtonian Viscosity Condition',Found )      
+        ConstantVisc = ( Found .AND. ViscCond > 0.0_dp ) 
+
+        IF( ListGetLogical( CurrentModel % Solver % Values,&
+            'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited ) 
+
+        CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
+        CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
+        CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
+        CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
+        CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
+        CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
+
+        ! Do these initializations for glen's model only
+        IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
+          CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)
+          CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)           
+          CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor',DefLValue=.FALSE.)
+          CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')            
+          CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
+          CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
+          CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
+          CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
+          CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
+          CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
+
+          IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
+              CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
+            END IF
+            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
+              CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+            END IF
+          END IF
+          IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
+            CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+          END IF
+          R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
+          IF (.NOT.Found) R = 8.314_dp
+        END IF
+      ELSE
+        CALL Info('EffectiveViscosityVec','Using constant viscosity!')
+      END IF
+
+      ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
+      SaveShear = ASSOCIATED(ShearVar)
+      IF(SaveShear) THEN
+        IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
+          CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
+        ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+          CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
+        ELSE
+          CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
+        END IF
+      END IF
+
+      ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+      SaveVisc = ASSOCIATED(ViscVar)        
+      IF(SaveVisc) THEN
+        IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
+          CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
+        ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
+          CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
+        ELSE
+          CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
+        END IF
+      END IF
+
+      Visited = .TRUE.
+    END IF
+
+    ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
+
+    ViscModel = ListGetElementString( ViscModel_h, Element, Found ) 
+    IF( .NOT. Found ) THEN
+      ! Return the plain viscosity
+      EffViscVec => ViscVec0
+      RETURN
+    END IF
+
+    ! Initialize derivative of viscosity for when newtonian linearization is used
+    IF( ViscNewton ) THEN
+      ViscDerVec(1:ngp) = 0.0_dp
+    END IF
+
+    ! This reverts the viscosity model to linear 
+    IF( ConstantVisc ) THEN
+      EffViscVec => ViscVec0        
+      RETURN      
+    END IF
+
+    ! Deallocate too small storage if needed 
+    IF (ALLOCATED(ss)) THEN
+      IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
+    END IF
+
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(ss)) THEN
+      ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+      IF (allocstat /= 0) THEN
+        CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
+      END IF
+    END IF
+
+    ! For non-newtonian models compute the viscosity here
+    EffViscVec => ViscVec
+
+    ! Calculate the strain rate velocity at all integration points
+    DO k=1,ngp
+      DO i=1,dofs
+        DO j=1,dim
+          vgrad(i,j) = SUM( dBasisdxVec(k,1:ntot,j) * NodalVelo(i,1:ntot) )
+        END DO
+      END DO
+      ! Factor 4 is to have this compatible with IncompressibleNSVec!
+      ss(k) = 4.0 *  (vgrad(1,1)**2 + vgrad(2,2)**2 + vgrad(1,1)*vgrad(2,2) + &
+          0.5_dp * vgrad(1,2)*vgrad(2,1) + &
+          0.25_dp * (vgrad(1,2)**2 + vgrad(1,3)**2 + vgrad(2,1)**2 + vgrad(2,3)**2) )
+    END DO
+    !      ss(1:ngp) = 0.5_dp * ss(1:ngp)
+
+    IF(SaveShear) THEN
+      i = Element % ElementIndex
+      IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
+        j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+        IF(j /= ngp) THEN
+          CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+        END IF
+        ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
+      ELSE
+        ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+      END IF
+    END IF
+
+
+    SELECT CASE( ViscModel )       
+
+    CASE('glen')
+      c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
+
+      ! the second invariant is not taken from the strain rate tensor,
+      ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
+      s(1:ngp) = ss(1:ngp)/4.0_dp
+
+      c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
+      IF( Found ) THEN
+        c3 = c3**2
+        WHERE( s(1:ngp) < c3 ) s(1:ngp) = c3
+      END IF
+
+      IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
+        ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
+        ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
+
+        IF( ViscNewton ) THEN
+          WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
+              * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+        END IF
+      ELSE         
+        ! lets for the time being have this hardcoded
+        Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
+        A1 = ListGetElementReal( ViscRate1_h,Element=Element)
+        A2 = ListGetElementReal( ViscRate2_h,Element=Element)
+        Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
+        Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
+
+        ! WHERE is faster than DO + IF
+        TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
+
+        WHERE( TempVec(1:ngp ) < Tlimit )
+          ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
+        ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
+          ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
+        ELSE WHERE
+          ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
+        END WHERE
+
+        EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
+        ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
+            s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+
+        IF( ViscNewton ) THEN
+          WHERE( s(1:ngp) > c3 ) 
+            ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
+                * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+          END WHERE
+        END IF
+      END IF
+
+    CASE('power law')
+      c2 = ListGetElementReal( ViscExp_h,Element=Element)
+
+      c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
+      IF( Found ) THEN
+        c3 = c3**2
+        WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
+      END IF
+
+      ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
+
+      IF (ViscNewton ) THEN
+        WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
+            ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
+      END IF
+
+      c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
+      IF( Found ) THEN
+        ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
+        IF (ViscNewton ) THEN
+          ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
+        END IF
+      END IF
+
+    CASE('power law too')
+      c2 = ListGetElementReal( ViscExp_h,Element=Element)           
+      ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
+
+      IF (ViscNewton ) THEN
+        ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
+      END IF
+
+    CASE ('carreau')      
+      c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+      c2 = ListGetElementReal( ViscExp_h,Element=Element)
+      c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+      c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
+      IF( Found ) THEN
+        ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
+
+        IF( ViscNewton ) THEN
+          ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
+              ss(1:ngp)**(c4/2-1)
+        END IF
+      ELSE
+        ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
+
+        IF( ViscNewton ) THEN
+          ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
+        END IF
+      END IF
+
+    CASE ('cross')
+      c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+      c2 = ListGetElementReal( ViscExp_h,Element=Element)
+      c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+      ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
+
+      IF( ViscNewton ) THEN
+        ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
+      END IF
+
+    CASE ('powell eyring')
+      c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+      c2 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+      s(1:ngp) = SQRT(ss(1:ngp))
+
+      IF( ViscNewton ) THEN          
+        WHERE( c2*s(1:ngp) < 1.0d-5 )
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+          ViscDerVec(1:ngp) = 0.0_dp
+        ELSE WHERE
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+          ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
+              ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
+              c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
+        END WHERE
+      ELSE
+        WHERE( c2*s(1:ngp) < 1.0d-5 )
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+        ELSE WHERE
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+        END WHERE
+      END IF
+
+    CASE DEFAULT 
+      CALL Fatal('EffectiveViscosityVec','Unknown material model')
+
+    END SELECT
+
+    IF(SaveVisc) THEN
+      i = Element % ElementIndex
+      IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
+        j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+        IF(j /= ngp) THEN
+          CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+        END IF
+        ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+      ELSE
+        ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+      END IF
+    END IF
+
+  END FUNCTION EffectiveViscosityVec
+
+  
 !------------------------------------------------------------------------------
 ! Assemble local finite element matrix for a single bulk element and glue
 ! it to the global matrix. Routine is vectorized and multithreaded.
@@ -168,7 +509,7 @@ CONTAINS
     CALL GetLocalSolution( NodalHeight, UVariable = HeightVar ) 
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
-    muvec => EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalVelo, &
+    muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
         muDerVec0, Newton,  InitHandles )        
     
     ! Rho 
@@ -290,344 +631,8 @@ CONTAINS
     
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=.TRUE.)
 
-!------------------------------------------------------------------------------
-
-  CONTAINS
-
-
-    FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalVelo, &
-        ViscDerVec, ViscNewton, InitHandles ) RESULT ( EffViscVec ) 
-
-      INTEGER :: ngp
-      REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
-      TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp) :: NodalVelo(:,:)
-      REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
-      LOGICAL :: InitHandles , ViscNewton
-      REAL(KIND=dp), POINTER  :: EffViscVec(:)
-
-      LOGICAL :: Found     
-      CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
-      TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
-          ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
-          ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-          ViscTemp_h
-      REAL(KIND=dp), SAVE :: R, vgrad(2,3)
-      REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
-      REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
-      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
-      LOGICAL, SAVE :: SaveShear, SaveVisc
-      
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
-     
-      IF(InitHandles ) THEN
-        CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
-
-        CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
-        CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
-
-        IF( ListGetElementSomewhere( ViscModel_h) ) THEN
-          ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
-              'Newtonian Viscosity Condition',Found )      
-          ConstantVisc = ( Found .AND. ViscCond > 0.0_dp ) 
-          
-          IF( ListGetLogical( CurrentModel % Solver % Values,&
-              'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited ) 
-          
-          CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
-          CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
-          CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
-          CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')      
-          CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')      
-          CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')      
-
-          ! Do these initializations for glen's model only
-          IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
-            CALL ListInitElementKeyword( ViscGlenExp_h,'Material','Glen Exponent',DefRValue=3.0_dp)
-            CALL ListInitElementKeyword( ViscGlenFactor_h,'Material','Glen Enhancement Factor',DefRValue=1.0_dp)           
-            CALL ListInitElementKeyword( ViscArrSet_h,'Material','Set Arrhenius Factor',DefLValue=.FALSE.)
-            CALL ListInitElementKeyword( ViscArr_h,'Material','Arrhenius Factor')            
-            CALL ListInitElementKeyword( ViscTLimit_h,'Material','Limit Temperature',DefRValue=-10.0_dp)
-            CALL ListInitElementKeyword( ViscRate1_h,'Material','Rate Factor 1',DefRValue=3.985d-13)
-            CALL ListInitElementKeyword( ViscRate2_h,'Material','Rate Factor 2',DefRValue=1.916d3)
-            CALL ListInitElementKeyword( ViscEne1_h,'Material','Activation Energy 1',DefRValue=60.0d03)
-            CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
-            CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
-
-            IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
-                CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
-              END IF
-              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
-              END IF
-            END IF
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
-              CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
-            END IF
-            R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
-            IF (.NOT.Found) R = 8.314_dp
-          END IF
-        ELSE
-          CALL Info('EffectiveViscosityVec','Using constant viscosity!')
-        END IF
-
-        ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
-        SaveShear = ASSOCIATED(ShearVar)
-        IF(SaveShear) THEN
-          IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
-          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
-          ELSE
-            CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
-          END IF
-        END IF
-
-        ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
-        SaveVisc = ASSOCIATED(ViscVar)        
-        IF(SaveVisc) THEN
-          IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
-          ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
-            CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
-          ELSE
-            CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
-          END IF
-        END IF
-        
-        Visited = .TRUE.
-      END IF
-
-      ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
-
-      ViscModel = ListGetElementString( ViscModel_h, Element, Found ) 
-      IF( .NOT. Found ) THEN
-        ! Return the plain viscosity
-        EffViscVec => ViscVec0
-        RETURN
-      END IF
-
-      ! Initialize derivative of viscosity for when newtonian linearization is used
-      IF( ViscNewton ) THEN
-        ViscDerVec(1:ngp) = 0.0_dp
-      END IF
-
-      ! This reverts the viscosity model to linear 
-      IF( ConstantVisc ) THEN
-        EffViscVec => ViscVec0        
-        RETURN      
-      END IF
-        
-      ! Deallocate too small storage if needed 
-      IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
-      END IF
-
-      ! Allocate storage if needed
-      IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
-        IF (allocstat /= 0) THEN
-          CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
-        END IF
-      END IF
-
-      ! For non-newtonian models compute the viscosity here
-      EffViscVec => ViscVec
-
-      ! Calculate the strain rate velocity at all integration points
-      DO k=1,ngp
-        DO i=1,dofs
-          DO j=1,dim
-            vgrad(i,j) = SUM( dBasisdxVec(k,1:ntot,j) * NodalVelo(i,1:ntot) )
-          END DO
-        END DO        
-        ! Factor 4 is to have this compatible with IncompressibleNSVec!
-        ss(k) = 4.0 *  (vgrad(1,1)**2 + vgrad(2,2)**2 + vgrad(1,1)*vgrad(2,2) + &
-            0.5_dp * vgrad(1,2)*vgrad(2,1) + &
-            0.25_dp * (vgrad(1,2)**2 + vgrad(1,3)**2 + vgrad(2,1)**2 + vgrad(2,3)**2) )
-      END DO
-!      ss(1:ngp) = 0.5_dp * ss(1:ngp)
-
-      IF(SaveShear) THEN
-        i = Element % ElementIndex
-        IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
-          j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
-          IF(j /= ngp) THEN
-            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
-          END IF
-          ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
-        ELSE
-          ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
-        END IF
-      END IF
-            
-      
-      SELECT CASE( ViscModel )       
-
-      CASE('glen')
-        c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
-
-        ! the second invariant is not taken from the strain rate tensor,
-        ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
-        s(1:ngp) = ss(1:ngp)/4.0_dp
-
-        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          c3 = c3**2
-          WHERE( s(1:ngp) < c3 ) s(1:ngp) = c3
-        END IF
-
-        IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
-          ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
-          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
-          
-          IF( ViscNewton ) THEN
-            WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
-                * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
-          END IF
-        ELSE         
-          ! lets for the time being have this hardcoded
-          Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
-          A1 = ListGetElementReal( ViscRate1_h,Element=Element)
-          A2 = ListGetElementReal( ViscRate2_h,Element=Element)
-          Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
-          Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
-
-          ! WHERE is faster than DO + IF
-          TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
-          
-          WHERE( TempVec(1:ngp ) < Tlimit )
-            ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
-          ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
-            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
-          ELSE WHERE
-            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
-          END WHERE
-          
-          EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
-          ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
-              s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
-          
-          IF( ViscNewton ) THEN
-            WHERE( s(1:ngp) > c3 ) 
-              ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
-                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
-            END WHERE
-          END IF                      
-        END IF        
-
-      CASE('power law')
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
-
-        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
-        IF( Found ) THEN
-          c3 = c3**2
-          WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
-        END IF
-        
-        ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
-       
-        IF (ViscNewton ) THEN
-          WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
-              ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
-        END IF
-        
-        c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
-          IF (ViscNewton ) THEN
-            ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
-          END IF
-        END IF
-
-      CASE('power law too')
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)           
-        ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
-
-        IF (ViscNewton ) THEN
-          ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
-        END IF
-                
-      CASE ('carreau')      
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
-        c3 = ListGetElementReal( ViscTrans_h,Element=Element)
-        c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
-          
-          IF( ViscNewton ) THEN
-            ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
-                ss(1:ngp)**(c4/2-1)
-          END IF
-        ELSE
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
-
-          IF( ViscNewton ) THEN
-            ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
-          END IF
-        END IF
-
-      CASE ('cross')
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
-        c3 = ListGetElementReal( ViscTrans_h,Element=Element)
-
-        ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
-
-        IF( ViscNewton ) THEN
-          ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
-        END IF
-          
-      CASE ('powell eyring')
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscTrans_h,Element=Element)
-
-        s(1:ngp) = SQRT(ss(1:ngp))
-
-        IF( ViscNewton ) THEN          
-          WHERE( c2*s(1:ngp) < 1.0d-5 )
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
-            ViscDerVec(1:ngp) = 0.0_dp
-          ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
-            ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
-                ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
-                c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
-          END WHERE
-        ELSE
-          WHERE( c2*s(1:ngp) < 1.0d-5 )
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
-          ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
-          END WHERE
-        END IF
-
-      CASE DEFAULT 
-        CALL Fatal('EffectiveViscosityVec','Unknown material model')
-
-      END SELECT
-
-      IF(SaveVisc) THEN
-        i = Element % ElementIndex
-        IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
-          j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
-          IF(j /= ngp) THEN
-            CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
-          END IF
-          ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
-        ELSE
-          ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
-        END IF
-      END IF
-      
-    END FUNCTION EffectiveViscosityVec
-      
-
   END SUBROUTINE LocalBulkMatrix
+!------------------------------------------------------------------------------
 
 
   !------------------------------------------------------------------------------
@@ -1008,9 +1013,7 @@ CONTAINS
       END IF
     END IF
     IF(.NOT. ASSOCIATED(VarP)) THEN
-      IF(dofs == 4) THEN
-        VarP => VarFull
-      END IF
+      IF(dofs == 4) VarP => VarFull
     END IF
         
     ! Pressure can be 1st component of pressure or last compenent of 'flow solution'
