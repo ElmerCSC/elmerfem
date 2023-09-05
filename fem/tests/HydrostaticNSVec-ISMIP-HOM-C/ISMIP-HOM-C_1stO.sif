@@ -42,8 +42,10 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Post File = $name".vtu"
-  max output level = 3
+  Output Intervals = 0 
+
+!  Post File = $name$".vtu"
+  max output level = 5
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -118,7 +120,10 @@ Solver 2
 
   Velocity Vector Name = String "FlowSolution"
 
- 
+
+! This may be turned on/off to consider the effect of horizontal stresses on pressure
+  Pressure Correction = Logical True
+
 
 ! This is needed and must be somewhere accessible (not just surface)
 
@@ -132,7 +137,7 @@ Solver 2
 
  
 
-! Therse are for information and will be populated
+! These are for information and will be populated
 
   Exported Variable 2 = -elem Shearrate
 
@@ -153,13 +158,17 @@ Solver 2
   Linear System Preconditioning = ILU0
   Linear System Max Iterations = 500
   Linear System Abort Not Converged = Logical False
-  
+  Linear System Residual Output = 50
+
   Nonlinear System Max Iterations = 100
   Nonlinear System Convergence Tolerance  = 1.0e-5
   Nonlinear System Newton After Iterations = 10
   Nonlinear System Newton After Tolerance = 1.0e-02
   Nonlinear System Reset Newton = Logical True
   Steady State Convergence Tolerance = Real 1.0e-3
+
+  Linear System Timing = True
+  Linear System Timing Cumulative = True
 End
 
 Solver 3
@@ -168,7 +177,7 @@ Solver 3
   Procedure = "SaveData" "SaveScalars"
   Filename = $name".dat"
 
-  Variable 1 = String "CPU time"
+  Variable 1 = "CPU time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

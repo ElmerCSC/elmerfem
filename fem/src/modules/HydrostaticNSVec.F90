@@ -51,7 +51,7 @@ CONTAINS
   ! by the postprocessing when estimating pressure.
   !----------------------------------------------------------------------------------
   FUNCTION EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-      ViscDerVec, ViscNewton, InitHandles ) RESULT ( EffViscVec ) 
+      InitHandles, ViscNewton, ViscDerVec ) RESULT ( EffViscVec ) 
 
     IMPLICIT NONE 
     
@@ -59,8 +59,9 @@ CONTAINS
     REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: NodalVelo(:,:)
-    REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
-    LOGICAL :: InitHandles , ViscNewton
+    LOGICAL :: InitHandles
+    REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: ViscDerVec(:)
+    LOGICAL, OPTIONAL :: ViscNewton
     REAL(KIND=dp), POINTER  :: EffViscVec(:)
 
     INTEGER :: allocstat,i,j,k,dim,dofs
@@ -72,19 +73,26 @@ CONTAINS
         ViscTemp_h
     REAL(KIND=dp), SAVE :: R, vgrad(2,3)
     REAL(KIND=dp) :: c1, c2, c3, c4, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-    LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
+    LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., DoNewton
     REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
     REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
     TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar
     LOGICAL, SAVE :: SaveShear, SaveVisc
+    CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
     !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
 
     dim = 3
     dofs = 2
+    DoNewton = .FALSE.
+    IF(PRESENT(ViscNewton)) DoNewton = ViscNewton
+    IF(DoNewton .AND. .NOT. PRESENT(ViscDerVec)) THEN
+      CALL Fatal(Caller,'Newton linearization requires "ViscDerVec"')
+    END IF
+
     
     IF(InitHandles ) THEN
-      CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
+      CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
 
       CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
       CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
@@ -119,31 +127,31 @@ CONTAINS
 
           IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
+              CALL Fatal(Caller,'Replace >Constant Temperature< with >Relative Temperature<')
             END IF
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+              CALL Fatal(Caller,'Replace >Temperature Field Variable< with >Relative Temperature<')
             END IF
           END IF
           IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
-            CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')
+            CALL Fatal(Caller,'No Glen function API yet!')
           END IF
           R = GetConstReal( CurrentModel % Constants,'Gas Constant',Found)
           IF (.NOT.Found) R = 8.314_dp
         END IF
       ELSE
-        CALL Info('EffectiveViscosityVec','Using constant viscosity!')
+        CALL Info(Caller,'Using constant viscosity!')
       END IF
 
       ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
       SaveShear = ASSOCIATED(ShearVar)
       IF(SaveShear) THEN
         IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
-          CALL Info('EffectiveViscosityVec','Saving "Shearrate" on ip points!',Level=10)
+          CALL Info(Caller,'Saving "Shearrate" on ip points!',Level=10)
         ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
-          CALL Info('EffectiveViscosityVec','Saving "Shearrate" on elements!',Level=10)
+          CALL Info(Caller,'Saving "Shearrate" on elements!',Level=10)
         ELSE
-          CALL Fatal('EffectiveViscosityVec','"Shearrate" should be either ip or elemental field!')
+          CALL Fatal(Caller,'"Shearrate" should be either ip or elemental field!')
         END IF
       END IF
 
@@ -151,11 +159,11 @@ CONTAINS
       SaveVisc = ASSOCIATED(ViscVar)        
       IF(SaveVisc) THEN
         IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
-          CALL Info('EffectiveViscosityVec','Saving "Viscosity" on ip points!',Level=10)
+          CALL Info(Caller,'Saving "Viscosity" on ip points!',Level=10)
         ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
-          CALL Info('EffectiveViscosityVec','Saving "Viscosity" on elements!',Level=10)
+          CALL Info(Caller,'Saving "Viscosity" on elements!',Level=10)
         ELSE
-          CALL Fatal('EffectiveViscosityVec','"Viscosity" should be either ip or elemental field!')
+          CALL Fatal(Caller,'"Viscosity" should be either ip or elemental field!')
         END IF
       END IF
 
@@ -172,9 +180,7 @@ CONTAINS
     END IF
 
     ! Initialize derivative of viscosity for when newtonian linearization is used
-    IF( ViscNewton ) THEN
-      ViscDerVec(1:ngp) = 0.0_dp
-    END IF
+    IF( DoNewton ) ViscDerVec(1:ngp) = 0.0_dp
 
     ! This reverts the viscosity model to linear 
     IF( ConstantVisc ) THEN
@@ -191,7 +197,7 @@ CONTAINS
     IF (.NOT. ALLOCATED(ss)) THEN
       ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
       IF (allocstat /= 0) THEN
-        CALL Fatal('EffectiveViscosityVec','Local storage allocation failed')
+        CALL Fatal(Caller,'Local storage allocation failed')
       END IF
     END IF
 
@@ -217,7 +223,7 @@ CONTAINS
       IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
         j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
         IF(j /= ngp) THEN
-          CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
+          CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
         END IF
         ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
       ELSE
@@ -245,7 +251,7 @@ CONTAINS
         ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
         ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
 
-        IF( ViscNewton ) THEN
+        IF( DoNewton ) THEN
           WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
               * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
         END IF
@@ -272,7 +278,7 @@ CONTAINS
         ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
             s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
 
-        IF( ViscNewton ) THEN
+        IF( DoNewton ) THEN
           WHERE( s(1:ngp) > c3 ) 
             ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
                 * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
@@ -291,7 +297,7 @@ CONTAINS
 
       ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
 
-      IF (ViscNewton ) THEN
+      IF (DoNewton ) THEN
         WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
             ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
       END IF
@@ -299,7 +305,7 @@ CONTAINS
       c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
       IF( Found ) THEN
         ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
-        IF (ViscNewton ) THEN
+        IF (DoNewton ) THEN
           ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
         END IF
       END IF
@@ -308,7 +314,7 @@ CONTAINS
       c2 = ListGetElementReal( ViscExp_h,Element=Element)           
       ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
 
-      IF (ViscNewton ) THEN
+      IF (DoNewton ) THEN
         ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
       END IF
 
@@ -320,14 +326,14 @@ CONTAINS
       IF( Found ) THEN
         ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
 
-        IF( ViscNewton ) THEN
+        IF( DoNewton ) THEN
           ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
               ss(1:ngp)**(c4/2-1)
         END IF
       ELSE
         ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
 
-        IF( ViscNewton ) THEN
+        IF( DoNewton ) THEN
           ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
         END IF
       END IF
@@ -339,7 +345,7 @@ CONTAINS
 
       ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
 
-      IF( ViscNewton ) THEN
+      IF( DoNewton ) THEN
         ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
       END IF
 
@@ -349,7 +355,7 @@ CONTAINS
 
       s(1:ngp) = SQRT(ss(1:ngp))
 
-      IF( ViscNewton ) THEN          
+      IF( DoNewton ) THEN          
         WHERE( c2*s(1:ngp) < 1.0d-5 )
           ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
           ViscDerVec(1:ngp) = 0.0_dp
@@ -368,7 +374,7 @@ CONTAINS
       END IF
 
     CASE DEFAULT 
-      CALL Fatal('EffectiveViscosityVec','Unknown material model')
+      CALL Fatal(Caller,'Unknown material model')
 
     END SELECT
 
@@ -377,7 +383,7 @@ CONTAINS
       IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
         j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
         IF(j /= ngp) THEN
-          CALL Fatal('EffectiveViscosityVec','Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
+          CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
         END IF
         ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
       ELSE
@@ -510,7 +516,7 @@ CONTAINS
 
     ! Return the effective viscosity. Currently only non-newtonian models supported.
     muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
-        muDerVec0, Newton,  InitHandles )        
+        InitHandles, Newton, muDerVec0 )
     
     ! Rho 
     rhovec(1:ngp) = rho
@@ -878,7 +884,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Compute vector for computing du_z/dz and corresponding weight.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalDuz(Element, n, ntot, duz, wuz )
+  SUBROUTINE LocalDuz(Element, n, ntot, duz, wuz, FirstElem, dpr )
 !------------------------------------------------------------------------------
     USE LinearForms
     IMPLICIT NONE
@@ -886,13 +892,17 @@ CONTAINS
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, ntot
     REAL(KIND=dp), POINTER :: duz(:), wuz(:)
+    LOGICAL :: FirstElem
+    REAL(KIND=dp), POINTER, OPTIONAL :: dpr(:)
 !------------------------------------------------------------------------------
     INTEGER :: dim, dofs
     TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp), POINTER :: muVec(:)
     TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Stat, Found
+    LOGICAL :: Stat, Found, DoVisc
     INTEGER :: NodalPerm(ntot)
-    REAL(KIND=dp) :: NodalVelo(2,ntot), duz_elem(ntot), wuz_elem(ntot), vgrad(2), w
+    REAL(KIND=dp) :: NodalVelo(2,ntot), duz_elem(ntot), wuz_elem(ntot), dp_elem(ntot), &
+        vgrad(2), w
     REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
     INTEGER :: t, i, j, k, ngp, allocstat
 
@@ -913,6 +923,8 @@ CONTAINS
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
+    DoVisc = PRESENT(dpr)
+    
     ! Deallocate storage if needed 
     IF (ALLOCATED(BasisVec)) THEN
       IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
@@ -939,6 +951,13 @@ CONTAINS
     ! Get the velocity at nodes
     CALL GetLocalSolution( NodalVelo )
 
+    ! Return the effective viscosity. Currently only non-newtonian models supported.
+    IF(DoVisc) THEN
+      dp_elem = 0.0_dp
+      muvec => EffectiveViscosityVec( ngp, ntot, BasisVec, dBasisdxVec, Element, NodalVelo, &
+          InitHandles = FirstElem )
+    END IF
+      
     duz_elem = 0.0_dp
     wuz_elem = 0.0_dp
     
@@ -954,6 +973,11 @@ CONTAINS
         ! Negative sign comes from continuity equation: du_z/dz = -(du_x/dx + du_y/dy)
         duz_elem(i) = duz_elem(i) - w * SUM(vgrad(1:2))
         wuz_elem(i) = wuz_elem(i) + w
+
+        ! This adds the correction to pressure from equation (5.63)
+        IF(DoVisc) THEN
+          dp_elem(i) = dp_elem(i) - w * 2 * muvec(t) * SUM(vgrad(1:2)) 
+        END IF
       END DO
     END DO
 
@@ -963,6 +987,11 @@ CONTAINS
     ! Sum up the contribution
     duz(NodalPerm(1:ntot)) = duz(NodalPerm(1:ntot)) + duz_elem(1:ntot)
     wuz(NodalPerm(1:ntot)) = wuz(NodalPerm(1:ntot)) + wuz_elem(1:ntot)
+
+    IF( DoVisc ) THEN
+      dpr(NodalPerm(1:ntot)) = dpr(NodalPerm(1:ntot)) + dp_elem(1:ntot)
+    END IF
+    
     
   END SUBROUTINE LocalDuz
 
@@ -977,8 +1006,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Found
-    REAL(KIND=dp), POINTER :: duz(:), wuz(:)
+    LOGICAL :: Found, PressureCorr
+    REAL(KIND=dp), POINTER :: duz(:), wuz(:), dpr(:)
     INTEGER, POINTER, SAVE :: UpPointer(:), DownPointer(:)
     INTEGER :: i,j,k,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof
     TYPE(Element_t), POINTER :: Element
@@ -987,7 +1016,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
-    SAVE :: duz, wuz
+    SAVE :: duz, wuz, dpr
 
     pSolver => CurrentModel % Solver    
     Params => pSolver % Values
@@ -1014,20 +1043,22 @@ CONTAINS
     END IF
     IF(.NOT. ASSOCIATED(VarP)) THEN
       IF(dofs == 4) VarP => VarFull
-    END IF
-        
+    END IF    
+    
     ! Pressure can be 1st component of pressure or last compenent of 'flow solution'
     pdof = 0
     IF(ASSOCIATED(VarP)) pdof = VarP % Dofs
     g = 1.0_dp
+    PressureCorr = .FALSE.
     IF(pdof > 0) THEN
       gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found)
       IF(Found) THEN
         g = ABS(gWork(SIZE(gWork,1),1))
       ELSE
         CALL Warn('HydrostaticNSVec','"Gravity" not found in simulation section, setting to 1')
-      END IF
-    END IF       
+      END IF      
+      PressureCorr = ListGetLogical( Params,'Pressure Correction',Found ) 
+    END IF
     
     ! Copy the velocity componts x & y
     DO i=1,2
@@ -1036,8 +1067,14 @@ CONTAINS
 
     n = SIZE(VarXY % Values) / 2
     ALLOCATE(duz(n),wuz(n))      
-    duz = 0.0_dp; wuz = 0.0_dp
-        
+    duz = 0.0_dp
+    wuz = 0.0_dp
+
+    IF(PressureCorr) THEN
+      ALLOCATE(dpr(n))
+      dpr = 0.0_dp
+    END IF
+      
     Active = GetNOFActive()
     DO t=1,Active
       Element => GetActiveElement(t)
@@ -1047,19 +1084,36 @@ CONTAINS
       
       ! Calculate elemental contribution to d(uz)/dz
       !---------------------------------------------
-      CALL LocalDuz(Element, n, n, duz, wuz )      
-
+      IF( PressureCorr ) THEN 
+        CALL LocalDuz(Element, n, n, duz, wuz, t==1, dpr )      
+      ELSE
+        CALL LocalDuz(Element, n, n, duz, wuz, t==1 ) 
+      END IF
+        
       IF(t==1) THEN
         Material => GetMaterial(Element)
         rho = ListGetCReal(Material,'Density',UnfoundFatal=.TRUE.) 
       END IF
     END DO
 
-    ! Note: we are missing parallel communication here!
+    ! Communicate the values for the shared dofs prior to normalization
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL ParallelSumNodalVector( Mesh, wuz, VarXY % Perm )
+      CALL ParallelSumNodalVector( Mesh, duz, VarXY % Perm )
+      IF( PressureCorr ) THEN
+        CALL ParallelSumNodalVector( Mesh, dpr, VarXY % Perm )
+      END IF
+    END IF
+            
     WHERE(wuz > EPSILON(dz) )
       duz = duz / wuz
     END WHERE
-
+    IF(PressureCorr) THEN
+      WHERE( wuz > EPSILON(dz))
+        dpr = dpr / wuz
+      END WHERE
+    END IF
+    
     ! If we have exported variable "duz" we can save the value of the field
     VarDuz => VariableGet(Mesh % Variables,'duz', ThisOnly = .TRUE.)
     IF( ASSOCIATED( VarDuz ) ) VarDuz % Values = duz
@@ -1121,6 +1175,11 @@ CONTAINS
 
     DEALLOCATE(duz,wuz)
     
+    IF( PressureCorr ) THEN
+      VarP % Values(pdof::pdof) = VarP % Values(pdof::pdof) + dpr
+      DEALLOCATE(dpr)
+    END IF
+     
   END SUBROUTINE PopulateDerivedFields
     
 END MODULE HydrostaticNSUtils
