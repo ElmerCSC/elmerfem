@@ -2474,6 +2474,12 @@ CONTAINS
    !------------------------------------------------------------------
    CALL LoadMeshStep( 5 )
 
+   ! Set default internal/external BCs. This must be after the previous load mesh
+   ! since only there the shared nodes are loaded, and this info is used to decide
+   ! whether a boundary element is internal or external.
+   !------------------------------------------------------------------------------
+   CALL MapInternalExternalBCs()
+   
    ! Sometimes we need boundaries that do not exist in the original mesh.
    ! Then we may create boundaries based on some geometric rules. 
    !--------------------------------------------------------------------
@@ -2583,10 +2589,7 @@ CONTAINS
            DO k=1,SIZE(BList)
              body = Blist(k)
              IF( body > maxid .OR. body < minid ) THEN
-#if 0
-               CALL Warn('MapBodiesAndBCs','Unused body entry in > Target Bodies <  : '&
-                   //I2S(body) )              
-#endif
+               CONTINUE
              ELSE IF( IndexMap( body ) /= 0 ) THEN
                CALL Warn('MapBodiesAndBCs','Multiple bodies have same > Target Bodies < entry : '&
                    //I2S(body))
@@ -2679,17 +2682,15 @@ CONTAINS
      DO id=1,Model % NumberOfBCs
        IF(ListGetLogical( Model % BCs(id) % Values, &
            'Default Target', GotIt)) DefaultTargetBC = id       
+       IF(ListGetLogical( Model % BCs(id) % Values, &
+           'Default BC', GotIt)) DefaultTargetBC = id       
        BList => ListGetIntegerArray( Model % BCs(id) % Values, &
            'Target Boundaries', GotIt )
        IF ( Gotit ) THEN
          DO k=1,SIZE(BList)
            bndry = Blist(k)
            IF( bndry > maxid ) THEN
-#if 0
-  in my opinion, this is quite usual ... Juha
-             CALL Warn('MapBodiesAndBCs','Unused BC entry in > Target Boundaries <  : '&
-                 //I2S(bndry) )              
-#endif
+             CONTINUE
            ELSE IF( IndexMap( bndry ) /= 0 ) THEN
              CALL Warn('MapBodiesAndBCs','Multiple BCs have same > Target Boundaries < entry : '&
                  //I2S(bndry) )
@@ -2705,13 +2706,6 @@ CONTAINS
            CALL Warn('MapBodiesAndBCs','Default Target is a Target Boundaries entry in > Boundary Condition < : '&
                //I2S(IndexMap(id)) )
          END IF
-         !
-         !IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
-         !  CALL Warn(Caller,'Unset BC already set by > Target Boundaries < : '&
-         !      //I2S(id) )
-         !ELSE 
-         !  ! IndexMap( id ) = id
-         !END IF
        END IF
      END DO
 
@@ -2747,14 +2741,8 @@ CONTAINS
 
        ELSE IF( IndexMap( bndry ) == 0 ) THEN
          IF( DefaultTargetBC /= 0 ) THEN
-!          PRINT *,'Default boundary map: ',bndry,DefaultTargetBC
            IndexMap( bndry ) = DefaultTargetBC
          ELSE 
-!          IF( bndry <= Model % NumberOfBCs ) THEN            
-!            PRINT *,'Unmapped boundary: ',bndry
-!          ELSE
-!            PRINT *,'Unused boundary: ',bndry
-!          END IF
            IndexMap( bndry ) = -1 
            Element % BoundaryInfo % Constraint = 0           
            CYCLE
@@ -2777,6 +2765,89 @@ CONTAINS
 
    END SUBROUTINE MapBodiesAndBCs
 
+
+
+   !------------------------------------------------------------------------------
+   ! Map bodies and boundaries as prescirbed by the 'Target Bodies' and 
+   ! 'Target Boundaries' keywords.
+   !------------------------------------------------------------------------------    
+   SUBROUTINE MapInternalExternalBCs()
+
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: id,minid,maxid,bndry,m,&
+         DefaultIntBC, DefaultExtBC, cnt, cntInt, cntExt
+
+     IF( Mesh % NumberOfBoundaryElements == 0 ) RETURN
+
+     ! Check if default internal/external BCs given
+     !------------------------------------------------------------------
+     DefaultIntBC = 0
+     DefaultExtBC = 0
+     DO id=1,Model % NumberOfBCs
+       IF(ListGetLogical( Model % BCs(id) % Values, &
+           'Default Internal BC', GotIt)) DefaultIntBC = id       
+       IF(ListGetLogical( Model % BCs(id) % Values, &
+           'Default External BC', GotIt)) DefaultExtBC = id       
+     END DO
+     IF(DefaultIntBC == 0 .AND. DefaultExtBC == 0) RETURN
+
+     IF( DefaultIntBC /= 0 ) THEN
+       CALL Info('MapInternalExternalBCs','Default Internal BC: '//I2S(DefaultIntBC),Level=8)
+     END IF
+     IF( DefaultExtBC /= 0 ) THEN
+       CALL Info('MapInternalExternalBCs','Default External BC: '//I2S(DefaultExtBC),Level=8)
+     END IF
+
+
+     ! And finally set internal/external BCs
+     !---------------------------------------
+     cntInt = 0
+     cntExt = 0
+     DO i=Mesh % NumberOfBulkElements + 1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+
+       Element => Mesh % Elements(i)
+
+       n = Element % TYPE % NumberOfNodes
+       bndry = Element % BoundaryInfo % Constraint 
+       IF(bndry /= 0) CYCLE
+       
+       cnt = 0
+       IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) cnt = cnt + 1
+       IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) cnt = cnt + 1
+
+       ! In parallel we may have a invalid external BC so check that it is not
+       ! really an internal one.
+       IF( cnt == 1 .AND. ParEnv % PEs > 1) THEN
+         m = 0
+         DO j=1,n
+           k = Element % NodeIndexes(j)
+           IF(ASSOCIATED(Mesh % ParallelInfo % NeighbourList(k) % Neighbours ) ) THEN
+             IF(SIZE(Mesh % ParallelInfo % NeighbourList(k) % Neighbours) > 1) m = m+1
+           END IF
+         END DO
+         IF(m==n) cnt = 2
+       END IF       
+
+       IF( cnt == 2 .AND. DefaultIntBC > 0 ) THEN
+         cntInt = cntInt + 1
+         Element % BoundaryInfo % Constraint = DefaultIntBC
+       ELSE IF( cnt == 1 .AND. DefaultExtBC > 0 ) THEN
+         cntExt = cntExt + 1
+         Element % BoundaryInfo % Constraint = DefaultExtBC
+       END IF
+     END DO
+
+     IF( cntInt /= 0 ) THEN
+       CALL Info('MapInternalExternalBCs','"Default Internal BC" count: '&
+           //I2S(cntInt),Level=6)
+     END IF
+     IF( cntExt /= 0 ) THEN
+       CALL Info('MapInternalExternalBCs','"Default External BC" count: '&
+           //I2S(cntExt),Level=6)
+     END IF
+
+   END SUBROUTINE MapInternalExternalBCs
    
 
    !------------------------------------------------------------------------------

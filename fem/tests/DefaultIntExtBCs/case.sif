@@ -1,0 +1,85 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 6
+
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 3
+End
+
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 2 
+  Temperature = 1
+End
+
+Boundary Condition 2
+  Name = "IntBC"
+  Default Internal BC = Logical True
+  Temperature = 2
+End 
+
+Boundary Condition 3
+  Name = "ExtBC"
+  Default External BC = Logical True
+  Temperature = 3
+End 
+
+
+Solver 1 :: Reference Norm = 2.44853456E+00
+!End Of File
