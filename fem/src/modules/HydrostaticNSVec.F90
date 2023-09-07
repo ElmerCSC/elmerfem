@@ -1002,7 +1002,7 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP 
+    TYPE(Variable_t), POINTER :: VarXY, VarFull, VarDuz, VarP, VarNrm 
     CHARACTER(LEN=MAX_NAME_LEN):: str
     TYPE(ValueList_t), POINTER :: Params, Material
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1012,7 +1012,7 @@ CONTAINS
     INTEGER :: i,j,k,i1,i2,k1,k2,t,n,nd,nb,active, dofs, pdof
     TYPE(Element_t), POINTER :: Element
     TYPE(Solver_t), POINTER :: pSolver
-    REAL(KIND=dp) :: dz, rho, g
+    REAL(KIND=dp) :: dz, rho, g, Nrm(3)
     REAL(KIND=dp), POINTER :: gWork(:,:)
     
     
@@ -1064,6 +1064,8 @@ CONTAINS
     DO i=1,2
       VarFull % Values(i::dofs) = VarXY % Values(i::2)
     END DO
+    ! Zero the velocity component for z
+    VarFull % Values(3::dofs) = 0.0_dp
 
     n = SIZE(VarXY % Values) / 2
     ALLOCATE(duz(n),wuz(n))      
@@ -1122,6 +1124,16 @@ CONTAINS
     CALL DetectExtrudedStructure( Mesh, PSolver, &
         UpNodePointer = UpPointer, DownNodePointer = DownPointer)
 
+    VarNrm => NULL()
+    str = ListGetString( Params,'Normal Vector Name',Found )
+    IF( Found ) THEN
+    !IF(.NOT. Found) str = 'Normal Vector'
+      VarNrm => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE.)
+      IF(ASSOCIATED(VarNrm)) THEN
+        CALL Info('HydrostaticNSVec','Using normal vector field for vertial base velocity!',Level=6)
+      END IF
+    END IF
+      
     ! Integrate over structured mesh 
     DO i=1,Mesh % NumberOfNodes                   
       IF(DownPointer(i)==0) CYCLE
@@ -1131,8 +1143,19 @@ CONTAINS
       IF(DownPointer(i) == i) THEN
         ! Initailize values at the bedrock
         k1 = VarFull % Perm(i1)
-        IF(k1>0) VarFull % Values(dofs*(k1-1)+3) = 0.0_dp
-
+        IF(k1>0) THEN
+          VarFull % Values(dofs*(k1-1)+3) = 0.0_dp
+          IF(ASSOCIATED(VarNrm)) THEN
+            j = VarNrm % Perm(i)            
+            IF(j>0) THEN
+              ! Compute z-velocity from condition: u \cdot n = 0
+              Nrm = VarNrm % Values(3*j-2:3*j)
+              VarFull % Values(dofs*(k1-1)+3) = &
+                  -SUM( Nrm(1:2) * VarFull % Values(dofs*(k-1)+1:dofs*(k-1)+2) ) / Nrm(3)
+            END IF
+          END IF
+        END IF
+          
         DO WHILE(.TRUE.)
           i2 = UpPointer(i1)
           IF(i2==i1) EXIT
