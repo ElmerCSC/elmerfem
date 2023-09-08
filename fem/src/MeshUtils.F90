@@ -2775,7 +2775,7 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
      INTEGER :: id,minid,maxid,bndry,m,&
-         DefaultIntBC, DefaultExtBC, cnt, cntInt, cntExt
+         DefaultIntBC, DefaultExtBC, cnt, cntInt, cntExt, dim
 
      IF( Mesh % NumberOfBoundaryElements == 0 ) RETURN
 
@@ -2803,6 +2803,7 @@ CONTAINS
      !---------------------------------------
      cntInt = 0
      cntExt = 0
+     dim = Mesh % MeshDim
      DO i=Mesh % NumberOfBulkElements + 1, &
          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
 
@@ -2811,6 +2812,14 @@ CONTAINS
        n = Element % TYPE % NumberOfNodes
        bndry = Element % BoundaryInfo % Constraint 
        IF(bndry /= 0) CYCLE
+
+       ! The internal/external is defined by the number of parent.
+       ! This is meaningfull only for dim-1 elements. Others are ignored. 
+       IF(dim == 3 ) THEN
+         IF( Element % TYPE % ElementCode < 300 ) CYCLE
+       ELSE IF( dim == 2 ) THEN
+         IF( Element % TYPE % ElementCode < 200 ) CYCLE
+       END IF
        
        cnt = 0
        IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) cnt = cnt + 1
