@@ -84,7 +84,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
   INTEGER :: i,j,k,t,n,nd,dim,Trip_node, axis_node, NonlinearIter, istat, &
        ii,iter, Visited = -1, &
        SubroutineVisited = 0, NormalDirection, CoordMini(3), CoordMaxi(3), CoupledIter, &
-       TimeStep, LoadsOrder
+       TimeStep, LoadsOrder, LoadsSign
   INTEGER, POINTER :: NodeIndexes(:),TempPerm(:),SurfPerm(:)
 
   LOGICAL :: Stat, FirstTime = .TRUE., DoVelocityRelax, &
@@ -319,6 +319,13 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
       CALL Info('TransientPhaseChange','Using nodal loads to determine phase change',Level=6)
     END IF
 
+    IF( ListGetLogical( Params,'Nodal Loads Negative',Stat ) ) THEN
+      CALL Info('TransientPhaseChange','Assigning negative sign to nodal loads!',Level=6)
+      LoadsSign = -1
+    ELSE
+      LoadsSign = 1
+    END IF
+    
     IF(.NOT. ASSOCIATED( PrevLoads ) ) THEN
       CALL Info('TransientPhaseChange','Allocating for previous loads',Level=12)
       ALLOCATE( PrevLoads( SIZE( Surface ) ) )
@@ -343,7 +350,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
       j = LoadsSol % Perm(t)
       IF( j == 0 ) CYCLE
 
-      CurrentLoads(i) = LoadsSol % Values(j)
+      CurrentLoads(i) = LoadsSign * LoadsSol % Values(j)
     END DO
 
     IF( UseFirstLoads ) THEN
@@ -377,7 +384,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
 
     ! First solve the velocity field
     CALL DefaultInitialize()
-    
+
     IF(UseLoads) THEN
       DO t=1,Mesh % NumberOfNodes
         i = SurfPerm(t)
@@ -394,6 +401,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
         END IF
       END DO
     END IF
+
 
     DO t = 1, Solver % NumberOfActiveElements         
       CurrentElement => GetActiveElement(t)
@@ -414,7 +422,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,Transient )
       
       CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForceVector )
     END DO
-
+        
     CALL DefaultFinishBulkAssembly()
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
@@ -585,12 +593,14 @@ CONTAINS
       s = s * detJ
       xcoord = SUM( Nodes % x(1:n) * Basis(1:n) )
 
-
-! This is not really a physical equation and hence weighing with the radius is not necessary
-!      IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-!        s = s * xcoord
-!      END IF
-
+      ! This is not really a physical equation and hence weighing with the radius is not necessary
+      ! However, do it when using loads since the loads have the weights in!
+      IF( UseLoads ) THEN
+        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+          s = s * xcoord
+        END IF
+      END IF
+        
       Found = .FALSE.
       IF(AverageNormal) THEN
         Normal = ConsistentNormalVector( CurrentModel % Solver, NrmSol, Element, Found, Basis = Basis )
@@ -690,7 +700,8 @@ CONTAINS
         IF(.NOT. UseLoads) THEN
           ForceVector(p) = ForceVector(p) - s * Basis(p) * Flux 
         END IF
-        
+
+               
       END DO
 
     END DO
@@ -851,7 +862,7 @@ SUBROUTINE TransientPhaseChange_Init( Model,Solver,dt,Transient)
 
     IF(.NOT. ListCheckPresent( Params,'Time Derivative Order') ) &
         CALL ListAddInteger( Params,'Time Derivative Order',1)
-    
+
     IF( ListGetLogical( Params,'Pull Rate Control',Found) ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
           '-global pull velocity' )      
