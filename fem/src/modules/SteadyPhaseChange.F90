@@ -73,10 +73,11 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
        dTdz, ttemp, NewtonAfterTol, area, volume, prevvolume, Eps, &
        Norm, maxds, maxds0, ds, FluxCorrect = 1.0, dpos, Width, &
        pos0=0.0, prevpos0, Coeff, OrigNorm, Trip_Temp, SpeedUp, PrevNorm, &
-       MaxAngle, MaxSurfaceMove, MaxSurface, x1, x2, y1, y2
+       MaxAngle, MaxSurfaceMove, MaxSurface, x1, x2, y1, y2, &
+       TriplePointHeight
   REAL(KIND=dp), POINTER :: Surface(:), SurfaceMove(:), Temperature(:), ForceVector(:),  &
        x(:), y(:), z(:), Basis(:), NodalTemp(:), &
-       TempDiff(:),Weights(:),NewY(:)
+       TempDiff(:),Weights(:),NewY(:), SurfaceHeight(:)
   REAL (KIND=dp), ALLOCATABLE :: PrevTemp(:), IsoSurf(:,:)
   
   INTEGER :: i,j,k,t,n,nn,pn,DIM,kl,kr,l, Trip_node, NoBNodes, istat, &
@@ -92,6 +93,9 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   LOGICAL, POINTER :: NodeDone(:), BoundaryMarker(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
 
+  CHARACTER(*), PARAMETER :: Caller = 'SteadyPhaseChange'
+
+  
   SAVE FirstTime, Trip_node, NoBNodes, SubroutineVisited, prevpos0, &
       PrevTemp, Newton, ccum, NormalDirection, TangentDirection, MeltPoint, &
       ForceVector, FluxCorrect, NodeDone, Eps,  &
@@ -101,19 +105,19 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
       Weights, SurfaceMove,  GotLiquid, GotSolid, LiquidBody, SolidBody, &
       SurfaceVelocitySet, CoordMax, CoordMin, CoordMaxi, CoordMini, &
       BoundaryMarker, IsoSurfAllocated, PhaseElements, NoPhaseElements, &
-      prevtave, prevtabs, prevvolabs, prevvolume
+      prevtave, prevtabs, prevvolabs, prevvolume, SurfaceHeight
   
 !------------------------------------------------------------------------------
 
-  CALL Info('SteadyPhaseChange',   '--------------------------------------------')
-  CALL Info('SteadyPhaseChange',   'Using steady algorithm to find the isotherm')      
-  CALL Info('SteadyPhaseChange',   '--------------------------------------------')
+  CALL Info(Caller,   '--------------------------------------------')
+  CALL Info(Caller,   'Using steady algorithm to find the isotherm')      
+  CALL Info(Caller,   '--------------------------------------------')
 
   SubroutineVisited = SubroutineVisited + 1
 
   DIM = CoordinateSystemDimension()
   IF(DIM /= 2) THEN
-    CALL Fatal('SteadyPhaseChange','Implemented only in 2D')
+    CALL Fatal(Caller,'Implemented only in 2D')
   END IF
 
 !------------------------------------------------------------------------------
@@ -129,7 +133,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      Surface  => SurfSol % Values
      SurfPerm => SurfSol % Perm
      IF(.NOT. ASSOCIATED (Surface) .OR. ALL(SurfPerm <= 0) ) THEN
-        CALL Fatal('SteadyPhaseChange','Surface field needed for Phase Change')
+        CALL Fatal(Caller,'Surface field needed for Phase Change')
      END IF
      VariableName = ComponentName(Solver % Variable)
   ELSE
@@ -139,7 +143,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
     Surface  => SurfSol % Values
     SurfPerm => SurfSol % Perm
     IF(.NOT. ASSOCIATED (Surface) .OR. ALL(SurfPerm <= 0)) THEN
-       CALL Fatal('SteadyPhaseChange','Surface field needed for Phase Change')
+       CALL Fatal(Caller,'Surface field needed for Phase Change')
     END IF
   END IF
 
@@ -164,10 +168,10 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   TempPerm => TempSol % Perm
   Temperature => TempSol % Values
   IF(.NOT. ASSOCIATED (Temperature) ) THEN
-     CALL Fatal('SteadyPhaseChange','Temperature field needed for Phase Change')
+     CALL Fatal(Caller,'Temperature field needed for Phase Change')
   END IF
   IF(ALL(TempPerm <= 0) ) THEN
-     CALL Fatal('SteadyPhaseChange','Temperature field has zero Perm vector!')
+     CALL Fatal(Caller,'Temperature field has zero Perm vector!')
   END IF
 
 !---------------------------------------------------------------------------------
@@ -192,7 +196,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         IF ( GetElementFamily() == 1 ) CYCLE
         
         BC => GetBC()
-        IF( .NOT. GetLogical( BC, 'Phase Change', GotIt ) ) CYCLE
+        IF( .NOT. GetLogical( BC, 'Phase Change', GotIt ) .AND. & 
+            .NOT. ListCheckPresent( BC, 'Phase Height') ) CYCLE
 
         BoundaryMarker( Element % NodeIndexes ) = .TRUE.
         NoPhaseElements = NoPhaseElements + 1
@@ -200,14 +205,14 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      NoBNodes = COUNT ( BoundaryMarker )
 
      WRITE(Message,'(A,T35,I12)') 'Number of interface nodes:',NoBNodes
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
 
      IF( NoBNodes == 0 ) THEN
-        CALL Warn('SteadyPhaseChange','There is no Phase Change boundary')
+        CALL Warn(Caller,'There is no Phase Change boundary')
      END IF
 
      WRITE(Message,'(A,T35,I12)') 'Number of interface elements:',NoPhaseElements
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
     
      ALLOCATE(PhaseElements(NoPhaseElements), STAT=istat) 
      IF ( istat /= 0 ) CALL Fatal( 'PhaseChangeSolver', 'Memory allocation error 3.' )           
@@ -220,7 +225,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         IF ( GetElementFamily() == 1 ) CYCLE
         
         BC => GetBC()
-        IF( .NOT. GetLogical( BC, 'Phase Change', GotIt ) ) CYCLE
+        IF( .NOT. GetLogical( BC, 'Phase Change', GotIt ) .AND. & 
+            .NOT. ListCheckPresent( BC, 'Phase Height' ) ) CYCLE
 
         NoPhaseElements = NoPhaseElements + 1
         PhaseElements(NoPhaseElements) = t
@@ -268,7 +274,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
 
 
      WRITE(Message,'(A,T35,ES12.4)') 'Width of the interface',Width
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
 
      ! Find triple point:
      !-------------------
@@ -276,10 +282,10 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      Axis_node = CoordMini(TangentDirection)
      
      WRITE(Message,'(A,T35,I12)') 'Index of the triple point: ',Trip_node
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
      
      WRITE(Message,'(A,T35,I12)') 'Index of the axis point: ',Axis_node
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
 
 
      ! Look if Liquid and Solid are determined in bodies
@@ -322,20 +328,20 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         END DO
 
         WRITE(Message,'(A,T35,I12)') 'Body index for solid: ',SolidBody
-        CALL Info('SteadyPhaseChange',Message)
+        CALL Info(Caller,Message)
 
         WRITE(Message,'(A,T35,I12)') 'Body index for liquid: ',LiquidBody
-        CALL Info('SteadyPhaseChange',Message)
+        CALL Info(Caller,Message)
      END IF
 
      n = Solver % Mesh % MaxElementNodes  
 
      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
           x(n), y(n), z(n), Basis(n), NodalTemp(n), &
-          TempDiff(n), &
+          TempDiff(n), SurfaceHeight(n), &
           PrevTemp(SIZE(Surface)), &
           STAT=istat)
-     IF ( istat /= 0 ) CALL Fatal( 'SteadyPhaseChange', 'Memory allocation error 4.' )     
+     IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error 4.' )     
 
      Nodes % x = 0.0d0
      Nodes % y = 0.0d0
@@ -343,7 +349,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      PrevTemp = 0.0d0
      
      ALLOCATE( NodeDone( SIZE(Surface) ), STAT=istat)
-     IF (istat /= 0 ) CALL Fatal( 'SteadyPhaseChange', 'Memory allocation error 5.' )          
+     IF (istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error 5.' )          
      
      AllocationsDone = .TRUE.    
   END IF
@@ -363,9 +369,9 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
        'Nonlinear System Newton After Tolerance', stat )
   
   IF(Newton) THEN
-    CALL Info( 'SteadyPhaseChange','Steady state newton formulation', Level=4 )
+    CALL Info( Caller,'Steady state newton formulation', Level=4 )
   ELSE
-    CALL Info( 'SteadyPhaseChange','Steady state isoterm formulation', Level=4 )
+    CALL Info( Caller,'Steady state isoterm formulation', Level=4 )
   END IF
 
 ! Find the melting point:
@@ -377,7 +383,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   IF( TriplePointFixed ) THEN
     MeltPoint = Trip_Temp
     WRITE(Message,'(A,T35,ES12.4)') 'Melting point set: ',MeltPoint
-    CALL Info('SteadyPhaseChange',Message)        
+    CALL Info(Caller,Message)        
   ELSE
     DO k=1, Model % NumberOfMaterials
       MeltPoint = GetCReal( Model % Materials(k) % Values, &
@@ -386,9 +392,9 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
     END DO
     IF( GotIt ) THEN
       WRITE(Message,'(A,T35,ES12.4)') 'Melting point found: ',MeltPoint
-      CALL Info('SteadyPhaseChange',Message)        
+      CALL Info(Caller,Message)        
     ELSE
-      CALL Info('SteadyPhaseChange','Could not find melting point in any material!')        
+      CALL Info(Caller,'Could not find melting point in any material!')        
     END IF
   END IF
 
@@ -408,6 +414,44 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   volabs = 0.0
   NodeDone = .FALSE.
   MaxTempDiff = 0.0
+  TriplePointHeight = 0.0
+
+
+  DO t=1, Solver % Mesh % NumberOfBoundaryElements
+    Element => GetBoundaryElement(t)
+    
+    n = GetElementNOFNodes()
+    IF ( GetElementFamily() == 1 ) CYCLE
+    
+    BC => GetBC()
+    Indexes => Element % NodeIndexes
+    
+    ElementCode = Element % TYPE % ElementCode
+    IF(ElementCode < 200 .OR. ElementCode > 203) THEN
+      CALL Fatal(Caller,'Implemented only for elements 202 and 203!')
+      CYCLE
+    END IF
+    
+    SurfaceHeight(1:n) = ListGetReal( BC, 'Phase Height', n, Indexes, GotIt )
+    IF(.NOT. GotIt) CYCLE
+    
+    SurfaceHeight(1:n) = SurfaceHeight(1:n) - Surface(SurfPerm(Indexes))
+    
+    DO nn=1,n      
+      k = SurfPerm(Indexes(nn))
+      IF ( NodeDone(k) ) CYCLE
+      NodeDone(k) = .TRUE.
+      
+      IF( TriplePointFixed .AND. Indexes(nn) == trip_node) THEN
+        TriplePointHeight = SurfaceHeight(nn)
+        CALL Info(Caller,'Triple point height fixed')
+      END IF
+      SurfaceMove(k) = SurfaceHeight(nn)
+    END DO
+  END DO
+
+      
+
   
   DO t=1, Solver % Mesh % NumberOfBoundaryElements
     Element => GetBoundaryElement(t)
@@ -440,8 +484,8 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
       NodeDone(k) = .TRUE.
       
       IF( TriplePointFixed .AND. Indexes(nn) == trip_node) THEN
-        SurfaceMove(k) = 0.0d0
-        CALL Info('SteadyPhaseChange','Triple point position fixed')
+        SurfaceMove(k) = TriplePointHeight
+        CALL Info(Caller,'Triple point position fixed')
         CYCLE 
       END IF
       
@@ -457,7 +501,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
       IF ( Newton ) THEN
         dTdz = TTemp - PrevTemp(k) 
         IF ( ABS(dTdz) < AEPS ) THEN
-          CALL Warn( 'SteadyPhaseChange', 'Very small temperature update.' )
+          CALL Warn( Caller, 'Very small temperature update.' )
           dTdz = 1
         END IF
         Update = SurfaceMove(k) * ( MeltPoint - TTemp ) / dTdz
@@ -521,13 +565,13 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
         ! There may be a problem if the boundary cannot be mapped on an isotherm
         IF (.NOT. stat) THEN
           IF(dxmin > 1.0d-2* ABS(x1 - x2)) THEN
-            CALL Warn('SteadyPhaseChange','Isotherm error?')
+            CALL Warn(Caller,'Isotherm error?')
             WRITE(Message,*) 'Nodeindexes',Indexes(nn)
-            CALL Warn('SteadyPhaseChange',Message)
+            CALL Warn(Caller,Message)
             WRITE(Message,*) 'x:',xx,' y:',yy
-            CALL Warn('SteadyPhaseChange',Message)
+            CALL Warn(Caller,Message)
             WRITE(Message,*) 'dxmin:',dxmin,' dymin:',dymin
-            CALL Warn('SteadyPhaseChange',Message)
+            CALL Warn(Caller,Message)
           END IF
         END IF
         
@@ -614,7 +658,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
      ccum = ccum * cvol
      
      WRITE(Message,'(A,T35,ES12.4)') 'Lumped Acceleration relaxation: ', ccum
-     CALL Info('SteadyPhaseChange',Message)
+     CALL Info(Caller,Message)
      
      LocalRelax = LocalRelax * ccum
   END IF
@@ -643,22 +687,22 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   
   
   WRITE(Message,'(A,T35,ES12.4)') 'Result Norm:', Norm
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
 
   WRITE(Message,'(A,T35,ES12.4)') 'Relative Change: ', RelativeChange
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
 
   WRITE(Message,'(A,T35,ES12.4)') 'Max Height:', MaxSurface
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
 
   WRITE(Message,'(A,T35,ES12.4)') 'Max Change in Height:', MaxSurfaceMove
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
 
   WRITE(Message,'(A,T35,ES12.4)') 'Max Angle:       ', MaxAngle
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
 
   WRITE(Message,'(A,T35,ES12.4)') 'Maximum temperature difference: ', MaxTempDiff
-  CALL Info('SteadyPhaseChange',Message)
+  CALL Info(Caller,Message)
   
   Solver % Variable % Norm = Norm
   
@@ -679,7 +723,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
   
 200 CALL ListAddConstReal(Model % Simulation,'res: Triple point temperature',Trip_temp)
   CALL ListAddConstReal( Model % Simulation,'res: triple point movement',dpos)
-
+  
   ! Add the coordinate y to the list of variables to save
   HelpSol => VariableGet( Solver % Mesh % Variables,'newy', ThisOnly=.TRUE.)
   IF(.NOT. ASSOCIATED(HelpSol)) THEN
@@ -767,11 +811,11 @@ CONTAINS
                     xmax = MAX( IsoSurf(Nelems,1), xmax )                 
                  END IF
               ELSE
-                 CALL Warn('SteadyPhaseChange','Wiggly Isotherm')
+                 CALL Warn(Caller,'Wiggly Isotherm')
                  WRITE(Message,*) 'nodeindexes',Indexes(1:Vertex)
-                 CALL Warn('SteadyPhaseChange',Message)
+                 CALL Warn(Caller,Message)
                  WRITE(Message,*) 'temperature',Temperature(TempPerm(Indexes))
-                 CALL Warn('SteadyPhaseChange',Message)
+                 CALL Warn(Caller,Message)
                  PRINT *,'Nodes % x',Nodes % x(n)
                  PRINT *,'Nodes % y',Nodes % y(n)
               END IF
@@ -800,19 +844,19 @@ CONTAINS
         
      END DO
      
-     IF(Nelems == 0) CALL Fatal('SteadyPhaseChange','Isotherm is empty thus cannot map phase change surface') 
+     IF(Nelems == 0) CALL Fatal(Caller,'Isotherm is empty thus cannot map phase change surface') 
      
      IF(.NOT. IsoSurfAllocated) THEN
         ALLOCATE( IsoSurf(Nelems+1,2))
         IsoSurfAllocated = .TRUE.
         WRITE(Message,'(A,T35,I12)') 'Number of isotherm segments:',Nelems
-        CALL Info('SteadyPhaseChange',Message)
+        CALL Info(Caller,Message)
         GOTO 100
      END IF
 
      ! The last one is just one extra node for safety
      IF(ListGetLogical(Params,'Save Isotherm',stat)) THEN
-        CALL Info('SteadyPhaseChange','Isotherm saved to file isotherm.dat')
+        CALL Info(Caller,'Isotherm saved to file isotherm.dat')
         OPEN (10,FILE='isotherm.dat')
         DO i=1,Nelems
            WRITE(10,*) i,IsoSurf(i,1),IsoSurf(i,2)

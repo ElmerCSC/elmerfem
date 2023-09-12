@@ -1,5 +1,12 @@
 ! Compute transient phase change problem by updating the 
 ! interface based on the melting speed. 
+!
+! This is a variation of case 3 using nodal loads to estimate the melt speed.
+! For some reason this alternative strategy using nodal loads
+! does not work for axially symmetric case so this one is cartesian.
+!
+! P.R. 12.9.2023
+
 
 $ velo = 1.0
 $ melt = 0.5
@@ -14,7 +21,7 @@ End
 
 Simulation
   Max Output Level = 5
-  Coordinate System = "Axi Symmetric"
+  Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
   Simulation Type = Transient
@@ -119,6 +126,10 @@ Solver 3
 ! Lumped Newton After Iterations = Integer 10
   Steady State Convergence Tolerance = 1.0e-3
 !  Use Triple Point for Melting Point = Logical True
+
+!  Loads Relaxation Factor = Real 0.7
+  Use Nodal Loads = Logical True
+  Nodal Loads Negative = Logical True
 
   Surface Smoothing Factor = Real 0.0
   Transient Speedup = Real 1.0
@@ -257,6 +268,6 @@ Boundary Condition 6
   Target Boundaries = 6
 End
 
-Solver 1 :: Reference Norm = 6.29652734E-02
-Solver 2 :: Reference Norm = 5.90355718E-01
-Solver 3 :: Reference Norm = 9.69756455E-01
+Solver 1 :: Reference Norm = 5.31150299E-02
+Solver 2 :: Reference Norm = 5.83595961E-01
+Solver 3 :: Reference Norm = 3.48866143E-01
