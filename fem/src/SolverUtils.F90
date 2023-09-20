@@ -6050,7 +6050,7 @@ CONTAINS
             Coeff = 1.0_dp
           END IF
             
-          CALL MoveRow( A, k, k0, Coeff )
+          CALL MoveRow( A, k, k0, 1.0_dp )
           b(k0) = b(k0) + Coeff * b(k)
 
           CALL AddToMatrixElement( A, k, k, 1.0_dp )
@@ -6067,7 +6067,7 @@ CONTAINS
               Coeff = 1.0_dp
             END IF
               
-            CALL MoveRow( A, k, k0, Coeff )
+            CALL MoveRow( A, k, k0, 1.0_dp )
             b(k0) = b(k0) + Coeff * b(k)
           
             CALL AddToMatrixElement( A, k, k, 1.0_dp )

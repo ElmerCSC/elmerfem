@@ -25,6 +25,8 @@ Simulation
   Output Intervals = 1
 
   Post File = "case.vtu"
+
+!  Mesh Levels = 4
 End
 
 Constants
@@ -59,20 +61,22 @@ Solver 1
   Linear System Residual Output = 20
 
   Calculate Boundary Fluxes = Logical True
+  Calculate Loads = True
 End  
 
  
 Solver 2
   Equation = "SaveScalars"
-  Exec Solver = never
+!  Exec Solver = never
 
   Procedure = "SaveData" "SaveScalars"
   Filename = f.dat
+  Mask Name 1 = "inside"
   Variable 1 = Temperature
   Operator 1 = boundary min
   Variable 2 = Temperature
   Operator 2 = boundary max
-End 
+End  
 
 
 Material 1
@@ -91,6 +95,7 @@ Boundary Condition 1
   Target Boundaries(1) = 1
 
   Temperature = 0.0
+  Outside = Logical True
 End
 
 Boundary Condition 2
@@ -101,10 +106,11 @@ Boundary Condition 2
   Temperature Amplitude = Variable "Coordinate 1"
     Real MATC "0.75-0.25*tx"
 
-  Save Scalars = True
+!  Temmperature Constant = Logical True
+  Inside = Logical True
 End
 
-Solver 1 :: Reference Norm = 4.60879763E-01
+Solver 1 :: Reference Norm = 4.99293733E-01
 
 
 
