@@ -4682,6 +4682,10 @@ CONTAINS
     TYPE(NormalTangential_t), POINTER :: NT
     LOGICAL, ALLOCATABLE, SAVE :: NTzeroing_done(:,:)
     INTEGER, ALLOCATABLE, SAVE :: NTelement(:,:)
+
+    REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult
+    LOGICAL :: GotMult
+    INTEGER :: maxind
     
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -5353,57 +5357,152 @@ CONTAINS
     ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
     ! value on that boundary / body force.
     !--------------------------------------------------------------------------------------------
-    DirName = TRIM(Name)//' Constant'
-    AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
-    AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
+    NeedListMatrix = .FALSE.
 
-    IF( AnySingleBC .OR. AnySingleBF ) THEN
-      ALLOCATE( LumpedNodeSet( SIZE( Perm ) ) )
-
-      IF( AnySingleBC ) CALL Info(Caller,'Found BC constraint: '//TRIM(DirName),Level=6)
-      IF( AnySingleBF ) CALL Info(Caller,'Found BodyForce constraint: '//TRIM(DirName),Level=6)
-
-      ! Improve the logic in future
-      ! Now we assume that if the "supernode" has been found then also the matrix has the correct topology. 
-      IF( AnySingleBC ) THEN
-        NeedListMatrix = .NOT. ListCheckPresentAnyBC( Model, TRIM(Name)//' Constant Node Index')
-      ELSE 
-        NeedListMatrix = .NOT. ListCheckPresentAnyBodyForce( Model, TRIM(Name)//' Constant Node Index')
-      END IF
-      
-      ! Move the list matrix because of its flexibility. Register the initial topology.
-      IF( NeedListMatrix ) THEN
-        CALL CRS_ChangeTopology(A, Init=.TRUE.)
-        CALL List_toListMatrix(A)
+    DO l = 0, 1
+      IF( l == 0 ) THEN
+        DirName = TRIM(Name)//' Constant'
+      ELSE
+        DirName = TRIM(Name)//' Amplitude'
       END IF
 
-      DO bc = 1,Model % NumberOfBCs + Model % NumberOfBodyForces
+      AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
+      AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
 
-        ! Make a distinction between BCs and BFs. 
-        ! These are treated in the same loop because most of the logic is still the same. 
-        IF( bc <= Model % NumberOfBCs ) THEN
-          IF(.NOT. AnySingleBC ) CYCLE
-          ValueList => Model % BCs(BC) % Values
-          ElemFirst =  Mesh % NumberOfBulkElements + 1 
-          ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        ELSE
-          IF(.NOT. AnySingleBF ) CYCLE
-          ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
-          ElemFirst =  1
-          ElemLast =  Model % NumberOfBulkElements
+      IF( AnySingleBC .OR. AnySingleBF ) THEN
+        GotMult = (l == 1 )
+        ALLOCATE( LumpedNodeSet( SIZE( Perm ) ) )
+
+        IF( AnySingleBC ) CALL Info(Caller,'Found BC constraint: '//TRIM(DirName),Level=6)
+        IF( AnySingleBF ) CALL Info(Caller,'Found BodyForce constraint: '//TRIM(DirName),Level=6)
+
+        ! Improve the logic in future
+        ! Now we assume that if the "supernode" has been found then also the matrix has the correct topology. 
+        IF( AnySingleBC ) THEN
+          NeedListMatrix = .NOT. ListCheckPresentAnyBC( Model, TRIM(Name)//' Constant Node Index')
+        ELSE 
+          NeedListMatrix = .NOT. ListCheckPresentAnyBodyForce( Model, TRIM(Name)//' Constant Node Index')
         END IF
 
-        IF( .NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
+        ! Move the list matrix because of its flexibility. Register the initial topology.
+        IF( NeedListMatrix ) THEN
+          CALL CRS_ChangeTopology(A, Init=.TRUE.)
+          CALL List_toListMatrix(A)
+        END IF
+      
+        DO bc = 1,Model % NumberOfBCs + Model % NumberOfBodyForces
+          ! Make a distinction between BCs and BFs. 
+          ! These are treated in the same loop because most of the logic is still the same. 
+          IF( bc <= Model % NumberOfBCs ) THEN
+            IF(.NOT. AnySingleBC ) CYCLE
+            ValueList => Model % BCs(BC) % Values
+            ElemFirst =  Mesh % NumberOfBulkElements + 1 
+            ElemLast =  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          ELSE
+            IF(.NOT. AnySingleBF ) CYCLE
+            ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
+            ElemFirst =  1
+            ElemLast =  Model % NumberOfBulkElements
+          END IF
 
-        ind = ListGetInteger( ValueList,TRIM(Name)//' Constant Node Index',GotIt )     
-        
+          IF(GotMult) THEN
+            IF(.NOT. ListCheckPresent( ValueList,DirName) ) CYCLE 
+          ELSE
+            IF(.NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
+          END IF
+          
+          ! This tells us that this has been visited before            
+          ind = ListGetInteger( ValueList,TRIM(DirName)//' Node Index',GotIt )     
 
-        ! On the first time find a one single uniquely defined node for setting 
-        ! the value. In parallel it will be an unshared node with the highest possible 
-        ! node number 
-        IF( .NOT. GotIt ) THEN        
+          ! On the first time find a one single uniquely defined node for setting 
+          ! the value. In parallel it will be an unshared node with the highest possible 
+          ! node number 
+          IF( GotIt ) THEN        
+            IF( GotMult ) THEN
+              MaxMult = ListGetConstReal( ValueList,TRIM(DirName)//' Max Value',UnfoundFatal=.TRUE.) 
+            END IF
+          ELSE
+            MaxMult = 0.0_dp          
+            ind = 0
+            maxind = 0
 
-          ind = 0
+            DO t = ElemFirst, ElemLast
+              Element => Mesh % Elements(t)
+
+              IF( bc <= Model % NumberOfBCs ) THEN
+                IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+              ELSE
+                bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+                IF( bc - Model % NumberOfBCs /= bf ) CYCLE
+              END IF
+
+              n = Element % TYPE % NumberOfNodes
+              NodeIndexes => Element % NodeIndexes
+
+              IF(GotMult) THEN
+                Mult(1:n) = ListGetReal( ValueList,TRIM(DirName),n,NodeIndexes,UnfoundFatal=.TRUE.)
+              END IF
+
+              DO i=1,n
+                j = NodeIndexes(i)
+                IF( Perm(j) == 0) CYCLE
+                IF( Parallel ) THEN
+                  IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
+                  IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
+                END IF
+                IF( GotMult) THEN
+                  ! Find the point with maximum value of the multiplier
+                  IF( ABS(Mult(i)) > ABS(MaxMult) ) THEN
+                    maxind = j
+                    MaxMult = Mult(i)
+                  END IF
+                ELSE
+                  ind = j 
+                  EXIT
+                END IF
+              END DO
+              IF( ind > 0 ) EXIT
+            END DO
+
+            IF(GotMult) ind = maxind
+
+            ! Find the maximum partition that owns the node. 
+            ! It could be minimum also, just some convection is needed. 
+            IF( Parallel ) THEN
+              IF( GotMult ) THEN
+                ParMaxMult = ABS(MaxMult)
+                ParMaxMult = ParallelReduction( ParMaxMult, 2 ) 
+                IF(ABS(ABS(MaxMult)-ParMaxMult) > 1.0e-3*ParMaxMult) ind = 0 
+              END IF
+              k = -1
+              IF( ind > 0 ) k = ParEnv % MyPe          
+              k = ParallelReduction( k, 2 ) 
+              IF( k == -1 ) THEN
+                CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
+              END IF
+              IF( k /= ParEnv % MyPe ) ind = 0
+            ELSE
+              IF( ind == 0 ) THEN
+                CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
+              END IF
+            END IF
+
+            CALL ListAddInteger( ValueList,TRIM(DirName)//' Node Index', ind )
+            IF(GotMult) THEN
+              CALL ListAddConstReal( ValueList,TRIM(DirName)//' Max Value', MaxMult )
+            END IF
+            NeedListMatrix = .TRUE.
+          END IF
+
+          IF( Parallel ) CALL Warn(Caller,'Node index not set properly in parallel')
+          IF( ind == 0 ) CYCLE
+
+          ! Ok, now sum up the rows to the corresponding nodal index
+          LumpedNodeSet = .FALSE.
+
+          ! Don't lump the "supernode" and therefore mark it set already
+          LumpedNodeSet(ind) = .TRUE.
+
           DO t = ElemFirst, ElemLast
             Element => Mesh % Elements(t)
 
@@ -5412,99 +5511,46 @@ CONTAINS
             ELSE
               bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
               IF( bc - Model % NumberOfBCs /= bf ) CYCLE
-            END IF            
+            END IF
 
             n = Element % TYPE % NumberOfNodes
-            NodeIndexes => Element % NodeIndexes
+            Indexes(1:n) = Element % NodeIndexes
 
-            DO i=1,n
-              j = NodeIndexes(i)
-              IF( Perm(j) == 0) CYCLE
-              IF( Parallel ) THEN
-                IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
-                IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
-               END IF
-              ind = j 
-              EXIT
-            END DO
-            IF( ind > 0 ) EXIT
+            IF(GotMult) Mult(1:n) = ListGetReal( ValueList,TRIM(Name)//' Amplitude',n,Indexes,UnfoundFatal=.TRUE.)
+
+            CALL SetLumpedRows(ind,n)
           END DO
 
-          ! Find the maximum partition that owns the node. 
-          ! It could be minimum also, just some convection is needed. 
-          IF( Parallel ) THEN
-            k = -1
-            IF( ind > 0 ) k = ParEnv % MyPe          
-            k = ParallelReduction( k, 2 ) 
-            IF( k == -1 ) THEN
-              CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
+          IF( NDOFs == 1 ) THEN
+            SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Flux',GotIt)
+            IF( GotIt ) THEN
+              t = Offset + Perm(ind)
+              b(t) = b(t) + SingleVal
             END IF
-            IF( k /= ParEnv % MyPe ) ind = 0
-          ELSE
-            IF( ind == 0 ) THEN
-              CALL Warn(Caller,'Could not find node to set: '//TRIM(DirName))
+
+            SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Coefficient',GotIt)
+            IF( GotIt ) THEN                        
+              t = Offset + Perm(ind)
+              CALL AddToMatrixElement(A,t,t,SingleVal) 
             END IF
           END IF
 
-          CALL ListAddInteger( ValueList,TRIM(Name)//' Constant Node Index', ind )
-          NeedListMatrix = .TRUE.
-        END IF
-
-        IF( Parallel ) CALL Warn(Caller,'Node index not set properly in parallel')
-        IF( ind == 0 ) CYCLE
-
-        ! Ok, now sum up the rows to the corresponding nodal index
-        LumpedNodeSet = .FALSE.
-
-        ! Don't lump the "supernode" and therefore mark it set already
-        LumpedNodeSet(ind) = .TRUE.
-
-        DO t = ElemFirst, ElemLast
-          Element => Mesh % Elements(t)
-
-          IF( bc <= Model % NumberOfBCs ) THEN
-            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
-          ELSE
-            bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
-            IF( bc - Model % NumberOfBCs /= bf ) CYCLE
-          END IF
-
-          n = Element % TYPE % NumberOfNodes
-          Indexes(1:n) = Element % NodeIndexes
-
-          CALL SetLumpedRows(ind,n)
+          n = COUNT( LumpedNodeSet ) 
+          CALL Info(Caller,'Number of lumped nodes set: '//I2S(n),Level=10)
         END DO
-
-        IF( NDOFs == 1 ) THEN
-          SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Flux',GotIt)
-          IF( GotIt ) THEN
-            t = Offset + Perm(ind)
-            b(t) = b(t) + SingleVal
-          END IF
-
-          SingleVal = ListGetCReal( ValueList,TRIM(DirName)//' Multiplier',GotIt)
-          IF( GotIt ) THEN                        
-            t = Offset + Perm(ind)
-            CALL AddToMatrixElement(A,t,t,SingleVal) 
-          END IF
-        END IF
-        
-        n = COUNT( LumpedNodeSet ) 
-        CALL Info(Caller,'Number of lumped nodes set: '//I2S(n),Level=10)
-      END DO
-
-      IF( NeedListMatrix ) THEN
-        DEALLOCATE( LumpedNodeSet )
-
-        ! Revert back to CRS matrix and change to the new topology. 
-        CALL List_ToCRSMatrix(A)
-        CALL CRS_ChangeTopology(A, Init=.FALSE.)
-        
-        CALL Info(Caller,'Modified matrix non-zeros: '&
-            //I2S(SIZE( A % Cols )),Level=8)
       END IF
+    END DO
+      
+    IF( NeedListMatrix ) THEN
+      DEALLOCATE( LumpedNodeSet )
+      
+      ! Revert back to CRS matrix and change to the new topology. 
+      CALL List_ToCRSMatrix(A)
+      CALL CRS_ChangeTopology(A, Init=.FALSE.)
+      
+      CALL Info(Caller,'Modified matrix non-zeros: '&
+          //I2S(SIZE( A % Cols )),Level=8)
     END IF
-
 
 
     ! Check the boundaries for a curve bc.
@@ -5998,8 +6044,12 @@ CONTAINS
           k0 = Offset + NDOFs * (Perm(ind0)-1) + DOF
           k = OffSet + NDOFs * (Perm(ind)-1) + DOF
 
-          Coeff = 1.0_dp
-          
+          IF( GotMult ) THEN
+            Coeff = Mult(j) / MaxMult
+          ELSE
+            Coeff = 1.0_dp
+          END IF
+            
           CALL MoveRow( A, k, k0, Coeff )
           b(k0) = b(k0) + Coeff * b(k)
 
@@ -6011,8 +6061,12 @@ CONTAINS
             k0 = Offset + NDOFs + (Perm(ind0)-1) * DOF
             k = OffSet + NDOFs * (Perm(ind)-1) + l
 
-            Coeff = 1.0_dp
-            
+            IF( GotMult ) THEN
+              Coeff = Mult(j) / MaxMult
+            ELSE
+              Coeff = 1.0_dp
+            END IF
+              
             CALL MoveRow( A, k, k0, Coeff )
             b(k0) = b(k0) + Coeff * b(k)
           
