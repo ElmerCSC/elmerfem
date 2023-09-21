@@ -6029,7 +6029,7 @@ CONTAINS
     SUBROUTINE SetLumpedRows(ind0,n)
 !------------------------------------------------------------------------------
       INTEGER :: ind0,n
-      INTEGER :: ind,i,j,k,k0
+      INTEGER :: ind,i,j,k,k0,l
       REAL(KIND=dp) :: Coeff
       ! -------------------------------------------------------------------        
 
