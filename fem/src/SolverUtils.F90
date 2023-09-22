@@ -54,7 +54,7 @@ MODULE SolverUtils
    USE Multigrid
    USE IterSolve
    USE ElementUtils
-   USE ComponentUtils
+   USE LumpingUtils
    USE TimeIntegrate
    USE ModelDescription
    USE MeshUtils
@@ -65,7 +65,6 @@ MODULE SolverUtils
    USE MatrixAssembly
    
    IMPLICIT NONE
-
 
 CONTAINS
 
@@ -6990,7 +6989,7 @@ CONTAINS
     INTEGER, TARGET :: Perm(:)          !< The node reordering info, this has been generated at the
                                         !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
-    INTEGER :: i,t,t1,t2,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd,Ncomplex
+    INTEGER :: i,t,t1,t2,u,j,k,k2,l,l2,n,ent_id,nlen,NormalInd,Ncomplex
     LOGICAL :: Found, IgnoreP, HaveP, Passive, Parallel, DoIt
     TYPE(Solver_t), POINTER :: pSolver
     TYPE(ValueList_t), POINTER :: BC
@@ -6998,10 +6997,11 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: Indexes(50),nb,poffset
-    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, POINTER :: NodeIndexes(:), MasterBodies(:)
     INTEGER, ALLOCATABLE :: BCPerm(:)
     INTEGER :: NoModes, NoEntities
-    LOGICAL :: ExternalLoop, BFMode, BCMode, RhsMode, ComplexMode, Stat
+    LOGICAL :: ExternalLoop, BFMode, BCMode, LumpedMode, CompMode, &
+        EmWaveMode, RhsMode, CoilMode, ComplexMode, Stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     CHARACTER(*), PARAMETER :: Caller = 'SetConstraintModesBoundaries'
@@ -7011,14 +7011,16 @@ CONTAINS
     nlen = LEN_TRIM(Name)
     Mesh => Solver % Mesh
     Var => Solver % Variable     
-    
+
     ! Initially this is -1 and and hence the 2nd call is fast if no modes are present
     IF( Solver % NumberOfConstraintModes == 0 ) RETURN
 
+    ! Check in which list we have the constraint modes set
     BCMode = ListCheckPrefixAnyBC( Model,'Constraint Mode')
     BFMode = ListCheckPrefixAnyBodyForce( Model,'Constraint Mode')
-    
-    IF( .NOT. (BCMode .OR. BFMode ) ) THEN
+    CompMode = ListCheckPrefixAnyComponent( Model,'Constraint Mode')
+
+    IF( .NOT. (BCMode .OR. BFMode .OR. CompMode) ) THEN
       Solver % NumberOfConstraintModes = 0
       RETURN
     END IF
@@ -7028,9 +7030,16 @@ CONTAINS
         ListGetLogical( Solver % Values,'Run Control Constraint Modes', Found ) .OR. &
         ListGetLogical( Model % Control,'Constraint Modes Analysis', Found )
        
-    RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) .OR. &
-        ListGetLogical( Solver % Values,'Constraint Modes EM Wave',Found )
-        
+    EmWaveMode = ListGetLogical( Solver % Values,'Constraint Modes EM Wave',Found )
+    CoilMode = ListGetLogical( Solver % Values,'Constraint Modes Coils',Found ) 
+    RhsMode = ListGetLogical(Solver % Values,'Constraint Modes Rhs',Found ) 
+    LumpedMode = ListGetLogical(Solver % Values,'Constraint Modes Lumped',Found )
+
+    
+    ! These work on the rhs vector, not Dirichlet values.
+    RhsMode = RhsMode .OR. EmWaveMode .OR. CoilMode
+    LumpedMode = LumpedMode .OR. EmWaveMode .OR. CoilMode
+    
     Element => Mesh % Elements(1)
     pSolver => Solver
     HaveP = isActivePElement(Element,pSolver)
@@ -7039,7 +7048,7 @@ CONTAINS
     IF( HaveP ) THEN
       IgnoreP = ListGetLogical( Solver % Values,'Ignore Constraint Modes p',Found )  
     END IF      
-    
+
     CALL Info(Caller,'Setting constraint modes boundaries for variable: '&
         //TRIM(Name),Level=7)
 
@@ -7058,8 +7067,8 @@ CONTAINS
       END IF
       IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found ) ) THEN
         CALL ListAddConstReal( CurrentModel % Simulation,&
-            'res: '//TRIM(Solver % Variable % Name)//' constraint norm',0.0_dp)
-      END IF      
+            'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',0.0_dp)
+      END IF
     END IF
     IF(.NOT. ASSOCIATED( Var % ConstraintModesIndeces ) ) THEN
       ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
@@ -7073,19 +7082,26 @@ CONTAINS
     
     IF( BCMode ) THEN
       NoEntities = Model % NumberOfBCs
-    ELSE
+    ELSE IF( BFMode ) THEN
       NoEntities = Model % NumberOfBodyForces
+    ELSE IF(CompMode) THEN
+      NoEntities = Model % NumberOfComponents
+    ELSE
+      CALL Fatal(Caller,'Uknown list for constraint modes!')
     END IF
-
+    CALL Info(Caller,'Number of list entities to check: '//I2S(NoEntities),Level=20)
+    
     ALLOCATE( BCPerm( NoEntities ) )
     BCPerm = 0    
     j = 0
-    
-    DO bc_id = 1,NoEntities
+
+    DO ent_id = 1,NoEntities
       IF( BCMode ) THEN
-        BC => Model % BCs(bc_id) % Values
-      ELSE
-        BC => Model % BodyForces(bc_id) % Values
+        BC => Model % BCs(ent_id) % Values
+      ELSE IF(BFMode ) THEN
+        BC => Model % BodyForces(ent_id) % Values
+      ELSE IF(CompMode) THEN
+        BC => Model % Components(ent_id) % Values
       END IF
         
       k = ListGetInteger( BC,'Constraint Mode', Found )
@@ -7095,7 +7111,7 @@ CONTAINS
       END IF
       IF( Found ) THEN
         IF( k == 0 ) k = -1  ! Ground gets negative value
-        BCPerm(bc_id) = k        
+        BCPerm(ent_id) = k        
       ELSE
         DoIt = ListGetLogical( BC,'Constraint Modes', Found )
         IF(.NOT. Found ) THEN
@@ -7103,12 +7119,12 @@ CONTAINS
         END IF
         IF(DoIt) THEN
           j = j + 1
-          BCPerm(bc_id) = j
+          BCPerm(ent_id) = j
         END IF
       END IF
-    END DO    
+    END DO
+    
     j = MAXVAL( BCPerm )
-
     CALL Info(Caller,'Number of active constraint modes boundaries: '&
         //I2S(j),Level=7)
     IF( j == 0 ) THEN
@@ -7135,22 +7151,30 @@ CONTAINS
       t1 = 1
       t2 = Mesh % NumberOfBulkElements
     END IF
-
+    
     DO t = t1, t2
       Element => Mesh % Elements(t)      
       
       IF( BCMode ) THEN
-        DO bc_id = 1,Model % NumberOfBCs
-          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+        DO ent_id = 1,Model % NumberOfBCs
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(ent_id) % Tag ) EXIT
         END DO
-        IF( bc_id > Model % NumberOfBCs ) CYCLE
-      ELSE
-        bc_id = ListGetInteger( Model % Bodies( Element % BodyId ) % Values,'Body Force',Found)
-        IF( bc_id == 0) CYCLE
+        IF( ent_id > Model % NumberOfBCs ) CYCLE        
+      ELSE IF( BFMode ) THEN
+        ent_id = ListGetInteger( Model % Bodies( Element % BodyId ) % Values,'Body Force',Found)
+        IF( ent_id == 0) CYCLE
+      ELSE        
+        DO ent_id=1,Model % NumberOfComponents
+          IF(BCPerm(ent_id) == 0) CYCLE
+          MasterBodies => ListGetIntegerArray( Model % Components(ent_id) % Values,'Master Bodies',Found)
+          IF(.NOT. Found) CYCLE
+          IF( ANY( MasterBodies == Element % BodyId ) ) EXIT          
+        END DO
+        IF(ent_id > Model % NumberOfComponents ) CYCLE
       END IF
 
       ! Look-up table for quick determiation
-      IF( BCPerm(bc_id) == 0 ) CYCLE
+      IF( BCPerm(ent_id) == 0 ) CYCLE
 
       n = Element % Type % NumberOfNodes
 
@@ -7177,7 +7201,7 @@ CONTAINS
 
       ! For vector valued problems treat each component as separate dof
       DO k=1,NDOFs       
-        j = NDOFS*(BCPerm(bc_id)-1)+k
+        j = NDOFS*(BCPerm(ent_id)-1)+k
         DO l=1,nb
           ! The index to constrain
           IF( Perm(Indexes(l)) == 0 ) CYCLE
@@ -7240,7 +7264,7 @@ CONTAINS
     
     ! The constraint modes can be either lumped or not.
     ! If they are not lumped then mark each individually
-    IF( .NOT. ListGetLogical(Solver % Values,'Constraint Modes Lumped',Found ) ) THEN
+    IF( .NOT. LumpedMode ) THEN
       j = 0
       DO i=1,A % NumberOfRows
         IF( Var % ConstraintModesIndeces(i) > 0 ) THEN
@@ -7252,8 +7276,7 @@ CONTAINS
           //I2S(j),Level=7)
       NoModes = j 
     END IF
-    
-
+        
     ! Manipulate the boundaries such that we need to modify only the r.h.s. in the actual linear solver
     ! Do not manipulate if we are setting fluxes!
     IF( .NOT. (ComplexMode .OR. RhsMode ) ) THEN
@@ -15620,12 +15643,13 @@ END SUBROUTINE StoreLumpedFluxes
 
 
 SUBROUTINE FinalizeLumpedMatrix( Solver )
-!------------------------------------------------------------------------------
+
+  !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,NoModes
-  LOGICAL :: Symmetric, IsComplex, EmWave, Found
+  LOGICAL :: Symmetric, IsComplex, EmWaveMode, CoilMode, Found
   REAL(KIND=dp) :: nrm
   CHARACTER(:), ALLOCATABLE :: MatrixFile
   CHARACTER(*), PARAMETER :: Caller = 'FinalizeLumpedMatrix'
@@ -15638,8 +15662,10 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     CALL Fatal(Caller,'We should not be here without the lumped system!')
   END IF
 
-  Lumped => Solver % Lumped
+  EmWaveMode = ListGetLogical( Solver % Values,'Constraint Modes EM Wave', Found )
+  CoilMode = ListGetLogical( Solver % Values,'Constraint Modes Coils', Found )
   
+  Lumped => Solver % Lumped  
   NoModes = Lumped % NoModes
   IF( Lumped % CntModes /= NoModes ) THEN
     CALL Fatal(Caller,'Trying to deduce '//I2S(NoMOdes)//&
@@ -15650,9 +15676,57 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 
   FluxesMatrix => Lumped % CMatrix
   IF( IsComplex ) FluxesMatrixIm => Lumped % CMatrixIm
-    
+
+  ! Energies and Impedances are related by factor two when currents are "1".   
+  IF(CoilMode) THEN
+    BLOCK
+      REAL(KIND=dp) :: DesiredCurr(NoModes)  
+      FluxesMatrix = 2*FluxesMatrix    
+      DO i=1,CurrentModel % NumberOfComponents
+        j = ListGetInteger( CurrentModel % Components(i) % Values,'Constraint Mode',Found )
+        IF(j > 0) THEN
+          DesiredCurr(j) = ListGetCReal( CurrentModel % Components(i) % Values,'Desired Coil Current',Found )
+          IF(.NOT. Found) DesiredCurr(j) = 1.0_dp
+        END IF
+      END DO
+      DO i=1,NoModes
+        DO j=1,NoModes
+          FluxesMatrix(i,j) = FluxesMatrix(i,j) / (DesiredCurr(i)*DesiredCurr(j)) 
+        END DO
+      END DO
+    END BLOCK
+  END IF
+
+  ! Normalize the S-parameter matrix
+  IF(EmWaveMode) THEN    
+    CALL Info( Caller,'Lumped Matrix Before normalization', Level=5 )
+    DO i=1,NoModes
+      DO j=1,NoModes
+        IF( Symmetric .AND. j < i ) CYCLE
+        IF( IsComplex ) THEN
+          WRITE( Message, '(I3,I3,2ES17.9)' ) i,j,FluxesMatrix(i,j),FluxesMatrixIm(i,j)
+        ELSE
+          WRITE( Message, '(I3,I3,ES17.9)' ) i,j,FluxesMatrix(i,j)
+        END IF
+        CALL Info( Caller, Message, Level=5 )
+      END DO
+    END DO
+
+    DO i=1,NoModes
+      WRITE( Message, '(A,I3,1ES17.9)' ) 'Normalization',i,Lumped % crhs(i)
+      CALL Info( Caller, Message, Level=5 )
+    END DO
+      
+    DO i=1,NoModes
+      FluxesMatrix(i,:) = FluxesMatrix(i,:) / Lumped % Crhs(:)
+      FluxesMatrixIm(i,:) = FluxesMatrixIm(i,:) / Lumped % Crhs(:)
+    END DO
+  END IF
+  
   Symmetric = ListGetLogical( Solver % Values,&
       'Constraint Modes Fluxes Symmetric', Found ) 
+  IF(.NOT. Found) Symmetric = ListGetLogical( Solver % Values,&
+      'Constraint Modes Matrix Symmetric', Found ) 
   IF( Symmetric ) THEN        
     CALL Info(Caller,'Enforcing symmetry of reduced system!',Level=8)
     
@@ -15676,21 +15750,6 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       FluxesMatrixIm = 0.5_dp * ( FluxesMatrixIm + TRANSPOSE( FluxesMatrixIm ) )
     END IF
   END IF
-
-  EmWave = ListGetLogical( Solver % Values,'Constraint Modes EM Wave', Found )
-#if 0 
-  IF( EmWave ) THEN
-    ! Normalize the S-matrix with the source term
-    DO i=1, NoModes
-      cb = CMPLX( Lumped % CRhs(i), 0*Lumped % CRhsIm(i) ) 
-      DO j=1,NoModes
-        cx = CMPLX( FluxesMatrix(i,j), 0*FluxesMatrixIm(i,j) ) / cb
-        FluxesMatrix(i,j) = REAL(cx)
-        FluxesMatrixIm(i,j) = AIMAG(cx)
-      END DO
-    END DO
-  END IF
-#endif
   
   CALL Info( Caller,'Lumped Matrix', Level=5 )
   DO i=1,NoModes
@@ -15704,17 +15763,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
       CALL Info( Caller, Message, Level=5 )
     END DO
   END DO
-
-  IF( EmWave ) THEN
-    CALL info( Caller,'Lumped Port Forcing', Level=5) 
-    DO i=1,NoModes
-      WRITE( Message, '(I3,2ES17.9)' ) i,Lumped % Crhs(i),Lumped % CrhsIm(i)
-      CALL Info( Caller, Message, Level=5 )
-    END DO
-  END IF
   
   MatrixFile = ListGetString(Solver % Values,'Constraint Modes Fluxes Filename',Found )
+  IF(.NOT. Found) MatrixFile = ListGetString(Solver % Values,'Constraint Modes Matrix Filename',Found )
   IF( Found ) THEN
+    ! Find the lowest active partition working here.
     k = ParallelReduction(ParEnv % MyPe,1)     
     IF( k == ParEnv % MyPe ) THEN
       OPEN(10, FILE=MatrixFile)
@@ -15742,11 +15795,11 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
     END DO
   END DO
 
-  WRITE(Message,'(A,ES12.5)') TRIM(Solver % Variable % Name)//' constraint norm: ',Nrm
+  WRITE(Message,'(A,ES12.5)') TRIM(Solver % Variable % Name)//' lumped matrix norm: ',Nrm
   CALL Info(Caller, Message, Level=6)
   IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found ) ) THEN
     CALL ListAddConstReal( CurrentModel % Simulation,&
-        'res: '//TRIM(Solver % Variable % Name)//' constraint norm',nrm)
+        'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',nrm)
   END IF
 
   IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Results', Found ) ) THEN
@@ -15929,7 +15982,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i,j,k,n,NoModes,Nmode,Mmode,ierr
     LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, ComputeLinkage, Symmetric, &
-        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode
+        IsComplex, Parallel, ConsiderP, RhsMode, EmWaveMode, CoilMode
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), b0(:), A0(:), TempRhs(:)
     REAL(KIND=dp), ALLOCATABLE :: FluxesRow(:), FluxesRowIm(:)
     REAL(KIND=dp) :: FluxesRhs, FluxesRhsIm
@@ -15948,7 +16001,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF( SIZE(x) /= n ) THEN
       CALL Fatal(Caller,'Conflicting sizes for matrix and variable! ('//I2S(SIZE(x))//','//I2S(n)//')')
     END IF
-       
+    
     NoModes = Solver % NumberOfConstraintModes 
     CALL Info(Caller,'Number of constraint modes is: '//I2S(NoModes),Level=8)
     IF( NoModes == 0 ) CALL Fatal(Caller,'No constraint modes in system?!')
@@ -15983,8 +16036,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     ComputeLinkage = ListGetLogical( Params,'Constraint Modes Linkage',Found )
     RhsMode = ListGetLogical( Params,'Constraint Modes rhs',Found )
     EmWaveMode = ListGetLogical( Params,'Constraint Modes EM Wave', Found ) 
-    IF( EmWaveMode ) THEN
-      ComputeFluxes = .TRUE.; RhsMode = .TRUE.
+    CoilMode = ListGetLogical( Params,'Constraint Modes Coils',Found ) 
+
+    IF( EmWaveMode .OR. CoilMode ) THEN
+      ComputeFluxes = .TRUE.
+      RhsMode = .TRUE.
     END IF
     
     IF( ComputeFluxes .OR. ComputeLinkage ) THEN
@@ -15998,7 +16054,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         TempRhs = 0.0_dp
       END IF
       
-      IF( IsComplex ) THEN
+      IF( IsComplex .OR. CoilMode) THEN
         ALLOCATE( A0(SIZE(A % Values)), b0(n), ConstrainedDOF0(n) )
         A0 = A % Values
         b0 = A % Rhs
@@ -16020,7 +16076,12 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       ! The matrix has been manipulated already before. This ensures
       ! that the system has values 1 at the constraint mode i.
-      IF( RhsMode ) THEN
+      IF( CoilMode ) THEN                
+        b = b0
+        WHERE( Var % ConstraintModesIndeces > 0 .AND. Var % ConstraintModesIndeces /= Nmode ) 
+          b = 0.0_dp
+        END WHERE
+      ELSE IF( RhsMode ) THEN
         IF( IsComplex ) THEN       
           A % Values = A0
           WHERE( Var % ConstraintModesIndeces > 0 )
@@ -16028,6 +16089,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
           END WHERE
           WHERE( Var % ConstraintModesIndeces == 2*Nmode-1 .OR. &
               Var % ConstraintModesIndeces == 2*Nmode )
+            ! Revert rhs to previous
             b = b0
           END WHERE
         ELSE       
@@ -16070,7 +16132,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         
       CALL SolveSystem( A,ParMatrix,b,x,Var % Norm,Var % DOFs,Solver )
 
-      IF( .NOT. IsComplex ) THEN
+      IF( .NOT. ( IsComplex .OR. CoilMode ) ) THEN
         WHERE( Var % ConstraintModesIndeces == Nmode ) b = 0.0_dp
       END IF
             
@@ -16081,13 +16143,21 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       IF( ComputeFluxes .OR. ComputeLinkage ) THEN
         CALL Info(Caller,'Computing lumped fluxes',Level=8)
 
-        IF( ComputeFluxes ) THEN
+        IF( CoilMode ) THEN
+          CALL MagneticEnergies()
+        ELSE IF(EmWaveMode ) THEN
+          CALL EMWaveFluxes()
+        ELSE IF( ComputeFluxes ) THEN
           CALL ConstraintModesFluxes(EmWaveMode)
         ELSE
           CALL ConstraintModesLinkage()
         END IF          
-        CALL CommunicateConstraintModesFluxes()
 
+        ! Do parallel communication here at one sweep, not before!
+        IF(.NOT. EMWaveMode ) THEN
+          CALL CommunicateConstraintModesFluxes()
+        END IF
+          
         IF( IsComplex ) THEN
           CALL StoreLumpedFluxes(Solver, NoModes, NMode, FluxesRow, FluxesRowIm, FluxesRhs, FluxesRhsIm)
         ELSE
@@ -16099,7 +16169,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
     CALL Info(Caller,'Modes computed, doing some postprocessing',Level=10)
     
-    IF( ComputeFluxes .OR. ComputeLinkage ) THEN
+    IF( ComputeFluxes .OR. ComputeLinkage .OR. CoilMode ) THEN
       IF( ThisMode == 0 ) THEN
         CALL FinalizeLumpedMatrix( Solver )            
       END IF
@@ -16111,6 +16181,109 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
   CONTAINS
 
+    SUBROUTINE MagneticEnergies()
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Variable_t), POINTER :: CVar, AVar
+      TYPE(ValueList_t), POINTER :: Vlist
+      INTEGER, POINTER :: MasterEntities(:)
+      REAL(KIND=dp) :: Nrm
+      
+      Mesh => Solver % Mesh
+      CVar => VariableGet( Mesh % Variables,'CoilCurrent e',ThisOnly=.TRUE.)
+      IF(.NOT. ASSOCIATED(CVar)) THEN
+        CVar => VariableGet( Mesh % Variables,'CoilCurrent',ThisOnly=.TRUE.)
+      END IF
+      AVar => Solver % Variable
+
+      FluxesRow = 0.0_dp      
+      DO j=1,CurrentModel % NumberOfComponents
+        Vlist => CurrentModel % Components(j) % Values       
+        k = ListGetInteger( Vlist,'Constraint Mode', Found )
+        IF(.NOT. Found) CYCLE
+        MasterEntities => ListGetIntegerArray( Vlist,'Master Bodies',Found )
+        FluxesRow(k) =  ComponentCoilEnergy(CurrentModel, Mesh, MasterEntities, avar, cvar )
+        PRINT *,'CoilEnergy:',j,k,FluxesRow(j)
+      END DO
+      
+      Nrm = SUM(FluxesRow)
+      WRITE(Message,'(A,ES12.3)') 'Energy norm of Impedance matrix row '//I2S(NMode)//': ',Nrm
+      CALL Info(Caller,Message,Level=8)
+
+    END SUBROUTINE MagneticEnergies
+
+
+    SUBROUTINE EMWaveFluxes()
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Variable_t), POINTER :: AVar
+      TYPE(ValueList_t), POINTER :: Vlist
+      INTEGER, POINTER :: MasterEntities(:)
+      REAL(KIND=dp), ALLOCATABLE :: RePoynt(:)
+      COMPLEX(KIND=dp) :: Eint
+      REAL(KIND=dp) :: Anorm(4),Nrm
+      INTEGER :: i,j,k,n     
+      
+      Mesh => Solver % Mesh
+      AVar => Solver % Variable      
+      FluxesRow = 0.0_dp
+      FluxesRowIm = 0.0_dp
+
+      FluxesRhs = 1.0_dp 
+      FluxesRhsIm = 0.0_dp
+
+      ALLOCATE(RePoynt(NoModes))
+      
+      DO i = 1, NoModes
+        n = 0
+        DO j=1,CurrentModel % NumberOfBCs        
+          Vlist => CurrentModel % BCs(j) % Values       
+          k = ListGetInteger( Vlist,'Constraint Mode', Found )
+          IF(k == i) n = n+1
+        END DO
+        ALLOCATE(MasterEntities(n))
+        n = 0
+        DO j=1,CurrentModel % NumberOfBCs        
+          Vlist => CurrentModel % BCs(j) % Values       
+          k = ListGetInteger( Vlist,'Constraint Mode', Found )
+          IF(k == i) THEN
+            n = n+1
+            MasterEntities(n) = j
+          END IF
+        END DO       
+        Eint = BoundaryWaveFlux(CurrentModel, Mesh, MasterEntities, Avar, Anorm )        
+
+        ! Memorize the coefficient for normalization: <Ec,Ej>/<Ei,Ei>
+        Nrm = Anorm(1)
+        RePoynt(i) = Anorm(3)
+                
+        IF(ParEnv % PEs > 1 ) THEN
+          Nrm = ParallelReduction(Nrm) 
+          Eint = ParallelReduction(Eint)
+        END IF
+        Eint = Eint / Nrm
+
+        ! Real and imag part of: <Ec,Ej>
+        FluxesRow(i) = REAL(Eint)
+        FluxesRowIm(i) = AIMAG(Eint) 
+
+        !PRINT *,'ElField Flux:',NMode, i, Eint
+        DEALLOCATE(MasterEntities)        
+      END DO
+
+      !RePoynt = RePoynt / MINVAL(RePoynt)
+      !PRINT *,'Port energies:',RePoynt
+      
+      FluxesRow(1:NoModes) = FluxesRow(1:NoModes)
+      FluxesRowIm(1:NoModes) = FluxesRowIm(1:NoModes) 
+      FluxesRow(NMode) = FluxesRow(NMode) - 1.0_dp
+      
+      Nrm = SQRT(SUM(FluxesRow**2)+SUM(FluxesRowIm**2))
+      WRITE(Message,'(A,ES12.3)') 'Energy norm of Smatrix row '//I2S(NMode)//': ',Nrm
+      CALL Info(Caller,Message,Level=8)
+      
+    END SUBROUTINE EMWaveFluxes
+
+      
+    
     SUBROUTINE ConstraintModesFluxes(EmWaveMode)
       LOGICAL :: EmWaveMode
 

@@ -435,35 +435,6 @@
 
 
 !------------------------------------------------------------------------------
-    SUBROUTINE FindParentUVW(Face, nFace, Parent, nParent, U, V, W, Basis)
-!------------------------------------------------------------------------------
-      IMPLICIT NONE
-      TYPE(Element_t) :: Face, Parent
-      INTEGER :: nFace, nParent
-      REAL( KIND=dp ) :: U, V, W, Basis(:)
-!------------------------------------------------------------------------------
-      INTEGER :: i,j
-      REAL(KIND=dp) :: ParentU(nFace), ParentV(nFace), ParentW(nFace)
-!------------------------------------------------------------------------------
-      DO i = 1,nFace
-        DO j = 1,nParent
-          IF (Face % NodeIndexes(i) == Parent % NodeIndexes(j)) THEN
-            ParentU(i) = Parent % Type % NodeU(j)
-            ParentV(i) = Parent % Type % NodeV(j)
-            ParentW(i) = Parent % Type % NodeW(j)
-            EXIT
-          END IF
-        END DO
-      END DO
-      U = SUM(Basis(1:nFace)*ParentU(1:nFace))
-      V = SUM(Basis(1:nFace)*ParentV(1:nFace))
-      W = SUM(Basis(1:nFace)*ParentW(1:nFace))
-!------------------------------------------------------------------------------      
-    END SUBROUTINE FindParentUVW
-!------------------------------------------------------------------------------      
-
-
-!------------------------------------------------------------------------------
     SUBROUTINE LocalJumps(STIFF,Face,n,nd,P1,n1,nd1,P2,n2,nd2,Velo)
 !------------------------------------------------------------------------------
       IMPLICIT NONE

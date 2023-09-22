@@ -783,6 +783,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4)
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
+    REAL(KIND=dp) :: rArray(3,1)
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
@@ -874,6 +875,9 @@ CONTAINS
 
     WRITE( Message,'(A,3ES12.4)') 'Coil center:',CoilCenter
     CALL Info(Caller,Message,Level=7)
+
+    rArray(1:3,1) = CoilCenter
+    CALL ListAddConstRealArray( Params,'Coil Center',3,1,rArray)
     
   END SUBROUTINE DefineCoilCenter
 
@@ -899,7 +903,8 @@ CONTAINS
     REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
-
+    REAL(KIND=dp) :: rArray(1:3,1)
+    
     FitCoil = GetLogical( Params,'Fit Coil',Found )
     IF(.NOT. Found ) FitCoil = .TRUE. 
 
@@ -1020,6 +1025,9 @@ CONTAINS
     CALL Info(Caller,Message,Level=10)
     WRITE( Message,'(A,3ES12.4)') 'Coil tangent2:',CoilTangent2
     CALL Info(Caller,Message,Level=10)
+
+    rArray(1:3,1) = CoilNormal
+    CALL ListAddConstRealArray( Params,'Coil Normal',3,1,rArray)
     
   END SUBROUTINE DefineCoilParameters
 

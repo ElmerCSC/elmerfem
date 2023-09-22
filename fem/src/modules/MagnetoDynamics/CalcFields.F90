@@ -2238,6 +2238,53 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
       
 
+   IF( ListCheckPresentAnyComponent( Model, 'Flux linkage' ) ) THEN
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values       
+       IF ( ListGetLogical( CompParams,'Flux linkage', Found ) ) THEN         
+         CALL ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.FALSE. )
+         IF( ASSOCIATED(VP) ) THEN
+           CALL ComponentStokesTheorem(Model, Mesh, CompParams, VP,.FALSE. )
+         END IF
+         CALL ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.TRUE. )
+         IF( ASSOCIATED(VP) ) THEN
+           CALL ComponentStokesTheorem(Model, Mesh, CompParams, VP,.TRUE. )
+         END IF
+       END IF       
+     END DO
+   END IF
+
+   IF( ListCheckPresentAnyComponent( Model, 'Coil Energy' ) ) THEN          
+     BLOCK 
+       TYPE(Variable_t), POINTER :: CoilCurr
+       REAL(KIND=dp), ALLOCATABLE :: CoilEnergy(:)
+       INTEGER, POINTER :: MasterEntities(:)
+            
+       CoilCurr => VariableGet( Mesh % Variables,'CoilCurrent e',ThisOnly=.TRUE.)
+       IF(.NOT. ASSOCIATED(CoilCurr)) THEN
+         CoilCurr => VariableGet( Mesh % Variables,'CoilCurrent',ThisOnly=.TRUE.)
+       END IF
+
+       ALLOCATE(CoilEnergy(Model % NumberOfComponents))
+       CoilEnergy = 0.0_dp
+       
+       DO j=1,Model % NumberOfComponents
+         CompParams => Model % Components(j) % Values       
+         IF ( ListGetLogical( CompParams,'Coil Energy', Found ) ) THEN         
+           MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
+           CoilEnergy(j) =  ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )            
+           PRINT *,'CoilEnergy:',j,CoilEnergy(j)
+           IF( ASSOCIATED(VP) ) THEN
+             CoilEnergy(j) = ComponentCoilEnergy(Model, Mesh, MasterEntities, VP, CoilCurr)
+             PRINT *,'CoilEnergy nodal A:',j,CoilEnergy(j)
+           END IF
+         END IF
+       END DO
+       PRINT *,'Total Coil Energy:',SUM(CoilEnergy)
+       
+     END BLOCK
+   END IF
+   
    ! Lump componentwise forces and torques. 
    ! Prefer DG nodal force variable if air gap is present
 

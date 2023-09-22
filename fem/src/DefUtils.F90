@@ -6000,38 +6000,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-! Solves a small dense linear system using Lapack routines
-!------------------------------------------------------------------------------
-  SUBROUTINE SolveLinSys( A, x, n )
-!------------------------------------------------------------------------------
-     INTEGER :: n
-     REAL(KIND=dp) :: A(n,n), x(n), b(n)
-
-     INTERFACE
-       SUBROUTINE SolveLapack( N,A,x )
-         INTEGER  N
-         DOUBLE PRECISION  A(n*n),x(n)
-       END SUBROUTINE
-     END INTERFACE
-
-!------------------------------------------------------------------------------
-     SELECT CASE(n)
-     CASE(1)
-       x(1) = x(1) / A(1,1)
-     CASE(2)
-       b = x
-       CALL SolveLinSys2x2(A,x,b)
-     CASE(3)
-       b = x
-       CALL SolveLinSys3x3(A,x,b)
-     CASE DEFAULT
-       CALL SolveLapack(n,A,x)
-     END SELECT
-!------------------------------------------------------------------------------
-  END SUBROUTINE SolveLinSys
-!------------------------------------------------------------------------------
-
-
 !------------------------------------------------------------------------------
 !> This subroutine computes the values of DOFs that are associated with 
 !> mesh edges in the case of vector-valued (edge or face) finite elements, so that
@@ -7169,37 +7137,9 @@ CONTAINS
     INTEGER :: n,nedge
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,jb1,jb2,je1,je2
     TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Edge, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    n = 0
-    SELECT CASE(GetElementFamily())
-    CASE(1)
-      RETURN
-    CASE(2)
-      IF ( nedge==1 ) THEN
-        Parent => Boundary % BoundaryInfo % Left
-        IF ( .NOT. ASSOCIATED(Parent) ) &
-            Parent => Boundary % BoundaryInfo % Right
- 
-        jb1 = Boundary % NodeIndexes(1)
-        jb2 = Boundary % NodeIndexes(2)
-        DO i=1,Parent % TYPE % NumberOfEdges
-          Edge => Mesh % Edges(Parent % EdgeIndexes(i))
-          je1 = Edge % NodeIndexes(1)
-          je2 = Edge % NodeIndexes(2)
-          IF ( jb1==je1.AND.jb2==je2 .OR. jb1==je2.AND.jb2==je1) EXIT
-        END DO
-        n = Parent % EdgeIndexes(i)
-      END IF
-    CASE(3,4)
-      j = GetBoundaryFaceIndex(Boundary)
-      Face => Mesh % Faces(j)
-      IF ( nedge>0.AND.nedge<=Face % TYPE % NumberOfEdges ) &
-        n = Face % EdgeIndexes(nedge) 
-    END SELECT
+    Mesh => GetMesh()    
+    n = FindBoundaryEdgeIndex(Mesh,Boundary,nedge)
 !------------------------------------------------------------------------------
   END FUNCTION GetBoundaryEdgeIndex
 !------------------------------------------------------------------------------
@@ -7212,26 +7152,9 @@ CONTAINS
     INTEGER :: n
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,m
     TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Element_t), POINTER :: Parent, Face
-!------------------------------------------------------------------------------
-    Mesh => GetMesh()
-    Parent => Boundary % BoundaryInfo % Left
-    IF ( .NOT. ASSOCIATED(Parent) ) &
-       Parent => Boundary % BoundaryInfo % Right
-
-    DO i=1,Parent % TYPE % NumberOfFaces
-      Face => Mesh % Faces(Parent % FaceIndexes(i))
-      m = 0
-      DO j=1,Face % TYPE % NumberOfNodes
-        DO k=1,Boundary % TYPE % NumberOfNodes
-          IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
-        END DO
-      END DO
-      IF ( m==Face % TYPE % NumberOfNodes) EXIT
-    END DO
-    n = Parent % FaceIndexes(i)
+    Mesh => GetMesh()    
+    n = FindBoundaryFaceIndex(Mesh,Boundary)
 !------------------------------------------------------------------------------
   END FUNCTION GetBoundaryFaceIndex
 !------------------------------------------------------------------------------

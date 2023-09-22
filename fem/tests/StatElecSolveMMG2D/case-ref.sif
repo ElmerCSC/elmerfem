@@ -94,7 +94,7 @@ Solver 2
   Parallel Reduce = True
   Filename = f.dat
 
-  Show Norm Name = "res: potential constraint norm"
+  Show Norm Name = "res: potential lumped matrix norm"
 End
 
 

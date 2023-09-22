@@ -9323,6 +9323,28 @@ CONTAINS
   END FUNCTION ListCheckPresentAnyComponent
 !------------------------------------------------------------------------------  
 
+
+!------------------------------------------------------------------------------
+  FUNCTION ListCheckPrefixAnyComponent( Model, Name ) RESULT( Found )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE    
+    TYPE(Model_t) :: Model
+    CHARACTER(LEN=*) :: Name
+    LOGICAL :: Found
+    INTEGER :: ind
+    TYPE(ValueListEntry_t), POINTER :: ptr
+    
+    Found = .FALSE.
+    DO ind=1, Model % NumberOfComponents
+      ptr => ListFindPrefix( Model % Components(ind) % Values, Name, Found )
+      IF( Found ) EXIT
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION ListCheckPrefixAnyComponent
+!------------------------------------------------------------------------------  
+
+
+  
   !------------------------------------------------------------------------------
 !> Check if the keyword is true in any component.
 !------------------------------------------------------------------------------

@@ -1645,7 +1645,7 @@ USE linearalgebra
                   AL(i,j) = CRS_GetMatrixElement( A,ind(i),ind(j) )
                 END DO
               END DO
-              CALL SolveLinSys( nsize,SIZE(AL,1),AL,h )
+              CALL SolveLinSysInt( nsize,SIZE(AL,1),AL,h )
             ELSE
               h(1:nsize)=h(1:nsize)/A % Values(A % Diag(ind(1:nsize)))
             END IF
@@ -1661,7 +1661,7 @@ USE linearalgebra
 
 
 !------------------------------------------------------------------------------
-      SUBROUTINE SolveLinSys( N,LDa,A,x )
+      SUBROUTINE SolveLinSysInt( N,LDa,A,x )
 !------------------------------------------------------------------------------
         INTEGER  N,IPIV(N),LDa,info
         DOUBLE PRECISION  A(LDa,*),x(n)
@@ -1670,7 +1670,7 @@ USE linearalgebra
         CALL DGETRF( N,N,A,LDa,IPIV,INFO )
         CALL DGETRS( 'N',N,1,A,LDa,IPIV,X,N,INFO )
 !------------------------------------------------------------------------------
-      END SUBROUTINE SolveLinSys
+      END SUBROUTINE SolveLinSysInt
 !------------------------------------------------------------------------------
 
 

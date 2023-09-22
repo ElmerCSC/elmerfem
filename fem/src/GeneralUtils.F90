@@ -2022,6 +2022,37 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 
 
+! Solves a small dense linear system using Lapack routines
+!------------------------------------------------------------------------------
+  SUBROUTINE SolveLinSys( A, x, n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     INTERFACE
+       SUBROUTINE SolveLapack( N,A,x )
+         INTEGER  N
+         DOUBLE PRECISION  A(n*n),x(n)
+       END SUBROUTINE
+     END INTERFACE
+
+!------------------------------------------------------------------------------
+     SELECT CASE(n)
+     CASE(1)
+       x(1) = x(1) / A(1,1)
+     CASE(2)
+       b = x
+       CALL SolveLinSys2x2(A,x,b)
+     CASE(3)
+       b = x
+       CALL SolveLinSys3x3(A,x,b)
+     CASE DEFAULT
+       CALL SolveLapack(n,A,x)
+     END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SolveLinSys
+!------------------------------------------------------------------------------
+   
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 
