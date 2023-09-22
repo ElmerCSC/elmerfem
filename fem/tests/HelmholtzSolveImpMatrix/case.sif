@@ -78,8 +78,8 @@ Solver 1
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
-  Constraint Modes Fluxes Filename = File "ImpedanceMatrix.dat"
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Filename = File "ImpedanceMatrix.dat"
 End
 
 

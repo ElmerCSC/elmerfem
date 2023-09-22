@@ -119,8 +119,8 @@ SUBROUTINE StatCurrentSolver_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
-    CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+    CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
+    CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
         'ConductivityMatrix.dat',.FALSE.)
     CALL ListRenameAllBC( Model,'Conductivity Body','Constraint Mode Potential')
   END IF

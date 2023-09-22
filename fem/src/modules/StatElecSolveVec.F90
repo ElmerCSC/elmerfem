@@ -122,12 +122,12 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     CALL ListAddNewLogical( Params,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( Params,'Constraint Modes Fluxes',.TRUE.)
-    CALL ListAddNewLogical( Params,'Constraint Modes Fluxes Symmetric',.TRUE.)
+    CALL ListAddNewLogical( Params,'Constraint Modes Matrix Symmetric',.TRUE.)
     IF( ListCheckPresent( Params,'Capacitance Matrix Filename') ) THEN
       CALL ListRename( Params,'Capacitance Matrix Filename',&
-          'Constraint Modes Fluxes Filename', Found ) 
+          'Constraint Modes Matrix Filename', Found ) 
     ELSE     
-      CALL ListAddNewString( Params,'Constraint Modes Fluxes Filename',&
+      CALL ListAddNewString( Params,'Constraint Modes Matrix Filename',&
           'CapacitanceMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'Capacitance Body','Constraint Mode Potential')

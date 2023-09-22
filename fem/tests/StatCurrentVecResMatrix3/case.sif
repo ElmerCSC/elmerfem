@@ -78,9 +78,9 @@ Solver 1
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Linkage = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
-  Constraint Modes Fluxes Filename = File "ConductivityMatrix.dat"
-  Constraint Modes Fluxes Norm = Logical True
+  Constraint Modes Matrix Symmetric = True
+  Constraint Modes Matrix Filename = "ConductivityMatrix.dat"
+  Constraint Modes Matrix Norm = True
   Constraint Modes Rhs = Logical True
 
   Linear System Solver = Iterative

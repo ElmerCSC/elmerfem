@@ -1182,13 +1182,13 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Analysis',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes Results',.TRUE.)
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
     IF( ListCheckPresent( SolverParams,'S-Matrix Filename') ) THEN
       CALL ListRename( SolverParams,'S-Matrix Filename',&
-          'Constraint Modes Fluxes Filename', Found ) 
+          'Constraint Modes Matrix Filename', Found ) 
     ELSE     
-      CALL ListAddNewString( SolverParams,'Constraint Modes Fluxes Filename',&
+      CALL ListAddNewString( SolverParams,'Constraint Modes Matrix Filename',&
           'SMatrix.dat',.FALSE.)
     END IF
     CALL ListRenameAllBC( Model,'S-Matrix Port','Constraint Mode')

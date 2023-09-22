@@ -62,9 +62,9 @@ Solver 1
   Constraint Modes Analysis = Logical True
   Constraint Modes Lumped = Logical True
   Constraint Modes Fluxes = Logical True
-  Constraint Modes Fluxes Symmetric = Logical True
-  Constraint Modes Fluxes Results = Logical True
-  Constraint Modes Fluxes Norm = Logical True
+  Constraint Modes Matrix Symmetric = Logical True
+  Constraint Modes Matrix Results = Logical True
+  Constraint Modes Matrix Norm = Logical True
   Run Control Constraint Modes = Logical True
 
   Steady State Convergence Tolerance = 1.0e-5

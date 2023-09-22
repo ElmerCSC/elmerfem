@@ -7065,10 +7065,10 @@ CONTAINS
           END IF
         END IF
       END IF
-      IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found ) ) THEN
-        CALL ListAddConstReal( CurrentModel % Simulation,&
-            'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',0.0_dp)
-      END IF
+      DoIt = ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found )
+      IF(.NOT. Found) DoIt = ListGetLogical( Solver % Values,'Constraint Modes Matrix Norm', Found )
+      IF(DoIt) CALL ListAddConstReal( CurrentModel % Simulation,&
+          'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',0.0_dp)
     END IF
     IF(.NOT. ASSOCIATED( Var % ConstraintModesIndeces ) ) THEN
       ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
@@ -15649,7 +15649,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
   INTEGER :: i,j,k,NoModes
-  LOGICAL :: Symmetric, IsComplex, EmWaveMode, CoilMode, Found
+  LOGICAL :: Symmetric, IsComplex, EmWaveMode, CoilMode, Found, DoIt
   REAL(KIND=dp) :: nrm
   CHARACTER(:), ALLOCATABLE :: MatrixFile
   CHARACTER(*), PARAMETER :: Caller = 'FinalizeLumpedMatrix'
@@ -15797,12 +15797,13 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
 
   WRITE(Message,'(A,ES12.5)') TRIM(Solver % Variable % Name)//' lumped matrix norm: ',Nrm
   CALL Info(Caller, Message, Level=6)
-  IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found ) ) THEN
-    CALL ListAddConstReal( CurrentModel % Simulation,&
-        'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',nrm)
-  END IF
 
-  IF( ListGetLogical( Solver % Values,'Constraint Modes Fluxes Results', Found ) ) THEN
+  DoIt = ListGetLogical( Solver % Values,'Constraint Modes Fluxes Norm', Found )
+  IF(.NOT. Found) DoIt = ListGetLogical( Solver % Values,'Constraint Modes Matrix Norm', Found )
+  IF(DoIt) CALL ListAddConstReal( CurrentModel % Simulation,&
+      'res: '//TRIM(Solver % Variable % Name)//' lumped matrix norm',nrm)
+  
+  IF( ListGetLogical( Solver % Values,'Constraint Modes Matrix Results', Found ) ) THEN
     CALL Info(Caller,'Adding Constraint Modes Fluxes with "res:" to list',Level=5)
     DO i=1,NoModes
       DO j=1,NoModes
