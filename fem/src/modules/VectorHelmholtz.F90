@@ -205,6 +205,15 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
   IF (HasPrecDampCoeff) MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
 
+  IF(HasPrecDampCoeff) THEN
+    IF(ListGetString(SolverParams,'Linear System Solver',Found ) /= 'iterative') THEN
+      CALL Warn(Caller,'Damped preconditioning makes sence only for iterative methods, canceling!')
+      HasPrecDampCoeff = .FALSE.
+    ELSE
+      CALL Info(Caller,'Generating special precondining matrix',Level=12)
+    END IF
+  END IF
+    
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
     mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )

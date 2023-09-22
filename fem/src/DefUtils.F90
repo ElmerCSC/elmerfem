@@ -4456,6 +4456,7 @@ CONTAINS
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+       CALL Info('DefaultUpdatePrecR','Allocating for separate preconditioning matrix!',Level=20)
        ALLOCATE( A % PrecValues(SIZE(A % Values)) )
        A % PrecValues = 0.0d0
      END IF
@@ -4532,8 +4533,9 @@ CONTAINS
 
 !$OMP CRITICAL
        IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-          ALLOCATE( A % PrecValues(SIZE(A % Values)) )
-          A % PrecValues = 0.0d0
+         CALL Info('DefaultUpdatePrecC','Allocating for separate preconditioning matrix!',Level=20)         
+         ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+         A % PrecValues = 0.0d0
        END IF
 !$OMP END CRITICAL
 
