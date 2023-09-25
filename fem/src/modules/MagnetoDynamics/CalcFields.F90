@@ -2242,13 +2242,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values       
        IF ( ListGetLogical( CompParams,'Flux linkage', Found ) ) THEN         
-         CALL ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.FALSE. )
+         s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.FALSE. )
          IF( ASSOCIATED(VP) ) THEN
-           CALL ComponentStokesTheorem(Model, Mesh, CompParams, VP,.FALSE. )
+           s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.FALSE. )
          END IF
-         CALL ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.TRUE. )
+         s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.TRUE. )
          IF( ASSOCIATED(VP) ) THEN
-           CALL ComponentStokesTheorem(Model, Mesh, CompParams, VP,.TRUE. )
+           s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.TRUE. )
          END IF
        END IF       
      END DO

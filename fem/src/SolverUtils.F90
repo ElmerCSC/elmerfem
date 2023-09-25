@@ -15681,7 +15681,7 @@ SUBROUTINE FinalizeLumpedMatrix( Solver )
   IF(CoilMode) THEN
     BLOCK
       REAL(KIND=dp) :: DesiredCurr(NoModes)  
-      FluxesMatrix = 2*FluxesMatrix    
+      ! Normalize the inductance in case it has been computed with non-unity currents!
       DO i=1,CurrentModel % NumberOfComponents
         j = ListGetInteger( CurrentModel % Components(i) % Values,'Constraint Mode',Found )
         IF(j > 0) THEN
@@ -16187,7 +16187,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       TYPE(Variable_t), POINTER :: CVar, AVar
       TYPE(ValueList_t), POINTER :: Vlist
       INTEGER, POINTER :: MasterEntities(:)
-      REAL(KIND=dp) :: Nrm
+      REAL(KIND=dp) :: Nrm, FL
       
       Mesh => Solver % Mesh
       CVar => VariableGet( Mesh % Variables,'CoilCurrent e',ThisOnly=.TRUE.)
@@ -16201,11 +16201,20 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
         Vlist => CurrentModel % Components(j) % Values       
         k = ListGetInteger( Vlist,'Constraint Mode', Found )
         IF(.NOT. Found) CYCLE
+
+        IF( ListGetLogical( Vlist,'Flux Linkage', Found ) ) THEN
+          FL = ComponentStokesTheorem(CurrentModel, Mesh, Vlist, AVar, Surf = .TRUE.)
+          WRITE(Message,'(A,ES12.3)') 'Flux Linkage '//I2S(NMode)//' '//I2S(k)//':', FL
+          CALL Info(Caller,Message)
+        END IF
+
         MasterEntities => ListGetIntegerArray( Vlist,'Master Bodies',Found )
-        FluxesRow(k) =  ComponentCoilEnergy(CurrentModel, Mesh, MasterEntities, avar, cvar )
-        PRINT *,'CoilEnergy:',j,k,FluxesRow(j)
+        FluxesRow(k) = ComponentCoilEnergy(CurrentModel, Mesh, MasterEntities, avar, cvar )
+
+        WRITE(Message,'(A,ES12.3)') 'Coil Inductance '//I2S(Nmode)//' '//I2S(k)//':', FluxesRow(k)
+        CALL Info(Caller,Message)
       END DO
-      
+            
       Nrm = SUM(FluxesRow)
       WRITE(Message,'(A,ES12.3)') 'Energy norm of Impedance matrix row '//I2S(NMode)//': ',Nrm
       CALL Info(Caller,Message,Level=8)

@@ -809,13 +809,14 @@ MODULE LumpingUtils
 !> Given a vector field compute line integral of Stokes theorem using
 !> some geometric heuristics. 
 !------------------------------------------------------------------------------
-  SUBROUTINE ComponentStokesTheorem(Model, Mesh, Vlist, AVar, Surf )
+  FUNCTION ComponentStokesTheorem(Model, Mesh, Vlist, AVar, Surf ) RESULT ( FL ) 
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Vlist
     TYPE(Variable_t), POINTER :: aVar
     LOGICAL :: Surf
+    REAL(KIND=dp) :: FL
          
     TYPE(Matrix_t), POINTER :: NodeGraph
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
@@ -837,7 +838,7 @@ MODULE LumpingUtils
     
     TargetBodies => ListGetIntegerArray( VList,'Master Bodies',Found )
     IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( VList,'Body',Found )
-    IF( .NOT. Found ) CALL Fatal('StokesTheorem','Stokes theorem requires > Master Bodies <') 
+    IF( .NOT. Found ) CALL Fatal(Caller,'Stokes theorem requires > Master Bodies <') 
 
     HelperArray => ListGetConstRealArray( Vlist, 'Coil Center', UnfoundFatal = .TRUE. ) 
     Center(1:3) = HelperArray(1:3,1)
@@ -856,7 +857,9 @@ MODULE LumpingUtils
     ELSE
       CALL ComputeLineIntegral()
     END IF
-      
+
+    FL = REAL(Circ)
+    
   CONTAINS
 
     SUBROUTINE SetActiveNodeSet()
@@ -1084,7 +1087,7 @@ MODULE LumpingUtils
           ! Integral over nodal field using the mean value
           j1 = avar % Perm(i1)
           j2 = avar % Perm(i2)          
-          IF(j1==0 .OR. j2==0) CALL Fatal('ComponentStokesTheorem','Nodal field missing on path!')
+          IF(j1==0 .OR. j2==0) CALL Fatal(Caller,'Nodal field missing on path!')
           DO k=1,3
             IF( avar % dofs == 3 ) THEN
               gradv(k) = ( avar % Values(3*(j1-1)+k) + avar % Values(3*(j2-1)+k) ) / 2
@@ -1108,7 +1111,7 @@ MODULE LumpingUtils
           IF(i1 > i2) sgn = -1
 
           j = avar % Perm(n0 + k)
-          IF( j==0) CALL Fatal('ComponentStokesTheorem','Edge field missing on path!')
+          IF( j==0) CALL Fatal(Caller,'Edge field missing on path!')
 
           IF( avar % dofs == 1 ) THEN
             Circ = Circ + sgn * avar % Values(j)
@@ -1131,19 +1134,19 @@ MODULE LumpingUtils
 
 
         IF( ABS(phisum) > 720.0_dp ) THEN
-          CALL Fatal('ComponentStokesTheorem','We circled twice around!?')
+          CALL Fatal(Caller,'We circled twice around!?')
         END IF
 
         IF(SaveLoop) WRITE(10,*) nsteps, Coord1, phi1, phisum, ssum, REAL(Circ)
 
         ! We have come home to roost!
         IF(i1 == r2ind) THEN
-          CALL Info('ComponentStokesTheorem','Integration over full loop finished!')
+          CALL Info(Caller,'Integration over full loop finished!')
           EXIT
         END IF
       END DO
 
-      PRINT *,'Path integral:',avar % dofs, targetbodies, nsteps, phisum, ssum, Circ
+      !PRINT *,'Path integral:',avar % dofs, targetbodies, nsteps, phisum, ssum, Circ
 
       CALL FreeMatrix(NodeGraph)
       IF(SaveLoop) CLOSE(10)
@@ -1278,16 +1281,18 @@ MODULE LumpingUtils
       END DO
 
       Circ = Circ / (hmax-hmin)       
-      PRINT *,'Path integral cyl:',avar % dofs, targetbodies, area, &
-          area/((hmax-hmin)*2*PI), Circ
-
+      !PRINT *,'Path integral cyl:',avar % dofs, targetbodies, area, &
+      !    area/((hmax-hmin)*2*PI), Circ
+      
     END SUBROUTINE ComputeCylinderIntegral
           
-  END SUBROUTINE ComponentStokesTheorem
+  END FUNCTION ComponentStokesTheorem
 
 
 !------------------------------------------------------------------------------
 !> Given vector potential and current density compute the energy in the coil.
+!> This is actually not energy, but twice the energy, since the values are
+!> used to computed inductance matrix. 
 !------------------------------------------------------------------------------
   FUNCTION ComponentCoilEnergy(Model, Mesh, MasterEntities, AVar, CVar, BCMode ) RESULT ( AIint ) 
 !------------------------------------------------------------------------------
@@ -1460,7 +1465,7 @@ MODULE LumpingUtils
         ! Current density at IP
         Cip = MATMUL(Celem(1:3,1:n),Basis(1:n))
 
-        AIint = AIint + s * SUM(Aip*Cip) / 2
+        AIint = AIint + s * SUM(Aip*Cip) 
         Volume = Volume + s
       END DO
 
