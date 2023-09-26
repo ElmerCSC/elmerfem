@@ -148,10 +148,16 @@ CONTAINS
     MinDepth = ListGetInteger( Params, 'Adaptive Min Depth', Found )
 
     MaxDepth = ListGetInteger( Params, 'Adaptive Max Depth', Found )
+    IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
+      ! Setting this flag will override convergence for this equation on steady-state level.
+      Solver % Mesh % AdaptiveFinished = .TRUE.
+      CALL Info( Caller,'Max adaptive depth reached! Doing nothing!', Level = 5 )
+      RETURN
+    END IF
+
     IF( Found .AND. MinDepth > MaxDepth ) THEN
       CALL Warn(Caller,'"Adaptive Min Depth" greater than Max!' )
     END IF
-
     AdaptInit = ( RefMesh % AdaptiveDepth == 0 ) 
 
     IF( AdaptInit ) THEN
@@ -170,10 +176,6 @@ CONTAINS
       RefMesh % AdaptiveFinished = .FALSE.
     END IF
         
-    IF ( Found .AND. Refmesh % AdaptiveDepth > MaxDepth ) THEN
-       CALL Info( Caller,'Max adaptive depth reached!', Level = 6 )
-       GOTO 20
-    END IF
     
     ! Interpolation is costly in parallel. Do it by default only in serial. 
     Parallel = ( ParEnv % PEs > 1 )
@@ -753,8 +755,6 @@ CONTAINS
     CALL SetCurrentMesh( Model, RefMesh )
     DEALLOCATE( ErrorIndicator, PrevHvalue )
     
-20  CONTINUE
-
     WRITE( Message, * ) 'Mesh refine took in total (cpu-secs):           ', &
         CPUTIme() - TotalTime 
     CALL Info( Caller, Message, Level=6 )
