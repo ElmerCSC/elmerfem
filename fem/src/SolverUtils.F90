@@ -7006,12 +7006,17 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     CHARACTER(*), PARAMETER :: Caller = 'SetConstraintModesBoundaries'
 
+    INTEGER :: Dbg(6)
+    
 !------------------------------------------------------------------------------
 
     nlen = LEN_TRIM(Name)
     Mesh => Solver % Mesh
     Var => Solver % Variable     
 
+    Dbg = 0
+    Dbg(1) = ParEnv % Mype
+    
     ! Initially this is -1 and and hence the 2nd call is fast if no modes are present
     IF( Solver % NumberOfConstraintModes == 0 ) RETURN
 
@@ -7173,9 +7178,15 @@ CONTAINS
         IF(ent_id > Model % NumberOfComponents ) CYCLE
       END IF
 
+      Dbg(6) = Dbg(6) + Element % BoundaryInfo % Constraint
+      
+      Dbg(2) = Dbg(2) + 1
+      
       ! Look-up table for quick determiation
       IF( BCPerm(ent_id) == 0 ) CYCLE
 
+      Dbg(3) = Dbg(3) + 1
+      
       n = Element % Type % NumberOfNodes
 
       ! This is used in standard setting of Dirichlet BCs
@@ -7212,13 +7223,21 @@ CONTAINS
     END DO
     DEALLOCATE(BCPerm)
 
+    Dbg(4) = COUNT(Var % ConstraintModesIndeces > 0)
+    
     ! Some single node or edge could stretch to the surface even though it is not
     ! part of any boundary element in parallel. Hence we need to communicate the tag. 
     IF( Parallel ) THEN
       CALL Info(Caller,'Communicating tags for constraint modes',Level=20)
       CALL CommunicateParallelSystemTag(A % ParallelInfo,Itag = Var % ConstraintModesIndeces,ParOper=2)
     END IF
-      
+
+    Dbg(5) = COUNT(Var % ConstraintModesIndeces > 0)
+ 
+    
+    PRINT *,'DebugVector:',Dbg
+
+    
     ! Set the p dofs to negative since we don't ever want to set them to one!
     ! Note that there are some dofs related to ground that are already negative.
     ! Hence ground and p-pubbles are treated alike. 
