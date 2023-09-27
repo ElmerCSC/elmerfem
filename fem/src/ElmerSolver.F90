@@ -1975,12 +1975,12 @@
        
        CALL SetCurrentMesh( CurrentModel, Mesh )
 
-       IF( InfoActive( 20 ) ) THEN
-         PRINT *,'InitCond mesh:',TRIM(Mesh % Name), Mesh % MeshDim, Mesh % NumberOfNodes 
+       IF( InfoActive( 30 ) ) THEN
+         CALL Info('InitCond','Initial conditions for '//I2S(Mesh % MeshDim)//'D mesh:'//TRIM(Mesh % Name))
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
-             PRINT *,'InitCond pre range:',TRIM(Var % Name),MINVAL(Var % Values),MAXVAL( Var % Values)
+             CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PreInit: '//TRIM(Var % Name))       
            END IF
            Var => Var % Next
          END DO
@@ -2359,8 +2359,7 @@
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
-             PRINT *,'InitCond post range:',TRIM(Var % Name),&
-                 MINVAL(Var % Values),MAXVAL( Var % Values),SUM(Var % Values)/SIZE(Var % Values)
+             CALL VectorValuesRange(Var % Values,SIZE(Var % Values),'PostInit: '//TRIM(Var % Name))       
            END IF
            Var => Var % Next
          END DO
