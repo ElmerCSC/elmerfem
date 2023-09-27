@@ -21583,13 +21583,18 @@ END SUBROUTINE FindNeighbourNodes
 !
 !         which edge of the parent element are we ?
 !         -----------------------------------------
+          Found = .FALSE.
           DO Edge1=1,SIZE(Eparent % EdgeIndexes)
-             Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
-             IF ( Eold % NodeIndexes(1) == Edge % NodeIndexes(1) .AND. &
-                  Eold % NodeIndexes(2) == Edge % NodeIndexes(2) .OR.  &
-                  Eold % NodeIndexes(2) == Edge % NodeIndexes(1) .AND. &
-                  Eold % NodeIndexes(1) == Edge % NodeIndexes(2) ) EXIT
+            Edge => Mesh % Edges( Eparent % EdgeIndexes(Edge1) )
+            Found = ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(1) ) .AND. &
+                ANY(Eold % NodeIndexes(1:2) == Edge % NodeIndexes(2) )
+            IF(Found) EXIT
           END DO
+          IF(.NOT. Found) THEN
+            CALL Fatal('SplitMeshEqual','Could not find parent edge with nodes: '//&
+                I2S(Eold % NodeIndexes(1))//' '//I2S(Eold % NodeIndexes(2)))
+          END IF
+          
 !
 !         index of the old edge centerpoint in the
 !         new mesh nodal arrays:
@@ -21613,27 +21618,23 @@ END SUBROUTINE FindNeighbourNodes
 !         Search the new mesh parent element among the
 !         children of the old mesh parent element:
 !         --------------------------------------------
-          DO j=1,4
-             Eptr => NewMesh % Elements( Child(ParentId,j) )
-             n = Eptr % TYPE % NumberOfNodes
-             Found = .FALSE.
-             DO k=1,n-1
-                IF ( Enew % NodeIndexes(1) == Eptr % NodeIndexes(k)   .AND. &
-                     Enew % NodeIndexes(2) == Eptr % NodeIndexes(k+1) .OR.  &
-                     Enew % NodeIndexes(2) == Eptr % NodeIndexes(k)   .AND. &
-                     Enew % NodeIndexes(1) == Eptr % NodeIndexes(k+1) ) THEN
-                   Found = .TRUE.
-                   EXIT
-                END IF
-             END DO
-             IF ( Enew % NodeIndexes(1) == Eptr % NodeIndexes(n) .AND. &
-                  Enew % NodeIndexes(2) == Eptr % NodeIndexes(1) .OR.  &
-                  Enew % NodeIndexes(2) == Eptr % NodeIndexes(n) .AND. &
-                  Enew % NodeIndexes(1) == Eptr % NodeIndexes(1) ) THEN
-                Found = .TRUE.
-             END IF
-             IF ( Found ) EXIT
+
+          Found = .FALSE.
+
+          n1 = 4 
+          IF( Eparent % TYPE % ElementCode > 500 ) n1 = 8
+          
+          DO j=1,n1
+            Eptr => NewMesh % Elements( Child(ParentId,j) )
+            n = Eptr % TYPE % NumberOfNodes
+
+            ! The parent is unique! Hence it is enough to find a parent with both matches.
+            Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) ) .AND. &
+                ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(2) )
+            IF ( Found ) EXIT
           END DO
+
+
           Enew % BoundaryInfo % Left => Eptr
 !
 !         2nd new element
@@ -21653,25 +21654,12 @@ END SUBROUTINE FindNeighbourNodes
 !         Search the new mesh parent element among the
 !         children of the old mesh parent element:
 !         --------------------------------------------
-          DO j=1,4
+                    
+          DO j=1,n1
              Eptr => NewMesh % Elements( Child(ParentId,j) )
              n = Eptr % TYPE % NumberOfNodes
-             Found = .FALSE.
-             DO k=1,n-1
-                IF ( Enew % NodeIndexes(1) == Eptr % NodeIndexes(k)   .AND. &
-                     Enew % NodeIndexes(2) == Eptr % NodeIndexes(k+1) .OR.  &
-                     Enew % NodeIndexes(2) == Eptr % NodeIndexes(k)   .AND. &
-                     Enew % NodeIndexes(1) == Eptr % NodeIndexes(k+1) ) THEN
-                   Found = .TRUE.
-                   EXIT
-                END IF
-             END DO
-             IF ( Enew % NodeIndexes(1) == Eptr % NodeIndexes(n) .AND. &
-                  Enew % NodeIndexes(2) == Eptr % NodeIndexes(1) .OR.  &
-                  Enew % NodeIndexes(2) == Eptr % NodeIndexes(n) .AND. &
-                  Enew % NodeIndexes(1) == Eptr % NodeIndexes(1) ) THEN
-                Found = .TRUE.
-             END IF
+             Found =  ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(1) ) .AND. &
+                 ANY( Eptr % NodeIndexes(1:n) == Enew % NodeIndexes(2) )
              IF ( Found ) EXIT
           END DO
           Enew % BoundaryInfo % Left => Eptr
@@ -21766,9 +21754,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,3
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -21798,9 +21784,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,3
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -21830,9 +21814,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,3
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -21862,9 +21844,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,3
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -21977,9 +21957,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,4
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n) ) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -22010,9 +21988,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,4
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -22043,9 +22019,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,4
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
@@ -22076,9 +22050,7 @@ END SUBROUTINE FindNeighbourNodes
              n = Eptr % TYPE % NumberOfNodes
              n3 = 0 ! Count matches (metodo stupido)
              DO n1 = 1,4
-                DO n2 = 1,SIZE(Eptr % NodeIndexes)
-                   IF( Enew % NodeIndexes(n1) == Eptr % NodeIndexes(n2) ) n3 = n3+1
-                END DO
+               IF( ANY(Enew % NodeIndexes(n1) == Eptr % NodeIndexes(1:n)) ) n3 = n3+1
              END DO
              IF ( n3 > 2 ) EXIT
           END DO
