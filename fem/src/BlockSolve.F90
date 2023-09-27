@@ -3091,6 +3091,8 @@ CONTAINS
 
     CALL Info('BlockMatrixPrec','Starting block matrix preconditioning',Level=8)
 
+    DoAMGXMV = ListGetLogical( SolverRef % Values, 'Block AMGX M-V', Found)
+    
     n = ipar(3)
     
     IF( InfoActive(25) ) THEN
