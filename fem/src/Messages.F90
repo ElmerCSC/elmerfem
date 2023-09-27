@@ -286,12 +286,6 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
-#ifdef HAVE_XIOS
-     IF (USE_XIOS) THEN
-       CALL xios_context_finalize()
-       CALL xios_finalize()
-     ENDIF
-#endif 
      IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
@@ -311,6 +305,13 @@ CONTAINS
      END IF
      nadv1 = nadv
      CALL FLUSH(InfoOutUnit)
+
+#ifdef HAVE_XIOS
+     IF (USE_XIOS) THEN
+       CALL xios_context_finalize()
+       CALL xios_finalize()
+     ENDIF
+#endif 
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------
