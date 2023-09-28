@@ -751,16 +751,16 @@ MODULE Types
 
    TYPE ParallelInfo_t
      INTEGER :: NumberOfIfDOFs
-     LOGICAL, POINTER               :: GInterface(:)
-     INTEGER, POINTER               :: GlobalDOFs(:)
-     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     LOGICAL, POINTER               :: GInterface(:) => NULL()
+     INTEGER, POINTER               :: GlobalDOFs(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: NeighbourList(:) => NULL()
      INTEGER, POINTER               :: Gorder(:) => NULL()
 
-     LOGICAL, POINTER               :: FaceInterface(:)
-     TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:)
+     LOGICAL, POINTER               :: FaceInterface(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:) => NULL()
 
-     LOGICAL, POINTER               :: EdgeInterface(:)
-     TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:)
+     LOGICAL, POINTER               :: EdgeInterface(:) => NULL()
+     TYPE(NeighbourList_t),POINTER  :: EdgeNeighbourList(:) => NULL()
    END TYPE ParallelInfo_t
 
 !------------------------------------------------------------------------------
