@@ -2243,12 +2243,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CompParams => Model % Components(j) % Values       
        IF ( ListGetLogical( CompParams,'Flux linkage', Found ) ) THEN         
          s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.FALSE. )
+         PRINT *,'Flux linkage:',j,s
          IF( ASSOCIATED(VP) ) THEN
            s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.FALSE. )
+           PRINT *,'Flux linkage nodal:',j,s
          END IF
          s = ComponentStokesTheorem(Model, Mesh, CompParams, pSolver % Variable,.TRUE. )
+         PRINT *,'Flux linkage averaged:',j,s
          IF( ASSOCIATED(VP) ) THEN
            s = ComponentStokesTheorem(Model, Mesh, CompParams, VP,.TRUE. )
+           PRINT *,'Flux linkage nodal avereaged:',j,s
          END IF
        END IF       
      END DO
@@ -2272,11 +2276,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CompParams => Model % Components(j) % Values       
          IF ( ListGetLogical( CompParams,'Coil Energy', Found ) ) THEN         
            MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )
-           CoilEnergy(j) =  ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )            
-           PRINT *,'CoilEnergy:',j,CoilEnergy(j)
+           CoilEnergy(j) =  0.5_dp * ComponentCoilEnergy(Model, Mesh, MasterEntities, pSolver % Variable, CoilCurr )            
+           PRINT *,'Coil Energy:',j,CoilEnergy(j)
            IF( ASSOCIATED(VP) ) THEN
-             CoilEnergy(j) = ComponentCoilEnergy(Model, Mesh, MasterEntities, VP, CoilCurr)
-             PRINT *,'CoilEnergy nodal A:',j,CoilEnergy(j)
+             CoilEnergy(j) = 0.5_dp * ComponentCoilEnergy(Model, Mesh, MasterEntities, VP, CoilCurr) 
+             PRINT *,'Coil Energy nodal A:',j,CoilEnergy(j)
            END IF
          END IF
        END DO
